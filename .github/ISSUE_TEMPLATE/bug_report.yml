@@ -1,0 +1,100 @@
+name: Bug Report
+description: Report a reproducible problem in mindcraft-lang
+title: "[Bug] "
+labels:
+  - bug
+  - needs triage
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please provide enough detail to reproduce the issue.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / Commit
+      description: What version, tag, or commit hash are you using?
+      placeholder: e.g. v0.3.1 or 1a2b3c4
+    validations:
+      required: true
+
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target Environment
+      description: Where does the issue occur?
+      options:
+        - node
+        - web
+        - roblox-ts
+        - multiple targets
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Summary
+      description: Brief description of the problem.
+      placeholder: A clear and concise summary of what is wrong.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Provide minimal, concrete steps to reproduce the issue.
+      placeholder: |
+        1. Create VM with ...
+        2. Execute ...
+        3. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal Reproduction
+      description: |
+        Provide a minimal code snippet or link to a small repro repository.
+        The issue must be reproducible without unrelated dependencies.
+      placeholder: Paste code or link here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Output
+      description: Include relevant console output, stack traces, or error messages.
+      render: shell
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have verified this issue exists on the latest version.
+          required: true
+        - label: I have searched existing issues to ensure this has not already been reported.
+          required: true

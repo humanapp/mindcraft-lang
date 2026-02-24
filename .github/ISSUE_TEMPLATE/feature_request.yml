@@ -1,0 +1,55 @@
+name: Feature Request
+description: Propose a new feature for mindcraft-lang
+title: "[Feature] "
+labels:
+  - idea
+  - needs triage
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for sharing your idea! Please describe what you'd like to be able to do
+        and why it matters to you.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do that is difficult or impossible today?
+      placeholder: "When I try to ..., I can't ... because ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_behavior
+    attributes:
+      label: What would you like to happen?
+      description: Describe the experience or outcome you're hoping for.
+      placeholder: "I'd like to be able to ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What have you tried instead?
+      description: Are there any workarounds you're using today?
+      placeholder: Describe any current workarounds or alternative approaches you've tried.
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example or Mockup
+      description: If it helps, share a screenshot, sketch, or short description showing how this might look or work.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have searched existing issues to ensure this has not already been proposed.
+          required: true
+        - label: I understand this is a curated project and not all feature requests will be accepted.
+          required: true

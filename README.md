@@ -20,7 +20,7 @@ Documentation is a work in progress. In the meantime, see the [core package READ
 
 ## Contributing
 
-This repository does not accept issues or pull requests directly. To report a bug, request a feature, or propose a collaboration, please open an issue in the [mindcraft-lang-issues](https://github.com/humanapp/mindcraft-lang-issues) repository. We'll discuss there before any code changes happen here.
+To report a bug or request a feature, please [open an issue](https://github.com/humanapp/mindcraft-lang/issues).
 
 ## License
 
