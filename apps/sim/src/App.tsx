@@ -1,5 +1,5 @@
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
 import { BrainEditorDialog } from "./components/brain-editor/BrainEditorDialog";
@@ -8,22 +8,52 @@ import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
 
+/** Compare two snapshots by display-relevant fields to skip no-op re-renders. */
+function statsEqual(a: ScoreSnapshot[keyof ScoreSnapshot & string], b: ScoreSnapshot[keyof ScoreSnapshot & string]): boolean {
+  if (typeof a === "number") return a === b;
+  const sa = a as import("@/brain/score").ArchetypeStats;
+  const sb = b as import("@/brain/score").ArchetypeStats;
+  return (
+    sa.aliveCount === sb.aliveCount &&
+    sa.deaths === sb.deaths &&
+    Math.round(sa.totalEnergy) === Math.round(sb.totalEnergy) &&
+    Math.round(sa.longestLife) === Math.round(sb.longestLife)
+  );
+}
+
+function snapshotEqual(a: ScoreSnapshot, b: ScoreSnapshot): boolean {
+  return (
+    a.ecosystemScore === b.ecosystemScore &&
+    Math.round(a.elapsed) === Math.round(b.elapsed) &&
+    statsEqual(a.carnivore, b.carnivore) &&
+    statsEqual(a.herbivore, b.herbivore) &&
+    statsEqual(a.plant, b.plant)
+  );
+}
+
 function App() {
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
   const [editingArchetype, setEditingArchetype] = useState<Archetype | null>(null);
   const [timeSpeed, setTimeSpeed] = useState(1);
   const [scene, setScene] = useState<Playground | null>(null);
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
+  const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
   useEffect(() => {
     scene?.setTimeSpeed(timeSpeed);
   }, [scene, timeSpeed]);
 
-  // Poll the engine for score data
+  // Poll the engine for score data. The snapshot is a fresh object each call,
+  // so compare rounded display values to avoid re-renders when nothing the
+  // user can see has changed.
   useEffect(() => {
     if (!scene) return;
     const id = setInterval(() => {
-      setSnapshot(scene.getScoreSnapshot());
+      const next = scene.getScoreSnapshot();
+      const prev = prevSnapshotRef.current;
+      if (prev && snapshotEqual(prev, next)) return;
+      prevSnapshotRef.current = next;
+      setSnapshot(next);
     }, 250);
     return () => clearInterval(id);
   }, [scene]);
