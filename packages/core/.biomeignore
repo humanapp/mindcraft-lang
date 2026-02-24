@@ -1,0 +1,6 @@
+# Biome ignore file
+dist/
+generated-docs/
+node_modules/
+scripts/
+*.d.ts

@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "roblox-ts.vscode-roblox-ts",
+    "dbaeumer.vscode-eslint",
+    "UnderMyWheel.roblox-lua",
+    "mechatroner.rainbow-csv",
+    "biomejs.biome",
+    "bradlc.vscode-tailwindcss"
+  ]
+}

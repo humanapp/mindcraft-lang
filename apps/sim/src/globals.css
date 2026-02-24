@@ -1,0 +1,399 @@
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap");
+
+/* Phaser game container -- fills parent so Scale.FIT can measure it */
+#game-container {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-33.333333%);
+  }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(203 213 225) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: rgb(203 213 225);
+  border-radius: 4px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(148 163 184);
+}
+
+@theme {
+  --color-background: oklch(100% 0 0);
+  --color-foreground: oklch(9% 0 0);
+  --color-card: oklch(100% 0 0);
+  --color-card-foreground: oklch(9% 0 0);
+  --color-popover: oklch(100% 0 0);
+  --color-popover-foreground: oklch(9% 0 0);
+  --color-primary: oklch(9% 0 0);
+  --color-primary-foreground: oklch(98% 0 0);
+  --color-secondary: oklch(96% 0 0);
+  --color-secondary-foreground: oklch(9% 0 0);
+  --color-muted: oklch(96% 0 0);
+  --color-muted-foreground: oklch(45% 0 0);
+  --color-accent: oklch(96% 0 0);
+  --color-accent-foreground: oklch(9% 0 0);
+  --color-destructive: oklch(60% 0.21 29);
+  --color-destructive-foreground: oklch(98% 0 0);
+  --color-border: oklch(90% 0 0);
+  --color-input: oklch(90% 0 0);
+  --color-ring: oklch(9% 0 0);
+  --color-chart-1: oklch(61% 0.15 29);
+  --color-chart-2: oklch(39% 0.11 197);
+  --color-chart-3: oklch(24% 0.09 237);
+  --color-chart-4: oklch(66% 0.17 83);
+  --color-chart-5: oklch(67% 0.19 27);
+  --radius: 0.5rem;
+  --font-mono:
+    "Roboto Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
+    Consolas, "DejaVu Sans Mono", monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme {
+    --color-background: oklch(4% 0 0);
+    --color-foreground: oklch(98% 0 0);
+    --color-card: oklch(4% 0 0);
+    --color-card-foreground: oklch(98% 0 0);
+    --color-popover: oklch(4% 0 0);
+    --color-popover-foreground: oklch(98% 0 0);
+    --color-primary: oklch(98% 0 0);
+    --color-primary-foreground: oklch(9% 0 0);
+    --color-secondary: oklch(15% 0 0);
+    --color-secondary-foreground: oklch(98% 0 0);
+    --color-muted: oklch(15% 0 0);
+    --color-muted-foreground: oklch(64% 0 0);
+    --color-accent: oklch(15% 0 0);
+    --color-accent-foreground: oklch(98% 0 0);
+    --color-destructive: oklch(31% 0.16 29);
+    --color-destructive-foreground: oklch(98% 0 0);
+    --color-border: oklch(15% 0 0);
+    --color-input: oklch(15% 0 0);
+    --color-ring: oklch(83% 0 0);
+    --color-chart-1: oklch(50% 0.14 220);
+    --color-chart-2: oklch(45% 0.12 160);
+    --color-chart-3: oklch(55% 0.16 30);
+    --color-chart-4: oklch(60% 0.13 280);
+    --color-chart-5: oklch(55% 0.15 340);
+  }
+}
+
+/* ==========================================================================
+   Brain Print View -- visual (faithful) mode
+   ========================================================================== */
+
+.brain-print-view {
+  font-family: var(--font-mono), monospace;
+  color: #1e293b;
+  padding: 24px;
+}
+
+.brain-print-header {
+  margin-bottom: 16px;
+}
+
+.brain-print-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+}
+
+.brain-print-page {
+  break-inside: avoid;
+  margin-bottom: 24px;
+}
+
+.brain-print-page-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-bottom: 2px solid #334155;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+
+.brain-print-page-number {
+  font-weight: 700;
+  font-size: 0.875rem;
+  color: #64748b;
+}
+
+.brain-print-page-name {
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.brain-print-page-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.brain-print-empty {
+  color: #94a3b8;
+  font-style: italic;
+  padding: 8px 0;
+}
+
+/* -- Rule row -- */
+
+.brain-print-rule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  min-height: 52px;
+  flex-wrap: wrap;
+  width: fit-content;
+}
+
+.brain-print-rule-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 9999px;
+  border: 1.5px solid #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #334155;
+  flex-shrink: 0;
+}
+
+/* -- WHEN / DO chip -- */
+
+.brain-print-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.brain-print-chip-when {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.brain-print-chip-do {
+  background: #e2e8f0;
+  color: #334155;
+  margin-left: 8px;
+}
+
+/* -- Tile -- */
+
+.brain-print-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid;
+  border-radius: 6px;
+  padding: 4px 6px;
+  min-width: 56px;
+  max-width: 160px;
+  height: 52px;
+  position: relative;
+  background: transparent;
+}
+
+.brain-print-tile-icon-small {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+}
+
+.brain-print-tile-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 2px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.brain-print-tile-icon {
+  height: 24px;
+  width: 100%;
+  object-fit: contain;
+}
+
+.brain-print-tile-icon-factory {
+  transform: scale(0.6);
+}
+
+.brain-print-tile-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.brain-print-tile-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  border: 1px solid #94a3b8;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+/* ==========================================================================
+   Brain Print View -- text-only mode
+   ========================================================================== */
+
+.brain-print-text-view {
+  font-family: var(--font-mono), monospace;
+  color: #1e293b;
+  padding: 24px;
+}
+
+.brain-print-text-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+}
+
+.brain-print-text-page {
+  break-inside: avoid;
+  margin-bottom: 24px;
+}
+
+.brain-print-text-page-header {
+  font-size: 1rem;
+  font-weight: 700;
+  border-bottom: 1px solid #334155;
+  padding-bottom: 4px;
+  margin: 0 0 8px 0;
+}
+
+.brain-print-text-empty {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.brain-print-text-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.brain-print-text-th {
+  text-align: left;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  border-bottom: 1px solid #94a3b8;
+  padding: 4px 8px;
+}
+
+.brain-print-text-th-num {
+  width: 32px;
+  text-align: right;
+  padding-right: 12px;
+}
+
+.brain-print-text-row:nth-child(even) {
+  background: #f8fafc;
+}
+
+.brain-print-text-td {
+  font-size: 0.8125rem;
+  padding: 4px 8px;
+  vertical-align: top;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.brain-print-text-td-num {
+  text-align: right;
+  padding-right: 12px;
+  color: #94a3b8;
+  font-weight: 600;
+  width: 32px;
+}
+
+/* ==========================================================================
+   @media print -- hide everything except the print container
+   ========================================================================== */
+
+@media print {
+  /* Hide the entire app and dialog chrome */
+  body > *:not(#brain-print-root) {
+    display: none !important;
+  }
+
+  #brain-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Ensure page breaks work */
+  .brain-print-page,
+  .brain-print-text-page {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Force backgrounds off for text rows */
+  .brain-print-text-row:nth-child(even) {
+    background: transparent !important;
+  }
+
+  /* Remove any leftover box-shadow/gradients  */
+  .brain-print-rule {
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  .brain-print-tile {
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  /* Basic sizing for print */
+  @page {
+    margin: 0.75in;
+    size: landscape;
+  }
+}

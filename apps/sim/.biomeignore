@@ -1,0 +1,8 @@
+# Biome ignore file
+dist/
+generated-docs/
+node_modules/
+*.config.*
+*.d.ts
+.env*
+vite/

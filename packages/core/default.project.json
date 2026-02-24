@@ -1,0 +1,6 @@
+{
+  "name": "mindcraft-lang-core",
+  "tree": {
+    "$path": "dist/rbx"
+  }
+}

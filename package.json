@@ -1,0 +1,17 @@
+{
+	"name": "mindcraft-lang",
+	"description": "Mindcraft -- a tile-based programming language for creative coding applications",
+	"private": true,
+	"license": "MIT",
+	"scripts": {
+		"install": "npm run install:packages && npm run install:apps",
+		"install:packages": "npm --prefix packages install",
+		"install:apps": "npm --prefix apps install"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.15",
+		"@types/node": "^25.0.2",
+		"chalk": "^5.6.2",
+		"tsx": "^4.21.0"
+	}
+}

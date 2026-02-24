@@ -1,0 +1,23 @@
+{
+  "root": false,
+  "$schema": "https://biomejs.dev/schemas/2.3.15/schema.json",
+  "extends": ["../../biome.json"],
+  "linter": {
+    "rules": {
+      "complexity": {
+        "noBannedTypes": "off",
+        "noArguments": "off",
+        "useLiteralKeys": "off"
+      },
+      "style": {
+        "useLiteralEnumMembers": "off"
+      },
+      "suspicious": {
+        "noAssignInExpressions": "off",
+        "noSelfCompare": "off",
+        "noShadowRestrictedNames": "off",
+        "noThenProperty": "off"
+      }
+    }
+  }
+}

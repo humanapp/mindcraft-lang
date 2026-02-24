@@ -1,0 +1,353 @@
+{
+  "name": "@mindcraft-lang/core",
+  "version": "0.1.0",
+  "description": "Core implementation of the Mindcraft tile-based visual programming language",
+  "license": "MIT",
+  "author": "humanapp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/humanapp/mindcraft-lang-issues/issues"
+  },
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/core#readme",
+  "keywords": [
+    "mindcraft",
+    "visual-programming",
+    "tile-based",
+    "compiler",
+    "vm",
+    "language",
+    "education",
+    "stem",
+    "coding",
+    "game-development",
+    "creative-coding",
+    "roblox",
+    "kodu",
+    "project-spark",
+    "sklanch"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist/node/index.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/node/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "node": {
+        "import": {
+          "types": "./dist/node/index.d.ts",
+          "default": "./dist/node/index.js"
+        },
+        "require": {
+          "types": "./dist/node/index.d.ts",
+          "default": "./dist/node/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "default": "./dist/rbx/init.luau"
+    },
+    "./primitives": {
+      "node": {
+        "import": {
+          "types": "./dist/node/primitives/index.d.ts",
+          "default": "./dist/node/primitives/index.js"
+        },
+        "require": {
+          "types": "./dist/node/primitives/index.d.ts",
+          "default": "./dist/node/primitives/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/primitives/index.d.ts",
+        "default": "./dist/esm/primitives/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/primitives/index.d.ts",
+        "default": "./dist/esm/primitives/index.js"
+      },
+      "default": "./dist/rbx/primitives/init.luau"
+    },
+    "./brain": {
+      "node": {
+        "import": {
+          "types": "./dist/node/brain/index.d.ts",
+          "default": "./dist/node/brain/index.js"
+        },
+        "require": {
+          "types": "./dist/node/brain/index.d.ts",
+          "default": "./dist/node/brain/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/brain/index.d.ts",
+        "default": "./dist/esm/brain/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/brain/index.d.ts",
+        "default": "./dist/esm/brain/index.js"
+      },
+      "default": "./dist/rbx/brain/init.luau"
+    },
+    "./brain/model": {
+      "node": {
+        "import": {
+          "types": "./dist/node/brain/model/index.d.ts",
+          "default": "./dist/node/brain/model/index.js"
+        },
+        "require": {
+          "types": "./dist/node/brain/model/index.d.ts",
+          "default": "./dist/node/brain/model/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/brain/model/index.d.ts",
+        "default": "./dist/esm/brain/model/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/brain/model/index.d.ts",
+        "default": "./dist/esm/brain/model/index.js"
+      },
+      "default": "./dist/rbx/brain/model/init.luau"
+    },
+    "./brain/tiles": {
+      "node": {
+        "import": {
+          "types": "./dist/node/brain/tiles/index.d.ts",
+          "default": "./dist/node/brain/tiles/index.js"
+        },
+        "require": {
+          "types": "./dist/node/brain/tiles/index.d.ts",
+          "default": "./dist/node/brain/tiles/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/brain/tiles/index.d.ts",
+        "default": "./dist/esm/brain/tiles/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/brain/tiles/index.d.ts",
+        "default": "./dist/esm/brain/tiles/index.js"
+      },
+      "default": "./dist/rbx/brain/tiles/init.luau"
+    },
+    "./brain/compiler": {
+      "node": {
+        "import": {
+          "types": "./dist/node/brain/compiler/index.d.ts",
+          "default": "./dist/node/brain/compiler/index.js"
+        },
+        "require": {
+          "types": "./dist/node/brain/compiler/index.d.ts",
+          "default": "./dist/node/brain/compiler/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/brain/compiler/index.d.ts",
+        "default": "./dist/esm/brain/compiler/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/brain/compiler/index.d.ts",
+        "default": "./dist/esm/brain/compiler/index.js"
+      },
+      "default": "./dist/rbx/brain/compiler/init.luau"
+    },
+    "./brain/runtime": {
+      "node": {
+        "import": {
+          "types": "./dist/node/brain/runtime/index.d.ts",
+          "default": "./dist/node/brain/runtime/index.js"
+        },
+        "require": {
+          "types": "./dist/node/brain/runtime/index.d.ts",
+          "default": "./dist/node/brain/runtime/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/brain/runtime/index.d.ts",
+        "default": "./dist/esm/brain/runtime/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/brain/runtime/index.d.ts",
+        "default": "./dist/esm/brain/runtime/index.js"
+      },
+      "default": "./dist/rbx/brain/runtime/init.luau"
+    },
+    "./brain/language-service": {
+      "node": {
+        "import": {
+          "types": "./dist/node/brain/language-service/index.d.ts",
+          "default": "./dist/node/brain/language-service/index.js"
+        },
+        "require": {
+          "types": "./dist/node/brain/language-service/index.d.ts",
+          "default": "./dist/node/brain/language-service/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/brain/language-service/index.d.ts",
+        "default": "./dist/esm/brain/language-service/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/brain/language-service/index.d.ts",
+        "default": "./dist/esm/brain/language-service/index.js"
+      },
+      "default": "./dist/rbx/brain/language-service/init.luau"
+    },
+    "./systems": {
+      "node": {
+        "import": {
+          "types": "./dist/node/systems/index.d.ts",
+          "default": "./dist/node/systems/index.js"
+        },
+        "require": {
+          "types": "./dist/node/systems/index.d.ts",
+          "default": "./dist/node/systems/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/systems/index.d.ts",
+        "default": "./dist/esm/systems/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/systems/index.d.ts",
+        "default": "./dist/esm/systems/index.js"
+      },
+      "default": "./dist/rbx/systems/init.luau"
+    },
+    "./stream": {
+      "node": {
+        "import": {
+          "types": "./dist/node/stream/index.d.ts",
+          "default": "./dist/node/stream/index.js"
+        },
+        "require": {
+          "types": "./dist/node/stream/index.d.ts",
+          "default": "./dist/node/stream/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/stream/index.d.ts",
+        "default": "./dist/esm/stream/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/stream/index.d.ts",
+        "default": "./dist/esm/stream/index.js"
+      },
+      "default": "./dist/rbx/stream/init.luau"
+    },
+    "./platform": {
+      "node": {
+        "import": {
+          "types": "./dist/node/platform/index.d.ts",
+          "default": "./dist/node/platform/index.js"
+        },
+        "require": {
+          "types": "./dist/node/platform/index.d.ts",
+          "default": "./dist/node/platform/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/platform/index.d.ts",
+        "default": "./dist/esm/platform/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/platform/index.d.ts",
+        "default": "./dist/esm/platform/index.js"
+      },
+      "default": "./dist/rbx/platform/init.luau"
+    },
+    "./util": {
+      "node": {
+        "import": {
+          "types": "./dist/node/util/index.d.ts",
+          "default": "./dist/node/util/index.js"
+        },
+        "require": {
+          "types": "./dist/node/util/index.d.ts",
+          "default": "./dist/node/util/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/util/index.d.ts",
+        "default": "./dist/esm/util/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/util/index.d.ts",
+        "default": "./dist/esm/util/index.js"
+      },
+      "default": "./dist/rbx/util/init.luau"
+    },
+    "./i18n": {
+      "node": {
+        "import": {
+          "types": "./dist/node/i18n/index.d.ts",
+          "default": "./dist/node/i18n/index.js"
+        },
+        "require": {
+          "types": "./dist/node/i18n/index.d.ts",
+          "default": "./dist/node/i18n/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/i18n/index.d.ts",
+        "default": "./dist/esm/i18n/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/i18n/index.d.ts",
+        "default": "./dist/esm/i18n/index.js"
+      },
+      "default": "./dist/rbx/i18n/init.luau"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "npm run build:rbx && npm run build:node && npm run build:esm",
+    "build:node": "tsc -p tsconfig.node.json && node scripts/post-build-node.js",
+    "build:esm": "tsc -p tsconfig.esm.json && node scripts/post-build-esm.js",
+    "build:rbx": "rbxtsc --type package --project tsconfig.rbx.json && node scripts/post-build-rbx.js",
+    "watch:rbx": "node scripts/watch-rbx.js",
+    "clean": "rm -rf ./dist",
+    "lint": "biome lint ./src",
+    "lint:fix": "biome lint ./src --write",
+    "lint:eslint": "eslint \"src/**/*.ts\"",
+    "format": "biome format ./src --write",
+    "format:check": "biome format ./src",
+    "check": "biome check ./src",
+    "check:fix": "biome check ./src --write",
+    "pretest": "npm run build:node",
+    "test": "tsx --tsconfig tsconfig.node.json --test 'src/**/*.spec.ts'",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.15",
+    "@rbxts/compiler-types": "^3.0.0-types.0",
+    "@rbxts/types": "^1.0.896",
+    "@types/node": "^25.3.0",
+    "@typescript-eslint/eslint-plugin": "^8.49.0",
+    "@typescript-eslint/parser": "^8.49.0",
+    "chalk": "^4.1.2",
+    "eslint": "^9.39.1",
+    "eslint-plugin-roblox-ts": "^1.3.1",
+    "roblox-ts": "^3.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
