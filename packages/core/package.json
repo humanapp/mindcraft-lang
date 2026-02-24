@@ -333,7 +333,7 @@
     "check": "biome check ./src",
     "check:fix": "biome check ./src --write",
     "pretest": "npm run build:node",
-    "test": "tsx --tsconfig tsconfig.node.json --test 'src/**/*.spec.ts'",
+    "test": "tsx --tsconfig tsconfig.node.json --test $(find src -name '*.spec.ts')",
     "prepublishOnly": "npm run build",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
