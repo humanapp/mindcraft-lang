@@ -35,6 +35,18 @@ These instructions apply to all Copilot features, including inline tab completio
   `return`, `then`, `true`, `until`, `while`.
 - Do not use `globalThis` in shared code; it is only allowed in `.node.ts` platform files.
 
+### Shared UI (`packages/ui`)
+
+- This is a **source-only** package -- no build step. Consuming apps resolve the source
+  directly via Vite aliases and tsconfig paths.
+- Use **relative imports** within the package (no path aliases). Consuming apps map
+  `@mindcraft-lang/ui` to the source directory.
+- All shadcn/ui primitives live here. Do not duplicate them in app directories.
+- The brain editor is decoupled from app-specific concepts via `BrainEditorProvider`
+  context. App-specific tile visuals, data type icons, and custom literal types are
+  injected through the config, not imported directly.
+- Do not add app-specific types (e.g., Archetype, Actor) to this package.
+
 ### Text and Comments
 
 - Use only ASCII characters in comments, documentation, and log strings.

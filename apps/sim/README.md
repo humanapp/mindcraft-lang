@@ -12,9 +12,9 @@ This app serves as a reference integration showing how to register custom types,
 - **React 19** -- UI (sidebar, brain editor)
 - **Phaser 3** -- game canvas with Matter.js physics
 - **Tailwind CSS v4** -- styling
-- **Radix UI / shadcn/ui** -- UI primitives
 - **miniplex** -- ECS for actor management
 - **@mindcraft-lang/core** -- Mindcraft language runtime (local dependency)
+- **@mindcraft-lang/ui** -- shared React UI components and brain editor (local dependency)
 
 ## Getting Started
 
@@ -52,6 +52,7 @@ src/
   App.tsx               Root layout: Phaser canvas + sidebar + brain editor
   PhaserGame.tsx        React <-> Phaser bridge
   bootstrap.ts          Startup: logger, services, brain registration
+  brain-editor-config.tsx  BrainEditorConfig for @mindcraft-lang/ui provider
   globals.css           Tailwind, fonts, theme tokens
 
   brain/                Simulation engine + brain language integration
@@ -74,16 +75,24 @@ src/
 
   components/           React UI
     Sidebar.tsx             Dashboard (stats, time scale, population)
-    brain-editor/           Brain editor subsystem (editor, tile picker, undo/redo)
-    ui/                     shadcn/ui primitives
 
   services/             Platform services
     brain-persistence.ts    localStorage save/load (binary + base64)
 
-  lib/                  General utilities
+  lib/                  Sim-specific utilities
+    color.ts              heatColor(), energyTint() for Phaser rendering
 ```
 
-## Brain Integration
+## Brain Editor Integration
+
+The brain editor UI lives in `@mindcraft-lang/ui`. The sim provides app-specific configuration via `BrainEditorProvider`:
+
+- `brain-editor-config.tsx` builds a `BrainEditorConfig` with data type icons, tile visuals, a Vector2 custom literal type, and an archetype-scoped `getDefaultBrain` factory
+- `App.tsx` wraps the `BrainEditorDialog` in a `<BrainEditorProvider>` with this config
+
+UI primitives (Button, Slider, etc.) are also imported from `@mindcraft-lang/ui` rather than local shadcn/ui copies.
+
+## Language Component Registration
 
 The sim registers app-specific brain components in three layers:
 

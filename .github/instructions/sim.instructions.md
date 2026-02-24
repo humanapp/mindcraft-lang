@@ -1,7 +1,7 @@
 ---
 applyTo: 'apps/sim/**'
 ---
-<!-- Last reviewed: 2026-02-22 -->
+<!-- Last reviewed: 2026-02-24 -->
 
 # Sim App -- Architecture & Conventions
 
@@ -13,14 +13,14 @@ The sim app (`apps/sim/`) is a **Vite + React + Phaser 3** web application that 
 - **React 19** -- UI layer (brain editor, controls panel)
 - **Phaser 3** -- game canvas and Matter.js physics
 - **Tailwind CSS v4** -- styling (via `@tailwindcss/postcss`)
-- **Radix UI** -- dialog, dropdown, slider primitives
-- **shadcn/ui** -- base UI components in `components/ui/`
+- **@mindcraft-lang/ui** -- shared React UI components and brain editor (local source-only dependency)
 - **Biome** -- formatter and linter (`biome.json`, 120-char line width, 2-space indent)
 - **miniplex** -- ECS (entity-component-system) for actor management
 
-## Path Alias
+## Path Aliases
 
-`@/*` maps to `./src/*` (configured in `tsconfig.json`). Always prefer `@/` paths over deep relative paths when importing across directory boundaries. Use relative paths only within the same directory or for sibling files.
+- `@/*` maps to `./src/*` (configured in `tsconfig.json`). Always prefer `@/` paths over deep relative paths when importing across directory boundaries. Use relative paths only within the same directory or for sibling files.
+- `@mindcraft-lang/ui` maps to `../../packages/ui/src` (Vite alias + tsconfig paths). UI primitives and brain editor components are imported from this package.
 
 ## Build & Scripts
 
@@ -42,6 +42,7 @@ src/
 |-- App.tsx               # Root layout: Phaser canvas + sidebar + brain editor dialog
 |-- PhaserGame.tsx        # React <-> Phaser bridge component
 |-- bootstrap.ts          # Side-effect module: logger, services, brain registration
+|-- brain-editor-config.tsx  # BrainEditorConfig for @mindcraft-lang/ui provider
 |-- globals.css           # Tailwind import, fonts, theme tokens (oklch)
 |
 |-- brain/                # Simulation engine + brain language integration
@@ -89,42 +90,16 @@ src/
 |   |-- index.ts              # Barrel exports
 |   \-- brain-persistence.ts  # Save/load brain defs to localStorage (binary+base64)
 |
-|-- lib/                  # General utilities
-|   |-- index.ts          # Barrel exports
-|   |-- utils.ts          # cn() -- Tailwind class merge (shadcn standard)
-|   |-- color.ts          # adjustColor(), saturateColor() + internal HSL helpers
-|   \-- glass-effect.ts   # CSS glass/glint effect generator
+|-- lib/                  # Sim-specific utilities
+|   \-- color.ts          # heatColor(), energyTint() for Phaser rendering
 |
 \-- components/           # React UI components
-    |-- Sidebar.tsx                # Dashboard sidebar (stats, time scale, population, debug)
-    |-- brain-editor/              # Brain editor subsystem
-    |   |-- BrainEditorDialog.tsx      # Full brain editor (pages, undo/redo, toolbar)
-    |   |-- BrainPageEditor.tsx        # Page rules list with depth flattening
-    |   |-- BrainRuleEditor.tsx        # WHEN/DO rule row with glass effects
-    |   |-- BrainTile.tsx              # Individual tile button with marquee overflow
-    |   |-- BrainTileEditor.tsx        # Tile with dropdown (insert/replace/delete)
-    |   |-- BrainTilePickerDialog.tsx  # Available tiles grouped by kind
-    |   |-- BrainPrintDialog.tsx       # Print preview dialog (visual + text modes)
-    |   |-- BrainPrintView.tsx         # Visual print layout for brain definitions
-    |   |-- BrainPrintTextView.tsx     # Plain-text print layout for brain definitions
-    |   |-- CreateLiteralDialog.tsx    # Dialog for creating number/string/vector2
-    |   |-- CreateVariableDialog.tsx   # Dialog for naming a new variable
-    |   |-- TileValue.tsx              # Renders literal values or variable names
-    |   |-- rule-clipboard.ts          # Copy/paste rules between editor instances
-    |   |-- commands/                  # Command pattern for undo/redo
-    |   |   |-- index.ts               # Barrel re-export
-    |   |   |-- BrainCommand.ts        # BrainCommand interface + BrainCommandHistory
-    |   |   |-- PageCommands.ts        # Add/Remove/ReplaceLast page commands
-    |   |   |-- RenameCommands.ts      # Rename brain/page commands
-    |   |   |-- RuleCommands.ts        # Add/Delete/Move/Indent/Outdent rule commands
-    |   |   \-- TileCommands.ts        # Add/Insert/Replace/Remove tile commands
-    |   |-- tile-badges.ts          # Tile badge rendering
-    |   |-- tile-clipboard.ts       # Copy/paste individual tiles
-    |   \-- hooks/
-    |       |-- useRuleCapabilities.ts # Rule capability detection hook
-    |       \-- useTileSelection.ts    # Tile selection flow + factory handoff hook
-    \-- ui/                        # shadcn/ui primitives (button, card, dialog, etc.)
+    \-- Sidebar.tsx       # Dashboard sidebar (stats, time scale, population, debug)
 ```
+
+The brain editor UI and shadcn/ui primitives have been factored out to `@mindcraft-lang/ui`.
+The sim provides app-specific configuration via `brain-editor-config.tsx` and wraps the
+editor in a `BrainEditorProvider` in `App.tsx`.
 
 ## Initialization Flow
 
@@ -133,7 +108,7 @@ src/
    - Configures logger
    - Sets tile visual provider (`genVisualForTile`)
    - Calls `registerCoreBrainComponents()` (from core) then `registerBrainComponents()` (sim-specific)
-3. `App.tsx` mounts `<PhaserGame onSceneReady={...}>` which creates the Phaser `Game` instance
+3. `App.tsx` wraps the UI in `<BrainEditorProvider config={brainEditorConfig}>`, mounts `<PhaserGame onSceneReady={...}>` which creates the Phaser `Game` instance
 4. Phaser scene sequence: `Boot` -> `Preloader` -> `Playground`
 5. `Playground.create()` instantiates `Engine`, generates actor textures, creates obstacles, spawns actors, then fires the `onSceneReady` callback
 
@@ -248,7 +223,12 @@ Brain definitions are serialized to `localStorage` as base64-encoded binary data
 
 ### UI Component Architecture
 
-The brain editor lives in `components/brain-editor/` as a self-contained subsystem. Its component hierarchy:
+The brain editor components live in `@mindcraft-lang/ui` (`packages/ui/src/brain-editor/`). The sim wires them in via:
+
+- `brain-editor-config.tsx` -- builds a `BrainEditorConfig` with data type icons/names, tile visual provider, Vector2 custom literal type, and archetype-scoped `getDefaultBrain` factory
+- `App.tsx` -- wraps the `BrainEditorDialog` in `<BrainEditorProvider config={brainEditorConfig}>`
+
+Component hierarchy (in `@mindcraft-lang/ui`):
 ```
 BrainEditorDialog (toolbar, page nav, save/load)
   \-- BrainPageEditor (flattens rules, manages reparsing)
@@ -257,9 +237,9 @@ BrainEditorDialog (toolbar, page nav, save/load)
                  \-- BrainTile (visual tile button)
 ```
 
-The `Sidebar` component (`components/Sidebar.tsx`) owns the dashboard panel: ecosystem score, time-scale slider, per-archetype stats and population sliders, and the "Edit Brain" / "Toggle Debug" buttons.
+The `Sidebar` component (`components/Sidebar.tsx`) remains in the sim app and owns the dashboard panel: ecosystem score, time-scale slider, per-archetype stats and population sliders, and the "Edit Brain" / "Toggle Debug" buttons. It imports UI primitives (Button, Slider) from `@mindcraft-lang/ui`.
 
-All edits go through the **Command Pattern** (`commands/`) with undo/redo via `BrainCommandHistory`.
+All edits go through the **Command Pattern** (`commands/` in `@mindcraft-lang/ui`) with undo/redo via `BrainCommandHistory`.
 
 ## Code Style (Biome)
 
@@ -286,14 +266,15 @@ The sim app uses Biome for formatting and linting. Generate code that matches th
 ## Styling Conventions
 
 - Use Tailwind CSS utility classes
-- The `components/ui/` directory contains shadcn/ui primitives -- these are standard generated components
-- Glass effects use `glassEffect()` from `lib/glass-effect.ts`
-- Color manipulation uses `adjustColor()` and `saturateColor()` from `lib/color.ts`
+- UI primitives (Button, Card, Dialog, etc.) are imported from `@mindcraft-lang/ui`
+- Glass effects use `glassEffect()` from `@mindcraft-lang/ui`
+- Color manipulation: `adjustColor()` and `saturateColor()` from `@mindcraft-lang/ui`; sim-specific `heatColor()` and `energyTint()` from `@/lib/color`
 - Theme tokens use oklch color space (defined in `globals.css`)
 
 ## Important Notes
 
 - The `@mindcraft-lang/core` package is a **local dependency** (`file:../../packages/core`) -- changes to core require rebuilding it (`npm run build` in packages/core, or the sim's `prebuild` handles this)
+- The `@mindcraft-lang/ui` package is a **source-only local dependency** -- no build step required; Vite resolves the source directly via alias
 - Tile visuals (icons) are SVGs stored in `public/assets/brain/icons/`
 - The Phaser game uses Matter.js physics with zero gravity (top-down 2D)
 - Collision categories use bitmasks: `CATEGORY_WALL = 0x0001`, `CATEGORY_ACTOR = 0x0002`

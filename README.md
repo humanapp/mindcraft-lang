@@ -12,6 +12,29 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 
 - [Ecology Sim](https://mindcraft-sim.humanappliance.io) -- carnivores, herbivores, and plants driven by user-editable Mindcraft brains
 
+## Repository Structure
+
+```
+packages/
+  core/       @mindcraft-lang/core -- language runtime (multi-target)
+  ui/         @mindcraft-lang/ui -- shared React UI components
+apps/
+  sim/        Ecology simulation demo
+```
+
+## Packages
+
+| Package | Description |
+|---------|-------------|
+| [@mindcraft-lang/core](packages/core/) | Language runtime -- tiles, parser, compiler, VM (multi-target: Roblox, Node.js, ESM) |
+| [@mindcraft-lang/ui](packages/ui/) | Shared React UI -- shadcn/ui primitives + brain editor components |
+
+## Apps
+
+| App | Description |
+|-----|-------------|
+| [Ecology Sim](apps/sim/) | Demo: carnivores, herbivores, and plants driven by user-editable Mindcraft brains |
+
 ## Install
 
 ```bash
@@ -20,7 +43,7 @@ npm install @mindcraft-lang/core
 
 ## Documentation
 
-Documentation is a work in progress. In the meantime, see the [core package README](packages/core/README.md) for architecture details and developer guidance. The [sim app](apps/sim/) provides a working example of integrating Mindcraft into a project.
+Documentation is a work in progress. See the [core package README](packages/core/README.md) for language architecture and the [ui package README](packages/ui/README.md) for the shared React components. The [sim app](apps/sim/) provides a working example of integrating Mindcraft into a project.
 
 ## Contributing
 
