@@ -11,16 +11,16 @@ The tile suggestion subsystem (`packages/core/src/brain/language-service/tile-su
 
 - **Tests**: `cd packages/core && npm test` (runs all `*.spec.ts` files via `node:test`; tile suggestion tests are in `src/brain/language-service/tile-suggestions.spec.ts`)
 - **Import path**: `@mindcraft-lang/core/brain/language-service`
-- **Main entry point**: `suggestTiles(context, catalogs, operatorOverloads?)`
+- **Main entry point**: `suggestTiles(context, catalogs)`
 - **Parser helper**: `parseTilesForSuggestions(tiles)` -- parses tiles into AST for `InsertionContext.expr`
 
 ## Public API
 
-### `suggestTiles(context, catalogs, operatorOverloads?): TileSuggestionResult`
+### `suggestTiles(context, catalogs): TileSuggestionResult`
 
-Main entry point. Given an `InsertionContext`, enumerates tiles from provided catalogs and returns those valid at the position, separated into exact type matches and conversion-based matches. Conversions are obtained internally via `getBrainServices().conversions`.
+Main entry point. Given an `InsertionContext`, enumerates tiles from provided catalogs and returns those valid at the position, separated into exact type matches and conversion-based matches.
 
-When `operatorOverloads` is provided, infix operator suggestions are filtered by whether they have overloads whose first argument type exactly matches the left operand's type. Matching operators go to `exact` (as `Unchecked`), and non-matching operators are excluded entirely. No conversion-based operator suggestions are produced. When omitted, all infix operators are suggested as `Unchecked` (backward-compatible default).
+Infix operator suggestions are filtered by whether they have overloads whose first argument type exactly matches the left operand's type. Matching operators go to `exact` (as `Unchecked`), and non-matching operators are excluded entirely. No conversion-based operator suggestions are produced.
 
 ### `parseTilesForSuggestions(tiles): Expr`
 

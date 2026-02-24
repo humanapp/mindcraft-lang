@@ -1219,18 +1219,13 @@ function findReplacementRole(expr: Expr, tileIndex: number, parentRole: Replacem
  *
  * @param context - Describes the insertion point
  * @param catalogs - Tile catalogs to enumerate (e.g., core + game-specific)
- * @param operatorOverloads - Optional operator overloads registry. When provided,
- *   infix operator suggestions are filtered to only those with overloads
- *   compatible with the left operand type. When omitted, all infix operators
- *   are suggested as Unchecked (backward-compatible default).
  * @returns Grouped suggestions: exact matches and conversion-based matches
  */
 export function suggestTiles(
   context: InsertionContext,
   catalogs: ReadonlyList<ITileCatalog>,
-  operatorOverloads?: IOperatorOverloads
 ): TileSuggestionResult {
-  const conversions = getBrainServices().conversions;
+  const { conversions, operatorOverloads } = getBrainServices();
   const result: TileSuggestionResult = {
     exact: List.empty(),
     withConversion: List.empty(),

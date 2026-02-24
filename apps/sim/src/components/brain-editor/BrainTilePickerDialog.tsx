@@ -96,7 +96,7 @@ export function BrainTilePickerDialog({
       availableCapabilities,
       unclosedParenDepth,
     };
-    const result = suggestTiles(context, catalogs, services.operatorOverloads);
+    const result = suggestTiles(context, catalogs);
 
     // Map tile kinds to display groups (merging related kinds).
     // Inline sensors (TilePlacement.Inline) are split into the "function" group.
@@ -184,16 +184,7 @@ export function BrainTilePickerDialog({
       conversionByKind: sortEntries(Array.from(convGroups.entries())),
       hasConversions: result.withConversion.size() > 0,
     };
-  }, [
-    side,
-    expectedType,
-    exprProp,
-    replaceTileIndex,
-    availableCapabilities,
-    existingTiles,
-    catalogs,
-    services.operatorOverloads,
-  ]);
+  }, [side, expectedType, exprProp, replaceTileIndex, availableCapabilities, existingTiles, catalogs]);
 
   // Get friendly name for each display group
   const getGroupName = (group: string): string => {

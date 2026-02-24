@@ -267,10 +267,7 @@ test("Test 6: getTileOutputType helper", () => {
 // ---- Test 7: Complete value expr -> infix operators only ----
 
 test("Test 7: Complete value expr (literal) -> infix operators only", () => {
-  const litTileDef = services.tiles
-    .getAll()
-    .toArray()
-    .find((t) => t.kind === "literal") as BrainTileLiteralDef;
+  const litTileDef = new BrainTileLiteralDef(CoreTypeIds.Number, 42);
   const expr: LiteralExpr = { nodeId: 0, kind: "literal", tileDef: litTileDef, span: { from: 0, to: 0 } };
   const ctx: InsertionContext = { ruleSide: RuleSide.Either, expr };
   const result = suggestTiles(ctx, catalogList());
@@ -463,10 +460,7 @@ describe("Replace operand/operator in binary expression", () => {
   });
 
   test("Test 12: Replace operator in [lit] [+] [lit] -> infix operators only", () => {
-    const litTileDef = services.tiles
-      .getAll()
-      .toArray()
-      .find((t) => t.kind === "literal") as BrainTileLiteralDef;
+    const litTileDef = new BrainTileLiteralDef(CoreTypeIds.Number, 42);
     const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
     const leftLit: LiteralExpr = { nodeId: 1, kind: "literal", tileDef: litTileDef, span: { from: 0, to: 1 } };
@@ -1255,11 +1249,7 @@ describe("Non-inline sensor operator suggestions", () => {
       modifiers: mods,
       span: { from: 0, to: 5 },
     };
-    const result = suggestTiles(
-      { ruleSide: RuleSide.When, expr: senseExpr },
-      catalogList(),
-      services.operatorOverloads
-    );
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr: senseExpr }, catalogList());
 
     assert.ok(
       !listFind(result.exact, (s) => s.tileDef.kind === "operator"),
@@ -1286,7 +1276,7 @@ describe("Operator overload filtering", () => {
       ) as BrainTileLiteralDef;
 
     const expr: LiteralExpr = { nodeId: 0, kind: "literal", tileDef: numLitDef, span: { from: 0, to: 0 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList(), services.operatorOverloads);
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList());
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Add)) !== undefined,
@@ -1332,7 +1322,7 @@ describe("Operator overload filtering", () => {
       ) as BrainTileLiteralDef;
 
     const expr: LiteralExpr = { nodeId: 0, kind: "literal", tileDef: boolLitDef, span: { from: 0, to: 0 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList(), services.operatorOverloads);
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList());
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.And)) !== undefined,
@@ -1361,30 +1351,6 @@ describe("Operator overload filtering", () => {
     );
   });
 
-  test("Test 33: No operatorOverloads -> all infix operators Unchecked", () => {
-    const numLitDef = services.tiles
-      .getAll()
-      .toArray()
-      .find(
-        (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
-      ) as BrainTileLiteralDef;
-
-    const expr: LiteralExpr = { nodeId: 0, kind: "literal", tileDef: numLitDef, span: { from: 0, to: 0 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList());
-
-    assert.ok(
-      listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.And)) !== undefined,
-      "and should be in exact (no overload filtering)"
-    );
-    assert.ok(
-      listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Add)) !== undefined,
-      "add should be in exact (no overload filtering)"
-    );
-    const allUnchecked = listEvery(result.exact, (s) => s.compatibility === TileCompatibility.Unchecked);
-    assert.ok(allUnchecked, "All operators should be Unchecked without overload info");
-    assert.equal(result.withConversion.size(), 0, "No conversion results without overload filtering");
-  });
-
   test("Test 34: Replace operator with LHS type awareness", () => {
     const numLitDef = services.tiles
       .getAll()
@@ -1405,11 +1371,7 @@ describe("Operator overload filtering", () => {
       span: { from: 0, to: 2 },
     };
 
-    const result = suggestTiles(
-      { ruleSide: RuleSide.Either, expr: binaryExpr, replaceTileIndex: 1 },
-      catalogList(),
-      services.operatorOverloads
-    );
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr: binaryExpr, replaceTileIndex: 1 }, catalogList());
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Multiply)) !== undefined,
@@ -1808,7 +1770,7 @@ describe("Accessor / struct field suggestions", () => {
     const expr = parseTilesForSuggestions(tiles);
 
     assert.equal(expr.kind, "assignment");
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services.operatorOverloads);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
 
     // All Position accessors produce Number, which is not Position -- all filtered out
     const hasAccessor = listFind(result.exact, (s) => s.tileDef.kind === "accessor") !== undefined;
@@ -1826,7 +1788,7 @@ describe("Accessor / struct field suggestions", () => {
     const expr = parseTilesForSuggestions(tiles);
 
     assert.equal(expr.kind, "assignment");
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services.operatorOverloads);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
 
     // Position.x and Position.y produce Number -> should be suggested
     assert.ok(resultContains(result, accessorXDef.tileId), "x accessor should be suggested (Number matches target)");
@@ -1837,11 +1799,7 @@ describe("Accessor / struct field suggestions", () => {
     // A standalone struct variable with no enclosing assignment or operator
     // should still suggest all accessors for that struct type.
     const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: posVarDef, span: { from: 0, to: 1 } };
-    const result = suggestTiles(
-      { ruleSide: RuleSide.Either, expr: varExpr },
-      catalogList(),
-      services.operatorOverloads
-    );
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList());
 
     assert.ok(resultContains(result, accessorXDef.tileId), "standalone [$pos] should suggest Position.x");
     assert.ok(resultContains(result, accessorYDef.tileId), "standalone [$pos] should suggest Position.y");
@@ -1864,7 +1822,7 @@ describe("Sub-expression filtering", () => {
     const expr = parseTilesForSuggestions(tiles);
 
     assert.equal(expr.kind, "binaryOp");
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services.operatorOverloads);
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
 
     const hasStringValue =
       listFind(result.exact, (s) => getTileOutputType(s.tileDef) === CoreTypeIds.String) !== undefined;
@@ -1939,7 +1897,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([numLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList(), services.operatorOverloads);
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList());
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Negate)) !== undefined,
@@ -1998,7 +1956,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services.operatorOverloads);
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.And)) !== undefined,
@@ -2267,7 +2225,7 @@ describe("Struct-specific operator and accessor behavior", () => {
 
   test("Test 62: Struct variable with operatorOverloads -> assign + accessors", () => {
     const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: posVarDef, span: { from: 0, to: 0 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: varExpr }, catalogList(), services.operatorOverloads);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: varExpr }, catalogList());
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Assign)) !== undefined,
@@ -2378,11 +2336,7 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 1);
-    const result = suggestTiles(
-      { ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth },
-      catalogList(),
-      services.operatorOverloads
-    );
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth }, catalogList());
 
     const closeParenId = mkControlFlowTileId(CoreControlFlowId.CloseParen);
     assert.ok(
@@ -2406,11 +2360,7 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 1);
-    const result = suggestTiles(
-      { ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth },
-      catalogList(),
-      services.operatorOverloads
-    );
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth }, catalogList());
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined,
@@ -2438,11 +2388,7 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
       ) as BrainTileLiteralDef;
 
     const litExpr: LiteralExpr = { nodeId: 0, kind: "literal", tileDef: numLitDef, span: { from: 0, to: 1 } };
-    const result = suggestTiles(
-      { ruleSide: RuleSide.Do, expr: litExpr, unclosedParenDepth: 0 },
-      catalogList(),
-      services.operatorOverloads
-    );
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: litExpr, unclosedParenDepth: 0 }, catalogList());
 
     const closeParenId = mkControlFlowTileId(CoreControlFlowId.CloseParen);
     assert.ok(
@@ -2466,11 +2412,7 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 1);
-    const result = suggestTiles(
-      { ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth },
-      catalogList(),
-      services.operatorOverloads
-    );
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth }, catalogList());
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined,
@@ -2521,8 +2463,7 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
         replaceTileIndex: 2,
         unclosedParenDepth: depth,
       },
-      catalogList(),
-      services.operatorOverloads
+      catalogList()
     );
 
     assert.ok(
@@ -2562,8 +2503,7 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
         replaceTileIndex: 2,
         unclosedParenDepth: depth,
       },
-      catalogList(),
-      services.operatorOverloads
+      catalogList()
     );
 
     assert.ok(
