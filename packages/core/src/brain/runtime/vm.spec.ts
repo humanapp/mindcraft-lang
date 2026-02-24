@@ -241,18 +241,6 @@ describe("VM -- control flow", () => {
       [
         mkFunc([
           { op: Op.PUSH_CONST, a: 0 }, // 0: push false
-          { op: Op.JMP_IF_FALSE, a: 2 }, // 1: if false, JMP -> 3
-          { op: Op.PUSH_CONST, a: 2 }, // 2: push 999 (skipped)
-          { op: Op.RET }, // 3: but stack is empty! Need value on stack
-        ]),
-      ],
-      [FALSE_VALUE, TRUE_VALUE, mkNumberValue(999)]
-    );
-    // This would ret with empty stack which would fault. Let me fix:
-    const prog2 = mkProgram(
-      [
-        mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // 0: push false
           { op: Op.JMP_IF_FALSE, a: 3 }, // 1: if false, JMP -> 4
           { op: Op.PUSH_CONST, a: 2 }, // 2: push 999
           { op: Op.RET }, // 3: return 999
@@ -263,7 +251,7 @@ describe("VM -- control flow", () => {
       [FALSE_VALUE, TRUE_VALUE, mkNumberValue(999), mkNumberValue(1)]
     );
     const handles = new HandleTable(100);
-    const vm = new VM(prog2, handles);
+    const vm = new VM(prog, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 

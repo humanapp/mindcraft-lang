@@ -1221,10 +1221,7 @@ function findReplacementRole(expr: Expr, tileIndex: number, parentRole: Replacem
  * @param catalogs - Tile catalogs to enumerate (e.g., core + game-specific)
  * @returns Grouped suggestions: exact matches and conversion-based matches
  */
-export function suggestTiles(
-  context: InsertionContext,
-  catalogs: ReadonlyList<ITileCatalog>,
-): TileSuggestionResult {
+export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<ITileCatalog>): TileSuggestionResult {
   const { conversions, operatorOverloads } = getBrainServices();
   const result: TileSuggestionResult = {
     exact: List.empty(),
