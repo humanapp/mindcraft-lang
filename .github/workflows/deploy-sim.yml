@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 env:
-  AZURE_STORAGE_ACCOUNT: ${{ vars.SIM_AZURE_STORAGE_ACCOUNT }}
-  AZURE_RESOURCE_GROUP: ${{ vars.SIM_AZURE_RESOURCE_GROUP }}
+  AZURE_STORAGE_ACCOUNT: ${{ secrets.SIM_AZURE_STORAGE_ACCOUNT }}
+  AZURE_RESOURCE_GROUP: ${{ secrets.SIM_AZURE_RESOURCE_GROUP }}
 
 jobs:
   build-and-deploy:
@@ -35,9 +35,9 @@ jobs:
       - name: Login to Azure via OIDC
         uses: azure/login@v2
         with:
-          client-id: ${{ vars.AZURE_CLIENT_ID }}
-          tenant-id: ${{ vars.AZURE_TENANT_ID }}
-          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Clear existing $web container
         run: |
