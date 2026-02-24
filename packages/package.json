@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "install": "npm --prefix core install"
+    "install": "npm --prefix core install && npm --prefix ui install"
   }
 }

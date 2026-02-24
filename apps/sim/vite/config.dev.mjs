@@ -17,8 +17,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(process.cwd(), "./src"),
-      // Remove direct alias to let package.json exports handle resolution
-      // "@mindcraft-lang/core": path.resolve(process.cwd(), "../../packages/core"),
+      "@mindcraft-lang/ui": path.resolve(process.cwd(), "../../packages/ui/src"),
     },
   },
   optimizeDeps: {

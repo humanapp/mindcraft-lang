@@ -17,18 +17,12 @@
     /* Linting */
     "strict": true,
     "strictPropertyInitialization": false,
-    //"noUnusedLocals": true,
-    //"noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true,
 
     /* Path mapping */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@mindcraft-lang/ui": ["../../packages/ui/src/index.ts"],
-      "@mindcraft-lang/ui/*": ["../../packages/ui/src/*"]
+      "@ui/*": ["./src/*"]
     }
   },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["src"]
 }

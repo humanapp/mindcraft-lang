@@ -1,9 +1,8 @@
+import { Button, Slider } from "@mindcraft-lang/ui";
 import { useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
-import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",

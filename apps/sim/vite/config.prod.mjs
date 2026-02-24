@@ -24,6 +24,7 @@ export default defineConfig({
     resolve: {
         alias: {
             "@": path.resolve(process.cwd(), "./src"),
+            "@mindcraft-lang/ui": path.resolve(process.cwd(), "../../packages/ui/src"),
         },
     },
     optimizeDeps: {

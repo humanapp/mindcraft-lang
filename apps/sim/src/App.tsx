@@ -1,15 +1,19 @@
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { BrainEditorDialog, BrainEditorProvider } from "@mindcraft-lang/ui";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
-import { BrainEditorDialog } from "./components/brain-editor/BrainEditorDialog";
+import { buildBrainEditorConfig } from "./brain-editor-config";
 import { Sidebar } from "./components/Sidebar";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
 
 /** Compare two snapshots by display-relevant fields to skip no-op re-renders. */
-function statsEqual(a: ScoreSnapshot[keyof ScoreSnapshot & string], b: ScoreSnapshot[keyof ScoreSnapshot & string]): boolean {
+function statsEqual(
+  a: ScoreSnapshot[keyof ScoreSnapshot & string],
+  b: ScoreSnapshot[keyof ScoreSnapshot & string]
+): boolean {
   if (typeof a === "number") return a === b;
   const sa = a as import("@/brain/score").ArchetypeStats;
   const sb = b as import("@/brain/score").ArchetypeStats;
@@ -38,6 +42,8 @@ function App() {
   const [scene, setScene] = useState<Playground | null>(null);
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
+
+  const brainEditorConfig = useMemo(() => buildBrainEditorConfig(editingArchetype ?? undefined), [editingArchetype]);
 
   useEffect(() => {
     scene?.setTimeSpeed(timeSpeed);
@@ -112,18 +118,19 @@ function App() {
       />
 
       {/* Brain Editor Dialog (rendered at root for proper overlay) */}
-      <BrainEditorDialog
-        isOpen={isBrainEditorOpen}
-        onOpenChange={(open) => {
-          setIsBrainEditorOpen(open);
-          if (!open) {
-            setEditingArchetype(null);
-          }
-        }}
-        srcBrainDef={getBrainDefForEditing()}
-        archetype={editingArchetype ?? undefined}
-        onSubmit={handleBrainSubmit}
-      />
+      <BrainEditorProvider config={brainEditorConfig}>
+        <BrainEditorDialog
+          isOpen={isBrainEditorOpen}
+          onOpenChange={(open) => {
+            setIsBrainEditorOpen(open);
+            if (!open) {
+              setEditingArchetype(null);
+            }
+          }}
+          srcBrainDef={getBrainDefForEditing()}
+          onSubmit={handleBrainSubmit}
+        />
+      </BrainEditorProvider>
     </div>
   );
 }
