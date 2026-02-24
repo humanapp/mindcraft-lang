@@ -19,6 +19,13 @@ These instructions apply to all Copilot features, including inline tab completio
   explain non-obvious intent, invariants, or constraints.
 - Do not suggest comments in new code blocks that say things like "// no implementation yet, but could add things like `this` or `that`...". This is not helpful. It is better to leave it blank or with a minimal concrete code suggestion.
 
+## Import Style
+
+- Never use inline `import()` type expressions (e.g., `import("./foo").Bar`) in `.ts` or
+  `.tsx` files. Always use a top-level `import type` statement instead.
+  - Exception: `.d.ts` ambient declaration files and Roblox `.rbx.ts` platform shims where
+    top-level imports would break the ambient module context.
+
 ## Project-Specific Rules
 
 ### Multi-Target Core (`packages/core`)

@@ -1,7 +1,7 @@
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainEditorDialog, BrainEditorProvider } from "@mindcraft-lang/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ScoreSnapshot } from "@/brain/score";
+import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain-editor-config";
 import { Sidebar } from "./components/Sidebar";
@@ -15,8 +15,8 @@ function statsEqual(
   b: ScoreSnapshot[keyof ScoreSnapshot & string]
 ): boolean {
   if (typeof a === "number") return a === b;
-  const sa = a as import("@/brain/score").ArchetypeStats;
-  const sb = b as import("@/brain/score").ArchetypeStats;
+  const sa = a as ArchetypeStats;
+  const sb = b as ArchetypeStats;
   return (
     sa.aliveCount === sb.aliveCount &&
     sa.deaths === sb.deaths &&
