@@ -1,4 +1,4 @@
-name: Deploy Sim to Azure
+name: Deploy Sim to AWS
 
 on:
   workflow_dispatch:
@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 env:
-  AZURE_STORAGE_ACCOUNT: ${{ secrets.SIM_AZURE_STORAGE_ACCOUNT }}
-  AZURE_RESOURCE_GROUP: ${{ secrets.SIM_AZURE_RESOURCE_GROUP }}
+  S3_BUCKET: mindcraft-sim.humanappliance.io
+  AWS_REGION: us-east-1
 
 jobs:
   build-and-deploy:
@@ -32,29 +32,19 @@ jobs:
         working-directory: apps/sim
         run: npm run build
 
-      - name: Login to Azure via OIDC
-        uses: azure/login@v2
+      - name: Configure AWS credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Clear existing $web container
+      - name: Sync build output to S3
         run: |
-          az storage blob delete-batch \
-            --account-name "$AZURE_STORAGE_ACCOUNT" \
-            --source '$web' \
-            --auth-mode login
+          aws s3 sync apps/sim/dist "s3://$S3_BUCKET" \
+            --delete
 
-      - name: Upload build output to $web container
+      - name: Invalidate CloudFront cache
         run: |
-          az storage blob upload-batch \
-            --account-name "$AZURE_STORAGE_ACCOUNT" \
-            --source apps/sim/dist \
-            --destination '$web' \
-            --auth-mode login \
-            --overwrite
-
-      - name: Logout
-        if: always()
-        run: az logout
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ secrets.AWS_CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"
