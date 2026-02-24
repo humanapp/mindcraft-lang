@@ -6,7 +6,7 @@ Programs are built by arranging **tiles** -- typed, composable tokens -- into **
 
 The core library compiles to Roblox (Luau), Node.js, and browser (ESM) targets from a single TypeScript codebase.
 
-Mindcraft draws inspiration from other tile-based programming systems past and present, including [Kodu Game Lab](https://www.kodugamelab.com/), [Project Spark](https://en.wikipedia.org/wiki/Project_Spark), and [MicroCode](https://microsoft.github.io/microcode/).
+Mindcraft draws inspiration from other tile-based programming systems past and present, including [Kodu Game Lab](https://www.kodugamelab.com/), [Project Spark](https://en.wikipedia.org/wiki/Project_Spark), and [MicroCode](https://microbit-apps.org/microcode-classic/docs/manual).
 
 ## Install
 
