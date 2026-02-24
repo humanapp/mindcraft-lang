@@ -4,6 +4,8 @@ A demo application for the [Mindcraft language](../../README.md). Actors -- carn
 
 This app serves as a reference integration showing how to register custom types, sensors, and actuators, and how to embed the visual brain editor into a React UI.
 
+**Live demo:** <https://mindcraft-sim.humanappliance.io>
+
 ## Tech Stack
 
 - **Vite** -- bundler

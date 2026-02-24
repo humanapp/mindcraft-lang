@@ -8,6 +8,10 @@ The core library compiles to Roblox (Luau), Node.js, and browser (ESM) targets f
 
 Mindcraft draws inspiration from other tile-based programming systems past and present, including [Kodu Game Lab](https://www.kodugamelab.com/), [Project Spark](https://en.wikipedia.org/wiki/Project_Spark), and [MicroCode](https://microbit-apps.org/microcode-classic/docs/manual).
 
+## Demos
+
+- [Ecology Sim](https://mindcraft-sim.humanappliance.io) -- carnivores, herbivores, and plants driven by user-editable Mindcraft brains
+
 ## Install
 
 ```bash
