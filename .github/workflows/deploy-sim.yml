@@ -1,0 +1,60 @@
+name: Deploy Sim to Azure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AZURE_STORAGE_ACCOUNT: ${{ vars.SIM_AZURE_STORAGE_ACCOUNT }}
+  AZURE_RESOURCE_GROUP: ${{ vars.SIM_AZURE_RESOURCE_GROUP }}
+
+jobs:
+  build-and-deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install root dependencies
+        run: npm install
+
+      - name: Build sim
+        working-directory: apps/sim
+        run: npm run build
+
+      - name: Login to Azure via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Clear existing $web container
+        run: |
+          az storage blob delete-batch \
+            --account-name "$AZURE_STORAGE_ACCOUNT" \
+            --source '$web' \
+            --auth-mode login
+
+      - name: Upload build output to $web container
+        run: |
+          az storage blob upload-batch \
+            --account-name "$AZURE_STORAGE_ACCOUNT" \
+            --source apps/sim/dist \
+            --destination '$web' \
+            --auth-mode login \
+            --overwrite
+
+      - name: Logout
+        if: always()
+        run: az logout
