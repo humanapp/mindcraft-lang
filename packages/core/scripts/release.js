@@ -48,7 +48,7 @@ run(`npm version ${bump} --git-tag-version=false`);
 const version = getVersion();
 const tag = `${TAG_PREFIX}${version}`;
 
-run("git add package.json");
+run("git add package.json package-lock.json");
 run(`git commit -m "${tag}"`);
 run(`git tag ${tag}`);
 run("git push");
