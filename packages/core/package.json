@@ -334,7 +334,10 @@
     "check:fix": "biome check ./src --write",
     "pretest": "npm run build:node",
     "test": "tsx --tsconfig tsconfig.node.json --test 'src/**/*.spec.ts'",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "release:patch": "npm version patch --tag-version-prefix=core-v && git push && git push --tags",
+    "release:minor": "npm version minor --tag-version-prefix=core-v && git push && git push --tags",
+    "release:major": "npm version major --tag-version-prefix=core-v && git push && git push --tags"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",
