@@ -1,6 +1,6 @@
 {
   "name": "@mindcraft-lang/core",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Core implementation of the Mindcraft tile-based visual programming language",
   "license": "MIT",
   "author": "humanapp",
