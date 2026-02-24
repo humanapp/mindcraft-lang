@@ -1,0 +1,60 @@
+name: Publish @mindcraft-lang/core
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  publish:
+    name: Build, Test, Publish & Release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/core
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build all targets
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Verify package version matches tag
+        run: |
+          PACKAGE_VERSION="v$(node -p "require('./package.json').version")"
+          if [ "$PACKAGE_VERSION" != "${{ github.ref_name }}" ]; then
+            echo "Tag ${{ github.ref_name }} does not match package.json version $PACKAGE_VERSION"
+            exit 1
+          fi
+
+      - name: Publish to npm
+        run: npm publish --provenance
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
