@@ -1,5 +1,6 @@
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainEditorDialog, BrainEditorProvider } from "@mindcraft-lang/ui";
+import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
@@ -38,6 +39,7 @@ function snapshotEqual(a: ScoreSnapshot, b: ScoreSnapshot): boolean {
 function App() {
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
   const [editingArchetype, setEditingArchetype] = useState<Archetype | null>(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [timeSpeed, setTimeSpeed] = useState(1);
   const [scene, setScene] = useState<Playground | null>(null);
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
@@ -104,9 +106,27 @@ function App() {
   return (
     <div className="h-screen flex bg-background overflow-hidden">
       {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
-      <div className="flex-1 min-w-0" style={{ backgroundColor: "#2d3561" }}>
+      <div className="flex-1 min-w-0 relative" style={{ backgroundColor: "#2d3561" }}>
         <PhaserGame onSceneReady={handleSceneReady} />
+        {/* Mobile sidebar toggle */}
+        <button
+          type="button"
+          className="absolute top-3 right-3 z-40 md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-background/80 backdrop-blur border border-border shadow-md"
+          onClick={() => setIsSidebarOpen((o) => !o)}
+          aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+        >
+          {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
       </div>
+
+      {/* Backdrop -- mobile only */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          onClick={() => setIsSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
 
       <Sidebar
         snapshot={snapshot}
@@ -115,6 +135,8 @@ function App() {
         onEditBrain={handleEditBrain}
         onDesiredCountChange={handleDesiredCountChange}
         onToggleDebug={handleToggleDebug}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
       {/* Brain Editor Dialog (rendered at root for proper overlay) */}

@@ -224,7 +224,7 @@ export function BrainTilePickerDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl bg-slate-50 border-2 border-slate-300 rounded-2xl">
+      <DialogContent className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-2xl sm:h-auto sm:p-6 sm:gap-4 bg-slate-50 border-2 border-slate-300 rounded-none sm:rounded-2xl">
         <DialogHeader className="border-b border-slate-200 pb-4">
           <DialogTitle className="text-slate-800 font-semibold">Pick a Brain Tile</DialogTitle>
           <DialogDescription className="text-slate-600">Select a tile to add to the rule.</DialogDescription>
@@ -239,7 +239,7 @@ export function BrainTilePickerDialog({
         </DialogHeader>
         {/* biome-ignore lint/a11y/useSemanticElements: section is already used for each tile kind group within this container */}
         <div
-          className="h-96 overflow-y-auto p-4 space-y-6"
+          className="flex-1 sm:flex-none sm:h-96 overflow-y-auto p-3 sm:p-4 space-y-4 sm:space-y-6 rounded-lg"
           role="region"
           aria-label="Available brain tiles"
           style={{

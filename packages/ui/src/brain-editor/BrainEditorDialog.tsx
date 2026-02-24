@@ -411,16 +411,16 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     <>
       <Dialog open={isOpen} onOpenChange={onOpenChange}>
         <DialogContent
-          className="max-w-[75%] h-[75%] flex flex-col bg-slate-100 border-2 border-slate-300 rounded-2xl"
+          className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[75%] sm:p-6 sm:gap-4 flex flex-col bg-slate-100 border-2 border-slate-300 rounded-none sm:rounded-2xl"
           onInteractOutside={(e) => e.preventDefault()}
           hideClose
         >
-          <DialogHeader className="border-b border-slate-200 pb-4">
+          <DialogHeader className="border-b border-slate-200 pb-2 sm:pb-4">
             <DialogTitle>
-              <div className="flex justify-center items-center gap-3">
+              <div className="flex flex-wrap justify-center items-center gap-2 sm:gap-3">
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex bg-white rounded-lg p-1.5 border border-slate-200"
+                  className="flex bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200"
                   role="group"
                   aria-label="Brain name controls"
                 >
@@ -475,10 +475,10 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                     )}
                   </div>
                 </div>
-                <div className="grow" />
+                <div className="hidden sm:block grow" />
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex bg-white rounded-lg p-1.5 border border-slate-200"
+                  className="flex bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200"
                   role="group"
                   aria-label="Brain name controls"
                 >
@@ -533,10 +533,10 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                     )}
                   </div>
                 </div>
-                <div className="grow" />
+                <div className="hidden sm:block grow" />
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex items-center gap-2 bg-white rounded-lg p-1.5 border border-slate-200 mr-2"
+                  className="flex items-center gap-2 bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200 sm:mr-2"
                   role="group"
                   aria-label="Undo and redo controls"
                 >
@@ -561,7 +561,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 </div>
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
-                  className="flex items-center gap-2 bg-white rounded-lg p-1.5 border border-slate-200"
+                  className="flex items-center gap-1 sm:gap-2 bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200"
                   role="group"
                   aria-label="Page navigation controls"
                 >
@@ -728,7 +728,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               <p className="text-slate-600 p-6">No BrainDef attached to this object.</p>
             )}
           </div>
-          <DialogFooter className="pt-4 border-t border-slate-200 flex flex-row items-center sm:justify-between">
+          <DialogFooter className="pt-2 sm:pt-4 border-t border-slate-200 flex flex-row flex-wrap items-center gap-2 sm:justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-xs text-slate-500 whitespace-nowrap">{Math.round(zoom * 100)}%</span>
               <Slider

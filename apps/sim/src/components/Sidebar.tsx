@@ -35,6 +35,10 @@ export interface SidebarProps {
   onEditBrain: (archetype: Archetype) => void;
   onDesiredCountChange: (archetype: Archetype, count: number) => void;
   onToggleDebug: () => void;
+  /** Whether the sidebar is open on mobile. Ignored on md+ screens. */
+  isOpen?: boolean;
+  /** Callback to close the sidebar on mobile. */
+  onClose?: () => void;
 }
 
 export function Sidebar({
@@ -44,6 +48,8 @@ export function Sidebar({
   onEditBrain,
   onDesiredCountChange,
   onToggleDebug,
+  isOpen,
+  onClose,
 }: SidebarProps) {
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>({
     carnivore: ARCHETYPES.carnivore.initialSpawnCount,
@@ -64,7 +70,11 @@ export function Sidebar({
   const totalDeaths = snapshot ? snapshot.carnivore.deaths + snapshot.herbivore.deaths + snapshot.plant.deaths : 0;
 
   return (
-    <aside className="w-64 shrink-0 border-l border-border bg-background flex flex-col">
+    <aside
+      className={`fixed inset-y-0 right-0 z-50 w-64 border-l border-border bg-background flex flex-col transition-transform duration-200 ease-in-out md:static md:z-auto md:translate-x-0 md:shrink-0 ${
+        isOpen ? "translate-x-0" : "translate-x-full"
+      }`}
+    >
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -157,7 +167,10 @@ export function Sidebar({
 
               {/* Brain edit button */}
               <Button
-                onClick={() => onEditBrain(arch)}
+                onClick={() => {
+                  onEditBrain(arch);
+                  onClose?.();
+                }}
                 variant="outline"
                 size="sm"
                 className="w-full h-7 text-xs border-slate-600"

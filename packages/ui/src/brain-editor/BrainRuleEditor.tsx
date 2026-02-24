@@ -254,7 +254,7 @@ export function BrainRuleEditor({
     <>
       {/* biome-ignore lint/a11y/useSemanticElements: changing to li requires restructuring BrainPageEditor */}
       <div
-        className="flex h-30 p-3 mb-1 rounded-xl gap-1 shadow-sm hover:shadow-md transition-shadow w-fit relative"
+        className="flex h-30 p-2 sm:p-3 mb-1 rounded-xl gap-1 shadow-sm hover:shadow-md transition-shadow w-fit relative"
         style={{
           ...indentStyle,
           background: "linear-gradient(55deg, #16143A 0%, #8B6CF3 100%)",

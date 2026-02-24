@@ -131,7 +131,7 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
       {/* biome-ignore lint/a11y/useSemanticElements: changing to ul/li requires restructuring BrainRuleEditor */}
       <div className="h-full overflow-auto" role="list" aria-label="Brain rules">
         <div
-          className="p-6"
+          className="p-3 sm:p-6"
           style={{
             transform: `scale(${zoom})`,
             transformOrigin: "top left",
