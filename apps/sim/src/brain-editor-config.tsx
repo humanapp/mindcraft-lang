@@ -96,8 +96,8 @@ const vector2LiteralType: CustomLiteralType = {
  */
 export function buildBrainEditorConfig(archetype?: Archetype): BrainEditorConfig {
   return {
-    dataTypeIcons: new Map(dataTypeIconMap.entries()),
-    dataTypeNames: new Map(dataTypeNameMap.entries()),
+    dataTypeIcons: dataTypeIconMap,
+    dataTypeNames: dataTypeNameMap,
     isAppVariableFactoryTileId,
     customLiteralTypes: [vector2LiteralType],
     getDefaultBrain: archetype ? () => getDefaultBrain(archetype) : undefined,

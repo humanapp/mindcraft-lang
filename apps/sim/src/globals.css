@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../../packages/ui/src";
 @import url("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap");
 
 /* Phaser game container -- fills parent so Scale.FIT can measure it */
