@@ -113,9 +113,9 @@ const PX_PER_METRE = 50;
 const GROUND_CONTACT_Y = GROUND_Y - FOOT_H / 2 + 2;
 
 // Ground friction: fraction of horizontal velocity removed per step
-// for grounded feet. Low enough to allow body to advance over a
-// planted foot, high enough to prevent constant sliding.
-const GROUND_FRICTION = 0.05;
+// for grounded feet. Works alongside the Matter.js Coulomb friction
+// on the body to keep planted feet from sliding.
+const GROUND_FRICTION = 1;
 
 // Jump impulse applied to each grounded foot when T is pressed.
 // Applied as a velocity change (not force) for immediate effect.
@@ -269,8 +269,8 @@ export class QwopScene extends Scene {
   private createGround(): void {
     this.matter.add.rectangle(0, GROUND_Y + 20, 200_000, 40, {
       isStatic: true,
-      friction: 1.0,
-      frictionStatic: 10,
+      friction: 10,
+      frictionStatic: 50,
       label: "ground",
     });
   }
@@ -326,8 +326,8 @@ export class QwopScene extends Scene {
       FOOT_W,
       FOOT_H,
       {
-        friction: 1.0,
-        frictionStatic: 10,
+        friction: 10,
+        frictionStatic: 50,
         frictionAir: 0.05,
         density: 0.002,
         label: "leftFoot",
@@ -370,8 +370,8 @@ export class QwopScene extends Scene {
       FOOT_W,
       FOOT_H,
       {
-        friction: 1.0,
-        frictionStatic: 10,
+        friction: 10,
+        frictionStatic: 50,
         frictionAir: 0.05,
         density: 0.002,
         label: "rightFoot",
