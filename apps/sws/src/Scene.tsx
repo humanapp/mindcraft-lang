@@ -1,5 +1,5 @@
 import { RigidBody } from "@react-three/rapier";
-import { DraggableBody } from "./DraggableBody";
+import { DraggableBody } from "@/components/DraggableBody";
 
 /**
  * A minimal Three.js scene with Rapier physics.
