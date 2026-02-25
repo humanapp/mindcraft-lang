@@ -27,6 +27,11 @@
     },
     "[jsonc]": {
       "editor.defaultFormatter": "biomejs.biome"
-    }
+    },
+    "github.copilot.chat.commitMessageGeneration.instructions": [
+      {
+        "text": "Keep commit messages terse and minimal. Use short, direct descriptions. Omit unnecessary words and implementation details. For example, prefer 'fix: improve character physics' over 'fix: update character controller physics solver to be more robust'."
+      }
+    ]
   }
 }
