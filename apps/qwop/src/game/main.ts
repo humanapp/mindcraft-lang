@@ -16,6 +16,8 @@ const config: Phaser.Types.Core.GameConfig = {
     matter: {
       gravity: { x: 0, y: 1 },
       debug: false,
+      positionIterations: 20,
+      velocityIterations: 16,
     },
   },
   scene: [QwopScene],
