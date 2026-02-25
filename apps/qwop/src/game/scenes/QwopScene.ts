@@ -117,7 +117,7 @@ const GROUND_CONTACT_Y = GROUND_Y - FOOT_H / 2 + 2;
 // on the body to keep planted feet from sliding.
 const GROUND_FRICTION = 1;
 
-// Jump impulse applied to each grounded foot when T is pressed.
+// Jump impulse applied to each grounded foot when SPACE is pressed.
 // Applied as a velocity change (not force) for immediate effect.
 const JUMP_VELOCITY = -6;
 // Minimum frames between jumps
@@ -171,7 +171,7 @@ export class QwopScene extends Scene {
   private keyW!: Phaser.Input.Keyboard.Key;
   private keyO!: Phaser.Input.Keyboard.Key;
   private keyP!: Phaser.Input.Keyboard.Key;
-  private keyT!: Phaser.Input.Keyboard.Key;
+  private keySpace!: Phaser.Input.Keyboard.Key;
 
   // Desired joint angles (persist across frames)
   private leftHipDesired = 0;
@@ -285,7 +285,8 @@ export class QwopScene extends Scene {
 
     // -- Torso (simple rectangle, no compound body) --
     this.torso = this.matter.add.rectangle(cx, cy, TORSO_W, TORSO_H, {
-      friction: 0.3,
+      friction: 1.0,
+      frictionStatic: 5,
       density: 0.003,
       frictionAir: 0.01,
       label: "torso",
@@ -295,7 +296,8 @@ export class QwopScene extends Scene {
     const hipY = TORSO_H / 2;
 
     this.leftThigh = this.matter.add.rectangle(cx, cy + hipY + THIGH_H / 2, THIGH_W, THIGH_H, {
-      friction: 0.4,
+      friction: 1.0,
+      frictionStatic: 5,
       density: 0.004,
       frictionAir: 0.01,
       label: "leftThigh",
@@ -307,7 +309,8 @@ export class QwopScene extends Scene {
     });
 
     this.leftCalf = this.matter.add.rectangle(cx, cy + hipY + THIGH_H + CALF_H / 2, CALF_W, CALF_H, {
-      friction: 0.4,
+      friction: 1.0,
+      frictionStatic: 5,
       density: 0.003,
       frictionAir: 0.01,
       label: "leftCalf",
@@ -341,7 +344,8 @@ export class QwopScene extends Scene {
 
     // -- Right leg --
     this.rightThigh = this.matter.add.rectangle(cx, cy + hipY + THIGH_H / 2, THIGH_W, THIGH_H, {
-      friction: 0.4,
+      friction: 1.0,
+      frictionStatic: 5,
       density: 0.004,
       frictionAir: 0.01,
       label: "rightThigh",
@@ -353,7 +357,8 @@ export class QwopScene extends Scene {
     });
 
     this.rightCalf = this.matter.add.rectangle(cx, cy + hipY + THIGH_H + CALF_H / 2, CALF_W, CALF_H, {
-      friction: 0.4,
+      friction: 1.0,
+      frictionStatic: 5,
       density: 0.003,
       frictionAir: 0.01,
       label: "rightCalf",
@@ -451,7 +456,8 @@ export class QwopScene extends Scene {
       // Upper arm hangs straight down from shoulder
       const upperArm = this.matter.add.rectangle(sx, sy + UPPER_ARM_H / 2, UPPER_ARM_W, UPPER_ARM_H, {
         density: 0.0005,
-        friction: 0.2,
+        friction: 1.0,
+        frictionStatic: 5,
         frictionAir: 0.04,
         label: `${side}UpperArm`,
       });
@@ -466,7 +472,8 @@ export class QwopScene extends Scene {
       // Forearm hangs from bottom of upper arm
       const forearm = this.matter.add.rectangle(sx, sy + UPPER_ARM_H + FOREARM_H / 2, FOREARM_W, FOREARM_H, {
         density: 0.0004,
-        friction: 0.2,
+        friction: 1.0,
+        frictionStatic: 5,
         frictionAir: 0.04,
         label: `${side}Forearm`,
       });
@@ -500,9 +507,9 @@ export class QwopScene extends Scene {
     this.keyW = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
     this.keyO = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.O);
     this.keyP = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P);
-    this.keyT = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T);
+    this.keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
-    this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE).on("down", () => {
+    this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R).on("down", () => {
       this.scene.restart();
     });
   }
@@ -553,7 +560,7 @@ export class QwopScene extends Scene {
       this.jumpCooldown--;
       return;
     }
-    if (!(this.keyT?.isDown ?? false)) return;
+    if (!(this.keySpace?.isDown ?? false)) return;
 
     const leftGrounded = this.isFootGrounded(this.leftFoot);
     const rightGrounded = this.isFootGrounded(this.rightFoot);
@@ -597,22 +604,40 @@ export class QwopScene extends Scene {
   // ------------------------------------------------------------------
 
   private applyGroundFriction(): void {
-    this.applyFootFriction(this.leftFoot);
-    this.applyFootFriction(this.rightFoot);
+    // Apply friction to every body part that is touching the ground,
+    // not just feet. This ensures friction works when the character
+    // has fallen and is lying flat.
+    const bodies = [
+      this.torso,
+      this.leftThigh,
+      this.rightThigh,
+      this.leftCalf,
+      this.rightCalf,
+      this.leftFoot,
+      this.rightFoot,
+      this.leftUpperArm,
+      this.rightUpperArm,
+      this.leftForearm,
+      this.rightForearm,
+    ];
+    for (const body of bodies) {
+      this.applyBodyGroundFriction(body);
+    }
   }
 
-  private applyFootFriction(foot: MatterJS.BodyType): void {
-    if (foot.position.y + FOOT_H / 2 < GROUND_CONTACT_Y) return;
-    const vx = foot.velocity.x;
+  private applyBodyGroundFriction(body: MatterJS.BodyType): void {
+    // Use the body's bounding box to check ground contact rather than
+    // a hard-coded height offset. bounds.max.y is the lowest point of
+    // the AABB regardless of rotation.
+    if (body.bounds.max.y < GROUND_CONTACT_Y) return;
+    const vx = body.velocity.x;
     if (Math.abs(vx) < 0.05) {
-      // Dead-zone: kill very small velocities entirely to prevent
-      // constant micro-drift that accumulates into visible glide
-      this.matter.body.setVelocity(foot, { x: 0, y: foot.velocity.y });
+      this.matter.body.setVelocity(body, { x: 0, y: body.velocity.y });
       return;
     }
-    this.matter.body.setVelocity(foot, {
+    this.matter.body.setVelocity(body, {
       x: vx * (1 - GROUND_FRICTION),
-      y: foot.velocity.y,
+      y: body.velocity.y,
     });
   }
 

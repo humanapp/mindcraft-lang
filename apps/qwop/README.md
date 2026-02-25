@@ -9,7 +9,7 @@ that learns to coordinate the runner's limbs and make it down the track.
 
 ## Controls
 
-Just like the original, the runner is controlled with the four keys `Q`/`W`/`O`/`P`. A fifth key `T` adds a jump that is not in the original.
+Just like the original, the runner is controlled with the four keys `Q`/`W`/`O`/`P`. A fifth key `Space` adds a jump that is not in the original.
 
 | Key | Action |
 | --- | ------ |
@@ -17,8 +17,8 @@ Just like the original, the runner is controlled with the four keys `Q`/`W`/`O`/
 | **W** | Right thigh forward, left thigh back |
 | **O** | Left knee flex, right knee extend |
 | **P** | Right knee flex, left knee extend |
-| **T** | Jump (when at least one foot is on the ground) |
-| **Space** | Reset |
+| **Space** | Jump (when at least one foot is on the ground) |
+| **R** | Reset |
 
 ## Running locally
 
