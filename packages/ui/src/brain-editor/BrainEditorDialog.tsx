@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -416,13 +416,16 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           hideClose
         >
           <DialogHeader className="border-b border-slate-200 pb-2 sm:pb-4">
+            <DialogDescription className="sr-only">
+              Edit brain pages, rules, and tiles. Use the toolbar to navigate pages, undo/redo, and manage the brain.
+            </DialogDescription>
             <DialogTitle>
               <div className="flex flex-wrap justify-center items-center gap-2 sm:gap-3">
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
                   className="flex bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200"
                   role="group"
-                  aria-label="Brain name controls"
+                  aria-label="Page name controls"
                 >
                   <img
                     src="/assets/brain/icons/page.svg"
@@ -460,6 +463,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           className="text-slate-800 font-semibold cursor-pointer hover:bg-slate-200 px-2 py-1 rounded bg-transparent"
                           onClick={handlePageNameClick}
                           title="Click to edit page name"
+                          aria-label={`Page name: ${currentPageDef ? currentPageDef.name() : "Page"}. Click to edit.`}
                         >
                           {currentPageDef ? currentPageDef.name() : "Page"}
                         </button>
@@ -518,6 +522,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           className="text-slate-800 font-semibold cursor-pointer hover:bg-slate-200 px-2 py-1 rounded bg-transparent"
                           onClick={handleBrainNameClick}
                           title="Click to edit brain name"
+                          aria-label={`Brain name: ${brainDef ? brainDef.name() : "Brain Editor"}. Click to edit.`}
                         >
                           {brainDef ? brainDef.name() : "Brain Editor"}
                         </button>
@@ -752,6 +757,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
               </Button>
               <Button
                 title="Save Changes"
+                aria-label="Save changes"
                 className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white"
                 onClick={handleSubmit}
                 disabled={!brainDef}

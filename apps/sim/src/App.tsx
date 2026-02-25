@@ -105,8 +105,9 @@ function App() {
 
   return (
     <div className="h-screen flex bg-background overflow-hidden">
+      <h1 className="sr-only">Mindcraft Simulation</h1>
       {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
-      <div className="flex-1 min-w-0 relative" style={{ backgroundColor: "#2d3561" }}>
+      <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
         <PhaserGame onSceneReady={handleSceneReady} />
         {/* Mobile sidebar toggle */}
         <button
@@ -117,7 +118,7 @@ function App() {
         >
           {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
         </button>
-      </div>
+      </main>
 
       {/* Backdrop -- mobile only */}
       {isSidebarOpen && (

@@ -3,7 +3,7 @@ import { FileText, Form, Printer } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { BrainPrintTextView } from "./BrainPrintTextView";
 import { BrainPrintView } from "./BrainPrintView";
 
@@ -63,12 +63,16 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
         <DialogContent className="max-w-md bg-white border-2 border-slate-300 rounded-2xl">
           <DialogHeader>
             <DialogTitle className="text-slate-800">Print: {brainDef.name()}</DialogTitle>
+            <DialogDescription className="text-slate-500">Choose a print format and click Print.</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4 py-2">
             <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
+              <div className="flex gap-2" role="radiogroup" aria-label="Print mode">
+                {/* biome-ignore lint/a11y/useSemanticElements: styled radio buttons; native radio would require excessive restyling */}
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={mode === "visual"}
                   className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors cursor-pointer ${
                     mode === "visual"
                       ? "border-indigo-500 bg-indigo-50 text-indigo-700"
@@ -76,11 +80,14 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
                   }`}
                   onClick={() => setMode("visual")}
                 >
-                  <Form className="h-4 w-4" />
+                  <Form className="h-4 w-4" aria-hidden="true" />
                   Visual
                 </button>
+                {/* biome-ignore lint/a11y/useSemanticElements: styled radio buttons; native radio would require excessive restyling */}
                 <button
                   type="button"
+                  role="radio"
+                  aria-checked={mode === "text"}
                   className={`flex-1 flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors cursor-pointer ${
                     mode === "text"
                       ? "border-indigo-500 bg-indigo-50 text-indigo-700"
@@ -88,7 +95,7 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
                   }`}
                   onClick={() => setMode("text")}
                 >
-                  <FileText className="h-4 w-4" />
+                  <FileText className="h-4 w-4" aria-hidden="true" />
                   Text Only
                 </button>
               </div>

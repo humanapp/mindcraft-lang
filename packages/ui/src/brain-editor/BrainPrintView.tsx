@@ -151,10 +151,10 @@ function PrintPage({ pageDef, pageNumber }: PrintPageProps) {
 
   return (
     <div className="brain-print-page">
-      <div className="brain-print-page-header">
+      <h2 className="brain-print-page-header">
         <span className="brain-print-page-number">Page {pageNumber}</span>
         <span className="brain-print-page-name">{pageDef.name()}</span>
-      </div>
+      </h2>
       <div className="brain-print-page-rules">
         {nonEmptyRules.length === 0 ? (
           <div className="brain-print-empty">(empty page)</div>

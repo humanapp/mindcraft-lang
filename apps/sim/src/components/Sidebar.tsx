@@ -71,6 +71,7 @@ export function Sidebar({
 
   return (
     <aside
+      aria-label="Simulation dashboard"
       className={`fixed inset-y-0 right-0 z-50 w-64 border-l border-border bg-background flex flex-col transition-transform duration-200 ease-in-out md:static md:z-auto md:translate-x-0 md:shrink-0 ${
         isOpen ? "translate-x-0" : "translate-x-full"
       }`}
@@ -90,8 +91,9 @@ export function Sidebar({
         {/* Time Scale */}
         <div className="space-y-1.5">
           <div className="flex justify-between items-center">
-            {/* biome-ignore lint/a11y/noLabelWithoutControl: Radix Slider has no labelable id */}
-            <label className="text-xs font-medium">Time Scale</label>
+            <span id="time-scale-label" className="text-xs font-medium">
+              Time Scale
+            </span>
             <span className="text-xs text-muted-foreground font-mono tabular-nums">{timeSpeed.toFixed(1)}x</span>
           </div>
           <Slider
@@ -101,6 +103,7 @@ export function Sidebar({
             max={2}
             step={0.1}
             className="w-full"
+            aria-label="Time scale"
           />
         </div>
 
@@ -112,7 +115,13 @@ export function Sidebar({
           const avgLife = s && s.deaths > 0 ? s.totalLifespan / s.deaths : 0;
           const avgEnergy = s && s.aliveCount > 0 ? s.totalEnergy / s.aliveCount : 0;
           return (
-            <div key={arch} className="space-y-2 rounded-lg bg-gray-900 p-2.5">
+            // biome-ignore lint/a11y/useSemanticElements: fieldset would break layout; role="group" provides accessible grouping
+            <div
+              key={arch}
+              className="space-y-2 rounded-lg bg-gray-900 p-2.5"
+              role="group"
+              aria-label={`${ARCHETYPE_LABELS[arch]} settings`}
+            >
               {/* Archetype header */}
               <div className="flex items-center gap-1.5">
                 <img
@@ -134,7 +143,9 @@ export function Sidebar({
               {s && (
                 <div className="text-xs text-muted-foreground grid grid-cols-3 gap-1">
                   <div className="flex flex-col">
-                    <span>avg</span>
+                    <abbr title="average lifespan" className="no-underline">
+                      avg
+                    </abbr>
                     <span className="font-mono tabular-nums text-foreground/70">{fmtNum(avgLife)}s</span>
                   </div>
                   <div className="flex flex-col">
@@ -142,7 +153,9 @@ export function Sidebar({
                     <span className="font-mono tabular-nums text-foreground/70">{fmtNum(s.longestLife)}s</span>
                   </div>
                   <div className="flex flex-col">
-                    <span>nrg</span>
+                    <abbr title="average energy" className="no-underline">
+                      nrg
+                    </abbr>
                     <span className="font-mono tabular-nums text-foreground/70">{Math.round(avgEnergy)}</span>
                   </div>
                 </div>
@@ -151,8 +164,7 @@ export function Sidebar({
               {/* Population slider */}
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
-                  {/* biome-ignore lint/a11y/noLabelWithoutControl: Radix Slider has no labelable id */}
-                  <label className="text-xs text-muted-foreground">Population</label>
+                  <span className="text-xs text-muted-foreground">Population</span>
                   <span className="text-xs text-muted-foreground font-mono tabular-nums">{desiredCounts[arch]}</span>
                 </div>
                 <Slider
@@ -162,6 +174,7 @@ export function Sidebar({
                   max={100}
                   step={1}
                   className="w-full"
+                  aria-label={`${ARCHETYPE_LABELS[arch]} population`}
                 />
               </div>
 
@@ -174,6 +187,7 @@ export function Sidebar({
                 variant="outline"
                 size="sm"
                 className="w-full h-7 text-xs border-slate-600"
+                aria-label={`Edit ${ARCHETYPE_LABELS[arch]} brain`}
               >
                 Edit Brain
               </Button>
@@ -192,7 +206,13 @@ export function Sidebar({
         )}
 
         {/* Debug toggle */}
-        <Button onClick={onToggleDebug} variant="outline" size="sm" className="w-full text-xs border-slate-600">
+        <Button
+          onClick={onToggleDebug}
+          variant="outline"
+          size="sm"
+          className="w-full text-xs border-slate-600"
+          aria-label="Toggle debug overlay"
+        >
           Toggle Debug
         </Button>
       </div>
@@ -204,6 +224,7 @@ export function Sidebar({
           target="_blank"
           rel="noopener noreferrer"
           className="text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="GitHub repository"
         >
           <svg className="w-4 h-4" viewBox="0 0 16 16" fill="currentColor" role="img" aria-label="GitHub">
             <title>GitHub</title>

@@ -232,6 +232,7 @@ export function BrainTilePickerDialog({
             ref={inputRef}
             type="text"
             placeholder="Filter tiles..."
+            aria-label="Filter tiles"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className="mt-2 w-full text-black bg-white/90 focus:bg-white border-slate-900"
@@ -273,9 +274,9 @@ export function BrainTilePickerDialog({
           {hasFilteredConversions && (
             <>
               <div className="border-t border-white/20 pt-4">
-                <h2 className="text-xs font-semibold uppercase text-white/60 mb-3 tracking-wider">
+                <h3 className="text-xs font-semibold uppercase text-white/60 mb-3 tracking-wider">
                   Compatible via conversion
-                </h2>
+                </h3>
               </div>
               {filteredConversion.map(([group, tiles]) => (
                 <section key={`conv-${group}`} aria-labelledby={`tile-group-conv-${group}`}>

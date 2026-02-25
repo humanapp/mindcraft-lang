@@ -91,9 +91,15 @@ export function BrainPrintTextView({ brainDef }: BrainPrintTextViewProps) {
               <table className="brain-print-text-table">
                 <thead>
                   <tr>
-                    <th className="brain-print-text-th brain-print-text-th-num">#</th>
-                    <th className="brain-print-text-th">WHEN</th>
-                    <th className="brain-print-text-th">DO</th>
+                    <th scope="col" className="brain-print-text-th brain-print-text-th-num">
+                      #
+                    </th>
+                    <th scope="col" className="brain-print-text-th">
+                      WHEN
+                    </th>
+                    <th scope="col" className="brain-print-text-th">
+                      DO
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

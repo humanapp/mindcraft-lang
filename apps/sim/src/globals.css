@@ -17,6 +17,14 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 * {
   scrollbar-width: thin;
   scrollbar-color: rgb(203 213 225) transparent;
