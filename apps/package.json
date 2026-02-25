@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "install": "npm --prefix sim install"
+    "install": "npm --prefix sim install && npm --prefix qwop install"
   }
 }
