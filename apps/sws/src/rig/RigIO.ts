@@ -42,6 +42,10 @@ export interface RigIO {
   // Apply direct torques (used by stabilizer upright correction)
   applyTorque(part: PartName, torqueWorld: Vec3): void;
 
+  // Apply a world-space force at the body's center of mass.
+  // Used for swing-leg gravity compensation during step.
+  applyForce(part: PartName, forceWorld: Vec3): void;
+
   // Utility (optional)
   groundRaycast(from: Vec3, to: Vec3): { hit: boolean; point?: Vec3; normal?: Vec3 };
 }

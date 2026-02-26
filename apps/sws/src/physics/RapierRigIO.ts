@@ -344,6 +344,14 @@ export class RapierRigIO implements RigIO {
   // Internal helpers
   // ---------------------------------------------------------------------------
 
+  applyForce(part: PartName, forceWorld: Vec3): void {
+    const rb = this.rig.getBody(part);
+
+    // Convert continuous force (N) to impulse (N*s) for this tick
+    const impulse = scale(forceWorld, this._dt);
+    rb.applyImpulse(impulse, true);
+  }
+
   private applyTorqueImpulse(part: PartName, torqueWorld: Vec3): void {
     const rb = this.rig.getBody(part);
 

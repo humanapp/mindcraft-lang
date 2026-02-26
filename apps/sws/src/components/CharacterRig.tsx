@@ -10,6 +10,7 @@ import { RapierRigIO } from "@/physics/RapierRigIO";
 import type { PartName } from "@/rig/RigDefinition";
 import { RigDefinitionV0 } from "@/rig/RigDefinition.v0";
 import { RigMeshes } from "./RigMeshes";
+import { CatchStepController } from "@/controllers/CatchStepController";
 
 const _dragPlane = new THREE.Plane();
 const _intersection = new THREE.Vector3();
@@ -27,7 +28,7 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
 
   const rigRef = useRef<RapierRig | null>(null);
   const ioRef = useRef<RapierRigIO | null>(null);
-  const balanceRef = useRef<BalanceController | null>(null);
+  const catchStepRef = useRef<CatchStepController | null>(null);
   const disposedRef = useRef(false);
   const [rig, setRig] = useState<RapierRig | null>(null);
 
@@ -45,14 +46,14 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
 
     rigRef.current = newRig;
     ioRef.current = io;
-    balanceRef.current = new BalanceController();
+    catchStepRef.current = new CatchStepController(new BalanceController());
     setRig(newRig);
 
     return () => {
       disposedRef.current = true;
       ioRef.current = null;
       rigRef.current = null;
-      balanceRef.current = null;
+      catchStepRef.current = null;
       setRig(null);
 
       // Guard against the world already being freed (StrictMode / HMR).
@@ -160,8 +161,8 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
   useBeforePhysicsStep((stepWorld) => {
     if (disposedRef.current) return;
     const io = ioRef.current;
-    const balance = balanceRef.current;
-    if (!io || !balance) return;
+    const catchStep = catchStepRef.current;
+    if (!io || !catchStep) return;
 
     // Use the fixed timestep from Rapier (typically 1/60)
     const dt = stepWorld.timestep;
@@ -169,7 +170,7 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
 
     // Balance controller drives all stance joints (torso, hips, knees, ankles).
     // It computes COM-over-support error and maps it to joint angle targets.
-    balance.update(io, dt);
+    catchStep.update(io, dt);
   });
 
   return rig ? (
