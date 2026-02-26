@@ -59,10 +59,10 @@ Temporary hacks for debugging are allowed but must be removable.
 
 ## 3. Stability Goals (Current Phase)
 
-We are not walking yet.
+Standing balance is achieved. The rig holds an upright rest pose using
+ForceBased PD joint motors and an ankle inverted-pendulum strategy.
 
-The current milestone is: a rig that falls under gravity, stays connected,
-and can settle into a plausible upright rest pose using PD joint drives.
+The current milestone is: refine balance quality, begin gait planning.
 
 The rig should:
 
@@ -87,15 +87,49 @@ Over:
 
 ## 4. Joint Driving Rules
 
-- Ball joints use quaternion PD error.
-- Hinge joints should compute hinge angle explicitly and drive around the
-  hinge axis only.
-- Avoid driving all joints simultaneously unless a clear rest pose is defined.
+- All joints use Rapier's built-in constraint-solver motors (not external
+  torque impulses). This gives bidirectional torques (Newton's 3rd law),
+  implicit integration (no one-frame lag), and natural force transmission
+  through the kinematic chain.
+- Hinge (revolute) joints: extract the signed angle from the target
+  quaternion by projecting its axis-angle onto the hinge axis. Use
+  `configureMotorPosition(target, stiffness, damping)`.
+- Ball (spherical) joints: Rapier's `SphericalImpulseJoint` has NO
+  high-level motor API. Use the raw WASM API via
+  `rawSet.jointConfigureMotorPosition(handle, axis, target, stiffness, damping)`
+  on each of AngX (3), AngY (4), AngZ (5). Target quaternion is decomposed
+  into intrinsic XYZ Euler angles.
 - Arms and head should not destabilize the torso during stability tuning.
+  Drive them at low gains to hold rest pose.
+- All joints (hinge and ball) must be initialized with a motor at
+  construction time in RapierRig, not just on first controller call.
 
 Always ask: "Is this a structural fix, or a symptom patch?"
 
-## 5. Long-Term Target
+## 5. Rapier Motor Model (Critical)
+
+Rapier's `configureMotorPosition` and `jointConfigureMotorPosition` always
+set the motor model to `AccelerationBased` (0). In this model, torque is
+scaled by the body's effective angular mass at the constraint point. For
+small bodies in a kinematic chain (e.g. foot inertia ~0.03 kg-m^2), this
+produces negligibly small torques that cannot fight gravity.
+
+**Always override to ForceBased (1)** using
+`rawSet.jointConfigureMotorModel(handle, axis, 1)` after every call to
+`configureMotorPosition` / `jointConfigureMotorPosition`. ForceBased uses
+stiffness directly as N-m/rad, giving motors real authority.
+
+- `RawMotorModel.AccelerationBased = 0` -- torque = effective_mass * stiffness * error (too weak)
+- `RawMotorModel.ForceBased = 1` -- torque = stiffness * error (correct)
+- Revolute motor axis: AngX (3)
+- Ball joint motor axes: AngX (3), AngY (4), AngZ (5)
+- The `RawJointSet` interface (defined in both RapierRig.ts and RapierRigIO.ts)
+  wraps the WASM methods `jointConfigureMotorPosition` and
+  `jointConfigureMotorModel`.
+- Access `rawSet` via `(joint as unknown as { rawSet: RawJointSet }).rawSet`
+  -- the `protected` modifier is not enforced at JS runtime.
+
+## 6. Long-Term Target
 
 This rig must eventually support:
 
@@ -111,7 +145,7 @@ Do NOT introduce solutions that:
 - Depend on Rapier-only APIs in controller logic.
 - Prevent future balancing logic from working.
 
-## 6. When Uncertain
+## 7. When Uncertain
 
 Prefer:
 
