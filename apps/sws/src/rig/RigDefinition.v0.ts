@@ -31,38 +31,38 @@ const parts: PartDef[] = [
   {
     name: "Root",
     mass: 6,
-    collision: [capY(0.16, 0.18)], // ~0.52m tall capsule
+    collision: [capY(0.16, 0.135)], // ~0.59m tall capsule
     restPos: v3(0, 0, 0),
     restRot: ID,
   },
   {
     name: "Torso",
     mass: 8,
-    collision: [box(0.22, 0.28, 0.14)], // ~0.44 x 0.56 x 0.28
-    restPos: v3(0, 0.42, 0),
+    collision: [box(0.22, 0.19, 0.14)], // ~0.44 x 0.38 x 0.28
+    restPos: v3(0, 0.37, 0),
     restRot: ID,
   },
   {
     name: "Head",
-    mass: 2,
+    mass: 0.1,
     collision: [box(0.16, 0.16, 0.16)], // ~0.32 cube
-    restPos: v3(0, 0.78, 0),
+    restPos: v3(0, 0.72, 0),
     restRot: ID,
   },
 
   // Arms (single segment, Roblox-y)
   {
     name: "LeftArm",
-    mass: 2,
+    mass: 0.1,
     collision: [capY(0.07, 0.18)], // ~0.50m
-    restPos: v3(-0.33, 0.55, 0),
+    restPos: v3(-0.33, 0.49, 0),
     restRot: ID,
   },
   {
     name: "RightArm",
-    mass: 2,
+    mass: 0.1,
     collision: [capY(0.07, 0.18)],
-    restPos: v3(0.33, 0.55, 0),
+    restPos: v3(0.33, 0.49, 0),
     restRot: ID,
   },
 
@@ -122,9 +122,9 @@ const joints: JointDef[] = [
     name: "Root_Torso",
     parent: "Root",
     child: "Torso",
-    parentFramePos: v3(0, 0.22, 0),
+    parentFramePos: v3(0, 0.165, 0),
     parentFrameRot: ID,
-    childFramePos: v3(0, -0.26, 0),
+    childFramePos: v3(0, -0.19, 0),
     childFrameRot: ID,
     limits: { kind: "ball", swingDeg: 22, twistDeg: 16 },
     drive: { kp: 120, kd: 20, maxTorque: 320 },
@@ -135,7 +135,7 @@ const joints: JointDef[] = [
     name: "Torso_Head",
     parent: "Torso",
     child: "Head",
-    parentFramePos: v3(0, 0.3, 0),
+    parentFramePos: v3(0, 0.2, 0),
     parentFrameRot: ID,
     childFramePos: v3(0, -0.16, 0),
     childFrameRot: ID,
@@ -148,7 +148,7 @@ const joints: JointDef[] = [
     name: "Torso_LeftArm",
     parent: "Torso",
     child: "LeftArm",
-    parentFramePos: v3(-0.24, 0.18, 0),
+    parentFramePos: v3(-0.24, 0.12, 0),
     parentFrameRot: ID,
     childFramePos: v3(0, 0.18, 0),
     childFrameRot: ID,
@@ -159,7 +159,7 @@ const joints: JointDef[] = [
     name: "Torso_RightArm",
     parent: "Torso",
     child: "RightArm",
-    parentFramePos: v3(0.24, 0.18, 0),
+    parentFramePos: v3(0.24, 0.12, 0),
     parentFrameRot: ID,
     childFramePos: v3(0, 0.18, 0),
     childFrameRot: ID,
@@ -172,7 +172,7 @@ const joints: JointDef[] = [
     name: "Root_LeftUpperLeg",
     parent: "Root",
     child: "LeftUpperLeg",
-    parentFramePos: v3(-0.16, -0.18, 0),
+    parentFramePos: v3(-0.16, -0.135, 0),
     parentFrameRot: ID,
     childFramePos: v3(0, 0.22, 0),
     childFrameRot: ID,
@@ -183,7 +183,7 @@ const joints: JointDef[] = [
     name: "Root_RightUpperLeg",
     parent: "Root",
     child: "RightUpperLeg",
-    parentFramePos: v3(0.16, -0.18, 0),
+    parentFramePos: v3(0.16, -0.135, 0),
     parentFrameRot: ID,
     childFramePos: v3(0, 0.22, 0),
     childFrameRot: ID,
@@ -226,7 +226,7 @@ const joints: JointDef[] = [
     childFramePos: v3(0, 0.05, -0.02),
     childFrameRot: ID,
     limits: { kind: "hinge", axisLocalParent: v3(1, 0, 0), minDeg: -25, maxDeg: 25 },
-    drive: { kp: 55, kd: 10, maxTorque: 130 },
+    drive: { kp: 15, kd: 5, maxTorque: 40 },
   },
   {
     name: "RightLowerLeg_RightFoot",
@@ -237,7 +237,7 @@ const joints: JointDef[] = [
     childFramePos: v3(0, 0.05, -0.02),
     childFrameRot: ID,
     limits: { kind: "hinge", axisLocalParent: v3(1, 0, 0), minDeg: -25, maxDeg: 25 },
-    drive: { kp: 55, kd: 10, maxTorque: 130 },
+    drive: { kp: 15, kd: 5, maxTorque: 40 },
   },
 ];
 

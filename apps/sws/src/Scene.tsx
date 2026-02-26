@@ -1,5 +1,6 @@
 import { RigidBody } from "@react-three/rapier";
 import { DraggableBody } from "@/components/DraggableBody";
+import { CharacterRig } from "./components/CharacterRig";
 
 /**
  * A minimal Three.js scene with Rapier physics.
@@ -25,14 +26,7 @@ export function Scene() {
           <meshStandardMaterial color="#4a7c59" />
         </mesh>
       </RigidBody>
-
-      {/* Box -- draggable dynamic rigid body, spawned above the ground */}
-      <DraggableBody position={[0, 5, 0]} rotation={[0.5, 0.5, 0]}>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[1, 1, 1]} />
-          <meshStandardMaterial color="#c0392b" />
-        </mesh>
-      </DraggableBody>
+      <CharacterRig />
     </>
   );
 }

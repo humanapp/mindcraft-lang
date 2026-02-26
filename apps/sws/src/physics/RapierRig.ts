@@ -35,7 +35,7 @@ export class RapierRig {
   public readonly def: RigDefinition;
 
   private readonly RAPIER: RapierModule;
-  private readonly world: RapierWorld;
+  public readonly world: RapierWorld;
 
   private readonly bodiesByPart = new Map<PartName, BuiltBody>();
   private readonly jointsByName = new Map<JointName, BuiltJoint>();
@@ -85,6 +85,16 @@ export class RapierRig {
 
   listJoints(): JointName[] {
     return Array.from(this.jointsByName.keys());
+  }
+
+  getBodyHandle(part: PartName): number {
+    const b = this.bodiesByPart.get(part);
+    if (!b) throw new Error(`RapierRig: missing body for part ${part}`);
+    return b.body.handle;
+  }
+
+  tryGetBodyHandle(part: PartName): number | undefined {
+    return this.bodiesByPart.get(part)?.body.handle;
   }
 
   // ---------------------------------------------------------------------------
@@ -157,14 +167,22 @@ export class RapierRig {
     const rbDesc = R.RigidBodyDesc.dynamic()
       .setTranslation(worldPos.x, worldPos.y, worldPos.z)
       .setRotation({ x: worldRot.x, y: worldRot.y, z: worldRot.z, w: worldRot.w })
-      .setLinearDamping(0.05)
-      .setAngularDamping(0.08);
+      .setLinearDamping(0.2)
+      .setAngularDamping(2.0);
 
     const rb = this.world.createRigidBody(rbDesc);
 
     // Colliders -- density drives mass contribution; we also add explicit mass below.
+    // Collision groups: membership = group 1, filter = group 0 only.
+    // This lets rig parts collide with the environment (group 0) but not
+    // with each other (all in group 1, which is excluded from the filter).
+    const rigCollisionGroups = (0x0002 << 16) | 0x0001;
+
     for (const shape of part.collision) {
-      const colDesc = this.createColliderDesc(shape).setDensity(1.0);
+      const colDesc = this.createColliderDesc(shape)
+        .setDensity(1.0)
+        .setCollisionGroups(rigCollisionGroups)
+        .setSolverGroups(rigCollisionGroups);
       this.world.createCollider(colDesc, rb);
     }
 
@@ -231,7 +249,27 @@ export class RapierRig {
       jointData = R.JointData.spherical(a1, a2);
     }
 
-    return this.world.createImpulseJoint(jointData, parentBody, childBody, true);
+    const joint = this.world.createImpulseJoint(jointData, parentBody, childBody, true);
+
+    // For revolute joints, enforce limits on the joint object (belt-and-
+    // suspenders with the JointData properties) and configure the built-in
+    // position motor.
+    if (jd.limits.kind === "hinge") {
+      const revolute = joint as unknown as {
+        configureMotorPosition(target: number, stiffness: number, damping: number): void;
+        setLimits(min: number, max: number): void;
+      };
+
+      if (typeof jd.limits.minDeg === "number" && typeof jd.limits.maxDeg === "number") {
+        const minRad = (jd.limits.minDeg * Math.PI) / 180;
+        const maxRad = (jd.limits.maxDeg * Math.PI) / 180;
+        revolute.setLimits(minRad, maxRad);
+      }
+
+      revolute.configureMotorPosition(0, jd.drive.kp * 10, jd.drive.kd * 10);
+    }
+
+    return joint;
   }
 }
 

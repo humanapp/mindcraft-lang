@@ -11,8 +11,8 @@
 
 import type { RayColliderIntersection } from "@dimforge/rapier3d-compat";
 import type { Quat, Vec3 } from "@/lib/math";
-import { clamp, dot, len, normalize, qInverse, qMul, qNormalize, qRotateVec3, scale, sub, v3 } from "@/lib/math";
-import type { BodySample, FootName, JointName, PartName, RigDefinition } from "@/rig/RigDefinition";
+import { clamp, cross, dot, len, normalize, qInverse, qMul, qNormalize, qRotateVec3, scale, sub, v3 } from "@/lib/math";
+import type { BodySample, FootName, JointDef, JointName, PartName, RigDefinition } from "@/rig/RigDefinition";
 import type { FootContact, JointDriveCommand, JointReadout, RigIO } from "@/rig/RigIO";
 import type { RapierModule, RapierRig, RapierWorld } from "./RapierRig";
 
@@ -151,6 +151,16 @@ export class RapierRigIO implements RigIO {
   driveJoint(joint: JointName, cmd: JointDriveCommand): void {
     const jd = this.rig.getJointDef(joint);
 
+    // For hinge joints, update the Rapier built-in motor target instead of
+    // applying external PD torque impulses. The built-in motor is solved
+    // inside the constraint solver (no one-frame lag) and is stable even
+    // for very light bodies where external impulses overshoot.
+    if (jd.limits.kind === "hinge") {
+      this.driveHingeMotor(joint, jd, cmd);
+      return;
+    }
+
+    // Ball joints: external PD torque impulse.
     const parent = this.sampleBody(jd.parent as PartName);
     const child = this.sampleBody(jd.child as PartName);
 
@@ -171,7 +181,7 @@ export class RapierRigIO implements RigIO {
     // Axis-angle from quaternion error
     const aa = quatToAxisAngle(qErrN);
     const axisLocal = aa.axis; // in JOINT SPACE
-    let angle = aa.angle; // radians, signed-ish
+    let angle = aa.angle; // radians
 
     // Wrap to [-pi, pi] for stability
     if (angle > Math.PI) angle -= 2 * Math.PI;
@@ -198,15 +208,88 @@ export class RapierRigIO implements RigIO {
 
     const torqueWorld = scale(axisWorld, clampedMag);
 
-    // Apply equal/opposite torques as impulses for this tick.
-    // Use applyTorqueImpulse if available; else applyTorque (depends on build).
-    this.applyTorqueImpulse(jd.parent as PartName, scale(torqueWorld, -1));
+    // Apply torque only to the child. The joint constraint will transfer
+    // the reaction to the parent naturally. Applying equal/opposite torques
+    // to both bodies fights the constraint solver and causes oscillation.
     this.applyTorqueImpulse(jd.child as PartName, torqueWorld);
+  }
+
+  /**
+   * Update the Rapier built-in motor target for a revolute (hinge) joint.
+   *
+   * Extracts the signed angle around the hinge axis from the target
+   * quaternion and sets it as the motor's target position. The stiffness
+   * and damping from the command are scaled by 10x for Rapier's
+   * constraint-force units.
+   */
+  private driveHingeMotor(joint: JointName, jd: JointDef, cmd: JointDriveCommand): void {
+    const hingeAxis = jd.limits.axisLocalParent ?? { x: 1, y: 0, z: 0 };
+
+    // Extract hinge angle from the target quaternion by projecting its
+    // axis-angle representation onto the hinge axis.
+    const aa = quatToAxisAngle(cmd.targetLocalRot);
+    const proj = dot(aa.axis, hingeAxis);
+    let targetAngle = aa.angle * proj;
+
+    // Wrap to [-pi, pi]
+    if (targetAngle > Math.PI) targetAngle -= 2 * Math.PI;
+    if (targetAngle < -Math.PI) targetAngle += 2 * Math.PI;
+
+    const rapierJoint = this.rig.getJoint(joint);
+    const revolute = rapierJoint as unknown as {
+      configureMotorPosition(target: number, stiffness: number, damping: number): void;
+    };
+    revolute.configureMotorPosition(targetAngle, cmd.kp * 10, cmd.kd * 10);
   }
 
   applyTorque(part: PartName, torqueWorld: Vec3): void {
     // Continuous torque. Not all bindings expose this; we use impulse below.
     this.applyTorqueImpulse(part, torqueWorld);
+  }
+
+  /**
+   * Apply a PD torque that tries to keep a body's local Y axis aligned with
+   * world up AND resists yaw (spin around world Y).
+   *
+   * Tilt correction: aligns local Y with world Y (pitch + roll).
+   * Yaw damping: resists angular velocity around world Y so asymmetric
+   * joint reactions don't cause the rig to spiral.
+   */
+  applyUprightTorque(part: PartName, params: { kp: number; kd: number; maxTorque: number; yawKd?: number }): void {
+    const sample = this.sampleBody(part);
+
+    // --- Tilt correction (pitch + roll) ---
+    // Current local Y in world space
+    const localUp = qRotateVec3(sample.rot, { x: 0, y: 1, z: 0 });
+    const worldUp = { x: 0, y: 1, z: 0 };
+
+    // Cross product gives the rotation axis and sin(angle)
+    const c = cross(localUp, worldUp);
+    const sinAngle = len(c);
+    const cosAngle = clamp(dot(localUp, worldUp), -1, 1);
+
+    let tiltTorque = v3(0, 0, 0);
+    if (sinAngle > 1e-6) {
+      const axis = normalize(c);
+      const angle = Math.atan2(sinAngle, cosAngle);
+
+      // Project angular velocity onto the correction axis for damping
+      const omegaProj = dot(sample.angVel, axis);
+
+      const torqueMag = clamp(params.kp * angle - params.kd * omegaProj, -params.maxTorque, params.maxTorque);
+      tiltTorque = scale(axis, torqueMag);
+    }
+
+    // --- Yaw damping (resist spin around world Y) ---
+    // Without this, asymmetric PD reactions from hip joints create net yaw
+    // torque with nothing to resist it, causing a spiral.
+    const yawKd = params.yawKd ?? params.kd;
+    const omegaY = sample.angVel.y;
+    const yawDamp = clamp(-yawKd * omegaY, -params.maxTorque, params.maxTorque);
+    const yawTorque = v3(0, yawDamp, 0);
+
+    const total = add(tiltTorque, yawTorque);
+    this.applyTorqueImpulse(part, total);
   }
 
   groundRaycast(from: Vec3, to: Vec3): { hit: boolean; point?: Vec3; normal?: Vec3 } {
@@ -256,8 +339,12 @@ function add(a: Vec3, b: Vec3): Vec3 {
 }
 
 function quatToAxisAngle(qq: Quat): { axis: Vec3; angle: number } {
-  // qq assumed normalized
-  const w = clamp(qq.w, -1, 1);
+  // Ensure shortest-path: negate if w < 0 so the angle is always in [0, pi].
+  // Without this, near-identity rotations with w slightly negative produce
+  // angles near 2*pi with a poorly-defined axis, causing erratic torques.
+  const q = qq.w < 0 ? { x: -qq.x, y: -qq.y, z: -qq.z, w: -qq.w } : qq;
+
+  const w = clamp(q.w, -1, 1);
   const sinHalf = Math.sqrt(Math.max(0, 1 - w * w));
 
   // If very small, axis doesn't matter
@@ -266,9 +353,9 @@ function quatToAxisAngle(qq: Quat): { axis: Vec3; angle: number } {
   }
 
   const axis = {
-    x: qq.x / sinHalf,
-    y: qq.y / sinHalf,
-    z: qq.z / sinHalf,
+    x: q.x / sinHalf,
+    y: q.y / sinHalf,
+    z: q.z / sinHalf,
   };
 
   const angle = 2 * Math.atan2(sinHalf, w);
