@@ -83,9 +83,9 @@ const parts: PartDef[] = [
   },
   {
     name: "LeftFoot",
-    mass: 1,
+    mass: 5,
     collision: [box(0.1, 0.04, 0.14)], // ~0.20 x 0.08 x 0.28
-    restPos: v3(-0.18, -0.98, 0.06),
+    restPos: v3(-0.18, -0.98, 0),
     restRot: ID,
   },
 
@@ -105,9 +105,9 @@ const parts: PartDef[] = [
   },
   {
     name: "RightFoot",
-    mass: 1,
+    mass: 5,
     collision: [box(0.1, 0.04, 0.14)],
-    restPos: v3(0.18, -0.98, 0.06),
+    restPos: v3(0.18, -0.98, 0),
     restRot: ID,
   },
 ];
@@ -223,7 +223,7 @@ const joints: JointDef[] = [
     child: "LeftFoot",
     parentFramePos: v3(0, -0.2, 0),
     parentFrameRot: ID,
-    childFramePos: v3(0, 0.05, -0.02),
+    childFramePos: v3(0, 0.05, 0),
     childFrameRot: ID,
     limits: { kind: "hinge", axisLocalParent: v3(1, 0, 0), minDeg: -25, maxDeg: 25 },
     drive: { kp: 15, kd: 5, maxTorque: 40 },
@@ -234,7 +234,7 @@ const joints: JointDef[] = [
     child: "RightFoot",
     parentFramePos: v3(0, -0.2, 0),
     parentFrameRot: ID,
-    childFramePos: v3(0, 0.05, -0.02),
+    childFramePos: v3(0, 0.05, 0),
     childFrameRot: ID,
     limits: { kind: "hinge", axisLocalParent: v3(1, 0, 0), minDeg: -25, maxDeg: 25 },
     drive: { kp: 15, kd: 5, maxTorque: 40 },
@@ -249,15 +249,16 @@ const feet: FootDef[] = [
   {
     name: "LeftFoot",
     part: "LeftFoot",
-    // Bottom of the foot, slightly forward (to reduce "heel catches")
-    soleLocalPoint: v3(0, -0.04, 0.07),
+    // Center bottom of the foot sole. Determines the ground-contact
+    // raycast origin and therefore the balance support point.
+    soleLocalPoint: v3(0, -0.04, 0),
     forwardLocal: v3(0, 0, 1),
     upLocal: v3(0, 1, 0),
   },
   {
     name: "RightFoot",
     part: "RightFoot",
-    soleLocalPoint: v3(0, -0.04, 0.07),
+    soleLocalPoint: v3(0, -0.04, 0),
     forwardLocal: v3(0, 0, 1),
     upLocal: v3(0, 1, 0),
   },

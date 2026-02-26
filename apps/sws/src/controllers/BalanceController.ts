@@ -1,84 +1,98 @@
 // controllers/BalanceController.ts
 //
-// Phase 1 standing balance controller.
+// Physical standing balance controller using:
 //
-// Keeps the rig upright by steering joint targets so that the COM projection
-// stays above the support polygon (midpoint between grounded feet).
+// 1. Rapier built-in motors at ALL joints (hinge AND spherical).
+//    The constraint solver provides implicit integration, bidirectional
+//    torques (Newton's 3rd law), and natural force transmission through
+//    the kinematic chain. No external torque impulses needed.
 //
-// No walking or step planning -- just stand-still stabilization and
-// disturbance recovery via posture adjustment.
+// 2. Ankle strategy (inverted pendulum) for whole-body balance.
+//    The ankle hinge motor is the primary balance actuator, setting
+//    target angle proportional to COM-over-support error.
 //
-// Uses only plain Vec3/Quat math and the RigIO interface. No Three.js or
-// Rapier types. All vectors are in WORLD space unless noted otherwise.
+// 3. Fallen-state detection to prevent ground spasming.
+//
+// No world-frame torques. No external torque impulses. All forces go
+// through Rapier's constraint-solver motors.
 
 import type { Vec3 } from "@/lib/math";
-import { add, clamp, expSmoothingAlpha, horiz, len, q, qFromAxisAngle, scale, smoothVec3, sub, v3 } from "@/lib/math";
+import {
+  clamp,
+  cross,
+  dot,
+  expSmoothingAlpha,
+  horiz,
+  len,
+  q,
+  qFromAxisAngle,
+  qRotateVec3,
+  smoothVec3,
+  sub,
+  v3,
+} from "@/lib/math";
 import type { RigIO } from "@/rig/RigIO";
 
 // ---------------------------------------------------------------------------
-// Tuning constants
+// Constants
 // ---------------------------------------------------------------------------
 
-/** How fast the filtered support/COM signals track raw values (seconds). */
-const FILTER_TAU = 0.08;
+/** Filter time constant for COM/support signals (seconds). */
+const FILTER_TAU = 0.04;
 
-/**
- * Default compliance knee bend (radians). A small bend lowers the COM and
- * gives the ankle/hip loop room to correct without hitting joint limits.
- */
-const DEFAULT_KNEE_BEND = 0.08;
+/** Tilt angle (radians) above which the controller enters fallen state. */
+const FALLEN_TILT_RAD = 0.75; // ~43 degrees
 
-/**
- * How much knee bend increases per unit of balance error magnitude (rad/m).
- * Bending the knees lowers the COM and absorbs disturbances.
- */
-const KNEE_BEND_PER_ERROR = 0.6;
+/** Tilt angle (radians) below which the controller exits fallen state. */
+const RECOVER_TILT_RAD = 0.25; // ~14 degrees -- hysteresis band
 
-/** Maximum extra knee bend from error (radians, ~15 deg). */
-const MAX_EXTRA_KNEE_BEND = 0.26;
+// ---------------------------------------------------------------------------
+// Ankle balance gains (primary actuator)
+// ---------------------------------------------------------------------------
 
-// Gain tables -- joint stiffness / damping for the controller outputs.
-// These are intentionally moderate. The controller produces *angle targets*,
-// and the PD drives in RigIO / Rapier motors enforce them.
+const ANKLE_P = 8.0;
+const ANKLE_D = 2.5;
+const ANKLE_MAX_RAD = 0.25;
 
-const GAINS = {
-  torso: { kp: 55, kd: 8, max: 150 },
-  hip: { kp: 50, kd: 8, max: 120 },
-  knee: { kp: 150, kd: 18, max: 350 },
-  ankle: { kp: 8, kd: 4, max: 25 },
+// ---------------------------------------------------------------------------
+// Joint drive gains
+//
+// All joints (hinge and spherical) now use Rapier's built-in motor,
+// which is solved inside the constraint solver. The gains here are
+// passed through to the motor (scaled 10x for Rapier units). The
+// motor handles Newton's 3rd law and fights gravity directly.
+// ---------------------------------------------------------------------------
+
+const STANDING_GAINS = {
+  torso: { kp: 40, kd: 12, max: 120 },
+  hip: { kp: 40, kd: 12, max: 120 },
+  knee: { kp: 80, kd: 14, max: 250 },
+  ankle: { kp: 25, kd: 10, max: 80 },
+  head: { kp: 20, kd: 6, max: 40 },
+  arm: { kp: 15, kd: 5, max: 30 },
 } as const;
 
-// ---------------------------------------------------------------------------
-// Balance error -> joint angle mapping
-// ---------------------------------------------------------------------------
+const FALLEN_GAINS = {
+  torso: { kp: 3, kd: 4, max: 10 },
+  hip: { kp: 3, kd: 4, max: 10 },
+  knee: { kp: 5, kd: 4, max: 15 },
+  ankle: { kp: 2, kd: 3, max: 5 },
+  head: { kp: 2, kd: 3, max: 5 },
+  arm: { kp: 1, kd: 2, max: 3 },
+} as const;
 
-/**
- * Phase 1 strategy: ankle-only balance correction.
- *
- * Torso and hips are driven to identity (rest pose) to keep them stiff.
- * Ankles are the sole balance actuator (ankle strategy), active only when
- * the corresponding foot is grounded. This avoids:
- * - Multiple joints fighting each other
- * - Wild ankle motion when feet are airborne
- * - Sign confusion from complex postural corrections
- */
+const DEFAULT_KNEE_BEND = 0.12;
 
 // ---------------------------------------------------------------------------
 // Debug output
 // ---------------------------------------------------------------------------
 
 export interface BalanceDebug {
-  /** Support point on ground (world). */
   support: Vec3;
-  /** COM projected to ground plane (world). */
   comProj: Vec3;
-  /** Raw balance error xz (world). */
   errorRaw: Vec3;
-  /** Filtered balance error xz (world). */
   errorFiltered: Vec3;
-  /** Error magnitude (meters). */
   errorMag: number;
-  /** Whether each foot is grounded. */
   leftGrounded: boolean;
   rightGrounded: boolean;
 }
@@ -88,59 +102,70 @@ export interface BalanceDebug {
 // ---------------------------------------------------------------------------
 
 export class BalanceController {
-  // Filtered signals
   private filteredSupport: Vec3 = v3(0, 0, 0);
   private filteredCom: Vec3 = v3(0, 0, 0);
   private initialized = false;
+  private fallen = false;
 
-  // Last debug snapshot
   private _debug: BalanceDebug | null = null;
+  private frameCount = 0;
 
-  /** Read the most recent debug snapshot (null before first update). */
   get debug(): BalanceDebug | null {
     return this._debug;
   }
 
-  /**
-   * Run one tick of the balance controller.
-   *
-   * Call this once per physics step, BEFORE the physics world steps.
-   * It reads body/foot state via `io`, computes posture targets, and
-   * issues driveJoint commands.
-   */
   update(io: RigIO, dt: number): void {
     // ------------------------------------------------------------------
-    // A) Compute support point
+    // A) Measure root tilt
+    // ------------------------------------------------------------------
+    const rootSample = io.sampleBody("Root");
+    const localUp = qRotateVec3(rootSample.rot, v3(0, 1, 0));
+    const worldUp = v3(0, 1, 0);
+
+    const tiltCross = cross(localUp, worldUp);
+    const sinAngle = len(tiltCross);
+    const cosAngle = clamp(dot(localUp, worldUp), -1, 1);
+    const tiltRad = Math.atan2(sinAngle, cosAngle);
+
+    // ------------------------------------------------------------------
+    // B) Fallen state with hysteresis
+    // ------------------------------------------------------------------
+    if (!this.fallen && tiltRad > FALLEN_TILT_RAD) {
+      this.fallen = true;
+    } else if (this.fallen && tiltRad < RECOVER_TILT_RAD) {
+      this.fallen = false;
+    }
+
+    const gains = this.fallen ? FALLEN_GAINS : STANDING_GAINS;
+
+    // ------------------------------------------------------------------
+    // C) Foot contact + COM
     // ------------------------------------------------------------------
     const leftFC = io.footContact("LeftFoot");
     const rightFC = io.footContact("RightFoot");
     const anyGrounded = leftFC.grounded || rightFC.grounded;
 
     let support: Vec3;
-
     if (leftFC.grounded && rightFC.grounded && leftFC.avgPoint && rightFC.avgPoint) {
-      support = horiz(scale(add(leftFC.avgPoint, rightFC.avgPoint), 0.5));
+      support = horiz(
+        v3((leftFC.avgPoint.x + rightFC.avgPoint.x) * 0.5, 0, (leftFC.avgPoint.z + rightFC.avgPoint.z) * 0.5)
+      );
     } else if (leftFC.grounded && leftFC.avgPoint) {
       support = horiz(leftFC.avgPoint);
     } else if (rightFC.grounded && rightFC.avgPoint) {
       support = horiz(rightFC.avgPoint);
     } else {
-      // Airborne -- project root position as a fallback
-      const rootPos = io.sampleBody("Root").pos;
-      support = horiz(rootPos);
+      support = horiz(rootSample.pos);
     }
 
-    // ------------------------------------------------------------------
-    // B) COM projection onto ground plane
-    // ------------------------------------------------------------------
     const comWorld = io.comWorld();
     const comProj = horiz(comWorld);
+    const comVel = io.comVelWorld();
 
     // ------------------------------------------------------------------
-    // C) Filter signals
+    // D) Filter & error
     // ------------------------------------------------------------------
     const alpha = expSmoothingAlpha(dt, FILTER_TAU);
-
     if (!this.initialized) {
       this.filteredSupport = support;
       this.filteredCom = comProj;
@@ -150,105 +175,109 @@ export class BalanceController {
       this.filteredCom = smoothVec3(this.filteredCom, comProj, alpha);
     }
 
-    // ------------------------------------------------------------------
-    // D) Balance error
-    // ------------------------------------------------------------------
     const errorRaw = sub(comProj, support);
     const errorFiltered = sub(this.filteredCom, this.filteredSupport);
     const errorMag = len(errorFiltered);
 
     // ------------------------------------------------------------------
-    // E) Drive joints
+    // E) Joint drives (Rapier built-in motors)
+    //
+    // All joints (hinge and spherical) use Rapier's constraint-solver
+    // motors. These are bidirectional (Newton's 3rd law), implicitly
+    // integrated (high effective stiffness), and transmit forces
+    // through the kinematic chain to the ground.
     // ------------------------------------------------------------------
-
-    // Identity quaternion -- rest pose for all non-balance joints
     const rest = q(0, 0, 0, 1);
 
-    // Torso: hold rest pose (stiff)
+    // Torso: rest pose hold
     io.driveJoint("Root_Torso", {
       targetLocalRot: rest,
-      kp: GAINS.torso.kp,
-      kd: GAINS.torso.kd,
-      maxTorque: GAINS.torso.max,
+      kp: gains.torso.kp,
+      kd: gains.torso.kd,
+      maxTorque: gains.torso.max,
     });
 
-    // Hips: hold rest pose (stiff)
+    // Head: rest pose hold (low gains -- light part, should not destabilize)
+    io.driveJoint("Torso_Head", {
+      targetLocalRot: rest,
+      kp: gains.head.kp,
+      kd: gains.head.kd,
+      maxTorque: gains.head.max,
+    });
+
+    // Arms: rest pose hold (low gains -- should hang without destabilizing)
+    io.driveJoint("Torso_LeftArm", {
+      targetLocalRot: rest,
+      kp: gains.arm.kp,
+      kd: gains.arm.kd,
+      maxTorque: gains.arm.max,
+    });
+    io.driveJoint("Torso_RightArm", {
+      targetLocalRot: rest,
+      kp: gains.arm.kp,
+      kd: gains.arm.kd,
+      maxTorque: gains.arm.max,
+    });
+
+    // Hips: rest pose hold
     io.driveJoint("Root_LeftUpperLeg", {
       targetLocalRot: rest,
-      kp: GAINS.hip.kp,
-      kd: GAINS.hip.kd,
-      maxTorque: GAINS.hip.max,
+      kp: gains.hip.kp,
+      kd: gains.hip.kd,
+      maxTorque: gains.hip.max,
     });
     io.driveJoint("Root_RightUpperLeg", {
       targetLocalRot: rest,
-      kp: GAINS.hip.kp,
-      kd: GAINS.hip.kd,
-      maxTorque: GAINS.hip.max,
+      kp: gains.hip.kp,
+      kd: gains.hip.kd,
+      maxTorque: gains.hip.max,
     });
 
-    // Knees: small compliance bend + error-based extra bend
-    const extraBend = clamp(KNEE_BEND_PER_ERROR * errorMag, 0, MAX_EXTRA_KNEE_BEND);
-    const kneeBend = DEFAULT_KNEE_BEND + extraBend;
-    const kneeTarget = qFromAxisAngle(v3(1, 0, 0), kneeBend);
-
+    // Knees: slight compliance bend
+    const kneeTarget = qFromAxisAngle(v3(1, 0, 0), DEFAULT_KNEE_BEND);
     io.driveJoint("LeftUpperLeg_LeftLowerLeg", {
       targetLocalRot: kneeTarget,
-      kp: GAINS.knee.kp,
-      kd: GAINS.knee.kd,
-      maxTorque: GAINS.knee.max,
+      kp: gains.knee.kp,
+      kd: gains.knee.kd,
+      maxTorque: gains.knee.max,
     });
     io.driveJoint("RightUpperLeg_RightLowerLeg", {
       targetLocalRot: kneeTarget,
-      kp: GAINS.knee.kp,
-      kd: GAINS.knee.kd,
-      maxTorque: GAINS.knee.max,
+      kp: gains.knee.kp,
+      kd: gains.knee.kd,
+      maxTorque: gains.knee.max,
     });
 
-    // Ankles: sole balance actuator, only when grounded.
-    // Ankle pitch gain (rad/m). COM forward (errorZ > 0) -> dorsiflex
-    // (positive pitch around X) -> reaction from ground pushes shin back.
-    const ANKLE_PITCH_GAIN = 2.0;
-    const anklePitchRad = anyGrounded ? clamp(ANKLE_PITCH_GAIN * errorFiltered.z, -0.2, 0.2) : 0;
+    // ------------------------------------------------------------------
+    // F) Ankle: primary balance actuator (inverted pendulum)
+    // ------------------------------------------------------------------
+    // Ankle target: positive errZ (COM ahead) -> plantarflex (positive
+    // target) -> motor reaction pushes shin backward -> body backward.
+    // Negative errZ (COM behind) -> dorsiflex (negative target) -> motor
+    // reaction pushes shin forward -> body forward. This matches the
+    // standard inverted-pendulum ankle strategy.
+    const anklePitchRad =
+      anyGrounded && !this.fallen
+        ? clamp(ANKLE_P * errorFiltered.z + ANKLE_D * comVel.z, -ANKLE_MAX_RAD, ANKLE_MAX_RAD)
+        : 0;
 
-    // Drive each ankle only when its own foot is grounded.
-    // When airborne, hold rest pose with very low gains so the foot
-    // hangs naturally instead of whipping around.
-    if (leftFC.grounded) {
-      const ankleTarget = qFromAxisAngle(v3(1, 0, 0), anklePitchRad);
-      io.driveJoint("LeftLowerLeg_LeftFoot", {
-        targetLocalRot: ankleTarget,
-        kp: GAINS.ankle.kp,
-        kd: GAINS.ankle.kd,
-        maxTorque: GAINS.ankle.max,
-      });
-    } else {
-      io.driveJoint("LeftLowerLeg_LeftFoot", {
-        targetLocalRot: rest,
-        kp: 1,
-        kd: 2,
-        maxTorque: 5,
-      });
-    }
+    const ankleTarget = qFromAxisAngle(v3(1, 0, 0), anklePitchRad);
 
-    if (rightFC.grounded) {
-      const ankleTarget = qFromAxisAngle(v3(1, 0, 0), anklePitchRad);
-      io.driveJoint("RightLowerLeg_RightFoot", {
-        targetLocalRot: ankleTarget,
-        kp: GAINS.ankle.kp,
-        kd: GAINS.ankle.kd,
-        maxTorque: GAINS.ankle.max,
-      });
-    } else {
-      io.driveJoint("RightLowerLeg_RightFoot", {
-        targetLocalRot: rest,
-        kp: 1,
-        kd: 2,
-        maxTorque: 5,
-      });
-    }
+    io.driveJoint("LeftLowerLeg_LeftFoot", {
+      targetLocalRot: ankleTarget,
+      kp: gains.ankle.kp,
+      kd: gains.ankle.kd,
+      maxTorque: gains.ankle.max,
+    });
+    io.driveJoint("RightLowerLeg_RightFoot", {
+      targetLocalRot: ankleTarget,
+      kp: gains.ankle.kp,
+      kd: gains.ankle.kd,
+      maxTorque: gains.ankle.max,
+    });
 
     // ------------------------------------------------------------------
-    // F) Debug snapshot
+    // G) Debug
     // ------------------------------------------------------------------
     this._debug = {
       support,
@@ -259,5 +288,18 @@ export class BalanceController {
       leftGrounded: leftFC.grounded,
       rightGrounded: rightFC.grounded,
     };
+
+    this.frameCount++;
+    if (this.frameCount <= 10 || this.frameCount % 60 === 0) {
+      const tiltDeg = (tiltRad * 180) / Math.PI;
+      console.log(
+        `[Balance #${this.frameCount}]`,
+        `L:${leftFC.grounded} R:${rightFC.grounded}`,
+        `tilt:${tiltDeg.toFixed(1)}deg`,
+        this.fallen ? "FALLEN" : "",
+        `errZ:${errorFiltered.z.toFixed(4)}`,
+        `ankle:${anklePitchRad.toFixed(4)}`
+      );
+    }
   }
 }

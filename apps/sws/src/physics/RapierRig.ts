@@ -13,6 +13,12 @@ import type { World } from "@dimforge/rapier3d-compat";
 import type { Quat, Vec3 } from "@/lib/math";
 import type { CollisionShape, JointDef, JointName, PartDef, PartName, RigDefinition } from "@/rig/RigDefinition";
 
+/** Minimal type for Rapier's raw WASM impulse joint set. */
+interface RawJointSet {
+  jointConfigureMotorPosition(handle: number, axis: number, target: number, stiffness: number, damping: number): void;
+  jointConfigureMotorModel(handle: number, axis: number, model: number): void;
+}
+
 export type RapierModule = typeof RAPIER;
 export type RapierWorld = World;
 
@@ -168,7 +174,7 @@ export class RapierRig {
       .setTranslation(worldPos.x, worldPos.y, worldPos.z)
       .setRotation({ x: worldRot.x, y: worldRot.y, z: worldRot.z, w: worldRot.w })
       .setLinearDamping(0.2)
-      .setAngularDamping(2.0);
+      .setAngularDamping(4.0);
 
     const rb = this.world.createRigidBody(rbDesc);
 
@@ -267,9 +273,52 @@ export class RapierRig {
       }
 
       revolute.configureMotorPosition(0, jd.drive.kp * 10, jd.drive.kd * 10);
+
+      // Override motor model: configureMotorPosition always sets
+      // AccelerationBased (torque scaled by effective mass -- too weak for
+      // balance). ForceBased uses stiffness directly as N*m/rad.
+      // Revolute joints use AngX (3); ForceBased = 1.
+      const rawSet = (joint as unknown as { rawSet: RawJointSet }).rawSet;
+      rawSet.jointConfigureMotorModel(joint.handle, 3, 1);
+    } else {
+      // Spherical (ball) joints: configure per-axis motors at rest pose (0)
+      // using the raw WASM API. Without this, ball joints that are never
+      // driven by a controller (e.g. head, arms) would have no motor at all
+      // and flop freely under gravity.
+      this.initBallJointMotor(joint, jd.drive.kp, jd.drive.kd);
     }
 
     return joint;
+  }
+  /**
+   * Configure per-axis position motors on a spherical (ball) joint at rest
+   * pose (target = 0 on all angular axes).
+   *
+   * Uses the raw WASM API because Rapier's SphericalImpulseJoint wrapper
+   * does not expose a high-level motor API. The pattern mirrors
+   * RapierRigIO.driveBallMotor.
+   */
+  private initBallJointMotor(joint: RAPIER.ImpulseJoint, kp: number, kd: number): void {
+    const rawSet = (joint as unknown as { rawSet: RawJointSet }).rawSet;
+    const handle = joint.handle;
+
+    // RawJointAxis enum: AngX=3, AngY=4, AngZ=5
+    const ANG_X = 3;
+    const ANG_Y = 4;
+    const ANG_Z = 5;
+
+    const stiffness = kp * 10;
+    const damping = kd * 10;
+
+    rawSet.jointConfigureMotorPosition(handle, ANG_X, 0, stiffness, damping);
+    rawSet.jointConfigureMotorPosition(handle, ANG_Y, 0, stiffness, damping);
+    rawSet.jointConfigureMotorPosition(handle, ANG_Z, 0, stiffness, damping);
+
+    // Override motor model: configureMotorPosition always sets
+    // AccelerationBased. ForceBased (1) uses stiffness directly as N*m/rad.
+    rawSet.jointConfigureMotorModel(handle, ANG_X, 1);
+    rawSet.jointConfigureMotorModel(handle, ANG_Y, 1);
+    rawSet.jointConfigureMotorModel(handle, ANG_Z, 1);
   }
 }
 

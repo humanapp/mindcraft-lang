@@ -2,19 +2,24 @@
 //
 // Implements RigIO on top of RapierRig + Rapier world.
 //
-// This version is intentionally "v0":
-// - driveJoint applies PD torques directly to parent/child bodies (world-space).
+// - driveJoint uses Rapier's built-in constraint-solver motors for ALL
+//   joint types (revolute + spherical). This gives bidirectional torques
+//   (Newton's 3rd law) and implicit integration (high stiffness, no lag).
 // - footContact uses raycasts from soleLocalPoint downward.
 // - comWorld/comVelWorld are mass-weighted averages of rigid bodies.
-//
-// You can expand this incrementally without changing the controller surface area.
 
 import type { RayColliderIntersection } from "@dimforge/rapier3d-compat";
 import type { Quat, Vec3 } from "@/lib/math";
-import { clamp, cross, dot, len, normalize, qInverse, qMul, qNormalize, qRotateVec3, scale, sub, v3 } from "@/lib/math";
+import { clamp, cross, dot, len, normalize, qRotateVec3, scale, sub, v3 } from "@/lib/math";
 import type { BodySample, FootName, JointDef, JointName, PartName, RigDefinition } from "@/rig/RigDefinition";
 import type { FootContact, JointDriveCommand, JointReadout, RigIO } from "@/rig/RigIO";
 import type { RapierModule, RapierRig, RapierWorld } from "./RapierRig";
+
+/** Minimal type for Rapier's raw WASM impulse joint set. */
+interface RawJointSet {
+  jointConfigureMotorPosition(handle: number, axis: number, target: number, stiffness: number, damping: number): void;
+  jointConfigureMotorModel(handle: number, axis: number, model: number): void;
+}
 
 export class RapierRigIO implements RigIO {
   private readonly RAPIER: RapierModule;
@@ -108,6 +113,7 @@ export class RapierRigIO implements RigIO {
     const footDef = this.def.feet.find((f) => f.name === foot);
     if (!footDef) throw new Error(`RigDefinition missing foot ${foot}`);
 
+    const footRb = this.rig.getBody(footDef.part as PartName);
     const footBody = this.sampleBody(footDef.part as PartName);
 
     // Sole world point = footPos + footRot * soleLocalPoint
@@ -117,7 +123,20 @@ export class RapierRigIO implements RigIO {
     const rayDir = { x: 0, y: -1, z: 0 };
 
     const ray = new this.RAPIER.Ray(rayOrigin, rayDir);
-    const hit: RayColliderIntersection | null = this.world.castRayAndGetNormal(ray, this.footRayLen, true);
+
+    // Exclude the foot's own rigid body from the raycast so we don't
+    // self-intersect. Parameters 4-6 (filterFlags, filterGroups,
+    // filterExcludeCollider) are left undefined; parameter 7 is the
+    // rigid body to exclude.
+    const hit: RayColliderIntersection | null = this.world.castRayAndGetNormal(
+      ray,
+      this.footRayLen,
+      true,
+      undefined,
+      undefined,
+      undefined,
+      footRb
+    );
 
     if (!hit) {
       return { grounded: false, contacts: [] };
@@ -151,67 +170,16 @@ export class RapierRigIO implements RigIO {
   driveJoint(joint: JointName, cmd: JointDriveCommand): void {
     const jd = this.rig.getJointDef(joint);
 
-    // For hinge joints, update the Rapier built-in motor target instead of
-    // applying external PD torque impulses. The built-in motor is solved
-    // inside the constraint solver (no one-frame lag) and is stable even
-    // for very light bodies where external impulses overshoot.
+    // Both hinge and ball joints use Rapier's built-in constraint-solver
+    // motor. This is solved implicitly (no one-frame lag), applies
+    // equal-and-opposite torques to parent and child (Newton's 3rd law),
+    // and transmits forces through the kinematic chain naturally.
     if (jd.limits.kind === "hinge") {
       this.driveHingeMotor(joint, jd, cmd);
       return;
     }
 
-    // Ball joints: external PD torque impulse.
-    const parent = this.sampleBody(jd.parent as PartName);
-    const child = this.sampleBody(jd.child as PartName);
-
-    // Compute joint frame rotations in world:
-    // parentJointRotWorld = parent.rot * parentFrameRot
-    // childJointRotWorld  = child.rot  * childFrameRot
-    const parentJointRotWorld = qMul(parent.rot, jd.parentFrameRot);
-    const childJointRotWorld = qMul(child.rot, jd.childFrameRot);
-
-    // Current relative rotation in JOINT SPACE:
-    // currentRel = inv(parentJoint) * childJoint
-    const currentRel = qMul(qInverse(parentJointRotWorld), childJointRotWorld);
-
-    // Error: target * inv(current)
-    const qErr = qMul(cmd.targetLocalRot, qInverse(currentRel));
-    const qErrN = qNormalize(qErr);
-
-    // Axis-angle from quaternion error
-    const aa = quatToAxisAngle(qErrN);
-    const axisLocal = aa.axis; // in JOINT SPACE
-    let angle = aa.angle; // radians
-
-    // Wrap to [-pi, pi] for stability
-    if (angle > Math.PI) angle -= 2 * Math.PI;
-    if (angle < -Math.PI) angle += 2 * Math.PI;
-
-    // If tiny error, skip
-    if (Math.abs(angle) < 1e-5) return;
-
-    // Convert axis to WORLD for torque direction:
-    // axisWorld = parentJointRotWorld * axisLocal
-    const axisWorld = qRotateVec3(parentJointRotWorld, axisLocal);
-
-    // Relative angular velocity along axis (world)
-    // relAngVel = child.angVel - parent.angVel
-    const relAngVel = sub(child.angVel, parent.angVel);
-    const relOmega = dot(relAngVel, axisWorld);
-
-    // PD torque magnitude
-    const torqueMag = cmd.kp * angle - cmd.kd * relOmega;
-
-    // Clamp
-    const maxT = Math.max(0, cmd.maxTorque);
-    const clampedMag = clamp(torqueMag, -maxT, maxT);
-
-    const torqueWorld = scale(axisWorld, clampedMag);
-
-    // Apply torque only to the child. The joint constraint will transfer
-    // the reaction to the parent naturally. Applying equal/opposite torques
-    // to both bodies fights the constraint solver and causes oscillation.
-    this.applyTorqueImpulse(jd.child as PartName, torqueWorld);
+    this.driveBallMotor(joint, cmd);
   }
 
   /**
@@ -240,6 +208,61 @@ export class RapierRigIO implements RigIO {
       configureMotorPosition(target: number, stiffness: number, damping: number): void;
     };
     revolute.configureMotorPosition(targetAngle, cmd.kp * 10, cmd.kd * 10);
+
+    // Override motor model: configureMotorPosition always sets
+    // AccelerationBased (torque scaled by effective mass -- too weak for
+    // balance actuation). ForceBased (1) uses stiffness as N*m/rad.
+    // Revolute joints use AngX (3) as their motor axis.
+    const rawSet = (rapierJoint as unknown as { rawSet: RawJointSet }).rawSet;
+    rawSet.jointConfigureMotorModel(rapierJoint.handle, 3, 1);
+  }
+
+  /**
+   * Drive a spherical (ball) joint using Rapier's per-axis built-in motor.
+   *
+   * Rapier's constraint solver handles the motor implicitly -- same as the
+   * revolute motor but applied independently on AngX, AngY, AngZ. This
+   * gives us:
+   * - No one-frame lag (solved inside the constraint step)
+   * - Newton's 3rd law (equal-and-opposite torques on parent and child)
+   * - Higher effective stiffness than external torque impulses
+   * - Natural force chain through the kinematic tree
+   *
+   * The target quaternion is decomposed into intrinsic XYZ Euler angles.
+   * For small angles (typical for balance perturbations) this is accurate.
+   */
+  private driveBallMotor(joint: JointName, cmd: JointDriveCommand): void {
+    const rapierJoint = this.rig.getJoint(joint);
+
+    // Access the raw impulse joint set directly. The joint wrapper itself
+    // stores the same rawSet reference used by the revolute motor path.
+    const rawSet = (rapierJoint as unknown as { rawSet: RawJointSet }).rawSet;
+    const handle = rapierJoint.handle;
+
+    // RawJointAxis enum values (NOT the JointAxesMask bitmask!)
+    // RawJointAxis: LinX=0, LinY=1, LinZ=2, AngX=3, AngY=4, AngZ=5
+    const ANG_X = 3;
+    const ANG_Y = 4;
+    const ANG_Z = 5;
+
+    // Decompose target quaternion into intrinsic XYZ Euler angles.
+    // For rest pose (identity quat), all angles are 0.
+    const euler = quatToEulerXYZ(cmd.targetLocalRot);
+
+    const stiffness = cmd.kp * 10;
+    const damping = cmd.kd * 10;
+
+    rawSet.jointConfigureMotorPosition(handle, ANG_X, euler.x, stiffness, damping);
+    rawSet.jointConfigureMotorPosition(handle, ANG_Y, euler.y, stiffness, damping);
+    rawSet.jointConfigureMotorPosition(handle, ANG_Z, euler.z, stiffness, damping);
+
+    // Override motor model: configureMotorPosition always sets
+    // AccelerationBased (torque scaled by effective mass -- too weak for
+    // balance). ForceBased (1) uses stiffness directly as N*m/rad.
+    const FORCE_BASED = 1;
+    rawSet.jointConfigureMotorModel(handle, ANG_X, FORCE_BASED);
+    rawSet.jointConfigureMotorModel(handle, ANG_Y, FORCE_BASED);
+    rawSet.jointConfigureMotorModel(handle, ANG_Z, FORCE_BASED);
   }
 
   applyTorque(part: PartName, torqueWorld: Vec3): void {
@@ -360,4 +383,61 @@ function quatToAxisAngle(qq: Quat): { axis: Vec3; angle: number } {
 
   const angle = 2 * Math.atan2(sinHalf, w);
   return { axis: normalize(axis), angle };
+}
+
+/**
+ * Decompose a quaternion into intrinsic XYZ Euler angles (radians).
+ *
+ * For small rotations (typical for joint PD targets), this is nearly
+ * identical to the axis-angle components. For identity quaternion it
+ * returns (0, 0, 0).
+ */
+function quatToEulerXYZ(qq: Quat): Vec3 {
+  // Ensure w > 0 for shortest-path
+  const q = qq.w < 0 ? { x: -qq.x, y: -qq.y, z: -qq.z, w: -qq.w } : qq;
+
+  // Standard intrinsic XYZ Euler extraction from rotation matrix elements
+  // R = Rx(a) * Ry(b) * Rz(c)
+  //
+  // Matrix from quaternion:
+  // R00 = 1 - 2(yy + zz)   R01 = 2(xy - wz)       R02 = 2(xz + wy)
+  // R10 = 2(xy + wz)       R11 = 1 - 2(xx + zz)   R12 = 2(yz - wx)
+  // R20 = 2(xz - wy)       R21 = 2(yz + wx)        R22 = 1 - 2(xx + yy)
+  //
+  // For XYZ intrinsic: b = asin(R02), a = atan2(-R12, R22), c = atan2(-R01, R00)
+
+  const xx = q.x * q.x;
+  const yy = q.y * q.y;
+  const zz = q.z * q.z;
+  const xy = q.x * q.y;
+  const xz = q.x * q.z;
+  const yz = q.y * q.z;
+  const wx = q.w * q.x;
+  const wy = q.w * q.y;
+  const wz = q.w * q.z;
+
+  const r02 = 2 * (xz + wy);
+  const sinB = clamp(r02, -1, 1);
+
+  let a: number;
+  let b: number;
+  let c: number;
+
+  if (Math.abs(sinB) > 0.9999) {
+    // Gimbal lock -- use atan2 fallback
+    b = Math.asin(sinB);
+    a = Math.atan2(2 * (wx + yz), 1 - 2 * (xx + yy));
+    c = 0;
+  } else {
+    const r12 = 2 * (yz - wx);
+    const r22 = 1 - 2 * (xx + yy);
+    const r01 = 2 * (xy - wz);
+    const r00 = 1 - 2 * (yy + zz);
+
+    b = Math.asin(sinB);
+    a = Math.atan2(-r12, r22);
+    c = Math.atan2(-r01, r00);
+  }
+
+  return { x: a, y: b, z: c };
 }
