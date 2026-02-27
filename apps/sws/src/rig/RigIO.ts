@@ -46,6 +46,11 @@ export interface RigIO {
   // Used for swing-leg gravity compensation during step.
   applyForce(part: PartName, forceWorld: Vec3): void;
 
+  // Set linear damping on ALL rigid bodies in the rig.
+  // Used to reduce damping when the rig has fallen so the fall looks
+  // natural instead of slow-motion.
+  setAllLinearDamping(damping: number): void;
+
   // Utility (optional)
   groundRaycast(from: Vec3, to: Vec3): { hit: boolean; point?: Vec3; normal?: Vec3 };
 }

@@ -352,6 +352,12 @@ export class RapierRigIO implements RigIO {
     rb.applyImpulse(impulse, true);
   }
 
+  setAllLinearDamping(damping: number): void {
+    for (const part of this.rig.listParts()) {
+      this.rig.getBody(part).setLinearDamping(damping);
+    }
+  }
+
   private applyTorqueImpulse(part: PartName, torqueWorld: Vec3): void {
     const rb = this.rig.getBody(part);
 

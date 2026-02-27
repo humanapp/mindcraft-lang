@@ -262,9 +262,9 @@ export const CATCH_STEP_DEFAULTS = {
   // if the error is still high the controller re-triggers with minimal
   // settle time and zero cooldown instead of waiting.
   maxConsecutiveSteps: 5, // hard cap on rapid re-stepping
-  multiStepSettleTime: 0.06, // seconds -- brief settle between consecutive steps
+  multiStepSettleTime: 0.25, // seconds -- brief settle between consecutive steps
   multiStepErrorThresh: 0.08, // meters -- error above this allows rapid re-step (above triggerErrorHi)
-  multiStepVelThresh: 0.2, // m/s -- COM velocity above this allows rapid re-step (above triggerVelXZ)
+  multiStepVelThresh: 0.6, // m/s -- COM velocity above this allows rapid re-step (above triggerVelXZ)
 
   // Upper-body counter-rotation: during stepping, yaw the torso opposite
   // to the fall direction. The torso's angular momentum change creates a
@@ -378,6 +378,14 @@ export class CatchStepController {
   // Multi-step tracking
   private consecutiveSteps = 0;
 
+  // Anti-stomp: tracks how many step sequences have completed without
+  // the rig reaching a truly stable idle (low error + low velocity for
+  // a sustained period). Each fruitless sequence raises the effective
+  // trigger threshold so the rig stops stomping and lets the ankle
+  // strategy settle the residual offset.
+  private recentSequences = 0;
+  private stableIdleTime = 0;
+
   private _debug: CatchStepDebug | null = null;
   get debug(): CatchStepDebug | null {
     return this._debug;
@@ -422,8 +430,40 @@ export class CatchStepController {
       this.comVelXZF = smooth1(this.comVelXZF, comVelXZ, alpha);
     }
 
+    // Anti-stomp: track how long the rig has been in a truly stable
+    // idle state (STAND with low error and low velocity). Reset the
+    // sequence counter once the rig proves it can stand still.
+    if (this.state === "STAND" && this.errorMagF < 0.06 && this.comVelXZF < 0.15) {
+      this.stableIdleTime += dt;
+      if (this.stableIdleTime > 0.5) {
+        this.recentSequences = 0;
+      }
+    } else {
+      this.stableIdleTime = 0;
+    }
+
+    // Safety valve: if the rig is stuck in STAND with a large error for
+    // too long, the anti-stomp boost is preventing a needed corrective
+    // step. Reset the counter so a step can fire.
+    if (this.state === "STAND" && this.recentSequences > 0 && this.errorMagF > 0.1 && this.tState > 1.5) {
+      console.log("[CatchStep] anti-stomp safety valve: resetting recentSequences", this.recentSequences);
+      this.recentSequences = 0;
+    }
+
+    // hipLateralScale is left at its default (0) -- hip lateral balance
+    // is currently disabled. Opposite hip roll tilts the pelvis visually
+    // without effectively shifting COM. Catch steps and torso lean PD
+    // handle lateral correction instead.
+
+    // Effective trigger threshold: raised by 0.02m per recent fruitless
+    // sequence, up to +0.06m (3 sequences). This makes the controller
+    // progressively less eager to re-step when steps aren't helping.
+    const triggerBoost = Math.min(this.recentSequences * 0.02, 0.06);
+    const effectiveTriggerHi = this.cfg.triggerErrorHi + triggerBoost;
+    const effectiveTriggerLo = this.cfg.triggerErrorLo + triggerBoost;
+
     // Hold timer: "error has been above triggerErrorHi for X seconds"
-    if (this.errorMagF > this.cfg.triggerErrorHi) {
+    if (this.errorMagF > effectiveTriggerHi) {
       this.overErrorTime += dt;
     } else {
       // Decay quickly to avoid sticky triggering
@@ -448,7 +488,7 @@ export class CatchStepController {
           !tiltTooHigh &&
           this.cooldown <= 0 &&
           (this.overErrorTime >= this.cfg.triggerHoldTime ||
-            (this.errorMagF > this.cfg.triggerErrorLo && this.comVelXZF > this.cfg.triggerVelXZ));
+            (this.errorMagF > effectiveTriggerLo && this.comVelXZF > this.cfg.triggerVelXZ));
 
         if (shouldTrigger) {
           this.enterStepPrep(io, err);
@@ -801,11 +841,18 @@ export class CatchStepController {
   // --------------------------------------------------------------------------
 
   private enterStand(): void {
-    console.log("[CatchStep] -> STAND", `steps:${this.consecutiveSteps}`);
+    console.log("[CatchStep] -> STAND", `steps:${this.consecutiveSteps}`, `seqCount:${this.recentSequences}`);
     this.state = "STAND";
     this.tState = 0;
     this.tSwing = 0;
     this.tLand = 0;
+
+    // Track fruitless sequences for anti-stomp logic. Only count if
+    // we actually took steps (consecutiveSteps > 0). The counter is
+    // reset once the rig reaches a stable idle in the state machine.
+    if (this.consecutiveSteps > 0) {
+      this.recentSequences++;
+    }
     this.consecutiveSteps = 0;
 
     this.stepFoot = null;

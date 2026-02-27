@@ -51,6 +51,15 @@ export class RapierRig {
     this.world = world;
     this.def = def;
 
+    // The rig's joint chain (root -> hip -> knee -> ankle -> foot -> ground)
+    // is 5-6 constraints deep. Rapier's default 4 solver iterations is not
+    // enough to propagate motor forces through this chain in a single step,
+    // making joint motors almost completely ineffective. 8 iterations lets
+    // the constraint solver propagate forces end-to-end reliably.
+    if (world.numSolverIterations < 8) {
+      world.numSolverIterations = 8;
+    }
+
     this.buildBodies(spawn);
     this.buildJoints();
   }
@@ -202,7 +211,7 @@ export class RapierRig {
     const rbDesc = R.RigidBodyDesc.dynamic()
       .setTranslation(worldPos.x, worldPos.y, worldPos.z)
       .setRotation({ x: worldRot.x, y: worldRot.y, z: worldRot.z, w: worldRot.w })
-      .setLinearDamping(0.2)
+      .setLinearDamping(6.5)
       .setAngularDamping(4.0);
 
     const rb = this.world.createRigidBody(rbDesc);

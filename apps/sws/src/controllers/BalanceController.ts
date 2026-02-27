@@ -50,14 +50,29 @@ export const BALANCE_DEFAULTS = {
   recoverTiltRad: 0.25, // ~14 degrees -- hysteresis band
 
   // Ankle balance gains (primary actuator)
-  ankleP: 8.0,
-  ankleD: 2.5,
-  ankleMaxRad: 0.25,
+  ankleP: 14.0,
+  ankleD: 4.0,
+  ankleMaxRad: 0.35,
 
   // Torso lean gains (hip strategy -- leans torso opposite to COM error)
-  torsoLeanP: 3.0,
-  torsoLeanD: 1.0,
-  torsoLeanMaxRad: 0.35, // ~20 degrees max lean
+  torsoLeanP: 5.0,
+  torsoLeanD: 1.5,
+  torsoLeanMaxRad: 0.45, // ~26 degrees max lean
+  // Below this error magnitude (meters), torso lean fades to zero.
+  // Prevents a visible residual lean at idle when the COM sits at a
+  // small static offset (common with high linear damping).
+  torsoLeanDeadband: 0.015, // meters -- error below this = no lean
+  torsoLeanFadeRange: 0.015, // meters -- linear fade from deadband to deadband+fadeRange
+
+  // Hip lateral balance gains (lateral COM correction).
+  // The ankle is pitch-only, so lateral COM error has no ankle actuator.
+  // The hip lateral strategy uses symmetric hip roll (both hips get the
+  // same Z-axis rotation) to shift the pelvis laterally back under COM.
+  // Positive errLocal.x -> positive Z roll -> left hip adducts, right
+  // hip abducts -> pelvis shifts LEFT (opposing the error).
+  hipLateralP: 1.5,
+  hipLateralD: 0.5,
+  hipLateralMaxRad: 0.12, // ~7 degrees max hip roll for lateral balance
 
   // Joint drive gains
   //
@@ -65,7 +80,7 @@ export const BALANCE_DEFAULTS = {
   // which is solved inside the constraint solver. The gains here are
   // passed through to the motor (scaled 10x for Rapier units). The
   // motor handles Newton's 3rd law and fights gravity directly.
-  standingTorso: { kp: 40, kd: 12, max: 120 },
+  standingTorso: { kp: 50, kd: 14, max: 150 },
   standingHip: { kp: 40, kd: 12, max: 120 },
   standingKnee: { kp: 80, kd: 14, max: 250 },
   standingAnkle: { kp: 25, kd: 10, max: 80 },
@@ -77,9 +92,19 @@ export const BALANCE_DEFAULTS = {
   fallenKnee: { kp: 5, kd: 4, max: 15 },
   fallenAnkle: { kp: 2, kd: 3, max: 5 },
   fallenHead: { kp: 2, kd: 3, max: 5 },
-  fallenArm: { kp: 1, kd: 2, max: 3 },
+  fallenArm: { kp: 0, kd: 3, max: 3 },
 
   defaultKneeBend: 0.12,
+
+  // Linear damping applied to all bodies. High standing damping absorbs
+  // impulse momentum for recovery; low fallen damping lets the rig
+  // topple naturally instead of sinking slowly.
+  standingLinearDamping: 6.5,
+  fallenLinearDamping: 0.5,
+  // Delay before dropping damping after entering fallen state (seconds).
+  // Gives the rig time to recover from borderline tilts before committing
+  // to a low-damping fall.
+  fallenDampingDelay: 0.4,
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -121,6 +146,8 @@ export class BalanceController {
   private filteredCom: Vec3 = v3(0, 0, 0);
   private initialized = false;
   private fallen = false;
+  private fallenTime = 0; // how long fallen state has been active
+  private dampingReduced = false; // whether damping is currently at fallen level
 
   // External bias applied to torso lean target (pitch, roll in radians).
   // Set by CatchStepController to lean INTO the step direction during
@@ -133,6 +160,12 @@ export class BalanceController {
   // fighting the error is counterproductive. CatchStepController sets
   // this to a low value during stepping to suppress the error-based lean.
   torsoLeanScale = 1.0;
+
+  // Attenuation factor (0..1) for the hip lateral balance strategy.
+  // Currently disabled (0) -- opposite hip roll tilts the pelvis
+  // visually but doesn't effectively shift COM laterally. The torso
+  // lean PD and catch step handle lateral correction instead.
+  hipLateralScale = 0;
 
   // Yaw bias (radians around +Y). Set by CatchStepController for
   // upper-body counter-rotation: rotating the torso opposite to the
@@ -181,8 +214,25 @@ export class BalanceController {
     // ------------------------------------------------------------------
     if (!this.fallen && tiltRad > this.cfg.fallenTiltRad) {
       this.fallen = true;
+      this.fallenTime = 0;
     } else if (this.fallen && tiltRad < this.cfg.recoverTiltRad) {
       this.fallen = false;
+      this.fallenTime = 0;
+    }
+
+    // Delayed damping switch: only reduce damping after the rig has been
+    // continuously fallen for fallenDampingDelay seconds. This prevents
+    // borderline tilts from losing the high damping needed for recovery.
+    // Restore damping immediately when the rig recovers.
+    if (this.fallen) {
+      this.fallenTime += dt;
+      if (!this.dampingReduced && this.fallenTime > this.cfg.fallenDampingDelay) {
+        io.setAllLinearDamping(this.cfg.fallenLinearDamping);
+        this.dampingReduced = true;
+      }
+    } else if (this.dampingReduced) {
+      io.setAllLinearDamping(this.cfg.standingLinearDamping);
+      this.dampingReduced = false;
     }
 
     const g = this.cfg;
@@ -255,13 +305,26 @@ export class BalanceController {
     let torsoPitchActual = 0;
     let torsoRollActual = 0;
     if (anyGrounded && !this.fallen) {
+      // Fade torso lean to zero when error AND velocity are both small.
+      // This prevents a visible residual lean at idle when the COM sits
+      // at a minor static offset (common with high linear damping). The
+      // velocity gate ensures the deadband only activates when the rig
+      // is truly idle, not when error momentarily dips during active
+      // recovery.
+      const comVelXZ = Math.sqrt(comVel.x * comVel.x + comVel.z * comVel.z);
+      const isIdle = comVelXZ < 0.15;
+      const leanFade = isIdle
+        ? clamp((errorMag - g.torsoLeanDeadband) / Math.max(g.torsoLeanFadeRange, 1e-6), 0, 1)
+        : 1.0;
+      const effectiveLeanScale = this.torsoLeanScale * leanFade;
+
       torsoPitchActual = clamp(
-        (-g.torsoLeanP * errLocal.z - g.torsoLeanD * velLocal.z) * this.torsoLeanScale + this.torsoBiasPitch,
+        (-g.torsoLeanP * errLocal.z - g.torsoLeanD * velLocal.z) * effectiveLeanScale + this.torsoBiasPitch,
         -g.torsoLeanMaxRad,
         g.torsoLeanMaxRad
       );
       torsoRollActual = clamp(
-        (-g.torsoLeanP * errLocal.x - g.torsoLeanD * velLocal.x) * this.torsoLeanScale + this.torsoBiasRoll,
+        (-g.torsoLeanP * errLocal.x - g.torsoLeanD * velLocal.x) * effectiveLeanScale + this.torsoBiasRoll,
         -g.torsoLeanMaxRad,
         g.torsoLeanMaxRad
       );
@@ -316,16 +379,35 @@ export class BalanceController {
       maxTorque: armG.max,
     });
 
-    // Hips: rest pose hold
+    // Hips: rest pose + lateral balance.
+    // When the COM drifts laterally (errLocal.x), apply opposite hip roll
+    // to shift the pelvis back under the COM. Positive errLocal.x means
+    // COM is RIGHT of support, so we need NEGATIVE roll (lean pelvis left).
+    // Each hip gets opposite roll: when the pelvis tilts left, the left
+    // hip adducts (negative roll) and the right hip abducts (positive roll
+    // in its local frame). Since both hip joints share the same Z axis
+    // convention relative to Root, applying -rollRad to the left hip and
+    // +rollRad to the right hip tilts the pelvis appropriately.
+    // Scaled by hipLateralScale so CatchStepController can gate activation.
     const hipG = standing ? g.standingHip : g.fallenHip;
+    const hipRollRad =
+      anyGrounded && !this.fallen && this.hipLateralScale > 0
+        ? clamp(
+            -(g.hipLateralP * errLocal.x + g.hipLateralD * velLocal.x) * this.hipLateralScale,
+            -g.hipLateralMaxRad,
+            g.hipLateralMaxRad
+          )
+        : 0;
+    const leftHipTarget = hipRollRad !== 0 ? qFromAxisAngle(v3(0, 0, 1), hipRollRad) : rest;
+    const rightHipTarget = hipRollRad !== 0 ? qFromAxisAngle(v3(0, 0, 1), -hipRollRad) : rest;
     io.driveJoint("Root_LeftUpperLeg", {
-      targetLocalRot: rest,
+      targetLocalRot: leftHipTarget,
       kp: hipG.kp,
       kd: hipG.kd,
       maxTorque: hipG.max,
     });
     io.driveJoint("Root_RightUpperLeg", {
-      targetLocalRot: rest,
+      targetLocalRot: rightHipTarget,
       kp: hipG.kp,
       kd: hipG.kd,
       maxTorque: hipG.max,

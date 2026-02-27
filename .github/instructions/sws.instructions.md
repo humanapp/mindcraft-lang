@@ -61,14 +61,20 @@ Temporary hacks for debugging are allowed but must be removable.
 
 Standing balance is achieved. The rig holds an upright rest pose using
 ForceBased PD joint motors and an ankle inverted-pendulum strategy.
+Multi-step catch-step recovery is functional: all 8 small (30 N*s) and
+all 8 medium (70 N*s) impulse directions pass the headless harness.
+Large impulses (120 N*s) are partially handled (2/8 pass, 18/24 overall).
 
-The current milestone is: refine balance quality, begin gait planning.
+The current milestone is: adjust body proportions to match Roblox R6 rig
+(root+torso is currently too tall relative to a typical humanoid), then
+re-tune balance parameters for the new proportions. Expect all gains,
+damping, and thresholds to need adjustment since COM height, moment of
+inertia, and lever arms will all shift.
 
 The rig should:
 
 - Not self-collide.
 - Not explode or jitter.
-- Not rely on massive damping to remain stable.
 - Respect hinge limits on knees and ankles.
 - Use reasonable kp/kd values, not extreme stiffness.
 
@@ -279,3 +285,160 @@ Each controller:
 
 When adding new tunable parameters, add them to the relevant defaults
 object, not as module-level constants.
+
+## 12. Rapier Solver Iterations (Critical)
+
+Rapier's default `numSolverIterations` is 4. This is insufficient for the
+rig's 5-6 constraint chain (root -> hip -> knee -> ankle -> foot -> ground).
+At 4 iterations, motor forces cannot propagate end-to-end in a single step,
+making joint motors almost completely ineffective -- even 6x gain increases
+produce negligible changes in behavior.
+
+`RapierRig` sets `world.numSolverIterations = 8` in its constructor. Do not
+reduce this below 8. Higher values (12, 16) improve constraint convergence
+but shift which directions recover best (the system is chaotic at the
+boundary), so changes should be validated across all harness directions.
+
+## 13. Linear Damping Sensitivity
+
+Linear damping on rig bodies is the single most impactful parameter for
+impulse recovery. It controls how quickly translational momentum decays.
+
+- The original value (0.2) made impulse momentum persist indefinitely,
+  so catch steps repositioned the foot but the COM kept sliding.
+- The current value (6.5) absorbs momentum fast enough for the ankle
+  strategy and catch steps to restore balance within the 5s sim window.
+
+Damping interacts with catch step timing: higher damping means each step
+has to fight less residual velocity, but too-high damping (> ~8) can
+change which directions pass and makes the rig look unnaturally stiff
+(sustaining angles where it should fall). Validate across all 8 directions
+x 3 magnitudes when changing this value.
+
+### Fallen damping switch
+
+When the rig enters fallen state (tilt > 43 deg), `standingLinearDamping`
+makes the fall look slow and underwater. BalanceController switches to
+`fallenLinearDamping` (0.5) for a natural-looking topple, but ONLY after
+`fallenDampingDelay` (0.4s) of continuous fallen state. This delay is
+critical: dropping damping immediately at the fallen threshold removes
+the momentum absorption needed for borderline recoveries.
+
+Damping restores immediately when the rig recovers (tilt < recoverTiltRad).
+
+Angular damping (4.0) is less sensitive but should stay comparable to
+linear damping to prevent spin-out without over-damping joint motor
+responses.
+
+## 14. Multi-Step Re-Triggering
+
+The CatchStepController's multi-step recovery allows rapid consecutive
+steps when error remains high after a step. Key parameters:
+
+- `multiStepSettleTime` -- how long to wait between consecutive steps.
+  Too short (< 0.1s) causes over-stepping: the rig takes many rapid steps
+  that destabilize rather than correct. Too long (> 0.4s) wastes recovery
+  time. Current value: 0.25s.
+- `multiStepVelThresh` -- COM velocity threshold for re-triggering. Below
+  this threshold, the controller returns to STAND and waits for the full
+  cooldown before stepping again. Current value: 0.6 m/s.
+- `maxConsecutiveSteps` -- hard cap. Increasing beyond 5 generally hurts
+  because the rig enters an oscillatory stepping pattern rather than
+  settling.
+
+## 15. Headless Harness
+
+The headless harness (`src/test/headless-harness.ts`) is the primary
+validation tool for balance tuning. It runs 8 directions x 3 magnitudes
+(30/70/120 N*s impulses) at yaw 0, with 120 settle frames + 300 sim
+frames at 1/60s. Pass threshold: finalTilt < 0.1 rad.
+
+Run with: `npm run test:harness`
+
+Key behaviors:
+- Console output from controllers is suppressed during trials.
+- Each trial creates a fresh world, rig, and controllers.
+- The harness exits with code 1 if any trial fails.
+- Results are directionally sensitive -- a change that fixes forward
+  can break backward. Always check all 24 trials.
+
+## 16. Parameter Tuning Lessons
+
+Tuning this rig is highly non-linear. Observations from systematic
+parameter sweeps:
+
+- **Motor gain changes have near-zero effect when solver iterations are
+  too low.** Always verify solver iterations are >= 8 before tuning gains.
+- **Ankle motor stiffness is destabilizing above ~kp=30.** The constraint
+  solver with 8 iterations cannot converge with stiff ankle motors;
+  higher stiffness causes oscillation and falls, especially laterally.
+- **Torso lean gains above P=5 / D=1.5 hurt more than help.** Excessive
+  lean fights the catch step mechanism.
+- **Standing joint gains (hip/knee/torso) are relatively insensitive.**
+  Changes of +/- 25% produce small or mixed effects.
+- **Linear damping dominates all other parameters** for impulse recovery.
+  A 2x change in damping has more effect than any combination of gain
+  changes.
+- **Solver iteration count shifts directional bias.** iter=8 and iter=12
+  favor different subsets of directions. Pick one and tune to it.
+- **Faster step timing hurts.** Reducing prep/swing time below defaults
+  causes worse outcomes because the foot doesn't reach the target and
+  the single-leg phase becomes too compressed for the balance controller.
+
+## 17. Anti-Stomp Cycle Logic
+
+After a catch step sequence finishes without reaching stable idle, the
+rig can re-trigger steps immediately if error remains above the trigger
+threshold. This produces a visible "stomp cycle" -- the rig leans to one
+side, repeatedly stomps one foot, and never settles.
+
+CatchStepController tracks `recentSequences` (count of fruitless step
+sequences) and raises the effective trigger threshold by 0.02m per
+sequence (capped at +0.06m). This progressively suppresses re-stepping
+when steps aren't helping, letting ankle strategy and torso lean settle
+the residual offset.
+
+- **Stable idle reset:** error < 0.06m AND velocity < 0.15 m/s for 0.5s
+  resets the counter.
+- **Safety valve:** if STAND persists with error > 0.10m for > 1.5s, the
+  counter resets to allow a corrective step.
+
+## 18. Fallen State Gains
+
+When fallen, joint motor gains drop dramatically to prevent ground
+spasming. Tuning notes:
+
+- **Arm kp must be 0 when fallen.** Any stiffness creates a spring-back
+  effect that makes the rig bounce when landing on an arm. Use kd-only
+  (damped, no restoring force) for limp arms on landing.
+- Other fallen gains (torso, hip, knee, ankle, head) keep small kp values
+  to prevent total ragdoll but are low enough to not fight the fall.
+
+## 19. Hip Lateral Balance (Disabled)
+
+An attempt was made to add hip roll as a lateral COM actuator (since
+ankles are pitch-only). Applying opposite Z-axis roll to left/right hips
+tilts the pelvis but does NOT effectively shift COM laterally over the
+support base. The result:
+
+- Introduces visible sustained lean that hip motors maintain.
+- Slows recovery to upright after stepping.
+- Reduces overall robustness.
+
+The config (`hipLateralP`, `hipLateralD`, `hipLateralMaxRad`) and plumbing
+(`hipLateralScale` on BalanceController) remain in place but are disabled
+(default scale = 0). Lateral correction relies on torso lean PD and catch
+steps. A future approach might use ankle inversion/eversion if the rig
+gains ankle roll joints.
+
+## 20. RigIO Interface Extensions
+
+`setAllLinearDamping(damping: number)` was added to RigIO for runtime
+damping switching. Implemented in RapierRigIO by iterating all parts and
+calling `setLinearDamping` on each rigid body. Used by BalanceController
+for the fallen damping switch (section 13).
+
+When adding new RigIO methods:
+1. Add to the `RigIO` interface in `rig/RigIO.ts`.
+2. Implement in `physics/RapierRigIO.ts`.
+3. Will need a corresponding implementation in the Roblox backend later.

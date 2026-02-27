@@ -143,18 +143,26 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
 
       let impulse: { x: number; y: number; z: number } | null = null;
 
+      const sign = e.shiftKey ? -1 : 1; // Hold Shift for opposite direction
+
+      const forces = {
+        small: 30,
+        medium: 70,
+        large: 120,
+      };
+
       switch (e.key) {
         // 1 - Gentle forward nudge (~10 N*s on a ~34kg rig)
         case "1":
-          impulse = { x: fwd.x * 10, y: fwd.y * 10, z: fwd.z * 10 };
+          impulse = { x: fwd.x * forces.small * sign, y: fwd.y * forces.small, z: fwd.z * forces.small * sign };
           break;
         // 2 - Side shove (~70 N*s rightward)
         case "2":
-          impulse = { x: right.x * 70, y: right.y * 70, z: right.z * 70 };
+          impulse = { x: right.x * forces.medium * sign, y: right.y * forces.medium, z: right.z * forces.medium * sign };
           break;
-        // 3 - Hard forward shove (~120 N*s, should trigger catch step or topple)
+        // 3 - Hard forward shove (~100 N*s, should trigger catch step or topple)
         case "3":
-          impulse = { x: fwd.x * 120, y: fwd.y * 120, z: fwd.z * 120 };
+          impulse = { x: fwd.x * forces.large * sign, y: fwd.y * forces.large, z: fwd.z * forces.large * sign };
           break;
       }
 

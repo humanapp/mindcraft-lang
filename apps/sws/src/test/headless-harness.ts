@@ -13,6 +13,7 @@
 // `runHarness(overrides)`.
 
 import RAPIER from "@dimforge/rapier3d-compat";
+import type { BalanceConfig } from "@/controllers/BalanceController";
 import { BalanceController } from "@/controllers/BalanceController";
 import type { CatchStepConfig } from "@/controllers/CatchStepController";
 import { CatchStepController } from "@/controllers/CatchStepController";
@@ -126,6 +127,7 @@ function runTrial(
   facingYaw: number,
   dirLocal: Vec3,
   magnitude: number,
+  balanceOverrides?: Partial<BalanceConfig>,
   catchStepOverrides?: Partial<CatchStepConfig>
 ): TrialResult {
   // Silence BalanceController's per-frame console.log during simulation
@@ -143,7 +145,7 @@ function runTrial(
   });
 
   const io = new RapierRigIO(RAPIER, world, rig);
-  const balance = new BalanceController();
+  const balance = new BalanceController(balanceOverrides);
   const catchStep = new CatchStepController(balance, catchStepOverrides);
 
   // -- Settle phase: let the rig reach equilibrium --
@@ -214,6 +216,7 @@ function runTrial(
 // ---------------------------------------------------------------------------
 
 export interface HarnessOptions {
+  balanceOverrides?: Partial<BalanceConfig>;
   catchStepOverrides?: Partial<CatchStepConfig>;
   testFacingYaws?: boolean;
 }
@@ -226,7 +229,7 @@ export interface HarnessResult {
 }
 
 export function runHarness(options: HarnessOptions = {}): HarnessResult {
-  const { catchStepOverrides, testFacingYaws = false } = options;
+  const { balanceOverrides, catchStepOverrides, testFacingYaws = false } = options;
   const yaws = testFacingYaws ? FACING_YAWS : [0];
   const yawLabels = testFacingYaws ? FACING_YAW_LABELS : ["0"];
 
@@ -235,7 +238,13 @@ export function runHarness(options: HarnessOptions = {}): HarnessResult {
   for (let yi = 0; yi < yaws.length; yi++) {
     for (let di = 0; di < DIRECTION_VECTORS.length; di++) {
       for (const mag of MAGNITUDES) {
-        const result = runTrial(yaws[yi], DIRECTION_VECTORS[di], mag.newtonSeconds, catchStepOverrides);
+        const result = runTrial(
+          yaws[yi],
+          DIRECTION_VECTORS[di],
+          mag.newtonSeconds,
+          balanceOverrides,
+          catchStepOverrides
+        );
         result.direction = DIRECTION_LABELS[di];
         result.magnitude = mag.label;
         result.facingYawDeg = yawLabels[yi];
