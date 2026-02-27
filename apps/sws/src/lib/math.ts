@@ -379,3 +379,97 @@ export function smoothVec3(prev: Vec3, next: Vec3, alpha: number): Vec3 {
 export function smoothQuat(prev: Quat, next: Quat, alpha: number): Quat {
   return qSlerp(prev, next, clamp01(alpha));
 }
+
+// -----------------------------------------------------------------------------
+// Quaternion decomposition
+// -----------------------------------------------------------------------------
+
+export function quatToAxisAngle(qq: Quat): { axis: Vec3; angle: number } {
+  // Ensure shortest-path: negate if w < 0 so the angle is always in [0, pi].
+  const q = qq.w < 0 ? { x: -qq.x, y: -qq.y, z: -qq.z, w: -qq.w } : qq;
+
+  const w = clamp(q.w, -1, 1);
+  const sinHalf = Math.sqrt(Math.max(0, 1 - w * w));
+
+  if (sinHalf < 1e-8) {
+    return { axis: { x: 1, y: 0, z: 0 }, angle: 0 };
+  }
+
+  const axis = {
+    x: q.x / sinHalf,
+    y: q.y / sinHalf,
+    z: q.z / sinHalf,
+  };
+
+  const angle = 2 * Math.atan2(sinHalf, w);
+  return { axis: normalize(axis), angle };
+}
+
+/**
+ * Decompose a quaternion into intrinsic XYZ Euler angles (radians).
+ *
+ * For small rotations (typical for joint PD targets), this is nearly
+ * identical to the axis-angle components. For identity quaternion it
+ * returns (0, 0, 0).
+ */
+export function quatToEulerXYZ(qq: Quat): Vec3 {
+  // Ensure w > 0 for shortest-path
+  const q = qq.w < 0 ? { x: -qq.x, y: -qq.y, z: -qq.z, w: -qq.w } : qq;
+
+  // Standard intrinsic XYZ Euler extraction from rotation matrix elements
+  // R = Rx(a) * Ry(b) * Rz(c)
+  //
+  // For XYZ intrinsic:
+  //   b = asin(R02), a = atan2(-R12, R22), c = atan2(-R01, R00)
+
+  const xx = q.x * q.x;
+  const yy = q.y * q.y;
+  const zz = q.z * q.z;
+  const xy = q.x * q.y;
+  const xz = q.x * q.z;
+  const yz = q.y * q.z;
+  const wx = q.w * q.x;
+  const wy = q.w * q.y;
+  const wz = q.w * q.z;
+
+  const r02 = 2 * (xz + wy);
+  const sinB = clamp(r02, -1, 1);
+
+  let a: number;
+  let b: number;
+  let c: number;
+
+  if (Math.abs(sinB) > 0.9999) {
+    // Gimbal lock -- use atan2 fallback
+    b = Math.asin(sinB);
+    a = Math.atan2(2 * (wx + yz), 1 - 2 * (xx + yy));
+    c = 0;
+  } else {
+    const r12 = 2 * (yz - wx);
+    const r22 = 1 - 2 * (xx + yy);
+    const r01 = 2 * (xy - wz);
+    const r00 = 1 - 2 * (yy + zz);
+
+    b = Math.asin(sinB);
+    a = Math.atan2(-r12, r22);
+    c = Math.atan2(-r01, r00);
+  }
+
+  return { x: a, y: b, z: c };
+}
+
+// -----------------------------------------------------------------------------
+// XZ-plane helpers (horizontal plane, y = 0)
+// -----------------------------------------------------------------------------
+
+export function normalizeXZ(v: Vec3): Vec3 {
+  const x = v.x;
+  const z = v.z;
+  const m = Math.sqrt(x * x + z * z);
+  if (m < 1e-6) return { x: 0, y: 0, z: 0 };
+  return { x: x / m, y: 0, z: z / m };
+}
+
+export function lenXZ(v: Vec3): number {
+  return Math.sqrt(v.x * v.x + v.z * v.z);
+}

@@ -28,8 +28,12 @@
 import type { Vec3 } from "@/lib/math";
 import {
   clamp,
+  clamp01,
   expSmoothingAlpha,
   horiz,
+  lenXZ,
+  lerp,
+  normalizeXZ,
   qFromAxisAngle,
   qInverse,
   qMul,
@@ -227,7 +231,7 @@ export const CATCH_STEP_DEFAULTS = {
   stanceHipShiftPitchMax: 0.3, // rad (~17 deg) -- max stance hip pitch adjustment
 
   // Urgency scaling
-  // urgency = saturate((combinedSignal - urgencyLo) / (urgencyHi - urgencyLo))
+  // urgency = clamp01((combinedSignal - urgencyLo) / (urgencyHi - urgencyLo))
   // where combinedSignal = errorMag + urgencyVelK * comVelXZ + urgencyTiltK * tiltRad
   urgencyLo: 0.08, // signal below this -> urgency = 0
   urgencyHi: 0.35, // signal at or above this -> urgency = 1
@@ -314,30 +318,6 @@ function footSideSign(foot: FootName): number {
   // +1 for right foot, -1 for left foot.
   // Used to flip hip roll direction so each leg abducts outward.
   return foot === "RightFoot" ? +1 : -1;
-}
-
-function normalizeXZ(v: Vec3): Vec3 {
-  const x = v.x;
-  const z = v.z;
-  const m = Math.sqrt(x * x + z * z);
-  if (m < 1e-6) return v3(0, 0, 0);
-  return v3(x / m, 0, z / m);
-}
-
-function lenXZ(v: Vec3): number {
-  return Math.sqrt(v.x * v.x + v.z * v.z);
-}
-
-function smooth1(prev: number, next: number, alpha: number): number {
-  return prev + (next - prev) * alpha;
-}
-
-function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}
-
-function saturate(t: number): number {
-  return clamp(t, 0, 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -441,8 +421,8 @@ export class CatchStepController {
       this.comVelXZF = comVelXZ;
       this.initialized = true;
     } else {
-      this.errorMagF = smooth1(this.errorMagF, errMag, alpha);
-      this.comVelXZF = smooth1(this.comVelXZF, comVelXZ, alpha);
+      this.errorMagF = lerp(this.errorMagF, errMag, alpha);
+      this.comVelXZF = lerp(this.comVelXZF, comVelXZ, alpha);
     }
 
     // Anti-stomp: track how long the rig has been in a truly stable
@@ -714,7 +694,7 @@ export class CatchStepController {
       // generates a reaction torque opposing the lateral topple.
       // Scale with urgency so calm steps don't twist unnecessarily.
       if (this.urgency > this.cfg.counterRotUrgencyMin) {
-        const urgencyFactor = saturate(
+        const urgencyFactor = clamp01(
           (this.urgency - this.cfg.counterRotUrgencyMin) / (1.0 - this.cfg.counterRotUrgencyMin)
         );
         // Counter-rotation uses the root-local lateral component.
@@ -804,9 +784,7 @@ export class CatchStepController {
       return;
     }
 
-    const urgencyFactor = saturate(
-      (this.urgency - this.cfg.armExtendUrgencyMin) / (1.0 - this.cfg.armExtendUrgencyMin)
-    );
+    const urgencyFactor = clamp01((this.urgency - this.cfg.armExtendUrgencyMin) / (1.0 - this.cfg.armExtendUrgencyMin));
 
     // Laterality: how much of the fall is sideways vs front/back.
     // |localDir.x| = 1 for pure lateral, 0 for pure forward/backward.
@@ -984,7 +962,7 @@ export class CatchStepController {
     // signal. Higher urgency -> longer steps, faster timing, stronger forces.
     const tiltRad = this.balance.debug?.tiltRad ?? 0;
     const urgencySignal = this.errorMagF + this.cfg.urgencyVelK * this.comVelXZF + this.cfg.urgencyTiltK * tiltRad;
-    this.urgency = saturate((urgencySignal - this.cfg.urgencyLo) / (this.cfg.urgencyHi - this.cfg.urgencyLo));
+    this.urgency = clamp01((urgencySignal - this.cfg.urgencyLo) / (this.cfg.urgencyHi - this.cfg.urgencyLo));
 
     // -- LIPM Capture Point --
     // The capture point is the ground position where the foot must land
@@ -1252,7 +1230,7 @@ export class CatchStepController {
     if (!this.stepFoot || !this.stanceFoot) return;
 
     // Ramp abduction up over prepTime
-    const t = saturate(this.tState / this.cfg.prepTime);
+    const t = clamp01(this.tState / this.cfg.prepTime);
     const rollRad = this.cfg.weightShiftRollRad * t;
 
     // Swing hip: abduction only (no pitch yet)
@@ -1314,7 +1292,7 @@ export class CatchStepController {
 
     // Phase 0..1 over effective swing time (urgency-scaled)
     const effectiveSwingTime = lerp(this.cfg.swingTime, this.cfg.swingTimeUrgent, this.urgency);
-    const t = saturate(this.tSwing / effectiveSwingTime);
+    const t = clamp01(this.tSwing / effectiveSwingTime);
 
     // -- Weight-shift envelope --
     // Starts at 1.0 (continuous from STEP_PREP), holds through early swing
@@ -1373,7 +1351,7 @@ export class CatchStepController {
     // = hip extension = backward reach), reduce lift flexion so the foot
     // doesn't swing far forward before reversing backward.
     // Instead, the knee bend provides most of the ground clearance.
-    const backwardness = saturate(-localDir.z); // positive when stepping backward in root frame
+    const backwardness = clamp01(-localDir.z); // positive when stepping backward in root frame
     const liftReduction = 1.0 - 0.6 * backwardness; // reduce lift 60% for pure backward
     const hipLiftPitch = -this.cfg.hipFlexLift * liftEnv * liftReduction;
 
@@ -1386,7 +1364,7 @@ export class CatchStepController {
     // Scale the reach pitch with step distance so that longer steps drive
     // the hip harder. Without this, a 0.15m step and a 0.7m step get
     // the same hip drive and the foot undershoots distant targets.
-    const distScale = saturate(this.stepDistance * this.cfg.hipPitchDistScale);
+    const distScale = clamp01(this.stepDistance * this.cfg.hipPitchDistScale);
     const hipReachPitch =
       clamp(-localDir.z * this.cfg.hipPitchMax * distScale, -this.cfg.hipPitchMax, this.cfg.hipPitchMax) * reachEnv;
 

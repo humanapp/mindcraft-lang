@@ -11,6 +11,7 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import type { World } from "@dimforge/rapier3d-compat";
 import type { Quat, Vec3 } from "@/lib/math";
+import { add, qMul, qRotateVec3 } from "@/lib/math";
 import type { CollisionShape, JointDef, JointName, PartDef, PartName, RigDefinition } from "@/rig/RigDefinition";
 
 /** Minimal type for Rapier's raw WASM impulse joint set. */
@@ -151,8 +152,8 @@ export class RapierRig {
       const isRoot = part.name === rootName;
       const worldPos = isRoot
         ? spawn.rootWorldPos
-        : addVec3(spawn.rootWorldPos, rotateVec3(spawn.rootWorldRot, part.restPos));
-      const worldRot = isRoot ? spawn.rootWorldRot : mulQuat(spawn.rootWorldRot, part.restRot);
+        : add(spawn.rootWorldPos, qRotateVec3(spawn.rootWorldRot, part.restPos));
+      const worldRot = isRoot ? spawn.rootWorldRot : qMul(spawn.rootWorldRot, part.restRot);
 
       // Ensure the body is dynamic (may have been set to kinematic during drag)
       body.setBodyType(0, true); // 0 = Dynamic
@@ -186,8 +187,8 @@ export class RapierRig {
     for (const part of this.def.parts) {
       if (part.name === rootName) continue;
 
-      const worldPos = addVec3(spawn.rootWorldPos, rotateVec3(spawn.rootWorldRot, part.restPos));
-      const worldRot = mulQuat(spawn.rootWorldRot, part.restRot);
+      const worldPos = add(spawn.rootWorldPos, qRotateVec3(spawn.rootWorldRot, part.restPos));
+      const worldRot = qMul(spawn.rootWorldRot, part.restRot);
 
       const body = this.createBodyFromPart(part, worldPos, worldRot);
       this.bodiesByPart.set(part.name as PartName, { part, body });
@@ -358,35 +359,4 @@ export class RapierRig {
     rawSet.jointConfigureMotorModel(handle, ANG_Y, 1);
     rawSet.jointConfigureMotorModel(handle, ANG_Z, 1);
   }
-}
-
-// -----------------------------------------------------------------------------
-// Minimal math helpers local to this file (avoid importing controller math)
-// -----------------------------------------------------------------------------
-
-function addVec3(a: Vec3, b: Vec3): Vec3 {
-  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
-}
-
-/** Rotate a vector by a unit quaternion. */
-function rotateVec3(qq: Quat, v: Vec3): Vec3 {
-  // q * v * q^-1, expanded to avoid temporary quaternion allocations.
-  const ix = qq.w * v.x + qq.y * v.z - qq.z * v.y;
-  const iy = qq.w * v.y + qq.z * v.x - qq.x * v.z;
-  const iz = qq.w * v.z + qq.x * v.y - qq.y * v.x;
-  const iw = -qq.x * v.x - qq.y * v.y - qq.z * v.z;
-  return {
-    x: ix * qq.w + iw * -qq.x + iy * -qq.z - iz * -qq.y,
-    y: iy * qq.w + iw * -qq.y + iz * -qq.x - ix * -qq.z,
-    z: iz * qq.w + iw * -qq.z + ix * -qq.y - iy * -qq.x,
-  };
-}
-
-function mulQuat(a: Quat, b: Quat): Quat {
-  return {
-    w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
-    x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
-    y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
-    z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
-  };
 }
