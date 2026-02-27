@@ -15,6 +15,7 @@ import type { PartName } from "@/rig/RigDefinition";
 import { RigDefinitionV0 } from "@/rig/RigDefinition.v0";
 import { RigDebugOverlay } from "./RigDebugOverlay";
 import { RigMeshes } from "./RigMeshes";
+import { TuningPanel } from "./TuningPanel";
 
 const _dragPlane = new THREE.Plane();
 const _intersection = new THREE.Vector3();
@@ -282,6 +283,7 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
     <group onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
       <RigMeshes rig={rig} />
       <RigDebugOverlay rig={rig} io={io} balanceDebugRef={balanceDebugRef} catchStepDebugRef={catchStepDebugRef} />
+      <TuningPanel catchStepRef={catchStepRef} />
     </group>
   ) : null;
 }

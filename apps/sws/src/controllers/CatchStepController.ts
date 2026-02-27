@@ -333,9 +333,18 @@ function saturate(t: number): number {
 // Controller
 // ---------------------------------------------------------------------------
 
+// Widen literal types from `as const` to mutable number/object types.
+type Widen<T> = T extends number
+  ? number
+  : T extends { readonly [k: string]: unknown }
+    ? { -readonly [K in keyof T]: Widen<T[K]> }
+    : T;
+
+export type CatchStepConfig = { [K in keyof typeof CATCH_STEP_DEFAULTS]: Widen<(typeof CATCH_STEP_DEFAULTS)[K]> };
+
 export class CatchStepController {
   readonly balance: BalanceController;
-  private readonly cfg: typeof CATCH_STEP_DEFAULTS;
+  private cfg: CatchStepConfig;
 
   private state: StepState = "STAND";
   private tState = 0;
@@ -374,9 +383,14 @@ export class CatchStepController {
     return this._debug;
   }
 
-  constructor(balance: BalanceController, cfg?: Partial<typeof CATCH_STEP_DEFAULTS>) {
+  constructor(balance: BalanceController, cfg?: Partial<CatchStepConfig>) {
     this.balance = balance;
-    this.cfg = { ...CATCH_STEP_DEFAULTS, ...cfg } as typeof CATCH_STEP_DEFAULTS;
+    this.cfg = { ...CATCH_STEP_DEFAULTS, ...cfg };
+  }
+
+  /** Merge partial overrides into the live config. */
+  updateConfig(overrides: Partial<CatchStepConfig>): void {
+    Object.assign(this.cfg, overrides);
   }
 
   update(io: RigIO, dt: number): void {

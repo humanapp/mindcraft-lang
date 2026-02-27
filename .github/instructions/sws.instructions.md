@@ -206,7 +206,31 @@ the spawn quaternion before adding to `rootWorldPos`:
 worldPos = rootWorldPos + rotateVec3(rootWorldRot, part.restPos)
 ```
 
-## 9. Hip Roll Asymmetry (Anti-Crossing)
+## 9. Live Tuning Dashboard (leva)
+
+The app includes a `TuningPanel` component (`components/TuningPanel.tsx`)
+that uses [leva](https://github.com/pmndrs/leva) to expose all tunable
+controller parameters in a browser-side GUI panel.
+
+- `TuningPanel` is a renderless React component (`returns null`) mounted
+  inside `CharacterRig`. It receives a ref to `CatchStepController` and
+  accesses `catchStep.balance` for the balance controller.
+- Two top-level leva panels: **Balance** and **Catch Step**, each with
+  grouped folders (Ankle, Torso Lean, Trigger, Timing, Swing, etc.).
+- `useEffect` hooks push changed values to controllers via `updateConfig()`
+  whenever leva sliders change.
+- Nested gain objects (`{ kp, kd, max }`) are flattened into prefixed
+  scalar controls in leva, then reassembled by `extractGain()` before
+  being passed to `updateConfig()`.
+
+When adding new config fields:
+1. Add the field to `BALANCE_DEFAULTS` or `CATCH_STEP_DEFAULTS`.
+2. Add a corresponding leva control in the appropriate folder in
+   `TuningPanel.tsx`.
+3. Add the field to the `toBalanceConfig()` or `toCatchStepConfig()`
+   mapping function.
+
+## 10. Hip Roll Asymmetry (Anti-Crossing)
 
 Swing leg hip roll must use asymmetric limits:
 - **Abduction (outward):** full range (`hipRollMax`, currently 0.6 rad).
@@ -215,7 +239,7 @@ Swing leg hip roll must use asymmetric limits:
 This prevents legs from crossing during catch steps. The asymmetry applies in
 both the `dirRoll` computation and the final `composeHipTarget` clamp.
 
-## 10. Balance Controller Architecture
+## 11. Balance Controller Architecture
 
 ### Ankle strategy (primary actuator)
 The ankle hinge motor is the inverted-pendulum balance actuator. Error and
@@ -236,6 +260,22 @@ take effect the same frame. Key subsystems:
 - Upper-body counter-rotation (torso yaw bias).
 
 ### Config pattern
-CatchStepController uses a defaults object (`CATCH_STEP_DEFAULTS`) merged
-with optional overrides at construction. BalanceController uses module-level
-constants (planned migration to same config pattern).
+Both controllers use the same defaults-object pattern:
+- `BALANCE_DEFAULTS` (exported from `BalanceController.ts`) -- all balance
+  gains, ankle/torso-lean PD coefficients, fallen/standing joint gains,
+  filter constants, and tilt thresholds.
+- `CATCH_STEP_DEFAULTS` (exported from `CatchStepController.ts`) -- trigger
+  thresholds, swing timing, step placement, urgency scaling, arm/torso
+  bias, multi-step recovery, stance recovery, and swing-leg gains.
+
+Defaults objects are declared `as const`. A `Widen<T>` mapped type strips
+readonly and widens numeric literals so `Partial<BalanceConfig>` and
+`Partial<CatchStepConfig>` accept plain `number` values.
+
+Each controller:
+- Accepts `Partial<Config>` in its constructor (merged with defaults).
+- Exposes `updateConfig(overrides: Partial<Config>)` to mutate the live
+  config at runtime without reconstructing the controller.
+
+When adding new tunable parameters, add them to the relevant defaults
+object, not as module-level constants.

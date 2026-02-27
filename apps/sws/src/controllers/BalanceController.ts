@@ -36,62 +36,51 @@ import {
 import type { RigIO } from "@/rig/RigIO";
 
 // ---------------------------------------------------------------------------
-// Constants
+// Config defaults
 // ---------------------------------------------------------------------------
 
-/** Filter time constant for COM/support signals (seconds). */
-const FILTER_TAU = 0.04;
+export const BALANCE_DEFAULTS = {
+  // Filter time constant for COM/support signals (seconds).
+  filterTau: 0.04,
 
-/** Tilt angle (radians) above which the controller enters fallen state. */
-const FALLEN_TILT_RAD = 0.75; // ~43 degrees
+  // Tilt angle (radians) above which the controller enters fallen state.
+  fallenTiltRad: 0.75, // ~43 degrees
 
-/** Tilt angle (radians) below which the controller exits fallen state. */
-const RECOVER_TILT_RAD = 0.25; // ~14 degrees -- hysteresis band
+  // Tilt angle (radians) below which the controller exits fallen state.
+  recoverTiltRad: 0.25, // ~14 degrees -- hysteresis band
 
-// ---------------------------------------------------------------------------
-// Ankle balance gains (primary actuator)
-// ---------------------------------------------------------------------------
+  // Ankle balance gains (primary actuator)
+  ankleP: 8.0,
+  ankleD: 2.5,
+  ankleMaxRad: 0.25,
 
-const ANKLE_P = 8.0;
-const ANKLE_D = 2.5;
-const ANKLE_MAX_RAD = 0.25;
+  // Torso lean gains (hip strategy -- leans torso opposite to COM error)
+  torsoLeanP: 3.0,
+  torsoLeanD: 1.0,
+  torsoLeanMaxRad: 0.35, // ~20 degrees max lean
 
-// ---------------------------------------------------------------------------
-// Torso lean gains (hip strategy -- leans torso opposite to COM error)
-// ---------------------------------------------------------------------------
+  // Joint drive gains
+  //
+  // All joints (hinge and spherical) now use Rapier's built-in motor,
+  // which is solved inside the constraint solver. The gains here are
+  // passed through to the motor (scaled 10x for Rapier units). The
+  // motor handles Newton's 3rd law and fights gravity directly.
+  standingTorso: { kp: 40, kd: 12, max: 120 },
+  standingHip: { kp: 40, kd: 12, max: 120 },
+  standingKnee: { kp: 80, kd: 14, max: 250 },
+  standingAnkle: { kp: 25, kd: 10, max: 80 },
+  standingHead: { kp: 20, kd: 6, max: 40 },
+  standingArm: { kp: 15, kd: 5, max: 30 },
 
-const TORSO_LEAN_P = 3.0;
-const TORSO_LEAN_D = 1.0;
-const TORSO_LEAN_MAX_RAD = 0.35; // ~20 degrees max lean
+  fallenTorso: { kp: 3, kd: 4, max: 10 },
+  fallenHip: { kp: 3, kd: 4, max: 10 },
+  fallenKnee: { kp: 5, kd: 4, max: 15 },
+  fallenAnkle: { kp: 2, kd: 3, max: 5 },
+  fallenHead: { kp: 2, kd: 3, max: 5 },
+  fallenArm: { kp: 1, kd: 2, max: 3 },
 
-// ---------------------------------------------------------------------------
-// Joint drive gains
-//
-// All joints (hinge and spherical) now use Rapier's built-in motor,
-// which is solved inside the constraint solver. The gains here are
-// passed through to the motor (scaled 10x for Rapier units). The
-// motor handles Newton's 3rd law and fights gravity directly.
-// ---------------------------------------------------------------------------
-
-const STANDING_GAINS = {
-  torso: { kp: 40, kd: 12, max: 120 },
-  hip: { kp: 40, kd: 12, max: 120 },
-  knee: { kp: 80, kd: 14, max: 250 },
-  ankle: { kp: 25, kd: 10, max: 80 },
-  head: { kp: 20, kd: 6, max: 40 },
-  arm: { kp: 15, kd: 5, max: 30 },
+  defaultKneeBend: 0.12,
 } as const;
-
-const FALLEN_GAINS = {
-  torso: { kp: 3, kd: 4, max: 10 },
-  hip: { kp: 3, kd: 4, max: 10 },
-  knee: { kp: 5, kd: 4, max: 15 },
-  ankle: { kp: 2, kd: 3, max: 5 },
-  head: { kp: 2, kd: 3, max: 5 },
-  arm: { kp: 1, kd: 2, max: 3 },
-} as const;
-
-const DEFAULT_KNEE_BEND = 0.12;
 
 // ---------------------------------------------------------------------------
 // Debug output
@@ -116,7 +105,18 @@ export interface BalanceDebug {
 // Controller
 // ---------------------------------------------------------------------------
 
+// Widen literal types from `as const` to mutable number/object types.
+type Widen<T> = T extends number
+  ? number
+  : T extends { readonly [k: string]: unknown }
+    ? { -readonly [K in keyof T]: Widen<T[K]> }
+    : T;
+
+export type BalanceConfig = { [K in keyof typeof BALANCE_DEFAULTS]: Widen<(typeof BALANCE_DEFAULTS)[K]> };
+
 export class BalanceController {
+  private cfg: BalanceConfig;
+
   private filteredSupport: Vec3 = v3(0, 0, 0);
   private filteredCom: Vec3 = v3(0, 0, 0);
   private initialized = false;
@@ -154,6 +154,15 @@ export class BalanceController {
     return this._debug;
   }
 
+  constructor(cfg?: Partial<BalanceConfig>) {
+    this.cfg = { ...BALANCE_DEFAULTS, ...cfg };
+  }
+
+  /** Merge partial overrides into the live config. */
+  updateConfig(overrides: Partial<BalanceConfig>): void {
+    Object.assign(this.cfg, overrides);
+  }
+
   update(io: RigIO, dt: number): void {
     // ------------------------------------------------------------------
     // A) Measure root tilt
@@ -170,13 +179,14 @@ export class BalanceController {
     // ------------------------------------------------------------------
     // B) Fallen state with hysteresis
     // ------------------------------------------------------------------
-    if (!this.fallen && tiltRad > FALLEN_TILT_RAD) {
+    if (!this.fallen && tiltRad > this.cfg.fallenTiltRad) {
       this.fallen = true;
-    } else if (this.fallen && tiltRad < RECOVER_TILT_RAD) {
+    } else if (this.fallen && tiltRad < this.cfg.recoverTiltRad) {
       this.fallen = false;
     }
 
-    const gains = this.fallen ? FALLEN_GAINS : STANDING_GAINS;
+    const g = this.cfg;
+    const standing = !this.fallen;
 
     // ------------------------------------------------------------------
     // C) Foot contact + COM
@@ -205,7 +215,7 @@ export class BalanceController {
     // ------------------------------------------------------------------
     // D) Filter & error
     // ------------------------------------------------------------------
-    const alpha = expSmoothingAlpha(dt, FILTER_TAU);
+    const alpha = expSmoothingAlpha(dt, g.filterTau);
     if (!this.initialized) {
       this.filteredSupport = support;
       this.filteredCom = comProj;
@@ -246,33 +256,35 @@ export class BalanceController {
     let torsoRollActual = 0;
     if (anyGrounded && !this.fallen) {
       torsoPitchActual = clamp(
-        (-TORSO_LEAN_P * errLocal.z - TORSO_LEAN_D * velLocal.z) * this.torsoLeanScale + this.torsoBiasPitch,
-        -TORSO_LEAN_MAX_RAD,
-        TORSO_LEAN_MAX_RAD
+        (-g.torsoLeanP * errLocal.z - g.torsoLeanD * velLocal.z) * this.torsoLeanScale + this.torsoBiasPitch,
+        -g.torsoLeanMaxRad,
+        g.torsoLeanMaxRad
       );
       torsoRollActual = clamp(
-        (-TORSO_LEAN_P * errLocal.x - TORSO_LEAN_D * velLocal.x) * this.torsoLeanScale + this.torsoBiasRoll,
-        -TORSO_LEAN_MAX_RAD,
-        TORSO_LEAN_MAX_RAD
+        (-g.torsoLeanP * errLocal.x - g.torsoLeanD * velLocal.x) * this.torsoLeanScale + this.torsoBiasRoll,
+        -g.torsoLeanMaxRad,
+        g.torsoLeanMaxRad
       );
       torsoTarget = qMul(
         qMul(qFromAxisAngle(v3(1, 0, 0), torsoPitchActual), qFromAxisAngle(v3(0, 0, 1), torsoRollActual)),
         qFromAxisAngle(v3(0, 1, 0), this.torsoYawBias)
       );
     }
+    const torsoG = standing ? g.standingTorso : g.fallenTorso;
     io.driveJoint("Root_Torso", {
       targetLocalRot: torsoTarget,
-      kp: gains.torso.kp,
-      kd: gains.torso.kd,
-      maxTorque: gains.torso.max,
+      kp: torsoG.kp,
+      kd: torsoG.kd,
+      maxTorque: torsoG.max,
     });
 
     // Head: rest pose hold (low gains -- light part, should not destabilize)
+    const headG = standing ? g.standingHead : g.fallenHead;
     io.driveJoint("Torso_Head", {
       targetLocalRot: rest,
-      kp: gains.head.kp,
-      kd: gains.head.kd,
-      maxTorque: gains.head.max,
+      kp: headG.kp,
+      kd: headG.kd,
+      maxTorque: headG.max,
     });
 
     // Arms: use external targets when set (CatchStepController arm extension),
@@ -290,47 +302,49 @@ export class BalanceController {
           qFromAxisAngle(v3(0, 0, 1), this.rightArmTarget.roll)
         )
       : rest;
-    const armGains = this.armGainsOverride ?? gains.arm;
+    const armG = this.armGainsOverride ?? (standing ? g.standingArm : g.fallenArm);
     io.driveJoint("Torso_LeftArm", {
       targetLocalRot: leftArmRot,
-      kp: armGains.kp,
-      kd: armGains.kd,
-      maxTorque: armGains.max,
+      kp: armG.kp,
+      kd: armG.kd,
+      maxTorque: armG.max,
     });
     io.driveJoint("Torso_RightArm", {
       targetLocalRot: rightArmRot,
-      kp: armGains.kp,
-      kd: armGains.kd,
-      maxTorque: armGains.max,
+      kp: armG.kp,
+      kd: armG.kd,
+      maxTorque: armG.max,
     });
 
     // Hips: rest pose hold
+    const hipG = standing ? g.standingHip : g.fallenHip;
     io.driveJoint("Root_LeftUpperLeg", {
       targetLocalRot: rest,
-      kp: gains.hip.kp,
-      kd: gains.hip.kd,
-      maxTorque: gains.hip.max,
+      kp: hipG.kp,
+      kd: hipG.kd,
+      maxTorque: hipG.max,
     });
     io.driveJoint("Root_RightUpperLeg", {
       targetLocalRot: rest,
-      kp: gains.hip.kp,
-      kd: gains.hip.kd,
-      maxTorque: gains.hip.max,
+      kp: hipG.kp,
+      kd: hipG.kd,
+      maxTorque: hipG.max,
     });
 
     // Knees: slight compliance bend
-    const kneeTarget = qFromAxisAngle(v3(1, 0, 0), DEFAULT_KNEE_BEND);
+    const kneeG = standing ? g.standingKnee : g.fallenKnee;
+    const kneeTarget = qFromAxisAngle(v3(1, 0, 0), g.defaultKneeBend);
     io.driveJoint("LeftUpperLeg_LeftLowerLeg", {
       targetLocalRot: kneeTarget,
-      kp: gains.knee.kp,
-      kd: gains.knee.kd,
-      maxTorque: gains.knee.max,
+      kp: kneeG.kp,
+      kd: kneeG.kd,
+      maxTorque: kneeG.max,
     });
     io.driveJoint("RightUpperLeg_RightLowerLeg", {
       targetLocalRot: kneeTarget,
-      kp: gains.knee.kp,
-      kd: gains.knee.kd,
-      maxTorque: gains.knee.max,
+      kp: kneeG.kp,
+      kd: kneeG.kd,
+      maxTorque: kneeG.max,
     });
 
     // ------------------------------------------------------------------
@@ -343,22 +357,23 @@ export class BalanceController {
     // standard inverted-pendulum ankle strategy.
     const anklePitchRad =
       anyGrounded && !this.fallen
-        ? clamp(ANKLE_P * errLocal.z + ANKLE_D * velLocal.z, -ANKLE_MAX_RAD, ANKLE_MAX_RAD)
+        ? clamp(g.ankleP * errLocal.z + g.ankleD * velLocal.z, -g.ankleMaxRad, g.ankleMaxRad)
         : 0;
 
     const ankleTarget = qFromAxisAngle(v3(1, 0, 0), anklePitchRad);
 
+    const ankleG = standing ? g.standingAnkle : g.fallenAnkle;
     io.driveJoint("LeftLowerLeg_LeftFoot", {
       targetLocalRot: ankleTarget,
-      kp: gains.ankle.kp,
-      kd: gains.ankle.kd,
-      maxTorque: gains.ankle.max,
+      kp: ankleG.kp,
+      kd: ankleG.kd,
+      maxTorque: ankleG.max,
     });
     io.driveJoint("RightLowerLeg_RightFoot", {
       targetLocalRot: ankleTarget,
-      kp: gains.ankle.kp,
-      kd: gains.ankle.kd,
-      maxTorque: gains.ankle.max,
+      kp: ankleG.kp,
+      kd: ankleG.kd,
+      maxTorque: ankleG.max,
     });
 
     // ------------------------------------------------------------------
