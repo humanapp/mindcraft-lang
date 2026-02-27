@@ -451,6 +451,26 @@ the residual offset.
 - **Safety valve:** if STAND persists with error > 0.10m for > 1.5s, the
   counter resets to allow a corrective step.
 
+## 18. Drift Recovery
+
+When the rig settles after stepping with a moderate COM-over-support
+error (0.04-0.07m) that the balance controller cannot resolve, it can
+get stuck: the error is below the catch step trigger threshold (0.07m)
+and ankle pitch has no lateral authority. The anti-stomp boost can raise
+the effective trigger even higher.
+
+The drift recovery mechanism tracks how long the rig has been standing
+with persistent moderate error and low velocity. After
+`driftRecoveryDelay` (2.0s), it forces a corrective step and resets the
+anti-stomp counter.
+
+- `driftRecoveryDelay`: 2.0s -- timeout before forcing a corrective step.
+- `driftRecoveryErrorMin`: 0.04m -- error must exceed this to count.
+- `driftRecoveryVelMax`: 0.25 m/s -- velocity must be below this (rig is
+  settled, not mid-recovery).
+- Timer resets whenever the rig leaves STAND (stepping), falls, or error
+  drops below the minimum.
+
 ## 18. Fallen State Gains
 
 When fallen, joint motor gains drop dramatically to prevent ground

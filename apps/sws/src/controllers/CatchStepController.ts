@@ -266,6 +266,17 @@ export const CATCH_STEP_DEFAULTS = {
   multiStepErrorThresh: 0.08, // meters -- error above this allows rapid re-step
   multiStepVelThresh: 0.6, // m/s -- COM velocity above this allows rapid re-step
 
+  // Drift recovery: when the rig settles with a persistent moderate
+  // error that the balance controller (ankle + torso lean) cannot
+  // resolve -- typically a lateral offset where the pitch-only ankle
+  // has no authority -- force a corrective step after a timeout.
+  // This catches the dead zone between stable idle (error < 0.06m)
+  // and the catch step trigger (error > 0.07m), and also handles
+  // cases where anti-stomp boost raises the trigger above the error.
+  driftRecoveryDelay: 2.0, // seconds of persistent error before forcing a step
+  driftRecoveryErrorMin: 0.04, // meters -- error must exceed this to count as drifted
+  driftRecoveryVelMax: 0.25, // m/s -- COM velocity must be below this (rig is settled)
+
   // Upper-body counter-rotation: during stepping, yaw the torso opposite
   // to the fall direction. The torso's angular momentum change creates a
   // reaction torque on the root that helps resist the topple. Most
@@ -386,6 +397,10 @@ export class CatchStepController {
   private recentSequences = 0;
   private stableIdleTime = 0;
 
+  // Drift recovery: tracks how long the rig has been standing with a
+  // persistent moderate error that ankle/torso lean cannot resolve.
+  private driftTime = 0;
+
   private _debug: CatchStepDebug | null = null;
   get debug(): CatchStepDebug | null {
     return this._debug;
@@ -476,6 +491,23 @@ export class CatchStepController {
     const balanceFallen = bdbg ? bdbg.fallen : false;
     const tiltTooHigh = bdbg ? bdbg.tiltRad > this.cfg.maxTiltForStepRad : false;
 
+    // Drift recovery: track how long the rig has been standing with a
+    // persistent moderate error. The balance controller (ankle pitch +
+    // torso lean) has had time to act; if the error persists, only a
+    // corrective step can resolve it (common for lateral offsets where
+    // the pitch-only ankle has no authority).
+    if (
+      this.state === "STAND" &&
+      !balanceFallen &&
+      !tiltTooHigh &&
+      this.errorMagF > this.cfg.driftRecoveryErrorMin &&
+      this.comVelXZF < this.cfg.driftRecoveryVelMax
+    ) {
+      this.driftTime += dt;
+    } else {
+      this.driftTime = 0;
+    }
+
     // State machine
     this.tState += dt;
 
@@ -490,7 +522,21 @@ export class CatchStepController {
           (this.overErrorTime >= this.cfg.triggerHoldTime ||
             (this.errorMagF > effectiveTriggerLo && this.comVelXZF > this.cfg.triggerVelXZ));
 
-        if (shouldTrigger) {
+        // Drift recovery: if the balance controller has been unable to
+        // resolve a moderate error for driftRecoveryDelay seconds, force
+        // a corrective step. Reset anti-stomp counter since the error is
+        // genuinely persistent, not a stomp cycle artifact.
+        const driftTrigger = !shouldTrigger && this.cooldown <= 0 && this.driftTime >= this.cfg.driftRecoveryDelay;
+
+        if (shouldTrigger || driftTrigger) {
+          if (driftTrigger) {
+            console.log(
+              `[CatchStep] drift recovery: err=${this.errorMagF.toFixed(3)}`,
+              `driftTime=${this.driftTime.toFixed(2)}s, resetting anti-stomp`
+            );
+            this.recentSequences = 0;
+            this.driftTime = 0;
+          }
           this.enterStepPrep(io, err);
         } else if (this.cooldown <= 0 && !balanceFallen && !tiltTooHigh) {
           // Stance recovery: if error is small and feet are too close,
