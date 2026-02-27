@@ -50,9 +50,9 @@ export const BALANCE_DEFAULTS = {
   recoverTiltRad: 0.25, // ~14 degrees -- hysteresis band
 
   // Ankle balance gains (primary actuator)
-  ankleP: 14.0,
-  ankleD: 4.0,
-  ankleMaxRad: 0.35,
+  ankleP: 20.0,
+  ankleD: 6.0,
+  ankleMaxRad: 0.4,
 
   // Torso lean gains (hip strategy -- leans torso opposite to COM error)
   torsoLeanP: 5.0,
@@ -80,10 +80,10 @@ export const BALANCE_DEFAULTS = {
   // which is solved inside the constraint solver. The gains here are
   // passed through to the motor (scaled 10x for Rapier units). The
   // motor handles Newton's 3rd law and fights gravity directly.
-  standingTorso: { kp: 50, kd: 14, max: 150 },
-  standingHip: { kp: 40, kd: 12, max: 120 },
-  standingKnee: { kp: 80, kd: 14, max: 250 },
-  standingAnkle: { kp: 25, kd: 10, max: 80 },
+  standingTorso: { kp: 70, kd: 18, max: 200 },
+  standingHip: { kp: 60, kd: 16, max: 160 },
+  standingKnee: { kp: 120, kd: 20, max: 350 },
+  standingAnkle: { kp: 30, kd: 12, max: 100 },
   standingHead: { kp: 20, kd: 6, max: 40 },
   standingArm: { kp: 15, kd: 5, max: 30 },
 
@@ -94,12 +94,21 @@ export const BALANCE_DEFAULTS = {
   fallenHead: { kp: 2, kd: 3, max: 5 },
   fallenArm: { kp: 0, kd: 3, max: 3 },
 
-  defaultKneeBend: 0.12,
+  defaultKneeBend: 0.04,
 
-  // Linear damping applied to all bodies. High standing damping absorbs
-  // impulse momentum for recovery; low fallen damping lets the rig
-  // topple naturally instead of sinking slowly.
-  standingLinearDamping: 6.5,
+  // Reactive damping: low base damping for natural motion, with a
+  // temporary spike on impact that decays exponentially. This replaces
+  // constant high damping which would fight walking/running.
+  //
+  // On each frame, if the COM velocity changes by more than
+  // impactVelThreshold in a single step, dampingBoost is set to
+  // impactDampingBoost. The boost then decays with time constant
+  // impactDampingDecayTau. Effective standing damping =
+  // standingLinearDamping + dampingBoost.
+  standingLinearDamping: 2.0,
+  impactDampingBoost: 12.0, // peak boost on impact (effective damping = 2.0 + 12.0 = 14.0)
+  impactDampingDecayTau: 0.5, // seconds -- exponential decay time constant
+  impactVelThreshold: 0.8, // m/s -- COM velocity delta per frame to trigger boost
   fallenLinearDamping: 0.5,
   // Delay before dropping damping after entering fallen state (seconds).
   // Gives the rig time to recover from borderline tilts before committing
@@ -148,6 +157,8 @@ export class BalanceController {
   private fallen = false;
   private fallenTime = 0; // how long fallen state has been active
   private dampingReduced = false; // whether damping is currently at fallen level
+  private dampingBoost = 0; // reactive damping boost (decays exponentially)
+  private prevComVel: Vec3 = v3(0, 0, 0); // previous frame's COM velocity
 
   // External bias applied to torso lean target (pitch, roll in radians).
   // Set by CatchStepController to lean INTO the step direction during
@@ -220,30 +231,52 @@ export class BalanceController {
       this.fallenTime = 0;
     }
 
-    // Delayed damping switch: only reduce damping after the rig has been
-    // continuously fallen for fallenDampingDelay seconds. This prevents
-    // borderline tilts from losing the high damping needed for recovery.
-    // Restore damping immediately when the rig recovers.
-    if (this.fallen) {
-      this.fallenTime += dt;
-      if (!this.dampingReduced && this.fallenTime > this.cfg.fallenDampingDelay) {
-        io.setAllLinearDamping(this.cfg.fallenLinearDamping);
-        this.dampingReduced = true;
-      }
-    } else if (this.dampingReduced) {
-      io.setAllLinearDamping(this.cfg.standingLinearDamping);
-      this.dampingReduced = false;
-    }
-
-    const g = this.cfg;
-    const standing = !this.fallen;
-
     // ------------------------------------------------------------------
     // C) Foot contact + COM
     // ------------------------------------------------------------------
     const leftFC = io.footContact("LeftFoot");
     const rightFC = io.footContact("RightFoot");
     const anyGrounded = leftFC.grounded || rightFC.grounded;
+
+    // Reactive damping: detect sudden COM velocity change and spike
+    // damping temporarily. Decays exponentially each frame.
+    const comVelForDamping = io.comVelWorld();
+    const dvx = comVelForDamping.x - this.prevComVel.x;
+    const dvy = comVelForDamping.y - this.prevComVel.y;
+    const dvz = comVelForDamping.z - this.prevComVel.z;
+    const deltaV = Math.sqrt(dvx * dvx + dvy * dvy + dvz * dvz);
+    this.prevComVel = comVelForDamping;
+
+    if (deltaV > this.cfg.impactVelThreshold) {
+      this.dampingBoost = Math.max(this.dampingBoost, this.cfg.impactDampingBoost);
+    }
+    // Exponential decay
+    if (this.dampingBoost > 0.01) {
+      this.dampingBoost *= Math.exp(-dt / this.cfg.impactDampingDecayTau);
+    } else {
+      this.dampingBoost = 0;
+    }
+
+    // Delayed damping switch: reduce damping after fallen or airborne.
+    // When standing, apply base damping + reactive boost.
+    const wantLowDamping = this.fallen || !anyGrounded;
+    if (wantLowDamping) {
+      this.fallenTime += dt;
+      if (!this.dampingReduced && this.fallenTime > this.cfg.fallenDampingDelay) {
+        io.setAllLinearDamping(this.cfg.fallenLinearDamping);
+        this.dampingReduced = true;
+      }
+    } else if (this.dampingReduced) {
+      io.setAllLinearDamping(this.cfg.standingLinearDamping + this.dampingBoost);
+      this.dampingReduced = false;
+      this.fallenTime = 0;
+    } else {
+      // Update standing damping each frame as boost decays
+      io.setAllLinearDamping(this.cfg.standingLinearDamping + this.dampingBoost);
+    }
+
+    const g = this.cfg;
+    const standing = !this.fallen;
 
     let support: Vec3;
     if (leftFC.grounded && rightFC.grounded && leftFC.avgPoint && rightFC.avgPoint) {

@@ -211,8 +211,8 @@ export class RapierRig {
     const rbDesc = R.RigidBodyDesc.dynamic()
       .setTranslation(worldPos.x, worldPos.y, worldPos.z)
       .setRotation({ x: worldRot.x, y: worldRot.y, z: worldRot.z, w: worldRot.w })
-      .setLinearDamping(6.5)
-      .setAngularDamping(4.0);
+      .setLinearDamping(2.0)
+      .setAngularDamping(6.0);
 
     const rb = this.world.createRigidBody(rbDesc);
 

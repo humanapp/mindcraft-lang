@@ -21,7 +21,7 @@ const _dragPlane = new THREE.Plane();
 const _intersection = new THREE.Vector3();
 const _offset = new THREE.Vector3();
 
-const DEFAULT_SPAWN = v3(0, 1.15, 0);
+const DEFAULT_SPAWN = v3(0, 0.72, 0);
 
 export function CharacterRig(props: { spawn?: { x: number; y: number; z: number } }) {
   const { rapier, world } = useRapier();
@@ -158,7 +158,11 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
           break;
         // 2 - Side shove (~70 N*s rightward)
         case "2":
-          impulse = { x: right.x * forces.medium * sign, y: right.y * forces.medium, z: right.z * forces.medium * sign };
+          impulse = {
+            x: right.x * forces.medium * sign,
+            y: right.y * forces.medium,
+            z: right.z * forces.medium * sign,
+          };
           break;
         // 3 - Hard forward shove (~100 N*s, should trigger catch step or topple)
         case "3":

@@ -59,17 +59,18 @@ Temporary hacks for debugging are allowed but must be removable.
 
 ## 3. Stability Goals (Current Phase)
 
-Standing balance is achieved. The rig holds an upright rest pose using
-ForceBased PD joint motors and an ankle inverted-pendulum strategy.
-Multi-step catch-step recovery is functional: all 8 small (30 N*s) and
-all 8 medium (70 N*s) impulse directions pass the headless harness.
-Large impulses (120 N*s) are partially handled (2/8 pass, 18/24 overall).
+Standing balance is achieved with Roblox R6-proportioned box-geometry
+body parts. The rig holds an upright rest pose using ForceBased PD joint
+motors and an ankle inverted-pendulum strategy. Multi-step catch-step
+recovery is functional: all 8 small (30 N*s) and all 8 medium (70 N*s)
+impulse directions pass the headless harness. Large impulses (120 N*s)
+pass in 4/8 directions (the lateral-heavy ones: right, left,
+forward-right, forward-left). Overall: 20/24.
 
-The current milestone is: adjust body proportions to match Roblox R6 rig
-(root+torso is currently too tall relative to a typical humanoid), then
-re-tune balance parameters for the new proportions. Expect all gains,
-damping, and thresholds to need adjustment since COM height, moment of
-inertia, and lever arms will all shift.
+The 4 remaining large-impulse failures (forward, back, back-right,
+back-left) produce peak tilt > pi/2 rad -- complete topple that no
+catch step can arrest. These are at the physical limit of what ankle
+strategy + catch stepping can recover for this rig geometry.
 
 The rig should:
 
@@ -299,36 +300,73 @@ reduce this below 8. Higher values (12, 16) improve constraint convergence
 but shift which directions recover best (the system is chaotic at the
 boundary), so changes should be validated across all harness directions.
 
-## 13. Linear Damping Sensitivity
+## 13. Reactive Damping System
 
 Linear damping on rig bodies is the single most impactful parameter for
 impulse recovery. It controls how quickly translational momentum decays.
 
-- The original value (0.2) made impulse momentum persist indefinitely,
-  so catch steps repositioned the foot but the COM kept sliding.
-- The current value (6.5) absorbs momentum fast enough for the ankle
-  strategy and catch steps to restore balance within the 5s sim window.
+Constant high damping (12.0) achieves good recovery (21/24) but acts as
+a crutch that would fight walking/running locomotion. The current system
+uses **reactive damping**: low base damping with a temporary spike on
+impact that decays exponentially.
 
-Damping interacts with catch step timing: higher damping means each step
-has to fight less residual velocity, but too-high damping (> ~8) can
-change which directions pass and makes the rig look unnaturally stiff
-(sustaining angles where it should fall). Validate across all 8 directions
-x 3 magnitudes when changing this value.
+### How it works
+
+Each frame, BalanceController computes the COM velocity delta. If the
+delta exceeds `impactVelThreshold` (0.8 m/s), `dampingBoost` is set to
+`impactDampingBoost` (12.0). The boost then decays with time constant
+`impactDampingDecayTau` (0.5s). Effective standing damping per frame:
+`standingLinearDamping + dampingBoost` (2.0 + 0..12.0).
+
+This means:
+- At rest, damping is 2.0 -- low enough for natural walking/running.
+- On impact, damping spikes to 14.0 -- absorbs momentum quickly.
+- Over ~1 second, damping decays back to 2.0.
+
+### Current parameters (20/24)
+
+- `standingLinearDamping`: 2.0 (base, set in both BALANCE_DEFAULTS and
+  RapierRig initial body construction)
+- `impactDampingBoost`: 12.0 (peak boost, effective peak = 14.0)
+- `impactDampingDecayTau`: 0.5s (exponential decay time constant)
+- `impactVelThreshold`: 0.8 m/s (COM delta-v trigger)
+
+### Parameter sweep results
+
+The boost value has a narrow optimal range:
+- boost=10, tau=0.5: 19/24
+- boost=12, tau=0.5: 20/24 (optimal)
+- boost=13, tau=0.5: 19/24 (over-damps forward-right/medium)
+- boost=14, tau=0.5: 19/24 (same issue)
+
+Longer decay (tau=0.6) over-damps post-step settlement (18/24).
+Lower threshold (0.5) is too sensitive (19/24).
+Higher base (3.0) hurts lateral recovery (18/24).
+Velocity-gated decay (freeze decay while COM moving) over-damps (19/24).
+
+### Pareto trade-off
+
+Reactive damping scores 20/24 vs constant 12.0 at 21/24. The 1-point
+difference is forward-left/large, which is at the physical limit. The
+6x reduction in base damping (12.0 -> 2.0) is essential for the next
+feature layer (walking/running) where constant high damping would fight
+locomotion forces.
 
 ### Fallen damping switch
 
-When the rig enters fallen state (tilt > 43 deg), `standingLinearDamping`
-makes the fall look slow and underwater. BalanceController switches to
-`fallenLinearDamping` (0.5) for a natural-looking topple, but ONLY after
-`fallenDampingDelay` (0.4s) of continuous fallen state. This delay is
-critical: dropping damping immediately at the fallen threshold removes
-the momentum absorption needed for borderline recoveries.
+When the rig enters fallen state (tilt > 43 deg) or is airborne (no foot
+contact), BalanceController switches to `fallenLinearDamping` (0.5) for a
+natural-looking topple, but ONLY after `fallenDampingDelay` (0.4s) of
+continuous fallen/airborne state. This delay is critical: dropping damping
+immediately removes the momentum absorption needed for borderline
+recoveries.
 
-Damping restores immediately when the rig recovers (tilt < recoverTiltRad).
+Damping restores immediately when the rig recovers (tilt < recoverTiltRad
+and foot contact restored).
 
-Angular damping (4.0) is less sensitive but should stay comparable to
-linear damping to prevent spin-out without over-damping joint motor
-responses.
+Angular damping (6.0) is less sensitive. It acts on rotational momentum
+and should stay moderate to prevent spin-out without over-damping joint
+motor responses.
 
 ## 14. Multi-Step Re-Triggering
 
@@ -338,13 +376,14 @@ steps when error remains high after a step. Key parameters:
 - `multiStepSettleTime` -- how long to wait between consecutive steps.
   Too short (< 0.1s) causes over-stepping: the rig takes many rapid steps
   that destabilize rather than correct. Too long (> 0.4s) wastes recovery
-  time. Current value: 0.25s.
+  time. Current value: 0.20s.
 - `multiStepVelThresh` -- COM velocity threshold for re-triggering. Below
   this threshold, the controller returns to STAND and waits for the full
   cooldown before stepping again. Current value: 0.6 m/s.
-- `maxConsecutiveSteps` -- hard cap. Increasing beyond 5 generally hurts
-  because the rig enters an oscillatory stepping pattern rather than
-  settling.
+- `maxConsecutiveSteps` -- hard cap. Current value: 7. Needed for
+  multi-step recovery from large impulses (some passing large trials
+  use 4-6 consecutive steps). Values above ~8 tend to produce
+  oscillatory stepping patterns rather than settling.
 
 ## 15. Headless Harness
 
@@ -378,12 +417,21 @@ parameter sweeps:
   Changes of +/- 25% produce small or mixed effects.
 - **Linear damping dominates all other parameters** for impulse recovery.
   A 2x change in damping has more effect than any combination of gain
-  changes.
+  changes. With reactive damping, the boost level (not base damping) is
+  the dominant parameter. The boost has a narrow optimal range (12.0);
+  values 1-2 points above or below cause regressions.
 - **Solver iteration count shifts directional bias.** iter=8 and iter=12
   favor different subsets of directions. Pick one and tune to it.
 - **Faster step timing hurts.** Reducing prep/swing time below defaults
   causes worse outcomes because the foot doesn't reach the target and
   the single-leg phase becomes too compressed for the balance controller.
+- **Reactive damping boost vs base split matters.** Higher base damping
+  (e.g. 3.0) with proportionally lower boost (same peak) hurts lateral
+  recovery. The base must stay low (2.0) for the ankle strategy to work
+  freely between impacts.
+- **Velocity-gated or longer decay hurts.** Attempts to sustain the
+  damping boost longer (tau=0.6, or freezing decay while COM is moving)
+  over-damp post-step settlement and regress the score.
 
 ## 17. Anti-Stomp Cycle Logic
 

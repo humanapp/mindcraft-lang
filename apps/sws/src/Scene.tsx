@@ -19,9 +19,12 @@ export function Scene() {
         shadow-mapSize-height={1024}
       />
 
-      {/* Ground plane -- fixed rigid body so objects rest on it */}
-      <RigidBody type="fixed" colliders="cuboid">
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+      {/* Ground plane -- fixed rigid body so objects rest on it.
+          The box is 0.2m thick along Y after rotation. Position the mesh
+          at y=-0.1 so the top surface sits at y=0 (matching the headless
+          harness ground). friction=1 matches the rig foot colliders. */}
+      <RigidBody type="fixed" colliders="cuboid" friction={1} restitution={0}>
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.1, 0]} receiveShadow>
           <boxGeometry args={[20, 20, 0.2]} />
           <meshStandardMaterial color="#4a7c59" />
         </mesh>

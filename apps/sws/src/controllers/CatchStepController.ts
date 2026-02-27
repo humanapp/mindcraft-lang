@@ -84,13 +84,13 @@ export const CATCH_STEP_DEFAULTS = {
   triggerHoldTime: 0.02, // seconds -- error must exceed triggerErrorHi for this long
 
   // Hysteresis / anti-spam
-  cooldownTime: 0.55, // seconds after a step completes before another can trigger
+  cooldownTime: 0.45, // seconds after a step completes before another can trigger
   settleTime: 0.2, // seconds of stable stance before returning to STAND
 
   // Maximum root tilt (radians) at which stepping is allowed. Beyond this
   // the rig is too far gone for a catch step to help. This is intentionally
   // lower than BalanceController's FALLEN_TILT_RAD (0.75 / 43 degrees).
-  maxTiltForStepRad: 0.45, // ~26 degrees
+  maxTiltForStepRad: 0.65, // ~37 degrees (higher for shorter rig)
 
   // Step placement: LIPM (Linear Inverted Pendulum Model) capture point.
   //
@@ -105,7 +105,7 @@ export const CATCH_STEP_DEFAULTS = {
   //
   // The step target = capture point + safety margin that grows with urgency.
   // This replaces the old heuristic direction + distance + overshoot approach.
-  lipmHeight: 0.7, // meters -- effective pendulum height (root-to-ground)
+  lipmHeight: 0.44, // meters -- effective pendulum height (ankle-to-COM, R6 proportions)
   captureMarginK: 0.15, // meters -- extra distance beyond capture point, scaled by urgency
   captureMarginMax: 0.35, // meters -- max extra margin at full urgency
 
@@ -114,7 +114,7 @@ export const CATCH_STEP_DEFAULTS = {
   stepDistMin: 0.12, // meters
   // Maximum step distance: physical limit of leg reach.
   stepDistMax: 0.35, // meters -- base max
-  stepDistMaxUrgent: 0.7, // meters -- max distance at full urgency
+  stepDistMaxUrgent: 0.65, // meters -- max distance at full urgency
 
   // Direction blending: the step direction is derived from the capture
   // point offset. kVel controls how much COM velocity biases the step
@@ -123,18 +123,18 @@ export const CATCH_STEP_DEFAULTS = {
   kVel: 0.15, // additional velocity blend on top of LIPM
 
   // Reasonable bounds relative to root position (world axes)
-  maxLateralFromRoot: 0.45, // meters (base lateral clamp)
-  maxLateralFromRootUrgent: 0.65, // meters -- wider lateral clamp at full urgency
-  maxForwardFromRoot: 0.6, // meters (in +Z)
-  maxForwardFromRootUrgent: 0.85, // meters at full urgency
+  maxLateralFromRoot: 0.35, // meters (base lateral clamp)
+  maxLateralFromRootUrgent: 0.5, // meters -- wider lateral clamp at full urgency
+  maxForwardFromRoot: 0.45, // meters (in +Z)
+  maxForwardFromRootUrgent: 0.65, // meters at full urgency
   maxBackwardFromRoot: 0.45, // meters (in -Z) -- needs room for backward catch steps
-  maxBackwardFromRootUrgent: 0.7, // meters at full urgency
+  maxBackwardFromRootUrgent: 0.65, // meters at full urgency
 
   // Lateral step boost: lateral falls need the foot placed further out
   // than forward steps because the base of support is narrower side-to-side.
   // The boost scales with how lateral the step direction is (|dir.x|).
   lateralDistBoostK: 1.5, // multiplier on step distance for purely lateral steps
-  minLateralSpread: 0.18, // meters -- roughly hip half-width
+  minLateralSpread: 0.14, // meters -- roughly hip half-width (R6)
 
   // Swing timing
   prepTime: 0.06, // seconds -- weight-transfer phase before swing
@@ -165,9 +165,9 @@ export const CATCH_STEP_DEFAULTS = {
   // load that hasn't transferred to the stance side. The upper/lower
   // leg forces compensate their gravity so joint motors only fight
   // inertia, not dead weight.
-  swingLiftAssistN: 65, // N -- foot force, above foot weight (2 kg * 9.81 = 19.6 N)
-  swingUpperLegAssistN: 30, // N -- gravity comp for upper leg (3 kg * 9.81 = 29 N)
-  swingLowerLegAssistN: 22, // N -- gravity comp for lower leg (2 kg * 9.81 = 20 N)
+  swingLiftAssistN: 70, // N -- foot force, above foot weight (2.5 kg * 9.81 = 24.5 N)
+  swingUpperLegAssistN: 35, // N -- gravity comp for upper leg (3 kg * 9.81 = 29.4 N)
+  swingLowerLegAssistN: 28, // N -- gravity comp for lower leg (2.5 kg * 9.81 = 24.5 N)
 
   // Forward reach force applied to the swing foot during the reach phase.
   // Helps the foot arrive at the step target -- joint motors alone often
@@ -239,13 +239,13 @@ export const CATCH_STEP_DEFAULTS = {
   urgencyLiftMult: 1.8, // lift assist force multiplier at full urgency
 
   // Cooldown at full urgency (lerp from cooldownTime to this)
-  cooldownTimeUrgent: 0.15, // seconds -- fast re-step when urgent
+  cooldownTimeUrgent: 0.12, // seconds -- fast re-step when urgent
 
   // Stance recovery: when balance error is small, the controller checks
   // if the feet are too close together and takes a small corrective step
   // to restore a stable, natural-looking stance.
-  idealFootSpread: 0.28, // meters -- desired lateral distance between feet
-  minFootSpreadForRecovery: 0.14, // meters -- trigger recovery step if spread is below this
+  idealFootSpread: 0.28, // meters -- desired lateral distance between feet (R6 hip width)
+  minFootSpreadForRecovery: 0.1, // meters -- trigger recovery step if spread is below this
   stanceRecoveryDelay: 0.6, // seconds of stable STAND before recovery is considered
   stanceRecoveryErrorMax: 0.04, // meters -- error must be below this for recovery
   stanceRecoveryVelMax: 0.15, // m/s -- COM velocity must be below this for recovery
@@ -261,10 +261,10 @@ export const CATCH_STEP_DEFAULTS = {
   // the controller can take rapid consecutive steps. After each step,
   // if the error is still high the controller re-triggers with minimal
   // settle time and zero cooldown instead of waiting.
-  maxConsecutiveSteps: 5, // hard cap on rapid re-stepping
-  multiStepSettleTime: 0.25, // seconds -- brief settle between consecutive steps
-  multiStepErrorThresh: 0.08, // meters -- error above this allows rapid re-step (above triggerErrorHi)
-  multiStepVelThresh: 0.6, // m/s -- COM velocity above this allows rapid re-step (above triggerVelXZ)
+  maxConsecutiveSteps: 7, // hard cap on rapid re-stepping
+  multiStepSettleTime: 0.2, // seconds -- brief settle between consecutive steps
+  multiStepErrorThresh: 0.08, // meters -- error above this allows rapid re-step
+  multiStepVelThresh: 0.6, // m/s -- COM velocity above this allows rapid re-step
 
   // Upper-body counter-rotation: during stepping, yaw the torso opposite
   // to the fall direction. The torso's angular momentum change creates a

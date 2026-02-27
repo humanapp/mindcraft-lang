@@ -33,7 +33,7 @@ const SIM_FRAMES = 300; // 5s of simulation after impulse
 const RECOVERY_TILT_THRESHOLD = 0.1; // rad -- below this = recovered
 
 // Spawn position matches CharacterRig default
-const SPAWN_POS = v3(0, 1.15, 0);
+const SPAWN_POS = v3(0, 0.72, 0);
 
 // 8 unit directions in the XZ plane (rig-local, +Z = forward)
 const DIRECTION_LABELS = [
