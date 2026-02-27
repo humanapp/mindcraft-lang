@@ -14,7 +14,9 @@
     "format": "biome format ./src --write",
     "format:check": "biome format ./src",
     "check": "biome check ./src",
-    "check:fix": "biome check ./src --write"
+    "check:fix": "biome check ./src --write",
+    "test:harness": "tsx -r tsconfig-paths/register src/test/headless-harness.ts",
+    "test:harness:yaw": "tsx -r tsconfig-paths/register src/test/headless-harness.ts --yaw"
   },
   "dependencies": {
     "@react-three/drei": "^10.0.0",
@@ -31,6 +33,8 @@
     "@types/react-dom": "^19.0.4",
     "@types/three": "^0.175.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.21.0",
     "typescript": "~5.7.2",
     "vite": "^6.3.1"
   }
