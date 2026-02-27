@@ -1,16 +1,20 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import { useThree } from "@react-three/fiber";
 import { useBeforePhysicsStep, useRapier } from "@react-three/rapier";
+import type { RefObject } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import type { BalanceDebug } from "@/controllers/BalanceController";
 import { BalanceController } from "@/controllers/BalanceController";
-import { q, v3 } from "@/lib/math";
+import type { CatchStepDebug } from "@/controllers/CatchStepController";
+import { CatchStepController } from "@/controllers/CatchStepController";
+import { q, qFromAxisAngle, v3 } from "@/lib/math";
 import { RapierRig } from "@/physics/RapierRig";
 import { RapierRigIO } from "@/physics/RapierRigIO";
 import type { PartName } from "@/rig/RigDefinition";
 import { RigDefinitionV0 } from "@/rig/RigDefinition.v0";
+import { RigDebugOverlay } from "./RigDebugOverlay";
 import { RigMeshes } from "./RigMeshes";
-import { CatchStepController } from "@/controllers/CatchStepController";
 
 const _dragPlane = new THREE.Plane();
 const _intersection = new THREE.Vector3();
@@ -31,6 +35,14 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
   const catchStepRef = useRef<CatchStepController | null>(null);
   const disposedRef = useRef(false);
   const [rig, setRig] = useState<RapierRig | null>(null);
+  const [io, setIo] = useState<RapierRigIO | null>(null);
+
+  // Debug state refs -- written in physics step, read by overlay in useFrame
+  const balanceDebugRef = useRef<BalanceDebug | null>(null);
+  const catchStepDebugRef = useRef<CatchStepDebug | null>(null);
+
+  // Facing yaw in radians. Changed via Q/E keys to test orientation independence.
+  const facingYawRef = useRef(0);
 
   useEffect(() => {
     if (!world) return;
@@ -48,13 +60,17 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
     ioRef.current = io;
     catchStepRef.current = new CatchStepController(new BalanceController());
     setRig(newRig);
+    setIo(io);
 
     return () => {
       disposedRef.current = true;
       ioRef.current = null;
       rigRef.current = null;
       catchStepRef.current = null;
+      balanceDebugRef.current = null;
+      catchStepDebugRef.current = null;
       setRig(null);
+      setIo(null);
 
       // Guard against the world already being freed (StrictMode / HMR).
       try {
@@ -64,6 +80,91 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
       }
     };
   }, [rapier, world, spawnX, spawnY, spawnZ]);
+
+  // ---------------------------------------------------------------------------
+  // Keyboard: push impulses (1/2/3), reset (Space), rotate facing (Q/E)
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    const _fwd = new THREE.Vector3(0, 0, 1);
+    const _right = new THREE.Vector3(1, 0, 0);
+    const _q = new THREE.Quaternion();
+
+    /** Reset rig to spawn with the current facing yaw and fresh controllers. */
+    function resetRig(rig: RapierRig) {
+      const yaw = facingYawRef.current;
+      const rot = qFromAxisAngle(v3(0, 1, 0), yaw);
+      rig.reset({
+        rootWorldPos: v3(spawnX, spawnY, spawnZ),
+        rootWorldRot: rot,
+      });
+      catchStepRef.current = new CatchStepController(new BalanceController());
+      balanceDebugRef.current = null;
+      catchStepDebugRef.current = null;
+
+      const yawDeg = Math.round((yaw * 180) / Math.PI);
+      console.log(`[Rig] reset -- facing ${yawDeg} deg`);
+    }
+
+    function onKeyDown(e: KeyboardEvent) {
+      // Ignore when typing in an input, textarea, or contentEditable element.
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+
+      if (e.code === "Space") {
+        e.preventDefault();
+        const rig = rigRef.current;
+        if (!rig) return;
+        resetRig(rig);
+        return;
+      }
+
+      // Q/E -- rotate facing by 90 degrees and reset
+      if (e.key === "q" || e.key === "Q" || e.key === "e" || e.key === "E") {
+        const rig = rigRef.current;
+        if (!rig) return;
+        const delta = e.key === "q" || e.key === "Q" ? Math.PI / 4 : -Math.PI / 4;
+        facingYawRef.current += delta;
+        resetRig(rig);
+        return;
+      }
+
+      const rig = rigRef.current;
+      if (!rig) return;
+
+      const root = rig.getBody("Root");
+      const rot = root.rotation();
+      _q.set(rot.x, rot.y, rot.z, rot.w);
+
+      // Derive world-space forward and right from root orientation
+      const fwd = _fwd.clone().set(0, 0, 1).applyQuaternion(_q);
+      const right = _right.clone().set(1, 0, 0).applyQuaternion(_q);
+
+      let impulse: { x: number; y: number; z: number } | null = null;
+
+      switch (e.key) {
+        // 1 - Gentle forward nudge (~10 N*s on a ~34kg rig)
+        case "1":
+          impulse = { x: fwd.x * 10, y: fwd.y * 10, z: fwd.z * 10 };
+          break;
+        // 2 - Side shove (~70 N*s rightward)
+        case "2":
+          impulse = { x: right.x * 70, y: right.y * 70, z: right.z * 70 };
+          break;
+        // 3 - Hard forward shove (~120 N*s, should trigger catch step or topple)
+        case "3":
+          impulse = { x: fwd.x * 120, y: fwd.y * 120, z: fwd.z * 120 };
+          break;
+      }
+
+      if (impulse) {
+        root.applyImpulse(impulse, true);
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [spawnX, spawnY, spawnZ]);
 
   // ---------------------------------------------------------------------------
   // Drag state
@@ -171,11 +272,16 @@ export function CharacterRig(props: { spawn?: { x: number; y: number; z: number 
     // Balance controller drives all stance joints (torso, hips, knees, ankles).
     // It computes COM-over-support error and maps it to joint angle targets.
     catchStep.update(io, dt);
+
+    // Snapshot debug state for the overlay (read in useFrame render loop)
+    balanceDebugRef.current = catchStep.balance.debug;
+    catchStepDebugRef.current = catchStep.debug;
   });
 
-  return rig ? (
+  return rig && io ? (
     <group onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}>
       <RigMeshes rig={rig} />
+      <RigDebugOverlay rig={rig} io={io} balanceDebugRef={balanceDebugRef} catchStepDebugRef={catchStepDebugRef} />
     </group>
   ) : null;
 }

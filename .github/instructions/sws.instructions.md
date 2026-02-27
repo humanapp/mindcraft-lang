@@ -1,7 +1,7 @@
 ---
 applyTo: 'apps/sws/**'
 ---
-<!-- Last reviewed: 2026-02-25 -->
+<!-- Last reviewed: 2026-02-26 -->
 
 # SWS Rig Architecture
 
@@ -166,3 +166,76 @@ Always state:
 - Which space vectors are in (local vs world).
 - Why a chosen gain value makes sense.
 - What physical behavior the change is expected to produce.
+
+## 8. Orientation Independence (Critical)
+
+All controller math must work identically regardless of the rig's yaw
+orientation. The rig can face any direction in the world.
+
+### Root-local frame
+
+When determining lateral vs forward direction (e.g., for foot selection,
+step target clamping, torso lean bias, arm extension side, laterality
+calculations), always transform world-space vectors into root-local frame
+using `qInverse(rootSample.rot)` before interpreting X as lateral and Z as
+forward.
+
+Common bugs from world-space assumptions:
+- Ankle PD using world Z for pitch: drives lateral balance at 90-deg yaw.
+- Torso lean PD using world X/Z: rolls instead of pitching at 90-deg yaw.
+- Foot spread measured as `rightPos.x - leftPos.x`: reads zero at 90-deg yaw,
+  triggers spurious stance recovery steps.
+- Step target clamping with world X = lateral, world Z = forward: clamps
+  incorrectly at non-zero yaw.
+- Ipsilateral foot selection using `dir.x` (world): picks wrong foot at
+  non-zero yaw.
+
+### World-space is correct for:
+- COM position and velocity (used for LIPM capture point).
+- Step target XZ coordinates (the foot moves to a world position).
+- Reach and lift forces (gravity is world-space, step target is world-space).
+- Dot products between two world-space vectors (e.g., foot-to-COM projection
+  onto step direction).
+
+### RapierRig body spawning
+
+`part.restPos` in `RigDefinition` is a root-relative offset. When spawning or
+resetting with a non-identity `rootWorldRot`, the offset must be rotated by
+the spawn quaternion before adding to `rootWorldPos`:
+```
+worldPos = rootWorldPos + rotateVec3(rootWorldRot, part.restPos)
+```
+
+## 9. Hip Roll Asymmetry (Anti-Crossing)
+
+Swing leg hip roll must use asymmetric limits:
+- **Abduction (outward):** full range (`hipRollMax`, currently 0.6 rad).
+- **Adduction (inward):** small limit (`hipRollInwardMax`, currently 0.08 rad).
+
+This prevents legs from crossing during catch steps. The asymmetry applies in
+both the `dirRoll` computation and the final `composeHipTarget` clamp.
+
+## 10. Balance Controller Architecture
+
+### Ankle strategy (primary actuator)
+The ankle hinge motor is the inverted-pendulum balance actuator. Error and
+velocity are transformed to root-local frame; `errLocal.z` drives ankle pitch.
+
+### Torso lean (hip strategy)
+The Root_Torso ball joint leans opposite to COM error (root-local frame).
+CatchStepController can override via `torsoBiasPitch`, `torsoBiasRoll`,
+`torsoLeanScale`, and `torsoYawBias` fields on BalanceController.
+
+### CatchStepController layering
+CatchStepController calls `balance.update()` first, then overrides swing-leg
+and stance-leg joints. It sets bias fields BEFORE `balance.update()` so they
+take effect the same frame. Key subsystems:
+- LIPM capture point for step target placement.
+- Active stance-hip COM shifting (PD control on hip roll/pitch).
+- Asymmetric arm extension (tightrope-walker reflex on high-side arm).
+- Upper-body counter-rotation (torso yaw bias).
+
+### Config pattern
+CatchStepController uses a defaults object (`CATCH_STEP_DEFAULTS`) merged
+with optional overrides at construction. BalanceController uses module-level
+constants (planned migration to same config pattern).

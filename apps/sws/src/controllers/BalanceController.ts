@@ -26,6 +26,8 @@ import {
   len,
   q,
   qFromAxisAngle,
+  qInverse,
+  qMul,
   qRotateVec3,
   smoothVec3,
   sub,
@@ -53,6 +55,14 @@ const RECOVER_TILT_RAD = 0.25; // ~14 degrees -- hysteresis band
 const ANKLE_P = 8.0;
 const ANKLE_D = 2.5;
 const ANKLE_MAX_RAD = 0.25;
+
+// ---------------------------------------------------------------------------
+// Torso lean gains (hip strategy -- leans torso opposite to COM error)
+// ---------------------------------------------------------------------------
+
+const TORSO_LEAN_P = 3.0;
+const TORSO_LEAN_D = 1.0;
+const TORSO_LEAN_MAX_RAD = 0.35; // ~20 degrees max lean
 
 // ---------------------------------------------------------------------------
 // Joint drive gains
@@ -95,6 +105,11 @@ export interface BalanceDebug {
   errorMag: number;
   leftGrounded: boolean;
   rightGrounded: boolean;
+  tiltRad: number;
+  fallen: boolean;
+  // The direction the torso lean PD is targeting (unit vector in world space).
+  // Represents the "ideal up" for the torso including any external bias.
+  torsoLeanDir: Vec3;
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +121,31 @@ export class BalanceController {
   private filteredCom: Vec3 = v3(0, 0, 0);
   private initialized = false;
   private fallen = false;
+
+  // External bias applied to torso lean target (pitch, roll in radians).
+  // Set by CatchStepController to lean INTO the step direction during
+  // and briefly after a step, preventing backward fall after forward steps.
+  torsoBiasPitch = 0;
+  torsoBiasRoll = 0;
+
+  // Attenuation factor (0..1) for the error-based PD lean.
+  // During stepping, the step IS the recovery mechanism, so the PD lean
+  // fighting the error is counterproductive. CatchStepController sets
+  // this to a low value during stepping to suppress the error-based lean.
+  torsoLeanScale = 1.0;
+
+  // Yaw bias (radians around +Y). Set by CatchStepController for
+  // upper-body counter-rotation: rotating the torso opposite to the
+  // fall direction generates a reaction torque on the root.
+  torsoYawBias = 0;
+
+  // Arm extension targets. Set by CatchStepController for asymmetric
+  // arm balance during stepping: fall-side arm extends outward/upward,
+  // opposite arm tucks. Expressed as {pitch, roll} in radians.
+  // When null, BalanceController drives arms to rest pose as usual.
+  leftArmTarget: { pitch: number; roll: number } | null = null;
+  rightArmTarget: { pitch: number; roll: number } | null = null;
+  armGainsOverride: { kp: number; kd: number; max: number } | null = null;
 
   private _debug: BalanceDebug | null = null;
   private frameCount = 0;
@@ -179,6 +219,14 @@ export class BalanceController {
     const errorFiltered = sub(this.filteredCom, this.filteredSupport);
     const errorMag = len(errorFiltered);
 
+    // Transform world-space error and velocity into root-local frame so
+    // that ankle pitch and torso lean PD operate on the correct axes
+    // regardless of the rig's yaw orientation. Without this, the ankle
+    // drives lateral balance when the rig faces +/-90 degrees.
+    const rootInv = qInverse(rootSample.rot);
+    const errLocal = qRotateVec3(rootInv, errorFiltered);
+    const velLocal = qRotateVec3(rootInv, v3(comVel.x, 0, comVel.z));
+
     // ------------------------------------------------------------------
     // E) Joint drives (Rapier built-in motors)
     //
@@ -189,9 +237,31 @@ export class BalanceController {
     // ------------------------------------------------------------------
     const rest = q(0, 0, 0, 1);
 
-    // Torso: rest pose hold
+    // Torso: lean opposite to COM error (hip strategy).
+    // When the COM drifts ahead (+Z error), pitch the torso backward
+    // (-X rotation) to shift mass back. Similarly for lateral error.
+    // Falls back to rest pose when fallen or airborne.
+    let torsoTarget = rest;
+    let torsoPitchActual = 0;
+    let torsoRollActual = 0;
+    if (anyGrounded && !this.fallen) {
+      torsoPitchActual = clamp(
+        (-TORSO_LEAN_P * errLocal.z - TORSO_LEAN_D * velLocal.z) * this.torsoLeanScale + this.torsoBiasPitch,
+        -TORSO_LEAN_MAX_RAD,
+        TORSO_LEAN_MAX_RAD
+      );
+      torsoRollActual = clamp(
+        (-TORSO_LEAN_P * errLocal.x - TORSO_LEAN_D * velLocal.x) * this.torsoLeanScale + this.torsoBiasRoll,
+        -TORSO_LEAN_MAX_RAD,
+        TORSO_LEAN_MAX_RAD
+      );
+      torsoTarget = qMul(
+        qMul(qFromAxisAngle(v3(1, 0, 0), torsoPitchActual), qFromAxisAngle(v3(0, 0, 1), torsoRollActual)),
+        qFromAxisAngle(v3(0, 1, 0), this.torsoYawBias)
+      );
+    }
     io.driveJoint("Root_Torso", {
-      targetLocalRot: rest,
+      targetLocalRot: torsoTarget,
       kp: gains.torso.kp,
       kd: gains.torso.kd,
       maxTorque: gains.torso.max,
@@ -205,18 +275,33 @@ export class BalanceController {
       maxTorque: gains.head.max,
     });
 
-    // Arms: rest pose hold (low gains -- should hang without destabilizing)
+    // Arms: use external targets when set (CatchStepController arm extension),
+    // otherwise rest pose hold. Arm targets are pitch (around +X) and roll
+    // (around +Z) in torso-local space.
+    const leftArmRot = this.leftArmTarget
+      ? qMul(
+          qFromAxisAngle(v3(1, 0, 0), this.leftArmTarget.pitch),
+          qFromAxisAngle(v3(0, 0, 1), this.leftArmTarget.roll)
+        )
+      : rest;
+    const rightArmRot = this.rightArmTarget
+      ? qMul(
+          qFromAxisAngle(v3(1, 0, 0), this.rightArmTarget.pitch),
+          qFromAxisAngle(v3(0, 0, 1), this.rightArmTarget.roll)
+        )
+      : rest;
+    const armGains = this.armGainsOverride ?? gains.arm;
     io.driveJoint("Torso_LeftArm", {
-      targetLocalRot: rest,
-      kp: gains.arm.kp,
-      kd: gains.arm.kd,
-      maxTorque: gains.arm.max,
+      targetLocalRot: leftArmRot,
+      kp: armGains.kp,
+      kd: armGains.kd,
+      maxTorque: armGains.max,
     });
     io.driveJoint("Torso_RightArm", {
-      targetLocalRot: rest,
-      kp: gains.arm.kp,
-      kd: gains.arm.kd,
-      maxTorque: gains.arm.max,
+      targetLocalRot: rightArmRot,
+      kp: armGains.kp,
+      kd: armGains.kd,
+      maxTorque: armGains.max,
     });
 
     // Hips: rest pose hold
@@ -258,7 +343,7 @@ export class BalanceController {
     // standard inverted-pendulum ankle strategy.
     const anklePitchRad =
       anyGrounded && !this.fallen
-        ? clamp(ANKLE_P * errorFiltered.z + ANKLE_D * comVel.z, -ANKLE_MAX_RAD, ANKLE_MAX_RAD)
+        ? clamp(ANKLE_P * errLocal.z + ANKLE_D * velLocal.z, -ANKLE_MAX_RAD, ANKLE_MAX_RAD)
         : 0;
 
     const ankleTarget = qFromAxisAngle(v3(1, 0, 0), anklePitchRad);
@@ -279,6 +364,16 @@ export class BalanceController {
     // ------------------------------------------------------------------
     // G) Debug
     // ------------------------------------------------------------------
+    // Compute the torso lean target as a world-space direction vector.
+    // Start with straight up (0,1,0) and rotate by the lean target quaternion
+    // in the root frame to get the effective "ideal up" direction.
+    const rootSampleForLean = io.sampleBody("Root");
+    const leanQuat = qMul(qFromAxisAngle(v3(1, 0, 0), torsoPitchActual), qFromAxisAngle(v3(0, 0, 1), torsoRollActual));
+    // Transform from root-local to world
+    const rootRot = rootSampleForLean.rot;
+    const leanDirLocal = qRotateVec3(leanQuat, v3(0, 1, 0));
+    const torsoLeanDir = qRotateVec3(rootRot, leanDirLocal);
+
     this._debug = {
       support,
       comProj,
@@ -287,6 +382,9 @@ export class BalanceController {
       errorMag,
       leftGrounded: leftFC.grounded,
       rightGrounded: rightFC.grounded,
+      tiltRad,
+      fallen: this.fallen,
+      torsoLeanDir,
     };
 
     this.frameCount++;
@@ -297,8 +395,11 @@ export class BalanceController {
         `L:${leftFC.grounded} R:${rightFC.grounded}`,
         `tilt:${tiltDeg.toFixed(1)}deg`,
         this.fallen ? "FALLEN" : "",
-        `errZ:${errorFiltered.z.toFixed(4)}`,
-        `ankle:${anklePitchRad.toFixed(4)}`
+        `errW:(${errorFiltered.x.toFixed(4)},${errorFiltered.z.toFixed(4)})`,
+        `errL:(${errLocal.x.toFixed(4)},${errLocal.z.toFixed(4)})`,
+        `velL:(${velLocal.x.toFixed(4)},${velLocal.z.toFixed(4)})`,
+        `ankle:${anklePitchRad.toFixed(4)}`,
+        `torsoPR:(${torsoPitchActual.toFixed(4)},${torsoRollActual.toFixed(4)})`
       );
     }
   }

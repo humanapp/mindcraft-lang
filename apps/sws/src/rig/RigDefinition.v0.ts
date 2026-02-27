@@ -53,14 +53,14 @@ const parts: PartDef[] = [
   // Arms (single segment, Roblox-y)
   {
     name: "LeftArm",
-    mass: 0.1,
+    mass: 2,
     collision: [capY(0.07, 0.18)], // ~0.50m
     restPos: v3(-0.33, 0.49, 0),
     restRot: ID,
   },
   {
     name: "RightArm",
-    mass: 0.1,
+    mass: 2,
     collision: [capY(0.07, 0.18)],
     restPos: v3(0.33, 0.49, 0),
     restRot: ID,
@@ -83,7 +83,7 @@ const parts: PartDef[] = [
   },
   {
     name: "LeftFoot",
-    mass: 5,
+    mass: 2,
     collision: [box(0.1, 0.04, 0.14)], // ~0.20 x 0.08 x 0.28
     restPos: v3(-0.18, -0.98, 0),
     restRot: ID,
@@ -105,7 +105,7 @@ const parts: PartDef[] = [
   },
   {
     name: "RightFoot",
-    mass: 5,
+    mass: 2,
     collision: [box(0.1, 0.04, 0.14)],
     restPos: v3(0.18, -0.98, 0),
     restRot: ID,
@@ -167,7 +167,7 @@ const joints: JointDef[] = [
     drive: { kp: 45, kd: 9, maxTorque: 90 },
   },
 
-  // Root <-> Upper legs (ball, fairly tight to keep Roblox-y)
+  // Root <-> Upper legs (ball, wide enough for stepping)
   {
     name: "Root_LeftUpperLeg",
     parent: "Root",
@@ -176,7 +176,7 @@ const joints: JointDef[] = [
     parentFrameRot: ID,
     childFramePos: v3(0, 0.22, 0),
     childFrameRot: ID,
-    limits: { kind: "ball", swingDeg: 38, twistDeg: 22 },
+    limits: { kind: "ball", swingDeg: 90, twistDeg: 22 },
     drive: { kp: 90, kd: 14, maxTorque: 240 },
   },
   {
@@ -187,7 +187,7 @@ const joints: JointDef[] = [
     parentFrameRot: ID,
     childFramePos: v3(0, 0.22, 0),
     childFrameRot: ID,
-    limits: { kind: "ball", swingDeg: 38, twistDeg: 22 },
+    limits: { kind: "ball", swingDeg: 90, twistDeg: 22 },
     drive: { kp: 90, kd: 14, maxTorque: 240 },
   },
 
@@ -201,7 +201,7 @@ const joints: JointDef[] = [
     parentFrameRot: ID,
     childFramePos: v3(0, 0.2, 0),
     childFrameRot: ID,
-    limits: { kind: "hinge", axisLocalParent: v3(1, 0, 0), minDeg: 0, maxDeg: 95 },
+    limits: { kind: "hinge", axisLocalParent: v3(1, 0, 0), minDeg: 0, maxDeg: 120 },
     drive: { kp: 75, kd: 12, maxTorque: 190 },
   },
   {
@@ -212,7 +212,7 @@ const joints: JointDef[] = [
     parentFrameRot: ID,
     childFramePos: v3(0, 0.2, 0),
     childFrameRot: ID,
-    limits: { kind: "hinge", axisLocalParent: v3(1, 0, 0), minDeg: 0, maxDeg: 95 },
+    limits: { kind: "hinge", axisLocalParent: v3(1, 0, 0), minDeg: 0, maxDeg: 120 },
     drive: { kp: 75, kd: 12, maxTorque: 190 },
   },
 

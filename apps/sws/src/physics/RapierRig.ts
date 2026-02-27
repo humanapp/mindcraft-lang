@@ -130,6 +130,35 @@ export class RapierRig {
   }
 
   // ---------------------------------------------------------------------------
+  // Reset -- teleport all bodies back to rest pose and zero all velocities.
+  // This avoids the timing issues of dispose + recreate within the same
+  // Rapier world step.
+  // ---------------------------------------------------------------------------
+
+  reset(spawn: RapierRigSpawn): void {
+    const rootName = this.def.root;
+
+    for (const { part, body } of this.bodiesByPart.values()) {
+      const isRoot = part.name === rootName;
+      const worldPos = isRoot
+        ? spawn.rootWorldPos
+        : addVec3(spawn.rootWorldPos, rotateVec3(spawn.rootWorldRot, part.restPos));
+      const worldRot = isRoot ? spawn.rootWorldRot : mulQuat(spawn.rootWorldRot, part.restRot);
+
+      // Ensure the body is dynamic (may have been set to kinematic during drag)
+      body.setBodyType(0, true); // 0 = Dynamic
+
+      body.setTranslation({ x: worldPos.x, y: worldPos.y, z: worldPos.z }, true);
+      body.setRotation({ x: worldRot.x, y: worldRot.y, z: worldRot.z, w: worldRot.w }, true);
+      body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+      body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      body.resetForces(true);
+      body.resetTorques(true);
+      body.wakeUp();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Build
   // ---------------------------------------------------------------------------
 
@@ -148,7 +177,7 @@ export class RapierRig {
     for (const part of this.def.parts) {
       if (part.name === rootName) continue;
 
-      const worldPos = addVec3(spawn.rootWorldPos, part.restPos);
+      const worldPos = addVec3(spawn.rootWorldPos, rotateVec3(spawn.rootWorldRot, part.restPos));
       const worldRot = mulQuat(spawn.rootWorldRot, part.restRot);
 
       const body = this.createBodyFromPart(part, worldPos, worldRot);
@@ -328,6 +357,20 @@ export class RapierRig {
 
 function addVec3(a: Vec3, b: Vec3): Vec3 {
   return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+
+/** Rotate a vector by a unit quaternion. */
+function rotateVec3(qq: Quat, v: Vec3): Vec3 {
+  // q * v * q^-1, expanded to avoid temporary quaternion allocations.
+  const ix = qq.w * v.x + qq.y * v.z - qq.z * v.y;
+  const iy = qq.w * v.y + qq.z * v.x - qq.x * v.z;
+  const iz = qq.w * v.z + qq.x * v.y - qq.y * v.x;
+  const iw = -qq.x * v.x - qq.y * v.y - qq.z * v.z;
+  return {
+    x: ix * qq.w + iw * -qq.x + iy * -qq.z - iz * -qq.y,
+    y: iy * qq.w + iw * -qq.y + iz * -qq.x - ix * -qq.z,
+    z: iz * qq.w + iw * -qq.z + ix * -qq.y - iy * -qq.x,
+  };
 }
 
 function mulQuat(a: Quat, b: Quat): Quat {
