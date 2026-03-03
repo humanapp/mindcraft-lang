@@ -41,7 +41,7 @@ export const tileVisuals = new Dict<string, Partial<TileVisual>>([
   [mkOperatorTileId(CoreOpId.LessThanOrEqualTo), { label: "less than or equal to", iconUrl: "/assets/brain/icons/less_than_or_equal_to.svg" }],
   [mkOperatorTileId(CoreOpId.GreaterThan), { label: "greater than", iconUrl: "/assets/brain/icons/greater_than.svg" }],
   [mkOperatorTileId(CoreOpId.GreaterThanOrEqualTo), { label: "greater than or equal to", iconUrl: "/assets/brain/icons/greater_than_or_equal_to.svg" }],
-  [mkOperatorTileId(CoreOpId.Assign), { label: "equals", iconUrl: "/assets/brain/icons/assign.svg" }],
+  [mkOperatorTileId(CoreOpId.Assign), { label: "gets", iconUrl: "/assets/brain/icons/assign.svg" }],
   // Control Flow
   [mkControlFlowTileId(CoreControlFlowId.OpenParen), { label: "(", iconUrl: "/assets/brain/icons/open-paren.svg" }],
   [mkControlFlowTileId(CoreControlFlowId.CloseParen), { label: ")", iconUrl: "/assets/brain/icons/close-paren.svg" }],
