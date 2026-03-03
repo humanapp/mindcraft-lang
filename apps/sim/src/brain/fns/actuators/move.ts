@@ -240,5 +240,5 @@ export default {
   fn: { exec: execMove },
   isAsync: false,
   returnType: CoreTypeIds.Void,
-  visual: { label: "move", iconUrl: "/assets/brain/icons/move.svg" },
+  visual: { label: "move", iconUrl: "/assets/brain/icons/move2.svg" },
 } satisfies ActionDef;
