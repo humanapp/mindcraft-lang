@@ -76,7 +76,7 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
       maxSpeed: 2,
     },
     brain: BrainDef.emptyBrainDef("Carnivore Brain"),
-    initialSpawnCount: 10,
+    initialSpawnCount: 5,
     vision: { range: 600, halfFOV: Math.PI * 0.65 },
     energy: {
       maxEnergy: 100,
@@ -107,7 +107,7 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
       maxSpeed: 5,
     },
     brain: BrainDef.emptyBrainDef("Herbivore Brain"),
-    initialSpawnCount: 10,
+    initialSpawnCount: 5,
     vision: { range: 600, halfFOV: Math.PI * 0.65 },
     energy: {
       maxEnergy: 100,
@@ -138,7 +138,7 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
       maxSpeed: 0,
     },
     brain: BrainDef.emptyBrainDef("Plant Brain"),
-    initialSpawnCount: 25,
+    initialSpawnCount: 10,
     vision: { range: 600, halfFOV: Math.PI },
     energy: {
       maxEnergy: 100,
