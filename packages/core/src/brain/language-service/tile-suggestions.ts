@@ -576,8 +576,9 @@ function hasParametersNeedingValues(actionExpr: ActuatorExpr | SensorExpr, exclu
  * collectAvailableArgSlots (the slot counts as unfilled). This function
  * targets the case where a value was partially entered.
  */
-function hasIncompleteAnonValues(actionExpr: ActuatorExpr | SensorExpr): boolean {
+function hasIncompleteAnonValues(actionExpr: ActuatorExpr | SensorExpr, excludeSlotId?: number): boolean {
   for (let i = 0; i < actionExpr.anons.size(); i++) {
+    if (actionExpr.anons.get(i).slotId === excludeSlotId) continue;
     const anonExpr = actionExpr.anons.get(i).expr;
     if (anonExpr.kind !== "empty" && anonExpr.kind !== "errorExpr" && !isCompleteValueExpr(anonExpr)) {
       return true;
@@ -1189,10 +1190,84 @@ function findReplacementRole(expr: Expr, tileIndex: number, parentRole: Replacem
           });
         }
       }
-      // Tile is the action tile itself -- suggest all expression tiles
-      return { kind: "expressionPosition" };
+      // If the tile is at the action tile's own position, suggest all
+      // expression tiles (the user is replacing the actuator/sensor itself).
+      if (tileIndex === expr.span.from) {
+        return { kind: "expressionPosition" };
+      }
+      // The tile is inside the action call span but not in any child AST
+      // node. This happens with transparent control flow tokens (like
+      // parentheses) consumed during expression parsing for a slot
+      // (e.g., [say] [(] -- the open paren is consumed as part of the
+      // anonymous value but is not reflected in the resulting expression
+      // span). Find the owning slot by positional proximity so the
+      // replacement offers call spec tiles rather than actuators.
+      return {
+        kind: "actionCallArg",
+        actionExpr: expr,
+        excludeSlotId: findOwningSlotId(expr, tileIndex),
+      };
     }
   }
+}
+
+/**
+ * Finds the slot that "owns" a transparent tile (e.g., a parenthesis) inside
+ * an action call. The tile was consumed during expression parsing for a slot
+ * but falls outside the resulting expression's AST span.
+ *
+ * Uses positional proximity: prefers a slot whose span starts just after the
+ * tile (open paren consumed before the inner expression), then falls back to
+ * a slot whose span ends at or before the tile (close paren consumed after
+ * the inner expression).
+ *
+ * Returns the owning slot's ID, or undefined if none can be determined.
+ */
+function findOwningSlotId(actionExpr: ActuatorExpr | SensorExpr, tileIndex: number): number | undefined {
+  let bestBeforeId: number | undefined;
+  let bestBeforeDist: number | undefined;
+  let bestAfterId: number | undefined;
+  let bestAfterDist: number | undefined;
+
+  const checkSlot = (span: Span, slotId: number) => {
+    if (span.from > tileIndex) {
+      // Tile is before the slot's expression (open paren scenario)
+      const dist = span.from - tileIndex;
+      if (bestBeforeDist === undefined || dist < bestBeforeDist) {
+        bestBeforeDist = dist;
+        bestBeforeId = slotId;
+      }
+    } else if (tileIndex >= span.to) {
+      // Tile is after the slot's expression (close paren scenario)
+      const dist = tileIndex - span.to;
+      if (bestAfterDist === undefined || dist < bestAfterDist) {
+        bestAfterDist = dist;
+        bestAfterId = slotId;
+      }
+    }
+  };
+
+  for (let i = 0; i < actionExpr.anons.size(); i++) {
+    const anonExpr = actionExpr.anons.get(i).expr;
+    if (anonExpr.kind !== "empty" && anonExpr.span !== undefined) {
+      checkSlot(anonExpr.span, actionExpr.anons.get(i).slotId);
+    }
+  }
+  for (let i = 0; i < actionExpr.parameters.size(); i++) {
+    const paramExpr = actionExpr.parameters.get(i).expr;
+    if (paramExpr.kind !== "empty" && paramExpr.span !== undefined) {
+      checkSlot(paramExpr.span, actionExpr.parameters.get(i).slotId);
+    }
+  }
+  for (let i = 0; i < actionExpr.modifiers.size(); i++) {
+    const modExpr = actionExpr.modifiers.get(i).expr;
+    if (modExpr.kind !== "empty" && modExpr.span !== undefined) {
+      checkSlot(modExpr.span, actionExpr.modifiers.get(i).slotId);
+    }
+  }
+
+  // Prefer "before slot" (open paren) over "after slot" (close paren)
+  return bestBeforeId ?? bestAfterId;
 }
 
 // ---- Main API ----
@@ -1275,7 +1350,8 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
           conversions,
           result,
           undefined,
-          context.availableCapabilities
+          context.availableCapabilities,
+          context.unclosedParenDepth
         );
       }
 
@@ -1335,7 +1411,8 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
             conversions,
             result,
             undefined,
-            context.availableCapabilities
+            context.availableCapabilities,
+            context.unclosedParenDepth
           );
         }
 
@@ -1441,6 +1518,35 @@ function suggestCloseParenIfNeeded(
   for (let ci = 0; ci < catalogs.size(); ci++) {
     const tileDef = catalogs.get(ci).get(closeParenId);
     if (tileDef && isPlacementValid(tileDef, context.ruleSide)) {
+      result.exact.push({
+        tileDef,
+        compatibility: TileCompatibility.Unchecked,
+        conversionCost: 0,
+      });
+      return;
+    }
+  }
+}
+
+// ---- Open Paren ----
+
+/**
+ * Suggests the open paren tile in value sub-expression positions inside
+ * action calls. The open paren starts a grouped expression (e.g.,
+ * [duration] [(] [1] [+] [2] [)]). suggestExpressionTiles includes
+ * it automatically for top-level positions, but action call value
+ * suggestions go through suggestExpressionsForAnonymousSlots which
+ * only includes value-producing tiles.
+ */
+function suggestOpenParen(
+  ruleSide: RuleSide,
+  catalogs: ReadonlyList<ITileCatalog>,
+  result: TileSuggestionResult
+): void {
+  const openParenId = mkControlFlowTileId(CoreControlFlowId.OpenParen);
+  for (let ci = 0; ci < catalogs.size(); ci++) {
+    const tileDef = catalogs.get(ci).get(openParenId);
+    if (tileDef && isPlacementValid(tileDef, ruleSide)) {
       result.exact.push({
         tileDef,
         compatibility: TileCompatibility.Unchecked,
@@ -1837,7 +1943,10 @@ function suggestForReplacementRole(
 ): void {
   switch (role.kind) {
     case "expressionPosition":
-      suggestExpressionTiles(context, catalogs, conversions, result);
+      // When replacing the action tile itself (e.g., [say] in [say] [(]),
+      // paren depth from remaining tiles is irrelevant -- clear it so
+      // actuators and non-inline sensors are not suppressed.
+      suggestExpressionTiles({ ...context, unclosedParenDepth: undefined }, catalogs, conversions, result);
       break;
 
     case "value": {
@@ -1845,8 +1954,13 @@ function suggestForReplacementRole(
         ruleSide: context.ruleSide,
         expectedType: role.expectedType ?? context.expectedType,
         availableCapabilities: context.availableCapabilities,
+        unclosedParenDepth: context.unclosedParenDepth,
       };
-      suggestExpressionTiles(ctx, catalogs, conversions, result);
+      // Value positions are sub-expression slots (binary operand, assignment
+      // RHS, etc.) where only value-producing tiles are valid. Actuators
+      // return Void and non-inline sensors are parsed at the action-call
+      // level, so both are excluded via valueOnly.
+      suggestExpressionTiles(ctx, catalogs, conversions, result, true);
       break;
     }
 
@@ -1872,7 +1986,8 @@ function suggestForReplacementRole(
         conversions,
         result,
         role.excludeSlotId,
-        context.availableCapabilities
+        context.availableCapabilities,
+        context.unclosedParenDepth
       );
       break;
 
@@ -1899,7 +2014,8 @@ function suggestActionCallTiles(
   conversions: IConversionRegistry,
   result: TileSuggestionResult,
   excludeSlotId?: number,
-  availableCapabilities?: ReadonlyBitSet
+  availableCapabilities?: ReadonlyBitSet,
+  unclosedParenDepth?: number
 ): void {
   const callDef = actionExpr.tileDef.fnEntry.callDef;
   const filledSlotIds = collectFilledSlotIds(actionExpr, excludeSlotId);
@@ -1912,9 +2028,12 @@ function suggestActionCallTiles(
   // When a value is pending, only value expressions should be suggested -- named
   // parameter/modifier tiles are suppressed because the user must complete the
   // current parameter or anonymous value expression first.
+  // Unclosed parens also suppress named tiles -- the user is building a grouped
+  // sub-expression that must be closed before placing additional call spec args.
   const valuePending =
+    (unclosedParenDepth ?? 0) > 0 ||
     hasParametersNeedingValues(actionExpr, excludeSlotId) ||
-    hasIncompleteAnonValues(actionExpr) ||
+    hasIncompleteAnonValues(actionExpr, excludeSlotId) ||
     hasStructValuePendingAccessor(actionExpr, catalogs, excludeSlotId);
 
   // Collect expected types from available anonymous slots and suggest named tiles
@@ -1955,18 +2074,41 @@ function suggestActionCallTiles(
   }
 
   // Also collect expected types from filled anonymous slots with incomplete values
-  // (e.g., [say] ["hi"] [+] -- the binaryOp needs a right operand)
+  // (e.g., [say] ["hi"] [+] -- the binaryOp needs a right operand).
+  // When unclosed parens are present, also include anon slots with errorExpr --
+  // the error was caused by the unclosed paren consuming the slot's expression
+  // (e.g., [say] [(] produces errorExpr in the AnonString slot).
+  const includeAnonErrors = (unclosedParenDepth ?? 0) > 0;
+  const { operatorOverloads: opOverloads } = getBrainServices();
   for (let i = 0; i < actionExpr.anons.size(); i++) {
     const anonExpr = actionExpr.anons.get(i).expr;
-    if (anonExpr.kind !== "empty" && anonExpr.kind !== "errorExpr" && !isCompleteValueExpr(anonExpr)) {
-      const slotId = actionExpr.anons.get(i).slotId;
-      for (let j = 0; j < callDef.argSlots.size(); j++) {
-        if (callDef.argSlots.get(j).slotId === slotId) {
-          const argTileDef = findTileInCatalogs(callDef.argSlots.get(j).argSpec.tileId, catalogs);
-          if (argTileDef && argTileDef.kind === "parameter") {
-            valueExpectedTypes.push((argTileDef as BrainTileParameterDef).dataType);
+    const isIncomplete = anonExpr.kind !== "empty" && anonExpr.kind !== "errorExpr" && !isCompleteValueExpr(anonExpr);
+    const isErrorInUnclosedParen = includeAnonErrors && anonExpr.kind === "errorExpr";
+    if (isIncomplete || isErrorInUnclosedParen) {
+      // When the incomplete expression has an operator-derived expected type
+      // (e.g., [1] [+] _ expects Number for the right operand), use that
+      // instead of the outer slot type. The operator constraint is the
+      // immediate context -- the slot type (e.g., String from AnonString)
+      // would incorrectly promote conversion-only tiles to exact matches.
+      let usedOperandType = false;
+      if (isIncomplete) {
+        const operandType = incompleteExprExpectedType(anonExpr, opOverloads, conversions);
+        if (operandType !== undefined) {
+          valueExpectedTypes.push(operandType);
+          usedOperandType = true;
+        }
+      }
+
+      if (!usedOperandType) {
+        const slotId = actionExpr.anons.get(i).slotId;
+        for (let j = 0; j < callDef.argSlots.size(); j++) {
+          if (callDef.argSlots.get(j).slotId === slotId) {
+            const argTileDef = findTileInCatalogs(callDef.argSlots.get(j).argSpec.tileId, catalogs);
+            if (argTileDef && argTileDef.kind === "parameter") {
+              valueExpectedTypes.push((argTileDef as BrainTileParameterDef).dataType);
+            }
+            break;
           }
-          break;
         }
       }
     }
@@ -1984,6 +2126,8 @@ function suggestActionCallTiles(
     );
     // Prefix operators can start value sub-expressions (e.g., [negative] [1]).
     suggestPrefixOperatorsForValue(ruleSide, catalogs, valueExpectedTypes, result, availableCapabilities);
+    // Open paren can start a grouped sub-expression (e.g., [duration] [(] [1] [+] [2] [)]).
+    suggestOpenParen(ruleSide, catalogs, result);
   }
 }
 

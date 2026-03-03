@@ -851,6 +851,21 @@ describe("Parameter value expression chains", () => {
       assert.ok(!hasLiteral, "[move] [priority] [negative] [1] should NOT offer literal tiles");
     }
   });
+
+  test("Test 77: [move] [priority] _ -> open paren suggested", () => {
+    const tiles = List.from<IBrainTileDef>([testActuatorDef, testParamDef]);
+    const expr = parseTilesForSuggestions(tiles);
+
+    assert.equal(expr.kind, "actuator");
+    if (expr.kind === "actuator") {
+      const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
+      const result = suggestTiles(ctx, catalogList());
+
+      const openParenId = mkControlFlowTileId(CoreControlFlowId.OpenParen);
+      const hasOpenParen = listFind(result.exact, (s) => s.tileDef.tileId === openParenId) !== undefined;
+      assert.ok(hasOpenParen, "[move] [priority] should offer open paren");
+    }
+  });
 });
 
 // ---- Test 24-29: Call spec constraint tests ----
@@ -2515,6 +2530,248 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
         undefined,
       "Close paren should be suggested when replacing operator inside unclosed parens"
     );
+  });
+});
+
+// ---- Test 78-80: Paren suppression inside action calls ----
+
+describe("Unclosed parens suppress named tiles in action calls", () => {
+  let sayActuatorDef: BrainTileActuatorDef;
+  let durationParamDef: BrainTileParameterDef;
+  let numLitDef: BrainTileLiteralDef;
+  let strLitDef: BrainTileLiteralDef;
+  let addOpDef: BrainTileOperatorDef;
+  let openParen: IBrainTileDef;
+  let closeParen: IBrainTileDef;
+
+  before(() => {
+    const durationId = "test.duration.78";
+    durationParamDef = new BrainTileParameterDef(durationId, CoreTypeIds.Number, { visual: { label: "duration" } });
+    services.tiles.registerTileDef(durationParamDef);
+
+    const anonStr = param(CoreParameterId.AnonymousString, { anonymous: true });
+    const durationParam = param(durationId);
+    const callDef = mkCallDef(bag(optional(anonStr), optional(durationParam)));
+    const fnEntry = services.functions.register("test-say-78", false, { exec: () => VOID_VALUE }, callDef);
+    sayActuatorDef = new BrainTileActuatorDef("test-say-78", fnEntry, {
+      visual: { label: "say" },
+      placement: TilePlacement.DoSide,
+    });
+    services.tiles.registerTileDef(sayActuatorDef);
+
+    numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "5", { visual: { label: "5" } });
+    services.tiles.registerTileDef(numLitDef);
+
+    strLitDef = new BrainTileLiteralDef(CoreTypeIds.String, "test78greet", { visual: { label: "test78greet" } });
+    services.tiles.registerTileDef(strLitDef);
+
+    addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    openParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    closeParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
+  });
+
+  test("Test 78: [say] [(] _ -> named params suppressed, value tiles offered", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, openParen]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles);
+
+    assert.equal(depth, 1);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+
+    const hasDuration = listFind(result.exact, (s) => s.tileDef.tileId === durationParamDef.tileId) !== undefined;
+    assert.ok(!hasDuration, "[say] [(] should NOT offer [duration] (paren not closed)");
+
+    // String literal should be exact (AnonString slot expects String)
+    const hasStrLiteral = listFind(result.exact, (s) => s.tileDef.tileId === strLitDef.tileId) !== undefined;
+    assert.ok(hasStrLiteral, "[say] [(] should offer string literal tiles (exact for AnonString)");
+
+    // Number literal should appear via conversion (Number -> String)
+    const hasNumLiteral =
+      listFind(result.exact, (s) => s.tileDef.tileId === numLitDef.tileId) !== undefined ||
+      listFind(result.withConversion, (s) => s.tileDef.tileId === numLitDef.tileId) !== undefined;
+    assert.ok(hasNumLiteral, "[say] [(] should offer number literal tiles (via conversion)");
+  });
+
+  test("Test 79: [say] [(] [5] _ -> named params suppressed, close paren + infix ops", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, openParen, numLitDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles);
+
+    assert.equal(depth, 1);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+
+    const hasDuration = listFind(result.exact, (s) => s.tileDef.tileId === durationParamDef.tileId) !== undefined;
+    assert.ok(!hasDuration, "[say] [(] [5] should NOT offer [duration] (paren not closed)");
+
+    const hasCloseParen =
+      listFind(result.exact, (s) => s.tileDef.tileId === mkControlFlowTileId(CoreControlFlowId.CloseParen)) !==
+      undefined;
+    assert.ok(hasCloseParen, "[say] [(] [5] should offer close paren");
+
+    const hasInfixOp =
+      listFind(
+        result.exact,
+        (s) => s.tileDef.kind === "operator" && (s.tileDef as BrainTileOperatorDef).op.parse.fixity === "infix"
+      ) !== undefined;
+    assert.ok(hasInfixOp, "[say] [(] [5] should offer infix operators");
+  });
+
+  test("Test 80: [say] [(] [5] [)] _ -> named params available again", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, openParen, numLitDef, closeParen]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles);
+
+    assert.equal(depth, 0);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+
+    const hasDuration = listFind(result.exact, (s) => s.tileDef.tileId === durationParamDef.tileId) !== undefined;
+    assert.ok(hasDuration, "[say] [(] [5] [)] should offer [duration] (parens balanced)");
+  });
+
+  test("Test 81: Replace [(] in [say] [(] -> no actuators, value tiles offered", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, openParen]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles, 1);
+
+    assert.equal(depth, 0);
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, replaceTileIndex: 1, unclosedParenDepth: depth },
+      catalogList()
+    );
+
+    const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
+    assert.ok(!hasActuator, "Replacing [(] in [say] [(] should NOT offer actuators");
+
+    // String literals should be offered (AnonString slot expects String)
+    const hasStrLiteral =
+      listFind(
+        result.exact,
+        (s) => s.tileDef.kind === "literal" && getTileOutputType(s.tileDef) === CoreTypeIds.String
+      ) !== undefined;
+    assert.ok(hasStrLiteral, "Replacing [(] in [say] [(] should offer String literals");
+
+    // Open paren should be offered (to re-place a paren)
+    const openParenId = mkControlFlowTileId(CoreControlFlowId.OpenParen);
+    const hasOpenParen = listFind(result.exact, (s) => s.tileDef.tileId === openParenId) !== undefined;
+    assert.ok(hasOpenParen, "Replacing [(] in [say] [(] should offer open paren");
+  });
+
+  test("Test 82: Replace [(] in [say] [(] [5] [)] -> no actuators, value tiles offered", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, openParen, numLitDef, closeParen]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles, 1);
+
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, replaceTileIndex: 1, unclosedParenDepth: depth },
+      catalogList()
+    );
+
+    const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
+    assert.ok(!hasActuator, "Replacing [(] in [say] [(] [5] [)] should NOT offer actuators");
+
+    // Value tiles should be available (replacing the paren in the anon slot)
+    const hasStrLiteral =
+      listFind(
+        result.exact,
+        (s) => s.tileDef.kind === "literal" && getTileOutputType(s.tileDef) === CoreTypeIds.String
+      ) !== undefined;
+    assert.ok(hasStrLiteral, "Replacing [(] in [say] [(] [5] [)] should offer String literals");
+  });
+
+  test("Test 84: [say] [(] [5] [+] _ -> Number is exact, String is conversion only", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, openParen, numLitDef, addOpDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles);
+
+    assert.equal(depth, 1);
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+
+    // Number literal should be an exact match (the + operator with Number LHS expects Number RHS),
+    // not just a conversion match via the outer AnonString slot's String type.
+    const numExact = listFind(result.exact, (s) => s.tileDef.tileId === numLitDef.tileId) !== undefined;
+    assert.ok(numExact, "[say] [(] [5] [+] _ should offer Number literal as exact match");
+
+    // String literal should NOT be an exact match -- the operator context expects
+    // Number, so String is only available via conversion (same as the standalone
+    // expression [(] [1] [+] _ outside an action call).
+    const strExact = listFind(result.exact, (s) => s.tileDef.tileId === strLitDef.tileId) !== undefined;
+    assert.ok(!strExact, "[say] [(] [5] [+] _ should NOT offer String literal as exact match");
+
+    const strConversion = listFind(result.withConversion, (s) => s.tileDef.tileId === strLitDef.tileId) !== undefined;
+    assert.ok(strConversion, "[say] [(] [5] [+] _ should offer String literal as conversion match");
+  });
+
+  test("Test 83: Replace [say] in [say] [(] -> actuators available", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, openParen]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles, 0);
+
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, replaceTileIndex: 0, unclosedParenDepth: depth },
+      catalogList()
+    );
+
+    const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
+    assert.ok(hasActuator, "Replacing [say] in [say] [(] should offer actuators");
+  });
+
+  test("Test 85: Replace [(] in [say] [(] [5] [+] -> parameters available", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, openParen, numLitDef, addOpDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles, 1);
+
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, replaceTileIndex: 1, unclosedParenDepth: depth },
+      catalogList()
+    );
+
+    // When replacing [(] at index 1, the incomplete anon value [1] [+] belongs
+    // to the slot being replaced, so it should be excluded from the valuePending
+    // check. Named parameters like [duration] should be available.
+    const hasDuration = listFind(result.exact, (s) => s.tileDef.tileId === durationParamDef.tileId) !== undefined;
+    assert.ok(hasDuration, "Replacing [(] in [say] [(] [5] [+] should offer [duration]");
+  });
+
+  test("Test 86: Replace [5] in [say] [(] [5] [+] -> no actuators", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, openParen, numLitDef, addOpDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles, 2);
+
+    assert.equal(depth, 1);
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, replaceTileIndex: 2, unclosedParenDepth: depth },
+      catalogList()
+    );
+
+    // Inside an unclosed paren, actuators are not valid -- only value-producing
+    // tiles should be offered when replacing the [5] literal.
+    const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
+    assert.ok(!hasActuator, "Replacing [5] in [say] [(] [5] [+] should NOT offer actuators");
+
+    // Number literal should still be available as a value tile
+    const hasNumLiteral = listFind(result.exact, (s) => s.tileDef.tileId === numLitDef.tileId) !== undefined;
+    assert.ok(hasNumLiteral, "Replacing [5] in [say] [(] [5] [+] should offer Number literals");
+  });
+
+  test("Test 87: Replace [5] in [say] [5] [+] -> no actuators (value position)", () => {
+    const tiles = List.from<IBrainTileDef>([sayActuatorDef, numLitDef, addOpDef]);
+    const expr = parseTilesForSuggestions(tiles);
+    const depth = countUnclosedParens(tiles, 1);
+
+    assert.equal(depth, 0);
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr, replaceTileIndex: 1, unclosedParenDepth: depth },
+      catalogList()
+    );
+
+    // Even without parens, replacing a value operand inside a binary expression
+    // should not offer actuators (they return Void, not a value).
+    const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
+    assert.ok(!hasActuator, "Replacing [5] in [say] [5] [+] should NOT offer actuators");
+
+    // Number and String literals should be available as value tiles
+    const hasNumLiteral = listFind(result.exact, (s) => s.tileDef.tileId === numLitDef.tileId) !== undefined;
+    assert.ok(hasNumLiteral, "Replacing [5] in [say] [5] [+] should offer Number literals");
   });
 });
 

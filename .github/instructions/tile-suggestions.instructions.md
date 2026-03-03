@@ -1,7 +1,7 @@
 ---
 applyTo: 'packages/core/src/brain/language-service/**'
 ---
-<!-- Last reviewed: 2026-02-23 -->
+<!-- Last reviewed: 2026-03-02 -->
 
 # Tile Suggestion Language Service
 
@@ -95,8 +95,8 @@ Walks the AST via `findReplacementRole` to determine the structural role at the 
 
 | Role | Suggestions |
 |------|-------------|
-| `expressionPosition` | All placement-compatible tiles |
-| `value` | Value-producing tiles, optionally with expected type |
+| `expressionPosition` | All placement-compatible tiles (paren depth cleared so actuators are not suppressed) |
+| `value` | Value-producing tiles only (`valueOnly=true`), with expected type and paren depth propagated |
 | `infixOperator` | Infix operator tiles only |
 | `prefixOperator` | Prefix operator tiles only |
 | `actionCallArg` | Call spec tiles (with the replaced slot excluded from filled set) |
@@ -138,8 +138,9 @@ collectAvailableArgSlots(spec, argSlots, filledSlotIds, available, repeatMax, ro
 | `findArgSlotByTileId(tileId, argSlots)` | Finds `BrainActionArgSlot` by tile ID in flat list |
 | `specHasAnyFill(spec, argSlots, filledSlotIds)` | Recursive check: does any constituent arg in a spec node have fills? |
 | `findNamedSpec(spec, name)` | Finds a spec node by its `name` property (for conditional evaluation) |
-| `hasIncompleteAnonValues(actionExpr)` | Returns true if any filled anonymous slot has an incomplete value expression (e.g., `[say] ["hi"] [+]`) |
+| `hasIncompleteAnonValues(actionExpr, excludeSlotId?)` | Returns true if any filled anonymous slot has an incomplete value expression (e.g., `[say] ["hi"] [+]`) |
 | `trailingPrimaryExpr(expr)` | Walks to the rightmost primary (leaf) expression in the tree -- used for accessor tile type determination since accessors bind at max precedence |
+| `findOwningSlotId(actionExpr, tileIndex)` | Finds the slot that "owns" a transparent tile (e.g., a paren) inside an action call by positional proximity -- prefers "before slot" (open paren) over "after slot" (close paren) |
 | `incompleteExprExpectedType(expr, overloads?, conversions?)` | Infers the expected type of a missing sub-expression from context (e.g., assignment target type, field access type) |
 | `structFieldTypeCompatibility(structType, expectedType, conversions)` | Checks if a struct type has any field matching the expected type (directly or via conversion) -- used as a fallback in type compatibility |
 | `hasStructValuePendingAccessor(actionExpr, catalogs, excludeSlotId?)` | Returns true if any slot contains a complete struct-typed value that doesn't match the expected type -- the user likely needs to drill down via accessor tiles |
@@ -148,13 +149,14 @@ collectAvailableArgSlots(spec, argSlots, filledSlotIds, available, repeatMax, ro
 
 1. Collects filled slot IDs from the actuator/sensor expr (optionally excluding a slot being replaced)
 2. Calls `collectAvailableArgSlots` to get the set of available arg slots
-3. Computes `valuePending = hasParametersNeedingValues(expr) || hasIncompleteAnonValues(expr) || hasStructValuePendingAccessor(expr, catalogs)`
+3. Computes `valuePending = unclosedParenDepth > 0 || hasParametersNeedingValues(expr, excludeSlotId) || hasIncompleteAnonValues(expr, excludeSlotId) || hasStructValuePendingAccessor(expr, catalogs, excludeSlotId)`
 4. For each available slot:
    - **Anonymous slots** -> collect expected type for expression suggestions
    - **Named parameters/modifiers** -> suggest the tile directly, but only when `valuePending` is false
 5. Also collects expected types from filled parameters whose value is still missing
-6. Also collects expected types from filled anonymous slots with incomplete values
-7. If any value types are expected -> suggest matching expression tiles + prefix operators
+6. Also collects expected types from filled anonymous slots with incomplete values. When the incomplete expression has an operator-derived expected type (via `incompleteExprExpectedType`), that type is used *instead of* the slot's declared type so that tiles matching the operand type are exact matches, not conversion matches via the outer slot type
+7. When unclosed parens are present, also includes anon slots with `errorExpr` -- the error was caused by the unclosed paren consuming the slot's expression
+8. If any value types are expected -> suggest matching expression tiles + prefix operators + open paren
 
 ### Real-World Call Spec Examples
 
@@ -207,8 +209,8 @@ Finds the rightmost complete value expression among an action's children (by spa
 ### `hasParametersNeedingValues(actionExpr, excludeSlotId?)`
 Returns true if any filled parameter slot has a missing value (parameter tile placed but no value follows).
 
-### `hasIncompleteAnonValues(actionExpr)`
-Returns true if any filled anonymous slot has a non-empty, non-error expression that is not complete (e.g., `[say] ["hi"] [+]` -- the binary op in the anon slot needs a right operand). This is the anonymous-slot counterpart of `hasParametersNeedingValues`.
+### `hasIncompleteAnonValues(actionExpr, excludeSlotId?)`
+Returns true if any filled anonymous slot has a non-empty, non-error expression that is not complete (e.g., `[say] ["hi"] [+]` -- the binary op in the anon slot needs a right operand). This is the anonymous-slot counterpart of `hasParametersNeedingValues`. Accepts an optional `excludeSlotId` to skip a slot being replaced, consistent with the other `has*` helpers.
 
 ### `trailingPrimaryExpr(expr)`
 Walks to the rightmost primary (leaf) expression in the tree by following `binaryOp->right`, `unaryOp->operand`, `assignment->value` recursively. Used for accessor tile type determination because accessors bind at maximum precedence (postfix). For example, in `[$vec].[x] = [$vec]`, the trailing primary is the rightmost `[$vec]`, whose struct type determines which accessors are valid -- not the assignment's output type.
@@ -339,8 +341,8 @@ suggestTiles()
   |   |- complete value -> suggestInfixOperators + suggestAccessorTiles (via trailingPrimaryExpr)
   |   \- incomplete value -> incompleteExprExpectedType -> suggestExpressionTiles (valueOnly=true, no actuators)
   \- Replacement mode: findReplacementRole (AST walk) -> suggestForReplacementRole
-       |- expressionPosition -> suggestExpressionTiles
-       |- value -> suggestExpressionTiles (with expectedType)
+       |- expressionPosition -> suggestExpressionTiles (unclosedParenDepth cleared)
+       |- value -> suggestExpressionTiles (valueOnly=true, unclosedParenDepth propagated)
        |- infixOperator -> getExprOutputType(leftExpr) -> suggestInfixOperators(leftType)
        |- prefixOperator -> suggestPrefixOperators
        |- actionCallArg -> suggestActionCallTiles (excludeSlotId set)
@@ -356,21 +358,27 @@ suggestTiles()
 5. **Infix operators are always excluded from `suggestExpressionTiles`** -- they require a left-hand operand and can never start an expression. They are only suggested via `suggestInfixOperators` after a complete value.
 6. **Prefix operators are filtered by result type** -- `suggestPrefixOperatorsForValue` only includes prefix operators whose result type exactly matches at least one expected type. In `suggestExpressionTiles`, prefix operators are also filtered when an expected type constraint exists. Like infix operators, no conversion-based matching is used.
 7. **Sensors always get infix operators when complete** -- because they produce a value that can be extended with operators.
-7. **Actuators get nothing when complete** -- because they return Void.
-8. **Replacement mode excludes the replaced slot** -- `excludeSlotId` ensures the slot being replaced doesn't count as "filled" when computing available args.
-9. **Operator overload filtering is opt-in** -- `operatorOverloads` parameter is optional for backward compatibility. Without it, all infix operators are `Unchecked`.
-10. **Replacement mode captures `leftExpr`** -- `findReplacementRole` stores the left expression in the `infixOperator` role so the replacement-mode suggestion can compute LHS type.
-11. **Value-pending suppresses named tiles** -- when `hasParametersNeedingValues`, `hasIncompleteAnonValues`, or `hasStructValuePendingAccessor` returns true, `suggestActionCallTiles` suppresses named parameter/modifier tiles. Only value expressions for the pending slot are suggested.
-12. **Modifier span blocks infix operators** -- `trailingValueExpr` returns `undefined` if any modifier has a span past the trailing value, preventing infix operator suggestions after modifiers.
-13. **Accessor type uses trailing primary** -- `suggestAccessorTiles` uses `trailingPrimaryExpr` to determine the struct type for accessor suggestions, not the overall expression type. This is because accessors bind at maximum precedence.
-14. **Struct field matching is a type compatibility fallback** -- `classifyTypeCompatibility` falls through to `structFieldTypeCompatibility` when direct and conversion matching both fail. This places struct-typed variables in `withConversion` when a field matches the expected type.
-15. **Incomplete expressions use valueOnly mode** -- when the expression is incomplete (e.g., `[$v] [=] _`), `suggestExpressionTiles` is called with `valueOnly=true` to exclude actuators and non-inline sensors.
-16. **Accessor replacement stays within the struct** -- `findReplacementRole` returns `accessorPosition` with the struct type when the tile being replaced is an accessor tile in a `fieldAccess` expression, so only other accessors for the same struct are suggested.
-17. **Struct value pending accessor suppresses modifiers** -- when a slot's complete value produces a struct type that doesn't match the slot's expected type, modifiers are suppressed because the user likely needs to apply accessor tiles to drill into the struct (e.g., `[me] [position]` in a Number slot needs `[x]` or `[y]` first).
-18. **Non-inline sensors excluded from sub-expression positions (except prefix operand)** -- non-inline sensors can only appear at the top level (parsed via `parseActionCall`) or as the operand of a prefix operator (e.g., `[not] [see]`). In other sub-expression positions (`valueOnly=true` and action call anonymous slots), only inline sensors (`TilePlacement.Inline`) are included. The `allowNonInlineSensors` flag on `suggestExpressionTiles` enables them for the prefix operator operand case.
-19. **Incomplete binary op infers RHS type from operator overloads** -- `incompleteExprExpectedType` can infer the expected RHS type when `operatorOverloads` is provided by finding overloads matching the LHS type. This enables type-constrained suggestions (e.g., `["hello"] [!=] _` expects String).
-20. **UnaryOp with sensor/actuator operand delegates to action call handling** -- when a `unaryOp`'s operand is a sensor or actuator (e.g., `[not] [see ...]`), the append mode dispatches to the same call spec handling as the top-level sensor/actuator case. This ensures sensor argument tiles are suggested when unfilled slots remain, and infix operators are offered when the sensor is fully complete.
-21. **Accessor suggestions filtered by enclosing expression type** -- in non-action-call positions, `suggestAccessorTiles` receives `acceptedFieldTypes` computed by `trailingPrimaryAcceptedTypes`. For assignments, this is the target type: `[$actor] [=] [it] _` with ActorRef target filters out all ActorRef accessors that produce non-ActorRef types. For binary ops with operator overloads, the expected RHS type is used. Standalone struct values have no constraint (all accessors suggested).
+8. **Actuators get nothing when complete** -- because they return Void.
+9. **Replacement mode excludes the replaced slot** -- `excludeSlotId` ensures the slot being replaced doesn't count as "filled" when computing available args.
+10. **Operator overload filtering is opt-in** -- `operatorOverloads` parameter is optional for backward compatibility. Without it, all infix operators are `Unchecked`.
+11. **Replacement mode captures `leftExpr`** -- `findReplacementRole` stores the left expression in the `infixOperator` role so the replacement-mode suggestion can compute LHS type.
+12. **Value-pending suppresses named tiles** -- when `hasParametersNeedingValues`, `hasIncompleteAnonValues`, or `hasStructValuePendingAccessor` returns true, `suggestActionCallTiles` suppresses named parameter/modifier tiles. Only value expressions for the pending slot are suggested.
+13. **Modifier span blocks infix operators** -- `trailingValueExpr` returns `undefined` if any modifier has a span past the trailing value, preventing infix operator suggestions after modifiers.
+14. **Accessor type uses trailing primary** -- `suggestAccessorTiles` uses `trailingPrimaryExpr` to determine the struct type for accessor suggestions, not the overall expression type. This is because accessors bind at maximum precedence.
+15. **Struct field matching is a type compatibility fallback** -- `classifyTypeCompatibility` falls through to `structFieldTypeCompatibility` when direct and conversion matching both fail. This places struct-typed variables in `withConversion` when a field matches the expected type.
+16. **Incomplete expressions use valueOnly mode** -- when the expression is incomplete (e.g., `[$v] [=] _`), `suggestExpressionTiles` is called with `valueOnly=true` to exclude actuators and non-inline sensors.
+17. **Accessor replacement stays within the struct** -- `findReplacementRole` returns `accessorPosition` with the struct type when the tile being replaced is an accessor tile in a `fieldAccess` expression, so only other accessors for the same struct are suggested.
+18. **Struct value pending accessor suppresses modifiers** -- when a slot's complete value produces a struct type that doesn't match the slot's expected type, modifiers are suppressed because the user likely needs to apply accessor tiles to drill into the struct (e.g., `[me] [position]` in a Number slot needs `[x]` or `[y]` first).
+19. **Non-inline sensors excluded from sub-expression positions (except prefix operand)** -- non-inline sensors can only appear at the top level (parsed via `parseActionCall`) or as the operand of a prefix operator (e.g., `[not] [see]`). In other sub-expression positions (`valueOnly=true` and action call anonymous slots), only inline sensors (`TilePlacement.Inline`) are included. The `allowNonInlineSensors` flag on `suggestExpressionTiles` enables them for the prefix operator operand case.
+20. **Incomplete binary op infers RHS type from operator overloads** -- `incompleteExprExpectedType` can infer the expected RHS type when `operatorOverloads` is provided by finding overloads matching the LHS type. This enables type-constrained suggestions (e.g., `["hello"] [!=] _` expects String).
+21. **UnaryOp with sensor/actuator operand delegates to action call handling** -- when a `unaryOp`'s operand is a sensor or actuator (e.g., `[not] [see ...]`), the append mode dispatches to the same call spec handling as the top-level sensor/actuator case. This ensures sensor argument tiles are suggested when unfilled slots remain, and infix operators are offered when the sensor is fully complete.
+22. **Accessor suggestions filtered by enclosing expression type** -- in non-action-call positions, `suggestAccessorTiles` receives `acceptedFieldTypes` computed by `trailingPrimaryAcceptedTypes`. For assignments, this is the target type: `[$actor] [=] [it] _` with ActorRef target filters out all ActorRef accessors that produce non-ActorRef types. For binary ops with operator overloads, the expected RHS type is used. Standalone struct values have no constraint (all accessors suggested).
+23. **Unclosed parens suppress named tiles in action calls** -- when `unclosedParenDepth > 0`, `suggestActionCallTiles` treats it as `valuePending = true`, suppressing named parameter/modifier tiles. The user must close the parenthesized sub-expression before placing additional call spec arguments. Additionally, when an anon slot has an `errorExpr` caused by the unclosed paren (e.g., `[say] [(]`), its expected type is collected so value tiles are still offered for the inner expression.
+24. **Transparent tokens in replacement mode use `findOwningSlotId`** -- when `findReplacementRole` encounters a tile inside an actuator/sensor span that is not the action tile itself and not in any child slot's AST span (e.g., a paren consumed transparently during expression parsing), it returns `actionCallArg` with `excludeSlotId` from `findOwningSlotId`. This function uses positional proximity to find the owning slot, preferring slots whose span starts just after the tile (open paren) over slots whose span ends before the tile (close paren).
+25. **Replacement `expressionPosition` clears paren depth** -- when replacing the action tile itself (e.g., `[say]` in `[say] [(]`), `suggestForReplacementRole` clears `unclosedParenDepth` so actuators and non-inline sensors are not suppressed. The paren depth from remaining tiles is irrelevant when swapping the entire action.
+26. **Replacement `value` role uses `valueOnly` and propagates paren depth** -- the `value` role calls `suggestExpressionTiles` with `valueOnly=true` to exclude actuators (Void return) and non-inline sensors from sub-expression positions, and propagates `unclosedParenDepth` so paren-based suppression is respected.
+27. **Operator-derived type overrides slot type for incomplete anon values** -- when an anonymous slot contains an incomplete expression with an operator-derived type (e.g., `[1] [+] _` expects Number), `incompleteExprExpectedType` provides the operand type, which replaces the slot's declared type (e.g., String) in `valueExpectedTypes`. This ensures tiles matching the operator's expected operand type are exact matches, not conversion matches via the outer slot type.
+28. **`hasIncompleteAnonValues` respects `excludeSlotId`** -- like `hasParametersNeedingValues` and `hasStructValuePendingAccessor`, the `hasIncompleteAnonValues` helper skips the excluded slot when computing `valuePending`. This prevents the incomplete expression in a slot being replaced from suppressing named parameter/modifier tiles.
 
 ### Dependencies
 
