@@ -6,7 +6,22 @@ import React, { useMemo, useRef } from "react";
 import type { Mesh } from "three";
 import { Quaternion, Vector3 } from "three";
 import type { RapierRig } from "../physics/RapierRig";
-import type { CollisionShape, RigDefinition } from "../rig/RigDefinition";
+import type { CollisionShape, PartName, RigDefinition } from "../rig/RigDefinition";
+
+// Classic Roblox "Noob" palette: yellow skin, blue shirt, green pants.
+const PART_COLORS: Record<PartName, string> = {
+  Head: "#f5cd30",
+  Torso: "#0055bf",
+  Root: "#0055bf",
+  LeftArm: "#f5cd30",
+  RightArm: "#f5cd30",
+  LeftUpperLeg: "#00741f",
+  LeftLowerLeg: "#00741f",
+  LeftFoot: "#00741f",
+  RightUpperLeg: "#00741f",
+  RightLowerLeg: "#00741f",
+  RightFoot: "#00741f",
+};
 
 type Props = {
   rig: RapierRig;
@@ -52,8 +67,9 @@ export function RigMeshes({ rig }: Props) {
   );
 }
 
-function PartMesh(props: { partName: string; collision: CollisionShape; setRef: (m: Mesh | null) => void }) {
+function PartMesh(props: { partName: PartName; collision: CollisionShape; setRef: (m: Mesh | null) => void }) {
   const { collision, partName } = props;
+  const color = PART_COLORS[partName];
 
   const setRefWithUserData = (m: Mesh | null) => {
     if (m) m.userData.partName = partName;
@@ -68,7 +84,7 @@ function PartMesh(props: { partName: string; collision: CollisionShape; setRef: 
     return (
       <mesh ref={setRefWithUserData} castShadow>
         <boxGeometry args={[hx * 2, hy * 2, hz * 2]} />
-        <meshStandardMaterial />
+        <meshStandardMaterial color={color} />
       </mesh>
     );
   }
@@ -80,7 +96,7 @@ function PartMesh(props: { partName: string; collision: CollisionShape; setRef: 
     return (
       <mesh ref={setRefWithUserData} castShadow>
         <capsuleGeometry args={[radius, length, 8, 16]} />
-        <meshStandardMaterial />
+        <meshStandardMaterial color={color} />
       </mesh>
     );
   }
