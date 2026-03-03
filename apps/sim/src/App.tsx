@@ -9,6 +9,7 @@ import { Sidebar } from "./components/Sidebar";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
+import { loadDesiredCounts } from "./services/population-persistence";
 
 /** Compare two snapshots by display-relevant fields to skip no-op re-renders. */
 function statsEqual(
@@ -50,6 +51,15 @@ function App() {
   useEffect(() => {
     scene?.setTimeSpeed(timeSpeed);
   }, [scene, timeSpeed]);
+
+  // Restore persisted population counts when the scene becomes available.
+  useEffect(() => {
+    if (!scene) return;
+    const counts = loadDesiredCounts();
+    for (const [arch, count] of Object.entries(counts)) {
+      scene.setDesiredCount(arch as Archetype, count);
+    }
+  }, [scene]);
 
   // Poll the engine for score data. The snapshot is a fresh object each call,
   // so compare rounded display values to avoid re-renders when nothing the

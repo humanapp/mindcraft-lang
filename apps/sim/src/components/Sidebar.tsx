@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
+import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",
@@ -51,16 +52,16 @@ export function Sidebar({
   isOpen,
   onClose,
 }: SidebarProps) {
-  const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>({
-    carnivore: ARCHETYPES.carnivore.initialSpawnCount,
-    herbivore: ARCHETYPES.herbivore.initialSpawnCount,
-    plant: ARCHETYPES.plant.initialSpawnCount,
-  });
+  const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const updateDesiredCount = (archetype: Archetype, count: number) => {
-    setDesiredCounts((prev) => ({ ...prev, [archetype]: count }));
+    setDesiredCounts((prev) => {
+      const next = { ...prev, [archetype]: count };
+      saveDesiredCounts(next);
+      return next;
+    });
     clearTimeout(desiredCountTimers.current[archetype]);
     desiredCountTimers.current[archetype] = setTimeout(() => {
       onDesiredCountChange(archetype, count);
