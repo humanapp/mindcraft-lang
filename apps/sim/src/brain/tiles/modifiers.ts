@@ -17,7 +17,7 @@ export function registerModifierTiles() {
   };
   const awayFromVisual = {
     label: "away from",
-    iconUrl: "/assets/brain/icons/movement_away_from.svg",
+    iconUrl: "/assets/brain/icons/awayfrom.svg",
   };
   const forwardVisual = {
     label: "forward",
@@ -25,7 +25,7 @@ export function registerModifierTiles() {
   };
   const towardVisual = {
     label: "toward",
-    iconUrl: "/assets/brain/icons/movement_toward.svg",
+    iconUrl: "/assets/brain/icons/toward.svg",
   };
   const wanderVisual = {
     label: "wander",
