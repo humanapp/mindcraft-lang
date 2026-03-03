@@ -460,16 +460,30 @@ and ankle pitch has no lateral authority. The anti-stomp boost can raise
 the effective trigger even higher.
 
 The drift recovery mechanism tracks how long the rig has been standing
-with persistent moderate error and low velocity. After
-`driftRecoveryDelay` (2.0s), it forces a corrective step and resets the
+with persistent moderate error OR tilt, and low velocity. After
+`driftRecoveryDelay` (1.5s), it forces a corrective step and resets the
 anti-stomp counter.
 
-- `driftRecoveryDelay`: 2.0s -- timeout before forcing a corrective step.
-- `driftRecoveryErrorMin`: 0.04m -- error must exceed this to count.
+The condition triggers when EITHER signal exceeds its threshold:
+- COM error > `driftRecoveryErrorMin` (0.025m), OR
+- Root tilt > `driftRecoveryTiltMin` (0.03 rad, ~1.7 degrees)
+
+Tilt is checked separately because the COM can sit nearly over support
+while the body is laterally rotated -- the pitch-only ankle has no
+authority to correct this. A human wouldn't stand idle at 3-4 degrees of
+lateral tilt.
+
+Other parameters:
+- `driftRecoveryDelay`: 1.5s -- timeout before forcing a corrective step.
 - `driftRecoveryVelMax`: 0.25 m/s -- velocity must be below this (rig is
   settled, not mid-recovery).
-- Timer resets whenever the rig leaves STAND (stepping), falls, or error
-  drops below the minimum.
+- Timer resets whenever the rig leaves STAND (stepping), falls, or both
+  signals drop below their thresholds.
+
+The stable idle check (which resets the anti-stomp counter) also
+requires `tiltRad < driftRecoveryTiltMin`. Without this, the rig
+"thinks" it is stably idle at 3+ degrees of lateral lean (low error,
+low velocity) and the anti-stomp counter suppresses needed steps.
 
 ## 18. Fallen State Gains
 

@@ -84,6 +84,7 @@ function useCatchStepControls() {
       maxTiltForStepRad: { value: cd.maxTiltForStepRad, min: 0.1, max: 1.2, step: 0.01 },
       driftRecoveryDelay: { value: cd.driftRecoveryDelay, min: 0.5, max: 5, step: 0.1 },
       driftRecoveryErrorMin: { value: cd.driftRecoveryErrorMin, min: 0.01, max: 0.1, step: 0.005 },
+      driftRecoveryTiltMin: { value: cd.driftRecoveryTiltMin, min: 0.01, max: 0.2, step: 0.005 },
       driftRecoveryVelMax: { value: cd.driftRecoveryVelMax, min: 0.05, max: 0.5, step: 0.01 },
     }),
     Timing: folder({
@@ -262,6 +263,7 @@ function toCatchStepConfig(v: Record<string, unknown>): Partial<CatchStepConfig>
     maxTiltForStepRad: v.maxTiltForStepRad as number,
     driftRecoveryDelay: v.driftRecoveryDelay as number,
     driftRecoveryErrorMin: v.driftRecoveryErrorMin as number,
+    driftRecoveryTiltMin: v.driftRecoveryTiltMin as number,
     driftRecoveryVelMax: v.driftRecoveryVelMax as number,
     cooldownTime: v.cooldownTime as number,
     settleTime: v.settleTime as number,

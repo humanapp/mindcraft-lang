@@ -277,8 +277,9 @@ export const CATCH_STEP_DEFAULTS = {
   // This catches the dead zone between stable idle (error < 0.06m)
   // and the catch step trigger (error > 0.07m), and also handles
   // cases where anti-stomp boost raises the trigger above the error.
-  driftRecoveryDelay: 2.0, // seconds of persistent error before forcing a step
-  driftRecoveryErrorMin: 0.04, // meters -- error must exceed this to count as drifted
+  driftRecoveryDelay: 1.5, // seconds of persistent drift before forcing a step
+  driftRecoveryErrorMin: 0.025, // meters -- COM error above this counts as drifted
+  driftRecoveryTiltMin: 0.03, // radians (~1.7 deg) -- root tilt above this counts as drifted
   driftRecoveryVelMax: 0.25, // m/s -- COM velocity must be below this (rig is settled)
 
   // Upper-body counter-rotation: during stepping, yaw the torso opposite
@@ -426,9 +427,18 @@ export class CatchStepController {
     }
 
     // Anti-stomp: track how long the rig has been in a truly stable
-    // idle state (STAND with low error and low velocity). Reset the
-    // sequence counter once the rig proves it can stand still.
-    if (this.state === "STAND" && this.errorMagF < 0.06 && this.comVelXZF < 0.15) {
+    // idle state (STAND with low error, low velocity, AND low tilt).
+    // Reset the sequence counter once the rig proves it can stand
+    // still AND upright. Without the tilt check, the rig "thinks" it
+    // is stable at 3+ degrees of lateral lean (low err, low vel) and
+    // the anti-stomp counter suppresses needed corrective steps.
+    const tiltRad = bdbg ? bdbg.tiltRad : 0;
+    const isStableIdle =
+      this.state === "STAND" &&
+      this.errorMagF < 0.06 &&
+      this.comVelXZF < 0.15 &&
+      tiltRad < this.cfg.driftRecoveryTiltMin;
+    if (isStableIdle) {
       this.stableIdleTime += dt;
       if (this.stableIdleTime > 0.5) {
         this.recentSequences = 0;
@@ -472,15 +482,17 @@ export class CatchStepController {
     const tiltTooHigh = bdbg ? bdbg.tiltRad > this.cfg.maxTiltForStepRad : false;
 
     // Drift recovery: track how long the rig has been standing with a
-    // persistent moderate error. The balance controller (ankle pitch +
-    // torso lean) has had time to act; if the error persists, only a
-    // corrective step can resolve it (common for lateral offsets where
-    // the pitch-only ankle has no authority).
+    // persistent moderate error OR tilt. The balance controller (ankle
+    // pitch + torso lean) has had time to act; if the problem persists,
+    // only a corrective step can resolve it. Tilt is checked separately
+    // because the COM can sit nearly over support while the body is
+    // rotated laterally -- the pitch-only ankle has no authority there.
+    const driftSignal = this.errorMagF > this.cfg.driftRecoveryErrorMin || tiltRad > this.cfg.driftRecoveryTiltMin;
     if (
       this.state === "STAND" &&
       !balanceFallen &&
       !tiltTooHigh &&
-      this.errorMagF > this.cfg.driftRecoveryErrorMin &&
+      driftSignal &&
       this.comVelXZF < this.cfg.driftRecoveryVelMax
     ) {
       this.driftTime += dt;
@@ -512,6 +524,7 @@ export class CatchStepController {
           if (driftTrigger) {
             console.log(
               `[CatchStep] drift recovery: err=${this.errorMagF.toFixed(3)}`,
+              `tilt=${tiltRad.toFixed(3)}rad`,
               `driftTime=${this.driftTime.toFixed(2)}s, resetting anti-stomp`
             );
             this.recentSequences = 0;
