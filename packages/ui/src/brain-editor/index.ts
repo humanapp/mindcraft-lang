@@ -49,7 +49,7 @@ export {
   hasRuleInClipboard,
   onClipboardChanged,
 } from "./rule-clipboard";
-export { formatValue, TileValue } from "./TileValue";
+export { TileValue } from "./TileValue";
 export type { TileBadge } from "./tile-badges";
 // Tile badges
 export { buildNodeMap, computeTileBadges } from "./tile-badges";
@@ -59,4 +59,5 @@ export {
   importTileFromClipboard,
   onTileClipboardChanged,
 } from "./tile-clipboard";
+export { formatValue } from "./tile-value-utils";
 export type { TileColorDef, TileVisual } from "./types";

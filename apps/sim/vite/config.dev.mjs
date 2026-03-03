@@ -24,6 +24,11 @@ export default defineConfig({
     exclude: ["@mindcraft-lang/core"],
   },
   server: {
+    fs: {
+      allow: [
+        path.resolve(process.cwd(), "../..")
+      ],
+    },
     watch: {
       ignored: (p) => {
         const ap = path.resolve(p);

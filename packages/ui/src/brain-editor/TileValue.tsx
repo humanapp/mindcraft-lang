@@ -1,6 +1,7 @@
-import { CoreTypeIds, type IBrainTileDef } from "@mindcraft-lang/core/brain";
+import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { useBrainEditorConfig } from "./BrainEditorContext";
+import { formatValue } from "./tile-value-utils";
 
 interface TileValueProps {
   tileDef: IBrainTileDef;
@@ -12,14 +13,14 @@ interface TileValueProps {
  */
 export function TileValue({ tileDef }: TileValueProps) {
   const { customLiteralTypes } = useBrainEditorConfig();
-  const textColor = "#363535";
+  const textColor = "#1a1a1a";
 
   if (tileDef.kind === "literal") {
     const literalDef = tileDef as BrainTileLiteralDef;
     const value = literalDef.valueLabel || literalDef.value;
     const valueType = literalDef.valueType;
-    const fontClass = valueType === CoreTypeIds.Number ? "font-math" : "font-mono";
-    const textSizeClass = valueType === CoreTypeIds.Number ? "text-2xl" : "text-md";
+    const fontClass = "font-math";
+    const textSizeClass = "text-2xl";
 
     return (
       <span className={`${fontClass} ${textSizeClass}`} style={{ color: textColor }}>
@@ -31,10 +32,11 @@ export function TileValue({ tileDef }: TileValueProps) {
   if (tileDef.kind === "variable") {
     const variableDef = tileDef as BrainTileVariableDef;
     const varName = variableDef.varName;
-    const textSizeClass = "text-md";
+    const fontClass = "font-math";
+    const textSizeClass = "text-2xl";
 
     return (
-      <span className={`font-mono italic ${textSizeClass}`} style={{ color: textColor }}>
+      <span className={`${fontClass} italic ${textSizeClass}`} style={{ color: textColor }}>
         {varName}
       </span>
     );
@@ -44,41 +46,15 @@ export function TileValue({ tileDef }: TileValueProps) {
     const accessorDef = tileDef as BrainTileAccessorDef;
     const value = accessorDef.fieldName;
     const valueType = accessorDef.fieldTypeId;
-    const textSizeClass = "text-md";
+    const fontClass = "font-math";
+    const textSizeClass = "text-2xl";
 
     return (
-      <span className={`font-mono ${textSizeClass}`} style={{ color: textColor }}>
+      <span className={`${fontClass} ${textSizeClass}`} style={{ color: textColor }}>
         {formatValue(value, valueType, customLiteralTypes)}
       </span>
     );
   }
 
   return null;
-}
-
-/**
- * Formats a value according to its type for display.
- * Checks core types first, then delegates to custom literal types from the host app.
- */
-export function formatValue(
-  value: unknown,
-  valueType: string,
-  customLiteralTypes: ReadonlyArray<{ typeId: string; formatValue: (value: unknown) => string }>
-): string {
-  if (valueType === CoreTypeIds.Number) {
-    return typeof value === "number" ? value.toLocaleString() : String(value);
-  }
-
-  if (valueType === CoreTypeIds.String) {
-    return `"${String(value)}"`;
-  }
-
-  // Check custom literal types from the host app
-  for (const customType of customLiteralTypes) {
-    if (valueType === customType.typeId) {
-      return customType.formatValue(value);
-    }
-  }
-
-  return String(value);
 }
