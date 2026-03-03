@@ -18,10 +18,11 @@ export function TileValue({ tileDef }: TileValueProps) {
     const literalDef = tileDef as BrainTileLiteralDef;
     const value = literalDef.valueLabel || literalDef.value;
     const valueType = literalDef.valueType;
+    const fontClass = valueType === CoreTypeIds.Number ? "font-math" : "font-mono";
     const textSizeClass = valueType === CoreTypeIds.Number ? "text-2xl" : "text-md";
 
     return (
-      <span className={`font-mono ${textSizeClass}`} style={{ color: textColor }}>
+      <span className={`${fontClass} ${textSizeClass}`} style={{ color: textColor }}>
         {formatValue(value, valueType, customLiteralTypes)}
       </span>
     );
