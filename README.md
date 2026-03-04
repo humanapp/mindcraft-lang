@@ -10,7 +10,7 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 
 ## Demos
 
-- [Ecology Sim](https://mindcraft-sim.humanappliance.io) -- carnivores, herbivores, and plants driven by user-editable Mindcraft brains
+- [Ecosystem Sim](https://mindcraft-sim.humanappliance.io) -- carnivores, herbivores, and plants driven by user-editable Mindcraft brains
 
 ## Repository Structure
 
@@ -19,7 +19,7 @@ packages/
   core/       @mindcraft-lang/core -- language runtime (multi-target)
   ui/         @mindcraft-lang/ui -- shared React UI components
 apps/
-  sim/        Ecology simulation demo
+  sim/        Ecosystem simulation demo
 ```
 
 ## Packages
@@ -33,7 +33,7 @@ apps/
 
 | App | Description |
 |-----|-------------|
-| [Ecology Sim](apps/sim/) | Demo: carnivores, herbivores, and plants driven by user-editable Mindcraft brains |
+| [Ecosystem Sim](apps/sim/) | Demo: carnivores, herbivores, and plants driven by user-editable Mindcraft brains |
 
 ## Install
 

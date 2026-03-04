@@ -1,17 +1,20 @@
 ---
-applyTo: 'packages/core/**'
+applyTo: "packages/core/**"
 ---
-<!-- Last reviewed: 2026-02-23 -->
+
+<!-- Last reviewed: 2026-03-04 -->
 <!-- Sync: rules duplicated in copilot-instructions.md "Multi-Target Core" section -->
 
 # Core Package -- Multi-Target Build & Conventions
 
 **packages/core is a multi-target project** that builds for:
+
 - Roblox-TS (Luau compilation)
 - Node.js (CommonJS)
 - ESM (ES Modules)
 
 When making changes to `packages/core`:
+
 - Consider platform compatibility across all three targets
 - Avoid platform-specific APIs or Node.js-only features
 - Test builds with `npm run build` to verify all targets compile successfully
@@ -30,14 +33,17 @@ Tests use `node:test` and `node:assert/strict` (Node.js built-ins, zero package 
 The test runner is `tsx --test` (tsx is a devDependency). A `pretest` script runs `npm run build:node` before tests execute, because spec files use package imports (`@mindcraft-lang/core/brain`, etc.) that resolve to the built `dist/node/` output. This is required because platform modules (e.g., `platform/list.ts`) use ambient declarations with `.node.ts` implementations that only resolve after the build step copies them into place.
 
 Current test files:
+
 - `src/brain/compiler/conversion.spec.ts` -- implicit type conversion tests
 - `src/brain/compiler/parser.spec.ts` -- brain tile parser tests
 - `src/brain/language-service/tile-suggestions.spec.ts` -- tile suggestion language service tests
+- `src/brain/model/brain-json.spec.ts` -- brain JSON serialization round-trip tests
 - `src/brain/runtime/brain.spec.ts` -- brain execution tests
 - `src/brain/runtime/vm.spec.ts` -- bytecode VM tests
 - `src/platform/stream.spec.ts` -- binary stream tests
 
 When adding new tests, follow this pattern:
+
 - Use `describe`/`test`/`before` from `node:test` and `assert` from `node:assert/strict`
 - Use package imports (`@mindcraft-lang/core`, `@mindcraft-lang/core/brain`, etc.) not relative imports to platform modules
 - Place spec files next to the code they test (e.g., `parser.spec.ts` beside `parser.ts`)
@@ -56,12 +62,14 @@ The Roblox-TS compiler (`rbxtsc`) has restrictions beyond standard TypeScript. W
 Several modules in `packages/core/src/platform` use a platform-specific implementation pattern:
 
 **File Structure:**
+
 - `module.ts` - Contains TypeScript declarations, interfaces, and `declare` statements for classes/functions
 - `module.node.ts` - Contains Node.js/browser implementations (uses `Uint8Array`, standard Web APIs)
 - `module.rbx.ts` - Contains Roblox implementations (uses `buffer`, Roblox-specific APIs)
 
 **Build Process:**
 The post-build scripts (`scripts/post-build-node.js`, `post-build-esm.js`, `post-build-rbx.js`) automatically:
+
 1. Compile both `.ts` and `.node.ts` (or `.rbx.ts`) files
 2. Copy the platform-specific implementation files, removing the suffix:
    - `module.node.{js,d.ts,d.ts.map}` -> `module.{js,d.ts,d.ts.map}` (for Node/ESM)
@@ -72,17 +80,19 @@ The post-build scripts (`scripts/post-build-node.js`, `post-build-esm.js`, `post
 1. **Declarations in `.ts` file must be complete**: Since the `.d.ts` file from the base module gets overwritten by the platform-specific `.d.ts`, ensure all exported functions, classes, and types are declared with `declare` or `export declare` in the base `.ts` file.
 
 2. **Use `declare` for runtime implementations**: Functions/classes that will be implemented in platform files should use `declare` or `export declare` in the base `.ts` file. Example:
+
    ```typescript
    // module.ts
    export declare function platformSpecificFunc(param: SomeType): ReturnType;
-   
-   // module.node.ts  
+
+   // module.node.ts
    export function platformSpecificFunc(param: SomeType): ReturnType {
      // Node implementation
    }
    ```
 
 3. **Constructor signatures**: If a class is implemented in platform files, declare its constructor in the base `.ts` file:
+
    ```typescript
    export declare class MyClass {
      constructor(param?: OptionalType);
@@ -97,5 +107,13 @@ The post-build scripts (`scripts/post-build-node.js`, `post-build-esm.js`, `post
 6. **Don't cross-reference platform files**: The base `.ts` file should NOT import from `.node.ts` or `.rbx.ts` files, as these are excluded from different build configurations.
 
 **Current modules using this pattern:**
+
+## Type Organization
+
+**Co-locate types with their producers.** Interface types for serialization formats,
+event payloads, and similar concerns belong in the same file as the class that creates or
+consumes them -- not in standalone type-only files. This keeps related code together and
+avoids single-purpose type modules that would be at odds with the project's organization
+patterns.
 
 Most modules in `platform/` use this pattern, including `dict`, `error`, `list`, `logger`, `math`, `stream`, `string`, `task`, `time`, `types`, `uniqueset`, `vector2`, and `vector3`.

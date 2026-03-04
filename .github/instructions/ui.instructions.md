@@ -1,6 +1,7 @@
 ---
-applyTo: 'packages/ui/**'
+applyTo: "packages/ui/**"
 ---
+
 <!-- Last reviewed: 2026-02-24 -->
 <!-- Sync: rules duplicated in copilot-instructions.md "Shared UI" section -->
 
@@ -69,23 +70,23 @@ src/
 The `BrainEditorProvider` context decouples the brain editor from app-specific concerns.
 Host apps supply a `BrainEditorConfig` object with:
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `dataTypeIcons` | `ReadonlyMap<string, string>` | Type ID -> icon URL |
-| `dataTypeNames` | `ReadonlyMap<string, string>` | Type ID -> display name |
-| `isAppVariableFactoryTileId` | `(id: string) => boolean` | Identifies app-specific variable factory tiles |
-| `customLiteralTypes` | `CustomLiteralType[]` | Optional app-defined literal tile types (e.g., Vector2) |
-| `getDefaultBrain` | `() => IBrainDef` | Optional factory for creating new empty brains |
+| Field                        | Type                          | Purpose                                                 |
+| ---------------------------- | ----------------------------- | ------------------------------------------------------- |
+| `dataTypeIcons`              | `ReadonlyMap<string, string>` | Type ID -> icon URL                                     |
+| `dataTypeNames`              | `ReadonlyMap<string, string>` | Type ID -> display name                                 |
+| `isAppVariableFactoryTileId` | `(id: string) => boolean`     | Identifies app-specific variable factory tiles          |
+| `customLiteralTypes`         | `CustomLiteralType[]`         | Optional app-defined literal tile types (e.g., Vector2) |
+| `getDefaultBrain`            | `() => IBrainDef`             | Optional factory for creating new empty brains          |
 
 ### CustomLiteralType
 
 Each entry defines a custom literal that the `CreateLiteralDialog` can create:
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `typeId` | `string` | The brain type system type ID |
-| `label` | `string` | Display label in the dialog |
-| `fields` | `{ name, label, placeholder }[]` | Input fields for the literal value |
+| Field          | Type                                                      | Purpose                                                     |
+| -------------- | --------------------------------------------------------- | ----------------------------------------------------------- |
+| `typeId`       | `string`                                                  | The brain type system type ID                               |
+| `label`        | `string`                                                  | Display label in the dialog                                 |
+| `fields`       | `{ name, label, placeholder }[]`                          | Input fields for the literal value                          |
 | `createTileId` | `(values: Record<string, string>) => string \| undefined` | Builds a tile ID from field values, or undefined if invalid |
 
 ## Adding UI Primitives
@@ -103,6 +104,7 @@ In a new webapp, add these configurations:
 **package.json**: `"@mindcraft-lang/ui": "file:../../packages/ui"`
 
 **Vite config**:
+
 ```js
 resolve: {
   alias: {
@@ -112,6 +114,7 @@ resolve: {
 ```
 
 **tsconfig.json**:
+
 ```json
 {
   "compilerOptions": {

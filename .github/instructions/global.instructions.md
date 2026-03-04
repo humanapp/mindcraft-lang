@@ -1,6 +1,7 @@
 ---
-applyTo: '**'
+applyTo: "**"
 ---
+
 <!-- Last reviewed: 2026-02-22 -->
 
 # GitHub Copilot Instructions
@@ -16,6 +17,7 @@ If you choose to create ad-hoc feature documentation or example files, they must
 **Use only keyboard-typable ASCII characters** in code comments, markdown documentation, and string literals used for logging/display. Do not use Unicode arrows, em dashes, bullet characters, box-drawing characters, or other non-keyboard symbols.
 
 Common substitutions:
+
 - `->` instead of `→`
 - `<-` instead of `←`
 - `--` instead of `—` (em dash)

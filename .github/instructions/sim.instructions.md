@@ -1,11 +1,12 @@
 ---
-applyTo: 'apps/sim/**'
+applyTo: "apps/sim/**"
 ---
+
 <!-- Last reviewed: 2026-02-24 -->
 
 # Sim App -- Architecture & Conventions
 
-The sim app (`apps/sim/`) is a **Vite + React + Phaser 3** web application that serves as a demo for the brain programming language implemented in `packages/core`. It renders an ecology simulation where actors (carnivores, herbivores, plants) move and interact in a 2D physics world, each driven by a user-editable brain program.
+The sim app (`apps/sim/`) is a **Vite + React + Phaser 3** web application that serves as a demo for the brain programming language implemented in `packages/core`. It renders an ecosystem simulation where actors (carnivores, herbivores, plants) move and interact in a 2D physics world, each driven by a user-editable brain program.
 
 ## Tech Stack
 
@@ -117,6 +118,7 @@ editor in a `BrainEditorProvider` in `App.tsx`.
 ### Actor System
 
 `Actor` (in `brain/actor.ts`) is the central entity. Each actor has:
+
 - An `Archetype` (`"carnivore" | "herbivore" | "plant"`)
 - A `Mover` (physics-based steering, Matter.js)
 - A brain runtime (`IBrain` from core)
@@ -134,14 +136,15 @@ The sim registers app-specific brain components through a layered registration:
 3. **Tiles** (`tiles/`): Tile definitions with visual metadata for the UI
 
 Each sensor/actuator follows the `ActionDef` pattern:
+
 ```typescript
 export default {
-  tileId: string,        // from TileIds constants
-  callDef: BrainActionCallDef,  // argument grammar (from mkCallDef)
-  fn: HostFn,            // { exec: (ctx, args) => Value }
+  tileId: string, // from TileIds constants
+  callDef: BrainActionCallDef, // argument grammar (from mkCallDef)
+  fn: HostFn, // { exec: (ctx, args) => Value }
   isAsync: boolean,
   returnType: TypeId,
-  visual: TileVisual,    // { label, iconUrl }
+  visual: TileVisual, // { label, iconUrl }
 } satisfies ActionDef;
 ```
 
@@ -191,10 +194,12 @@ Available helpers: `mod()`, `param()`, `bag()`, `choice()`, `seq()`, `optional()
 ### ExecutionContext -> Actor Access
 
 Host functions access the current actor through the `ExecutionContext.data` field:
+
 ```typescript
-const self = getSelf(ctx);  // Returns Actor | undefined
-const other = getActor(ctx, otherActorId);  // Lookup by ID via engine
+const self = getSelf(ctx); // Returns Actor | undefined
+const other = getActor(ctx, otherActorId); // Lookup by ID via engine
 ```
+
 These helpers are in `brain/execution-context-types.ts`.
 
 ### React <-> Phaser Communication
@@ -208,6 +213,7 @@ These helpers are in `brain/execution-context-types.ts`.
 The sim tracks per-archetype survival statistics and computes a composite **ecosystem score** displayed in a live scoreboard overlay (bottom-right corner).
 
 **Tracked stats** (per archetype):
+
 - Average lifespan (seconds survived before death)
 - Longest single life
 - Alive count and average energy
@@ -229,6 +235,7 @@ The brain editor components live in `@mindcraft-lang/ui` (`packages/ui/src/brain
 - `App.tsx` -- wraps the `BrainEditorDialog` in `<BrainEditorProvider config={brainEditorConfig}>`
 
 Component hierarchy (in `@mindcraft-lang/ui`):
+
 ```
 BrainEditorDialog (toolbar, page nav, save/load)
   \-- BrainPageEditor (flattens rules, manages reparsing)
@@ -251,6 +258,7 @@ The sim app uses Biome for formatting and linting. Generate code that matches th
 - **Line width**: 120 characters max
 - **Trailing commas**: ES5 style (objects, arrays, function params)
 - **Import types**: always use `import type` for type-only imports:
+
   ```typescript
   // correct
   import type { Foo } from "./foo";
@@ -259,6 +267,7 @@ The sim app uses Biome for formatting and linting. Generate code that matches th
   // wrong - will trigger useImportType error
   import { Foo } from "./foo";
   ```
+
 - **Number namespace**: use `Number.isNaN`, `Number.isFinite`, `Number.parseInt`, etc. instead of the global versions
 - **Arrow function parens**: always include parens around single params: `(x) => x`
 - **Bracket spacing**: spaces inside object braces: `{ key: value }`

@@ -1,7 +1,8 @@
 ---
-applyTo: 'packages/core/src/brain/**'
+applyTo: "packages/core/src/brain/**"
 ---
-<!-- Last reviewed: 2026-02-22 -->
+
+<!-- Last reviewed: 2026-03-04 -->
 
 # Brain Language & VM Architecture
 
@@ -26,21 +27,22 @@ Tiles -> Parser (Pratt + grammar) -> AST (Expr) -> Type Inference -> Bytecode Co
 
 ### Tile Kinds (`BrainTileKind`)
 
-| Kind | Class | Purpose |
-|------|-------|---------|
-| `literal` | `BrainTileLiteralDef` | Constant values (numbers, strings, booleans, nil) |
-| `variable` | `BrainTileVariableDef` | Named mutable storage |
-| `operator` | `BrainTileOperatorDef` | Binary/unary operators (+, -, ==, &&, etc.) |
-| `sensor` | `BrainTileSensorDef` | Reads environment state (HOST_CALL) |
-| `actuator` | `BrainTileActuatorDef` | Performs actions (HOST_CALL) |
-| `parameter` | `BrainTileParameterDef` | Named parameter for action calls |
-| `modifier` | `BrainTileModifierDef` | Boolean flag for action calls |
-| `controlFlow` | `BrainTileControlFlowDef` | Parens, done-executing, etc. |
-| `factory` | `BrainTileFactoryDef` | Creates new variable/literal tiles at runtime (UI concern) |
+| Kind          | Class                     | Purpose                                                    |
+| ------------- | ------------------------- | ---------------------------------------------------------- |
+| `literal`     | `BrainTileLiteralDef`     | Constant values (numbers, strings, booleans, nil)          |
+| `variable`    | `BrainTileVariableDef`    | Named mutable storage                                      |
+| `operator`    | `BrainTileOperatorDef`    | Binary/unary operators (+, -, ==, &&, etc.)                |
+| `sensor`      | `BrainTileSensorDef`      | Reads environment state (HOST_CALL)                        |
+| `actuator`    | `BrainTileActuatorDef`    | Performs actions (HOST_CALL)                               |
+| `parameter`   | `BrainTileParameterDef`   | Named parameter for action calls                           |
+| `modifier`    | `BrainTileModifierDef`    | Boolean flag for action calls                              |
+| `controlFlow` | `BrainTileControlFlowDef` | Parens, done-executing, etc.                               |
+| `factory`     | `BrainTileFactoryDef`     | Creates new variable/literal tiles at runtime (UI concern) |
 
 ### Tile ID Convention
 
 All tile IDs follow the pattern `tile.<area>-><id>`, built via `mkTileId(area, id)`:
+
 - Operators: `tile.op->add`
 - Sensors: `tile.sensor->random`
 - Actuators: `tile.actuator->switch-page`
@@ -69,6 +71,7 @@ BrainTileDefBase (abstract) -> all tile kinds
 ### BrainFunctionEntry
 
 Links a tile to its runtime implementation. Two variants:
+
 - `BrainSyncFunctionEntry`: `fn: HostSyncFn` = `{ exec: (ctx: ExecutionContext, args: MapValue) => Value }`
 - `BrainAsyncFunctionEntry`: `fn: HostAsyncFn` = `{ exec: (ctx: ExecutionContext, args: MapValue, handleId: HandleId) => void }`
 
@@ -78,15 +81,15 @@ Each entry has: `id: number` (assigned by FunctionRegistry), `name: string`, `ca
 
 Sensors and actuators define argument grammars using a recursive spec:
 
-| Spec Type | Purpose |
-|-----------|---------|
-| `arg` | Single argument slot (anonymous, parameter, or modifier tile) |
-| `seq` | All items in order |
-| `choice` | Exactly one of N options |
-| `optional` | Zero or one occurrence |
-| `repeat` | Multiple with min/max bounds |
-| `bag` | Unordered set (items in any order) |
-| `conditional` | Branch based on whether a named spec matched |
+| Spec Type     | Purpose                                                       |
+| ------------- | ------------------------------------------------------------- |
+| `arg`         | Single argument slot (anonymous, parameter, or modifier tile) |
+| `seq`         | All items in order                                            |
+| `choice`      | Exactly one of N options                                      |
+| `optional`    | Zero or one occurrence                                        |
+| `repeat`      | Multiple with min/max bounds                                  |
+| `bag`         | Unordered set (items in any order)                            |
+| `conditional` | Branch based on whether a named spec matched                  |
 
 `mkCallDef(callSpec)` flattens specs into `BrainActionArgSlot[]`, each with a `slotId` used as the key in the runtime MapValue argument.
 
@@ -110,13 +113,13 @@ Sensors and actuators define argument grammars using a recursive spec:
 
 ### NUD Handlers (prefix position)
 
-| Kind | Handler | Behavior |
-|------|---------|----------|
-| `literal` | `parseNudLiteral` | Creates `LiteralExpr` |
-| `variable` | `parseNudVariable` | Creates `VariableExpr` |
-| `operator` | `parseNudOperator` | Prefix operators (NOT, negate) -> `UnaryOpExpr` |
-| `controlFlow` | `parseNudControlFlow` | `(` -> recursively parse inner expression with reset precedence |
-| `sensor` | `parseNudSensor` | Inline sensors -> `SensorExpr` with empty arg lists; non-inline sensors -> backs up and delegates to `parseActionCall()` (enables `[not] [see ...]` etc.) |
+| Kind          | Handler               | Behavior                                                                                                                                                  |
+| ------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `literal`     | `parseNudLiteral`     | Creates `LiteralExpr`                                                                                                                                     |
+| `variable`    | `parseNudVariable`    | Creates `VariableExpr`                                                                                                                                    |
+| `operator`    | `parseNudOperator`    | Prefix operators (NOT, negate) -> `UnaryOpExpr`                                                                                                           |
+| `controlFlow` | `parseNudControlFlow` | `(` -> recursively parse inner expression with reset precedence                                                                                           |
+| `sensor`      | `parseNudSensor`      | Inline sensors -> `SensorExpr` with empty arg lists; non-inline sensors -> backs up and delegates to `parseActionCall()` (enables `[not] [see ...]` etc.) |
 
 ### LED (infix) -- handled inline in `parseExpression()`
 
@@ -126,16 +129,16 @@ Sensors and actuators define argument grammars using a recursive spec:
 
 ### Operator Precedence (higher binds tighter)
 
-| Precedence | Operators |
-|-----------|-----------|
-| 30 | `not`, `negate` (prefix) |
-| 20 | `*`, `/` |
-| 10 | `+`, `-` |
-| 5 | `<`, `<=`, `>`, `>=` |
-| 4 | `==`, `!=` |
-| 2 | `and` |
-| 1 | `or` |
-| 0 | `=` (assign, right-assoc) |
+| Precedence | Operators                 |
+| ---------- | ------------------------- |
+| 30         | `not`, `negate` (prefix)  |
+| 20         | `*`, `/`                  |
+| 10         | `+`, `-`                  |
+| 5          | `<`, `<=`, `>`, `>=`      |
+| 4          | `==`, `!=`                |
+| 2          | `and`                     |
+| 1          | `or`                      |
+| 0          | `=` (assign, right-assoc) |
 
 ### Key Parser Behaviors
 
@@ -148,19 +151,19 @@ Sensors and actuators define argument grammars using a recursive spec:
 
 **Expr** discriminated union on `kind`:
 
-| Kind | Key Fields |
-|------|-----------|
-| `binaryOp` | `operator: BrainTileOperatorDef`, `left`, `right` |
-| `unaryOp` | `operator: BrainTileOperatorDef`, `operand` |
-| `literal` | `tileDef: BrainTileLiteralDef` |
-| `variable` | `tileDef: BrainTileVariableDef` |
-| `assignment` | `target: VariableExpr`, `value: Expr` |
-| `parameter` | `tileDef: BrainTileParameterDef`, `value: Expr` |
-| `modifier` | `tileDef: BrainTileModifierDef` |
-| `actuator` | `tileDef`, `anons`, `parameters`, `modifiers` (all `List<SlotExpr>`) |
-| `sensor` | same structure as actuator |
-| `empty` | intentionally empty input |
-| `errorExpr` | parse error with optional partial `expr` |
+| Kind         | Key Fields                                                           |
+| ------------ | -------------------------------------------------------------------- |
+| `binaryOp`   | `operator: BrainTileOperatorDef`, `left`, `right`                    |
+| `unaryOp`    | `operator: BrainTileOperatorDef`, `operand`                          |
+| `literal`    | `tileDef: BrainTileLiteralDef`                                       |
+| `variable`   | `tileDef: BrainTileVariableDef`                                      |
+| `assignment` | `target: VariableExpr`, `value: Expr`                                |
+| `parameter`  | `tileDef: BrainTileParameterDef`, `value: Expr`                      |
+| `modifier`   | `tileDef: BrainTileModifierDef`                                      |
+| `actuator`   | `tileDef`, `anons`, `parameters`, `modifiers` (all `List<SlotExpr>`) |
+| `sensor`     | same structure as actuator                                           |
+| `empty`      | intentionally empty input                                            |
+| `errorExpr`  | parse error with optional partial `expr`                             |
 
 All non-trivial nodes have `nodeId: number` (for TypeEnv lookups) and `span: { from, to }`.
 
@@ -188,20 +191,21 @@ All non-trivial nodes have `nodeId: number` (for TypeEnv lookups) and `span: { f
 
 `ExprCompiler` implements `ExprVisitor<void>`, emitting bytecode via `IBytecodeEmitter`:
 
-| Node Type | Emitted Code |
-|-----------|-------------|
-| Literal | `PUSH_CONST <idx>` |
-| Variable | `LOAD_VAR <nameIdx>` |
-| Assignment | `<value>, DUP, STORE_VAR <nameIdx>` (assignment is an expression) |
-| BinaryOp | `<left>, [conversion], <right>, [conversion], HOST_CALL <opFnId>` |
-| BinaryOp (&&) | Short-circuit: `<left>, DUP, JMP_IF_FALSE end, POP, <right>` |
-| BinaryOp (\|\|) | Short-circuit: `<left>, DUP, JMP_IF_TRUE end, POP, <right>` |
-| UnaryOp | `<operand>, [conversion], HOST_CALL <opFnId>` |
-| Sensor/Actuator | Build arg MapValue, `HOST_CALL[_ASYNC] <fnId>` |
+| Node Type       | Emitted Code                                                      |
+| --------------- | ----------------------------------------------------------------- |
+| Literal         | `PUSH_CONST <idx>`                                                |
+| Variable        | `LOAD_VAR <nameIdx>`                                              |
+| Assignment      | `<value>, DUP, STORE_VAR <nameIdx>` (assignment is an expression) |
+| BinaryOp        | `<left>, [conversion], <right>, [conversion], HOST_CALL <opFnId>` |
+| BinaryOp (&&)   | Short-circuit: `<left>, DUP, JMP_IF_FALSE end, POP, <right>`      |
+| BinaryOp (\|\|) | Short-circuit: `<left>, DUP, JMP_IF_TRUE end, POP, <right>`       |
+| UnaryOp         | `<operand>, [conversion], HOST_CALL <opFnId>`                     |
+| Sensor/Actuator | Build arg MapValue, `HOST_CALL[_ASYNC] <fnId>`                    |
 
 **All operators are HOST_CALLs** -- the compiler resolves `typeInfo.overload.fnEntry.id` at compile time.
 
 **Action arguments** are marshaled into a single `MapValue` keyed by slotId (number):
+
 - Anonymous args: `{ slotId: value }`
 - Named parameters: `{ slotId: value }`
 - Modifiers: `{ slotId: true }`
@@ -213,10 +217,12 @@ All non-trivial nodes have `nodeId: number` (for TypeEnv lookups) and `span: { f
 Compiles an entire brain (multiple pages, each with multiple rules, each with children).
 
 **Two-pass approach:**
+
 1. **Pass 1**: Assign function IDs in depth-first order
 2. **Pass 2**: Compile each rule body
 
 **Rule function layout:**
+
 ```
 WHEN_START
   <when bytecode>
@@ -312,3 +318,52 @@ For **inline sensors** (no arguments, participate in Pratt expressions): set `pl
 2. Register operator spec in `runtime/operators.ts` (precedence, fixity, associativity)
 3. Register overloads for type combinations (each overload is a HOST_CALL)
 4. Register operator tile def in `tiles/operators.ts`
+
+## Serialization
+
+The brain supports two serialization formats: **binary** (chunk-based stream) and **JSON**.
+Both follow the same distributed-ownership pattern.
+
+### Architecture
+
+Each serializable entity owns its own serialization in both formats:
+
+| Entity                 | File                 | Binary                  | JSON                              |
+| ---------------------- | -------------------- | ----------------------- | --------------------------------- |
+| `BrainDef`             | `model/braindef.ts`  | `serialize/deserialize` | `toJson/fromJson`                 |
+| `BrainPageDef`         | `model/pagedef.ts`   | `serialize/deserialize` | `toJson/deserializeJson`          |
+| `BrainRuleDef`         | `model/ruledef.ts`   | `serialize/deserialize` | `toJson/fromJson/deserializeJson` |
+| `BrainTileSet`         | `model/tileset.ts`   | `serialize/deserialize` | `toJson/deserializeJson`          |
+| `TileCatalog`          | `tiles/catalog.ts`   | `serialize/deserialize` | `toJson/deserializeJson`          |
+| `BrainTileLiteralDef`  | `tiles/literals.ts`  | `serialize` + free fn   | `toJson/fromJson`                 |
+| `BrainTileVariableDef` | `tiles/variables.ts` | `serialize` + free fn   | `toJson/fromJson`                 |
+| `BrainTilePageDef`     | `tiles/pagetiles.ts` | `serialize` + free fn   | `toJson/fromJson`                 |
+| `BrainTileMissingDef`  | `tiles/missing.ts`   | `serialize` + free fn   | `toJson/fromJson`                 |
+
+### Version Constants
+
+Each entity declares a file-level `const kVersion` that is shared by both binary and JSON
+codepaths. When bumping a version, update the single constant and both formats advance
+together. Binary deserializers may accept a range of older versions for backwards
+compatibility; JSON deserializers should do the same once older JSON data exists in the
+wild.
+
+### JSON Type Co-location
+
+JSON schema interfaces (e.g., `BrainJson`, `RuleJson`, `LiteralTileJson`) are defined in
+the same file as the class that produces them -- not in a separate types file. This matches
+how binary serialization tags are file-local constants. The union type `CatalogTileJson`
+lives in `catalog.ts` alongside the dispatch logic.
+
+### Delegation Pattern
+
+Serialization delegates downward through the object graph:
+
+```
+BrainDef -> TileCatalog -> [LiteralDef, VariableDef, PageDef, MissingDef]
+         -> BrainPageDef -> BrainRuleDef -> BrainTileSet
+```
+
+`TileCatalog.toJson()`/`deserializeJson()` dispatch to tile subclasses by `kind`.
+`BrainTileSet.toJson()` produces a `List<string>` of tile IDs (no version -- it is a
+simple array). `BrainTileSet.deserializeJson()` resolves IDs via a catalog chain.

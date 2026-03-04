@@ -1,6 +1,7 @@
 ---
-applyTo: 'packages/core/src/brain/language-service/**'
+applyTo: "packages/core/src/brain/language-service/**"
 ---
+
 <!-- Last reviewed: 2026-03-03 -->
 
 # Tile Suggestion Language Service
@@ -36,27 +37,27 @@ Extracts the output type from a tile definition. Returns `undefined` for tiles w
 
 Describes the insertion point:
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `ruleSide` | `RuleSide` | Which side of the rule: When, Do, or Either |
-| `expectedType?` | `TypeId` | Type constraint at this position (undefined = no constraint) |
-| `expr?` | `Expr` | Parsed AST at the insertion point -- drives behavior |
-| `replaceTileIndex?` | `number` | When replacing a tile, index in the flat tile list |
+| Field               | Type       | Purpose                                                      |
+| ------------------- | ---------- | ------------------------------------------------------------ |
+| `ruleSide`          | `RuleSide` | Which side of the rule: When, Do, or Either                  |
+| `expectedType?`     | `TypeId`   | Type constraint at this position (undefined = no constraint) |
+| `expr?`             | `Expr`     | Parsed AST at the insertion point -- drives behavior         |
+| `replaceTileIndex?` | `number`   | When replacing a tile, index in the flat tile list           |
 
 ### `TileSuggestionResult`
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `exact` | `List<TileSuggestion>` | Tiles that match exactly or are type-unchecked |
-| `withConversion` | `List<TileSuggestion>` | Tiles that require type conversion |
+| Field            | Type                   | Purpose                                        |
+| ---------------- | ---------------------- | ---------------------------------------------- |
+| `exact`          | `List<TileSuggestion>` | Tiles that match exactly or are type-unchecked |
+| `withConversion` | `List<TileSuggestion>` | Tiles that require type conversion             |
 
 ### `TileSuggestion`
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `tileDef` | `IBrainTileDef` | The suggested tile definition |
-| `compatibility` | `TileCompatibility` | Exact / Conversion / Unchecked |
-| `conversionCost` | `number` | Total conversion cost (0 for exact/unchecked) |
+| Field            | Type                | Purpose                                       |
+| ---------------- | ------------------- | --------------------------------------------- |
+| `tileDef`        | `IBrainTileDef`     | The suggested tile definition                 |
+| `compatibility`  | `TileCompatibility` | Exact / Conversion / Unchecked                |
+| `conversionCost` | `number`            | Total conversion cost (0 for exact/unchecked) |
 
 ### `TileCompatibility` (enum)
 
@@ -72,16 +73,17 @@ Describes the insertion point:
 
 Dispatches based on `expr.kind`:
 
-| Expr Kind | Behavior |
-|-----------|----------|
-| `empty` / `errorExpr` | All placement-compatible tiles (expression position): value tiles, prefix operators, actuators, sensors. Infix operators always excluded. |
-| `actuator` / `sensor` | Call spec tiles if unfilled slots remain; infix operators + accessor tiles if trailing complete value or completed sensor |
-| `unaryOp` | If operand is a sensor/actuator: same as sensor/actuator case (call spec tiles + infix operators). If complete non-sensor operand: infix operators + accessor tiles. If incomplete: value tiles including non-inline sensors (operand of prefix operator). |
-| `literal` / `variable` / `fieldAccess` | Infix operators + accessor tiles (value is complete) |
-| `binaryOp` / `assignment` | Infix operators + accessor tiles if complete; value tiles (valueOnly mode -- no actuators) if incomplete, with expected type inferred from context via `incompleteExprExpectedType` |
-| `parameter` / `modifier` | Nothing (argument-level nodes) |
+| Expr Kind                              | Behavior                                                                                                                                                                                                                                                   |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `empty` / `errorExpr`                  | All placement-compatible tiles (expression position): value tiles, prefix operators, actuators, sensors. Infix operators always excluded.                                                                                                                  |
+| `actuator` / `sensor`                  | Call spec tiles if unfilled slots remain; infix operators + accessor tiles if trailing complete value or completed sensor                                                                                                                                  |
+| `unaryOp`                              | If operand is a sensor/actuator: same as sensor/actuator case (call spec tiles + infix operators). If complete non-sensor operand: infix operators + accessor tiles. If incomplete: value tiles including non-inline sensors (operand of prefix operator). |
+| `literal` / `variable` / `fieldAccess` | Infix operators + accessor tiles (value is complete)                                                                                                                                                                                                       |
+| `binaryOp` / `assignment`              | Infix operators + accessor tiles if complete; value tiles (valueOnly mode -- no actuators) if incomplete, with expected type inferred from context via `incompleteExprExpectedType`                                                                        |
+| `parameter` / `modifier`               | Nothing (argument-level nodes)                                                                                                                                                                                                                             |
 
 **Key behavior for actuator/sensor:**
+
 1. Walk the call spec tree to compute `availableArgSlots`
 2. `needsSlots = availableArgSlots.size() > 0 || hasParametersNeedingValues(expr) || hasIncompleteAnonValues(expr)`
 3. If `needsSlots` -> suggest call spec tiles via `suggestActionCallTiles` (but named parameter/modifier tiles are suppressed when `valuePending` -- see below)
@@ -93,14 +95,14 @@ Dispatches based on `expr.kind`:
 
 Walks the AST via `findReplacementRole` to determine the structural role at the tile index:
 
-| Role | Suggestions |
-|------|-------------|
-| `expressionPosition` | All placement-compatible tiles (paren depth cleared so actuators are not suppressed) |
-| `value` | Value-producing tiles only (`valueOnly=true`), with expected type and paren depth propagated |
-| `infixOperator` | Infix operator tiles only |
-| `prefixOperator` | Prefix operator tiles only |
-| `actionCallArg` | Call spec tiles (with the replaced slot excluded from filled set) |
-| `accessorPosition` | Accessor tiles for the same struct type |
+| Role                 | Suggestions                                                                                  |
+| -------------------- | -------------------------------------------------------------------------------------------- |
+| `expressionPosition` | All placement-compatible tiles (paren depth cleared so actuators are not suppressed)         |
+| `value`              | Value-producing tiles only (`valueOnly=true`), with expected type and paren depth propagated |
+| `infixOperator`      | Infix operator tiles only                                                                    |
+| `prefixOperator`     | Prefix operator tiles only                                                                   |
+| `actionCallArg`      | Call spec tiles (with the replaced slot excluded from filled set)                            |
+| `accessorPosition`   | Accessor tiles for the same struct type                                                      |
 
 ## Call Spec Grammar Enforcement
 
@@ -108,15 +110,15 @@ The tile suggestion system respects the grammar-like call spec structure when su
 
 ### Call Spec Types (from `BrainActionCallSpec`)
 
-| Type | Constraint | Suggestion Behavior |
-|------|-----------|---------------------|
-| `arg` | Single argument slot | Available if fill count < repeatMax |
-| `bag` | Unordered set | All items independently available |
-| `choice` | Exactly one option | If one option filled -> others excluded; else all available |
-| `seq` | Items in order | All items suggested (ordering enforced by parser, not suggestions) |
-| `optional` | Zero or one | Delegates to inner item |
-| `repeat` | Min/max bounds | Overrides repeatMax for descendants |
-| `conditional` | Branch on named spec fill | Evaluates condition -> recurse into `then` or `else` branch |
+| Type          | Constraint                | Suggestion Behavior                                                |
+| ------------- | ------------------------- | ------------------------------------------------------------------ |
+| `arg`         | Single argument slot      | Available if fill count < repeatMax                                |
+| `bag`         | Unordered set             | All items independently available                                  |
+| `choice`      | Exactly one option        | If one option filled -> others excluded; else all available        |
+| `seq`         | Items in order            | All items suggested (ordering enforced by parser, not suggestions) |
+| `optional`    | Zero or one               | Delegates to inner item                                            |
+| `repeat`      | Min/max bounds            | Overrides repeatMax for descendants                                |
+| `conditional` | Branch on named spec fill | Evaluates condition -> recurse into `then` or `else` branch        |
 
 ### Tree Walk: `collectAvailableArgSlots`
 
@@ -131,19 +133,19 @@ collectAvailableArgSlots(spec, argSlots, filledSlotIds, available, repeatMax, ro
 
 ### Supporting Functions
 
-| Function | Purpose |
-|----------|---------|
-| `collectFilledSlotIds(expr, excludeSlotId?)` | Collects slot IDs from expr's anons, parameters, and modifiers |
-| `countSlotFills(slotId, filledSlotIds)` | Counts occurrences of a slotId in filled list (for repeat cardinality) |
-| `findArgSlotByTileId(tileId, argSlots)` | Finds `BrainActionArgSlot` by tile ID in flat list |
-| `specHasAnyFill(spec, argSlots, filledSlotIds)` | Recursive check: does any constituent arg in a spec node have fills? |
-| `findNamedSpec(spec, name)` | Finds a spec node by its `name` property (for conditional evaluation) |
-| `hasIncompleteAnonValues(actionExpr, excludeSlotId?)` | Returns true if any filled anonymous slot has an incomplete value expression (e.g., `[say] ["hi"] [+]`) |
-| `trailingPrimaryExpr(expr)` | Walks to the rightmost primary (leaf) expression in the tree -- used for accessor tile type determination since accessors bind at max precedence |
-| `findOwningSlotId(actionExpr, tileIndex)` | Finds the slot that "owns" a transparent tile (e.g., a paren) inside an action call by positional proximity -- prefers "before slot" (open paren) over "after slot" (close paren) |
-| `incompleteExprExpectedType(expr, overloads?, conversions?)` | Infers the expected type of a missing sub-expression from context (e.g., assignment target type, field access type) |
-| `structFieldTypeCompatibility(structType, expectedType, conversions)` | Checks if a struct type has any field matching the expected type (directly or via conversion) -- used as a fallback in type compatibility |
-| `hasStructValuePendingAccessor(actionExpr, catalogs, excludeSlotId?)` | Returns true if any slot contains a complete struct-typed value that doesn't match the expected type -- the user likely needs to drill down via accessor tiles |
+| Function                                                              | Purpose                                                                                                                                                                           |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `collectFilledSlotIds(expr, excludeSlotId?)`                          | Collects slot IDs from expr's anons, parameters, and modifiers                                                                                                                    |
+| `countSlotFills(slotId, filledSlotIds)`                               | Counts occurrences of a slotId in filled list (for repeat cardinality)                                                                                                            |
+| `findArgSlotByTileId(tileId, argSlots)`                               | Finds `BrainActionArgSlot` by tile ID in flat list                                                                                                                                |
+| `specHasAnyFill(spec, argSlots, filledSlotIds)`                       | Recursive check: does any constituent arg in a spec node have fills?                                                                                                              |
+| `findNamedSpec(spec, name)`                                           | Finds a spec node by its `name` property (for conditional evaluation)                                                                                                             |
+| `hasIncompleteAnonValues(actionExpr, excludeSlotId?)`                 | Returns true if any filled anonymous slot has an incomplete value expression (e.g., `[say] ["hi"] [+]`)                                                                           |
+| `trailingPrimaryExpr(expr)`                                           | Walks to the rightmost primary (leaf) expression in the tree -- used for accessor tile type determination since accessors bind at max precedence                                  |
+| `findOwningSlotId(actionExpr, tileIndex)`                             | Finds the slot that "owns" a transparent tile (e.g., a paren) inside an action call by positional proximity -- prefers "before slot" (open paren) over "after slot" (close paren) |
+| `incompleteExprExpectedType(expr, overloads?, conversions?)`          | Infers the expected type of a missing sub-expression from context (e.g., assignment target type, field access type)                                                               |
+| `structFieldTypeCompatibility(structType, expectedType, conversions)` | Checks if a struct type has any field matching the expected type (directly or via conversion) -- used as a fallback in type compatibility                                         |
+| `hasStructValuePendingAccessor(actionExpr, catalogs, excludeSlotId?)` | Returns true if any slot contains a complete struct-typed value that doesn't match the expected type -- the user likely needs to drill down via accessor tiles                    |
 
 ### How `suggestActionCallTiles` Uses the Tree Walk
 
@@ -154,33 +156,38 @@ collectAvailableArgSlots(spec, argSlots, filledSlotIds, available, repeatMax, ro
    - **Anonymous slots** -> collect expected type for expression suggestions
    - **Named parameters/modifiers** -> suggest the tile directly, but only when `valuePending` is false
 5. Also collects expected types from filled parameters whose value is still missing
-6. Also collects expected types from filled anonymous slots with incomplete values. When the incomplete expression has an operator-derived expected type (via `incompleteExprExpectedType`), that type is used *instead of* the slot's declared type so that tiles matching the operand type are exact matches, not conversion matches via the outer slot type
+6. Also collects expected types from filled anonymous slots with incomplete values. When the incomplete expression has an operator-derived expected type (via `incompleteExprExpectedType`), that type is used _instead of_ the slot's declared type so that tiles matching the operand type are exact matches, not conversion matches via the outer slot type
 7. When unclosed parens are present, also includes anon slots with `errorExpr` -- the error was caused by the unclosed paren consuming the slot's expression
 8. If any value types are expected -> suggest matching expression tiles + prefix operators + open paren
 
 ### Real-World Call Spec Examples
 
 **Move actuator** (`apps/sim/src/brain/fns/actuators/move.ts`):
+
 ```ts
 bag(
-  choice(choice(Forward, Toward, AwayFrom, Avoid), Wander),  // direction group
-  choice(repeated(Quickly, {max:3}), repeated(Slowly, {max:3})),  // speed group
-  Priority  // optional priority parameter
-)
+  choice(choice(Forward, Toward, AwayFrom, Avoid), Wander), // direction group
+  choice(repeated(Quickly, { max: 3 }), repeated(Slowly, { max: 3 })), // speed group
+  Priority, // optional priority parameter
+);
 ```
+
 - Direction: nested choice -- pick one direction modifier
 - Speed: pick fast or slow, each repeatable up to 3x
 - Priority: always available (optional by nature of bag)
 
 **Timeout sensor** (`apps/sim/src/brain/fns/sensors/timeout.ts`):
+
 ```ts
 bag(
-  AnonNumber,                  // { name: "anonNumber", anonymous: true }
-  conditional("anonNumber",   // only available when number is provided
-    optional(choice(TimeMs, TimeSecs))
-  )
-)
+  AnonNumber, // { name: "anonNumber", anonymous: true }
+  conditional(
+    "anonNumber", // only available when number is provided
+    optional(choice(TimeMs, TimeSecs)),
+  ),
+);
 ```
+
 - Number value is anonymous (user types a number directly)
 - Time unit modifiers only appear after the number is placed (conditional)
 
@@ -189,7 +196,9 @@ bag(
 Several functions assess whether expressions are "complete" (can be extended with operators) or "incomplete" (need more input):
 
 ### `isCompleteValueExpr(expr)`
+
 Returns true for expressions that represent a complete value:
+
 - `literal`, `variable`, `sensor`, `fieldAccess` -> always complete
 - `binaryOp` -> complete if right operand is complete (recursive)
 - `unaryOp` -> complete if operand is complete (recursive)
@@ -197,33 +206,43 @@ Returns true for expressions that represent a complete value:
 - Everything else -> incomplete
 
 ### `isParameterValueMissing(value)`
+
 Returns true if a parameter's value expression indicates no value was provided:
+
 - `empty`, `errorExpr` -> missing
 - `binaryOp` -> missing if right operand is missing (recursive -- catches `[param] [1] [+]`)
 - `unaryOp` -> missing if operand is missing (recursive -- catches `[param] [negative]`)
 - Everything else -> not missing
 
 ### `trailingValueExpr(actionExpr)`
+
 Finds the rightmost complete value expression among an action's children (by span position). Used to decide if infix operators should be offered. Checks anonymous slots and parameter values, then verifies no modifier appears after the trailing value -- if a modifier has a higher span, `undefined` is returned (infix operators should not follow modifiers).
 
 ### `hasParametersNeedingValues(actionExpr, excludeSlotId?)`
+
 Returns true if any filled parameter slot has a missing value (parameter tile placed but no value follows).
 
 ### `hasIncompleteAnonValues(actionExpr, excludeSlotId?)`
+
 Returns true if any filled anonymous slot has a non-empty, non-error expression that is not complete (e.g., `[say] ["hi"] [+]` -- the binary op in the anon slot needs a right operand). This is the anonymous-slot counterpart of `hasParametersNeedingValues`. Accepts an optional `excludeSlotId` to skip a slot being replaced, consistent with the other `has*` helpers.
 
 ### `trailingPrimaryExpr(expr)`
+
 Walks to the rightmost primary (leaf) expression in the tree by following `binaryOp->right`, `unaryOp->operand`, `assignment->value` recursively. Used for accessor tile type determination because accessors bind at maximum precedence (postfix). For example, in `[$vec].[x] = [$vec]`, the trailing primary is the rightmost `[$vec]`, whose struct type determines which accessors are valid -- not the assignment's output type.
 
 ### `trailingPrimaryAcceptedTypes(expr, operatorOverloads?, conversions?)`
+
 Computes the accepted types for the trailing primary's position within a complete expression. Walks the same path as `trailingPrimaryExpr` but collects the innermost type constraint from enclosing expressions. Returns `undefined` when no constraint exists (standalone value), or a `ReadonlyList<TypeId>` of accepted types. Used to filter accessor suggestions so that only accessors whose field type is compatible with the enclosing context are suggested.
+
 - `assignment` -> recurse into value; if no deeper constraint, return the target type (variable type or field access type)
 - `binaryOp` -> recurse into right; if no deeper constraint and `operatorOverloads` provided, infer expected RHS type from overloads matching the LHS type (returns undefined if ambiguous or no match)
 - `unaryOp` -> recurse into operand
 - Everything else (leaf) -> `undefined`
 
 ### `incompleteExprExpectedType(expr, operatorOverloads?, conversions?)`
+
 Infers the expected type of the missing sub-expression in an incomplete expression:
+
 - `assignment` -> target's type: `fieldAccess` target -> `accessor.fieldTypeId`, variable target -> `tileDef.varType`
 - `binaryOp` -> if right is incomplete, first recurse into right; if that returns undefined AND `operatorOverloads` is provided, infer from operator overloads by finding all overloads that accept the LHS type -- if all matching overloads expect the same RHS type, return it (returns undefined if ambiguous or no match)
 - `unaryOp` -> if operand is incomplete, recurse into operand; otherwise `undefined`
@@ -231,18 +250,18 @@ Infers the expected type of the missing sub-expression in an incomplete expressi
 
 ## Suggestion Functions
 
-| Function | What it suggests | When used |
-|----------|-----------------|-----------|
-| `suggestExpressionTiles` | All value-producing tiles + prefix operators (filtered by type/placement). Infix operators always excluded. When `valueOnly=true`, actuators are also excluded. | Empty position, incomplete expressions |
-| `suggestInfixOperators` | Infix operator tiles, optionally filtered by LHS type | After complete value expressions |
-| `suggestAccessorTiles` | Accessor tiles whose `structTypeId` matches the trailing primary expression's output type, optionally filtered by accepted field types | After complete value expressions producing a struct type |
-| `getExprOutputType` | Output type of an expression (for LHS type determination) | Called before `suggestInfixOperators` when overload info is available |
-| `operatorHasLhsOverload` | Checks if operator has any overload with exact LHS type match | Called by `suggestInfixOperators` for each operator |
-| `suggestPrefixOperators` | Prefix operator tiles only | Replacement mode at prefix operator position |
-| `suggestPrefixOperatorsForValue` | Prefix operator tiles filtered by result type | Inside action calls when value expressions are needed |
-| `suggestActionCallTiles` | Call spec tiles + value expressions for anonymous slots | Inside actuator/sensor argument lists |
-| `suggestExpressionsForAnonymousSlots` | Value tiles matching expected types | Called by `suggestActionCallTiles` for anonymous parameters |
-| `suggestForReplacementRole` | Dispatches to appropriate function based on role | Replacement mode |
+| Function                              | What it suggests                                                                                                                                                | When used                                                             |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `suggestExpressionTiles`              | All value-producing tiles + prefix operators (filtered by type/placement). Infix operators always excluded. When `valueOnly=true`, actuators are also excluded. | Empty position, incomplete expressions                                |
+| `suggestInfixOperators`               | Infix operator tiles, optionally filtered by LHS type                                                                                                           | After complete value expressions                                      |
+| `suggestAccessorTiles`                | Accessor tiles whose `structTypeId` matches the trailing primary expression's output type, optionally filtered by accepted field types                          | After complete value expressions producing a struct type              |
+| `getExprOutputType`                   | Output type of an expression (for LHS type determination)                                                                                                       | Called before `suggestInfixOperators` when overload info is available |
+| `operatorHasLhsOverload`              | Checks if operator has any overload with exact LHS type match                                                                                                   | Called by `suggestInfixOperators` for each operator                   |
+| `suggestPrefixOperators`              | Prefix operator tiles only                                                                                                                                      | Replacement mode at prefix operator position                          |
+| `suggestPrefixOperatorsForValue`      | Prefix operator tiles filtered by result type                                                                                                                   | Inside action calls when value expressions are needed                 |
+| `suggestActionCallTiles`              | Call spec tiles + value expressions for anonymous slots                                                                                                         | Inside actuator/sensor argument lists                                 |
+| `suggestExpressionsForAnonymousSlots` | Value tiles matching expected types                                                                                                                             | Called by `suggestActionCallTiles` for anonymous parameters           |
+| `suggestForReplacementRole`           | Dispatches to appropriate function based on role                                                                                                                | Replacement mode                                                      |
 
 ### `suggestExpressionTiles` Value-Only Flag
 
@@ -266,6 +285,7 @@ Tiles are classified against the expected type at the insertion point:
 **Without operator overload info:** Operators always get `Unchecked` compatibility (their result type depends on operand types, which aren't known at suggestion time).
 
 **With operator overload info** (`operatorOverloads` parameter provided to `suggestTiles`):
+
 - Operators with at least one overload whose first argType matches the left operand type exactly -> `exact` list, `Unchecked` compatibility
 - Operators with no matching overloads -> excluded entirely
 - No conversion-based operator suggestions are produced (conversions are only used for value tile suggestions)
@@ -278,17 +298,17 @@ When `operatorOverloads` is provided to `suggestTiles`, infix operators are filt
 
 Determines the static output type of an expression from its AST node:
 
-| Expr Kind | Output Type |
-|-----------|-------------|
-| `literal` | `tileDef.valueType` |
-| `variable` | `tileDef.varType` |
-| `sensor` | `tileDef.outputType` |
-| `actuator` | `CoreTypeIds.Void` |
-| `assignment` | Target type: `fieldAccess` target -> `accessor.fieldTypeId`, variable target -> `tileDef.varType` |
-| `fieldAccess` | `accessor.fieldTypeId` |
-| `binaryOp` | Resolves overload from operand types -> `resultType` |
-| `unaryOp` | Resolves overload from operand type -> `resultType` |
-| everything else | `undefined` (can't determine) |
+| Expr Kind       | Output Type                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------- |
+| `literal`       | `tileDef.valueType`                                                                               |
+| `variable`      | `tileDef.varType`                                                                                 |
+| `sensor`        | `tileDef.outputType`                                                                              |
+| `actuator`      | `CoreTypeIds.Void`                                                                                |
+| `assignment`    | Target type: `fieldAccess` target -> `accessor.fieldTypeId`, variable target -> `tileDef.varType` |
+| `fieldAccess`   | `accessor.fieldTypeId`                                                                            |
+| `binaryOp`      | Resolves overload from operand types -> `resultType`                                              |
+| `unaryOp`       | Resolves overload from operand type -> `resultType`                                               |
+| everything else | `undefined` (can't determine)                                                                     |
 
 ### `operatorHasLhsOverload(opDef, leftOperandType)`
 
@@ -298,15 +318,16 @@ Conversion-based matching is intentionally not used -- operators are only sugges
 
 ### Example: Core Operator Filtering
 
-| Left Operand | Suggested Operators | Excluded |
-|-------------|--------------------|---------|
-| Number | `+`, `-`, `*`, `/`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `=` | `and`, `or` |
-| Boolean | `and`, `or`, `==`, `!=`, `=` | `+`, `-`, `*`, `/`, `<`, `<=`, `>`, `>=` |
-| String | `+`, `==`, `!=`, `=` | `-`, `*`, `/`, `<`, `<=`, `>`, `>=`, `and`, `or` |
+| Left Operand | Suggested Operators                                       | Excluded                                         |
+| ------------ | --------------------------------------------------------- | ------------------------------------------------ |
+| Number       | `+`, `-`, `*`, `/`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `=` | `and`, `or`                                      |
+| Boolean      | `and`, `or`, `==`, `!=`, `=`                              | `+`, `-`, `*`, `/`, `<`, `<=`, `>`, `>=`         |
+| String       | `+`, `==`, `!=`, `=`                                      | `-`, `*`, `/`, `<`, `<=`, `>`, `>=`, `and`, `or` |
 
 ## Placement Filtering
 
 Every tile has an optional `placement` bitflag (`TilePlacement`). `isPlacementValid` checks that the tile's placement is compatible with the current `RuleSide`:
+
 - `WhenSide (1)` -- When side only
 - `DoSide (2)` -- Do side only
 - `EitherSide (3)` -- both sides

@@ -1,4 +1,4 @@
-# Ecology Sim
+# Ecosystem Sim
 
 A demo application for the [Mindcraft language](../../README.md). Actors -- carnivores, herbivores, and plants -- move and interact in a 2D physics world, each driven by a user-editable Mindcraft brain.
 
