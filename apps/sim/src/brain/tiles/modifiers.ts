@@ -13,7 +13,7 @@ export function registerModifierTiles() {
   };
   const avoidVisual = {
     label: "avoid",
-    iconUrl: "/assets/brain/icons/movement_avoid.svg",
+    iconUrl: "/assets/brain/icons/avoid.svg",
   };
   const awayFromVisual = {
     label: "away from",
@@ -21,7 +21,7 @@ export function registerModifierTiles() {
   };
   const forwardVisual = {
     label: "forward",
-    iconUrl: "/assets/brain/icons/movement_forward.svg",
+    iconUrl: "/assets/brain/icons/forward.svg",
   };
   const towardVisual = {
     label: "toward",
@@ -29,7 +29,7 @@ export function registerModifierTiles() {
   };
   const wanderVisual = {
     label: "wander",
-    iconUrl: "/assets/brain/icons/movement_wander.svg",
+    iconUrl: "/assets/brain/icons/wander.svg",
   };
   const carnivoreVisual = {
     label: "carnivore",
@@ -45,11 +45,11 @@ export function registerModifierTiles() {
   };
   const distanceNearbyVisual = {
     label: "nearby",
-    iconUrl: "/assets/brain/icons/distance_nearby.svg",
+    iconUrl: "/assets/brain/icons/nearby.svg",
   };
   const distanceFarAwayVisual = {
     label: "far away",
-    iconUrl: "/assets/brain/icons/distance_far_away.svg",
+    iconUrl: "/assets/brain/icons/far_away.svg",
   };
   const quicklyVisual = {
     label: "quickly",
