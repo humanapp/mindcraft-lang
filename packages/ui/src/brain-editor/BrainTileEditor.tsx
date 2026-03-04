@@ -88,13 +88,18 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
 
   const handleEditFormatSubmit = (newFormat: LiteralDisplayFormat) => {
     const literalDef = tileDef as BrainTileLiteralDef;
-    const newTileDef = new BrainTileLiteralDef(literalDef.valueType, literalDef.value, {
+    let newTileDef: IBrainTileDef = new BrainTileLiteralDef(literalDef.valueType, literalDef.value, {
       valueLabel: literalDef.valueLabel,
       displayFormat: newFormat,
     });
     const catalog = ruleDef.brain()?.catalog();
-    if (catalog && !catalog.get(newTileDef.tileId)) {
-      catalog.registerTileDef(newTileDef);
+    if (catalog) {
+      const existing = catalog.get(newTileDef.tileId);
+      if (existing) {
+        newTileDef = existing;
+      } else {
+        catalog.registerTileDef(newTileDef);
+      }
     }
     const command = new ReplaceTileCommand(ruleDef, side, tileIndex, newTileDef);
     commandHistory.executeCommand(command);
