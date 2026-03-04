@@ -49,7 +49,7 @@ export function registerModifierTiles() {
   };
   const distanceFarAwayVisual = {
     label: "far away",
-    iconUrl: "/assets/brain/icons/far_away.svg",
+    iconUrl: "/assets/brain/icons/faraway.svg",
   };
   const quicklyVisual = {
     label: "quickly",
