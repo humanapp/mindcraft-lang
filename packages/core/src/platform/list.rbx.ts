@@ -299,6 +299,10 @@ export class List<T extends defined> implements ReadonlyList<T> {
     return this;
   }
 
+  toJSON(): T[] {
+    return this.xs;
+  }
+
   raw(): Array<T> {
     return this.xs;
   }

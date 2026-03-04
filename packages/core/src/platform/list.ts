@@ -45,4 +45,5 @@ export declare class List<T> implements ReadonlyList<T> {
   concat(other: List<T>): List<T>;
   some(fn: (v: T, i: number) => boolean): boolean;
   asReadonly(): ReadonlyList<T>;
+  toJSON(): T[];
 }

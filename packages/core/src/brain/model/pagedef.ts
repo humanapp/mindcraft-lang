@@ -1,16 +1,28 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
-import { List } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import { type IReadStream, type IWriteStream, MemoryStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
 import { fourCC } from "../../primitives";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
-import type { BrainPageDefEvents, IBrainDef, IBrainPageDef, IBrainRuleDef } from "../interfaces";
-import { BrainRuleDef } from "./ruledef";
+import type { BrainPageDefEvents, IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
+import { BrainRuleDef, type RuleJson } from "./ruledef";
+
+export interface PageJson {
+  version: number;
+  pageId: string;
+  name: string;
+  rules: ReadonlyList<RuleJson>;
+}
 
 // Maximum allowed length for brain page names.
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
 export const kMaxPageNameLength = 100; // never reduce this value!
+
+// Current serialization version -- shared by both binary and JSON codepaths.
+// v1: initial format (binary only, no pageId)
+// v2: added stable pageId
+const kVersion = 2;
 
 // Serialization tags
 const STags = {
@@ -79,7 +91,7 @@ export class BrainPageDef implements IBrainPageDef {
   }
 
   serialize(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.PAGE, 2); // version 2: added pageId
+    stream.writeTaggedU8(STags.PAGE, kVersion);
     stream.writeTaggedString(STags.NAME, this.name_);
     stream.writeTaggedString(STags.PGID, this.pageId_);
     stream.writeTaggedU32(STags.RLCT, this.children_.size());
@@ -90,11 +102,11 @@ export class BrainPageDef implements IBrainPageDef {
 
   deserialize(stream: IReadStream): void {
     const version = stream.readTaggedU8(STags.PAGE);
-    if (version < 1 || version > 2) {
+    if (version < 1 || version > kVersion) {
       throw new Error(`Unsupported BrainPageDef version: ${version}`);
     }
     this.name_ = stream.readTaggedString(STags.NAME);
-    if (version >= 2) {
+    if (version >= kVersion) {
       // Version 2+: read the stable page ID. Overwrite the constructor-generated one.
       (this as unknown as { pageId_: string }).pageId_ = stream.readTaggedString(STags.PGID);
     }
@@ -104,6 +116,30 @@ export class BrainPageDef implements IBrainPageDef {
       const child = new BrainRuleDef();
       child.setPage(this); // set page before deserializing so rule can read brain's local catalog
       child.deserialize(stream);
+      this.children_.push(child);
+      this.subscribeToRule_(child);
+    }
+  }
+
+  // -- JSON serialization (parallel to binary above) -------------------------
+
+  toJson(): PageJson {
+    const rules = new List<RuleJson>();
+    for (let i = 0; i < this.children_.size(); i++) {
+      rules.push(this.children_.get(i).toJson());
+    }
+    return { version: kVersion, pageId: this.pageId_, name: this.name_, rules };
+  }
+
+  deserializeJson(json: PageJson, catalogs: List<ITileCatalog>): void {
+    if (json.version !== kVersion) {
+      throw new Error(`BrainPageDef.deserializeJson: unsupported version ${json.version}`);
+    }
+    this.name_ = json.name;
+    for (let i = 0; i < json.rules.size(); i++) {
+      const child = new BrainRuleDef();
+      child.setPage(this);
+      child.deserializeJson(json.rules.get(i), catalogs);
       this.children_.push(child);
       this.subscribeToRule_(child);
     }

@@ -21,6 +21,9 @@ import { getBrainServices } from "../services";
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
 export const kMaxTileSetSize = 20; // never reduce this value!
 
+// Current serialization version (binary only -- JSON tile sets are unversioned arrays).
+const kVersion = 1;
+
 // Serialization tags
 const STags = {
   TSET: fourCC("TSET"), // TileSet chunk
@@ -174,8 +177,35 @@ export class BrainTileSet implements IBrainTileSet {
     return this.tiles_.size() === 0;
   }
 
+  // -- JSON serialization (parallel to binary below) -------------------------
+
+  toJson(): List<string> {
+    const tileIds = new List<string>();
+    this.tiles_.forEach((tileDef) => {
+      tileIds.push(tileDef.tileId);
+    });
+    return tileIds;
+  }
+
+  deserializeJson(json: ReadonlyList<string>, catalogs: List<ITileCatalog>): void {
+    for (let i = 0; i < json.size(); i++) {
+      const tileId = json.get(i);
+      let tileDef: IBrainTileDef | undefined;
+      for (let j = 0; j < catalogs.size(); j++) {
+        tileDef = catalogs.get(j).get(tileId) as IBrainTileDef | undefined;
+        if (tileDef) break;
+      }
+      if (!tileDef) {
+        throw new Error(`BrainTileSet.deserializeJson: tileId '${tileId}' not found in provided catalogs`);
+      }
+      this.tiles_.push(tileDef);
+    }
+  }
+
+  // -- Binary serialization ---------------------------------------------------
+
   serialize(stream: IWriteStream): void {
-    stream.pushChunk(STags.TSET, 1); // version
+    stream.pushChunk(STags.TSET, kVersion);
     try {
       stream.writeTaggedU32(STags.TCNT, this.tiles_.size());
       this.tiles_.forEach((tileDef) => {
@@ -192,7 +222,7 @@ export class BrainTileSet implements IBrainTileSet {
     }
     const version = stream.enterChunk(STags.TSET);
     try {
-      if (version !== 1) {
+      if (version !== kVersion) {
         throw new Error(`BrainTileSet.deserialize: unsupported version ${version}`);
       }
       const tileCount = stream.readTaggedU32(STags.TCNT);

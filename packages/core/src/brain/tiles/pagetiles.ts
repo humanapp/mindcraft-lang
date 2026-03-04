@@ -4,6 +4,16 @@ import { fourCC } from "../../primitives";
 import { CoreTypeIds, type ITileCatalog, mkPageTileId, TilePlacement } from "../interfaces";
 import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
 
+export interface PageTileJson {
+  version: number;
+  kind: "page";
+  tileId: string;
+  pageId: string;
+}
+
+// Current serialization version -- shared by both binary and JSON codepaths.
+const kVersion = 1;
+
 const STags = {
   BPAG: fourCC("BPAG"), // Brain page tile chunk
 };
@@ -47,9 +57,32 @@ export class BrainTilePageDef extends BrainTileDefBase {
     this.value = pageId;
   }
 
+  // -- JSON serialization (parallel to binary below) -------------------------
+
+  toJson(): PageTileJson {
+    return {
+      version: kVersion,
+      kind: "page",
+      tileId: this.tileId,
+      pageId: this.pageId,
+    };
+  }
+
+  static fromJson(json: PageTileJson, catalog: ITileCatalog): BrainTilePageDef {
+    if (json.version !== kVersion) {
+      throw new Error(`BrainTilePageDef.fromJson: unsupported version ${json.version}`);
+    }
+    if (catalog.has(json.tileId)) return catalog.get(json.tileId) as BrainTilePageDef;
+    const tileDef = new BrainTilePageDef(json.pageId);
+    catalog.registerTileDef(tileDef);
+    return tileDef;
+  }
+
+  // -- Binary serialization ---------------------------------------------------
+
   serialize(stream: IWriteStream): void {
     super.serialize(stream);
-    stream.pushChunk(STags.BPAG, 1);
+    stream.pushChunk(STags.BPAG, kVersion);
     stream.writeString(this.pageId);
     stream.popChunk();
   }
@@ -61,7 +94,7 @@ export function BrainTilePageDef_deserialize(stream: IReadStream, catalog: ITile
     throw new Error(`BrainTilePageDef.deserialize: invalid kind ${kind}`);
   }
   const version = stream.enterChunk(STags.BPAG);
-  if (version !== 1) {
+  if (version !== kVersion) {
     throw new Error(`BrainTilePageDef.deserialize: unsupported version ${version}`);
   }
   const pageId = stream.readString();

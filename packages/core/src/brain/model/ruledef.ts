@@ -1,6 +1,6 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
-import { List } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import { type IReadStream, type IWriteStream, MemoryStream } from "../../platform/stream";
 import { task, type thread } from "../../platform/task";
 import { fourCC } from "../../primitives";
@@ -18,9 +18,19 @@ import {
 import { getBrainServices } from "../services";
 import { BrainTileSet } from "./tileset";
 
+export interface RuleJson {
+  version: number;
+  when: ReadonlyList<string>;
+  do: ReadonlyList<string>;
+  children: ReadonlyList<RuleJson>;
+}
+
 // Maximum allowed depth for rules in the tree
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
 export const kMaxBrainRuleDepth = 20; // never reduce this value!
+
+// Current serialization version -- shared by both binary and JSON codepaths.
+const kVersion = 1;
 
 // Serialization tags
 const STags = {
@@ -480,7 +490,7 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   serialize(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.RUL1, 1); // version of this chunk
+    stream.writeTaggedU8(STags.RUL1, kVersion);
     this.serializeThisLevelOnly(stream);
     // write child rules
     stream.writeTaggedU32(STags.CRCT, this.children_.size());
@@ -490,20 +500,20 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   serializeThisLevelOnly(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.RUL2, 1); // version of this chunk
+    stream.writeTaggedU8(STags.RUL2, kVersion);
     this.when_.serialize(stream);
     this.do_.serialize(stream);
   }
 
   serializeWithoutChildren(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.RUL3, 1); // version of this chunk
+    stream.writeTaggedU8(STags.RUL3, kVersion);
     this.serializeThisLevelOnly(stream);
     stream.writeTaggedU32(STags.CRCT, 0); // zero child rules
   }
 
   deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void {
     const version = stream.readTaggedU8(STags.RUL1);
-    if (version !== 1) {
+    if (version !== kVersion) {
       throw new Error(`Unsupported BrainRuleDef version: ${version}`);
     }
     this.deserializeThisLevelOnly(stream, catalogs);
@@ -522,7 +532,7 @@ export class BrainRuleDef implements IBrainRuleDef {
 
   deserializeThisLevelOnly(stream: IReadStream, catalogs_?: List<ITileCatalog>): void {
     const version = stream.readTaggedU8(STags.RUL2);
-    if (version !== 1) {
+    if (version !== kVersion) {
       throw new Error(`Unsupported BrainRuleDef (this level only) version: ${version}`);
     }
     const catalogs = new List<ITileCatalog>();
@@ -536,6 +546,45 @@ export class BrainRuleDef implements IBrainRuleDef {
     catalogs.push(getBrainServices().tiles); // global catalog
     this.when_.deserialize(stream, catalogs);
     this.do_.deserialize(stream, catalogs);
+  }
+
+  // -- JSON serialization (parallel to binary above) -------------------------
+
+  toJson(): RuleJson {
+    const childRules = new List<RuleJson>();
+    for (let i = 0; i < this.children_.size(); i++) {
+      childRules.push(this.children_.get(i).toJson());
+    }
+
+    return { version: kVersion, when: this.when_.toJson(), do: this.do_.toJson(), children: childRules };
+  }
+
+  static fromJson(json: RuleJson, page: IBrainPageDef, brain: IBrainDef): BrainRuleDef {
+    const catalogs = new List<ITileCatalog>();
+    catalogs.push(brain.catalog());
+    catalogs.push(getBrainServices().tiles);
+    const rule = new BrainRuleDef();
+    rule.setPage(page);
+    rule.deserializeJson(json, catalogs);
+    return rule;
+  }
+
+  deserializeJson(json: RuleJson, catalogs: List<ITileCatalog>): void {
+    if (json.version !== kVersion) {
+      throw new Error(`BrainRuleDef.deserializeJson: unsupported version ${json.version}`);
+    }
+    this.when_.deserializeJson(json.when, catalogs);
+    this.do_.deserializeJson(json.do, catalogs);
+
+    // Recursively deserialize child rules
+    for (let i = 0; i < json.children.size(); i++) {
+      const child = new BrainRuleDef();
+      child.setPage(this.page());
+      child.deserializeJson(json.children.get(i), catalogs);
+      this.children_.push(child);
+      child.ancestor_ = this;
+      this.subscribeToChildRule_(child);
+    }
   }
 
   /**

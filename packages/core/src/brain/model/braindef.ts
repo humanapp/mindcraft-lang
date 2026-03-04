@@ -1,6 +1,6 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
-import { List } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import { type IReadStream, type IWriteStream, MemoryStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
 import { fourCC } from "../../primitives";
@@ -17,9 +17,17 @@ import {
   mkPageTileId,
 } from "../interfaces";
 import { Brain } from "../runtime";
-import { TileCatalog } from "../tiles/catalog";
+import { getBrainServices } from "../services";
+import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";
-import { BrainPageDef } from "./pagedef";
+import { BrainPageDef, type PageJson } from "./pagedef";
+
+export interface BrainJson {
+  version: number;
+  name: string;
+  catalog: ReadonlyList<CatalogTileJson>;
+  pages: ReadonlyList<PageJson>;
+}
 
 // Maximum allowed length for brain names.
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
@@ -33,6 +41,9 @@ export enum BrainDefWarningCode {
   MaxPagesExceeded = "MaxPagesExceeded",
   PageIndexOutOfBounds = "PageIndexOutOfBounds",
 }
+
+// Current serialization version -- shared by both binary and JSON codepaths.
+const kVersion = 1;
 
 // Serialization tags
 const STags = {
@@ -197,8 +208,44 @@ export class BrainDef implements IBrainDef {
     return newBrain;
   }
 
+  toJson(): BrainJson {
+    const pages = new List<PageJson>();
+    for (let i = 0; i < this.pages_.size(); i++) {
+      pages.push(this.pages_.get(i).toJson());
+    }
+
+    return { version: kVersion, name: this.name_, catalog: this.catalog_.toJson(), pages };
+  }
+
+  static fromJson(json: BrainJson): BrainDef {
+    if (json.version !== kVersion) {
+      throw new Error(`BrainDef.fromJson: unsupported version ${json.version}`);
+    }
+
+    const brain = new BrainDef();
+    brain.setName(json.name);
+
+    // Restore the local catalog first so tile references can be resolved
+    brain.catalog_.deserializeJson(json.catalog);
+
+    // Build the catalog chain: local catalog + global catalog
+    const catalogs = new List<ITileCatalog>();
+    catalogs.push(brain.catalog_);
+    catalogs.push(getBrainServices().tiles);
+
+    // Restore pages
+    for (let i = 0; i < json.pages.size(); i++) {
+      const pageJson = json.pages.get(i);
+      const page = new BrainPageDef(pageJson.pageId);
+      brain.addPage(page);
+      page.deserializeJson(pageJson, catalogs);
+    }
+
+    return brain;
+  }
+
   serialize(stream: IWriteStream): void {
-    stream.pushChunk(STags.BRAN, 1); // version
+    stream.pushChunk(STags.BRAN, kVersion);
     stream.writeTaggedString(STags.NAME, this.name_);
     this.catalog_.serialize(stream);
     stream.writeTaggedU32(STags.PGCT, this.pages_.size());
@@ -213,7 +260,7 @@ export class BrainDef implements IBrainDef {
       throw new Error(`BrainDef.deserialize: BrainDef must be empty before deserializing`);
     }
     const version = stream.enterChunk(STags.BRAN);
-    if (version !== 1) {
+    if (version !== kVersion) {
       throw new Error(`BrainDef.deserialize: unsupported version ${version}`);
     }
     try {

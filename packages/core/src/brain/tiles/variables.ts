@@ -14,8 +14,21 @@ import {
   type TypeId,
 } from "../interfaces";
 import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
+
+export interface VariableTileJson {
+  version: number;
+  kind: "variable";
+  tileId: string;
+  varName: string;
+  varType: string;
+  uniqueId: string;
+}
+
 import { getBrainServices } from "../services";
 import { BrainTileFactoryDef } from "./factories";
+
+// Current serialization version -- shared by both binary and JSON codepaths.
+const kVersion = 1;
 
 const STags = {
   BVAR: fourCC("BVAR"), // Brain variable tile chunk
@@ -42,9 +55,40 @@ export class BrainTileVariableDef extends BrainTileDefBase {
     this.uniqueId = uniqueId;
   }
 
+  // -- JSON serialization (parallel to binary below) -------------------------
+
+  toJson(): VariableTileJson {
+    return {
+      version: kVersion,
+      kind: "variable",
+      tileId: this.tileId,
+      varName: this.varName,
+      varType: this.varType,
+      uniqueId: this.uniqueId,
+    };
+  }
+
+  static fromJson(json: VariableTileJson, catalog: ITileCatalog): BrainTileVariableDef {
+    if (json.version !== kVersion) {
+      throw new Error(`BrainTileVariableDef.fromJson: unsupported version ${json.version}`);
+    }
+    if (catalog.has(json.tileId)) return catalog.get(json.tileId) as BrainTileVariableDef;
+    const tileDef = getBrainServices().tileBuilder.createVariableTileDef(
+      json.tileId,
+      json.varName,
+      json.varType as TypeId,
+      json.uniqueId,
+      {}
+    );
+    catalog.registerTileDef(tileDef);
+    return tileDef as BrainTileVariableDef;
+  }
+
+  // -- Binary serialization ---------------------------------------------------
+
   serialize(stream: IWriteStream): void {
     super.serialize(stream);
-    stream.pushChunk(STags.BVAR, 1);
+    stream.pushChunk(STags.BVAR, kVersion);
     stream.writeString(this.varName);
     stream.writeString(this.varType);
     stream.writeString(this.uniqueId);
@@ -58,7 +102,7 @@ export function BrainTileVariableDef_deserialize(stream: IReadStream, catalog: I
     throw new Error(`BrainTileVariableDef.deserialize: invalid kind ${kind}`);
   }
   const version = stream.enterChunk(STags.BVAR);
-  if (version !== 1) {
+  if (version !== kVersion) {
     throw new Error(`BrainTileVariableDef.deserialize: unsupported version ${version}`);
   }
   const varName = stream.readString();

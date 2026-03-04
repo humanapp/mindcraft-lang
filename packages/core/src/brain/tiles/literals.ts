@@ -11,13 +11,31 @@ import {
   LiteralDisplayFormats,
   mkLiteralFactoryTileId,
   mkLiteralTileId,
+  NativeType,
   TilePlacement,
   type TypeCodec,
+  type TypeDef,
   type TypeId,
 } from "../interfaces";
 import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
+
+export interface LiteralTileJson {
+  version: number;
+  kind: "literal";
+  tileId: string;
+  valueType: string;
+  value: unknown;
+  valueLabel: string;
+  displayFormat: string;
+}
+
 import { getBrainServices } from "../services";
 import { BrainTileFactoryDef } from "./factories";
+
+// Current serialization version -- shared by both binary and JSON codepaths.
+// v1: initial binary format
+// v2: added displayFormat
+const kVersion = 2;
 
 const STags = {
   BLIT: fourCC("BLIT"), // Brain literal tile chunk
@@ -47,18 +65,89 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
     this.displayFormat = fmt;
   }
 
+  // -- JSON serialization (parallel to binary below) -------------------------
+
+  toJson(): LiteralTileJson {
+    const typeDef = getBrainServices().types.get(this.valueType);
+    if (!typeDef) {
+      throw new Error(`BrainTileLiteralDef.toJson: unknown value type ${this.valueType}`);
+    }
+    return {
+      version: kVersion,
+      kind: "literal",
+      tileId: this.tileId,
+      valueType: this.valueType,
+      value: literalValueToJson(typeDef, this.value),
+      valueLabel: this.valueLabel,
+      displayFormat: this.displayFormat,
+    };
+  }
+
+  static fromJson(json: LiteralTileJson, catalog: ITileCatalog): BrainTileLiteralDef {
+    if (json.version !== kVersion) {
+      throw new Error(`BrainTileLiteralDef.fromJson: unsupported version ${json.version}`);
+    }
+    if (catalog.has(json.tileId)) return catalog.get(json.tileId) as BrainTileLiteralDef;
+    const typeDef = getBrainServices().types.get(json.valueType as TypeId);
+    if (!typeDef) {
+      throw new Error(`BrainTileLiteralDef.fromJson: unknown value type ${json.valueType}`);
+    }
+    const value = literalValueFromJson(typeDef, json.value);
+    const tileDef = getBrainServices().tileBuilder.createLiteralTileDef(json.valueType as TypeId, value, {
+      valueLabel: json.valueLabel,
+      displayFormat: json.displayFormat,
+    });
+    catalog.registerTileDef(tileDef);
+    return tileDef as BrainTileLiteralDef;
+  }
+
+  // -- Binary serialization ---------------------------------------------------
+
   serialize(stream: IWriteStream): void {
     const typeDef = getBrainServices().types.get(this.valueType);
     if (!typeDef) {
       throw new Error(`BrainTileLiteralDef.serialize: unknown value type ${this.valueType}`);
     }
     super.serialize(stream);
-    stream.pushChunk(STags.BLIT, 2);
+    stream.pushChunk(STags.BLIT, kVersion);
     stream.writeString(this.valueType);
     (typeDef.codec as TypeCodec).encode(stream, this.value);
     stream.writeString(this.valueLabel);
     stream.writeString(this.displayFormat);
     stream.popChunk();
+  }
+}
+
+// -- Literal value helpers ---------------------------------------------------
+// Convert between runtime values and their JSON-safe representations.
+
+function literalValueToJson(typeDef: TypeDef, value: unknown): unknown {
+  switch (typeDef.coreType) {
+    case NativeType.Void:
+    case NativeType.Nil:
+      return undefined;
+    case NativeType.Boolean:
+    case NativeType.Number:
+    case NativeType.String:
+    case NativeType.Enum:
+      return value;
+    default:
+      throw new Error(`literalValueToJson: unsupported coreType ${typeDef.coreType} (typeId: ${typeDef.typeId})`);
+  }
+}
+
+function literalValueFromJson(typeDef: TypeDef, json: unknown): unknown {
+  switch (typeDef.coreType) {
+    case NativeType.Void:
+    case NativeType.Nil:
+      return undefined;
+    case NativeType.Boolean:
+    case NativeType.Number:
+    case NativeType.String:
+    case NativeType.Enum:
+      return json;
+    default:
+      throw new Error(`literalValueFromJson: unsupported coreType ${typeDef.coreType} (typeId: ${typeDef.typeId})`);
   }
 }
 
@@ -68,7 +157,7 @@ export function BrainTileLiteralDef_deserialize(stream: IReadStream, catalog: IT
     throw new Error(`BrainTileLiteralDef.deserialize: invalid kind ${kind}`);
   }
   const version = stream.enterChunk(STags.BLIT);
-  if (version !== 1 && version !== 2) {
+  if (version < 1 || version > kVersion) {
     throw new Error(`BrainTileLiteralDef.deserialize: unsupported version ${version}`);
   }
   const valueType = stream.readString();
@@ -78,7 +167,7 @@ export function BrainTileLiteralDef_deserialize(stream: IReadStream, catalog: IT
   }
   const value = typeEntry.codec.decode(stream);
   const valueLabel = stream.readString();
-  const displayFormat: LiteralDisplayFormat = version >= 2 ? stream.readString() : LiteralDisplayFormats.Default;
+  const displayFormat: LiteralDisplayFormat = version >= kVersion ? stream.readString() : LiteralDisplayFormats.Default;
   stream.leaveChunk();
 
   let tileDef = catalog.get(tileId) as BrainTileLiteralDef | undefined;
