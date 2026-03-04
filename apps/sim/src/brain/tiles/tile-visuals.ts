@@ -27,9 +27,9 @@ import type { TileVisual } from "./types";
 // biome-ignore format: uniform one-liner-per-entry style
 export const tileVisuals = new Dict<string, Partial<TileVisual>>([
   // Operators
-  [mkOperatorTileId(CoreOpId.And), { label: "AND" }],
-  [mkOperatorTileId(CoreOpId.Or), { label: "OR" }],
-  [mkOperatorTileId(CoreOpId.Not), { label: "NOT" }],
+  [mkOperatorTileId(CoreOpId.And), { label: "AND", iconUrl: "/assets/brain/icons/and.svg" }],
+  [mkOperatorTileId(CoreOpId.Or), { label: "OR", iconUrl: "/assets/brain/icons/or.svg" }],
+  [mkOperatorTileId(CoreOpId.Not), { label: "NOT", iconUrl: "/assets/brain/icons/not.svg" }],
   [mkOperatorTileId(CoreOpId.Add), { label: "plus", iconUrl: "/assets/brain/icons/plus.svg" }],
   [mkOperatorTileId(CoreOpId.Subtract), { label: "minus", iconUrl: "/assets/brain/icons/minus.svg" }],
   [mkOperatorTileId(CoreOpId.Multiply), { label: "multiplied by", iconUrl: "/assets/brain/icons/multiply.svg" }],
