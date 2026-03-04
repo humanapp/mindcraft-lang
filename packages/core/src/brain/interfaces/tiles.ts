@@ -70,6 +70,8 @@ export interface BrainTileDefCreateOptions {
  * - "percent:N" -- value * 100 with N decimal places and "%" suffix
  * - "fixed:N" -- fixed N decimal places (e.g., "fixed:2" -> 3.10)
  * - "thousands" -- comma-separated thousands groups
+ * - "time_seconds" -- rounded to 2 decimal places with "s" suffix (e.g., 1.283 -> "1.28s")
+ * - "time_ms" -- value * 1000 rounded to integer with "ms" suffix (e.g., 1 -> "1000ms")
  */
 export type LiteralDisplayFormat = string;
 
@@ -77,6 +79,8 @@ export const LiteralDisplayFormats = {
   Default: "default",
   Percent: "percent",
   Thousands: "thousands",
+  TimeSeconds: "time_seconds",
+  TimeMs: "time_ms",
 } as const;
 
 /** Build a "percent:N" format string. */
@@ -101,6 +105,8 @@ export function parseDisplayFormat(fmt: LiteralDisplayFormat): { kind: string; d
   }
   if (fmt === "percent") return { kind: "percent" };
   if (fmt === "thousands") return { kind: "thousands" };
+  if (fmt === "time_seconds") return { kind: "time_seconds" };
+  if (fmt === "time_ms") return { kind: "time_ms" };
   return { kind: "default" };
 }
 

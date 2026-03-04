@@ -11,6 +11,8 @@ const FORMAT_OPTIONS: { value: LiteralDisplayFormat; label: string; description:
   { value: "fixed:2", label: "2 decimals", description: "e.g., 3.14" },
   { value: "fixed:3", label: "3 decimals", description: "e.g., 3.142" },
   { value: "thousands", label: "Thousands", description: "e.g., 1,000,000" },
+  { value: "time_seconds", label: "Time (s)", description: "e.g., 1.283 -> 1.28s" },
+  { value: "time_ms", label: "Time (ms)", description: "e.g., 1 -> 1000ms" },
 ];
 
 interface DisplayFormatPickerProps {
