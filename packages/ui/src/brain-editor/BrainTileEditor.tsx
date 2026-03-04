@@ -114,14 +114,15 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
       {pickerMode &&
         (() => {
           const tileSet = side === RuleSide.When ? ruleDef.when() : ruleDef.do();
+          const isInsert = pickerMode === "insert";
           return (
             <BrainTilePickerDialog
               isOpen={true}
               side={side}
               localCatalog={ruleDef.brain()?.catalog()}
-              expr={tileSet.expr()}
-              replaceTileIndex={pickerMode === "replace" ? tileIndex : undefined}
-              existingTiles={tileSet.tiles()}
+              expr={isInsert ? undefined : tileSet.expr()}
+              replaceTileIndex={isInsert ? undefined : tileIndex}
+              existingTiles={isInsert ? tileSet.tiles().slice(0, tileIndex) : tileSet.tiles()}
               availableCapabilities={availableCapabilities}
               onTileSelected={handleTileSelected}
               onCancel={handlePickerCancel}

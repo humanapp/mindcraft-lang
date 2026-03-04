@@ -1,7 +1,7 @@
 ---
 applyTo: 'packages/core/src/brain/language-service/**'
 ---
-<!-- Last reviewed: 2026-03-02 -->
+<!-- Last reviewed: 2026-03-03 -->
 
 # Tile Suggestion Language Service
 
@@ -379,6 +379,7 @@ suggestTiles()
 26. **Replacement `value` role uses `valueOnly` and propagates paren depth** -- the `value` role calls `suggestExpressionTiles` with `valueOnly=true` to exclude actuators (Void return) and non-inline sensors from sub-expression positions, and propagates `unclosedParenDepth` so paren-based suppression is respected.
 27. **Operator-derived type overrides slot type for incomplete anon values** -- when an anonymous slot contains an incomplete expression with an operator-derived type (e.g., `[1] [+] _` expects Number), `incompleteExprExpectedType` provides the operand type, which replaces the slot's declared type (e.g., String) in `valueExpectedTypes`. This ensures tiles matching the operator's expected operand type are exact matches, not conversion matches via the outer slot type.
 28. **`hasIncompleteAnonValues` respects `excludeSlotId`** -- like `hasParametersNeedingValues` and `hasStructValuePendingAccessor`, the `hasIncompleteAnonValues` helper skips the excluded slot when computing `valuePending`. This prevents the incomplete expression in a slot being replaced from suppressing named parameter/modifier tiles.
+29. **Insert-before uses truncated tile context** -- when inserting a tile before an existing tile at position N, the UI must build the `InsertionContext` from only the tiles before position N (i.e., `tiles.slice(0, N)`). The expression and unclosed paren depth are computed from this prefix, not the full tile list. This ensures the suggestion system sees the correct context -- e.g., inserting before position 0 produces an empty expression, offering all expression-start tiles (prefix operators, values, etc.).
 
 ### Dependencies
 

@@ -7,9 +7,11 @@ export interface ReadonlyList<T> {
   filter(fn: (v: T, i: number) => boolean): ReadonlyList<T>;
   find(fn: (v: T, i: number) => boolean): T | undefined;
   findIndex(fn: (v: T, i: number) => boolean): number;
+  indexOf(v: T): number;
   contains(v: T): boolean;
   reduce(fn: (acc: T, v: T, i: number) => T): T;
   reduce<U>(fn: (acc: U, v: T, i: number) => U, initial: U): U;
+  slice(start?: number, end?: number): ReadonlyList<T>;
   toArray(): T[];
 }
 

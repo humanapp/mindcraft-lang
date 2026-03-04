@@ -2773,6 +2773,35 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     const hasNumLiteral = listFind(result.exact, (s) => s.tileDef.tileId === numLitDef.tileId) !== undefined;
     assert.ok(hasNumLiteral, "Replacing [5] in [say] [5] [+] should offer Number literals");
   });
+
+  test("Test 88: Insert before [(] in DO [(] [1] -> negate prefix operator available", () => {
+    // When inserting before position 0, the tiles preceding the insertion point
+    // are empty. parseTilesForSuggestions on an empty list returns EmptyExpr,
+    // and countUnclosedParens returns 0. This simulates what the UI should
+    // pass to suggestTiles for insert-before mode.
+    const tilesBeforeInsert = List.empty<IBrainTileDef>();
+    const expr = parseTilesForSuggestions(tilesBeforeInsert);
+    const depth = countUnclosedParens(tilesBeforeInsert);
+
+    assert.equal(depth, 0);
+    assert.equal(expr.kind, "empty", "No tiles before insertion point -> EmptyExpr");
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+
+    // Negate (prefix operator) should be available at expression start
+    const hasNegate =
+      listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Negate)) !== undefined;
+    assert.ok(hasNegate, "Insert before [(] should offer negate prefix operator");
+
+    // Open paren should also be available
+    const hasOpenParen =
+      listFind(result.exact, (s) => s.tileDef.tileId === mkControlFlowTileId(CoreControlFlowId.OpenParen)) !==
+      undefined;
+    assert.ok(hasOpenParen, "Insert before [(] should offer open paren");
+
+    // Number literals should be available (expression start)
+    const hasNumLiteral = listFind(result.exact, (s) => s.tileDef.tileId === numLitDef.tileId) !== undefined;
+    assert.ok(hasNumLiteral, "Insert before [(] should offer number literals");
+  });
 });
 
 // ---- Test 74-76: Replace repeated modifier, anon slot value ----
