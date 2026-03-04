@@ -1,4 +1,4 @@
-import { stream } from "@mindcraft-lang/core";
+import type { ReadonlyList } from "@mindcraft-lang/core";
 import {
   getPageIdFromTileId,
   type IBrainDef,
@@ -7,7 +7,7 @@ import {
   isPageTileId,
   mkPageTileId,
 } from "@mindcraft-lang/core/brain";
-import { BrainTileMissingDef, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 
 /**
  * Serialized clipboard payload for a copied tile.
@@ -22,7 +22,7 @@ interface TileClipboardData {
    * way to recover the tile since they are not serialized into the catalog. */
   tileDef: IBrainTileDef;
   /** Serialized single-tile catalog (empty if the tile is non-persist). */
-  catalogBytes: Uint8Array;
+  catalogJson: ReadonlyList<CatalogTileJson>;
   /** Human-readable page name, captured at copy time.
    * Only set for page tiles, where the serialized form loses the visual label. */
   pageName?: string;
@@ -68,11 +68,9 @@ export function copyTileToClipboard(tileDef: IBrainTileDef, brain: IBrainDef | u
     }
   }
 
-  const catalogStream = new stream.MemoryStream();
-  tempCatalog.serialize(catalogStream);
-  const catalogBytes = stream.byteArrayToUint8Array(catalogStream.toBytes());
+  const catalogJson = tempCatalog.toJson();
 
-  tileClipboardData = { tileId: tileDef.tileId, tileDef, catalogBytes, pageName };
+  tileClipboardData = { tileId: tileDef.tileId, tileDef, catalogJson, pageName };
   notifyTileClipboardChanged();
 }
 
@@ -102,8 +100,7 @@ export function importTileFromClipboard(destBrain: IBrainDef): IBrainTileDef | u
   if (existing) return existing;
 
   const tempCatalog = new TileCatalog();
-  const catalogStream = new stream.MemoryStream(stream.byteArrayFromUint8Array(tileClipboardData.catalogBytes));
-  tempCatalog.deserialize(catalogStream);
+  tempCatalog.deserializeJson(tileClipboardData.catalogJson);
 
   const tileDef = tempCatalog.get(tileId);
   if (!tileDef) {

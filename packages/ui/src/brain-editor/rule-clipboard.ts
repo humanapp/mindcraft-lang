@@ -1,7 +1,7 @@
-import { List, stream } from "@mindcraft-lang/core";
+import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import { getPageIdFromTileId, type IBrainTileDef, isPageTileId, mkPageTileId } from "@mindcraft-lang/core/brain";
-import { type BrainDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileMissingDef, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import { type BrainDef, BrainRuleDef, type RuleJson } from "@mindcraft-lang/core/brain/model";
+import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 
 /**
  * Serialized clipboard payload for a copied rule.
@@ -9,11 +9,11 @@ import { BrainTileMissingDef, TileCatalog } from "@mindcraft-lang/core/brain/til
  * within the same browser tab.
  */
 interface RuleClipboardData {
-  ruleBytes: Uint8Array;
-  catalogBytes: Uint8Array;
+  ruleJson: RuleJson;
+  catalogJson: ReadonlyList<CatalogTileJson>;
   /** Map of page tileId -> human-readable page name, captured at copy time.
-   * Needed because BrainTilePageDef.serialize() only persists the pageId,
-   * so the visual label is lost during the catalog round-trip. */
+   * Needed because page tile JSON only persists the pageId, so the visual
+   * label is lost during the catalog round-trip. */
   pageNames: Map<string, string>;
 }
 
@@ -61,9 +61,7 @@ function collectReferencedTileIds(rule: BrainRuleDef, out: Set<string>): void {
  * (only tiles referenced by this rule) so the clipboard is self-contained.
  */
 export function copyRuleToClipboard(rule: BrainRuleDef): void {
-  const ruleStream = new stream.MemoryStream();
-  rule.serialize(ruleStream);
-  const ruleBytes = stream.byteArrayToUint8Array(ruleStream.toBytes());
+  const ruleJson = rule.toJson();
 
   const referencedIds = new Set<string>();
   collectReferencedTileIds(rule, referencedIds);
@@ -83,11 +81,9 @@ export function copyRuleToClipboard(rule: BrainRuleDef): void {
     }
   }
 
-  const catalogStream = new stream.MemoryStream();
-  tempCatalog.serialize(catalogStream);
-  const catalogBytes = stream.byteArrayToUint8Array(catalogStream.toBytes());
+  const catalogJson = tempCatalog.toJson();
 
-  clipboardData = { ruleBytes, catalogBytes, pageNames };
+  clipboardData = { ruleJson, catalogJson, pageNames };
   notifyClipboardChanged();
 }
 
@@ -142,8 +138,7 @@ export function deserializeRuleFromClipboard(destBrain: BrainDef): BrainRuleDef 
   const destCatalog = destBrain.catalog();
 
   const tempCatalog = new TileCatalog();
-  const catalogStream = new stream.MemoryStream(stream.byteArrayFromUint8Array(clipboardData.catalogBytes));
-  tempCatalog.deserialize(catalogStream);
+  tempCatalog.deserializeJson(clipboardData.catalogJson);
 
   const destPageIds = new Set<string>();
   const destPageByName = new Map<string, IBrainTileDef>();
@@ -185,9 +180,8 @@ export function deserializeRuleFromClipboard(destBrain: BrainDef): BrainRuleDef 
     }
   }
 
-  const ruleStream = new stream.MemoryStream(stream.byteArrayFromUint8Array(clipboardData.ruleBytes));
   const newRule = new BrainRuleDef();
-  newRule.deserialize(ruleStream, List.from([destCatalog]));
+  newRule.deserializeJson(clipboardData.ruleJson, List.from([destCatalog]));
 
   if (pageRemapTable.size > 0) {
     remapPageTiles(newRule, pageRemapTable);
