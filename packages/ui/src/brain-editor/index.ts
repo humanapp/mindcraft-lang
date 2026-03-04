@@ -39,6 +39,8 @@ export {
   ReplaceLastPageCommand,
   ReplaceTileCommand,
 } from "./commands";
+export { DisplayFormatPicker } from "./DisplayFormatPicker";
+export { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 // Hooks
 export { useRuleCapabilities } from "./hooks/useRuleCapabilities";
 export { useTileSelection } from "./hooks/useTileSelection";

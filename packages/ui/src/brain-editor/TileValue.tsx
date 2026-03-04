@@ -17,14 +17,17 @@ export function TileValue({ tileDef }: TileValueProps) {
 
   if (tileDef.kind === "literal") {
     const literalDef = tileDef as BrainTileLiteralDef;
-    const value = literalDef.valueLabel || literalDef.value;
+    const value =
+      literalDef.displayFormat && literalDef.displayFormat !== "default"
+        ? literalDef.value
+        : literalDef.valueLabel || literalDef.value;
     const valueType = literalDef.valueType;
     const fontClass = "font-math";
     const textSizeClass = "text-2xl";
 
     return (
       <span className={`${fontClass} ${textSizeClass}`} style={{ color: textColor }}>
-        {formatValue(value, valueType, customLiteralTypes)}
+        {formatValue(value, valueType, customLiteralTypes, literalDef.displayFormat)}
       </span>
     );
   }

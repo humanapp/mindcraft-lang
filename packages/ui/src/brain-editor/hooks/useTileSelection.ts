@@ -2,6 +2,7 @@ import {
   type IBrainTileDef,
   isCoreLiteralFactoryTileId,
   isCoreVariableFactoryTileId,
+  type LiteralDisplayFormat,
   type RuleSide,
 } from "@mindcraft-lang/core/brain";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
@@ -100,20 +101,25 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
   }, []);
 
   const handleLiteralValueSubmit = useCallback(
-    (value: unknown) => {
+    (value: unknown, displayFormat?: LiteralDisplayFormat) => {
       if (!pendingFactoryTile || !pendingTileAction) return;
 
       const catalog = ruleDefRef.current.brain()?.catalog();
 
       let newTileDef = pendingFactoryTile.manufacture(pendingFactoryTile, {
         value,
+        displayFormat,
       }) as BrainTileLiteralDef;
       if (newTileDef) {
         if (catalog) {
           const existingDef = catalog.find((td) => {
             if (td.kind !== "literal") return false;
             const litTileDef = td as BrainTileLiteralDef;
-            return td.kind === "literal" && litTileDef.value === value && litTileDef.valueType === newTileDef.valueType;
+            return (
+              litTileDef.value === value &&
+              litTileDef.valueType === newTileDef.valueType &&
+              litTileDef.displayFormat === newTileDef.displayFormat
+            );
           }) as BrainTileLiteralDef | undefined;
           if (existingDef) {
             newTileDef = existingDef;

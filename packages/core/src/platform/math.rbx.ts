@@ -11,6 +11,10 @@ export const MathOps = {
     return n > floored ? floored + 1 : floored;
   },
   floor: (n: number) => n | 0,
+  round: (n: number) => {
+    const floored = n | 0;
+    return n - floored >= 0.5 ? floored + 1 : floored;
+  },
   random: () => {
     // Simple LCG (Linear Congruential Generator) for cross-platform deterministic random
     // Uses a = 1664525, c = 1013904223, m = 2^32 (Numerical Recipes parameters)

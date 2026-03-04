@@ -5,6 +5,7 @@
 export declare const MathOps: {
   ceil: (n: number) => number;
   floor: (n: number) => number;
+  round: (n: number) => number;
   random: () => number;
   min: (a: number, b: number) => number;
   max: (a: number, b: number) => number;

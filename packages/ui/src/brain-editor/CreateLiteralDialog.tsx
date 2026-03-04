@@ -1,21 +1,24 @@
+import type { LiteralDisplayFormat } from "@mindcraft-lang/core/brain";
 import { CoreTypeIds } from "@mindcraft-lang/core/brain";
 import { useState } from "react";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { useBrainEditorConfig } from "./BrainEditorContext";
+import { DisplayFormatPicker } from "./DisplayFormatPicker";
 
 interface CreateLiteralDialogProps {
   isOpen: boolean;
   title: string;
   literalType: string;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (value: unknown) => void;
+  onSubmit: (value: unknown, displayFormat?: LiteralDisplayFormat) => void;
 }
 
 export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, onSubmit }: CreateLiteralDialogProps) {
   const { customLiteralTypes } = useBrainEditorConfig();
   const [stringValue, setStringValue] = useState("");
   const [numberValue, setNumberValue] = useState("");
+  const [displayFormat, setDisplayFormat] = useState<LiteralDisplayFormat>("default");
   const [customState, setCustomState] = useState<Record<string, string>>({});
 
   const customType = customLiteralTypes.find((t) => t.typeId === literalType);
@@ -40,13 +43,15 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
       return;
     }
 
-    onSubmit(value);
+    const fmt = literalType === CoreTypeIds.Number && displayFormat !== "default" ? displayFormat : undefined;
+    onSubmit(value, fmt);
     resetForm();
   };
 
   const resetForm = () => {
     setStringValue("");
     setNumberValue("");
+    setDisplayFormat("default");
     setCustomState({});
   };
 
@@ -95,29 +100,32 @@ export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, 
       );
     } else if (literalType === CoreTypeIds.Number) {
       return (
-        <div className="grid grid-cols-4 items-center gap-4">
-          <label htmlFor="numberValue" className="text-right text-slate-700 font-medium">
-            Value
-          </label>
-          <input
-            id="numberValue"
-            type="number"
-            value={numberValue}
-            onChange={(e) => setNumberValue(e.target.value)}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === "Enter") {
-                e.preventDefault();
-                handleSubmit();
-              }
-            }}
-            className="col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-            placeholder="0"
-            autoComplete="off"
-            // biome-ignore lint/a11y/noAutofocus: dialog input should focus immediately for keyboard users
-            autoFocus
-          />
-        </div>
+        <>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <label htmlFor="numberValue" className="text-right text-slate-700 font-medium">
+              Value
+            </label>
+            <input
+              id="numberValue"
+              type="number"
+              value={numberValue}
+              onChange={(e) => setNumberValue(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              className="col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder="0"
+              autoComplete="off"
+              // biome-ignore lint/a11y/noAutofocus: dialog input should focus immediately for keyboard users
+              autoFocus
+            />
+          </div>
+          <DisplayFormatPicker value={displayFormat} onChange={setDisplayFormat} />
+        </>
       );
     } else if (customType) {
       return customType.renderInputFields(customState, handleCustomStateChange, handleSubmit);

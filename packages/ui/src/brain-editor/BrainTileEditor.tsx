@@ -1,5 +1,6 @@
-import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { CoreTypeIds, type IBrainTileDef, type LiteralDisplayFormat, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
+import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import { useEffect, useState } from "react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
 import { BrainTile } from "./BrainTile";
@@ -13,6 +14,7 @@ import {
   RemoveTileCommand,
   ReplaceTileCommand,
 } from "./commands";
+import { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 import { useRuleCapabilities } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
 import type { TileBadge } from "./tile-badges";
@@ -29,7 +31,11 @@ interface BrainTileEditorProps {
 
 export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHistory, badge }: BrainTileEditorProps) {
   const [pickerMode, setPickerMode] = useState<"insert" | "replace" | null>(null);
+  const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const availableCapabilities = useRuleCapabilities(ruleDef);
+
+  const isNumericLiteral =
+    tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
 
   const {
     showCreateVariableDialog,
@@ -76,6 +82,25 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
     setPickerMode("replace");
   };
 
+  const handleEditFormat = () => {
+    setShowEditFormatDialog(true);
+  };
+
+  const handleEditFormatSubmit = (newFormat: LiteralDisplayFormat) => {
+    const literalDef = tileDef as BrainTileLiteralDef;
+    const newTileDef = new BrainTileLiteralDef(literalDef.valueType, literalDef.value, {
+      valueLabel: literalDef.valueLabel,
+      displayFormat: newFormat,
+    });
+    const catalog = ruleDef.brain()?.catalog();
+    if (catalog && !catalog.get(newTileDef.tileId)) {
+      catalog.registerTileDef(newTileDef);
+    }
+    const command = new ReplaceTileCommand(ruleDef, side, tileIndex, newTileDef);
+    commandHistory.executeCommand(command);
+    setShowEditFormatDialog(false);
+  };
+
   const handlePickerCancel = () => {
     setPickerMode(null);
   };
@@ -103,6 +128,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
         <DropdownMenuContent>
           <DropdownMenuItem onClick={handleInsertBefore}>Insert Before</DropdownMenuItem>
           <DropdownMenuItem onClick={handleReplaceTile}>Replace Tile</DropdownMenuItem>
+          {isNumericLiteral && <DropdownMenuItem onClick={handleEditFormat}>Edit Format</DropdownMenuItem>}
           <DropdownMenuItem onClick={handleCopyTile}>Copy Tile</DropdownMenuItem>
           <DropdownMenuItem onClick={handlePasteTileBefore} disabled={!canPaste}>
             Paste Before
@@ -150,6 +176,17 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
             if (!open) handleLiteralDialogClose();
           }}
           onSubmit={handleLiteralValueSubmit}
+        />
+      )}
+
+      {showEditFormatDialog && isNumericLiteral && (
+        <EditLiteralFormatDialog
+          isOpen={showEditFormatDialog}
+          literalDef={tileDef as BrainTileLiteralDef}
+          onOpenChange={(open) => {
+            if (!open) setShowEditFormatDialog(false);
+          }}
+          onSubmit={handleEditFormatSubmit}
         />
       )}
     </>

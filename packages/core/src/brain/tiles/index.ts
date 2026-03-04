@@ -4,6 +4,7 @@ export * from "./actuators";
 export * from "./builder";
 export * from "./catalog";
 export * from "./controlflow";
+export * from "./display-format";
 export * from "./factories";
 export * from "./literals";
 export * from "./missing";

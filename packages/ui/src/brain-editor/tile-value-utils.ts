@@ -1,16 +1,26 @@
+import type { LiteralDisplayFormat } from "@mindcraft-lang/core/brain";
 import { CoreTypeIds } from "@mindcraft-lang/core/brain";
+import { applyDisplayFormat } from "@mindcraft-lang/core/brain/tiles";
 
 /**
  * Formats a value according to its type for display.
- * Checks core types first, then delegates to custom literal types from the host app.
+ * When a displayFormat is provided for numeric types, it takes precedence
+ * over the default formatting.
  */
 export function formatValue(
   value: unknown,
   valueType: string,
-  customLiteralTypes: ReadonlyArray<{ typeId: string; formatValue: (value: unknown) => string }>
+  customLiteralTypes: ReadonlyArray<{ typeId: string; formatValue: (value: unknown) => string }>,
+  displayFormat?: LiteralDisplayFormat
 ): string {
   if (valueType === CoreTypeIds.Number) {
-    return typeof value === "number" ? value.toLocaleString() : String(value);
+    if (typeof value === "number") {
+      if (displayFormat && displayFormat !== "default") {
+        return applyDisplayFormat(value, displayFormat);
+      }
+      return value.toLocaleString();
+    }
+    return String(value);
   }
 
   if (valueType === CoreTypeIds.String) {

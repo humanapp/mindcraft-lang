@@ -1,3 +1,4 @@
+import { MathOps } from "../../platform/math";
 import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
@@ -57,8 +58,55 @@ export interface BrainTileDefCreateOptions {
   visual?: ITileVisual;
 }
 
+// ----------------------------------------------------
+// Literal Display Format
+// ----------------------------------------------------
+
+/**
+ * Specifies how a numeric literal value is displayed in the editor.
+ *
+ * - "default" -- no special formatting (plain number)
+ * - "percent" -- value * 100 with "%" suffix
+ * - "percent:N" -- value * 100 with N decimal places and "%" suffix
+ * - "fixed:N" -- fixed N decimal places (e.g., "fixed:2" -> 3.10)
+ * - "thousands" -- comma-separated thousands groups
+ */
+export type LiteralDisplayFormat = string;
+
+export const LiteralDisplayFormats = {
+  Default: "default",
+  Percent: "percent",
+  Thousands: "thousands",
+} as const;
+
+/** Build a "percent:N" format string. */
+export function percentFormat(decimals: number): LiteralDisplayFormat {
+  return `percent:${decimals}`;
+}
+
+/** Build a "fixed:N" format string. */
+export function fixedFormat(decimals: number): LiteralDisplayFormat {
+  return `fixed:${decimals}`;
+}
+
+/** Parse a display format string into its kind and optional precision. */
+export function parseDisplayFormat(fmt: LiteralDisplayFormat): { kind: string; decimals?: number } {
+  if (SU.startsWith(fmt, "percent:")) {
+    const n = MathOps.parseFloat(SU.substring(fmt, 8));
+    return { kind: "percent", decimals: MathOps.isNaN(n) ? undefined : n };
+  }
+  if (SU.startsWith(fmt, "fixed:")) {
+    const n = MathOps.parseFloat(SU.substring(fmt, 6));
+    return { kind: "fixed", decimals: MathOps.isNaN(n) ? undefined : n };
+  }
+  if (fmt === "percent") return { kind: "percent" };
+  if (fmt === "thousands") return { kind: "thousands" };
+  return { kind: "default" };
+}
+
 export type BrainTileLiteralDefOptions = BrainTileDefCreateOptions & {
   valueLabel?: string;
+  displayFormat?: LiteralDisplayFormat;
 };
 
 export function mkTileId(area: string, id: string): string {
@@ -107,8 +155,12 @@ export function mkVariableFactoryTileId(factoryId: string): string {
   return mkTileId("var.factory", factoryId);
 }
 
-export function mkLiteralTileId(valueType: TypeId, valueStr: string): string {
-  return mkTileId("literal", `${valueType}->${valueStr}`);
+export function mkLiteralTileId(valueType: TypeId, valueStr: string, displayFormat?: LiteralDisplayFormat): string {
+  const base = `${valueType}->${valueStr}`;
+  if (displayFormat && displayFormat !== LiteralDisplayFormats.Default) {
+    return mkTileId("literal", `${base}[${displayFormat}]`);
+  }
+  return mkTileId("literal", base);
 }
 
 export function mkLiteralFactoryTileId(factoryId: string): string {

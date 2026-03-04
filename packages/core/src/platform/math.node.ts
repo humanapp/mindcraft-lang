@@ -8,6 +8,7 @@ let randomSeed = 1;
 export const MathOps = {
   ceil: (n: number) => Math.ceil(n),
   floor: (n: number) => Math.floor(n),
+  round: (n: number) => Math.round(n),
   random: () => {
     // Simple LCG (Linear Congruential Generator) for cross-platform deterministic random
     // Uses a = 1664525, c = 1013904223, m = 2^32 (Numerical Recipes parameters)

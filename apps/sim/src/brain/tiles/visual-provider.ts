@@ -1,5 +1,7 @@
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { LiteralDisplayFormats } from "@mindcraft-lang/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import { applyDisplayFormat } from "@mindcraft-lang/core/brain/tiles";
 import { dataTypeIconMap } from "./data-type-icons";
 import { tileColorMap } from "./tile-colors";
 import { tileVisuals } from "./tile-visuals";
@@ -33,7 +35,11 @@ export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
   } else if (tileDef.kind === "literal") {
     const litTileDef = tileDef as BrainTileLiteralDef;
     if (!vis.label) {
-      vis.label = litTileDef.valueLabel;
+      const fmt = litTileDef.displayFormat;
+      vis.label =
+        fmt && fmt !== LiteralDisplayFormats.Default && typeof litTileDef.value === "number"
+          ? applyDisplayFormat(litTileDef.value, fmt)
+          : litTileDef.valueLabel;
     }
     if (!vis.iconUrl) {
       const dataTypeIcon = dataTypeIconMap.get(litTileDef.valueType);
