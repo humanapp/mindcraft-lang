@@ -42,6 +42,8 @@ export interface ParseDiag {
 export interface ParseResult {
   exprs: ReadonlyList<Expr>;
   diags: ReadonlyList<ParseDiag>;
+  /** Next available node ID after parsing (for chaining multiple parse passes with unique IDs). */
+  nextNodeId: number;
 }
 
 /**

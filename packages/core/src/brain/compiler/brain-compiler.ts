@@ -358,7 +358,7 @@ export class BrainCompiler {
 
     // Parse WHEN and DO sides
     const whenParseResult = parseBrainTiles(whenTiles, -1, 0);
-    const doParseResult = parseBrainTiles(doTiles, -1, 0);
+    const doParseResult = parseBrainTiles(doTiles, -1, 0, whenParseResult.nextNodeId);
 
     // Collect sensor/actuator tile IDs from parsed expressions
     for (let i = 0; i < whenParseResult.exprs.size(); i++) {

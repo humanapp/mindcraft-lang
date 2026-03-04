@@ -61,7 +61,7 @@ export function parseRule(
 ): TypecheckResult {
   // Parse WHEN and DO sides separately
   const whenParseResult = parseBrainTiles(whenSrc);
-  const doParseResult = parseBrainTiles(doSrc);
+  const doParseResult = parseBrainTiles(doSrc, -1, 0, whenParseResult.nextNodeId);
 
   // Combine parse results
   const allExprs = List.from(whenParseResult.exprs.toArray()).concat(List.from(doParseResult.exprs.toArray()));
@@ -102,6 +102,7 @@ export function parseRule(
     parseResult: {
       exprs: allExprs,
       diags: allDiags,
+      nextNodeId: doParseResult.nextNodeId,
       nodes: mapExprs(allExprs),
     },
     whenParseResult,

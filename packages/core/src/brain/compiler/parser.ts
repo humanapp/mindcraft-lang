@@ -91,8 +91,10 @@ class BrainParser {
   constructor(
     private readonly src: ReadonlyList<IBrainTileDef>,
     to: number = -1,
-    from: number = 0
+    from: number = 0,
+    startNodeId: number = 0
   ) {
+    this.nodeIdCounter = startNodeId;
     // Normalize negative 'to' to mean "end of stream" for convenience
     if (to < 0) {
       to = this.src.size();
@@ -139,7 +141,7 @@ class BrainParser {
       // Empty input is valid and produces an empty expression
       const exprs = new List<Expr>();
       exprs.push({ nodeId: this.nextNodeId(), kind: "empty" });
-      return { exprs, diags: this.diags.asReadonly() };
+      return { exprs, diags: this.diags.asReadonly(), nextNodeId: this.nodeIdCounter };
     }
 
     const exprs = this.parseTop({
@@ -158,7 +160,7 @@ class BrainParser {
       });
     }
 
-    return { exprs, diags: this.diags.asReadonly() };
+    return { exprs, diags: this.diags.asReadonly(), nextNodeId: this.nodeIdCounter };
   }
 
   /**
@@ -1096,7 +1098,12 @@ function specContainsRepeat(spec: BrainActionCallSpec): boolean {
 //--------------------------------------------------
 // Public API
 
-export function parseBrainTiles(src: ReadonlyList<IBrainTileDef>, to: number = -1, from: number = 0): ParseResult {
-  const parser = new BrainParser(src, to, from);
+export function parseBrainTiles(
+  src: ReadonlyList<IBrainTileDef>,
+  to: number = -1,
+  from: number = 0,
+  startNodeId: number = 0
+): ParseResult {
+  const parser = new BrainParser(src, to, from, startNodeId);
   return parser.parse();
 }
