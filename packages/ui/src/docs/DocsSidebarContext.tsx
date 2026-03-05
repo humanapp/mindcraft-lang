@@ -74,15 +74,19 @@ export function DocsSidebarProvider({ children, registry: externalRegistry }: Do
     setNavTab(null);
   }, []);
 
+  const open = useCallback(() => setIsOpen(true), []);
+  const close = useCallback(() => setIsOpen(false), []);
+  const toggle = useCallback(() => setIsOpen((o) => !o), []);
+
   const value: DocsSidebarContextValue = {
     isOpen,
     activeTab,
     registry,
     navKey,
     navTab,
-    open: () => setIsOpen(true),
-    close: () => setIsOpen(false),
-    toggle: () => setIsOpen((o) => !o),
+    open,
+    close,
+    toggle,
     setTab: handleSetTab,
     navigateToEntry,
     navigateBack,

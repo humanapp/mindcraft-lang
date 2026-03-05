@@ -1,4 +1,5 @@
-import { Button, Slider } from "@mindcraft-lang/ui";
+import { Button, Slider, useDocsSidebar } from "@mindcraft-lang/ui";
+import { BookOpen } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
@@ -55,6 +56,7 @@ export function Sidebar({
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const { toggle: toggleDocs, isOpen: isDocsOpen } = useDocsSidebar();
 
   const updateDesiredCount = (archetype: Archetype, count: number) => {
     setDesiredCounts((prev) => {
@@ -77,6 +79,22 @@ export function Sidebar({
         isOpen ? "translate-x-0" : "translate-x-full"
       }`}
     >
+      {/* Toolbar */}
+      <div className="flex items-center justify-end gap-1 px-2 py-1.5 border-b border-border shrink-0">
+        <Button
+          onClick={toggleDocs}
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          title="Documentation"
+          aria-label="Toggle documentation panel"
+          aria-expanded={isDocsOpen}
+          aria-controls="docs-sidebar"
+        >
+          <BookOpen className="h-4 w-4" aria-hidden="true" />
+        </Button>
+      </div>
+
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {/* Header */}
         <div className="flex items-center justify-between">
