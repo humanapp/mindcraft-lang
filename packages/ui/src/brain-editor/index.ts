@@ -15,6 +15,12 @@ export { BrainTile } from "./BrainTile";
 export { BrainTileEditor } from "./BrainTileEditor";
 export type { BrainTilePickerDialogProps } from "./BrainTilePickerDialog";
 export { BrainTilePickerDialog } from "./BrainTilePickerDialog";
+export {
+  copyBrainToClipboard,
+  getBrainFromClipboard,
+  hasBrainInClipboard,
+  onBrainClipboardChanged,
+} from "./brain-clipboard";
 export { CreateLiteralDialog } from "./CreateLiteralDialog";
 export { CreateVariableDialog } from "./CreateVariableDialog";
 export type { BrainCommand } from "./commands";
@@ -36,6 +42,7 @@ export {
   RemoveTileCommand,
   RenameBrainCommand,
   RenamePageCommand,
+  ReplaceBrainCommand,
   ReplaceLastPageCommand,
   ReplaceTileCommand,
 } from "./commands";

@@ -57,6 +57,10 @@ export class TileCatalog implements ITileCatalog {
     return this.tiles.delete(tileId);
   }
 
+  clear(): void {
+    this.tiles.clear();
+  }
+
   getAll(): List<IBrainTileDef> {
     return this.tiles.values();
   }

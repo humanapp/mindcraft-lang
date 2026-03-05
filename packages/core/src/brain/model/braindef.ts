@@ -208,6 +208,59 @@ export class BrainDef implements IBrainDef {
     return newBrain;
   }
 
+  /**
+   * Replace all content of this brain in-place with the content of the source
+   * brain. The replacement is performed via a JSON round-trip so the resulting
+   * data is fully independent of the source.
+   *
+   * Emits a single "brain_changed" event with what="brain_replaced" rather
+   * than per-page events, so callers can update UI state in one shot.
+   */
+  replaceContentFrom(source: BrainDef): void {
+    this.replaceContentFromJson(source.toJson());
+  }
+
+  /**
+   * Replace all content of this brain in-place using the provided JSON
+   * snapshot. Equivalent to replaceContentFrom but avoids an extra toJson()
+   * call when the caller already holds a BrainJson (e.g. undo/redo commands).
+   */
+  replaceContentFromJson(json: BrainJson): void {
+    // Unsubscribe and detach all existing pages.
+    const pageCount = this.pages_.size();
+    for (let i = 0; i < pageCount; i++) {
+      const page = this.pages_.get(i);
+      this.unsubscribeFromPage_(page);
+      page.setBrain(undefined);
+    }
+    this.pages_.clear();
+
+    // Clear catalog (page tiles, literals, variables, etc.).
+    this.catalog_.clear();
+
+    this.setName(json.name);
+    this.catalog_.deserializeJson(json.catalog);
+
+    const catalogs = new List<ITileCatalog>();
+    catalogs.push(this.catalog_);
+    catalogs.push(getBrainServices().tiles);
+
+    for (let i = 0; i < json.pages.size(); i++) {
+      const pageJson = json.pages.get(i);
+      const page = new BrainPageDef(pageJson.pageId);
+      this.pages_.push(page);
+      page.setBrain(this);
+      this.subscribeToPage_(page);
+      page.deserializeJson(pageJson, catalogs);
+    }
+
+    this.syncPageTiles_();
+    this.pages_.forEach((page) => {
+      page.typecheck();
+    });
+    this.emitter_.emit("brain_changed", { what: "brain_replaced" });
+  }
+
   toJson(): BrainJson {
     const pages = new List<PageJson>();
     for (let i = 0; i < this.pages_.size(); i++) {

@@ -5,6 +5,8 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ClipboardPaste,
+  Copy,
   Download,
   Minus,
   MoreVertical,
@@ -34,11 +36,18 @@ import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainPageEditor } from "./BrainPageEditor";
 import { BrainPrintDialog } from "./BrainPrintDialog";
 import {
+  copyBrainToClipboard,
+  getBrainFromClipboard,
+  hasBrainInClipboard,
+  onBrainClipboardChanged,
+} from "./brain-clipboard";
+import {
   AddPageCommand,
   BrainCommandHistory,
   RemovePageCommand,
   RenameBrainCommand,
   RenamePageCommand,
+  ReplaceBrainCommand,
   ReplaceLastPageCommand,
 } from "./commands";
 
@@ -78,6 +87,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   // Command history for undo/redo
   const [commandHistory] = useState(() => new BrainCommandHistory());
   const [canUndo, setCanUndo] = useState(false);
+  const [hasBrainClipboard, setHasBrainClipboard] = useState(hasBrainInClipboard);
   const [canRedo, setCanRedo] = useState(false);
   const [isEditingBrainName, setIsEditingBrainName] = useState(false);
   const [brainNameValue, setBrainNameValue] = useState("");
@@ -117,6 +127,24 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   }, [isOpen, srcBrainDef, commandHistory]);
 
   useEffect(() => {
+    return onBrainClipboardChanged(() => setHasBrainClipboard(hasBrainInClipboard()));
+  }, []);
+
+  const handleCopyBrain = useCallback(() => {
+    if (brainDef) {
+      copyBrainToClipboard(brainDef);
+    }
+  }, [brainDef]);
+
+  const handlePasteBrain = useCallback(() => {
+    if (!brainDef) return;
+    const json = getBrainFromClipboard();
+    if (!json) return;
+    const command = new ReplaceBrainCommand(brainDef, json);
+    commandHistory.executeCommand(command);
+  }, [brainDef, commandHistory]);
+
+  useEffect(() => {
     if (brainDef) {
       const onBrainChanged = ({
         what,
@@ -137,6 +165,10 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
           setTotalPageCount(brainDef.pages().size());
           setPageChangeCounter((c) => c + 1);
           setCurrentPageNumber((prev) => Math.min(prev, brainDef.pages().size()));
+        } else if (what === "brain_replaced") {
+          setTotalPageCount(brainDef.pages().size());
+          setPageChangeCounter((c) => c + 1);
+          setCurrentPageNumber(1);
         }
       };
 
@@ -700,6 +732,27 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                           <Printer className="h-4 grow mx-1" />
                         </div>
                         <span className="w-full">Print Brain</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator className="bg-slate-200" />
+                      <DropdownMenuItem
+                        onClick={handleCopyBrain}
+                        disabled={!brainDef}
+                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                      >
+                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-slate-300">
+                          <Copy className="h-4 grow mx-1" />
+                        </div>
+                        <span className="w-full">Copy Brain</span>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={handlePasteBrain}
+                        disabled={!brainDef || !hasBrainClipboard}
+                        className="cursor-pointer focus:bg-slate-100 focus:text-slate-900"
+                      >
+                        <div className="flex text-center items-center border rounded-md h-8 min-w-8 border-slate-300">
+                          <ClipboardPaste className="h-4 grow mx-1" />
+                        </div>
+                        <span className="w-full">Paste Brain</span>
                       </DropdownMenuItem>
                       <DropdownMenuSeparator className="bg-slate-200" />
                       <DropdownMenuItem

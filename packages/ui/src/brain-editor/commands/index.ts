@@ -1,5 +1,6 @@
 export type { BrainCommand } from "./BrainCommand";
 export { BrainCommandHistory } from "./BrainCommand";
+export { ReplaceBrainCommand } from "./BrainCommands";
 export {
   AddPageCommand,
   RemovePageCommand,
