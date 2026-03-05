@@ -1,5 +1,11 @@
 import { List, type ReadonlyList } from "@mindcraft-lang/core";
-import { getPageIdFromTileId, type IBrainTileDef, isPageTileId, mkPageTileId } from "@mindcraft-lang/core/brain";
+import {
+  getBrainServices,
+  getPageIdFromTileId,
+  type IBrainTileDef,
+  isPageTileId,
+  mkPageTileId,
+} from "@mindcraft-lang/core/brain";
 import { type BrainDef, BrainRuleDef, type RuleJson } from "@mindcraft-lang/core/brain/model";
 import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 
@@ -181,7 +187,9 @@ export function deserializeRuleFromClipboard(destBrain: BrainDef): BrainRuleDef 
   }
 
   const newRule = new BrainRuleDef();
-  newRule.deserializeJson(clipboardData.ruleJson, List.from([destCatalog]));
+  // Include the global tile catalog so that registered tiles (sensors, actuators, etc.)
+  // can be resolved even though they are not stored in the brain's local catalog.
+  newRule.deserializeJson(clipboardData.ruleJson, List.from([destCatalog, getBrainServices().tiles]));
 
   if (pageRemapTable.size > 0) {
     remapPageTiles(newRule, pageRemapTable);
@@ -192,4 +200,43 @@ export function deserializeRuleFromClipboard(destBrain: BrainDef): BrainRuleDef 
   }
 
   return newRule;
+}
+
+// Plain-JSON shape that matches the serialized form inside brain fence blocks.
+interface PlainRuleJson {
+  version?: number;
+  when?: string[];
+  do?: string[];
+  children?: PlainRuleJson[];
+}
+
+function convertPlainRule(plain: PlainRuleJson): RuleJson {
+  return {
+    version: plain.version ?? 1,
+    when: List.from(plain.when ?? []),
+    do: List.from(plain.do ?? []),
+    children: List.from((plain.children ?? []).map(convertPlainRule)),
+  };
+}
+
+/**
+ * Set the clipboard from a plain JSON rule array (e.g. from a brain fence block).
+ *
+ * The array may contain multiple rules, but the current clipboard model only
+ * holds one rule at a time. The first rule in the array is stored; the rest
+ * are ignored until multi-rule clipboard support is added in a future phase.
+ *
+ * Catalog is intentionally empty: brain fence examples are expected to use only
+ * globally-registered tiles (sensors, actuators, etc.) which are resolved at
+ * paste time via getBrainServices().tiles.
+ */
+export function setClipboardFromJson(plainRules: unknown[]): void {
+  if (plainRules.length === 0) return;
+  const ruleJson = convertPlainRule(plainRules[0] as PlainRuleJson);
+  clipboardData = {
+    ruleJson,
+    catalogJson: List.from<CatalogTileJson>([]),
+    pageNames: new Map(),
+  };
+  notifyClipboardChanged();
 }

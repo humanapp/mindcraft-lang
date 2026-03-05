@@ -313,13 +313,54 @@
         "default": "./dist/esm/i18n/index.js"
       },
       "default": "./dist/rbx/i18n/init.luau"
+    },
+    "./docs": {
+      "node": {
+        "import": {
+          "types": "./dist/node/docs/index.d.ts",
+          "default": "./dist/node/docs/index.js"
+        },
+        "require": {
+          "types": "./dist/node/docs/index.d.ts",
+          "default": "./dist/node/docs/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/docs/index.d.ts",
+        "default": "./dist/esm/docs/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/docs/index.d.ts",
+        "default": "./dist/esm/docs/index.js"
+      }
+    },
+    "./docs/en": {
+      "node": {
+        "import": {
+          "types": "./dist/node/docs/_generated/en.d.ts",
+          "default": "./dist/node/docs/_generated/en.js"
+        },
+        "require": {
+          "types": "./dist/node/docs/_generated/en.d.ts",
+          "default": "./dist/node/docs/_generated/en.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/docs/_generated/en.d.ts",
+        "default": "./dist/esm/docs/_generated/en.js"
+      },
+      "import": {
+        "types": "./dist/esm/docs/_generated/en.d.ts",
+        "default": "./dist/esm/docs/_generated/en.js"
+      }
     }
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "npm run build:rbx && npm run build:node && npm run build:esm",
+    "build": "npm run build:docs && npm run build:rbx && npm run build:node && npm run build:esm",
+    "build:docs": "node scripts/build-docs.js",
     "build:node": "tsc -p tsconfig.node.json && node scripts/post-build-node.js",
     "build:esm": "tsc -p tsconfig.esm.json && node scripts/post-build-esm.js",
     "build:rbx": "rbxtsc --type package --project tsconfig.rbx.json && node scripts/post-build-rbx.js",

@@ -1,6 +1,7 @@
 import { stream } from "@mindcraft-lang/core";
 import { BrainDef, type BrainPageDef } from "@mindcraft-lang/core/brain/model";
 import {
+  BookOpen,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useDocsSidebar } from "../docs/DocsSidebarContext";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
@@ -49,6 +51,7 @@ export interface BrainEditorDialogProps {
 
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
   const { getDefaultBrain } = useBrainEditorConfig();
+  const { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs } = useDocsSidebar();
 
   // Clone the brainDef to work on a copy
   const [brainDef, setBrainDef] = useState<BrainDef | undefined>(() => {
@@ -407,12 +410,25 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, handleUndo, handleRedo]);
 
+  // Close the docs sidebar when the brain editor closes.
+  useEffect(() => {
+    if (!isOpen) {
+      closeDocs();
+    }
+  }, [isOpen, closeDocs]);
+
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      {/* When the docs sidebar is open the dialog switches to non-modal so
+          focus can reach the sidebar. Radix skips its overlay in non-modal
+          mode, so we render a standalone backdrop to keep the dimming. */}
+      {isOpen && isDocsOpen && <div className="fixed inset-0 z-50 bg-black/80" aria-hidden="true" />}
+      <Dialog open={isOpen} onOpenChange={onOpenChange} modal={!isDocsOpen}>
         <DialogContent
           className="left-0 top-0 translate-x-0 translate-y-0 h-dvh max-w-full p-3 gap-2 sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:max-w-[75%] sm:h-[75%] sm:p-6 sm:gap-4 flex flex-col bg-slate-100 border-2 border-slate-300 rounded-none sm:rounded-2xl"
           onInteractOutside={(e) => e.preventDefault()}
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onFocusOutside={(e) => e.preventDefault()}
           hideClose
         >
           <DialogHeader className="border-b border-slate-200 pb-2 sm:pb-4">
@@ -543,7 +559,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                 <div
                   className="flex items-center gap-2 bg-white rounded-lg p-1 sm:p-1.5 border border-slate-200 sm:mr-2"
                   role="group"
-                  aria-label="Undo and redo controls"
+                  aria-label="Undo, redo, and documentation controls"
                 >
                   <Button
                     className="h-8 w-8 px-3 bg-slate-500 hover:bg-slate-600 text-white rounded-md disabled:opacity-50"
@@ -562,6 +578,17 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                     aria-label="Redo last undone action"
                   >
                     <Redo className="h-4 w-4" aria-hidden="true" />
+                  </Button>
+                  <span className="w-px h-5 bg-slate-200" aria-hidden="true" />
+                  <Button
+                    className="h-8 w-8 px-3 bg-slate-500 hover:bg-slate-600 text-white rounded-md"
+                    onClick={toggleDocs}
+                    title="Documentation"
+                    aria-label="Toggle documentation panel"
+                    aria-expanded={isDocsOpen}
+                    aria-controls="docs-sidebar"
+                  >
+                    <BookOpen className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}

@@ -1,0 +1,166 @@
+// ---------------------------------------------------------------------------
+// Core documentation manifest -- locale-independent metadata for all core
+// tile and concept docs. Content strings are loaded separately per locale.
+//
+// Each entry's `contentKey` matches the filename stem under
+// content/{locale}/tiles/ or content/{locale}/concepts/.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Tile doc metadata
+// ---------------------------------------------------------------------------
+
+export interface CoreTileDocMeta {
+  /** Full tile ID as registered in the brain services (e.g., "tile.op->and"). */
+  tileId: string;
+  /** Search/filter tags. */
+  tags: string[];
+  /** Display category for sidebar grouping. */
+  category: string;
+  /** Key into the locale content map (matches filename stem). */
+  contentKey: string;
+}
+
+export const coreTileDocs: readonly CoreTileDocMeta[] = [
+  // -- Operators: logic ------------------------------------------------------
+  { tileId: "tile.op->and", tags: ["logic", "boolean", "operators"], category: "Operators", contentKey: "op-and" },
+  { tileId: "tile.op->or", tags: ["logic", "boolean", "operators"], category: "Operators", contentKey: "op-or" },
+  { tileId: "tile.op->not", tags: ["logic", "boolean", "operators"], category: "Operators", contentKey: "op-not" },
+
+  // -- Operators: arithmetic -------------------------------------------------
+  { tileId: "tile.op->add", tags: ["math", "arithmetic", "operators"], category: "Operators", contentKey: "op-add" },
+  {
+    tileId: "tile.op->sub",
+    tags: ["math", "arithmetic", "operators"],
+    category: "Operators",
+    contentKey: "op-subtract",
+  },
+  {
+    tileId: "tile.op->mul",
+    tags: ["math", "arithmetic", "operators"],
+    category: "Operators",
+    contentKey: "op-multiply",
+  },
+  {
+    tileId: "tile.op->div",
+    tags: ["math", "arithmetic", "operators"],
+    category: "Operators",
+    contentKey: "op-divide",
+  },
+  {
+    tileId: "tile.op->neg",
+    tags: ["math", "arithmetic", "operators"],
+    category: "Operators",
+    contentKey: "op-negate",
+  },
+
+  // -- Operators: comparison -------------------------------------------------
+  {
+    tileId: "tile.op->eq",
+    tags: ["comparison", "boolean", "operators"],
+    category: "Operators",
+    contentKey: "op-equal",
+  },
+  {
+    tileId: "tile.op->ne",
+    tags: ["comparison", "boolean", "operators"],
+    category: "Operators",
+    contentKey: "op-not-equal",
+  },
+  {
+    tileId: "tile.op->lt",
+    tags: ["comparison", "boolean", "operators"],
+    category: "Operators",
+    contentKey: "op-less-than",
+  },
+  {
+    tileId: "tile.op->le",
+    tags: ["comparison", "boolean", "operators"],
+    category: "Operators",
+    contentKey: "op-less-equal",
+  },
+  {
+    tileId: "tile.op->gt",
+    tags: ["comparison", "boolean", "operators"],
+    category: "Operators",
+    contentKey: "op-greater-than",
+  },
+  {
+    tileId: "tile.op->ge",
+    tags: ["comparison", "boolean", "operators"],
+    category: "Operators",
+    contentKey: "op-greater-equal",
+  },
+
+  // -- Operators: assignment -------------------------------------------------
+  {
+    tileId: "tile.op->assign",
+    tags: ["assignment", "variables", "operators"],
+    category: "Operators",
+    contentKey: "op-assign",
+  },
+
+  // -- Control flow ----------------------------------------------------------
+  {
+    tileId: "tile.actuator->switch-page",
+    tags: ["pages", "navigation", "control flow"],
+    category: "Control Flow",
+    contentKey: "cf-switch-page",
+  },
+  {
+    tileId: "tile.actuator->restart-page",
+    tags: ["pages", "navigation", "control flow"],
+    category: "Control Flow",
+    contentKey: "cf-restart-page",
+  },
+
+  // -- Core sensors ----------------------------------------------------------
+  {
+    tileId: "tile.sensor->random",
+    tags: ["random", "numbers", "sensors"],
+    category: "Core Sensors",
+    contentKey: "sensor-random",
+  },
+  {
+    tileId: "tile.sensor->on-page-entered",
+    tags: ["pages", "events", "sensors"],
+    category: "Core Sensors",
+    contentKey: "sensor-on-page-entered",
+  },
+] as const;
+
+// ---------------------------------------------------------------------------
+// Concept doc metadata
+// ---------------------------------------------------------------------------
+
+export interface CoreConceptDocMeta {
+  /** Unique concept identifier. */
+  id: string;
+  /** Display title. */
+  title: string;
+  /** Search/filter tags. */
+  tags: string[];
+  /** Key into the locale content map (matches filename stem). */
+  contentKey: string;
+}
+
+export const coreConceptDocs: readonly CoreConceptDocMeta[] = [
+  {
+    id: "rule-evaluation",
+    title: "How Rules Work",
+    tags: ["rules", "execution", "fundamentals"],
+    contentKey: "rule-evaluation",
+  },
+  {
+    id: "pages",
+    title: "Pages and Navigation",
+    tags: ["pages", "navigation", "control flow", "fundamentals"],
+    contentKey: "pages",
+  },
+  {
+    id: "data-types",
+    title: "Data Types",
+    tags: ["types", "variables", "literals", "fundamentals"],
+    contentKey: "data-types",
+  },
+] as const;

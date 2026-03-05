@@ -1,11 +1,12 @@
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainEditorDialog, BrainEditorProvider } from "@mindcraft-lang/ui";
+import { BrainEditorDialog, BrainEditorProvider, DocsSidebar, DocsSidebarProvider } from "@mindcraft-lang/ui";
 import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain-editor-config";
 import { Sidebar } from "./components/Sidebar";
+import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
@@ -47,6 +48,7 @@ function App() {
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
   const brainEditorConfig = useMemo(() => buildBrainEditorConfig(editingArchetype ?? undefined), [editingArchetype]);
+  const docsRegistry = useMemo(() => createDocsRegistry(), []);
 
   useEffect(() => {
     scene?.setTimeSpeed(timeSpeed);
@@ -114,57 +116,62 @@ function App() {
   }, []);
 
   return (
-    <div className="h-screen flex bg-background overflow-hidden">
-      <h1 className="sr-only">Mindcraft Simulation</h1>
-      {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
-      <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
-        <PhaserGame onSceneReady={handleSceneReady} />
-        {/* Mobile sidebar toggle */}
-        <button
-          type="button"
-          className="absolute top-3 right-3 z-40 md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-background/80 backdrop-blur border border-border shadow-md"
-          onClick={() => setIsSidebarOpen((o) => !o)}
-          aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
-        >
-          {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      </main>
+    <DocsSidebarProvider registry={docsRegistry}>
+      <div className="h-screen flex bg-background overflow-hidden">
+        <h1 className="sr-only">Mindcraft Simulation</h1>
+        {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
+        <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
+          <PhaserGame onSceneReady={handleSceneReady} />
+          {/* Mobile sidebar toggle */}
+          <button
+            type="button"
+            className="absolute top-3 right-3 z-40 md:hidden flex items-center justify-center w-10 h-10 rounded-lg bg-background/80 backdrop-blur border border-border shadow-md"
+            onClick={() => setIsSidebarOpen((o) => !o)}
+            aria-label={isSidebarOpen ? "Close sidebar" : "Open sidebar"}
+          >
+            {isSidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </main>
 
-      {/* Backdrop -- mobile only */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
-          onClick={() => setIsSidebarOpen(false)}
-          aria-hidden="true"
+        {/* Backdrop -- mobile only */}
+        {isSidebarOpen && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50 md:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+            aria-hidden="true"
+          />
+        )}
+
+        <Sidebar
+          snapshot={snapshot}
+          timeSpeed={timeSpeed}
+          onTimeSpeedChange={setTimeSpeed}
+          onEditBrain={handleEditBrain}
+          onDesiredCountChange={handleDesiredCountChange}
+          onToggleDebug={handleToggleDebug}
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
         />
-      )}
 
-      <Sidebar
-        snapshot={snapshot}
-        timeSpeed={timeSpeed}
-        onTimeSpeedChange={setTimeSpeed}
-        onEditBrain={handleEditBrain}
-        onDesiredCountChange={handleDesiredCountChange}
-        onToggleDebug={handleToggleDebug}
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-      />
+        {/* Brain Editor Dialog (rendered at root for proper overlay) */}
+        <BrainEditorProvider config={brainEditorConfig}>
+          <BrainEditorDialog
+            isOpen={isBrainEditorOpen}
+            onOpenChange={(open) => {
+              setIsBrainEditorOpen(open);
+              if (!open) {
+                setEditingArchetype(null);
+              }
+            }}
+            srcBrainDef={getBrainDefForEditing()}
+            onSubmit={handleBrainSubmit}
+          />
+        </BrainEditorProvider>
+      </div>
 
-      {/* Brain Editor Dialog (rendered at root for proper overlay) */}
-      <BrainEditorProvider config={brainEditorConfig}>
-        <BrainEditorDialog
-          isOpen={isBrainEditorOpen}
-          onOpenChange={(open) => {
-            setIsBrainEditorOpen(open);
-            if (!open) {
-              setEditingArchetype(null);
-            }
-          }}
-          srcBrainDef={getBrainDefForEditing()}
-          onSubmit={handleBrainSubmit}
-        />
-      </BrainEditorProvider>
-    </div>
+      {/* Docs sidebar — fixed overlay, sibling to main layout */}
+      <DocsSidebar />
+    </DocsSidebarProvider>
   );
 }
 
