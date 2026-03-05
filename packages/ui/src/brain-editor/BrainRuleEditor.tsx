@@ -4,6 +4,7 @@ import { parseBrainTiles, type TypecheckResult } from "@mindcraft-lang/core/brai
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { glassEffect } from "../lib/glass-effect";
 import { Button } from "../ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
@@ -224,6 +225,7 @@ export function BrainRuleEditor({
 
   const handleCopyRule = () => {
     copyRuleToClipboard(ruleDef);
+    toast.success("Rule copied");
   };
 
   const handlePasteRuleAbove = () => {

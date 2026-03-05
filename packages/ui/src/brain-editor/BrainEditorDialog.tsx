@@ -20,6 +20,7 @@ import {
   Upload,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useDocsSidebar } from "../docs/DocsSidebarContext";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -133,6 +134,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   const handleCopyBrain = useCallback(() => {
     if (brainDef) {
       copyBrainToClipboard(brainDef);
+      toast.success("Brain copied");
     }
   }, [brainDef]);
 

@@ -2,6 +2,7 @@ import { CoreTypeIds, type IBrainTileDef, type LiteralDisplayFormat, RuleSide } 
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useDocsSidebar } from "../docs/DocsSidebarContext";
 import {
   DropdownMenu,
@@ -70,6 +71,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
 
   const handleCopyTile = () => {
     copyTileToClipboard(tileDef, ruleDef.brain());
+    toast.success("Tile copied");
   };
 
   const handlePasteTileBefore = () => {
