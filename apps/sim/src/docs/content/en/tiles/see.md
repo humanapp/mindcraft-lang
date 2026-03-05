@@ -13,3 +13,10 @@ Combine with modifier tiles like `tile:tile.modifier->modifier.actor_kind.carniv
 ```
 
 This rule moves toward a nearby herbivore when one is seen.
+
+## See Also
+
+- `tile:tile.sensor->sensor.bump`
+- `tile:tile.actuator->actuator.move`
+- `tile:tile.actuator->actuator.turn`
+- `tile:tile.actuator->actuator.shoot`

@@ -13,3 +13,10 @@ toward or away from specific actors.
 ```
 
 This rule turns the actor away from a visible carnivore.
+
+## See Also
+
+- `tile:tile.actuator->actuator.move`
+- `tile:tile.sensor->sensor.see`
+- `tile:tile.modifier->modifier.distance.faraway`
+- `tile:tile.modifier->modifier.distance.nearby`

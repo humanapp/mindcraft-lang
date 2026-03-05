@@ -12,3 +12,11 @@ Combine with entity type modifiers to respond only to specific kinds of actors.
 ```
 
 This rule moves away when bumping into a carnivore.
+
+## See Also
+
+- `tile:tile.sensor->sensor.see`
+- `tile:tile.actuator->actuator.eat`
+- `tile:tile.actuator->actuator.move`
+- `tile:tile.actuator->actuator.say`
+- `tile:tile.actuator->actuator.turn`

@@ -12,3 +12,10 @@ or to filter detection to only nearby actors.
 ```
 
 This rule eats when a plant is both visible and nearby.
+
+## See Also
+
+- `tile:tile.modifier->modifier.distance.faraway`
+- `tile:tile.sensor->sensor.see`
+- `tile:tile.actuator->actuator.move`
+- `tile:tile.actuator->actuator.eat`

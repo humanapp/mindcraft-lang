@@ -12,3 +12,8 @@ Set the text by editing the tile's value. The bubble appears for a short time.
 ```
 
 This rule says something when bumping into a herbivore.
+
+## See Also
+
+- `tile:tile.sensor->sensor.see`
+- `tile:tile.sensor->sensor.bump`

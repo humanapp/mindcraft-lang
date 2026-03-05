@@ -12,3 +12,9 @@ Set the duration by editing the tile's value. The timer resets each time the pag
 ```
 
 This rule turns the actor after the timeout period elapses.
+
+## See Also
+
+- `tile:tile.sensor->on-page-entered`
+- `tile:tile.actuator->switch-page`
+- `tile:tile.actuator->restart-page`

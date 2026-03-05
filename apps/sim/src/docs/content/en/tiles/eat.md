@@ -13,3 +13,11 @@ herbivores eat plants.
 ```
 
 This rule eats a plant when the actor bumps into one.
+
+## See Also
+
+- `tile:tile.sensor->sensor.bump`
+- `tile:tile.sensor->sensor.see`
+- `tile:tile.modifier->modifier.distance.nearby`
+- `tile:tile.modifier->modifier.actor_kind.plant`
+- `tile:tile.modifier->modifier.actor_kind.herbivore`

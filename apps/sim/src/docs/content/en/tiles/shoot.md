@@ -12,3 +12,10 @@ The projectile travels forward and interacts with other actors it contacts.
 ```
 
 This rule shoots when a herbivore is visible.
+
+## See Also
+
+- `tile:tile.sensor->sensor.see`
+- `tile:tile.actuator->actuator.turn`
+- `tile:tile.modifier->modifier.actor_kind.carnivore`
+- `tile:tile.modifier->modifier.actor_kind.herbivore`

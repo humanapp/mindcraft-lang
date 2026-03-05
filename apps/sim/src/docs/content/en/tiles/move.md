@@ -14,3 +14,10 @@ Without modifiers, the actor moves forward in the direction it is facing.
 ```
 
 This rule moves toward a visible plant.
+
+## See Also
+
+- `tile:tile.actuator->actuator.turn`
+- `tile:tile.sensor->sensor.see`
+- `tile:tile.modifier->modifier.distance.nearby`
+- `tile:tile.modifier->modifier.distance.faraway`

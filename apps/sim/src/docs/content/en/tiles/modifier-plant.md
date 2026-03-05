@@ -12,3 +12,11 @@ to restrict it to plants. Plants are stationary and are eaten by herbivores.
 ```
 
 This rule approaches visible plants to forage.
+
+## See Also
+
+- `tile:tile.modifier->modifier.actor_kind.herbivore`
+- `tile:tile.modifier->modifier.actor_kind.carnivore`
+- `tile:tile.sensor->sensor.see`
+- `tile:tile.actuator->actuator.eat`
+- `tile:tile.modifier->modifier.distance.nearby`

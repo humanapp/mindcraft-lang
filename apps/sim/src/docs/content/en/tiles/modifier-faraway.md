@@ -12,3 +12,10 @@ or to filter detection to only faraway actors.
 ```
 
 This rule moves away from a visible carnivore.
+
+## See Also
+
+- `tile:tile.modifier->modifier.distance.nearby`
+- `tile:tile.sensor->sensor.see`
+- `tile:tile.actuator->actuator.move`
+- `tile:tile.actuator->actuator.turn`
