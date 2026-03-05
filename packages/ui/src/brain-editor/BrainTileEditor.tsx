@@ -148,7 +148,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
           </DropdownMenuItem>
           <DropdownMenuItem onClick={handleDeleteTile}>Delete Tile</DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => openDocsForTile(tileDef.tileId)}>Help</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openDocsForTile(tileDef)}>Help</DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 

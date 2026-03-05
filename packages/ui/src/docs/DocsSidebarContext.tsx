@@ -1,3 +1,4 @@
+import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { DocsRegistry } from "./DocsRegistry";
 
@@ -20,7 +21,7 @@ interface DocsSidebarContextValue {
   /** Return to the list view. */
   navigateBack: () => void;
   /** Open the sidebar to a specific tile's doc page. Always opens the panel. */
-  openDocsForTile: (tileId: string) => void;
+  openDocsForTile: (tileDef: IBrainTileDef) => void;
 }
 
 const DocsSidebarContext = createContext<DocsSidebarContextValue | null>(null);
@@ -48,11 +49,23 @@ export function DocsSidebarProvider({ children, registry: externalRegistry }: Do
     setNavTab(null);
   }, []);
 
-  const openDocsForTile = useCallback((tileId: string) => {
+  const openDocsForTile = useCallback((tileDef: IBrainTileDef) => {
     setIsOpen(true);
-    setActiveTab("tiles");
-    setNavKey(tileId);
-    setNavTab("tiles");
+    // Variable and literal tiles are dynamic (one per variable/value) and
+    // don't have individual tile doc pages. Redirect to the relevant concept.
+    if (tileDef.kind === "variable") {
+      setActiveTab("concepts");
+      setNavKey("variables");
+      setNavTab("concepts");
+    } else if (tileDef.kind === "literal") {
+      setActiveTab("concepts");
+      setNavKey("literals");
+      setNavTab("concepts");
+    } else {
+      setActiveTab("tiles");
+      setNavKey(tileDef.tileId);
+      setNavTab("tiles");
+    }
   }, []);
 
   const handleSetTab = useCallback((tab: DocTab) => {

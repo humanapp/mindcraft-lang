@@ -163,4 +163,16 @@ export const coreConceptDocs: readonly CoreConceptDocMeta[] = [
     tags: ["types", "variables", "literals", "fundamentals"],
     contentKey: "data-types",
   },
+  {
+    id: "variables",
+    title: "Variables",
+    tags: ["variables", "state", "storage", "fundamentals"],
+    contentKey: "variables",
+  },
+  {
+    id: "literals",
+    title: "Literals",
+    tags: ["literals", "values", "numbers", "fundamentals"],
+    contentKey: "literals",
+  },
 ] as const;

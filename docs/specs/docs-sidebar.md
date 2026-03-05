@@ -195,7 +195,7 @@ Each package is responsible for bundling its own markdown content (via static im
 
 **Goal:** The sidebar connects to the editor.
 
-- Expose a `openDocsForTile(tileId: string)` function (or event) that opens the sidebar to the Tiles tab, navigated to the matching entry. The `tileId` is already available on every tile in the editor.
+- Expose a `openDocsForTile(tileDef: IBrainTileDef)` function (or event) that opens the sidebar to the Tiles tab, navigated to the matching entry. The `tileDef` is already available on every tile in the editor.
 - Wire this into the brain editor: add a context menu item or long-press action on tiles that triggers it.
 - Implement the "Copy" button on Pattern examples. The brain editor already has a clipboard-like utility for copying and pasting brain rules. The docs system should use this directly — **do not invent a separate clipboard format or insertion mechanism.** The "Copy" button should write to the same clipboard the editor already reads from, so that the user's existing paste workflow just works.
 - Investigate the existing clipboard utility before implementing. Understand: what data structure it holds, how it is populated, how paste is triggered, and whether it supports pasting multiple rules at once (since a Pattern example may contain more than one rule).
@@ -369,8 +369,8 @@ build-time codegen architecture that supports npm distribution and future locali
 
 ### Phase 4 -- Contextual linking and Copy
 
-- Added `openDocsForTile(tileId: string)` to `DocsSidebarContext`. Opens the panel, switches to the Tiles tab, and navigates to the detail view for the given tileId. Works for any tileId -- both registered tiles with docs and tiles without docs.
-- Added "Help" item to `BrainTileEditor`'s existing `DropdownMenu` (separated by a `DropdownMenuSeparator`). Clicking it calls `openDocsForTile(tileDef.tileId)`, opening the sidebar to the tile's doc page.
+- Added `openDocsForTile(tileDef: IBrainTileDef)` to `DocsSidebarContext`. Opens the panel, switches to the Tiles tab, and navigates to the detail view for the given tileId. Works for any tileId -- both registered tiles with docs and tiles without docs.
+- Added "Help" item to `BrainTileEditor`'s existing `DropdownMenu` (separated by a `DropdownMenuSeparator`). Clicking it calls `openDocsForTile(tileDef)`, opening the sidebar to the tile's doc page.
 - Implemented multi-rule clipboard support. `RuleClipboardData` now stores `ruleJsons: RuleJson[]` (array) instead of `ruleJson: RuleJson` (single). `setClipboardFromJson` stores all rules from the array. Added `deserializeAllRulesFromClipboard(destBrain)` returning `BrainRuleDef[]`. `PasteRuleAboveCommand` now inserts all rules sequentially above the target, preserving order. Undo deletes all pasted rules in reverse order.
 - Installed `sonner` in `packages/ui`. Created `packages/ui/src/ui/sonner.tsx` (`Toaster` component with dark theme, bottom-center position). Exported from `src/ui/index.ts`. Added `<Toaster />` to the sim app's root JSX in `App.tsx`.
 - Updated `BrainCodeBlock` to show a toast via `toast.success()` on copy, replacing the inline "Copied!" text state. Toast message includes rule count (e.g., "2 rules copied -- paste into a rule"). On mobile, also calls `close()` via `useDocsSidebar()` to close the sidebar after copy.
