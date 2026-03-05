@@ -47,6 +47,7 @@ export { useTileSelection } from "./hooks/useTileSelection";
 // Clipboard utilities
 export {
   copyRuleToClipboard,
+  deserializeAllRulesFromClipboard,
   deserializeRuleFromClipboard,
   hasRuleInClipboard,
   onClipboardChanged,

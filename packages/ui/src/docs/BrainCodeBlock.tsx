@@ -1,8 +1,10 @@
 import { getBrainServices } from "@mindcraft-lang/core/brain";
 import { ClipboardCopy } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { toast } from "sonner";
 import { setClipboardFromJson } from "../brain-editor/rule-clipboard";
 import { DocsRuleBlock, type DocsRuleData } from "./DocsRule";
+import { useDocsSidebar } from "./DocsSidebarContext";
 
 // ---------------------------------------------------------------------------
 // Plain-JSON -> DocsRuleData conversion
@@ -51,7 +53,8 @@ interface BrainCodeBlockProps {
 }
 
 export function BrainCodeBlock({ content }: BrainCodeBlockProps) {
-  const [copied, setCopied] = useState(false);
+  const { close } = useDocsSidebar();
+  const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
 
   const rules = useMemo(() => {
     const plain = parseRules(content);
@@ -63,8 +66,11 @@ export function BrainCodeBlock({ content }: BrainCodeBlockProps) {
     const plain = parseRules(content);
     if (!plain) return;
     setClipboardFromJson(plain);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    const count = plain.length;
+    toast.success(count === 1 ? "Example copied -- paste into a rule" : `${count} rules copied -- paste into a rule`);
+    if (isMobile) {
+      close();
+    }
   };
 
   if (!rules) {
@@ -93,7 +99,7 @@ export function BrainCodeBlock({ content }: BrainCodeBlockProps) {
           className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white transition-colors border border-slate-600 pointer-events-auto"
         >
           <ClipboardCopy className="w-3 h-3" aria-hidden="true" />
-          {copied ? "Copied!" : "Copy"}
+          Copy
         </button>
       </div>
     </div>

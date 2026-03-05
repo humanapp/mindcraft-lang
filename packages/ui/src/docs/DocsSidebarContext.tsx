@@ -19,6 +19,8 @@ interface DocsSidebarContextValue {
   navigateToEntry: (tab: DocTab, key: string) => void;
   /** Return to the list view. */
   navigateBack: () => void;
+  /** Open the sidebar to a specific tile's doc page. Always opens the panel. */
+  openDocsForTile: (tileId: string) => void;
 }
 
 const DocsSidebarContext = createContext<DocsSidebarContextValue | null>(null);
@@ -46,6 +48,13 @@ export function DocsSidebarProvider({ children, registry: externalRegistry }: Do
     setNavTab(null);
   }, []);
 
+  const openDocsForTile = useCallback((tileId: string) => {
+    setIsOpen(true);
+    setActiveTab("tiles");
+    setNavKey(tileId);
+    setNavTab("tiles");
+  }, []);
+
   const handleSetTab = useCallback((tab: DocTab) => {
     setActiveTab(tab);
     setNavKey(null);
@@ -64,6 +73,7 @@ export function DocsSidebarProvider({ children, registry: externalRegistry }: Do
     setTab: handleSetTab,
     navigateToEntry,
     navigateBack,
+    openDocsForTile,
   };
 
   return <DocsSidebarContext.Provider value={value}>{children}</DocsSidebarContext.Provider>;

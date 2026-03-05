@@ -1,5 +1,5 @@
 import { type BrainDef, type BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { deserializeRuleFromClipboard } from "../rule-clipboard";
+import { deserializeAllRulesFromClipboard } from "../rule-clipboard";
 import type { BrainCommand } from "./BrainCommand";
 
 /**
@@ -209,14 +209,17 @@ export class OutdentRuleCommand implements BrainCommand {
 }
 
 /**
- * Command to paste a rule from the clipboard above an existing rule.
+ * Command to paste rules from the clipboard above an existing rule.
  *
  * Deserializes the clipboard contents into the destination brain, importing
  * any missing catalog entries (literals, variables) and substituting
  * missing-tile placeholders for unresolvable page references.
+ *
+ * Supports multi-rule clipboard: all rules are inserted sequentially above
+ * the target rule, preserving their original order.
  */
 export class PasteRuleAboveCommand implements BrainCommand {
-  private pastedRule?: BrainRuleDef;
+  private pastedRules: BrainRuleDef[] = [];
 
   constructor(private targetRule: BrainRuleDef) {}
 
@@ -224,26 +227,34 @@ export class PasteRuleAboveCommand implements BrainCommand {
     const brain = this.targetRule.brain() as BrainDef | undefined;
     if (!brain) return;
 
-    const newRule = deserializeRuleFromClipboard(brain);
-    if (!newRule) return;
+    const newRules = deserializeAllRulesFromClipboard(brain);
+    if (newRules.length === 0) return;
 
     const state = getRuleState(this.targetRule);
-    if (state.parentRule) {
-      (state.parentRule as BrainRuleDef).addRuleAtIndex(state.index, newRule);
-    } else if (state.pageDef) {
-      state.pageDef.addRuleAtIndex(state.index, newRule);
+
+    // Insert rules in order at the target index. Each subsequent rule goes
+    // after the previous one so they appear in the same order as copied.
+    for (let i = 0; i < newRules.length; i++) {
+      if (state.parentRule) {
+        (state.parentRule as BrainRuleDef).addRuleAtIndex(state.index + i, newRules[i]);
+      } else if (state.pageDef) {
+        state.pageDef.addRuleAtIndex(state.index + i, newRules[i]);
+      }
     }
 
-    this.pastedRule = newRule;
+    this.pastedRules = newRules;
   }
 
   undo(): void {
-    if (this.pastedRule) {
-      this.pastedRule.delete();
+    // Delete in reverse order to maintain stable indices
+    for (let i = this.pastedRules.length - 1; i >= 0; i--) {
+      this.pastedRules[i].delete();
     }
+    this.pastedRules = [];
   }
 
   getDescription(): string {
-    return "Paste rule above";
+    const count = this.pastedRules.length;
+    return count <= 1 ? "Paste rule above" : `Paste ${count} rules above`;
   }
 }

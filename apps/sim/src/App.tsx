@@ -1,5 +1,5 @@
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainEditorDialog, BrainEditorProvider, DocsSidebar, DocsSidebarProvider } from "@mindcraft-lang/ui";
+import { BrainEditorDialog, BrainEditorProvider, DocsSidebar, DocsSidebarProvider, Toaster } from "@mindcraft-lang/ui";
 import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
@@ -169,8 +169,9 @@ function App() {
         </BrainEditorProvider>
       </div>
 
-      {/* Docs sidebar — fixed overlay, sibling to main layout */}
+      {/* Docs sidebar -- fixed overlay, sibling to main layout */}
       <DocsSidebar />
+      <Toaster />
     </DocsSidebarProvider>
   );
 }

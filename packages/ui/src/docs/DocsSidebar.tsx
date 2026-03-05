@@ -347,6 +347,37 @@ function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef 
     );
   }
 
+  // No-docs fallback -- navKey is set but no content found in registry
+  if (navKey) {
+    const tileLabel = getTileLabel(navKey);
+    return (
+      <>
+        <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-700 shrink-0">
+          <button
+            type="button"
+            onClick={navigateBack}
+            className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors text-sm"
+            aria-label="Back to list"
+          >
+            <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+            Back
+          </button>
+        </div>
+        <div className={`flex-1 min-h-0 overflow-y-auto ${scrollClassName}`}>
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-12 h-12 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center mb-3">
+              <BookOpen className="w-5 h-5 text-slate-500" aria-hidden="true" />
+            </div>
+            <p className="text-sm font-medium text-slate-300 mb-1">No documentation available</p>
+            <p className="text-xs text-slate-500 max-w-48">
+              {tileLabel ? `There is no doc page for "${tileLabel}" yet.` : "There is no doc page for this tile yet."}
+            </p>
+          </div>
+        </div>
+      </>
+    );
+  }
+
   // List view
   return (
     <>

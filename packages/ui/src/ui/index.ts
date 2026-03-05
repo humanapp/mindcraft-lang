@@ -33,3 +33,4 @@ export {
 export type { InputProps } from "./input";
 export { Input } from "./input";
 export { Slider } from "./slider";
+export { Toaster } from "./sonner";

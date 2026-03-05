@@ -10,12 +10,12 @@ import { type BrainDef, BrainRuleDef, type RuleJson } from "@mindcraft-lang/core
 import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 
 /**
- * Serialized clipboard payload for a copied rule.
+ * Serialized clipboard payload for copied rules.
  * Stored in a module-level variable so it persists across editor open/close
  * within the same browser tab.
  */
 interface RuleClipboardData {
-  ruleJson: RuleJson;
+  ruleJsons: RuleJson[];
   catalogJson: ReadonlyList<CatalogTileJson>;
   /** Map of page tileId -> human-readable page name, captured at copy time.
    * Needed because page tile JSON only persists the pageId, so the visual
@@ -89,7 +89,7 @@ export function copyRuleToClipboard(rule: BrainRuleDef): void {
 
   const catalogJson = tempCatalog.toJson();
 
-  clipboardData = { ruleJson, catalogJson, pageNames };
+  clipboardData = { ruleJsons: [ruleJson], catalogJson, pageNames };
   notifyClipboardChanged();
 }
 
@@ -129,7 +129,7 @@ function remapTileSet(
 }
 
 /**
- * Deserialize a rule from the clipboard into the destination brain.
+ * Deserialize a single rule from the clipboard into the destination brain.
  *
  * Before deserializing the rule, any brain-local tiles (literals, variables)
  * from the source are imported into the destination brain's catalog. Page tiles
@@ -139,7 +139,19 @@ function remapTileSet(
  * Returns the deserialized rule, or undefined if the clipboard is empty.
  */
 export function deserializeRuleFromClipboard(destBrain: BrainDef): BrainRuleDef | undefined {
-  if (!clipboardData) return undefined;
+  const rules = deserializeAllRulesFromClipboard(destBrain);
+  return rules.length > 0 ? rules[0] : undefined;
+}
+
+/**
+ * Deserialize all rules from the clipboard into the destination brain.
+ *
+ * Returns an array of deserialized rules, or an empty array if the clipboard
+ * is empty. Catalog import and page remapping are performed once for the
+ * entire batch.
+ */
+export function deserializeAllRulesFromClipboard(destBrain: BrainDef): BrainRuleDef[] {
+  if (!clipboardData) return [];
 
   const destCatalog = destBrain.catalog();
 
@@ -186,20 +198,30 @@ export function deserializeRuleFromClipboard(destBrain: BrainDef): BrainRuleDef 
     }
   }
 
-  const newRule = new BrainRuleDef();
-  // Include the global tile catalog so that registered tiles (sensors, actuators, etc.)
-  // can be resolved even though they are not stored in the brain's local catalog.
-  newRule.deserializeJson(clipboardData.ruleJson, List.from([destCatalog, getBrainServices().tiles]));
+  const catalogs = List.from([destCatalog, getBrainServices().tiles]);
+  const results: BrainRuleDef[] = [];
 
+  for (const ruleJson of clipboardData.ruleJsons) {
+    const newRule = new BrainRuleDef();
+    // Include the global tile catalog so that registered tiles (sensors, actuators, etc.)
+    // can be resolved even though they are not stored in the brain's local catalog.
+    newRule.deserializeJson(ruleJson, catalogs);
+
+    if (pageRemapTable.size > 0) {
+      remapPageTiles(newRule, pageRemapTable);
+    }
+
+    results.push(newRule);
+  }
+
+  // Clean up placeholder tiles after all rules have been deserialized
   if (pageRemapTable.size > 0) {
-    remapPageTiles(newRule, pageRemapTable);
-
     for (const sourceTileId of pageRemapTable.keys()) {
       destCatalog.delete(sourceTileId);
     }
   }
 
-  return newRule;
+  return results;
 }
 
 // Plain-JSON shape that matches the serialized form inside brain fence blocks.
@@ -222,9 +244,7 @@ function convertPlainRule(plain: PlainRuleJson): RuleJson {
 /**
  * Set the clipboard from a plain JSON rule array (e.g. from a brain fence block).
  *
- * The array may contain multiple rules, but the current clipboard model only
- * holds one rule at a time. The first rule in the array is stored; the rest
- * are ignored until multi-rule clipboard support is added in a future phase.
+ * All rules in the array are stored. Paste will insert them all sequentially.
  *
  * Catalog is intentionally empty: brain fence examples are expected to use only
  * globally-registered tiles (sensors, actuators, etc.) which are resolved at
@@ -232,9 +252,9 @@ function convertPlainRule(plain: PlainRuleJson): RuleJson {
  */
 export function setClipboardFromJson(plainRules: unknown[]): void {
   if (plainRules.length === 0) return;
-  const ruleJson = convertPlainRule(plainRules[0] as PlainRuleJson);
+  const ruleJsons = (plainRules as PlainRuleJson[]).map(convertPlainRule);
   clipboardData = {
-    ruleJson,
+    ruleJsons,
     catalogJson: List.from<CatalogTileJson>([]),
     pageNames: new Map(),
   };

@@ -366,3 +366,18 @@ build-time codegen architecture that supports npm distribution and future locali
 **Brain fence content format fix:** All 16 app content markdown files (`apps/sim/src/docs/content/en/tiles/*.md` and `patterns/*.md`) used a non-existent `WHEN:/DO:` text format inside brain fences. `BrainCodeBlock.tsx` expects JSON arrays. Converted all fences to the correct format, e.g., `[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.carnivore"],"do":["tile.actuator->actuator.move"]}]`.
 
 **Known limitation:** Tab cycling through all sidebar controls then continues to the dialog, where Radix's non-modal behavior cycles within the dialog content. Bidirectional Tab flow (dialog -> sidebar -> dialog) is not yet seamless. Deferred to Post-Phase 4.
+
+### Phase 4 -- Contextual linking and Copy
+
+- Added `openDocsForTile(tileId: string)` to `DocsSidebarContext`. Opens the panel, switches to the Tiles tab, and navigates to the detail view for the given tileId. Works for any tileId -- both registered tiles with docs and tiles without docs.
+- Added "Help" item to `BrainTileEditor`'s existing `DropdownMenu` (separated by a `DropdownMenuSeparator`). Clicking it calls `openDocsForTile(tileDef.tileId)`, opening the sidebar to the tile's doc page.
+- Implemented multi-rule clipboard support. `RuleClipboardData` now stores `ruleJsons: RuleJson[]` (array) instead of `ruleJson: RuleJson` (single). `setClipboardFromJson` stores all rules from the array. Added `deserializeAllRulesFromClipboard(destBrain)` returning `BrainRuleDef[]`. `PasteRuleAboveCommand` now inserts all rules sequentially above the target, preserving order. Undo deletes all pasted rules in reverse order.
+- Installed `sonner` in `packages/ui`. Created `packages/ui/src/ui/sonner.tsx` (`Toaster` component with dark theme, bottom-center position). Exported from `src/ui/index.ts`. Added `<Toaster />` to the sim app's root JSX in `App.tsx`.
+- Updated `BrainCodeBlock` to show a toast via `toast.success()` on copy, replacing the inline "Copied!" text state. Toast message includes rule count (e.g., "2 rules copied -- paste into a rule"). On mobile, also calls `close()` via `useDocsSidebar()` to close the sidebar after copy.
+- Added no-docs fallback view in `DocsPanelContent`. When `navKey` is set but no matching entry exists in the registry, renders a centered placeholder with a book icon, "No documentation available," and the tile's label if resolvable via `getTileLabel()`.
+
+**Deviations from spec:**
+
+- **Help item in dropdown, not context menu.** The spec suggested a context menu or long-press. Since tiles already render in a `DropdownMenu` (click to open), the "Help" item was added to the existing dropdown rather than introducing a separate right-click context menu. This keeps interaction patterns consistent with the tile's other actions (Insert Before, Replace, Copy, Delete).
+- **No-docs fallback instead of hiding/disabling Help.** The spec did not address tiles without documentation. Per user direction, a "page does not exist" placeholder is shown when Help is clicked for an undocumented tile (e.g., user-created variables, literals). The Help menu item is always visible.
+- **`isMobile` in `BrainCodeBlock` uses `window.matchMedia` directly** rather than the `useIsMobile` hook from `DocsSidebar.tsx`. The hook uses `useState`/`useEffect` for reactive updates, but `BrainCodeBlock` only needs a one-shot check at click time, so a direct `matchMedia` call in the handler avoids unnecessary re-renders.
