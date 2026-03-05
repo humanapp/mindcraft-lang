@@ -28,7 +28,7 @@ The sidebar is a **sibling** to the brain editor dialog, not a child of it. It s
 
 5. **Content structure — three tabs:**
    - **Tiles** — One entry per tile. Icon, name, category, one-sentence description, what it connects to, minimal inline example.
-   - **Patterns** — Named brain snippets solving common problems. Rendered brain-code block + one-paragraph explanation + Insert button.
+   - **Patterns** — Named brain snippets solving common problems. Rendered brain-code block + one-paragraph explanation + Copy button.
    - **Concepts** — Longer explanations of the mental model (pages, rule priority, frame execution, WHEN/DO flow). Linked from Tiles and Patterns, but not a prerequisite.
 
 6. **Navigation:** Tabs or segmented control at the top of the panel. Not a sidebar-within-a-sidebar.
@@ -37,7 +37,7 @@ The sidebar is a **sibling** to the brain editor dialog, not a child of it. It s
 
 8. **Rendered brain-code examples:** Use the same React tile components from the brain editor, but in read-only mode. No drag handles, no add buttons. Just the visual tiles.
 
-9. **Insert mechanism:** Each rendered example has a "Copy" button. On desktop, copies structured data to clipboard (and optionally inserts at editor cursor if editor is open and a rule is selected). On mobile, always clipboard + toast.
+9. **Copy mechanism:** Each rendered example has a "Copy" button. On desktop, copies structured data to clipboard. On mobile, always clipboard + toast.
 
 ---
 
@@ -191,7 +191,7 @@ Each package is responsible for bundling its own markdown content (via static im
 
 **Test:** The ecology sim app contributes tile docs for `[see]`, `[eat]`, etc. Core contributes docs for `[Switch Page]`, variables, operators. Both appear in the sidebar, properly categorized. Search filters across both sources.
 
-### Phase 4 — Contextual linking and Insert
+### Phase 4 — Contextual linking and Copy
 
 **Goal:** The sidebar connects to the editor.
 
@@ -276,7 +276,7 @@ Before writing code, investigate and report back on:
 
 - Added `react-markdown@^9` to `packages/ui` (installed via `npm install`); no other markdown libs existed in the project.
 - Created `packages/ui/src/docs/DocsRule.tsx`: `DocsTileChip` (read-only tile chip), `DocsRuleRow` (WHEN/DO rule row), `DocsRuleBlock` (multi-rule block with line numbers), `InlineTileIcon` (inline `tile:xxx` chip for prose). Does not use `BrainEditorConfig` context — reads `IBrainTileDef.visual` directly, so it works outside `BrainEditorProvider`.
-- Created `packages/ui/src/docs/BrainCodeBlock.tsx`: parses brain fence JSON, resolves tile defs from `getBrainServices().tiles`, renders `DocsRuleBlock`, and provides an **Insert** button that calls `setClipboardFromJson()`.
+- Created `packages/ui/src/docs/BrainCodeBlock.tsx`: parses brain fence JSON, resolves tile defs from `getBrainServices().tiles`, renders `DocsRuleBlock`, and provides a **Copy** button that calls `setClipboardFromJson()`.
 - Created `packages/ui/src/docs/DocMarkdown.tsx`: wraps `react-markdown` with custom `code` renderer — `language-brain` → `BrainCodeBlock`; inline `` `tile:xxx` `` → `InlineTileIcon`; standard prose styled for dark sidebar.
 - Extended `packages/ui/src/brain-editor/rule-clipboard.ts`: added `setClipboardFromJson(plainRules)` (converts plain JSON array to `RuleJson` + empty catalog, stores first rule); fixed `deserializeRuleFromClipboard` to include `getBrainServices().tiles` in the catalog chain so globally-registered tiles (sensors, actuators, etc.) resolve correctly on paste.
 - Updated `DocsSidebar.tsx`: added inline test markdown for each tab (Tiles → `sensor.see` doc with brain fence; Patterns → flee-from-predators with 2-rule fence; Concepts → rule evaluation explanation); extracted `SearchBar` and `TabBar` sub-components to reduce duplication; wired `DocMarkdown` into both `PanelContent` (desktop) and `MobilePanel`.
@@ -284,7 +284,7 @@ Before writing code, investigate and report back on:
 
 **Deviations from spec:**
 
-- **Insert copies only the first rule.** The brain fence format supports multiple rules; the clipboard model currently holds one rule at a time. Remaining rules are silently dropped. Multi-rule support deferred to Phase 4 as specified.
+- **"Copy" copies only the first rule.** The brain fence format supports multiple rules; the clipboard model currently holds one rule at a time. Remaining rules are silently dropped. Multi-rule support deferred to Phase 4 as specified.
 - **Test content is inline strings, not `.md` files.** Phase 3 introduces the DocsRegistry and Vite `?raw` imports. Using inline strings in Phase 2 avoids a dependency on the registry before it exists.
 - **Search UI is wired to state but does not filter content.** The search input is functional (controlled, clears on tab switch) but filtering is a Phase 3 concern once the content registry exists.
 
@@ -365,4 +365,4 @@ build-time codegen architecture that supports npm distribution and future locali
 
 **Brain fence content format fix:** All 16 app content markdown files (`apps/sim/src/docs/content/en/tiles/*.md` and `patterns/*.md`) used a non-existent `WHEN:/DO:` text format inside brain fences. `BrainCodeBlock.tsx` expects JSON arrays. Converted all fences to the correct format, e.g., `[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.carnivore"],"do":["tile.actuator->actuator.move"]}]`.
 
-**Known limitation:** Tab cycling through all sidebar controls then continues to the dialog, where Radix's non-modal behavior cycles within the dialog content. Bidirectional Tab flow (dialog -> sidebar -> dialog) is not yet seamless. Deferred to Phase 4.
+**Known limitation:** Tab cycling through all sidebar controls then continues to the dialog, where Radix's non-modal behavior cycles within the dialog content. Bidirectional Tab flow (dialog -> sidebar -> dialog) is not yet seamless. Deferred to Post-Phase 4.
