@@ -183,6 +183,25 @@ function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarPro
 }
 
 // ---------------------------------------------------------------------------
+// Canonical section order -- mirrors the tile picker's groupOrder so that
+// the sidebar sections always appear in the same sequence as the picker.
+// Categories not in this list are appended after in their registration order.
+// ---------------------------------------------------------------------------
+
+const TILES_CATEGORY_ORDER: readonly string[] = [
+  "Actuators",
+  "Control Flow", // switch-page / restart-page (actuator kind, shown separately for clarity)
+  "Sensors",
+  "Functions", // inline sensors (e.g., random number)
+  "Parameters & Modifiers",
+  "Variables",
+  "Accessors",
+  "Literals",
+  "Pages",
+  "Operators",
+];
+
+// ---------------------------------------------------------------------------
 // Category section with collapsible groups
 // ---------------------------------------------------------------------------
 
@@ -333,7 +352,7 @@ function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef 
     return concepts.filter((c) => matchesSearch(search, c.title, c.tags, c.content));
   }, [registry, search]);
 
-  // Group tiles by category
+  // Group tiles by category, sorted by the canonical tile picker section order.
   const tilesByCategory = useMemo(() => {
     const groups = new Map<string, DocsTileEntry[]>();
     for (const tile of filteredTiles) {
@@ -344,7 +363,17 @@ function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef 
         groups.set(tile.category, [tile]);
       }
     }
-    return groups;
+    // Reorder groups to match the tile picker's section order.
+    const ordered = new Map<string, DocsTileEntry[]>();
+    for (const cat of TILES_CATEGORY_ORDER) {
+      const entries = groups.get(cat);
+      if (entries) ordered.set(cat, entries);
+    }
+    // Append remaining categories not covered by the order list.
+    for (const [cat, entries] of groups) {
+      if (!ordered.has(cat)) ordered.set(cat, entries);
+    }
+    return ordered;
   }, [filteredTiles]);
 
   // Group patterns by category

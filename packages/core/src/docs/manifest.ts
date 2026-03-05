@@ -116,16 +116,52 @@ export const coreTileDocs: readonly CoreTileDocMeta[] = [
 
   // -- Core sensors ----------------------------------------------------------
   {
-    tileId: "tile.sensor->random",
-    tags: ["random", "numbers", "sensors"],
-    category: "Core Sensors",
-    contentKey: "sensor-random",
-  },
-  {
     tileId: "tile.sensor->on-page-entered",
     tags: ["pages", "events", "sensors"],
-    category: "Core Sensors",
+    category: "Sensors",
     contentKey: "sensor-on-page-entered",
+  },
+
+  // -- Functions (inline sensors) --------------------------------------------
+  {
+    tileId: "tile.sensor->random",
+    tags: ["random", "numbers", "functions"],
+    category: "Functions",
+    contentKey: "sensor-random",
+  },
+
+  // -- Variable factories ----------------------------------------------------
+  {
+    tileId: "tile.var.factory->boolean",
+    tags: ["variables", "boolean", "factory"],
+    category: "Variables",
+    contentKey: "var-factory-boolean",
+  },
+  {
+    tileId: "tile.var.factory->number",
+    tags: ["variables", "number", "factory"],
+    category: "Variables",
+    contentKey: "var-factory-number",
+  },
+  {
+    tileId: "tile.var.factory->string",
+    tags: ["variables", "string", "text", "factory"],
+    category: "Variables",
+    contentKey: "var-factory-string",
+  },
+
+  // -- Literal factories -----------------------------------------------------
+  {
+    tileId: "tile.lit.factory->number",
+    tags: ["literals", "number", "factory"],
+    category: "Literals",
+    contentKey: "lit-factory-number",
+  },
+  {
+    tileId: "tile.lit.factory->string",
+    tags: ["literals", "string", "text", "factory"],
+    category: "Literals",
+    contentKey: "lit-factory-string",
   },
 ] as const;
 
