@@ -1,9 +1,10 @@
 import { getBrainServices } from "@mindcraft-lang/core/brain";
-import { BookOpen, ChevronLeft, ChevronRight, GripVertical, Search, X } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { TileVisual } from "../brain-editor/types";
 import { DocMarkdown } from "./DocMarkdown";
+import { DocsPrintView } from "./DocsPrintView";
 import type { DocsConceptEntry, DocsPatternEntry, DocsTileEntry } from "./DocsRegistry";
 import { type DocTab, useDocsSidebar } from "./DocsSidebarContext";
 
@@ -519,11 +520,69 @@ function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef 
 }
 
 // ---------------------------------------------------------------------------
+// Print support
+// ---------------------------------------------------------------------------
+
+function useDocsPrint() {
+  const printRootRef = useRef<HTMLDivElement | null>(null);
+  const [printContent, setPrintContent] = useState<string | null>(null);
+
+  const triggerPrint = useCallback((content: string) => {
+    let printRoot = document.getElementById("docs-print-root") as HTMLDivElement | null;
+    if (!printRoot) {
+      printRoot = document.createElement("div");
+      printRoot.id = "docs-print-root";
+      printRoot.style.display = "none";
+      document.body.appendChild(printRoot);
+    }
+    printRootRef.current = printRoot;
+    setPrintContent(content);
+
+    // Allow React to render the portal, then print
+    requestAnimationFrame(() => {
+      const root = document.getElementById("docs-print-root");
+      if (root) root.style.display = "block";
+      requestAnimationFrame(() => {
+        window.print();
+        const r = document.getElementById("docs-print-root");
+        if (r) r.style.display = "none";
+        setPrintContent(null);
+      });
+    });
+  }, []);
+
+  const getPrintRoot = useCallback((): HTMLDivElement => {
+    let printRoot = document.getElementById("docs-print-root") as HTMLDivElement | null;
+    if (!printRoot) {
+      printRoot = document.createElement("div");
+      printRoot.id = "docs-print-root";
+      printRoot.style.display = "none";
+      document.body.appendChild(printRoot);
+    }
+    return printRoot;
+  }, []);
+
+  return { printContent, triggerPrint, getPrintRoot };
+}
+
+// ---------------------------------------------------------------------------
 // Desktop panel
 // ---------------------------------------------------------------------------
 
 function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }) {
-  const { close } = useDocsSidebar();
+  const { close, navKey, navTab, registry } = useDocsSidebar();
+  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint();
+
+  // Resolve the current detail content for the print button
+  const detailContent = useMemo(() => {
+    if (!navKey || !navTab) return null;
+    if (navTab === "tiles") return registry.tiles.get(navKey)?.content ?? null;
+    if (navTab === "patterns") return registry.patterns.get(navKey)?.content ?? null;
+    if (navTab === "concepts") return registry.concepts.get(navKey)?.content ?? null;
+    return null;
+  }, [navKey, navTab, registry]);
+
+  const canPrint = detailContent !== null;
 
   return (
     <>
@@ -533,17 +592,33 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
           <BookOpen className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
-        <button
-          type="button"
-          onClick={close}
-          className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
-          aria-label="Close docs"
-        >
-          <X className="w-4 h-4" aria-hidden="true" />
-        </button>
+        <div className="flex items-center gap-1">
+          {canPrint && (
+            <button
+              type="button"
+              onClick={() => triggerPrint(detailContent)}
+              className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+              aria-label="Print this page"
+              title="Print this page"
+            >
+              <Printer className="w-4 h-4" aria-hidden="true" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={close}
+            className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            aria-label="Close docs"
+          >
+            <X className="w-4 h-4" aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <DocsPanelContent tabBarClassName="py-2 text-xs" scrollClassName="p-3" searchRef={searchRef} />
+
+      {/* Print portal -- rendered into a hidden root, shown only during window.print() */}
+      {printContent && createPortal(<DocsPrintView content={printContent} />, getPrintRoot())}
     </>
   );
 }
@@ -553,7 +628,18 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
 // ---------------------------------------------------------------------------
 
 function MobilePanel() {
-  const { close } = useDocsSidebar();
+  const { close, navKey, navTab, registry } = useDocsSidebar();
+  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint();
+
+  const detailContent = useMemo(() => {
+    if (!navKey || !navTab) return null;
+    if (navTab === "tiles") return registry.tiles.get(navKey)?.content ?? null;
+    if (navTab === "patterns") return registry.patterns.get(navKey)?.content ?? null;
+    if (navTab === "concepts") return registry.concepts.get(navKey)?.content ?? null;
+    return null;
+  }, [navKey, navTab, registry]);
+
+  const canPrint = detailContent !== null;
 
   return (
     <div className="fixed inset-0 z-60 pointer-events-auto bg-slate-900 flex flex-col">
@@ -568,13 +654,26 @@ function MobilePanel() {
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           Back
         </button>
-        <div className="flex items-center gap-2 text-slate-200 ml-2">
+        <div className="flex-1 flex items-center gap-2 text-slate-200 ml-2">
           <BookOpen className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
+        {canPrint && (
+          <button
+            type="button"
+            onClick={() => triggerPrint(detailContent)}
+            className="flex items-center justify-center w-7 h-7 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            aria-label="Print this page"
+            title="Print this page"
+          >
+            <Printer className="w-4 h-4" aria-hidden="true" />
+          </button>
+        )}
       </div>
 
       <DocsPanelContent tabBarClassName="py-2.5 text-sm" scrollClassName="p-4" />
+
+      {printContent && createPortal(<DocsPrintView content={printContent} />, getPrintRoot())}
     </div>
   );
 }

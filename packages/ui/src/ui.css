@@ -282,11 +282,12 @@
 
 @media print {
   /* Hide the entire app and dialog chrome */
-  body > *:not(#brain-print-root) {
+  body > *:not(#brain-print-root):not(#docs-print-root) {
     display: none !important;
   }
 
-  #brain-print-root {
+  #brain-print-root,
+  #docs-print-root {
     display: block !important;
     position: static !important;
     width: 100% !important;
@@ -320,6 +321,246 @@
   /* Basic sizing for print */
   @page {
     margin: 0.75in;
-    size: landscape;
   }
+}
+
+/* ==========================================================================
+   Docs Print View -- print-friendly markdown rendering
+   ========================================================================== */
+
+.docs-print-view {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #1e293b;
+  padding: 24px;
+  max-width: 800px;
+  line-height: 1.6;
+}
+
+/* -- Typography -- */
+
+.docs-print-h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 12px 0;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #334155;
+  color: #0f172a;
+}
+
+.docs-print-h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 20px 0 8px 0;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #cbd5e1;
+  color: #1e293b;
+}
+
+.docs-print-h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 16px 0 6px 0;
+  color: #334155;
+}
+
+.docs-print-p {
+  font-size: 0.875rem;
+  margin: 0 0 10px 0;
+  color: #334155;
+}
+
+.docs-print-ul {
+  list-style-type: disc;
+  padding-left: 20px;
+  margin: 0 0 10px 0;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.docs-print-ol {
+  list-style-type: decimal;
+  padding-left: 20px;
+  margin: 0 0 10px 0;
+  font-size: 0.875rem;
+  color: #334155;
+}
+
+.docs-print-li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.docs-print-blockquote {
+  border-left: 3px solid #94a3b8;
+  padding-left: 12px;
+  margin: 10px 0;
+  font-size: 0.875rem;
+  color: #64748b;
+  font-style: italic;
+}
+
+.docs-print-strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.docs-print-em {
+  font-style: italic;
+  color: #475569;
+}
+
+.docs-print-hr {
+  border: none;
+  border-top: 1px solid #cbd5e1;
+  margin: 16px 0;
+}
+
+.docs-print-code-inline {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.8125rem;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 3px;
+  padding: 1px 4px;
+  color: #334155;
+}
+
+.docs-print-code-fallback {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.75rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 10px 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  color: #dc2626;
+}
+
+/* -- Brain code block (print) -- */
+
+.docs-print-brain-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fafbfc;
+}
+
+.docs-print-rule {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  min-height: 48px;
+  flex-wrap: wrap;
+  width: fit-content;
+  background: transparent;
+}
+
+.docs-print-rule-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  border: 1.5px solid #94a3b8;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #334155;
+  flex-shrink: 0;
+}
+
+.docs-print-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.docs-print-chip-when {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.docs-print-chip-do {
+  background: #e2e8f0;
+  color: #334155;
+  margin-left: 8px;
+}
+
+.docs-print-empty-hint {
+  font-size: 0.75rem;
+  font-style: italic;
+  color: #94a3b8;
+  padding: 0 4px;
+}
+
+/* -- Tile (print) -- */
+
+.docs-print-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid;
+  border-radius: 6px;
+  padding: 4px 6px;
+  min-width: 52px;
+  max-width: 140px;
+  height: 48px;
+  background: transparent;
+}
+
+.docs-print-tile-icon {
+  height: 22px;
+  width: 100%;
+  object-fit: contain;
+}
+
+.docs-print-tile-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  color: #1e293b;
+}
+
+/* -- Inline tile reference (print) -- */
+
+.docs-print-inline-tile {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: middle;
+  padding: 1px 5px;
+  border: 1.5px solid;
+  border-radius: 3px;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #1e293b;
+  background: transparent;
+}
+
+.docs-print-inline-tile-icon {
+  width: 14px;
+  height: 14px;
+  display: inline-block;
+  margin-right: 1px;
 }

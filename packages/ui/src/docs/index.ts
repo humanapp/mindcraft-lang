@@ -1,5 +1,6 @@
 export { BrainCodeBlock } from "./BrainCodeBlock";
 export { DocMarkdown } from "./DocMarkdown";
+export { DocsPrintView } from "./DocsPrintView";
 export type { DocsConceptEntry, DocsEntries, DocsPatternEntry, DocsTileEntry } from "./DocsRegistry";
 export { DocsRegistry } from "./DocsRegistry";
 export type { DocsRuleData } from "./DocsRule";
