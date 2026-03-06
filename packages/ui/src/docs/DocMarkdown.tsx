@@ -6,6 +6,57 @@ import { InlineTileIcon } from "./DocsRule";
 import { useDocsSidebar } from "./DocsSidebarContext";
 
 // ---------------------------------------------------------------------------
+// Tag pill helpers
+// ---------------------------------------------------------------------------
+
+interface TagSpec {
+  label: string;
+  color: string;
+}
+
+const TAG_DEFAULT_COLOR = "#64748b";
+
+function parseTagSpec(text: string): TagSpec | null {
+  const body = text.slice(4); // strip "tag:"
+  if (!body) return null;
+  const parts = body.split(";");
+  const label = parts[0].trim();
+  if (!label) return null;
+  let color = TAG_DEFAULT_COLOR;
+  for (let i = 1; i < parts.length; i++) {
+    const colonIdx = parts[i].indexOf(":");
+    if (colonIdx !== -1) {
+      const key = parts[i].slice(0, colonIdx).trim();
+      const val = parts[i].slice(colonIdx + 1).trim();
+      if (key === "color" && /^#[0-9a-f]{6}$/i.test(val)) {
+        color = val;
+      }
+    }
+  }
+  return { label, color };
+}
+
+function tagTextColor(bgHex: string): string {
+  const r = Number.parseInt(bgHex.slice(1, 3), 16);
+  const g = Number.parseInt(bgHex.slice(3, 5), 16);
+  const b = Number.parseInt(bgHex.slice(5, 7), 16);
+  // W3C perceived brightness formula
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 128 ? "#000000" : "#ffffff";
+}
+
+function InlineTagPill({ label, color }: TagSpec) {
+  return (
+    <span
+      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold align-middle"
+      style={{ backgroundColor: color, color: tagTextColor(color) }}
+    >
+      {label}
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // InlineTileLink -- wraps InlineTileIcon with click-to-navigate behavior.
 // Rendered as a component so it can use the sidebar context hook.
 // ---------------------------------------------------------------------------
@@ -62,6 +113,12 @@ const MD_COMPONENTS: Components = {
         }
         // Unknown tile -- render as plain code
         return <code className="bg-slate-800 text-amber-400 px-1 rounded text-xs font-mono">{tileId}</code>;
+      }
+      if (text.startsWith("tag:")) {
+        const spec = parseTagSpec(text);
+        if (spec) {
+          return <InlineTagPill label={spec.label} color={spec.color} />;
+        }
       }
     }
 

@@ -1,4 +1,7 @@
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import { useLayoutEffect, useState } from "react";
+import { formatValue } from "../brain-editor/tile-value-utils";
 import type { TileVisual } from "../brain-editor/types";
 import { adjustColor, saturateColor } from "../lib/color";
 import { glassEffect } from "../lib/glass-effect";
@@ -37,21 +40,71 @@ interface DocsTileChipProps {
 function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
   const visual = tileDef.visual as TileVisual | undefined;
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
-  const iconUrl = visual?.iconUrl;
+  const iconUrl = visual?.iconUrl || "/assets/brain/icons/question_mark.svg";
   const baseColor = (side === RuleSide.When ? visual?.colorDef?.when : visual?.colorDef?.do) || "#475569";
 
   const isValueTile = tileDef.kind === "literal" || tileDef.kind === "variable" || tileDef.kind === "accessor";
 
   const lighterColor = adjustColor(baseColor, 0.3);
+  const lighterColor2 = adjustColor(baseColor, 0.4);
   const darkerColor = adjustColor(baseColor, 0);
   const darkerSaturatedColor = adjustColor(saturateColor(baseColor, 0.5), -0.4);
 
+  let displayValue: string | undefined;
+  let isItalic = false;
+  if (tileDef.kind === "literal") {
+    const literalDef = tileDef as BrainTileLiteralDef;
+    const raw =
+      literalDef.displayFormat && literalDef.displayFormat !== "default"
+        ? literalDef.value
+        : literalDef.valueLabel || literalDef.value;
+    displayValue = formatValue(raw, literalDef.valueType, [], literalDef.displayFormat);
+  } else if (tileDef.kind === "variable") {
+    displayValue = (tileDef as BrainTileVariableDef).varName;
+    isItalic = true;
+  } else if (tileDef.kind === "accessor") {
+    const accessorDef = tileDef as BrainTileAccessorDef;
+    displayValue = formatValue(accessorDef.fieldName, accessorDef.fieldTypeId, []);
+  }
+
+  const [labelBasedWidth, setLabelBasedWidth] = useState<number | undefined>(undefined);
+
+  useLayoutEffect(() => {
+    const tempSpan = document.createElement("span");
+    tempSpan.style.visibility = "hidden";
+    tempSpan.style.position = "absolute";
+    tempSpan.style.whiteSpace = "nowrap";
+    tempSpan.style.fontSize = "0.875rem";
+    tempSpan.style.fontFamily =
+      "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace";
+    tempSpan.style.fontWeight = "600";
+    tempSpan.textContent = label;
+    document.body.appendChild(tempSpan);
+
+    const labelWidth = tempSpan.offsetWidth;
+    document.body.removeChild(tempSpan);
+
+    const defaultWidth = 96;
+    const maxWidth = isValueTile ? 288 : 192;
+    const labelPadding = isValueTile ? 24 : 16;
+    const neededWidth = labelWidth + labelPadding;
+
+    if (neededWidth > defaultWidth) {
+      setLabelBasedWidth(Math.min(neededWidth, maxWidth));
+    } else {
+      setLabelBasedWidth(undefined);
+    }
+  }, [label, isValueTile]);
+
   return (
     <div
-      className="relative flex flex-col items-center w-24 min-w-24 h-24 border-2 rounded-lg overflow-hidden shrink-0"
+      className={`relative flex flex-col border-2 h-24 min-h-24 max-h-24 ${
+        isValueTile ? "w-auto min-w-24 max-w-72 px-3 pb-2.5" : "w-24 min-w-24 max-w-48 px-1 pb-1.5"
+      } overflow-hidden rounded-lg pt-2 shrink-0`}
       style={{
         borderColor: darkerSaturatedColor,
         background: `radial-gradient(circle at center, ${lighterColor}, ${darkerColor})`,
+        ...(labelBasedWidth !== undefined ? { minWidth: labelBasedWidth } : {}),
         ...tileGlass.containerStyle,
       }}
       title={label}
@@ -61,14 +114,44 @@ function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
         style={tileGlass.overlayStyle}
         aria-hidden="true"
       />
-      <div className="flex-1 flex flex-col items-center justify-center relative z-10 w-full overflow-hidden pt-2">
-        {iconUrl ? (
-          <img src={iconUrl} alt="" className={`h-16 w-full ${isValueTile ? "opacity-60" : ""}`} aria-hidden="true" />
+      {isValueTile && (
+        <div
+          style={{
+            backgroundColor: darkerSaturatedColor,
+            WebkitMaskImage: `url(${iconUrl})`,
+            WebkitMaskSize: "contain",
+            WebkitMaskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+            maskImage: `url(${iconUrl})`,
+            maskSize: "contain",
+            maskRepeat: "no-repeat",
+            maskPosition: "center",
+          }}
+          className="absolute top-1 left-1 w-4 h-4 pointer-events-none"
+          aria-hidden="true"
+        />
+      )}
+      <div className="flex-1 flex flex-col items-center justify-center relative z-10">
+        {isValueTile ? (
+          <div className="min-h-16 flex-1 flex items-center justify-center text-lg font-semibold text-center px-2 overflow-hidden w-full">
+            <div
+              className="truncate border-[3px] rounded px-2 py-1 shadow-inner"
+              style={{
+                backgroundColor: lighterColor2,
+                borderColor: "white",
+                boxShadow: "inset 0 0 0 1px #363535",
+              }}
+            >
+              <span className={`font-math text-2xl${isItalic ? " italic" : ""}`} style={{ color: "#1a1a1a" }}>
+                {displayValue}
+              </span>
+            </div>
+          </div>
         ) : (
-          <div className="h-16 w-full rounded bg-slate-600 opacity-40" aria-hidden="true" />
+          <img src={iconUrl} alt="" className="h-16 w-full" aria-hidden="true" />
         )}
-        <span className="flex-1 flex items-end w-full text-sm overflow-hidden justify-center pb-1.5 px-1">
-          <span className="whitespace-nowrap inline-block font-mono font-semibold text-black truncate">{label}</span>
+        <span className="flex-1 flex items-end w-full text-sm overflow-hidden justify-center">
+          <span className="whitespace-nowrap inline-block font-mono font-semibold text-black">{label}</span>
         </span>
       </div>
     </div>
@@ -100,7 +183,7 @@ export function InlineTileIcon({ tileDef }: InlineTileIconProps) {
 
   return (
     <span
-      className="inline-flex items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal"
+      className="inline-flex items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal text-nowrap"
       style={{ borderColor: baseColor, backgroundColor: adjustAlpha(baseColor, 0.15), color: "#e2e8f0" }}
       title={tileDef.tileId}
     >

@@ -2967,3 +2967,83 @@ describe("Replace repeated modifier and anonymous slot value", () => {
     assert.ok(pageInConversion === undefined, "Page tile should NOT appear in withConversion");
   });
 });
+
+// ---- Test 77-78: See-like sensor with optional(choice(repeated())) ----
+
+describe("See-like sensor optional+choice+repeated modifiers", () => {
+  test("Test 77: [see-like] -> nearby and faraway modifiers available", () => {
+    const modCarnDef = new BrainTileModifierDef("test.carn77", { visual: { label: "carnivore" } });
+    const modHerbDef = new BrainTileModifierDef("test.herb77", { visual: { label: "herbivore" } });
+    const modPlantDef = new BrainTileModifierDef("test.plant77", { visual: { label: "plant" } });
+    const modNearDef77 = new BrainTileModifierDef("test.near77", { visual: { label: "nearby" } });
+    const modFarDef77 = new BrainTileModifierDef("test.far77", { visual: { label: "far away" } });
+    services.tiles.registerTileDef(modCarnDef);
+    services.tiles.registerTileDef(modHerbDef);
+    services.tiles.registerTileDef(modPlantDef);
+    services.tiles.registerTileDef(modNearDef77);
+    services.tiles.registerTileDef(modFarDef77);
+
+    const seeCallDef = mkCallDef(
+      bag(
+        optional(choice(mod("test.carn77"), mod("test.herb77"), mod("test.plant77"))),
+        optional(choice(repeated(mod("test.near77"), { max: 3 }), repeated(mod("test.far77"), { max: 3 })))
+      )
+    );
+    const seeFnEntry = services.functions.register("test-see77", false, { exec: () => TRUE_VALUE }, seeCallDef);
+    const seeDef77 = new BrainTileSensorDef("test-see77", seeFnEntry, CoreTypeIds.Boolean, {
+      visual: { label: "see" },
+    });
+    services.tiles.registerTileDef(seeDef77);
+
+    // Build sensor expr with no modifiers placed
+    const seeExpr: SensorExpr = {
+      nodeId: 0,
+      kind: "sensor",
+      tileDef: seeDef77,
+      anons: List.empty<SlotExpr>(),
+      parameters: List.empty<SlotExpr>(),
+      modifiers: List.empty<SlotExpr>(),
+      span: { from: 0, to: 0 },
+    };
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr: seeExpr }, catalogList());
+
+    assert.ok(resultContains(result, modCarnDef.tileId), "carnivore should be available");
+    assert.ok(resultContains(result, modHerbDef.tileId), "herbivore should be available");
+    assert.ok(resultContains(result, modPlantDef.tileId), "plant should be available");
+    assert.ok(resultContains(result, modNearDef77.tileId), "nearby should be available");
+    assert.ok(resultContains(result, modFarDef77.tileId), "far away should be available");
+  });
+
+  test("Test 78: [see-like] [carnivore] -> nearby and faraway still available", () => {
+    const seeDef = services.tiles.get(mkSensorTileId("test-see77")) as BrainTileSensorDef;
+    const modCarnDef = services.tiles.get(mkModifierTileId("test.carn77")) as BrainTileModifierDef;
+    const modNearDef = services.tiles.get(mkModifierTileId("test.near77")) as BrainTileModifierDef;
+    const modFarDef = services.tiles.get(mkModifierTileId("test.far77")) as BrainTileModifierDef;
+
+    const carnSlotId = seeDef.fnEntry.callDef.argSlots
+      .toArray()
+      .find((s) => s.argSpec.tileId === mkModifierTileId("test.carn77"))!.slotId;
+
+    const mods = List.empty<SlotExpr>();
+    mods.push({
+      slotId: carnSlotId,
+      expr: { nodeId: 10, kind: "modifier", tileDef: modCarnDef, span: { from: 1, to: 2 } },
+    });
+
+    const seeExpr: SensorExpr = {
+      nodeId: 0,
+      kind: "sensor",
+      tileDef: seeDef,
+      anons: List.empty<SlotExpr>(),
+      parameters: List.empty<SlotExpr>(),
+      modifiers: mods,
+      span: { from: 0, to: 2 },
+    };
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr: seeExpr }, catalogList());
+
+    assert.ok(resultContains(result, modNearDef.tileId), "nearby should be available after carnivore placed");
+    assert.ok(resultContains(result, modFarDef.tileId), "far away should be available after carnivore placed");
+  });
+});

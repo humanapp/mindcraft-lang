@@ -124,6 +124,22 @@ function PrintBrainCodeBlock({ content }: { content: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Tag pill helpers (print)
+// ---------------------------------------------------------------------------
+
+function parsePrintTagSpec(text: string): { label: string } | null {
+  const body = text.slice(4); // strip "tag:"
+  if (!body) return null;
+  const label = body.split(";")[0].trim();
+  if (!label) return null;
+  return { label };
+}
+
+function PrintTagPill({ label }: { label: string }) {
+  return <span className="docs-print-tag-pill">{label}</span>;
+}
+
+// ---------------------------------------------------------------------------
 // Inline tile reference for print
 // ---------------------------------------------------------------------------
 
@@ -166,6 +182,12 @@ const PRINT_MD_COMPONENTS: Components = {
           return <PrintInlineTileIcon tileDef={tileDef} />;
         }
         return <code className="docs-print-code-inline">{tileId}</code>;
+      }
+      if (text.startsWith("tag:")) {
+        const spec = parsePrintTagSpec(text);
+        if (spec) {
+          return <PrintTagPill label={spec.label} />;
+        }
       }
     }
 

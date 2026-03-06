@@ -1,4 +1,6 @@
-import { getBrainServices } from "@mindcraft-lang/core/brain";
+import { List } from "@mindcraft-lang/core";
+import { getBrainServices, type IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 import { ClipboardCopy } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
@@ -12,32 +14,78 @@ import { useDocsSidebar } from "./DocsSidebarContext";
 
 interface PlainRule {
   version?: number;
+  catalog?: CatalogTileJson[];
   when?: string[];
   do?: string[];
   children?: PlainRule[];
 }
 
-function resolveTiles(tileIds: string[]) {
-  const catalog = getBrainServices().tiles;
-  return tileIds.map((id) => catalog.get(id)).filter(Boolean) as ReturnType<typeof catalog.get>[] as NonNullable<
-    ReturnType<typeof catalog.get>
-  >[];
+/** Clipboard wrapper format: { ruleJsons: [...], catalog: [...] } */
+interface PlainRuleWrapper {
+  ruleJsons: PlainRule[];
+  catalog?: CatalogTileJson[];
 }
 
-function convertRule(plain: PlainRule, depth = 0): DocsRuleData {
+interface ParsedBrainBlock {
+  rules: PlainRule[];
+  catalogEntries: CatalogTileJson[];
+}
+
+/**
+ * Collect catalog entries from all rules and from the top-level wrapper.
+ */
+function collectCatalogEntries(rules: PlainRule[], topLevel?: CatalogTileJson[]): CatalogTileJson[] {
+  const entries: CatalogTileJson[] = topLevel ? [...topLevel] : [];
+  for (const rule of rules) {
+    if (rule.catalog) {
+      entries.push(...rule.catalog);
+    }
+  }
+  return entries;
+}
+
+/**
+ * Build a local TileCatalog from catalog JSON entries so that brain-local
+ * tiles (variables, literals) can be resolved during rendering.
+ */
+function buildLocalCatalog(entries: CatalogTileJson[]): TileCatalog | undefined {
+  if (entries.length === 0) return undefined;
+  const catalog = new TileCatalog();
+  catalog.deserializeJson(List.from(entries));
+  return catalog;
+}
+
+function resolveTiles(tileIds: string[], localCatalog?: TileCatalog): IBrainTileDef[] {
+  const globalCatalog = getBrainServices().tiles;
+  return tileIds.map((id) => localCatalog?.get(id) ?? globalCatalog.get(id)).filter(Boolean) as IBrainTileDef[];
+}
+
+function convertRule(plain: PlainRule, localCatalog: TileCatalog | undefined, depth = 0): DocsRuleData {
   return {
-    whenTiles: resolveTiles(plain.when ?? []),
-    doTiles: resolveTiles(plain.do ?? []),
+    whenTiles: resolveTiles(plain.when ?? [], localCatalog),
+    doTiles: resolveTiles(plain.do ?? [], localCatalog),
     depth,
-    children: (plain.children ?? []).map((c) => convertRule(c, depth + 1)),
+    children: (plain.children ?? []).map((c) => convertRule(c, localCatalog, depth + 1)),
   };
 }
 
-function parseRules(jsonStr: string): PlainRule[] | null {
+/**
+ * Parse the brain fence JSON. Accepts two formats:
+ * - Array of rules: [{ when, do, catalog?, children? }]
+ * - Clipboard wrapper: { ruleJsons: [...], catalog?: [...] }
+ */
+function parseBrainBlock(jsonStr: string): ParsedBrainBlock | null {
   try {
     const parsed = JSON.parse(jsonStr);
-    if (!Array.isArray(parsed)) return null;
-    return parsed as PlainRule[];
+    if (Array.isArray(parsed)) {
+      const rules = parsed as PlainRule[];
+      return { rules, catalogEntries: collectCatalogEntries(rules) };
+    }
+    if (parsed && Array.isArray((parsed as PlainRuleWrapper).ruleJsons)) {
+      const wrapper = parsed as PlainRuleWrapper;
+      return { rules: wrapper.ruleJsons, catalogEntries: collectCatalogEntries(wrapper.ruleJsons, wrapper.catalog) };
+    }
+    return null;
   } catch {
     return null;
   }
@@ -57,16 +105,17 @@ export function BrainCodeBlock({ content }: BrainCodeBlockProps) {
   const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
 
   const rules = useMemo(() => {
-    const plain = parseRules(content);
-    if (!plain) return null;
-    return plain.map((r) => convertRule(r));
+    const block = parseBrainBlock(content);
+    if (!block) return null;
+    const localCatalog = buildLocalCatalog(block.catalogEntries);
+    return block.rules.map((r) => convertRule(r, localCatalog));
   }, [content]);
 
   const handleInsert = () => {
-    const plain = parseRules(content);
-    if (!plain) return;
-    setClipboardFromJson(plain);
-    const count = plain.length;
+    const block = parseBrainBlock(content);
+    if (!block) return;
+    setClipboardFromJson(block.rules, block.catalogEntries);
+    const count = block.rules.length;
     toast.success(count === 1 ? "Example copied -- paste into a rule" : `${count} rules copied -- paste into a rule`);
     if (isMobile) {
       close();

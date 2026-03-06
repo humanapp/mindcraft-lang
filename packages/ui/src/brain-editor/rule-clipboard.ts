@@ -234,6 +234,7 @@ export function deserializeAllRulesFromClipboard(destBrain: BrainDef): BrainRule
 // Plain-JSON shape that matches the serialized form inside brain fence blocks.
 interface PlainRuleJson {
   version?: number;
+  catalog?: CatalogTileJson[];
   when?: string[];
   do?: string[];
   children?: PlainRuleJson[];
@@ -253,16 +254,28 @@ function convertPlainRule(plain: PlainRuleJson): RuleJson {
  *
  * All rules in the array are stored. Paste will insert them all sequentially.
  *
- * Catalog is intentionally empty: brain fence examples are expected to use only
- * globally-registered tiles (sensors, actuators, etc.) which are resolved at
- * paste time via getBrainServices().tiles.
+ * If any rule carries a `catalog` array (brain-local tiles such as variables
+ * or literals), those entries are collected and stored in the clipboard so
+ * they can be imported into the destination brain at paste time.
+ * An additional `extraCatalog` parameter accepts top-level catalog entries
+ * from the clipboard wrapper format.
  */
-export function setClipboardFromJson(plainRules: unknown[]): void {
+export function setClipboardFromJson(plainRules: unknown[], extraCatalog?: CatalogTileJson[]): void {
   if (plainRules.length === 0) return;
-  const ruleJsons = (plainRules as PlainRuleJson[]).map(convertPlainRule);
+  const typedRules = plainRules as PlainRuleJson[];
+  const ruleJsons = typedRules.map(convertPlainRule);
+
+  // Collect catalog entries from extra (top-level) and per-rule sources.
+  const catalogEntries: CatalogTileJson[] = extraCatalog ? [...extraCatalog] : [];
+  for (const rule of typedRules) {
+    if (rule.catalog) {
+      catalogEntries.push(...rule.catalog);
+    }
+  }
+
   clipboardData = {
     ruleJsons,
-    catalogJson: List.from<CatalogTileJson>([]),
+    catalogJson: List.from<CatalogTileJson>(catalogEntries),
     pageNames: new Map(),
   };
   notifyClipboardChanged();
