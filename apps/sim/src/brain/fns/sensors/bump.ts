@@ -9,9 +9,9 @@ import {
   mkCallDef,
   mkNumberValue,
   mod,
+  optional,
   TRUE_VALUE,
   type Value,
-  optional,
 } from "@mindcraft-lang/core/brain";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
