@@ -8,7 +8,7 @@ to restrict it to carnivores. Carnivores are predator actors that eat herbivores
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.distance.faraway"]}]
+[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.awayfrom"]}]
 ```
 
 This rule flees from visible carnivores.

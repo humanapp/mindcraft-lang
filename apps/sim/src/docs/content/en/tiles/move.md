@@ -10,7 +10,7 @@ Without modifiers, the actor moves forward in the direction it is facing.
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.plant"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.distance.nearby"]}]
+[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.plant"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.toward"]}]
 ```
 
 This rule moves toward a visible plant.
@@ -19,5 +19,5 @@ This rule moves toward a visible plant.
 
 - `tile:tile.actuator->actuator.turn`
 - `tile:tile.sensor->sensor.see`
-- `tile:tile.modifier->modifier.distance.nearby`
-- `tile:tile.modifier->modifier.distance.faraway`
+- `tile:tile.modifier->modifier.movement.toward`
+- `tile:tile.modifier->modifier.movement.awayfrom`

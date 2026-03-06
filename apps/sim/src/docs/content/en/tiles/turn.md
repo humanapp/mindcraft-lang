@@ -9,7 +9,7 @@ toward or away from specific actors.
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.turn","tile.modifier->modifier.distance.faraway"]}]
+[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.turn","tile.modifier->modifier.movement.toward"]}]
 ```
 
 This rule turns the actor away from a visible carnivore.
@@ -18,5 +18,3 @@ This rule turns the actor away from a visible carnivore.
 
 - `tile:tile.actuator->actuator.move`
 - `tile:tile.sensor->sensor.see`
-- `tile:tile.modifier->modifier.distance.faraway`
-- `tile:tile.modifier->modifier.distance.nearby`
