@@ -97,6 +97,82 @@ To add a new shadcn/ui component:
 2. Export it from `src/ui/index.ts`
 3. It will automatically be available via `import { ... } from "@mindcraft-lang/ui"` in consuming apps
 
+## Documentation System (`src/docs/`)
+
+The `docs/` directory contains the documentation sidebar renderer, including markdown rendering
+with brain-fence support and tile references.
+
+### Key Files
+
+```
+src/docs/
+  DocsSidebarContext.tsx   React context for open/close, tab, navigation, DocsRegistry
+  DocsSidebar.tsx          Slide-out sidebar (desktop) / fullscreen overlay (mobile)
+  DocsRegistry.ts          Registry of tile, pattern, and concept doc entries
+  DocMarkdown.tsx          Markdown renderer with brain-fence and tile-ref support
+  BrainCodeBlock.tsx       Renders brain-fenced code blocks as visual tiles/rules
+  DocsRule.tsx             Read-only rule row + DocsTileChip (single tile visual)
+  DocsPrintView.tsx        Print-friendly parallel renderer
+```
+
+### Doc Content Sources
+
+- **Core docs**: `packages/core/src/docs/content/en/tiles/*.md` and `concepts/*.md`
+  - Built into `packages/core/src/docs/_generated/en.ts` by `scripts/build-docs.js`
+- **App-specific docs**: `apps/sim/src/docs/content/en/tiles/*.md` and `patterns/*.md`
+  - Loaded at build time via Vite `import.meta.glob` with `?raw` queries
+- **Manifests**: `packages/core/src/docs/manifest.ts` and `apps/sim/src/docs/manifest.ts`
+  map tile IDs to content keys, tags, and categories
+
+### Markdown Syntax Extensions
+
+Doc markdown files support these custom syntaxes inside `DocMarkdown`:
+
+**Brain code fences** -- render visual tile rule blocks:
+
+    ```brain
+    [{ "when": ["tile.sensor->sensor.see"], "do": ["tile.actuator->actuator.move"] }]
+    ```
+
+Accepted JSON formats inside brain fences:
+
+| Format            | JSON shape                                    | Renders as                                                |
+| ----------------- | --------------------------------------------- | --------------------------------------------------------- |
+| Array of rules    | `[{ when, do, children?, catalog? }]`         | Rule rows with WHEN/DO chips                              |
+| Clipboard wrapper | `{ ruleJsons: [...], catalog?: [...] }`       | Rule rows (supports local catalog for variables/literals) |
+| Single tile       | `{ tile: "tileId", catalog?: [...] }`         | Standalone tile chip                                      |
+| Multiple tiles    | `{ tiles: ["tileId", ...], catalog?: [...] }` | Row of tile chips                                         |
+
+**Fence meta options** -- space-separated tokens after `brain` in the info string:
+
+| Token     | Effect                                                 |
+| --------- | ------------------------------------------------------ |
+| `noframe` | Removes the border, background, and copy-button footer |
+| `do`      | Uses DO-side colors instead of WHEN-side (default)     |
+
+Example: ` ```brain noframe ` renders tiles without the framed container.
+
+**Inline tile references** -- `` `tile:tile.op->add` `` renders as a small colored tile chip
+with its icon and label. Clickable to navigate to that tile's doc page if one exists.
+
+**Inline tag pills** -- `` `tag:Operator;color:#FFE500` `` renders as a colored badge pill.
+The `color` parameter is optional (defaults to slate).
+
+### Rendering Architecture
+
+`DocMarkdown` uses `react-markdown` (v9+) with `remark-gfm`. The `code` component override
+checks for `language-brain` and delegates to `BrainCodeBlock`. The HAST `node` prop
+(passed automatically by react-markdown v9 via `passNode: true`) carries the fence meta string
+at `node.data.meta`.
+
+`BrainCodeBlock` parses the JSON content, resolves tile IDs via the global tile catalog
+(`getBrainServices().tiles`) and optionally a local `TileCatalog` built from `catalog` entries
+(for variables/literals not in the global registry). Resolved tiles are rendered through
+`DocsTileChip` (standalone) or `DocsRuleBlock` -> `DocsRuleRow` (rule context).
+
+`DocsPrintView` is a parallel print-friendly renderer with the same format support but
+simplified CSS-class-based styling (no glass effects).
+
 ## Consuming This Package
 
 In a new webapp, add these configurations:
