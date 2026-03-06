@@ -1,5 +1,6 @@
 import { getBrainServices, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { TileVisual } from "../brain-editor/types";
 
 // ---------------------------------------------------------------------------
@@ -204,6 +205,30 @@ const PRINT_MD_COMPONENTS: Components = {
   hr() {
     return <hr className="docs-print-hr" />;
   },
+
+  // Table elements
+  table({ children }) {
+    return (
+      <div className="docs-print-table-wrap">
+        <table className="docs-print-table">{children}</table>
+      </div>
+    );
+  },
+  thead({ children }) {
+    return <thead className="docs-print-thead">{children}</thead>;
+  },
+  tbody({ children }) {
+    return <tbody>{children}</tbody>;
+  },
+  tr({ children }) {
+    return <tr className="docs-print-tr">{children}</tr>;
+  },
+  th({ children }) {
+    return <th className="docs-print-th">{children}</th>;
+  },
+  td({ children }) {
+    return <td className="docs-print-td">{children}</td>;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -217,7 +242,9 @@ interface DocsPrintViewProps {
 export function DocsPrintView({ content }: DocsPrintViewProps) {
   return (
     <div className="docs-print-view">
-      <Markdown components={PRINT_MD_COMPONENTS}>{content}</Markdown>
+      <Markdown remarkPlugins={[remarkGfm]} components={PRINT_MD_COMPONENTS}>
+        {content}
+      </Markdown>
     </div>
   );
 }

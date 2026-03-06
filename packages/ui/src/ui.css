@@ -564,3 +564,42 @@
   display: inline-block;
   margin-right: 1px;
 }
+
+/* -- Table (print) -- */
+
+.docs-print-table-wrap {
+  margin: 12px 0;
+  overflow-x: auto;
+}
+
+.docs-print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  color: #334155;
+}
+
+.docs-print-thead {
+  border-bottom: 2px solid #94a3b8;
+}
+
+.docs-print-th {
+  text-align: left;
+  font-weight: 600;
+  padding: 6px 10px;
+  color: #1e293b;
+}
+
+.docs-print-tr {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.docs-print-tr:last-child {
+  border-bottom: none;
+}
+
+.docs-print-td {
+  padding: 5px 10px;
+  vertical-align: top;
+  color: #334155;
+}
