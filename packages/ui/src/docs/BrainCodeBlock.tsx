@@ -1,12 +1,29 @@
 import { List } from "@mindcraft-lang/core";
-import { getBrainServices, type IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { getBrainServices, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 import { ClipboardCopy } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 import { setClipboardFromJson } from "../brain-editor/rule-clipboard";
-import { DocsRuleBlock, type DocsRuleData } from "./DocsRule";
+import { DocsRuleBlock, type DocsRuleData, DocsTileChip } from "./DocsRule";
 import { useDocsSidebar } from "./DocsSidebarContext";
+
+// ---------------------------------------------------------------------------
+// Meta string parsing
+// ---------------------------------------------------------------------------
+
+interface BrainFenceMeta {
+  noFrame: boolean;
+  side: RuleSide;
+}
+
+function parseMeta(meta: string): BrainFenceMeta {
+  const tokens = meta.toLowerCase().split(/\s+/).filter(Boolean);
+  return {
+    noFrame: tokens.includes("noframe"),
+    side: tokens.includes("do") ? RuleSide.Do : RuleSide.When,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Plain-JSON -> DocsRuleData conversion
@@ -26,10 +43,34 @@ interface PlainRuleWrapper {
   catalog?: CatalogTileJson[];
 }
 
+/** Single-tile format: { tile: "tileId", catalog?: [...] } */
+interface PlainSingleTile {
+  tile: string;
+  catalog?: CatalogTileJson[];
+  side?: "when" | "do";
+}
+
+/** Multi-tile format: { tiles: ["tileId", ...], catalog?: [...] } */
+interface PlainMultiTile {
+  tiles: string[];
+  catalog?: CatalogTileJson[];
+  side?: "when" | "do";
+}
+
 interface ParsedBrainBlock {
+  kind: "rules";
   rules: PlainRule[];
   catalogEntries: CatalogTileJson[];
 }
+
+interface ParsedTileBlock {
+  kind: "tiles";
+  tileIds: string[];
+  catalogEntries: CatalogTileJson[];
+  side?: "when" | "do";
+}
+
+type ParsedBlock = ParsedBrainBlock | ParsedTileBlock;
 
 /**
  * Collect catalog entries from all rules and from the top-level wrapper.
@@ -70,20 +111,39 @@ function convertRule(plain: PlainRule, localCatalog: TileCatalog | undefined, de
 }
 
 /**
- * Parse the brain fence JSON. Accepts two formats:
+ * Parse the brain fence JSON. Accepts these formats:
  * - Array of rules: [{ when, do, catalog?, children? }]
  * - Clipboard wrapper: { ruleJsons: [...], catalog?: [...] }
+ * - Single tile: { tile: "tileId", catalog?: [...] }
+ * - Multiple tiles: { tiles: ["tileId", ...], catalog?: [...] }
  */
-function parseBrainBlock(jsonStr: string): ParsedBrainBlock | null {
+function parseBrainBlock(jsonStr: string): ParsedBlock | null {
   try {
     const parsed = JSON.parse(jsonStr);
     if (Array.isArray(parsed)) {
       const rules = parsed as PlainRule[];
-      return { rules, catalogEntries: collectCatalogEntries(rules) };
+      return { kind: "rules", rules, catalogEntries: collectCatalogEntries(rules) };
     }
-    if (parsed && Array.isArray((parsed as PlainRuleWrapper).ruleJsons)) {
-      const wrapper = parsed as PlainRuleWrapper;
-      return { rules: wrapper.ruleJsons, catalogEntries: collectCatalogEntries(wrapper.ruleJsons, wrapper.catalog) };
+    if (parsed && typeof parsed === "object") {
+      // Single tile: { tile: "tileId" }
+      if (typeof (parsed as PlainSingleTile).tile === "string") {
+        const single = parsed as PlainSingleTile;
+        return { kind: "tiles", tileIds: [single.tile], catalogEntries: single.catalog ?? [], side: single.side };
+      }
+      // Multiple tiles: { tiles: ["tileId", ...] }
+      if (Array.isArray((parsed as PlainMultiTile).tiles)) {
+        const multi = parsed as PlainMultiTile;
+        return { kind: "tiles", tileIds: multi.tiles, catalogEntries: multi.catalog ?? [], side: multi.side };
+      }
+      // Clipboard wrapper: { ruleJsons: [...] }
+      if (Array.isArray((parsed as PlainRuleWrapper).ruleJsons)) {
+        const wrapper = parsed as PlainRuleWrapper;
+        return {
+          kind: "rules",
+          rules: wrapper.ruleJsons,
+          catalogEntries: collectCatalogEntries(wrapper.ruleJsons, wrapper.catalog),
+        };
+      }
     }
     return null;
   } catch {
@@ -98,22 +158,29 @@ function parseBrainBlock(jsonStr: string): ParsedBrainBlock | null {
 interface BrainCodeBlockProps {
   /** Raw JSON string from inside the brain fence. */
   content: string;
+  /** Meta string from the code fence info (e.g., "noframe"). */
+  meta?: string;
 }
 
-export function BrainCodeBlock({ content }: BrainCodeBlockProps) {
+export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
   const { close } = useDocsSidebar();
   const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+  const fenceMeta = useMemo(() => parseMeta(meta), [meta]);
 
-  const rules = useMemo(() => {
+  const parsed = useMemo(() => {
     const block = parseBrainBlock(content);
     if (!block) return null;
     const localCatalog = buildLocalCatalog(block.catalogEntries);
-    return block.rules.map((r) => convertRule(r, localCatalog));
-  }, [content]);
+    if (block.kind === "tiles") {
+      const side = block.side === "do" ? RuleSide.Do : block.side === "when" ? RuleSide.When : fenceMeta.side;
+      return { kind: "tiles" as const, tiles: resolveTiles(block.tileIds, localCatalog), side };
+    }
+    return { kind: "rules" as const, rules: block.rules.map((r) => convertRule(r, localCatalog)) };
+  }, [content, fenceMeta.side]);
 
   const handleInsert = () => {
     const block = parseBrainBlock(content);
-    if (!block) return;
+    if (!block || block.kind !== "rules") return;
     setClipboardFromJson(block.rules, block.catalogEntries);
     const count = block.rules.length;
     toast.success(count === 1 ? "Example copied -- paste into a rule" : `${count} rules copied -- paste into a rule`);
@@ -122,7 +189,7 @@ export function BrainCodeBlock({ content }: BrainCodeBlockProps) {
     }
   };
 
-  if (!rules) {
+  if (!parsed) {
     return (
       <pre className="rounded bg-slate-800 border border-slate-700 p-3 text-xs text-red-400 overflow-x-auto my-2">
         {content}
@@ -130,17 +197,50 @@ export function BrainCodeBlock({ content }: BrainCodeBlockProps) {
     );
   }
 
+  // Standalone tile rendering (no rule frame)
+  if (parsed.kind === "tiles") {
+    if (fenceMeta.noFrame) {
+      return (
+        <div className="my-3 flex flex-wrap gap-1" style={{ zoom: 0.75 }}>
+          {parsed.tiles.map((tile, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
+            <DocsTileChip key={i} tileDef={tile} side={parsed.side} />
+          ))}
+        </div>
+      );
+    }
+    return (
+      <div className="my-3 rounded-lg border border-slate-700 overflow-hidden">
+        <div className="p-2 bg-slate-900/50 flex flex-wrap gap-1" style={{ zoom: 0.75 }}>
+          {parsed.tiles.map((tile, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
+            <DocsTileChip key={i} tileDef={tile} side={parsed.side} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Rule rendering
+  if (fenceMeta.noFrame) {
+    return (
+      <div className="my-3">
+        <DocsRuleBlock rules={parsed.rules} />
+      </div>
+    );
+  }
+
   return (
     <div className="my-3 rounded-lg border border-slate-700 overflow-hidden">
       {/* Rendered tiles */}
       <div className="p-2 bg-slate-900/50">
-        <DocsRuleBlock rules={rules} />
+        <DocsRuleBlock rules={parsed.rules} />
       </div>
 
       {/* Insert button */}
       <div className="flex items-center justify-between px-3 py-2 bg-slate-800/80 border-t border-slate-700">
         <span className="text-xs text-slate-500">
-          {rules.length} {rules.length === 1 ? "rule" : "rules"}
+          {parsed.rules.length} {parsed.rules.length === 1 ? "rule" : "rules"}
         </span>
         <button
           type="button"

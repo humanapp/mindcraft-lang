@@ -37,7 +37,7 @@ interface DocsTileChipProps {
   side: RuleSide;
 }
 
-function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
+export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
   const visual = tileDef.visual as TileVisual | undefined;
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
   const iconUrl = visual?.iconUrl || "/assets/brain/icons/question_mark.svg";

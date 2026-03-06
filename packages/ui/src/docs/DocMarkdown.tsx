@@ -1,4 +1,5 @@
 import { getBrainServices, type IBrainTileDef } from "@mindcraft-lang/core/brain";
+import type { Element } from "hast";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BrainCodeBlock } from "./BrainCodeBlock";
@@ -94,12 +95,13 @@ const MD_COMPONENTS: Components = {
     return <>{preChildren}</>;
   },
 
-  code({ className, children }) {
+  code({ className, children, node }) {
     const lang = (className ?? "").replace("language-", "");
 
-    // Block brain fence
+    // Block brain fence -- extract meta string from HAST node (e.g., ```brain noframe)
     if (lang === "brain") {
-      return <BrainCodeBlock content={String(children).trimEnd()} />;
+      const meta = ((node as Element | undefined)?.data as { meta?: string } | undefined)?.meta ?? "";
+      return <BrainCodeBlock content={String(children).trimEnd()} meta={meta} />;
     }
 
     // Inline code: `tile:sensor.see` -> inline tile chip

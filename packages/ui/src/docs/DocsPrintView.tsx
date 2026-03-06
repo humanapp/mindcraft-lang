@@ -1,4 +1,7 @@
+import { List } from "@mindcraft-lang/core";
 import { getBrainServices, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import type { Element } from "hast";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { TileVisual } from "../brain-editor/types";
@@ -62,9 +65,28 @@ function PrintRuleRow({ whenTiles, doTiles, depth, lineNumber }: PrintRuleRowPro
 // ---------------------------------------------------------------------------
 
 interface PlainRule {
+  version?: number;
+  catalog?: CatalogTileJson[];
   when?: string[];
   do?: string[];
   children?: PlainRule[];
+}
+
+interface PlainRuleWrapper {
+  ruleJsons: PlainRule[];
+  catalog?: CatalogTileJson[];
+}
+
+interface PlainSingleTile {
+  tile: string;
+  catalog?: CatalogTileJson[];
+  side?: "when" | "do";
+}
+
+interface PlainMultiTile {
+  tiles: string[];
+  catalog?: CatalogTileJson[];
+  side?: "when" | "do";
 }
 
 interface FlatPrintRule {
@@ -74,23 +96,45 @@ interface FlatPrintRule {
   lineNumber: number;
 }
 
-function resolveTiles(tileIds: string[]): IBrainTileDef[] {
-  const catalog = getBrainServices().tiles;
-  return tileIds.map((id) => catalog.get(id)).filter(Boolean) as IBrainTileDef[];
+function buildPrintLocalCatalog(entries: CatalogTileJson[]): TileCatalog | undefined {
+  if (entries.length === 0) return undefined;
+  const catalog = new TileCatalog();
+  catalog.deserializeJson(List.from(entries));
+  return catalog;
 }
 
-function flattenPlainRules(rules: PlainRule[], depth = 0, startLine = 1): FlatPrintRule[] {
+function collectPrintCatalogEntries(rules: PlainRule[], topLevel?: CatalogTileJson[]): CatalogTileJson[] {
+  const entries: CatalogTileJson[] = topLevel ? [...topLevel] : [];
+  for (const rule of rules) {
+    if (rule.catalog) {
+      entries.push(...rule.catalog);
+    }
+  }
+  return entries;
+}
+
+function resolveTiles(tileIds: string[], localCatalog?: TileCatalog): IBrainTileDef[] {
+  const globalCatalog = getBrainServices().tiles;
+  return tileIds.map((id) => localCatalog?.get(id) ?? globalCatalog.get(id)).filter(Boolean) as IBrainTileDef[];
+}
+
+function flattenPlainRules(
+  rules: PlainRule[],
+  localCatalog: TileCatalog | undefined,
+  depth = 0,
+  startLine = 1
+): FlatPrintRule[] {
   const result: FlatPrintRule[] = [];
   let line = startLine;
   for (const rule of rules) {
     result.push({
-      whenTiles: resolveTiles(rule.when ?? []),
-      doTiles: resolveTiles(rule.do ?? []),
+      whenTiles: resolveTiles(rule.when ?? [], localCatalog),
+      doTiles: resolveTiles(rule.do ?? [], localCatalog),
       depth,
       lineNumber: line++,
     });
     if (rule.children && rule.children.length > 0) {
-      const children = flattenPlainRules(rule.children, depth + 1, line);
+      const children = flattenPlainRules(rule.children, localCatalog, depth + 1, line);
       result.push(...children);
       line += children.length;
     }
@@ -98,29 +142,77 @@ function flattenPlainRules(rules: PlainRule[], depth = 0, startLine = 1): FlatPr
   return result;
 }
 
-function PrintBrainCodeBlock({ content }: { content: string }) {
-  let rules: FlatPrintRule[];
+function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string }) {
+  const noFrame = meta.toLowerCase().split(/\s+/).includes("noframe");
+  const metaSide = meta.toLowerCase().split(/\s+/).includes("do") ? RuleSide.Do : RuleSide.When;
+
   try {
-    const parsed = JSON.parse(content) as PlainRule[];
-    if (!Array.isArray(parsed)) return <pre className="docs-print-code-fallback">{content}</pre>;
-    rules = flattenPlainRules(parsed);
+    const parsed = JSON.parse(content);
+
+    // Single tile: { tile: "tileId" }
+    if (parsed && typeof parsed === "object" && typeof parsed.tile === "string") {
+      const single = parsed as PlainSingleTile;
+      const localCatalog = buildPrintLocalCatalog(single.catalog ?? []);
+      const tiles = resolveTiles([single.tile], localCatalog);
+      const side = single.side === "do" ? RuleSide.Do : single.side === "when" ? RuleSide.When : metaSide;
+      return (
+        <div className={noFrame ? "docs-print-tiles-noframe" : "docs-print-brain-block"}>
+          {tiles.map((tile, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable in print view
+            <PrintTileChip key={i} tileDef={tile} side={side} />
+          ))}
+        </div>
+      );
+    }
+
+    // Multiple tiles: { tiles: [...] }
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.tiles)) {
+      const multi = parsed as PlainMultiTile;
+      const localCatalog = buildPrintLocalCatalog(multi.catalog ?? []);
+      const tiles = resolveTiles(multi.tiles, localCatalog);
+      const side = multi.side === "do" ? RuleSide.Do : multi.side === "when" ? RuleSide.When : metaSide;
+      return (
+        <div className={noFrame ? "docs-print-tiles-noframe" : "docs-print-brain-block"}>
+          {tiles.map((tile, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable in print view
+            <PrintTileChip key={i} tileDef={tile} side={side} />
+          ))}
+        </div>
+      );
+    }
+
+    // Array of rules
+    let rules: PlainRule[];
+    let catalogEntries: CatalogTileJson[] = [];
+    if (Array.isArray(parsed)) {
+      rules = parsed as PlainRule[];
+      catalogEntries = collectPrintCatalogEntries(rules);
+    } else if (parsed && Array.isArray((parsed as PlainRuleWrapper).ruleJsons)) {
+      const wrapper = parsed as PlainRuleWrapper;
+      rules = wrapper.ruleJsons;
+      catalogEntries = collectPrintCatalogEntries(rules, wrapper.catalog);
+    } else {
+      return <pre className="docs-print-code-fallback">{content}</pre>;
+    }
+
+    const localCatalog = buildPrintLocalCatalog(catalogEntries);
+    const flat = flattenPlainRules(rules, localCatalog);
+    return (
+      <div className="docs-print-brain-block">
+        {flat.map((r) => (
+          <PrintRuleRow
+            key={r.lineNumber}
+            whenTiles={r.whenTiles}
+            doTiles={r.doTiles}
+            depth={r.depth}
+            lineNumber={r.lineNumber}
+          />
+        ))}
+      </div>
+    );
   } catch {
     return <pre className="docs-print-code-fallback">{content}</pre>;
   }
-
-  return (
-    <div className="docs-print-brain-block">
-      {rules.map((r) => (
-        <PrintRuleRow
-          key={r.lineNumber}
-          whenTiles={r.whenTiles}
-          doTiles={r.doTiles}
-          depth={r.depth}
-          lineNumber={r.lineNumber}
-        />
-      ))}
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -166,11 +258,12 @@ const PRINT_MD_COMPONENTS: Components = {
     return <>{children}</>;
   },
 
-  code({ className, children }) {
+  code({ className, children, node }) {
     const lang = (className ?? "").replace("language-", "");
 
     if (lang === "brain") {
-      return <PrintBrainCodeBlock content={String(children).trimEnd()} />;
+      const meta = ((node as Element | undefined)?.data as { meta?: string } | undefined)?.meta ?? "";
+      return <PrintBrainCodeBlock content={String(children).trimEnd()} meta={meta} />;
     }
 
     if (!className) {
