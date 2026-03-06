@@ -155,8 +155,8 @@ function computeSteering(ctx: ExecutionContext, args: MapValue, self: Actor): St
   if (args.v.has(kEastSlotId)) return turnToAngle(self, ANGLE_EAST, weight, speedMultiplier);
   if (args.v.has(kWestSlotId)) return turnToAngle(self, ANGLE_WEST, weight, speedMultiplier);
 
-  // Default: no-op (no directional modifier specified)
-  return undefined;
+  // Default: spin in place continuously (clockwise)
+  return { turn: 1, forward: 0, weight, speedMultiplier, label: "turnContinuous" };
 }
 
 // ---------------------------------------------------------------------------
