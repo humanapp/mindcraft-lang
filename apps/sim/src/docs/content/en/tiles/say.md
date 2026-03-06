@@ -1,4 +1,4 @@
-# Say
+# Say `tag:Actuator;color:#11aa11`
 
 Displays a text bubble above the actor.
 

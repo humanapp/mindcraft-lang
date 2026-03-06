@@ -1,4 +1,4 @@
-# Eat
+# Eat `tag:Actuator;color:#11aa11`
 
 Consume energy from the target actor.
 

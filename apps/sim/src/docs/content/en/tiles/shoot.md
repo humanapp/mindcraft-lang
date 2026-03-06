@@ -1,4 +1,4 @@
-# Shoot
+# Shoot `tag:Actuator;color:#11aa11`
 
 Fires a projectile in the direction the actor is facing.
 

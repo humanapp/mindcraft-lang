@@ -1,9 +1,9 @@
-# Turn
+# Turn `tag:Actuator;color:#11aa11`
 
 Rotates the actor to face a new direction.
 
-Place `tile:tile.actuator->actuator.turn` on the DO side to change facing.
-Without modifiers, the actor turns randomly. Combine with modifiers to turn
+Place `tile:tile.actuator->actuator.turn` on the **DO** side to change facing direction.
+Without modifiers, the actor turns continuously around. Combine with modifiers to turn
 toward or away from specific actors.
 
 ## Example
@@ -14,7 +14,25 @@ toward or away from specific actors.
 
 This rule turns the actor away from a visible carnivore.
 
+## Modifiers
+
+| Tile | Description |
+|------|---------|
+| Anonymous Actor | If provided, the target to turn toward or away from. If not provided, the best target will be inferred from context. |
+| `tile:tile.modifier->modifier.movement.toward` | Turn toward the target |
+| `tile:tile.modifier->modifier.movement.awayfrom` | Turn away from the target |
+| `tile:tile.modifier->modifier.turn.around` | Turn around |
+| `tile:tile.modifier->modifier.turn.left` | Turn left |
+| `tile:tile.modifier->modifier.turn.right` | Turn right |
+| `tile:tile.modifier->modifier.direction.north` | Turn north (screen up) |
+| `tile:tile.modifier->modifier.direction.south` | Turn south (screen down) |
+| `tile:tile.modifier->modifier.direction.east` | Turn north (screen right) |
+| `tile:tile.modifier->modifier.direction.west` | Turn north (screen left) |
+| `tile:tile.modifier->modifier.quickly` | Turn quickly. Up to three instances of this tile may be added, to increase the effect. |
+| `tile:tile.modifier->modifier.slowly` | Turn slowly. Up to three instances of this tile may be added, to increase the effect. |
+
+
 ## See Also
 
-- `tile:tile.actuator->actuator.move`
-- `tile:tile.sensor->sensor.see`
+`tile:tile.actuator->actuator.move`
+`tile:tile.sensor->sensor.see`

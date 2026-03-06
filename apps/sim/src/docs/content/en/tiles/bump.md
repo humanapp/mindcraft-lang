@@ -1,4 +1,4 @@
-# Bump Sensor
+# Bump `tag:Sensor;color:#aa11aa`
 
 Fires when this actor collides with another actor.
 

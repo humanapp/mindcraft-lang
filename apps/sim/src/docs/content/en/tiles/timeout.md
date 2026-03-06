@@ -1,4 +1,4 @@
-# Timeout
+# Timeout `tag:Sensor;color:#aa11aa`
 
 Fires after a specified number of seconds have elapsed.
 
@@ -8,7 +8,42 @@ Set the duration by editing the tile's value. The timer resets each time the pag
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.timeout"],"do":["tile.actuator->actuator.turn"]}]
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->sensor.timeout",
+        "tile.literal->number:<number>->5[time_seconds]"
+      ],
+      "do": [
+        "tile.actuator->switch-page",
+        "tile.literal->number:<number>->2"
+      ],
+      "children": []
+    }
+  ],
+  "catalog": [
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->5[time_seconds]",
+      "valueType": "number:<number>",
+      "value": 5,
+      "valueLabel": "5",
+      "displayFormat": "time_seconds"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->2",
+      "valueType": "number:<number>",
+      "value": 2,
+      "valueLabel": "2",
+      "displayFormat": "default"
+    }
+  ]
+}
 ```
 
 This rule turns the actor after the timeout period elapses.
