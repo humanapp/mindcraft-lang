@@ -232,6 +232,7 @@ export enum CoreActuatorId {
 export enum CoreSensorId {
   Random = "random",
   OnPageEntered = "on-page-entered",
+  Timeout = "sensor.timeout",
 }
 
 export enum CoreParameterId {

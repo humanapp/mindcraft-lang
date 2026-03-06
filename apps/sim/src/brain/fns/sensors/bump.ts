@@ -11,6 +11,7 @@ import {
   mod,
   TRUE_VALUE,
   type Value,
+  optional,
 } from "@mindcraft-lang/core/brain";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
@@ -21,7 +22,7 @@ const Carnivore = mod(TileIds.Modifier.ActorKindCarnivore);
 const Herbivore = mod(TileIds.Modifier.ActorKindHerbivore);
 const Plant = mod(TileIds.Modifier.ActorKindPlant);
 
-const callDef = mkCallDef(bag(choice(Carnivore, Herbivore, Plant)));
+const callDef = mkCallDef(bag(optional(choice(Carnivore, Herbivore, Plant))));
 
 const kActorKindCarnivoreSlotId = getSlotId(callDef, Carnivore);
 const kActorKindHerbivoreSlotId = getSlotId(callDef, Herbivore);

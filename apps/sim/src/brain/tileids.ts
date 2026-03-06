@@ -32,7 +32,6 @@ export const TileIds = {
     Rate: "parameter.rate",
   } as const,
   Sensor: {
-    Timeout: "sensor.timeout",
     Bump: "sensor.bump",
     See: "sensor.see",
   } as const,

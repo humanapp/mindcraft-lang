@@ -11,6 +11,7 @@ import {
 import { BrainActionTileBase, BrainTileDefBase } from "../model/tiledef";
 import fnOnPageEntered from "../runtime/sensors/on-page-entered";
 import fnRandom from "../runtime/sensors/random";
+import fnTimeout from "../runtime/sensors/timeout";
 import { getBrainServices } from "../services";
 
 /**
@@ -62,4 +63,5 @@ export function registerCoreSensorTileDefs() {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
   });
   register(fnOnPageEntered.fnId, CoreTypeIds.Boolean);
+  register(fnTimeout.fnId, CoreTypeIds.Boolean);
 }
