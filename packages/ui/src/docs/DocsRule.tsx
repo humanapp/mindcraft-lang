@@ -1,5 +1,29 @@
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { TileVisual } from "../brain-editor/types";
+import { adjustColor, saturateColor } from "../lib/color";
+import { glassEffect } from "../lib/glass-effect";
+
+const tileGlass = glassEffect({
+  highlightSize: 4,
+  shadowSize: 6,
+  highlightStrength: 0.8,
+  shadowStrength: 0.1,
+  bandOpacity: 0.15,
+  bandPeak: 32,
+  bandEnd: 100,
+  bottomReflection: 0.06,
+  verticalShade: 0.0,
+});
+
+const chipGlass = glassEffect({
+  highlightStrength: 0.15,
+  shadowStrength: 0,
+  bandOpacity: 0.05,
+  cornerHighlight: 0.1,
+  cornerHighlightPos: [5, 10],
+  cornerRadius: 40,
+  cornerShadow: 0,
+});
 
 // ---------------------------------------------------------------------------
 // Single tile chip -- simplified, read-only, no glass, no interactivity
@@ -18,25 +42,35 @@ function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
 
   const isValueTile = tileDef.kind === "literal" || tileDef.kind === "variable" || tileDef.kind === "accessor";
 
+  const lighterColor = adjustColor(baseColor, 0.3);
+  const darkerColor = adjustColor(baseColor, 0);
+  const darkerSaturatedColor = adjustColor(saturateColor(baseColor, 0.5), -0.4);
+
   return (
     <div
-      className="flex flex-col items-center w-14 min-w-14 h-18 border-2 rounded-lg overflow-hidden shrink-0"
+      className="relative flex flex-col items-center w-24 min-w-24 h-24 border-2 rounded-lg overflow-hidden shrink-0"
       style={{
-        borderColor: baseColor,
-        background: `radial-gradient(circle at center, ${adjustAlpha(baseColor, 0.3)}, ${adjustAlpha(baseColor, 0.15)})`,
+        borderColor: darkerSaturatedColor,
+        background: `radial-gradient(circle at center, ${lighterColor}, ${darkerColor})`,
+        ...tileGlass.containerStyle,
       }}
       title={label}
     >
-      <div className="flex-1 flex items-center justify-center w-full px-1 pt-1">
+      <div
+        className="absolute inset-0 rounded-md pointer-events-none z-20"
+        style={tileGlass.overlayStyle}
+        aria-hidden="true"
+      />
+      <div className="flex-1 flex flex-col items-center justify-center relative z-10 w-full overflow-hidden pt-2">
         {iconUrl ? (
-          <img src={iconUrl} alt="" className={`w-9 h-9 ${isValueTile ? "opacity-60" : ""}`} aria-hidden="true" />
+          <img src={iconUrl} alt="" className={`h-16 w-full ${isValueTile ? "opacity-60" : ""}`} aria-hidden="true" />
         ) : (
-          <div className="w-9 h-9 rounded bg-slate-600 opacity-40" aria-hidden="true" />
+          <div className="h-16 w-full rounded bg-slate-600 opacity-40" aria-hidden="true" />
         )}
+        <span className="flex-1 flex items-end w-full text-sm overflow-hidden justify-center pb-1.5 px-1">
+          <span className="whitespace-nowrap inline-block font-mono font-semibold text-black truncate">{label}</span>
+        </span>
       </div>
-      <span className="w-full text-center text-xs font-mono font-semibold text-slate-200 px-0.5 pb-1 leading-none truncate">
-        {label}
-      </span>
     </div>
   );
 }
@@ -66,11 +100,11 @@ export function InlineTileIcon({ tileDef }: InlineTileIconProps) {
 
   return (
     <span
-      className="inline-flex items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-semibold"
+      className="inline-flex items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal"
       style={{ borderColor: baseColor, backgroundColor: adjustAlpha(baseColor, 0.15), color: "#e2e8f0" }}
       title={tileDef.tileId}
     >
-      {iconUrl && <img src={iconUrl} alt="" className="w-3.5 h-3.5 inline-block" aria-hidden="true" />}
+      {iconUrl && <img src={iconUrl} alt="" className="w-3.5 h-3.5 mr-px inline-block" aria-hidden="true" />}
       {label}
     </span>
   );
@@ -90,29 +124,36 @@ interface DocsRuleRowProps {
 function DocsRuleRow({ whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowProps) {
   return (
     <div
-      className="flex items-center gap-1 rounded-lg p-1.5 mb-1 overflow-x-auto"
+      className="flex gap-1 rounded-xl p-2 mb-1 shadow-sm overflow-x-auto"
       style={{
-        marginLeft: depth * 20,
+        marginLeft: depth * 32,
         background: "linear-gradient(55deg, #16143A 0%, #8B6CF3 100%)",
       }}
     >
       {/* Line number badge */}
       {lineNumber !== undefined && (
-        <span className="shrink-0 w-6 h-6 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold flex items-center justify-center">
+        <span className="self-center shrink-0 h-9 w-9 rounded-full bg-slate-100 text-slate-700 text-lg font-semibold flex items-center justify-center border-2 border-slate-300">
           {lineNumber}
         </span>
       )}
 
       {/* WHEN chip */}
-      <span className="rotate-90 shrink-0 px-1 py-0.5 rounded bg-slate-800 border border-slate-600 text-slate-300 text-xs font-semibold ml-1">
-        <span className="inline-block rotate-270 mx-px">W</span>
-        <span className="inline-block rotate-270 mx-px">H</span>
-        <span className="inline-block rotate-270 mx-px">E</span>
-        <span className="inline-block rotate-270 mx-px">N</span>
-      </span>
+      <div
+        className="px-2 py-1 ml-2 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+        style={{ writingMode: "vertical-rl", ...chipGlass.containerStyle }}
+        aria-hidden="true"
+      >
+        <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} />
+        <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
+          <span className="inline-block rotate-270 mx-0">W</span>
+          <span className="inline-block rotate-270 mx-0.5">H</span>
+          <span className="inline-block rotate-270 mx-0.5">E</span>
+          <span className="inline-block rotate-270 mx-0.5">N</span>
+        </span>
+      </div>
 
       {/* WHEN tiles */}
-      <div className="flex gap-1">
+      <div className="self-center flex gap-1">
         {whenTiles.map((tile, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
           <DocsTileChip key={i} tileDef={tile} side={RuleSide.When} />
@@ -121,13 +162,20 @@ function DocsRuleRow({ whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowP
       </div>
 
       {/* DO chip */}
-      <span className="rotate-90 shrink-0 px-1 py-0.5 rounded bg-slate-800 border border-slate-600 text-slate-300 text-xs font-semibold ml-1">
-        <span className="inline-block rotate-270 mx-px">D</span>
-        <span className="inline-block rotate-270 mx-px">O</span>
-      </span>
+      <div
+        className="px-2 py-1 ml-3 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+        style={{ writingMode: "vertical-rl", ...chipGlass.containerStyle }}
+        aria-hidden="true"
+      >
+        <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} />
+        <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
+          <span className="inline-block rotate-270 mx-0">D</span>
+          <span className="inline-block rotate-270 mx-0.5">O</span>
+        </span>
+      </div>
 
       {/* DO tiles */}
-      <div className="flex gap-1">
+      <div className="self-center flex gap-1">
         {doTiles.map((tile, i) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
           <DocsTileChip key={i} tileDef={tile} side={RuleSide.Do} />
@@ -174,7 +222,7 @@ function flattenRules(rules: DocsRuleData[], startLine: number = 1): Array<DocsR
 export function DocsRuleBlock({ rules }: DocsRuleBlockProps) {
   const flat = flattenRules(rules);
   return (
-    <div className="rounded-lg overflow-hidden">
+    <div className="rounded-lg overflow-hidden" style={{ zoom: 0.75 }}>
       {flat.map((rule) => (
         <DocsRuleRow
           key={rule.lineNumber}
