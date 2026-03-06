@@ -1,4 +1,4 @@
-# On Page Entered
+# On Page Entered `tag:Sensor;color:#aa11aa`
 
 Fires once when the brain first enters the current page.
 

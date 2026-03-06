@@ -1,6 +1,6 @@
-# Gets (assign)
+# Gets `tag:Operator;color:#FFE500`
 
-Sets a variable to a new value.
+Assigns a value a variable.
 
 Place the variable on the left, the `tile:tile.op->assign` in the middle, and the value on the right.
 
@@ -46,7 +46,7 @@ Place the variable on the left, the `tile:tile.op->assign` in the middle, and th
 
 This rule subtracts `1` from the value of the `countdown` variable once every second.
 
-The assignment operator works with all variable types -- numbers, booleans, strings, even custom types defined by the application.
+The `tile:tile.op->assign` operator works with all variable types -- numbers, booleans, strings, even custom types defined by the application.
 
 ## See Also
 

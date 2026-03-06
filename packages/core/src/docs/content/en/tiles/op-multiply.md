@@ -1,4 +1,4 @@
-# Multiply (x)
+# Multiply `tag:Operator;color:#FFE500`
 
 Multiplies two numbers.
 

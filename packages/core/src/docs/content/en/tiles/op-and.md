@@ -1,4 +1,4 @@
-# And
+# And `tag:Operator;color:#FFE500`
 
 Combines two conditions so both must be true for the rule to fire.
 

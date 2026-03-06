@@ -1,4 +1,4 @@
-# Equal To (==)
+# Equal To `tag:Operator;color:#FFE500`
 
 Checks if two values are equal.
 

@@ -1,4 +1,4 @@
-# Not Equal (!=)
+# Not Equal `tag:Operator;color:#FFE500`
 
 Checks if two values are different.
 

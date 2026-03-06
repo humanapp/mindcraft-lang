@@ -1,4 +1,4 @@
-# Not
+# Not `tag:Operator;color:#FFE500`
 
 Inverts a condition so it fires when the original would not.
 

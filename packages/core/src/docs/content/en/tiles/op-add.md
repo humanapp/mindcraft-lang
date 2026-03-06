@@ -1,4 +1,4 @@
-# Add (+)
+# Add `tag:Operator;color:#FFE500`
 
 Adds two numbers together.
 

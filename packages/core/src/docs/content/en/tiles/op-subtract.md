@@ -1,4 +1,4 @@
-# Subtract (-)
+# Subtract `tag:Operator;color:#FFE500`
 
 Subtracts the right number from the left number.
 

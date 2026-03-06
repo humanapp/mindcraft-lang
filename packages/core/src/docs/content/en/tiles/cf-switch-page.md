@@ -1,4 +1,4 @@
-# Switch Page
+# Switch Page `tag:Operator;color:#FFE500`
 
 Switches the brain to a different page.
 

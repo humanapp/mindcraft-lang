@@ -1,4 +1,4 @@
-# Or
+# Or `tag:Operator;color:#FFE500`
 
 Makes the rule fire when either condition is true.
 

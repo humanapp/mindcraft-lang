@@ -16,7 +16,7 @@ This rule turns the actor away from a visible carnivore.
 
 ## Modifiers
 
-| Tile | Description |
+| Modifier | Description |
 |------|---------|
 | Anonymous Actor | If provided, the target to turn toward or away from. If not provided, the best target will be inferred from context. |
 | `tile:tile.modifier->modifier.movement.toward` | Turn toward the target |

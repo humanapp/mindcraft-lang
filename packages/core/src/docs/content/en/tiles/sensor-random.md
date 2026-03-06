@@ -1,4 +1,4 @@
-# Random
+# Random `tag:Sensor;color:#aa11aa`
 
 Produces a random number between 0 and 1.
 

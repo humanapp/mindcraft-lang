@@ -1,4 +1,4 @@
-# Restart Page
+# Restart Page `tag:Operator;color:#FFE500`
 
 Restarts the current page from the beginning.
 

@@ -1,4 +1,4 @@
-# Divide (/)
+# Divide `tag:Operator;color:#FFE500`
 
 Divides the left number by the right number.
 

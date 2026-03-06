@@ -1,4 +1,4 @@
-# Less Than or Equal (<=)
+# Less Than or Equal `tag:Operator;color:#FFE500`
 
 Checks if the left value is less than or equal to the right value.
 

@@ -32,12 +32,6 @@ export const appTileDocs: readonly AppTileDocMeta[] = [
     category: "Sensors",
     contentKey: "bump",
   },
-  {
-    tileId: "tile.sensor->sensor.timeout",
-    tags: ["time", "delay", "timer"],
-    category: "Sensors",
-    contentKey: "timeout",
-  },
 
   // -- Actuators -------------------------------------------------------------
   {

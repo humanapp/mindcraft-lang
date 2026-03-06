@@ -1,4 +1,4 @@
-# Negate
+# Negate `tag:Operator;color:#FFE500`
 
 Flips the sign of a number (positive becomes negative and vice versa).
 
