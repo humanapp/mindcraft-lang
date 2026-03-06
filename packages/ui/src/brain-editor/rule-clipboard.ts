@@ -1,4 +1,4 @@
-import { List, type ReadonlyList } from "@mindcraft-lang/core";
+import { List, logger, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   getBrainServices,
   getPageIdFromTileId,
@@ -8,6 +8,7 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { type BrainDef, BrainRuleDef, type RuleJson } from "@mindcraft-lang/core/brain/model";
 import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import { isClipboardLoggingEnabled } from "../settings";
 
 /**
  * Serialized clipboard payload for copied rules.
@@ -90,6 +91,12 @@ export function copyRuleToClipboard(rule: BrainRuleDef): void {
   const catalogJson = tempCatalog.toJson();
 
   clipboardData = { ruleJsons: [ruleJson], catalogJson, pageNames };
+  if (isClipboardLoggingEnabled()) {
+    logger.info(
+      "[clipboard] rule copied",
+      JSON.stringify({ ruleJsons: clipboardData.ruleJsons, catalog: clipboardData.catalogJson.toArray() }, null, 2)
+    );
+  }
   notifyClipboardChanged();
 }
 

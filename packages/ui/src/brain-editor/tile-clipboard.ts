@@ -1,4 +1,4 @@
-import type { ReadonlyList } from "@mindcraft-lang/core";
+import { logger, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   getPageIdFromTileId,
   type IBrainDef,
@@ -8,6 +8,7 @@ import {
   mkPageTileId,
 } from "@mindcraft-lang/core/brain";
 import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import { isClipboardLoggingEnabled } from "../settings";
 
 /**
  * Serialized clipboard payload for a copied tile.
@@ -71,6 +72,12 @@ export function copyTileToClipboard(tileDef: IBrainTileDef, brain: IBrainDef | u
   const catalogJson = tempCatalog.toJson();
 
   tileClipboardData = { tileId: tileDef.tileId, tileDef, catalogJson, pageName };
+  if (isClipboardLoggingEnabled()) {
+    logger.info(
+      "[clipboard] tile copied",
+      JSON.stringify({ tileId: tileClipboardData.tileId, catalog: tileClipboardData.catalogJson.toArray() }, null, 2)
+    );
+  }
   notifyTileClipboardChanged();
 }
 

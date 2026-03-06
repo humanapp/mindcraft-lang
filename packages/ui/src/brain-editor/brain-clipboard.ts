@@ -1,4 +1,6 @@
+import { logger } from "@mindcraft-lang/core";
 import type { BrainDef, BrainJson } from "@mindcraft-lang/core/brain/model";
+import { isClipboardLoggingEnabled } from "../settings";
 
 /**
  * Serialized clipboard payload for a copied brain.
@@ -36,6 +38,9 @@ export function onBrainClipboardChanged(listener: () => void): () => void {
  */
 export function copyBrainToClipboard(brain: BrainDef): void {
   clipboardData = { brainJson: brain.toJson() };
+  if (isClipboardLoggingEnabled()) {
+    logger.info("[clipboard] brain copied", JSON.stringify(clipboardData.brainJson, null, 2));
+  }
   notifyClipboardChanged();
 }
 
