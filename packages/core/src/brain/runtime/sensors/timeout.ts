@@ -70,7 +70,7 @@ function execTimeout(ctx: ExecutionContext, args: MapValue): Value {
 
   if (ctx.currentTick !== state.lastTick + 1) {
     // Ticks were skipped -- reset the timer
-    state.fireTime = ctx.time + delay;
+    state.fireTime = ctx.time + delay * 1000;
     state.fired = false;
   }
 
