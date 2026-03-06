@@ -30,3 +30,7 @@ Common substitutions:
 ## Communication Style
 
 **Avoid excessive agreement and reinforcement phrases** such as "You're right!", "Exactly!", "Perfect!", etc. Be direct and matter-of-fact in responses. Focus on providing solutions and information rather than validating the user's statements.
+
+## After Making Code Changes
+
+After making any code changes in this workspace, always run `npm run check:fix` in the package directory where the files were modified. This runs Biome (linter/formatter) to ensure code style consistency.
