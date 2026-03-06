@@ -42,6 +42,7 @@ export {
   RemoveTileCommand,
   RenameBrainCommand,
   RenamePageCommand,
+  RenameVariableCommand,
   ReplaceBrainCommand,
   ReplaceLastPageCommand,
   ReplaceTileCommand,
@@ -51,6 +52,7 @@ export { EditLiteralFormatDialog } from "./EditLiteralFormatDialog";
 // Hooks
 export { useRuleCapabilities } from "./hooks/useRuleCapabilities";
 export { useTileSelection } from "./hooks/useTileSelection";
+export { RenameVariableDialog } from "./RenameVariableDialog";
 // Clipboard utilities
 export {
   copyRuleToClipboard,
