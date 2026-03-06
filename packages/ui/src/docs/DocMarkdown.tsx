@@ -1,5 +1,6 @@
 import { getBrainServices, type IBrainTileDef } from "@mindcraft-lang/core/brain";
 import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { BrainCodeBlock } from "./BrainCodeBlock";
 import { InlineTileIcon } from "./DocsRule";
 import { useDocsSidebar } from "./DocsSidebarContext";
@@ -105,6 +106,30 @@ const MD_COMPONENTS: Components = {
   hr() {
     return <hr className="border-slate-700 my-3" />;
   },
+
+  // Table elements
+  table({ children: t }) {
+    return (
+      <div className="overflow-x-auto my-3">
+        <table className="w-full text-sm border-collapse">{t}</table>
+      </div>
+    );
+  },
+  thead({ children: t }) {
+    return <thead className="border-b border-slate-600">{t}</thead>;
+  },
+  tbody({ children: t }) {
+    return <tbody>{t}</tbody>;
+  },
+  tr({ children: t }) {
+    return <tr className="border-b border-slate-700/50 last:border-0">{t}</tr>;
+  },
+  th({ children: t }) {
+    return <th className="text-left text-slate-300 font-semibold px-2 py-1.5">{t}</th>;
+  },
+  td({ children: t }) {
+    return <td className="text-slate-300 px-2 py-1.5 align-top">{t}</td>;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -116,5 +141,9 @@ interface DocMarkdownProps {
 }
 
 export function DocMarkdown({ children }: DocMarkdownProps) {
-  return <Markdown components={MD_COMPONENTS}>{children}</Markdown>;
+  return (
+    <Markdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+      {children}
+    </Markdown>
+  );
 }
