@@ -31,14 +31,15 @@ const kAnonymousNumberSlotId = getSlotId(callDef, AnonNumber);
 type TimeoutState = {
   fireTime: number;
   lastTick: number;
-  fired: boolean;
 };
 
 function onPageEntered(ctx: ExecutionContext) {
   const state: TimeoutState = {
     fireTime: 0,
-    lastTick: -1,
-    fired: false,
+    // -2 ensures the first tick (0) triggers the skip-reset branch
+    // (0 !== -2 + 1), which initializes fireTime to ctx.time + delay
+    // instead of firing immediately.
+    lastTick: -2,
   };
   setCallSiteState(ctx, state);
 }
@@ -56,14 +57,12 @@ function execTimeout(ctx: ExecutionContext, args: MapValue): Value {
   if (!state) {
     state = {
       fireTime: 0,
-      lastTick: -1,
-      fired: false,
+      // -2 ensures the first tick (0) triggers the skip-reset branch
+      // (0 !== -2 + 1), which initializes fireTime to ctx.time + delay
+      // instead of firing immediately.
+      lastTick: -2,
     };
     setCallSiteState(ctx, state);
-  }
-
-  if (state.fired) {
-    return TRUE_VALUE;
   }
 
   let shouldFire = false;
@@ -71,12 +70,11 @@ function execTimeout(ctx: ExecutionContext, args: MapValue): Value {
   if (ctx.currentTick !== state.lastTick + 1) {
     // Ticks were skipped -- reset the timer
     state.fireTime = ctx.time + delay * 1000;
-    state.fired = false;
   }
 
   if (ctx.time >= state.fireTime) {
     shouldFire = true;
-    state.fired = true;
+    state.fireTime = ctx.time + delay * 1000;
   }
 
   state.lastTick = ctx.currentTick;
