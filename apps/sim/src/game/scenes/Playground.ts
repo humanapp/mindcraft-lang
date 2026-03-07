@@ -7,7 +7,11 @@ import type { Blip } from "@/brain/blip";
 import { BLIP_RADIUS } from "@/brain/blip";
 import { Engine } from "@/brain/engine";
 import type { ScoreSnapshot } from "@/brain/score";
-import { SCENE_READY_KEY } from "../main";
+/**
+ * Registry key where `StartGame` stores its scene-ready callback.
+ * Playground reads this in `create()` to notify React without an EventBus.
+ */
+export const SCENE_READY_KEY = "__onSceneReady";
 
 // Collision categories for Matter.js (bitmask)
 const CATEGORY_WALL = 0x0001;

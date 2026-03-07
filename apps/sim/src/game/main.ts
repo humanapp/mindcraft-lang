@@ -1,7 +1,9 @@
 import { AUTO, Game, Scale } from "phaser";
 import { Boot } from "./scenes/Boot";
-import { Playground } from "./scenes/Playground";
+import { Playground, SCENE_READY_KEY } from "./scenes/Playground";
 import { Preloader } from "./scenes/Preloader";
+
+export { SCENE_READY_KEY };
 
 //  Find out more information about the Game Config at:
 //  https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
@@ -24,12 +26,6 @@ const config: Phaser.Types.Core.GameConfig = {
   },
   scene: [Boot, Preloader, Playground],
 };
-
-/**
- * The registry key where `PhaserGame` stores its scene-ready callback.
- * Playground reads this in `create()` to notify React without an EventBus.
- */
-export const SCENE_READY_KEY = "__onSceneReady";
 
 const StartGame = (parent: string, onSceneReady?: (scene: Phaser.Scene) => void) => {
   const game = new Game({ ...config, parent });
