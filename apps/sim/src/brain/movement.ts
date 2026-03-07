@@ -396,7 +396,7 @@ export function steerAvoidObstacles(
   worldWidth: number,
   worldHeight: number,
   avoidRadius: number = 60,
-  weight: number = 1.5
+  weight: number = 1.0
 ): Steering {
   const px = self.sprite.x;
   const py = self.sprite.y;
@@ -448,7 +448,7 @@ export function steerAvoidObstacles(
   const diff = angleDiff(self.sprite.rotation, awayAngle);
 
   // Turn toward the repulsion direction; stronger when not already facing it
-  const turn = clamp(diff / (Math.PI / 2), -1, 1);
+  const turn = clamp(diff / Math.PI, -1, 1);
 
   // Small forward nudge so the actor slides along walls instead of stopping
   const forward = clamp(0.3 * repMag, 0, 0.5);
