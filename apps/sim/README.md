@@ -1,6 +1,6 @@
 # Ecosystem Sim
 
-A demo application built with the [Mindcraft language](../../README.md). Carnivores, herbivores, and plants roam a 2D physics world -- each driven by a behavior brain you can program in the visual tile editor.
+A demo application built with the [Mindcraft language](../../README.md). Carnivores, herbivores, and plants roam and survive in a 2D physics world -- each driven by a brain you can program.
 
 **Live demo:** <https://mindcraft-sim.humanappliance.io>
 
