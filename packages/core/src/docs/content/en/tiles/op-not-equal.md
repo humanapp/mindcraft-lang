@@ -1,3 +1,10 @@
+```brain noframe do
+{
+  "tileId": "tile.op->ne",
+  "catalog": []
+}
+```
+
 # Not Equal
 
 Checks if two values are different.

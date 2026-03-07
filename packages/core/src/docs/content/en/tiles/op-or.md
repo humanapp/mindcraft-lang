@@ -1,3 +1,10 @@
+```brain noframe do
+{
+  "tileId": "tile.op->or",
+  "catalog": []
+}
+```
+
 # Or
 
 Makes the rule fire when either condition is true.

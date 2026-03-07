@@ -1,3 +1,10 @@
+```brain noframe do
+{
+  "tileId": "tile.op->neg",
+  "catalog": []
+}
+```
+
 # Negate
 
 Flips the sign of a number (positive becomes negative and vice versa).

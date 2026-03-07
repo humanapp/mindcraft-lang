@@ -1,3 +1,10 @@
+```brain noframe do
+{
+  "tileId": "tile.op->lt",
+  "catalog": []
+}
+```
+
 # Less Than
 
 Checks if the left value is less than the right value.

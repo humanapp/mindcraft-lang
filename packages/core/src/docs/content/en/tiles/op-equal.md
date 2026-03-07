@@ -1,3 +1,10 @@
+```brain noframe do
+{
+  "tileId": "tile.op->eq",
+  "catalog": []
+}
+```
+
 # Equal To
 
 Checks if two values are equal.

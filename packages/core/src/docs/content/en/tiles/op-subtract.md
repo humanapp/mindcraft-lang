@@ -1,3 +1,10 @@
+```brain noframe do
+{
+  "tileId": "tile.op->sub",
+  "catalog": []
+}
+```
+
 # Subtract
 
 Subtracts the right number from the left number.

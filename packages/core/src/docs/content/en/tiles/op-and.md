@@ -1,3 +1,10 @@
+```brain noframe do
+{
+  "tileId": "tile.op->and",
+  "catalog": []
+}
+```
+
 # And
 
 Combines two conditions so both must be true for the rule to fire.

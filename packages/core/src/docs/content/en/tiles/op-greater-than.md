@@ -1,3 +1,10 @@
+```brain noframe do
+{
+  "tileId": "tile.op->gt",
+  "catalog": []
+}
+```
+
 # Greater Than
 
 Checks if the left value is greater than the right value.

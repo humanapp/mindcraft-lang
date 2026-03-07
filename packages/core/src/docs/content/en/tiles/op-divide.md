@@ -1,3 +1,10 @@
+```brain noframe do
+{
+  "tileId": "tile.op->div",
+  "catalog": []
+}
+```
+
 # Divide
 
 Divides the left number by the right number.
