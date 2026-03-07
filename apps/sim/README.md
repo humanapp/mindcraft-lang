@@ -1,13 +1,13 @@
 # Ecosystem Sim
 
-A demo application for the [Mindcraft language](../../README.md). Actors -- carnivores, herbivores, and plants -- move and interact in a 2D physics world, each driven by a user-editable Mindcraft brain.
-
-This app serves as a reference integration showing how to register custom types, sensors, and actuators, and how to embed the visual brain editor into a React UI.
+A demo application built with the [Mindcraft language](../../README.md). Carnivores, herbivores, and plants roam a 2D physics world -- each driven by a behavior brain you can program in the visual tile editor.
 
 **Live demo:** <https://mindcraft-sim.humanappliance.io>
 
 ![Screenshot 1](./assets/2026-03-07_15-11-12.png)
 ![Screenshot 2](./assets/2026-03-07_15-09-52.png)
+
+This app also serves as a reference integration for developers: it shows how to embed `@mindcraft-lang/core` and `@mindcraft-lang/ui` into a React application, and how to write custom sensors and actuators.
 
 ## Tech Stack
 
@@ -68,7 +68,7 @@ src/
     type-system.ts        App-specific types (ActorRef, Vector2)
     tileids.ts            Tile ID string constants
     fns/                  Host function implementations
-      sensors/              Bump, See, Timeout
+      sensors/              Bump, See
       actuators/            Move, Eat, Say, Turn, Shoot
     tiles/                Tile definitions + visual config
 
@@ -80,7 +80,8 @@ src/
     Sidebar.tsx             Dashboard (stats, time scale, population)
 
   services/             Platform services
-    brain-persistence.ts    localStorage save/load (binary + base64)
+    brain-persistence.ts    localStorage save/load for brains (binary + base64)
+    population-persistence.ts  localStorage save/load for desired population counts
 
   lib/                  Sim-specific utilities
     color.ts              heatColor(), energyTint() for Phaser rendering

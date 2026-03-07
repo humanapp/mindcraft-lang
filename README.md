@@ -43,7 +43,7 @@ npm install @mindcraft-lang/core
 
 ## Documentation
 
-Documentation is a work in progress. See the [core package README](packages/core/README.md) for language architecture and the [ui package README](packages/ui/README.md) for the shared React components. The [sim app](apps/sim/) provides a working example of integrating Mindcraft into a project.
+Documentation is a work in progress. See the [core package README](packages/core/README.md) for language architecture and the [ui package README](packages/ui/README.md) for the shared React components. The [sim app](apps/sim/) provides a working example of integrating Mindcraft into a project as well as in-app language documentation.
 
 ## Contributing
 
