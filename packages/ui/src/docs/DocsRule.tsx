@@ -183,7 +183,7 @@ export function InlineTileIcon({ tileDef }: InlineTileIconProps) {
 
   return (
     <span
-      className="inline-flex items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal text-nowrap"
+      className="inline-flex shrink-0 min-w-max items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal text-nowrap"
       style={{ borderColor: baseColor, backgroundColor: adjustAlpha(baseColor, 0.15), color: "#e2e8f0" }}
       title={tileDef.tileId}
     >
