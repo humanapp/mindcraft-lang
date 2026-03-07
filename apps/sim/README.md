@@ -6,6 +6,9 @@ This app serves as a reference integration showing how to register custom types,
 
 **Live demo:** <https://mindcraft-sim.humanappliance.io>
 
+![Screenshot 1](./assets/2026-03-07_15-11-12.png)
+![Screenshot 2](./assets/2026-03-07_15-09-52.png)
+
 ## Tech Stack
 
 - **Vite** -- bundler
