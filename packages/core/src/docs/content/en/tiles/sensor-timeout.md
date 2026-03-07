@@ -7,12 +7,12 @@
 
 # Timeout
 
-Fires after a specified number of seconds have elapsed.
+Fires at the specified time interval.
 
 ---
 
-Place `tile:tile.sensor->sensor.timeout` on the WHEN side to create time-based behavior.
-Set the duration by editing the tile's value. The timer resets each time the page is entered.
+Place `tile:tile.sensor->sensor.timeout` on the WHEN side of the rule to create time-based behavior.
+Set the time interval by providing an anonymous numeric parameter. Value is in seconds.
 
 ## Example
 
@@ -27,7 +27,7 @@ Set the duration by editing the tile's value. The timer resets each time the pag
       ],
       "do": [
         "tile.actuator->switch-page",
-        "tile.literal->number:<number>->2"
+        "tile.page->VaDrD7HLljXhpwy7"
       ],
       "children": []
     }
@@ -44,18 +44,22 @@ Set the duration by editing the tile's value. The timer resets each time the pag
     },
     {
       "version": 2,
-      "kind": "literal",
-      "tileId": "tile.literal->number:<number>->2",
-      "valueType": "number:<number>",
-      "value": 2,
-      "valueLabel": "2",
-      "displayFormat": "default"
+      "kind": "page",
+      "tileId": "tile.page->VaDrD7HLljXhpwy7",
+      "pageId": "VaDrD7HLljXhpwy7",
+      "label": "Regenerate"
     }
   ]
 }
 ```
 
-This rule turns the actor after the timeout period elapses.
+_After five seconds, switch to the page named "Regenerate"._
+
+## Modifiers & Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| Anonymous Number | `Number` | The time interval, in seconds. Default: `1` |
 
 ## See Also
 
