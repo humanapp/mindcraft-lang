@@ -98,16 +98,18 @@ export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
 
   return (
     <div
+      role="img"
       className={`relative flex flex-col border-2 h-24 min-h-24 max-h-24 ${
         isValueTile ? "w-auto min-w-24 max-w-72 px-3 pb-2.5" : "w-24 min-w-24 max-w-48 px-1 pb-1.5"
       } overflow-hidden rounded-lg pt-2 shrink-0`}
+      aria-label={label}
+      title={label}
       style={{
         borderColor: darkerSaturatedColor,
         background: `radial-gradient(circle at center, ${lighterColor}, ${darkerColor})`,
         ...(labelBasedWidth !== undefined ? { minWidth: labelBasedWidth } : {}),
         ...tileGlass.containerStyle,
       }}
-      title={label}
     >
       <div
         className="absolute inset-0 rounded-md pointer-events-none z-20"
@@ -185,7 +187,7 @@ export function InlineTileIcon({ tileDef }: InlineTileIconProps) {
     <span
       className="inline-flex shrink-0 min-w-max items-center gap-0.5 align-middle px-1 py-0.5 rounded border text-xs font-mono font-normal text-nowrap"
       style={{ borderColor: baseColor, backgroundColor: adjustAlpha(baseColor, 0.15), color: "#e2e8f0" }}
-      title={tileDef.tileId}
+      title={label}
     >
       {iconUrl && <img src={iconUrl} alt="" className="w-3.5 h-3.5 mr-px inline-block" aria-hidden="true" />}
       {label}
@@ -205,17 +207,29 @@ interface DocsRuleRowProps {
 }
 
 function DocsRuleRow({ whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowProps) {
+  const whenLabel = whenTiles.map((t) => (t.visual as TileVisual | undefined)?.label ?? t.tileId).join(", ");
+  const doLabel = doTiles.map((t) => (t.visual as TileVisual | undefined)?.label ?? t.tileId).join(", ");
+  const rowLabel =
+    lineNumber !== undefined
+      ? `Rule ${lineNumber}: When ${whenLabel || "always"}, do ${doLabel || "nothing"}`
+      : `When ${whenLabel || "always"}, do ${doLabel || "nothing"}`;
+
   return (
     <div
+      role="img"
       className="flex gap-1 rounded-xl p-2 mb-1 shadow-sm overflow-x-auto"
+      aria-label={rowLabel}
       style={{
         marginLeft: depth * 32,
         background: "linear-gradient(55deg, #16143A 0%, #8B6CF3 100%)",
       }}
     >
-      {/* Line number badge */}
+      {/* Line number badge -- aria-hidden because the number is already in the group aria-label */}
       {lineNumber !== undefined && (
-        <span className="self-center shrink-0 h-9 w-9 rounded-full bg-slate-100 text-slate-700 text-lg font-semibold flex items-center justify-center border-2 border-slate-300">
+        <span
+          className="self-center shrink-0 h-9 w-9 rounded-full bg-slate-100 text-slate-700 text-lg font-semibold flex items-center justify-center border-2 border-slate-300"
+          aria-hidden="true"
+        >
           {lineNumber}
         </span>
       )}

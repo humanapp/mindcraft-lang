@@ -158,16 +158,44 @@ interface TabBarProps {
 }
 
 function TabBar({ activeTab, setTab, itemClassName = "py-2 text-xs" }: TabBarProps) {
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const tabIds = TABS.map((t) => t.id);
+      const currentIndex = tabIds.indexOf(activeTab);
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setTab(tabIds[(currentIndex + 1) % tabIds.length]);
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setTab(tabIds[(currentIndex - 1 + tabIds.length) % tabIds.length]);
+      } else if (e.key === "Home") {
+        e.preventDefault();
+        setTab(tabIds[0]);
+      } else if (e.key === "End") {
+        e.preventDefault();
+        setTab(tabIds[tabIds.length - 1]);
+      }
+    },
+    [activeTab, setTab]
+  );
+
   return (
-    <div className="flex border-b border-slate-700 shrink-0" role="tablist" aria-label="Documentation sections">
+    <div
+      className="flex border-b border-slate-700 shrink-0"
+      role="tablist"
+      aria-label="Documentation sections"
+      onKeyDown={handleKeyDown}
+    >
       {TABS.map((tab) => {
         const isActive = activeTab === tab.id;
         return (
           <button
             key={tab.id}
+            id={`docs-tab-${tab.id}`}
             type="button"
             role="tab"
             aria-selected={isActive}
+            tabIndex={isActive ? 0 : -1}
             onClick={() => setTab(tab.id)}
             className={`flex-1 font-medium transition-colors border-b-2 ${itemClassName} ${
               isActive
@@ -220,6 +248,7 @@ function CategorySection({ category, children, defaultOpen = true }: CategorySec
       <button
         type="button"
         onClick={() => setIsOpen((o) => !o)}
+        aria-expanded={isOpen}
         className="flex items-center gap-1.5 w-full px-1 py-1.5 text-xs font-semibold text-slate-400 uppercase tracking-wider hover:text-slate-300 transition-colors"
       >
         <ChevronRight className={`w-3 h-3 transition-transform ${isOpen ? "rotate-90" : ""}`} aria-hidden="true" />
@@ -467,8 +496,19 @@ function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef 
     <>
       <SearchBar value={search} onChange={setSearch} inputRef={searchRef} />
       <TabBar activeTab={activeTab} setTab={handleSetTab} itemClassName={tabBarClassName} />
+      {/* Live region: announces result counts when search query is active */}
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {search.trim()
+          ? activeTab === "tiles"
+            ? `${filteredTiles.length} tile${filteredTiles.length === 1 ? "" : "s"} found`
+            : activeTab === "patterns"
+              ? `${filteredPatterns.length} pattern${filteredPatterns.length === 1 ? "" : "s"} found`
+              : `${filteredConcepts.length} concept${filteredConcepts.length === 1 ? "" : "s"} found`
+          : ""}
+      </div>
       <div
         role="tabpanel"
+        aria-labelledby={`docs-tab-${activeTab}`}
         className={`flex-1 min-h-0 overflow-y-auto ${scrollClassName}`}
         onWheel={(e) => e.nativeEvent.stopPropagation()}
       >
@@ -642,14 +682,18 @@ function MobilePanel() {
   const canPrint = detailContent !== null;
 
   return (
-    <div className="fixed inset-0 z-60 pointer-events-auto bg-slate-900 flex flex-col">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Documentation"
+      className="fixed inset-0 z-60 pointer-events-auto bg-slate-900 flex flex-col"
+    >
       {/* Header with back button */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-slate-700 shrink-0">
         <button
           type="button"
           onClick={close}
           className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors text-sm"
-          aria-label="Close docs"
         >
           <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           Back

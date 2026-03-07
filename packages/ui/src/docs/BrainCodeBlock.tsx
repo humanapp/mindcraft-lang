@@ -43,9 +43,10 @@ interface PlainRuleWrapper {
   catalog?: CatalogTileJson[];
 }
 
-/** Single-tile format: { tile: "tileId", catalog?: [...] } */
+/** Single-tile format: { tile: "tileId", catalog?: [...] } or { tileId: "...", catalog?: [...] } */
 interface PlainSingleTile {
-  tile: string;
+  tile?: string;
+  tileId?: string;
   catalog?: CatalogTileJson[];
   side?: "when" | "do";
 }
@@ -125,10 +126,11 @@ function parseBrainBlock(jsonStr: string): ParsedBlock | null {
       return { kind: "rules", rules, catalogEntries: collectCatalogEntries(rules) };
     }
     if (parsed && typeof parsed === "object") {
-      // Single tile: { tile: "tileId" }
-      if (typeof (parsed as PlainSingleTile).tile === "string") {
+      // Single tile: { tile: "tileId" } or { tileId: "..." }
+      const singleId = (parsed as PlainSingleTile).tile ?? (parsed as PlainSingleTile).tileId;
+      if (typeof singleId === "string") {
         const single = parsed as PlainSingleTile;
-        return { kind: "tiles", tileIds: [single.tile], catalogEntries: single.catalog ?? [], side: single.side };
+        return { kind: "tiles", tileIds: [singleId], catalogEntries: single.catalog ?? [], side: single.side };
       }
       // Multiple tiles: { tiles: ["tileId", ...] }
       if (Array.isArray((parsed as PlainMultiTile).tiles)) {
@@ -245,6 +247,7 @@ export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
         <button
           type="button"
           onClick={handleInsert}
+          aria-label="Copy rules to clipboard"
           className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 text-slate-200 hover:text-white transition-colors border border-slate-600 pointer-events-auto"
         >
           <ClipboardCopy className="w-3 h-3" aria-hidden="true" />

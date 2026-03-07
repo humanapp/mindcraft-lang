@@ -75,7 +75,7 @@ function InlineTileLink({ tileId, tileDef }: { tileId: string; tileDef: IBrainTi
       type="button"
       onClick={() => navigateToEntry("tiles", tileId)}
       className="inline-flex shrink-0 cursor-pointer hover:brightness-125 transition-[filter]"
-      title={`View docs for ${tileDef.visual?.label ?? tileId}`}
+      aria-label={`View docs for ${tileDef.visual?.label ?? tileId}`}
     >
       <InlineTileIcon tileDef={tileDef} />
     </button>

@@ -78,7 +78,8 @@ interface PlainRuleWrapper {
 }
 
 interface PlainSingleTile {
-  tile: string;
+  tile?: string;
+  tileId?: string;
   catalog?: CatalogTileJson[];
   side?: "when" | "do";
 }
@@ -149,11 +150,12 @@ function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string 
   try {
     const parsed = JSON.parse(content);
 
-    // Single tile: { tile: "tileId" }
-    if (parsed && typeof parsed === "object" && typeof parsed.tile === "string") {
+    // Single tile: { tile: "tileId" } or { tileId: "..." }
+    const singleId = parsed?.tile ?? parsed?.tileId;
+    if (parsed && typeof parsed === "object" && typeof singleId === "string") {
       const single = parsed as PlainSingleTile;
       const localCatalog = buildPrintLocalCatalog(single.catalog ?? []);
-      const tiles = resolveTiles([single.tile], localCatalog);
+      const tiles = resolveTiles([singleId], localCatalog);
       const side = single.side === "do" ? RuleSide.Do : single.side === "when" ? RuleSide.When : metaSide;
       return (
         <div className={noFrame ? "docs-print-tiles-noframe" : "docs-print-brain-block"}>
