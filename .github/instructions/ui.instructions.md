@@ -136,12 +136,12 @@ Doc markdown files support these custom syntaxes inside `DocMarkdown`:
 
 Accepted JSON formats inside brain fences:
 
-| Format            | JSON shape                                    | Renders as                                                |
-| ----------------- | --------------------------------------------- | --------------------------------------------------------- |
-| Array of rules    | `[{ when, do, children?, catalog? }]`         | Rule rows with WHEN/DO chips                              |
-| Clipboard wrapper | `{ ruleJsons: [...], catalog?: [...] }`       | Rule rows (supports local catalog for variables/literals) |
-| Single tile       | `{ tile: "tileId", catalog?: [...] }`         | Standalone tile chip                                      |
-| Multiple tiles    | `{ tiles: ["tileId", ...], catalog?: [...] }` | Row of tile chips                                         |
+| Format            | JSON shape                                                                    | Renders as                                                |
+| ----------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Array of rules    | `[{ when, do, children?, catalog? }]`                                         | Rule rows with WHEN/DO chips                              |
+| Clipboard wrapper | `{ ruleJsons: [...], catalog?: [...] }`                                       | Rule rows (supports local catalog for variables/literals) |
+| Single tile       | `{ tile: "tileId", catalog?: [...] }` or `{ tileId: "...", catalog?: [...] }` | Standalone tile chip                                      |
+| Multiple tiles    | `{ tiles: ["tileId", ...], catalog?: [...] }`                                 | Row of tile chips                                         |
 
 **Fence meta options** -- space-separated tokens after `brain` in the info string:
 
