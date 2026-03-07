@@ -1019,6 +1019,36 @@ function operatorHasLhsOverload(opDef: BrainTileOperatorDef, leftOperandType: Ty
 }
 
 /**
+ * Computes the effective left operand type for a candidate infix operator,
+ * accounting for precedence-based rebinding in the Pratt parser.
+ *
+ * When the current expression is a completed binaryOp (e.g., `[a] [>] [b]`)
+ * and the candidate operator has higher precedence than the outermost operator,
+ * the parser would rebind the candidate with the right operand rather than the
+ * whole expression. For example, placing `[*]` after `[a] [>] [b]` produces
+ * `[a] [>] ([b] [*] ...)` because `*` (precedence 20) binds tighter than `>`
+ * (precedence 5). In this case the effective LHS for `*` is `[b]` (Number),
+ * not the whole `[a] [>] [b]` (Boolean).
+ *
+ * Walks nested binaryOp right operands recursively to handle chains like
+ * `[a] [>] [b] [+] [c]` where `*` (prec 20 > `+` prec 10) rebinds with `[c]`.
+ */
+function effectiveLhsType(
+  expr: Expr,
+  candidatePrecedence: number,
+  operatorOverloads: IOperatorOverloads,
+  conversions: IConversionRegistry
+): TypeId | undefined {
+  if (expr.kind === "binaryOp") {
+    const outerPrec = expr.operator.op.parse.precedence;
+    if (candidatePrecedence > outerPrec) {
+      return effectiveLhsType(expr.right, candidatePrecedence, operatorOverloads, conversions);
+    }
+  }
+  return getExprOutputType(expr, operatorOverloads, conversions);
+}
+
+/**
  * Whether a tile can produce a value in an expression position.
  * Excludes operators (context-dependent), control flow, modifiers,
  * and parameters (action-call only).
@@ -1686,6 +1716,12 @@ function suggestExpressionTiles(
  * or via conversion). Operators needing LHS conversion go into `withConversion`.
  * When these are not provided, all infix operators are included as `Unchecked`.
  *
+ * When the left expression is a binaryOp, higher-precedence candidate operators
+ * would rebind with the right operand in the Pratt parser. In that case the
+ * effective LHS type is the right operand's type (or a deeper nested operand),
+ * not the overall expression's type. This allows e.g. `[a] [>] [b] [*]` where
+ * `*` binds with `[b]` (Number) even though `>` produces Boolean.
+ *
  * The assignment operator is excluded unless `leftExpr` is an l-value (variable).
  */
 function suggestInfixOperators(
@@ -1728,7 +1764,17 @@ function suggestInfixOperators(
       seen.add(tileDef.tileId);
 
       if (canFilter) {
-        if (!operatorHasLhsOverload(opDef, leftOperandType)) continue;
+        // Check the overall expression type first (covers same/lower precedence operators).
+        // For higher-precedence operators that would rebind with the right operand of a
+        // binaryOp, also check the effective LHS type at the rebinding point.
+        let matched = operatorHasLhsOverload(opDef, leftOperandType);
+        if (!matched && leftExpr !== undefined && leftExpr.kind === "binaryOp") {
+          const reboundLhsType = effectiveLhsType(leftExpr, opDef.op.parse.precedence, operatorOverloads, conversions);
+          if (reboundLhsType !== undefined && reboundLhsType !== leftOperandType) {
+            matched = operatorHasLhsOverload(opDef, reboundLhsType);
+          }
+        }
+        if (!matched) continue;
 
         result.exact.push({
           tileDef,

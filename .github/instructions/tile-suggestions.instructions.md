@@ -146,6 +146,7 @@ collectAvailableArgSlots(spec, argSlots, filledSlotIds, available, repeatMax, ro
 | `incompleteExprExpectedType(expr, overloads?, conversions?)`          | Infers the expected type of a missing sub-expression from context (e.g., assignment target type, field access type)                                                               |
 | `structFieldTypeCompatibility(structType, expectedType, conversions)` | Checks if a struct type has any field matching the expected type (directly or via conversion) -- used as a fallback in type compatibility                                         |
 | `hasStructValuePendingAccessor(actionExpr, catalogs, excludeSlotId?)` | Returns true if any slot contains a complete struct-typed value that doesn't match the expected type -- the user likely needs to drill down via accessor tiles                    |
+| `effectiveLhsType(expr, candidatePrecedence, overloads, conversions)` | Computes the effective LHS type for a candidate operator accounting for precedence-based rebinding -- walks binaryOp right spine when candidate precedence is higher              |
 
 ### How `suggestActionCallTiles` Uses the Tree Walk
 
@@ -253,10 +254,11 @@ Infers the expected type of the missing sub-expression in an incomplete expressi
 | Function                              | What it suggests                                                                                                                                                | When used                                                             |
 | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | `suggestExpressionTiles`              | All value-producing tiles + prefix operators (filtered by type/placement). Infix operators always excluded. When `valueOnly=true`, actuators are also excluded. | Empty position, incomplete expressions                                |
-| `suggestInfixOperators`               | Infix operator tiles, optionally filtered by LHS type                                                                                                           | After complete value expressions                                      |
+| `suggestInfixOperators`               | Infix operator tiles, filtered by LHS type with precedence-aware rebinding for binaryOp expressions                                                             | After complete value expressions                                      |
 | `suggestAccessorTiles`                | Accessor tiles whose `structTypeId` matches the trailing primary expression's output type, optionally filtered by accepted field types                          | After complete value expressions producing a struct type              |
 | `getExprOutputType`                   | Output type of an expression (for LHS type determination)                                                                                                       | Called before `suggestInfixOperators` when overload info is available |
 | `operatorHasLhsOverload`              | Checks if operator has any overload with exact LHS type match                                                                                                   | Called by `suggestInfixOperators` for each operator                   |
+| `effectiveLhsType`                    | Computes effective LHS type accounting for precedence-based rebinding in binaryOp right spine                                                                   | Called by `suggestInfixOperators` when initial LHS check fails        |
 | `suggestPrefixOperators`              | Prefix operator tiles only                                                                                                                                      | Replacement mode at prefix operator position                          |
 | `suggestPrefixOperatorsForValue`      | Prefix operator tiles filtered by result type                                                                                                                   | Inside action calls when value expressions are needed                 |
 | `suggestActionCallTiles`              | Call spec tiles + value expressions for anonymous slots                                                                                                         | Inside actuator/sensor argument lists                                 |
@@ -316,6 +318,16 @@ For each overload registered on the operator, checks if the first argType exactl
 
 Conversion-based matching is intentionally not used -- operators are only suggested when they have a direct overload for the LHS type. This prevents confusing suggestions like `subtract` for string operands (which would require String->Number conversion).
 
+### `effectiveLhsType(expr, candidatePrecedence, operatorOverloads, conversions)`
+
+Computes the effective left operand type for a candidate infix operator, accounting for precedence-based rebinding in the Pratt parser. When the current expression is a complete `binaryOp` and the candidate operator has higher precedence than the outermost operator, the Pratt parser would rebind the candidate with the right operand rather than the whole expression.
+
+For example, after `[a] [>] [b]` (which produces Boolean), placing `[*]` (precedence 20 > `>` precedence 5) would parse as `a > (b * ...)`. The effective LHS for `*` is `b` (Number), not the whole expression (Boolean).
+
+Walks nested `binaryOp` right operands recursively to handle chains like `[a] [>] [b] [+] [c]` where `*` (prec 20 > `+` prec 10) rebinds with `[c]`.
+
+Called by `suggestInfixOperators` as a fallback when the overall expression type doesn't match a candidate operator but the expression is a `binaryOp`. Only invoked when the initial `operatorHasLhsOverload` check fails.
+
 ### Example: Core Operator Filtering
 
 | Left Operand | Suggested Operators                                       | Excluded                                         |
@@ -323,6 +335,17 @@ Conversion-based matching is intentionally not used -- operators are only sugges
 | Number       | `+`, `-`, `*`, `/`, `==`, `!=`, `<`, `<=`, `>`, `>=`, `=` | `and`, `or`                                      |
 | Boolean      | `and`, `or`, `==`, `!=`, `=`                              | `+`, `-`, `*`, `/`, `<`, `<=`, `>`, `>=`         |
 | String       | `+`, `==`, `!=`, `=`                                      | `-`, `*`, `/`, `<`, `<=`, `>`, `>=`, `and`, `or` |
+
+### Precedence-Aware Filtering
+
+When the expression is a `binaryOp`, operators with higher precedence than the outermost operator are additionally matched against the right operand's type via `effectiveLhsType`. For example, after `[a] [>] [b]`:
+
+| Candidate    | Precedence | vs `>` (5) | Effective LHS  | Suggested? |
+| ------------ | ---------- | ---------- | -------------- | ---------- |
+| `and`        | 2          | lower      | Boolean (expr) | yes        |
+| `or`         | 1          | lower      | Boolean (expr) | yes        |
+| `+`          | 10         | higher     | Number (right) | yes        |
+| `*`          | 20         | higher     | Number (right) | yes        |
 
 ## Placement Filtering
 
@@ -401,6 +424,7 @@ suggestTiles()
 27. **Operator-derived type overrides slot type for incomplete anon values** -- when an anonymous slot contains an incomplete expression with an operator-derived type (e.g., `[1] [+] _` expects Number), `incompleteExprExpectedType` provides the operand type, which replaces the slot's declared type (e.g., String) in `valueExpectedTypes`. This ensures tiles matching the operator's expected operand type are exact matches, not conversion matches via the outer slot type.
 28. **`hasIncompleteAnonValues` respects `excludeSlotId`** -- like `hasParametersNeedingValues` and `hasStructValuePendingAccessor`, the `hasIncompleteAnonValues` helper skips the excluded slot when computing `valuePending`. This prevents the incomplete expression in a slot being replaced from suppressing named parameter/modifier tiles.
 29. **Insert-before uses truncated tile context** -- when inserting a tile before an existing tile at position N, the UI must build the `InsertionContext` from only the tiles before position N (i.e., `tiles.slice(0, N)`). The expression and unclosed paren depth are computed from this prefix, not the full tile list. This ensures the suggestion system sees the correct context -- e.g., inserting before position 0 produces an empty expression, offering all expression-start tiles (prefix operators, values, etc.).
+30. **Precedence-aware operator suggestions after binaryOp** -- when suggesting infix operators after a complete `binaryOp`, `suggestInfixOperators` uses `effectiveLhsType` to check whether higher-precedence operators would rebind with the right operand via the Pratt parser. For example, after `[a] [>] [b]` (Boolean), `*` (precedence 20 > 5) would rebind with `[b]` (Number), so it is suggested even though it has no Boolean overload. This ensures arithmetic operators are available after comparison expressions.
 
 ### Dependencies
 

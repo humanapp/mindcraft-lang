@@ -3047,3 +3047,86 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
     assert.ok(resultContains(result, modFarDef.tileId), "far away should be available after carnivore placed");
   });
 });
+
+// ---- Test 89: Right-spine operator rebinding ----
+
+describe("Right-spine operator rebinding", () => {
+  test("Test 89: [numVar] [>] [numVar] -> numeric operators suggested via right-spine rebinding", () => {
+    const numVarDef = services.tiles
+      .getAll()
+      .toArray()
+      .find(
+        (t) => t.kind === "variable" && (t as BrainTileVariableDef).varType === CoreTypeIds.Number
+      ) as BrainTileVariableDef;
+    assert.ok(numVarDef, "Need a Number variable tile");
+
+    const gtOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.GreaterThan)) as BrainTileOperatorDef;
+    assert.ok(gtOpDef, "Need the > operator tile");
+
+    // Build [a] [>] [b] as a complete binaryOp expression
+    const leftVar: VariableExpr = { nodeId: 0, kind: "variable", tileDef: numVarDef, span: { from: 0, to: 1 } };
+    const rightVar: VariableExpr = { nodeId: 1, kind: "variable", tileDef: numVarDef, span: { from: 2, to: 3 } };
+    const binaryExpr: BinaryOpExpr = {
+      nodeId: 2,
+      kind: "binaryOp",
+      operator: gtOpDef,
+      left: leftVar,
+      right: rightVar,
+      span: { from: 0, to: 3 },
+    };
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr: binaryExpr }, catalogList());
+
+    // Boolean-compatible operators should be suggested (overall expr type is Boolean)
+    assert.ok(resultContains(result, mkOperatorTileId(CoreOpId.And)), "and should be suggested (Boolean LHS)");
+    assert.ok(resultContains(result, mkOperatorTileId(CoreOpId.Or)), "or should be suggested (Boolean LHS)");
+
+    // Numeric operators should ALSO be suggested because they have higher precedence
+    // than > and would rebind with the right operand [b] (Number) via Pratt parsing.
+    // e.g., [a] [>] [b] [*] [c] parses as a > (b * c)
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Multiply)),
+      "multiply should be suggested (rebinds with Number right operand)"
+    );
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Add)),
+      "add should be suggested (rebinds with Number right operand)"
+    );
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Subtract)),
+      "subtract should be suggested (rebinds with Number right operand)"
+    );
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Divide)),
+      "divide should be suggested (rebinds with Number right operand)"
+    );
+  });
+
+  test("Test 89b: parseTilesForSuggestions [numVar] [>] [numVar] -> numeric operators available", () => {
+    const numVarDef = services.tiles
+      .getAll()
+      .toArray()
+      .find(
+        (t) => t.kind === "variable" && (t as BrainTileVariableDef).varType === CoreTypeIds.Number
+      ) as BrainTileVariableDef;
+    assert.ok(numVarDef, "Need a Number variable tile");
+
+    const gtOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.GreaterThan)) as BrainTileOperatorDef;
+    assert.ok(gtOpDef, "Need the > operator tile");
+
+    // Use parseTilesForSuggestions to match the real UI flow
+    const tiles = List.from<IBrainTileDef>([numVarDef, gtOpDef, numVarDef]);
+    const expr = parseTilesForSuggestions(tiles);
+
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
+
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Multiply)),
+      "multiply should be suggested after [numVar] [>] [numVar]"
+    );
+    assert.ok(
+      resultContains(result, mkOperatorTileId(CoreOpId.Add)),
+      "add should be suggested after [numVar] [>] [numVar]"
+    );
+  });
+});
