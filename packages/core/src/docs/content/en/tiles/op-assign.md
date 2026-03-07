@@ -1,6 +1,15 @@
-# Gets `tag:Operator;color:#FFE500`
+```brain noframe do
+{
+  "tileId": "tile.op->assign",
+  "catalog": []
+}
+```
+
+# Gets
 
 Assigns a value a variable.
+
+---
 
 Place the variable on the left, the `tile:tile.op->assign` in the middle, and the value on the right.
 
@@ -50,5 +59,5 @@ The `tile:tile.op->assign` operator works with all variable types -- numbers, bo
 
 ## See Also
 
-- `tile:tile.op->eq`
-- `tile:tile.op->ne`
+`tile:tile.op->eq`
+`tile:tile.op->ne`

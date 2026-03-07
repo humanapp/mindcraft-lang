@@ -1,6 +1,15 @@
-# Bump `tag:Sensor;color:#aa11aa`
+```brain noframe when
+{
+  "tileId": "tile.sensor->sensor.bump",
+  "catalog": []
+}
+```
+
+# Bump
 
 Fires when this actor collides with another actor.
+
+---
 
 Place `tile:tile.sensor->sensor.bump` on the **WHEN** side of a rule to detect contact with other actors. Add entity type modifiers to filter to specific kinds of actors.
 

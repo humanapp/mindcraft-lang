@@ -2,6 +2,8 @@
 
 Filters detection to plant actors only.
 
+---
+
 Attach `tile:tile.modifier->modifier.actor_kind.plant` to a sensor or actuator
 to restrict it to plants. Plants are stationary and are eaten by herbivores.
 
@@ -15,8 +17,8 @@ This rule approaches visible plants to forage.
 
 ## See Also
 
-- `tile:tile.modifier->modifier.actor_kind.herbivore`
-- `tile:tile.modifier->modifier.actor_kind.carnivore`
-- `tile:tile.sensor->sensor.see`
-- `tile:tile.actuator->actuator.eat`
-- `tile:tile.modifier->modifier.distance.nearby`
+`tile:tile.modifier->modifier.actor_kind.herbivore`
+`tile:tile.modifier->modifier.actor_kind.carnivore`
+`tile:tile.sensor->sensor.see`
+`tile:tile.actuator->actuator.eat`
+`tile:tile.modifier->modifier.distance.nearby`

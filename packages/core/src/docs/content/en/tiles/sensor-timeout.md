@@ -1,6 +1,15 @@
-# Timeout `tag:Sensor;color:#aa11aa`
+```brain noframe when
+{
+  "tileId": "tile.sensor->sensor.timeout",
+  "catalog": []
+}
+```
+
+# Timeout
 
 Fires after a specified number of seconds have elapsed.
+
+---
 
 Place `tile:tile.sensor->sensor.timeout` on the WHEN side to create time-based behavior.
 Set the duration by editing the tile's value. The timer resets each time the page is entered.
@@ -50,6 +59,6 @@ This rule turns the actor after the timeout period elapses.
 
 ## See Also
 
-- `tile:tile.sensor->on-page-entered`
-- `tile:tile.actuator->switch-page`
-- `tile:tile.actuator->restart-page`
+`tile:tile.sensor->on-page-entered`
+`tile:tile.actuator->switch-page`
+`tile:tile.actuator->restart-page`

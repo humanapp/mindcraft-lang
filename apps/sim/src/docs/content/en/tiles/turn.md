@@ -1,8 +1,14 @@
-# Turn `tag:Actuator;color:#11aa11`
+```brain noframe do
+{ "tile": "tile.actuator->actuator.turn" }
+```
 
-Rotates the actor to face a new direction.
+# Turn
 
-Place `tile:tile.actuator->actuator.turn` on the **DO** side to change facing direction.
+Changes the actor's facing direction.
+
+---
+
+Place `tile:tile.actuator->actuator.turn` on the **DO** side of a rule to change facing direction.
 Without modifiers, the actor turns continuously around. Combine with modifiers to turn
 toward or away from specific actors.
 
@@ -14,11 +20,10 @@ toward or away from specific actors.
 
 This rule turns the actor away from a visible carnivore.
 
-## Modifiers
+## Modifiers & Parameters
 
 | Modifier | Description |
 |------|---------|
-| Anonymous Actor | If provided, the target to turn toward or away from. If not provided, the best target will be inferred from context. |
 | `tile:tile.modifier->modifier.movement.toward` | Turn toward the target |
 | `tile:tile.modifier->modifier.movement.awayfrom` | Turn away from the target |
 | `tile:tile.modifier->modifier.turn.around` | Turn around |
@@ -31,6 +36,9 @@ This rule turns the actor away from a visible carnivore.
 | `tile:tile.modifier->modifier.quickly` | Turn quickly. Up to three instances of this tile may be added, to increase the effect. |
 | `tile:tile.modifier->modifier.slowly` | Turn slowly. Up to three instances of this tile may be added, to increase the effect. |
 
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| Anonymous Actor | `Actor` | The target to turn toward or away from. If not provided, the best target will be inferred from context. |
 
 ## See Also
 

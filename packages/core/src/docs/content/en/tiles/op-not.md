@@ -1,10 +1,12 @@
-# Not `tag:Operator;color:#FFE500`
+# Not
 
 Inverts a condition so it fires when the original would not.
+
+---
 
 Place `tile:tile.op->not` before a condition tile on the WHEN side.
 
 ## See Also
 
-- `tile:tile.op->and`
-- `tile:tile.op->or`
+`tile:tile.op->and`
+`tile:tile.op->or`

@@ -2,6 +2,8 @@
 
 Filters detection to herbivore actors only.
 
+---
+
 Attach `tile:tile.modifier->modifier.actor_kind.herbivore` to a sensor or actuator
 to restrict it to herbivores. Herbivores eat plants and are eaten by carnivores.
 
@@ -15,7 +17,7 @@ This rule approaches visible herbivores.
 
 ## See Also
 
-- `tile:tile.modifier->modifier.actor_kind.carnivore`
-- `tile:tile.modifier->modifier.actor_kind.plant`
-- `tile:tile.sensor->sensor.see`
-- `tile:tile.actuator->actuator.shoot`
+`tile:tile.modifier->modifier.actor_kind.carnivore`
+`tile:tile.modifier->modifier.actor_kind.plant`
+`tile:tile.sensor->sensor.see`
+`tile:tile.actuator->actuator.shoot`
