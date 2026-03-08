@@ -8,8 +8,7 @@ Displays a text bubble above the actor.
 
 ---
 
-Place `tile:tile.actuator->actuator.say` on the DO side to show a message.
-Set the text by editing the tile's value. The bubble appears for a short time.
+Place `tile:tile.actuator->actuator.say` on the **DO** side of a rule to show a message to show a speech bubble. If you omit something to say, any existing speech bubble will be closed.
 
 ## Example
 
@@ -48,9 +47,12 @@ _Say "Bumped!" when bumping another actor._
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| 
+| Anonymous Text | `Text` | The text to show in the speech bubble. If omitted, closes the current speech bubble. |
+| `tile:tile.parameter->parameter.duration` | `Number` | How long the speech bubble should show, in seconds. Default: `5` |
 
 ## See Also
 
-`tile:tile.sensor->sensor.see`
+`tile:tile.lit.factory->string`
+`tile:tile.var.factory->string`
+`tile:tile.parameter->parameter.duration`
 `tile:tile.sensor->sensor.bump`
