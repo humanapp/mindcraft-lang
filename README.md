@@ -29,7 +29,7 @@ apps/
 |---------|-------------|
 | [@mindcraft-lang/core](packages/core/) | Language runtime -- tiles, parser, compiler, VM (multi-target: Roblox, Node.js, ESM) |
 | [@mindcraft-lang/ui](packages/ui/) | Shared React UI -- shadcn/ui primitives + brain editor components |
-| [@mindcraft-lang/docs](packages/docs/) | Shared documentation sidebar, markdown rendering, and brain-rule visualisations |
+| [@mindcraft-lang/docs](packages/docs/) | Shared documentation sidebar, markdown rendering, and brain-rule visualizations |
 
 ## Apps
 
