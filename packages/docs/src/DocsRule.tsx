@@ -209,8 +209,8 @@ function DocsRuleRow({ whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowP
   const doLabel = doTiles.map((t) => (t.visual as TileVisual | undefined)?.label ?? t.tileId).join(", ");
   const rowLabel =
     lineNumber !== undefined
-      ? `Rule ${lineNumber}: When ${whenLabel || "always"}, do ${doLabel || "nothing"}`
-      : `When ${whenLabel || "always"}, do ${doLabel || "nothing"}`;
+      ? `Rule ${lineNumber}: When ${whenLabel || ""}, do ${doLabel || ""}`
+      : `When ${whenLabel || ""}, do ${doLabel || ""}`;
 
   return (
     <div
@@ -253,7 +253,6 @@ function DocsRuleRow({ whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowP
           // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
           <DocsTileChip key={i} tileDef={tile} side={RuleSide.When} />
         ))}
-        {whenTiles.length === 0 && <span className="text-xs text-slate-500 italic px-1">always</span>}
       </div>
 
       {/* DO chip */}
@@ -275,7 +274,6 @@ function DocsRuleRow({ whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowP
           // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
           <DocsTileChip key={i} tileDef={tile} side={RuleSide.Do} />
         ))}
-        {doTiles.length === 0 && <span className="text-xs text-slate-500 italic px-1">nothing</span>}
       </div>
     </div>
   );
