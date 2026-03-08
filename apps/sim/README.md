@@ -4,8 +4,13 @@ A demo application built with the [Mindcraft language](../../README.md). Carnivo
 
 **Live demo:** <https://mindcraft-sim.humanappliance.io> | **Language docs:** <https://mindcraft-sim.humanappliance.io/docs>
 
-![Screenshot 1](./assets/2026-03-07_15-11-12.png)
-![Screenshot 2](./assets/2026-03-07_15-09-52.png)
+<div align="center">
+  <img src="./assets/2026-03-07_15-11-12.png" alt="Sim Screenshot 1" width="80%" />
+</div>
+
+<div align="center">
+  <img src="./assets/2026-03-07_15-09-52.png" alt="Sim Screenshot 1" width="80%" />
+</div>
 
 This app also serves as a reference integration for developers: it shows how to embed `@mindcraft-lang/core` and `@mindcraft-lang/ui` into a React application, and how to write custom sensors and actuators.
 
@@ -18,6 +23,7 @@ This app also serves as a reference integration for developers: it shows how to 
 - **miniplex** -- ECS for actor management
 - **@mindcraft-lang/core** -- Mindcraft language runtime (local dependency)
 - **@mindcraft-lang/ui** -- shared React UI components and brain editor (local dependency)
+- **@mindcraft-lang/docs** -- documentation content and assets (local dependency)
 
 ## Getting Started
 
