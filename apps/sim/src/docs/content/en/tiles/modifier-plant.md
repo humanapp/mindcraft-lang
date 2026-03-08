@@ -1,7 +1,9 @@
+```brain noframe when
 {
   "tileId": "tile.modifier->modifier.actor_kind.plant",
   "catalog": []
 }
+```
 
 # Plant
 
