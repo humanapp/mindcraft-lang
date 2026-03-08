@@ -12,6 +12,8 @@ Shared React UI components for **Mindcraft** web applications. This package prov
 
 This is a **source-only package** -- there is no build step. Consuming apps resolve the source directly via Vite aliases and tsconfig path mappings.
 
+For step-by-step setup instructions in your own project, see the [Integration Guide](https://github.com/humanapp/mindcraft-lang/blob/main/INTEGRATION.md).
+
 ### Vite config
 
 ```js

@@ -37,6 +37,10 @@ src/
 
 Layers follow a strict bottom-up dependency hierarchy: `primitives -> platform -> util -> systems -> brain`. This is enforced because the Luau target does not tolerate circular imports.
 
+## Integration
+
+To use this package in your own app, see the [Integration Guide](https://github.com/humanapp/mindcraft-lang/blob/main/INTEGRATION.md).
+
 ## Getting Started
 
 ### Prerequisites

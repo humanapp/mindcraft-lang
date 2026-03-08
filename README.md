@@ -47,6 +47,8 @@ npm install @mindcraft-lang/core
 
 Documentation is a work in progress. Browse the sim demo's [language documentation](https://mindcraft-sim.humanappliance.io/docs) online. See also the [core package README](packages/core/README.md) for language architecture, the [ui package README](packages/ui/README.md) for the shared React components, and the [docs package README](packages/docs/README.md) for the documentation system.
 
+## Integration
+
 To integrate these packages into your own app, see the [Integration Guide](INTEGRATION.md).
 
 ## Contributing
