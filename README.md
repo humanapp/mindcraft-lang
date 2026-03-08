@@ -18,6 +18,7 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 packages/
   core/       @mindcraft-lang/core -- language runtime (multi-target)
   ui/         @mindcraft-lang/ui -- shared React UI components
+  docs/       @mindcraft-lang/docs -- shared documentation sidebar and rendering
 apps/
   sim/        Ecosystem simulation demo
 ```
@@ -28,6 +29,7 @@ apps/
 |---------|-------------|
 | [@mindcraft-lang/core](packages/core/) | Language runtime -- tiles, parser, compiler, VM (multi-target: Roblox, Node.js, ESM) |
 | [@mindcraft-lang/ui](packages/ui/) | Shared React UI -- shadcn/ui primitives + brain editor components |
+| [@mindcraft-lang/docs](packages/docs/) | Shared documentation sidebar, markdown rendering, and brain-rule visualisations |
 
 ## Apps
 
@@ -43,7 +45,7 @@ npm install @mindcraft-lang/core
 
 ## Documentation
 
-Documentation is a work in progress. Browse the sim demo's [language documentation](https://mindcraft-sim.humanappliance.io/docs) online. See also the [core package README](packages/core/README.md) for language architecture and the [ui package README](packages/ui/README.md) for the shared React components.
+Documentation is a work in progress. Browse the sim demo's [language documentation](https://mindcraft-sim.humanappliance.io/docs) online. See also the [core package README](packages/core/README.md) for language architecture, the [ui package README](packages/ui/README.md) for the shared React components, and the [docs package README](packages/docs/README.md) for the documentation system.
 
 ## Contributing
 
