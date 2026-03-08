@@ -39,7 +39,7 @@ export function resolveTargetPosition(
   // 3. Rule's targetActor variable
   const targetActorVar = ctx.rule?.getVariable<NumberValue>("targetActor");
   const targetId = targetActorVar?.v;
-  const target = targetId ? getActor(ctx, targetId) : undefined;
+  const target = targetId !== undefined ? getActor(ctx, targetId) : undefined;
   return target ? new Vector2(target.sprite.x, target.sprite.y) : undefined;
 }
 
@@ -63,5 +63,5 @@ export function resolveTargetActor(ctx: ExecutionContext, args: MapValue, actorR
   // 2. Rule's targetActor variable
   const targetActorVar = ctx.rule?.getVariable<NumberValue>("targetActor");
   const targetId = targetActorVar?.v;
-  return targetId ? getActor(ctx, targetId) : undefined;
+  return targetId !== undefined ? getActor(ctx, targetId) : undefined;
 }
