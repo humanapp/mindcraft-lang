@@ -5,6 +5,7 @@ export type { DocsConceptEntry, DocsEntries, DocsPatternEntry, DocsTileEntry } f
 export { DocsRegistry } from "./DocsRegistry";
 export type { DocsRuleData } from "./DocsRule";
 export { DocsRuleBlock, InlineTileIcon } from "./DocsRule";
-export { DocsSidebar } from "./DocsSidebar";
+export type { DocsPanelContentProps } from "./DocsSidebar";
+export { DocsPanelContent, DocsSidebar } from "./DocsSidebar";
 export type { DocTab } from "./DocsSidebarContext";
 export { DocsSidebarProvider, useDocsSidebar } from "./DocsSidebarContext";

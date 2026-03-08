@@ -10,7 +10,8 @@ const allowPkg =
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: "./",
+  base: "/",
+  appType: "spa",
   plugins: [
     react(),
   ],

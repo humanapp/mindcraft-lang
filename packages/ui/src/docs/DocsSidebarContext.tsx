@@ -29,13 +29,25 @@ const DocsSidebarContext = createContext<DocsSidebarContextValue | null>(null);
 interface DocsSidebarProviderProps {
   children: ReactNode;
   registry?: DocsRegistry;
+  /** Initial active tab (defaults to "tiles"). */
+  initialTab?: DocTab;
+  /** Initial detail-view key (defaults to null -- list view). */
+  initialNavKey?: string | null;
+  /** Initial detail-view tab (defaults to null). */
+  initialNavTab?: DocTab | null;
 }
 
-export function DocsSidebarProvider({ children, registry: externalRegistry }: DocsSidebarProviderProps) {
+export function DocsSidebarProvider({
+  children,
+  registry: externalRegistry,
+  initialTab,
+  initialNavKey,
+  initialNavTab,
+}: DocsSidebarProviderProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<DocTab>("tiles");
-  const [navKey, setNavKey] = useState<string | null>(null);
-  const [navTab, setNavTab] = useState<DocTab | null>(null);
+  const [activeTab, setActiveTab] = useState<DocTab>(initialTab ?? "tiles");
+  const [navKey, setNavKey] = useState<string | null>(initialNavKey ?? null);
+  const [navTab, setNavTab] = useState<DocTab | null>(initialNavTab ?? null);
   const registry = useMemo(() => externalRegistry ?? new DocsRegistry(), [externalRegistry]);
 
   const navigateToEntry = useCallback((tab: DocTab, key: string) => {

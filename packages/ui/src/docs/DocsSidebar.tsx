@@ -337,13 +337,13 @@ function ConceptCard({ entry, onClick }: ConceptCardProps) {
 // Content panel -- shared between desktop and mobile
 // ---------------------------------------------------------------------------
 
-interface DocsPanelContentProps {
+export interface DocsPanelContentProps {
   tabBarClassName?: string;
   scrollClassName?: string;
   searchRef?: React.Ref<HTMLInputElement>;
 }
 
-function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef }: DocsPanelContentProps) {
+export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef }: DocsPanelContentProps) {
   const { activeTab, setTab, registry, navKey, navTab, navigateToEntry, navigateBack } = useDocsSidebar();
   const [search, setSearch] = useState("");
 
