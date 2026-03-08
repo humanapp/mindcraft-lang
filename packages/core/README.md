@@ -1,3 +1,5 @@
+[![Publish @mindcraft-lang/core](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-core.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-core.yml)
+
 # @mindcraft-lang/core
 
 The core implementation of the **Mindcraft** programming language -- a tile-based visual language designed for creating behaviors in interactive worlds.

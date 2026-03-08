@@ -1,3 +1,5 @@
+[![Publish @mindcraft-lang/docs](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-docs.yml)
+
 # @mindcraft-lang/docs
 
 Shared documentation sidebar and rendering components for **Mindcraft** web applications. This package provides a complete docs system -- sidebar, markdown rendering, brain-rule visualizations, and a standalone docs page -- designed to be consumed by any webapp in the monorepo.

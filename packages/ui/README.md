@@ -1,3 +1,5 @@
+[![Publish @mindcraft-lang/ui](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-ui.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-ui.yml)
+
 # @mindcraft-lang/ui
 
 Shared React UI components for **Mindcraft** web applications. This package provides shadcn/ui primitives and the full brain editor component tree, designed to be consumed by any webapp in the monorepo.
