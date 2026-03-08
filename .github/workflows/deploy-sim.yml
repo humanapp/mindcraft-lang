@@ -1,4 +1,4 @@
-name: Deploy Sim to AWS
+name: Deploy mindcraft-sim
 
 on:
   workflow_dispatch:

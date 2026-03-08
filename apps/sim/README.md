@@ -1,3 +1,5 @@
+[![Deploy mindcraft-sim](https://github.com/humanapp/mindcraft-lang/actions/workflows/deploy-sim.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/deploy-sim.yml)
+
 # Ecosystem Sim
 
 A demo application built with the [Mindcraft language](../../README.md). Carnivores, herbivores, and plants survive in a 2D physics world -- each driven by a brain you can program.
