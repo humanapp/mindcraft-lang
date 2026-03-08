@@ -5,17 +5,49 @@
   "type": "module",
   "author": "humanapp",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "directory": "packages/docs"
+  },
+  "bugs": {
+    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+  },
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/docs#readme",
+  "keywords": [
+    "mindcraft",
+    "visual-programming",
+    "tile-based",
+    "documentation",
+    "react",
+    "docs-sidebar",
+    "markdown",
+    "education",
+    "stem",
+    "coding",
+    "creative-coding"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src"
+  ],
   "scripts": {
     "lint": "biome lint ./src",
     "lint:fix": "biome lint ./src --write",
     "format": "biome format ./src --write",
     "format:check": "biome format ./src",
     "check": "biome check ./src",
-    "check:fix": "biome check ./src --write"
+    "check:fix": "biome check ./src --write",
+    "prepublishOnly": "npm run check",
+    "release:patch": "node ../../scripts/release.js patch",
+    "release:minor": "node ../../scripts/release.js minor",
+    "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
-    "@mindcraft-lang/core": "file:../core",
-    "@mindcraft-lang/ui": "file:../ui",
+    "@mindcraft-lang/core": "^0.1.8",
+    "@mindcraft-lang/ui": "^0.1.0",
     "lucide-react": "^0.561.0",
     "react-markdown": "^9.1.0",
     "remark-gfm": "^4.0.1",

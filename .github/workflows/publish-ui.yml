@@ -1,0 +1,55 @@
+name: Publish @mindcraft-lang/ui
+
+on:
+  push:
+    tags:
+      - "ui-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Lint, Publish & Release
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/ui
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint & format check
+        run: npm run check
+
+      - name: Verify package version matches tag
+        run: |
+          PACKAGE_VERSION="ui-v$(node -p "require('./package.json').version")"
+          if [ "$PACKAGE_VERSION" != "${{ github.ref_name }}" ]; then
+            echo "Tag ${{ github.ref_name }} does not match package.json version $PACKAGE_VERSION"
+            exit 1
+          fi
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
