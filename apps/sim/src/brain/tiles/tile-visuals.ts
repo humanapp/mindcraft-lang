@@ -52,8 +52,8 @@ export const tileVisuals = new Dict<string, Partial<TileVisual>>([
   [mkVariableFactoryTileId(MyTypeIds.Vector2), { label: "create a vector2 variable", iconUrl: "/assets/brain/icons/vector2.svg" }],
   [mkVariableFactoryTileId(MyTypeIds.ActorRef), { label: "create an actor variable", iconUrl: "/assets/brain/icons/actor-mask.svg" }],
   // Literal Factories
-  [mkLiteralFactoryTileId(CoreLiteralFactoryId.Number), { label: "number", iconUrl: "/assets/brain/icons/number.svg" }],
-  [mkLiteralFactoryTileId(CoreLiteralFactoryId.String), { label: "text", iconUrl: "/assets/brain/icons/text.svg" }],
+  [mkLiteralFactoryTileId(CoreLiteralFactoryId.Number), { label: "create a number tile", iconUrl: "/assets/brain/icons/number.svg" }],
+  [mkLiteralFactoryTileId(CoreLiteralFactoryId.String), { label: "create a text tile", iconUrl: "/assets/brain/icons/text.svg" }],
   // Well-known Literals
   [mkLiteralTileId(CoreTypeIds.Boolean, "true"), { label: "true", iconUrl: "/assets/brain/icons/switch_on.svg" }],
   [mkLiteralTileId(CoreTypeIds.Boolean, "false"), { label: "false", iconUrl: "/assets/brain/icons/switch_off.svg" }],
