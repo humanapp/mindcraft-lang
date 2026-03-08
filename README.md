@@ -2,7 +2,10 @@
 
 A tile-based visual programming language for creating behaviors in interactive worlds.
 
-![Brain Rule](./assets/brain_rule.png)
+
+<div align="center">
+  <img src="./assets/brain_rule.png" alt="Brain Rule" width="80%">
+</div>
 
 Programs are built by arranging **tiles** -- typed, composable tokens -- into **rules**. Each rule has a WHEN side (conditions) and a DO side (actions). A collection of rules forms a **brain** that drives an autonomous actor. Host applications extend the language with custom types, sensors, and actuators.
 
