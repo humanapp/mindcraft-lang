@@ -17,6 +17,7 @@ const GAZE_SMOOTHING = 0.08; // Lerp factor per frame (lower = smoother)
 import type { Vector2 } from "@mindcraft-lang/core";
 import { heatColor } from "@/lib/color";
 import { getDefaultBrain, loadBrainFromLocalStorage } from "../services/brain-persistence";
+import { loadDesiredCounts } from "../services/population-persistence";
 import { drawMovementIntent } from "./movement";
 import { type ScoreSnapshot, ScoreTracker } from "./score";
 import { SpatialGrid } from "./spatial-grid";
@@ -78,11 +79,7 @@ export class Engine {
    * respawns when at or above them. Actors are never actively killed;
    * excess populations die off naturally.
    */
-  private desiredCounts: Record<Archetype, number> = {
-    carnivore: ARCHETYPES.carnivore.initialSpawnCount,
-    herbivore: ARCHETYPES.herbivore.initialSpawnCount,
-    plant: ARCHETYPES.plant.initialSpawnCount,
-  };
+  private desiredCounts = loadDesiredCounts();
 
   /** Max actors to spawn per archetype per tick to avoid frame spikes. */
   private static readonly MAX_SPAWNS_PER_TICK = 3;
@@ -161,8 +158,9 @@ export class Engine {
   }
 
   private spawnInitialActors() {
-    Object.entries(ARCHETYPES).forEach(([archetype, config]) => {
-      for (let i = 0; i < config.initialSpawnCount; i++) {
+    Object.keys(ARCHETYPES).forEach((archetype) => {
+      const count = this.desiredCounts[archetype as Archetype];
+      for (let i = 0; i < count; i++) {
         this.spawn(archetype as Archetype);
       }
     });
