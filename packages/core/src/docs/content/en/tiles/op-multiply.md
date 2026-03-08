@@ -105,7 +105,7 @@ _a = b * c_
   ]
 }
 ```
-_When a > b * c, run the DO side and any child rules_
+_a > b * c_
 
 ## See Also
 
@@ -113,3 +113,5 @@ _When a > b * c, run the DO side and any child rules_
 `tile:tile.op->add`
 `tile:tile.op->sub`
 `tile:tile.op->neg`
+`tile:tile.op->assign`
+`tile:tile.op->gt`
