@@ -92,12 +92,15 @@ const kAnonActorRefSlotId = getSlotId(callDef, AnonActorRef);
 // Speed & weight helpers
 // ---------------------------------------------------------------------------
 
+const kQuicklyMultiplier = 0.5; // each Quickly increases speed by 50%
+const kSlowlyMultiplier = 1; // each Slowly decreases speed by 100% of base (50% of previous)
+
 /** Compute speed multiplier from quickly/slowly repeat counts. */
 function getSpeedMultiplier(args: MapValue): number {
   const quicklyCount = extractNumberValue(args.v.get(kQuicklySlotId)) ?? 0;
   const slowlyCount = extractNumberValue(args.v.get(kSlowlySlotId)) ?? 0;
-  if (quicklyCount > 0) return 1 + quicklyCount * 0.5; // 1.5x, 2x, 2.5x
-  if (slowlyCount > 0) return 1 / (1 + slowlyCount * 0.5); // ~0.67x, 0.5x, 0.4x
+  if (quicklyCount > 0) return 1 + quicklyCount * kQuicklyMultiplier; // 1.5x, 2x, 2.5x
+  if (slowlyCount > 0) return 1 / (1 + slowlyCount * kSlowlyMultiplier); // ~0.5x, 0.33x, 0.25x
   return 1;
 }
 
