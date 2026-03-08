@@ -3,7 +3,6 @@ import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, type BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useDocsSidebar } from "../docs/DocsSidebarContext";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
 import { BrainTilePickerDialog } from "./BrainTilePickerDialog";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
@@ -44,7 +44,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
   const availableCapabilities = useRuleCapabilities(ruleDef);
-  const { openDocsForTile } = useDocsSidebar();
+  const { onTileHelp } = useBrainEditorConfig();
 
   const isNumericLiteral =
     tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
@@ -179,8 +179,12 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
             Paste Before
           </DropdownMenuItem>
           <DropdownMenuItem onClick={handleDeleteTile}>Delete Tile</DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => openDocsForTile(tileDef)}>Help</DropdownMenuItem>
+          {onTileHelp && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onTileHelp(tileDef)}>Help</DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

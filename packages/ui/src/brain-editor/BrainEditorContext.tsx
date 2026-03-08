@@ -1,3 +1,4 @@
+import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { createContext, type ReactNode, useContext } from "react";
 
@@ -42,6 +43,14 @@ export interface BrainEditorConfig {
   customLiteralTypes: ReadonlyArray<CustomLiteralType>;
   /** Optional callback to load a default brain (replaces the archetype-specific load). */
   getDefaultBrain?: () => BrainDef | undefined;
+  /** Optional callback invoked when the user requests help for a tile (e.g. right-click -> Help). */
+  onTileHelp?: (tileDef: IBrainTileDef) => void;
+  /** Optional docs sidebar integration for the brain editor dialog toolbar. */
+  docsIntegration?: {
+    isOpen: boolean;
+    toggle: () => void;
+    close: () => void;
+  };
 }
 
 const BrainEditorContext = createContext<BrainEditorConfig | null>(null);

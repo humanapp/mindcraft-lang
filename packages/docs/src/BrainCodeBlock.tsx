@@ -1,10 +1,10 @@
 import { List } from "@mindcraft-lang/core";
 import { getBrainServices, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import { setClipboardFromJson } from "@mindcraft-lang/ui/brain-editor/rule-clipboard";
 import { ClipboardCopy } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
-import { setClipboardFromJson } from "../brain-editor/rule-clipboard";
 import { DocsRuleBlock, type DocsRuleData, DocsTileChip } from "./DocsRule";
 import { useDocsSidebar } from "./DocsSidebarContext";
 

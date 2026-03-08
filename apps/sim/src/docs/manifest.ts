@@ -7,16 +7,11 @@
 // content/{locale}/tiles/ or content/{locale}/patterns/.
 // ---------------------------------------------------------------------------
 
+import type { AppPatternDocMeta, AppTileDocMeta } from "@mindcraft-lang/docs";
+
 // ---------------------------------------------------------------------------
 // Tile doc metadata
 // ---------------------------------------------------------------------------
-
-export interface AppTileDocMeta {
-  tileId: string;
-  tags: string[];
-  category: string;
-  contentKey: string;
-}
 
 export const appTileDocs: readonly AppTileDocMeta[] = [
   // -- Sensors ---------------------------------------------------------------
@@ -191,14 +186,6 @@ export const appTileDocs: readonly AppTileDocMeta[] = [
 // ---------------------------------------------------------------------------
 // Pattern doc metadata
 // ---------------------------------------------------------------------------
-
-export interface AppPatternDocMeta {
-  id: string;
-  title: string;
-  tags: string[];
-  category: string;
-  contentKey: string;
-}
 
 export const appPatternDocs: readonly AppPatternDocMeta[] = [
   {

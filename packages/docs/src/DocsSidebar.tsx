@@ -1,8 +1,8 @@
 import { getBrainServices } from "@mindcraft-lang/core/brain";
+import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, ChevronRight, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { TileVisual } from "../brain-editor/types";
 import { DocMarkdown } from "./DocMarkdown";
 import { DocsPrintView } from "./DocsPrintView";
 import type { DocsConceptEntry, DocsPatternEntry, DocsTileEntry } from "./DocsRegistry";

@@ -1,5 +1,9 @@
 export { BrainCodeBlock } from "./BrainCodeBlock";
+export type { AppPatternDocMeta, AppTileDocMeta, BuildDocsRegistryOptions } from "./buildDocsRegistry";
+export { buildDocsRegistry } from "./buildDocsRegistry";
 export { DocMarkdown } from "./DocMarkdown";
+export type { DocsPageProps } from "./DocsPage";
+export { DocsPage } from "./DocsPage";
 export { DocsPrintView } from "./DocsPrintView";
 export type { DocsConceptEntry, DocsEntries, DocsPatternEntry, DocsTileEntry } from "./DocsRegistry";
 export { DocsRegistry } from "./DocsRegistry";

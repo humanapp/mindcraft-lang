@@ -1,10 +1,10 @@
 import { List } from "@mindcraft-lang/core";
 import { getBrainServices, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import type { Element } from "hast";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import type { TileVisual } from "../brain-editor/types";
 
 // ---------------------------------------------------------------------------
 // Print-friendly tile chip -- no glass, no gradients, border-only

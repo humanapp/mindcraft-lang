@@ -1,5 +1,6 @@
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainEditorDialog, BrainEditorProvider, DocsSidebar, DocsSidebarProvider, Toaster } from "@mindcraft-lang/ui";
+import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
+import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@mindcraft-lang/ui";
 import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
@@ -38,6 +39,20 @@ function snapshotEqual(a: ScoreSnapshot, b: ScoreSnapshot): boolean {
   );
 }
 
+/** Wrapper that injects docs integration from the docs context into the brain editor config. */
+function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype | null; children: React.ReactNode }) {
+  const { openDocsForTile, isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs } = useDocsSidebar();
+  const config = useMemo(
+    () => ({
+      ...buildBrainEditorConfig(archetype ?? undefined),
+      onTileHelp: openDocsForTile,
+      docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
+    }),
+    [archetype, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]
+  );
+  return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
+}
+
 function App() {
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
   const [editingArchetype, setEditingArchetype] = useState<Archetype | null>(null);
@@ -47,7 +62,6 @@ function App() {
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
-  const brainEditorConfig = useMemo(() => buildBrainEditorConfig(editingArchetype ?? undefined), [editingArchetype]);
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
 
   useEffect(() => {
@@ -154,7 +168,7 @@ function App() {
         />
 
         {/* Brain Editor Dialog (rendered at root for proper overlay) */}
-        <BrainEditorProvider config={brainEditorConfig}>
+        <DocsBrainEditorProvider archetype={editingArchetype}>
           <BrainEditorDialog
             isOpen={isBrainEditorOpen}
             onOpenChange={(open) => {
@@ -166,7 +180,7 @@ function App() {
             srcBrainDef={getBrainDefForEditing()}
             onSubmit={handleBrainSubmit}
           />
-        </BrainEditorProvider>
+        </DocsBrainEditorProvider>
       </div>
 
       {/* Docs sidebar -- fixed overlay, sibling to main layout */}

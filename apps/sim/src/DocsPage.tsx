@@ -1,107 +1,14 @@
-import type { DocTab } from "@mindcraft-lang/ui";
-import { DocsPanelContent, DocsSidebarProvider, Toaster, useDocsSidebar } from "@mindcraft-lang/ui";
-import { BookOpen, ChevronLeft } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { DocsPage as SharedDocsPage } from "@mindcraft-lang/docs";
+import { Toaster } from "@mindcraft-lang/ui";
+import { useMemo } from "react";
 import { createDocsRegistry } from "./docs/docs-registry";
-
-// ---------------------------------------------------------------------------
-// URL <-> docs state mapping
-// ---------------------------------------------------------------------------
-
-const VALID_TABS = new Set<string>(["tiles", "patterns", "concepts"]);
-
-function parseDocsUrl(pathname: string): { tab: DocTab; key: string | null } {
-  const stripped = pathname.replace(/^\/docs\/?/, "");
-  const parts = stripped.split("/").filter(Boolean);
-  const tab = (VALID_TABS.has(parts[0]) ? parts[0] : "tiles") as DocTab;
-  const key = parts[1] ? decodeURIComponent(parts[1]) : null;
-  return { tab, key };
-}
-
-function buildDocsPath(tab: DocTab, navKey: string | null, navTab: DocTab | null): string {
-  if (navKey && navTab) {
-    return `/docs/${navTab}/${encodeURIComponent(navKey)}`;
-  }
-  return `/docs/${tab}`;
-}
-
-// ---------------------------------------------------------------------------
-// URL sync hook -- pushes state changes to the URL and handles popstate
-// ---------------------------------------------------------------------------
-
-function useDocsUrlSync(): void {
-  const { activeTab, navKey, navTab, setTab, navigateToEntry, navigateBack } = useDocsSidebar();
-  const prevPath = useRef(window.location.pathname);
-
-  // Push URL when docs state changes
-  useEffect(() => {
-    const path = buildDocsPath(activeTab, navKey, navTab);
-    if (path !== prevPath.current) {
-      prevPath.current = path;
-      history.pushState(null, "", path);
-    }
-  }, [activeTab, navKey, navTab]);
-
-  // Handle browser back/forward
-  const handlePopState = useCallback(() => {
-    const { tab, key } = parseDocsUrl(window.location.pathname);
-    prevPath.current = window.location.pathname;
-    if (key) {
-      navigateToEntry(tab, key);
-    } else {
-      navigateBack();
-      setTab(tab);
-    }
-  }, [setTab, navigateToEntry, navigateBack]);
-
-  useEffect(() => {
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [handlePopState]);
-}
-
-// ---------------------------------------------------------------------------
-// Layout -- full-page docs view
-// ---------------------------------------------------------------------------
-
-function DocsPageLayout() {
-  useDocsUrlSync();
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  return (
-    <div className="h-screen flex flex-col bg-slate-900 text-slate-200">
-      {/* Header */}
-      <header className="flex items-center gap-3 px-4 py-3 border-b border-slate-700 shrink-0">
-        <a href="/" className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors">
-          <ChevronLeft className="w-4 h-4" aria-hidden="true" />
-          Sim
-        </a>
-        <div className="flex items-center gap-2 text-slate-200">
-          <BookOpen className="w-4 h-4" aria-hidden="true" />
-          <span className="text-sm font-semibold tracking-tight">Documentation</span>
-        </div>
-      </header>
-
-      {/* Content */}
-      <div className="flex-1 min-h-0 flex flex-col max-w-3xl mx-auto w-full">
-        <DocsPanelContent tabBarClassName="py-2.5 text-sm" scrollClassName="p-4 md:p-6" searchRef={searchRef} />
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// DocsPage -- standalone entry point
-// ---------------------------------------------------------------------------
 
 export default function DocsPage() {
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
-  const { tab, key } = useMemo(() => parseDocsUrl(window.location.pathname), []);
 
   return (
-    <DocsSidebarProvider registry={docsRegistry} initialTab={tab} initialNavKey={key} initialNavTab={key ? tab : null}>
-      <DocsPageLayout />
+    <SharedDocsPage registry={docsRegistry} backLabel="Sim" backHref="/">
       <Toaster />
-    </DocsSidebarProvider>
+    </SharedDocsPage>
   );
 }

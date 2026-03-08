@@ -1,4 +1,5 @@
-import { Button, Slider, useDocsSidebar } from "@mindcraft-lang/ui";
+import { useDocsSidebar } from "@mindcraft-lang/docs";
+import { Button, Slider } from "@mindcraft-lang/ui";
 import { BookOpen } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";

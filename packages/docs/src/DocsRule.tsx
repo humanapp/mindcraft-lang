@@ -1,10 +1,8 @@
 import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import { adjustColor, formatValue, glassEffect, saturateColor } from "@mindcraft-lang/ui";
+import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { useLayoutEffect, useState } from "react";
-import { formatValue } from "../brain-editor/tile-value-utils";
-import type { TileVisual } from "../brain-editor/types";
-import { adjustColor, saturateColor } from "../lib/color";
-import { glassEffect } from "../lib/glass-effect";
 
 const tileGlass = glassEffect({
   highlightSize: 4,

@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useDocsSidebar } from "../docs/DocsSidebarContext";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
@@ -60,8 +59,10 @@ export interface BrainEditorDialogProps {
 }
 
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
-  const { getDefaultBrain } = useBrainEditorConfig();
-  const { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs } = useDocsSidebar();
+  const { getDefaultBrain, docsIntegration } = useBrainEditorConfig();
+  const isDocsOpen = docsIntegration?.isOpen ?? false;
+  const toggleDocs = docsIntegration?.toggle;
+  const closeDocs = docsIntegration?.close;
 
   // Clone the brainDef to work on a copy
   const [brainDef, setBrainDef] = useState<BrainDef | undefined>(() => {
@@ -447,7 +448,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   // Close the docs sidebar when the brain editor closes.
   useEffect(() => {
     if (!isOpen) {
-      closeDocs();
+      closeDocs?.();
     }
   }, [isOpen, closeDocs]);
 
@@ -613,17 +614,21 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
                   >
                     <Redo className="h-4 w-4" aria-hidden="true" />
                   </Button>
-                  <span className="w-px h-5 bg-slate-200" aria-hidden="true" />
-                  <Button
-                    className="h-8 w-8 px-3 bg-slate-500 hover:bg-slate-600 text-white rounded-md"
-                    onClick={toggleDocs}
-                    title="Documentation"
-                    aria-label="Toggle documentation panel"
-                    aria-expanded={isDocsOpen}
-                    aria-controls="docs-sidebar"
-                  >
-                    <BookOpen className="h-4 w-4" aria-hidden="true" />
-                  </Button>
+                  {toggleDocs && (
+                    <>
+                      <span className="w-px h-5 bg-slate-200" aria-hidden="true" />
+                      <Button
+                        className="h-8 w-8 px-3 bg-slate-500 hover:bg-slate-600 text-white rounded-md"
+                        onClick={toggleDocs}
+                        title="Documentation"
+                        aria-label="Toggle documentation panel"
+                        aria-expanded={isDocsOpen}
+                        aria-controls="docs-sidebar"
+                      >
+                        <BookOpen className="h-4 w-4" aria-hidden="true" />
+                      </Button>
+                    </>
+                  )}
                 </div>
                 {/* biome-ignore lint/a11y/useSemanticElements: refactoring to fieldset would require restructuring large JSX blocks */}
                 <div
