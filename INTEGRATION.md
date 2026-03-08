@@ -86,9 +86,13 @@ pre-bundling since it already ships as ESM.
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { uiPlugin } from "./node_modules/@mindcraft-lang/ui/src/vite-plugin.ts";
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    uiPlugin(),
+  ],
   resolve: {
     alias: {
       // Source-only packages: resolve to their src/ directories in node_modules
@@ -102,8 +106,12 @@ export default defineConfig({
 });
 ```
 
-If you are only using `@mindcraft-lang/core`, you can skip the aliases entirely and just
-keep the `optimizeDeps.exclude`.
+`uiPlugin()` handles the Latin Modern Math font bundled with `@mindcraft-lang/ui`: it
+rewrites the font URL in the compiled CSS, serves it during dev, and emits it to
+`dist/assets/fonts/` in production. Without it the font will fail to load silently.
+
+If you are only using `@mindcraft-lang/core`, you can skip the aliases and `uiPlugin`
+entirely and just keep the `optimizeDeps.exclude`.
 
 ---
 
@@ -515,6 +523,7 @@ When `docsIntegration` is not provided, the brain editor hides the docs toggle b
 
 - [ ] `npm install @mindcraft-lang/core @mindcraft-lang/ui`
 - [ ] Add Vite alias for `@mindcraft-lang/ui` pointing to `node_modules/.../src`
+- [ ] Add `uiPlugin()` from `@mindcraft-lang/ui/src/vite-plugin.ts` to Vite plugins
 - [ ] Add tsconfig `paths` for `@mindcraft-lang/ui`
 - [ ] Import `@mindcraft-lang/ui/ui.css` and add `@source` directive in globals.css
 - [ ] Define shadcn/ui theme variables in globals.css
@@ -524,6 +533,7 @@ When `docsIntegration` is not provided, the brain editor hides the docs toggle b
 
 - [ ] `npm install @mindcraft-lang/core @mindcraft-lang/ui @mindcraft-lang/docs`
 - [ ] Add Vite aliases for both `@mindcraft-lang/ui` and `@mindcraft-lang/docs`
+- [ ] Add `uiPlugin()` from `@mindcraft-lang/ui/src/vite-plugin.ts` to Vite plugins
 - [ ] Add tsconfig `paths` for both source-only packages
 - [ ] Add `@source` directives for both packages in globals.css
 - [ ] Create a docs manifest with `AppTileDocMeta` and `AppPatternDocMeta`
@@ -639,3 +649,9 @@ the docs integration pattern, `DocsBrainEditorProvider` must be inside
 -- These source-only packages use relative imports internally (e.g., `../ui/button`). The
 Vite alias must point to the `src/` directory so relative imports resolve correctly. If you
 see errors about missing modules like `../lib/utils`, check that the alias path is correct.
+
+**Latin Modern Math font fails to load (OTS parsing error or 404 in the network tab)**
+-- `uiPlugin()` from `@mindcraft-lang/ui/src/vite-plugin.ts` is missing from your Vite
+config. The font lives inside the `ui` package and cannot be resolved by Vite's normal
+asset pipeline when the package is consumed as a source-only dependency. The plugin handles
+URL rewriting, dev-server serving, and production asset emission.

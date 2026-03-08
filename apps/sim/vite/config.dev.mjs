@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { uiPlugin } from "../../../packages/ui/src/vite-plugin.ts";
 
 const appRoot = path.resolve(__dirname, ".."); // adjust if needed
 const assetsRoot = path.resolve(appRoot, "assets") + path.sep;
@@ -14,6 +15,7 @@ export default defineConfig({
   appType: "spa",
   plugins: [
     react(),
+    uiPlugin(),
   ],
   resolve: {
     alias: {
