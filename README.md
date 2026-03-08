@@ -41,19 +41,26 @@ apps/
 |-----|-------------|
 | [Ecosystem Sim](apps/sim/) | Demo: carnivores, herbivores, and plants driven by user-editable Mindcraft brains |
 
-## Install
+## Getting Started
+
+Install the packages you need:
 
 ```bash
+# Core only (language runtime, compiler, VM)
 npm install @mindcraft-lang/core
+
+# Core + UI (adds brain editor and shadcn/ui components)
+npm install @mindcraft-lang/core @mindcraft-lang/ui
+
+# Full stack (adds documentation sidebar and renderer)
+npm install @mindcraft-lang/core @mindcraft-lang/ui @mindcraft-lang/docs
 ```
+
+For full setup instructions -- Vite config, TypeScript paths, Tailwind, and component usage -- see the [Integration Guide](INTEGRATION.md).
 
 ## Documentation
 
 Documentation is a work in progress. Browse the sim demo's [language documentation](https://mindcraft-sim.humanappliance.io/docs) online. See also the [core package README](packages/core/README.md) for language architecture, the [ui package README](packages/ui/README.md) for the shared React components, and the [docs package README](packages/docs/README.md) for the documentation system.
-
-## Integration
-
-To integrate these packages into your own app, see the [Integration Guide](INTEGRATION.md).
 
 ## Contributing
 
