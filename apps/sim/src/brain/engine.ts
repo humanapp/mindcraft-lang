@@ -506,8 +506,7 @@ export class Engine {
    * has been reached.
    */
   spawnBlip(shooterActorId: number, x: number, y: number, dirX: number, dirY: number): Blip | undefined {
-    const now = this.clock.now;
-    const blip = this.blipPool.acquire(shooterActorId, now);
+    const blip = this.blipPool.acquire(shooterActorId, this.simTime);
     if (!blip) return undefined;
 
     // Offset spawn point slightly so it does not immediately overlap the shooter
@@ -546,7 +545,7 @@ export class Engine {
 
   /** Return expired blips to the pool. */
   private tickBlips(): void {
-    const now = this.clock.now;
+    const now = this.simTime;
     for (const blip of this.blipPool.activeById.values()) {
       if (blip.isExpired(now)) {
         this.blipPool.release(blip);
