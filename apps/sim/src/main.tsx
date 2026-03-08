@@ -15,15 +15,11 @@ if (import.meta.env.DEV) {
   setInterval(() => performance.clearMeasures(), 10_000);
 }
 
-function Root() {
-  return window.location.pathname.startsWith("/docs") ? <DocsPage /> : <App />;
-}
-
 const root = document.getElementById("root");
 if (!root) throw new Error("Failed to find the root element");
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <Root />
+    {window.location.pathname.startsWith("/docs") ? <DocsPage /> : <App />}
   </React.StrictMode>
 );
