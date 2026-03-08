@@ -46,11 +46,11 @@ export const tileVisuals = new Dict<string, Partial<TileVisual>>([
   [mkControlFlowTileId(CoreControlFlowId.OpenParen), { label: "(", iconUrl: "/assets/brain/icons/open-paren.svg" }],
   [mkControlFlowTileId(CoreControlFlowId.CloseParen), { label: ")", iconUrl: "/assets/brain/icons/close-paren.svg" }],
   // Variable Factories
-  [mkVariableFactoryTileId(CoreVariableFactoryId.Boolean), { label: "boolean variable", iconUrl: "/assets/brain/icons/switch.svg" }],
-  [mkVariableFactoryTileId(CoreVariableFactoryId.Number), { label: "number variable", iconUrl: "/assets/brain/icons/number.svg" }],
-  [mkVariableFactoryTileId(CoreVariableFactoryId.String), { label: "text variable", iconUrl: "/assets/brain/icons/text.svg" }],
-  [mkVariableFactoryTileId(MyTypeIds.Vector2), { label: "vector2 variable", iconUrl: "/assets/brain/icons/vector2.svg" }],
-  [mkVariableFactoryTileId(MyTypeIds.ActorRef), { label: "actor variable", iconUrl: "/assets/brain/icons/actor-mask.svg" }],
+  [mkVariableFactoryTileId(CoreVariableFactoryId.Boolean), { label: "create a boolean variable", iconUrl: "/assets/brain/icons/switch.svg" }],
+  [mkVariableFactoryTileId(CoreVariableFactoryId.Number), { label: "create a number variable", iconUrl: "/assets/brain/icons/number.svg" }],
+  [mkVariableFactoryTileId(CoreVariableFactoryId.String), { label: "create a text variable", iconUrl: "/assets/brain/icons/text.svg" }],
+  [mkVariableFactoryTileId(MyTypeIds.Vector2), { label: "create a vector2 variable", iconUrl: "/assets/brain/icons/vector2.svg" }],
+  [mkVariableFactoryTileId(MyTypeIds.ActorRef), { label: "create an actor variable", iconUrl: "/assets/brain/icons/actor-mask.svg" }],
   // Literal Factories
   [mkLiteralFactoryTileId(CoreLiteralFactoryId.Number), { label: "number", iconUrl: "/assets/brain/icons/number.svg" }],
   [mkLiteralFactoryTileId(CoreLiteralFactoryId.String), { label: "text", iconUrl: "/assets/brain/icons/text.svg" }],
