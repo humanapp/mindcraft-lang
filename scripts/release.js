@@ -14,13 +14,15 @@
 //   4. Pushes the commit and tag to origin
 
 const { execSync } = require("node:child_process");
-const { readFileSync } = require("node:fs");
+const { readFileSync, writeFileSync } = require("node:fs");
 const { join, resolve } = require("node:path");
 
 const VALID_BUMPS = ["patch", "minor", "major"];
+const SCOPE = "@mindcraft-lang/";
 
 const pkgDir = process.cwd();
 const pkgPath = join(pkgDir, "package.json");
+const packagesDir = resolve(pkgDir, "..");
 
 function readPkg() {
   return JSON.parse(readFileSync(pkgPath, "utf8"));
@@ -31,8 +33,35 @@ function run(cmd) {
   execSync(cmd, { stdio: "inherit", cwd: pkgDir });
 }
 
+// Sync @mindcraft-lang/* dependency versions to the actual versions in sibling packages.
+function syncInternalDeps(pkg) {
+  const deps = pkg.dependencies || {};
+  let changed = false;
+  for (const [name, range] of Object.entries(deps)) {
+    if (!name.startsWith(SCOPE)) continue;
+    const siblingName = name.replace(SCOPE, "");
+    const siblingPkgPath = join(packagesDir, siblingName, "package.json");
+    let siblingPkg;
+    try {
+      siblingPkg = JSON.parse(readFileSync(siblingPkgPath, "utf8"));
+    } catch {
+      continue; // not a local sibling
+    }
+    const wanted = `^${siblingPkg.version}`;
+    if (range !== wanted) {
+      console.log(`Updating ${name}: ${range} -> ${wanted}`);
+      deps[name] = wanted;
+      changed = true;
+    }
+  }
+  if (changed) {
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+  }
+  return changed;
+}
+
 const pkg = readPkg();
-const shortName = pkg.name.replace(/^@mindcraft-lang\//, "");
+const shortName = pkg.name.replace(SCOPE, "");
 const tagPrefix = `${shortName}-v`;
 
 const bump = process.argv[2];
@@ -48,6 +77,8 @@ try {
   console.error("Error: working tree has uncommitted changes. Commit or stash them first.");
   process.exit(1);
 }
+
+syncInternalDeps(pkg);
 
 run(`npm version ${bump} --git-tag-version=false`);
 
