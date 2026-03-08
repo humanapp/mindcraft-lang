@@ -13,10 +13,12 @@ const fontPublicPath = `/assets/fonts/${fontFileName}`;
  * Handles the Latin Modern Math font, which lives in the ui package but must
  * be served as a static asset by each consuming app:
  *
- * - transform: rewrites the relative font url() in ui.css to an absolute
- *   path so it resolves correctly regardless of where the built CSS ends up.
+ * - transform: rewrites the relative font url() in CSS modules to an absolute
+ *   path (covers dev mode where each CSS file is a separate Vite module).
  * - configureServer: serves the font from the package source during dev.
- * - generateBundle: emits the font into the app build output.
+ * - generateBundle: emits the font into the build output and rewrites the font
+ *   url() in all assembled CSS assets (covers production where @import
+ *   inlining happens before transform runs).
  */
 export function uiPlugin() {
   return {
@@ -45,14 +47,26 @@ export function uiPlugin() {
       });
     },
 
-    // biome-ignore lint/suspicious/noExplicitAny: Rollup PluginContext not available in source-only package
-    generateBundle(this: any) {
-      const source = readFileSync(resolve(fontsDir, fontFileName));
+    // biome-ignore lint/suspicious/noExplicitAny: Rollup types not available in source-only package
+    generateBundle(this: any, _options: any, bundle: Record<string, any>) {
+      // Emit the font file into the build output.
       this.emitFile({
         type: "asset",
         fileName: `assets/fonts/${fontFileName}`,
-        source,
+        source: readFileSync(resolve(fontsDir, fontFileName)),
       });
+
+      // Rewrite the font url() in all assembled CSS assets. This is the
+      // reliable production-build fix: @import inlining happens before
+      // transform runs, so the URL must be rewritten here instead.
+      for (const asset of Object.values(bundle)) {
+        if (asset.type === "asset" && typeof asset.source === "string" && asset.source.includes(fontFileName)) {
+          asset.source = asset.source.replace(
+            /url\(["']?[^"'()]*latinmodern-math\.woff2["']?\)/g,
+            `url("${fontPublicPath}")`
+          );
+        }
+      }
     },
   };
 }
