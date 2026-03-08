@@ -2,6 +2,8 @@
 
 A tile-based visual programming language for creating behaviors in interactive worlds.
 
+![Brain Rule](./assets/brain_rule.png)
+
 Programs are built by arranging **tiles** -- typed, composable tokens -- into **rules**. Each rule has a WHEN side (conditions) and a DO side (actions). A collection of rules forms a **brain** that drives an autonomous actor. Host applications extend the language with custom types, sensors, and actuators.
 
 The core library compiles to Roblox (Luau), Node.js, and browser (ESM) targets from a single TypeScript codebase.
