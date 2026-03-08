@@ -22,6 +22,7 @@ export default defineConfig({
         phasermsg()
     ],
     resolve: {
+        dedupe: ['sonner'],
         alias: {
             "@": path.resolve(process.cwd(), "./src"),
             "@mindcraft-lang/docs": path.resolve(process.cwd(), "../../packages/docs/src"),
