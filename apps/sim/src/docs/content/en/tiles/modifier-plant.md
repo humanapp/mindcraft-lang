@@ -1,3 +1,8 @@
+{
+  "tileId": "tile.modifier->modifier.actor_kind.plant",
+  "catalog": []
+}
+
 # Plant
 
 Filters detection to plant actors only.
@@ -10,15 +15,15 @@ to restrict it to plants. Plants are stationary and are eaten by herbivores.
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.plant"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.distance.nearby"]}]
+[{"when":["tile.sensor->sensor.bump","tile.modifier->modifier.actor_kind.plant"],"do":["tile.actuator->actuator.eat"]}]
 ```
 
-This rule approaches visible plants to forage.
+_Take a bite of the bumped plant._
 
 ## See Also
 
 `tile:tile.modifier->modifier.actor_kind.herbivore`
 `tile:tile.modifier->modifier.actor_kind.carnivore`
 `tile:tile.sensor->sensor.see`
+`tile:tile.sensor->sensor.bump`
 `tile:tile.actuator->actuator.eat`
-`tile:tile.modifier->modifier.distance.nearby`

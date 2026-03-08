@@ -10,10 +10,10 @@ or to filter detection to only nearby actors.
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.plant","tile.modifier->modifier.distance.nearby"],"do":["tile.actuator->actuator.eat"]}]
+[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore", "tile.modifier->modifier.distance.nearby"],"do":["tile.actuator->actuator.move","modifier->modifier.movement.awayfrom"]}]
 ```
 
-This rule eats when a plant is both visible and nearby.
+_Move away from a nearby carnivore._
 
 ## See Also
 

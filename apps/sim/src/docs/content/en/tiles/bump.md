@@ -19,7 +19,7 @@ Place `tile:tile.sensor->sensor.bump` on the **WHEN** side of a rule to detect c
 [{"when":["tile.sensor->sensor.bump","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.awayfrom"]}]
 ```
 
-This rule moves away when bumping into a carnivore.
+_Move away from the bumped carnivore._
 
 ## Modifiers
 

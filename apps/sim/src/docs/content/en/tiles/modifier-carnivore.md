@@ -1,3 +1,10 @@
+```brain noframe when
+{
+  "tileId": "tile.modifier->modifier.actor_kind.carnivore",
+  "catalog": []
+}
+```
+
 # Carnivore
 
 Filters detection to carnivore actors only.
@@ -13,7 +20,7 @@ to restrict it to carnivores. Carnivores are predator actors that eat herbivores
 [{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.awayfrom"]}]
 ```
 
-This rule flees from visible carnivores.
+_Flee from visible carnivores._
 
 ## See Also
 

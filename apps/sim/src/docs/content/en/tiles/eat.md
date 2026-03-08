@@ -23,7 +23,7 @@ Carnivores may eat only herbivores; herbivores may eat only plants.
 [{"when":["tile.sensor->sensor.bump","tile.modifier->modifier.actor_kind.plant"],"do":["tile.actuator->actuator.eat"]}]
 ```
 
-This rule eats a plant when the actor bumps into it.
+_Take a bite of the bumped plant._
 
 ## See Also
 

@@ -1,3 +1,10 @@
+```brain noframe when
+{
+  "tileId": "tile.modifier->modifier.actor_kind.herbivore",
+  "catalog": []
+}
+```
+
 # Herbivore
 
 Filters detection to herbivore actors only.
@@ -10,14 +17,14 @@ to restrict it to herbivores. Herbivores eat plants and are eaten by carnivores.
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.herbivore"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.distance.nearby"]}]
+[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.herbivore", "tile.modifier->modifier.distance.faraway"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.toward"]}]
 ```
 
-This rule approaches visible herbivores.
+_Move toward a distant herbivore._
 
 ## See Also
 
 `tile:tile.modifier->modifier.actor_kind.carnivore`
 `tile:tile.modifier->modifier.actor_kind.plant`
 `tile:tile.sensor->sensor.see`
-`tile:tile.actuator->actuator.shoot`
+`tile:tile.sensor->sensor.bump`
