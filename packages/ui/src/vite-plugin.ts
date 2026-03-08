@@ -23,9 +23,9 @@ export function uiPlugin() {
     name: "mindcraft-ui",
 
     transform(code: string, id: string) {
-      if (id.endsWith("/ui.css") && code.includes(`./assets/fonts/${fontFileName}`)) {
+      if (id.endsWith(".css") && code.includes(fontFileName)) {
         return {
-          code: code.replace(`url("./assets/fonts/${fontFileName}")`, `url("${fontPublicPath}")`),
+          code: code.replace(/url\(["'][^"']*latinmodern-math\.woff2["']\)/g, `url("${fontPublicPath}")`),
           map: null,
         };
       }
