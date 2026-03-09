@@ -15,10 +15,19 @@ const defaultBrainCache = new Map<Archetype, BrainDef>();
 export function deserializeBrainFromArrayBuffer(buffer: ArrayBuffer): BrainDef | undefined {
   try {
     const uint8Array = new Uint8Array(buffer);
-    const byteArray = stream.byteArrayFromUint8Array(uint8Array);
-    const memStream = new stream.MemoryStream(byteArray);
-    const brainDef = new BrainDef();
-    brainDef.deserialize(memStream);
+    let brainDef: BrainDef;
+
+    // Detect format by checking if file starts with '{' (0x7B = JSON)
+    if (uint8Array[0] === 0x7b) {
+      const text = new TextDecoder().decode(uint8Array);
+      // biome-ignore lint/suspicious/noExplicitAny: JSON.parse returns unknown structure
+      brainDef = BrainDef.fromJson(JSON.parse(text) as any);
+    } else {
+      const byteArray = stream.byteArrayFromUint8Array(uint8Array);
+      const memStream = new stream.MemoryStream(byteArray);
+      brainDef = new BrainDef();
+      brainDef.deserialize(memStream);
+    }
 
     if (brainDef.pages().size() === 0) {
       brainDef.appendNewPage();
