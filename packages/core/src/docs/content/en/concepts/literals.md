@@ -14,7 +14,8 @@ Numbers can be displayed in different formats. Right-click a number literal tile
 - **Percent** -- appends a `%` symbol (e.g. `42%`)
 - **Fixed** -- fixed number of decimal places (e.g. `42.00`)
 - **Thousands** -- comma-separated (e.g. `1,000`)
-- **Time (seconds)** -- displays as `h:mm:ss` (e.g. `90` shows as `1:30`)
+- **Time (seconds)** -- displays as `#s` (e.g. `5` shows as `5s`)
+- **Time (milliseconds)** -- displays as `#ms` (e.g. `5` shows as `5000ms`)
 
 ## Boolean Literals
 
@@ -23,8 +24,7 @@ and with `tile:tile.op->assign` to set boolean variables.
 
 ## String Literals
 
-String literals are short text values. They are used primarily in the
-`tile:tile.actuator->actuator.say` tile and similar display tiles.
+String literals are short text values.
 
 ## When to Use a Literal vs. a Variable
 

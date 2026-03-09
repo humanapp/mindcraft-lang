@@ -1,6 +1,6 @@
 # Data Types
 
-The brain language supports several data types:
+The Mindcraft language supports several data types:
 
 ## Number
 
@@ -16,15 +16,7 @@ Boolean tiles represent yes/no states.
 
 Text values used for display and identification.
 
-## Variables
+## Other Types
 
-Variables store values that persist across frames.
-Create a variable by placing a variable factory tile on the DO side.
-Read its value by placing the variable tile on either side.
-Assign a value with `tile:tile.op->assign`.
-
-## Operators
-
-Use arithmetic operators (`tile:tile.op->add`, `tile:tile.op->sub`, `tile:tile.op->mul`, `tile:tile.op->div`)
-and comparison operators (`tile:tile.op->eq`, `tile:tile.op->lt`, `tile:tile.op->gt`)
-to compute and compare values.
+These are the basic data types common to all Mindcraft-enabled experiences. Applications
+may define their own data types in addition.

@@ -9,7 +9,25 @@ foraging or wandering.
 ## Rules
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.awayfrom"]}]
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->sensor.see",
+        "tile.modifier->modifier.actor_kind.carnivore",
+        "tile.modifier->modifier.distance.nearby"
+      ],
+      "do": [
+        "tile.actuator->actuator.move",
+        "tile.modifier->modifier.movement.awayfrom",
+        "tile.modifier->modifier.quickly"
+      ],
+      "children": []
+    }
+  ],
+  "catalog": []
+}
 ```
 
 ## Tips
@@ -19,3 +37,12 @@ foraging or wandering.
   only flee when the predator is close, saving energy when it is far away.
 - Use `tile:tile.actuator->switch-page` to switch to a dedicated "flee" page
   with multiple escape rules.
+
+## See Also
+
+`tile:tile.sensor->sensor.see`
+`tile:tile.actuator->actuator.move`
+`tile:tile.modifier->modifier.actor_kind.carnivore`
+`tile:tile.modifier->modifier.distance.nearby`
+`tile:tile.modifier->modifier.movement.awayfrom`
+`tile:tile.modifier->modifier.quickly`

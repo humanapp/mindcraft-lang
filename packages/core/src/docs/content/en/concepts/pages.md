@@ -6,11 +6,11 @@ Only one page is active at a time.
 ## Switching Pages
 
 Use `tile:tile.actuator->switch-page` on the DO side to navigate to a different page.
-The current page stops evaluating and the new page begins on the next frame.
+The current page stops executing and the new page begins on the next frame.
 
 ## Restarting the current page
 
-If a page parameter is omitted, or if `tile:tile.sensor->current-page` is given, the execution of the current page will be interrupted and will restart at the top of the page in the next tick.
+If `tile:tile.sensor->current-page` is passed in, execution of the current page will be interrupted and will restart from the top on the next frame. This can be useful for conditionally skipping execution of rules below the current one.
 
 ## On Page Entered
 

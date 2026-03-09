@@ -2,7 +2,7 @@
 
 Rules are the basic unit of brain logic. Each rule has two sides:
 
-- **WHEN** -- the condition tiles that must all be satisfied
+- **WHEN** -- the condition tiles that must be satisfied
 - **DO** -- the action tiles that execute when the condition passes
 
 Rules execute in order from top to bottom on every simulation frame.
@@ -15,5 +15,4 @@ Indent a rule under another to create a child rule -- it only runs when its pare
 
 ## Empty WHEN Side
 
-If the WHEN side has no tiles, the rule always fires every frame.
-Use this sparingly -- it is useful for default behaviors like wandering.
+If the WHEN side has no tiles, the rule always fires every frame. This is useful for default behaviors like wandering.
