@@ -16,6 +16,8 @@ const fontPublicPath = `/assets/fonts/${fontFileName}`;
  * - transform: rewrites the relative font url() in CSS modules to an absolute
  *   path (covers dev mode where each CSS file is a separate Vite module).
  * - configureServer: serves the font from the package source during dev.
+ * - transformIndexHtml: injects a <link rel="preload"> tag so the browser
+ *   fetches the font immediately, before any CSS or JS is parsed.
  * - generateBundle: emits the font into the build output and rewrites the font
  *   url() in all assembled CSS assets (covers production where @import
  *   inlining happens before transform runs).
@@ -45,6 +47,22 @@ export function uiPlugin() {
         }
         next();
       });
+    },
+
+    transformIndexHtml() {
+      return [
+        {
+          tag: "link",
+          attrs: {
+            rel: "preload",
+            as: "font",
+            type: "font/woff2",
+            href: fontPublicPath,
+            crossorigin: "anonymous",
+          },
+          injectTo: "head" as const,
+        },
+      ];
     },
 
     // biome-ignore lint/suspicious/noExplicitAny: Rollup types not available in source-only package
