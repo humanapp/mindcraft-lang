@@ -24,6 +24,37 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "../ui/input";
 import { BrainTile } from "./BrainTile";
 
+type TileGroup =
+  | "actuator"
+  | "sensor"
+  | "function"
+  | "parameter+modifier"
+  | "variable"
+  | "accessor"
+  | "literal"
+  | "page"
+  | "operator+controlFlow"
+  | "other";
+
+function allTileGroups<const T extends readonly TileGroup[]>(
+  groups: T & ([TileGroup] extends [T[number]] ? T : never)
+): T {
+  return groups;
+}
+
+const groupNames: Record<TileGroup, string> = {
+  actuator: "Actuators",
+  sensor: "Sensors",
+  function: "Functions",
+  "parameter+modifier": "Parameters",
+  variable: "Variables",
+  accessor: "Field Accessors",
+  literal: "Literals",
+  page: "Pages",
+  "operator+controlFlow": "Operators",
+  other: "Other",
+};
+
 /** Fuzzy character-bag match: every character in `filter` exists in `text` (case-insensitive, order-independent). */
 function fuzzyMatch(filter: string, text: string): boolean {
   const lowerFilter = filter.toLowerCase();
@@ -91,7 +122,7 @@ export function BrainTilePickerDialog({
     };
     const result = suggestTiles(context, catalogs);
 
-    const tileToGroup = (tileDef: IBrainTileDef): string => {
+    const tileToGroup = (tileDef: IBrainTileDef): TileGroup => {
       if (
         tileDef.kind === "sensor" &&
         tileDef.placement !== undefined &&
@@ -130,8 +161,8 @@ export function BrainTilePickerDialog({
     const precedingTile = precedingIndex >= 0 ? existingTiles?.get(precedingIndex) : undefined;
     const pagesFirst = precedingTile?.tileId === switchPageTileId;
 
-    const groupOrder: string[] = pagesFirst
-      ? [
+    const groupOrder = pagesFirst
+      ? allTileGroups([
           "page",
           "literal",
           "variable",
@@ -142,8 +173,8 @@ export function BrainTilePickerDialog({
           "accessor",
           "operator+controlFlow",
           "other",
-        ]
-      : [
+        ])
+      : allTileGroups([
           "actuator",
           "sensor",
           "function",
@@ -154,13 +185,13 @@ export function BrainTilePickerDialog({
           "page",
           "operator+controlFlow",
           "other",
-        ];
-    const groupIndex = (g: string) => {
+        ]);
+    const groupIndex = (g: TileGroup) => {
       const idx = groupOrder.indexOf(g);
       return idx === -1 ? groupOrder.length : idx;
     };
 
-    const exactGroups = new Map<string, TileSuggestion[]>();
+    const exactGroups = new Map<TileGroup, TileSuggestion[]>();
     for (let i = 0; i < result.exact.size(); i++) {
       const s = result.exact.get(i);
       const group = tileToGroup(s.tileDef);
@@ -168,7 +199,7 @@ export function BrainTilePickerDialog({
       exactGroups.get(group)!.push(s);
     }
 
-    const convGroups = new Map<string, TileSuggestion[]>();
+    const convGroups = new Map<TileGroup, TileSuggestion[]>();
     for (let i = 0; i < result.withConversion.size(); i++) {
       const s = result.withConversion.get(i);
       const group = tileToGroup(s.tileDef);
@@ -180,7 +211,7 @@ export function BrainTilePickerDialog({
       tiles.sort((a, b) => a.conversionCost - b.conversionCost);
     }
 
-    const sortEntries = (entries: [string, TileSuggestion[]][]) =>
+    const sortEntries = (entries: [TileGroup, TileSuggestion[]][]) =>
       entries.sort((a, b) => groupIndex(a[0]) - groupIndex(b[0]));
 
     return {
@@ -190,34 +221,9 @@ export function BrainTilePickerDialog({
     };
   }, [side, expectedType, exprProp, replaceTileIndex, availableCapabilities, existingTiles, catalogs]);
 
-  const getGroupName = (group: string): string => {
-    switch (group) {
-      case "actuator":
-        return "Actuators";
-      case "sensor":
-        return "Sensors";
-      case "function":
-        return "Functions";
-      case "parameter+modifier":
-        return "Parameters";
-      case "variable":
-        return "Variables";
-      case "accessor":
-        return "Field Accessors";
-      case "literal":
-        return "Literals";
-      case "page":
-        return "Pages";
-      case "operator+controlFlow":
-        return "Operators";
-      default:
-        return "Other";
-    }
-  };
-
-  const filterGroups = (groups: [string, TileSuggestion[]][]): [string, TileSuggestion[]][] => {
+  const filterGroups = (groups: [TileGroup, TileSuggestion[]][]): [TileGroup, TileSuggestion[]][] => {
     if (filter.length === 0) return groups;
-    const filtered: [string, TileSuggestion[]][] = [];
+    const filtered: [TileGroup, TileSuggestion[]][] = [];
     for (const [group, tiles] of groups) {
       const matching = tiles.filter((s) => {
         const label = s.tileDef.visual?.label || s.tileDef.tileId;
@@ -280,10 +286,10 @@ export function BrainTilePickerDialog({
           {filteredExact.map(([group, tiles]) => (
             <section key={group} aria-labelledby={`tile-group-${group}`}>
               <h3 id={`tile-group-${group}`} className="text-sm font-semibold uppercase mb-2">
-                {getGroupName(group)}
+                {groupNames[group]}
               </h3>
               {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}
-              <div className="flex flex-wrap gap-1" role="group" aria-label={`${getGroupName(group)} tiles`}>
+              <div className="flex flex-wrap gap-1" role="group" aria-label={`${groupNames[group]} tiles`}>
                 {tiles.map((s) => (
                   <BrainTile
                     key={s.tileDef.tileId}
@@ -305,13 +311,13 @@ export function BrainTilePickerDialog({
               {filteredConversion.map(([group, tiles]) => (
                 <section key={`conv-${group}`} aria-labelledby={`tile-group-conv-${group}`}>
                   <h3 id={`tile-group-conv-${group}`} className="text-sm font-semibold uppercase mb-2 text-white/50">
-                    {getGroupName(group)}
+                    {groupNames[group]}
                   </h3>
                   {/* biome-ignore lint/a11y/useSemanticElements: changing to fieldset requires restructuring tile layout */}
                   <div
                     className="flex flex-wrap gap-1 opacity-75"
                     role="group"
-                    aria-label={`${getGroupName(group)} tiles (conversion)`}
+                    aria-label={`${groupNames[group]} tiles (conversion)`}
                   >
                     {tiles.map((s) => (
                       <BrainTile
