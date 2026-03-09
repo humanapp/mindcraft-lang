@@ -25,14 +25,14 @@ const kAnonymousStringSlotId = getSlotId(callDef, AnonString);
 function fnSwitchPage(ctx: ExecutionContext, args: MapValue): Value {
   const hasArg = args.v.has(0);
   if (!hasArg) {
-    // No argument provided, do nothing or handle as needed
-    //console.warn("Switch Page actuator called without any arguments");
+    // No argument provided -- restart the current page
+    ctx.brain.requestPageRestart();
     return VOID_VALUE;
   }
   const argValue = args.v.get(0);
   if (!argValue) {
-    // Argument is explicitly undefined or null, do nothing
-    //console.warn("Switch Page actuator called with undefined/null argument");
+    // Argument is explicitly undefined or null -- restart the current page
+    ctx.brain.requestPageRestart();
     return VOID_VALUE;
   }
 

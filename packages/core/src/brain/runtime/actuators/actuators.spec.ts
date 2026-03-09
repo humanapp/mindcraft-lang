@@ -90,15 +90,12 @@ describe("switch-page actuator", () => {
     assert.equal(calledWith, "my-page");
   });
 
-  test("returns VOID_VALUE with no args and does not call brain", () => {
-    let pageCalled = false;
+  test("calls requestPageRestart with no args", () => {
+    let restartCalled = false;
     const ctx = mkCtx({
       brain: {
-        requestPageChange: () => {
-          pageCalled = true;
-        },
-        requestPageChangeByPageId: () => {
-          pageCalled = true;
+        requestPageRestart: () => {
+          restartCalled = true;
         },
       } as never,
     });
@@ -107,7 +104,7 @@ describe("switch-page actuator", () => {
     const result = fn.exec(ctx, args);
 
     assert.equal(result, VOID_VALUE);
-    assert.equal(pageCalled, false);
+    assert.ok(restartCalled);
   });
 });
 
