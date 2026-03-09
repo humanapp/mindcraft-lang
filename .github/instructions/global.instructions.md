@@ -2,7 +2,7 @@
 applyTo: "**"
 ---
 
-<!-- Last reviewed: 2026-02-22 -->
+<!-- Last reviewed: 2026-03-09 -->
 
 # GitHub Copilot Instructions
 
@@ -11,6 +11,18 @@ applyTo: "**"
 **NEVER create example .ts files in the project src folder.**
 
 If you choose to create ad-hoc feature documentation or example files, they must be placed in a folder called `generated-docs/` in the project root to clearly indicate non-source, auto-generated status. **Never place example or documentation files in any `src/` folder.**. And, always include the date of creation in the file name, e.g., `example-feature-2024-06-15.ts` or `docs-feature-2025-01-31.md`.
+
+## Comments in Source Files
+
+**Do not add rationale or explanatory comments to source files.** Comments that explain why a file is structured a certain way, why a refactor was done, or what constraints drove a design decision do not belong in source code. The code should speak for itself, and historical rationale belongs in commit messages or design docs -- not inline.
+
+Examples of comments to avoid:
+
+- `// extracted to its own file so that Foo.tsx only exports components`
+- `// moved here to avoid circular dependency`
+- `// refactored from X to satisfy Y constraint`
+
+Only add comments where the logic itself is non-obvious and a reader would genuinely benefit from a brief hint.
 
 ## ASCII-Only Text in Comments and Documentation
 

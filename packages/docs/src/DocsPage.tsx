@@ -1,8 +1,11 @@
-import { BookOpen, ChevronLeft } from "lucide-react";
+import { BookOpen, ChevronLeft, Printer } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
+import { DocsPrintView } from "./DocsPrintView";
 import type { DocsRegistry } from "./DocsRegistry";
 import { DocsPanelContent } from "./DocsSidebar";
 import { DocsSidebarProvider, type DocTab, useDocsSidebar } from "./DocsSidebarContext";
+import { useDocsPrint } from "./useDocsPrint";
 
 // ---------------------------------------------------------------------------
 // URL <-> docs state mapping
@@ -74,6 +77,18 @@ export interface DocsPageLayoutProps {
 function DocsPageLayout({ backLabel = "Home", backHref = "/" }: DocsPageLayoutProps) {
   useDocsUrlSync();
   const searchRef = useRef<HTMLInputElement>(null);
+  const { navKey, navTab, registry } = useDocsSidebar();
+  const { printContent, triggerPrint, getPrintRoot } = useDocsPrint();
+
+  const detailContent = useMemo(() => {
+    if (!navKey || !navTab) return null;
+    if (navTab === "tiles") return registry.tiles.get(navKey)?.content ?? null;
+    if (navTab === "patterns") return registry.patterns.get(navKey)?.content ?? null;
+    if (navTab === "concepts") return registry.concepts.get(navKey)?.content ?? null;
+    return null;
+  }, [navKey, navTab, registry]);
+
+  const canPrint = detailContent !== null;
 
   return (
     <div className="h-screen flex flex-col bg-slate-900 text-slate-200">
@@ -90,12 +105,25 @@ function DocsPageLayout({ backLabel = "Home", backHref = "/" }: DocsPageLayoutPr
           <BookOpen className="w-4 h-4" aria-hidden="true" />
           <span className="text-sm font-semibold tracking-tight">Documentation</span>
         </div>
+        {canPrint && (
+          <button
+            type="button"
+            onClick={() => triggerPrint(detailContent)}
+            className="ml-auto flex items-center justify-center w-7 h-7 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            aria-label="Print this page"
+            title="Print this page"
+          >
+            <Printer className="w-4 h-4" aria-hidden="true" />
+          </button>
+        )}
       </header>
 
       {/* Content */}
       <div className="flex-1 min-h-0 flex flex-col max-w-3xl mx-auto w-full">
         <DocsPanelContent tabBarClassName="py-2.5 text-sm" scrollClassName="p-4 md:p-6" searchRef={searchRef} />
       </div>
+
+      {printContent && createPortal(<DocsPrintView content={printContent} />, getPrintRoot())}
     </div>
   );
 }

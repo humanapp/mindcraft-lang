@@ -1,12 +1,13 @@
 import { getBrainServices } from "@mindcraft-lang/core/brain";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
-import { BookOpen, ChevronLeft, ChevronRight, GripVertical, Printer, Search, X } from "lucide-react";
+import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { DocMarkdown } from "./DocMarkdown";
 import { DocsPrintView } from "./DocsPrintView";
 import type { DocsConceptEntry, DocsPatternEntry, DocsTileEntry } from "./DocsRegistry";
 import { type DocTab, useDocsSidebar } from "./DocsSidebarContext";
+import { useDocsPrint } from "./useDocsPrint";
 
 // ---------------------------------------------------------------------------
 // Panel width -- stored as a viewport-relative percentage so that resizing
@@ -560,57 +561,11 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
 }
 
 // ---------------------------------------------------------------------------
-// Print support
-// ---------------------------------------------------------------------------
-
-function useDocsPrint() {
-  const printRootRef = useRef<HTMLDivElement | null>(null);
-  const [printContent, setPrintContent] = useState<string | null>(null);
-
-  const triggerPrint = useCallback((content: string) => {
-    let printRoot = document.getElementById("docs-print-root") as HTMLDivElement | null;
-    if (!printRoot) {
-      printRoot = document.createElement("div");
-      printRoot.id = "docs-print-root";
-      printRoot.style.display = "none";
-      document.body.appendChild(printRoot);
-    }
-    printRootRef.current = printRoot;
-    setPrintContent(content);
-
-    // Allow React to render the portal, then print
-    requestAnimationFrame(() => {
-      const root = document.getElementById("docs-print-root");
-      if (root) root.style.display = "block";
-      requestAnimationFrame(() => {
-        window.print();
-        const r = document.getElementById("docs-print-root");
-        if (r) r.style.display = "none";
-        setPrintContent(null);
-      });
-    });
-  }, []);
-
-  const getPrintRoot = useCallback((): HTMLDivElement => {
-    let printRoot = document.getElementById("docs-print-root") as HTMLDivElement | null;
-    if (!printRoot) {
-      printRoot = document.createElement("div");
-      printRoot.id = "docs-print-root";
-      printRoot.style.display = "none";
-      document.body.appendChild(printRoot);
-    }
-    return printRoot;
-  }, []);
-
-  return { printContent, triggerPrint, getPrintRoot };
-}
-
-// ---------------------------------------------------------------------------
 // Desktop panel
 // ---------------------------------------------------------------------------
 
 function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }) {
-  const { close, navKey, navTab, registry } = useDocsSidebar();
+  const { close, activeTab, navKey, navTab, registry } = useDocsSidebar();
   const { printContent, triggerPrint, getPrintRoot } = useDocsPrint();
 
   // Resolve the current detail content for the print button
@@ -624,6 +579,12 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
 
   const canPrint = detailContent !== null;
 
+  // Build URL for the corresponding /docs page so it can be opened in a new tab.
+  const docsPageUrl = useMemo(() => {
+    if (navKey && navTab) return `/docs/${navTab}/${encodeURIComponent(navKey)}`;
+    return `/docs/${activeTab}`;
+  }, [navKey, navTab, activeTab]);
+
   return (
     <>
       {/* Header */}
@@ -633,6 +594,16 @@ function PanelContent({ searchRef }: { searchRef?: React.Ref<HTMLInputElement> }
           <span className="text-sm font-semibold tracking-tight">Docs</span>
         </div>
         <div className="flex items-center gap-1">
+          <a
+            href={docsPageUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center w-6 h-6 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors"
+            aria-label="Open in docs page"
+            title="Open in docs page"
+          >
+            <ExternalLink className="w-4 h-4" aria-hidden="true" />
+          </a>
           {canPrint && (
             <button
               type="button"
