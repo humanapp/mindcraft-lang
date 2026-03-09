@@ -1615,6 +1615,48 @@
       "tileId": "tile.page->3k73rPd04cQmsNj7",
       "pageId": "3k73rPd04cQmsNj7",
       "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->4GNF754bK3cMiRYs",
+      "pageId": "4GNF754bK3cMiRYs",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->VrUGr0DdlbvZdHbu",
+      "pageId": "VrUGr0DdlbvZdHbu",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->TeR5doD7Z3IJvwKQ",
+      "pageId": "TeR5doD7Z3IJvwKQ",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->Vz0FUiFwQYOjg0wg",
+      "pageId": "Vz0FUiFwQYOjg0wg",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->Oys35X2dnBsiiKPk",
+      "pageId": "Oys35X2dnBsiiKPk",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->xC3Z0iAC3gfvxOS1",
+      "pageId": "xC3Z0iAC3gfvxOS1",
+      "label": "Unnamed Page"
     }
   ],
   "pages": [
@@ -1662,7 +1704,8 @@
               "version": 1,
               "when": [],
               "do": [
-                "tile.actuator->restart-page"
+                "tile.actuator->switch-page",
+                "tile.sensor->current-page"
               ],
               "children": []
             }

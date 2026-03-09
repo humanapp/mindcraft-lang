@@ -2074,6 +2074,27 @@
       "tileId": "tile.page->XrsLPTS8IXXEUqbZ",
       "pageId": "XrsLPTS8IXXEUqbZ",
       "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->vrcoI2I6lenWiTeS",
+      "pageId": "vrcoI2I6lenWiTeS",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->tA3C70q9yyRudUoF",
+      "pageId": "tA3C70q9yyRudUoF",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->PQLF6guUVhi5a8w2",
+      "pageId": "PQLF6guUVhi5a8w2",
+      "label": "Unnamed Page"
     }
   ],
   "pages": [
@@ -2157,7 +2178,8 @@
                   "version": 1,
                   "when": [],
                   "do": [
-                    "tile.actuator->restart-page"
+                    "tile.actuator->switch-page",
+                    "tile.sensor->current-page"
                   ],
                   "children": []
                 }
