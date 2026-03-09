@@ -18,7 +18,7 @@ toward or away from specific actors.
 [{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.turn","tile.modifier->modifier.movement.toward"]}]
 ```
 
-This rule turns the actor away from a visible carnivore.
+_Turns toward the detected carnivore._
 
 ## Modifiers & Parameters
 
@@ -39,6 +39,7 @@ This rule turns the actor away from a visible carnivore.
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | Anonymous Actor | `Actor` | The target to turn toward or away from. If not provided, the best target will be inferred from context. |
+| `tile:tile.parameter->parameter.priority` | `Number` | Priority of this action in relation to other queued movements |
 
 ## See Also
 

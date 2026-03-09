@@ -53,7 +53,7 @@ Place the variable on the left, the `tile:tile.op->assign` in the middle, and th
 }
 ```
 
-This rule subtracts `1` from the value of the `countdown` variable once every second.
+_Once per second, subtract `1` from `countdown`._
 
 The `tile:tile.op->assign` operator works with all variable types -- numbers, booleans, strings, even custom types defined by the application.
 
