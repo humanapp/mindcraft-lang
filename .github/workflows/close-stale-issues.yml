@@ -20,7 +20,7 @@ jobs:
             This issue has been closed because it was labeled "needs info" and
             had no activity for 30 days. If you have the requested information,
             feel free to reopen it.
-          stale-issue-label: ""
+          stale-issue-label: "Stale" # Never applied since days-before-stale is -1
           exempt-issue-labels: "pinned"
           days-before-pr-stale: -1
           days-before-pr-close: -1
