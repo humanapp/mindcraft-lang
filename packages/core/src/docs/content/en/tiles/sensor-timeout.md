@@ -65,4 +65,3 @@ _After five seconds, switch to the page named "Regenerate"._
 
 `tile:tile.sensor->on-page-entered`
 `tile:tile.actuator->switch-page`
-`tile:tile.actuator->restart-page`

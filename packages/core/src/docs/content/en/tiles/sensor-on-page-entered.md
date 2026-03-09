@@ -17,5 +17,5 @@ This sensor produces true only on the first frame after page entry, then false o
 ## See Also
 
 `tile:tile.actuator->switch-page`
-`tile:tile.actuator->restart-page`
+`tile:tile.sensor->current-page`
 `tile:tile.sensor->sensor.timeout`

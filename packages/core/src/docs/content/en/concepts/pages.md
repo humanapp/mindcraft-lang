@@ -8,8 +8,9 @@ Only one page is active at a time.
 Use `tile:tile.actuator->switch-page` on the DO side to navigate to a different page.
 The current page stops evaluating and the new page begins on the next frame.
 
-Use `tile:tile.actuator->restart-page` to restart the current page from scratch,
-resetting any timers or state that depend on page entry.
+## Restarting the current page
+
+If a page parameter is omitted, or if `tile:tile.sensor->current-page` is given, the execution of the current page will be interrupted and will restart at the top of the page in the next tick.
 
 ## On Page Entered
 
