@@ -66,10 +66,6 @@ function InlineTileLink({ tileId, tileDef }: { tileId: string; tileDef: IBrainTi
   const { registry, navigateToEntry } = useDocsSidebar();
   const hasDocPage = registry.tiles.has(tileId);
 
-  if (!hasDocPage) {
-    return <InlineTileIcon tileDef={tileDef} />;
-  }
-
   return (
     <button
       type="button"
