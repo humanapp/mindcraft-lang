@@ -47,7 +47,7 @@ Place the variable tile on the WHEN or DO side of any rule to read and make use 
 }
 ```
 
-_"foo == 42" (checks if variable `foo`'s value is equal to 42)_
+_"foo == 42" (checks if variable `foo`'s value is equal to `42`)_
 
 
 ## Writing to a Variable
@@ -91,7 +91,7 @@ Put the variable tile on the left and a value expression on the right.
 }
 ```
 
-_"foo = 42" (gives variable `foo` the value 42)_
+_"foo = 42" (gives variable `foo` the value `42`)_
 
 ## Variable Scope
 
