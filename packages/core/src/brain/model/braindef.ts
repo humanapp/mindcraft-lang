@@ -21,6 +21,7 @@ import { getBrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";
 import { BrainPageDef, type PageJson } from "./pagedef";
+import type { RuleJson } from "./ruledef";
 
 export interface BrainJson {
   version: number;
@@ -51,6 +52,51 @@ const STags = {
   NAME: fourCC("NAME"), // Brain name
   PGCT: fourCC("PGCT"), // Page count
 };
+
+// -- JSON plain-object conversion helpers ------------------------------------
+// JSON.stringify serializes List<T> as T[] (via List.toJSON). When the result
+// is read back with JSON.parse all collections are plain arrays, not List<T>.
+// The exported brainJsonFromPlain converts the raw JSON.parse output into the
+// List-based BrainJson expected by BrainDef.fromJson.
+
+function convertPlainRule_(plain: unknown): RuleJson {
+  const r = plain as { version: number; when: string[]; do: string[]; children: unknown[] };
+  const plainChildren = List.from(r.children);
+  const children = new List<RuleJson>();
+  for (let i = 0; i < plainChildren.size(); i++) {
+    children.push(convertPlainRule_(plainChildren.get(i)));
+  }
+  return { version: r.version, when: List.from(r.when), do: List.from(r.do), children };
+}
+
+function convertPlainPage_(plain: unknown): PageJson {
+  const p = plain as { version: number; pageId: string; name: string; rules: unknown[] };
+  const plainRules = List.from(p.rules);
+  const rules = new List<RuleJson>();
+  for (let i = 0; i < plainRules.size(); i++) {
+    rules.push(convertPlainRule_(plainRules.get(i)));
+  }
+  return { version: p.version, pageId: p.pageId, name: p.name, rules };
+}
+
+/**
+ * Convert a plain JavaScript object produced by JSON.parse into the
+ * List-based BrainJson required by BrainDef.fromJson.
+ *
+ * JSON.stringify serializes List<T> as a plain T[] array, so a JSON
+ * round-trip through JSON.parse produces plain arrays rather than Lists.
+ * Call this function on the JSON.parse output before passing it to fromJson.
+ */
+export function brainJsonFromPlain(plain: unknown): BrainJson {
+  const obj = plain as { version: number; name: string; catalog: CatalogTileJson[]; pages: unknown[] };
+  const catalog = List.from(obj.catalog);
+  const plainPages = List.from(obj.pages);
+  const pages = new List<PageJson>();
+  for (let i = 0; i < plainPages.size(); i++) {
+    pages.push(convertPlainPage_(plainPages.get(i)));
+  }
+  return { version: obj.version, name: obj.name, catalog, pages };
+}
 
 export class BrainDef implements IBrainDef {
   private name_: string = "Unnamed Brain"; // TODO: i18n

@@ -1,5 +1,5 @@
 import { stream } from "@mindcraft-lang/core";
-import { BrainDef, type BrainPageDef } from "@mindcraft-lang/core/brain/model";
+import { BrainDef, type BrainPageDef, brainJsonFromPlain } from "@mindcraft-lang/core/brain/model";
 import {
   BookOpen,
   ChevronDown,
@@ -313,8 +313,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       if (uint8Array[0] === 0x7b) {
         // JSON format
         const text = new TextDecoder().decode(uint8Array);
-        // biome-ignore lint/suspicious/noExplicitAny: JSON.parse returns unknown structure
-        loadedBrain = BrainDef.fromJson(JSON.parse(text) as any);
+        loadedBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown));
       } else {
         // Binary format
         const byteArray = stream.byteArrayFromUint8Array(uint8Array);

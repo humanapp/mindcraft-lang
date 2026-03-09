@@ -1,5 +1,5 @@
 import { stream } from "@mindcraft-lang/core";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { BrainDef, brainJsonFromPlain } from "@mindcraft-lang/core/brain/model";
 import type { Archetype } from "@/brain/actor";
 
 const STORAGE_KEY_PREFIX = "brain-archetype-";
@@ -20,8 +20,7 @@ export function deserializeBrainFromArrayBuffer(buffer: ArrayBuffer): BrainDef |
     // Detect format by checking if file starts with '{' (0x7B = JSON)
     if (uint8Array[0] === 0x7b) {
       const text = new TextDecoder().decode(uint8Array);
-      // biome-ignore lint/suspicious/noExplicitAny: JSON.parse returns unknown structure
-      brainDef = BrainDef.fromJson(JSON.parse(text) as any);
+      brainDef = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown));
     } else {
       const byteArray = stream.byteArrayFromUint8Array(uint8Array);
       const memStream = new stream.MemoryStream(byteArray);
