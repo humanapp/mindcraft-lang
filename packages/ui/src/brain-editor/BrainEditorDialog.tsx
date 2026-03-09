@@ -262,13 +262,9 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     if (!brainDef) return;
 
     try {
-      // Serialize the brain to binary
-      const memStream = new stream.MemoryStream();
-      brainDef.serialize(memStream);
-      const byteArray = memStream.toBytes();
-
-      // Extract the underlying Uint8Array using the proper API
-      const bytes = stream.byteArrayToUint8Array(byteArray);
+      // Serialize the brain to JSON
+      const json = brainDef.toJson();
+      const text = JSON.stringify(json, null, 2);
 
       // Use File System Access API to save
       // biome-ignore lint/suspicious/noExplicitAny: File System Access API has no standard TS types
@@ -277,13 +273,13 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         types: [
           {
             description: "Brain Files",
-            accept: { "application/octet-stream": [".brain"] },
+            accept: { "application/json": [".brain"] },
           },
         ],
       });
 
       const writable = await handle.createWritable();
-      await writable.write(bytes);
+      await writable.write(text);
       await writable.close();
     } catch (err) {
       // User cancelled or error occurred
@@ -301,7 +297,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         types: [
           {
             description: "Brain Files",
-            accept: { "application/octet-stream": [".brain"] },
+            accept: { "application/octet-stream": [".brain"], "application/json": [".brain"] },
           },
         ],
         multiple: false,
@@ -311,13 +307,21 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       const arrayBuffer = await file.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
 
-      // Convert Uint8Array to IByteArray using the proper API
-      const byteArray = stream.byteArrayFromUint8Array(uint8Array);
+      let loadedBrain: BrainDef;
 
-      // Deserialize the brain from binary
-      const memStream = new stream.MemoryStream(byteArray);
-      const loadedBrain = new BrainDef();
-      loadedBrain.deserialize(memStream);
+      // Detect format by checking if file starts with '{' (0x7B = JSON)
+      if (uint8Array[0] === 0x7b) {
+        // JSON format
+        const text = new TextDecoder().decode(uint8Array);
+        // biome-ignore lint/suspicious/noExplicitAny: JSON.parse returns unknown structure
+        loadedBrain = BrainDef.fromJson(JSON.parse(text) as any);
+      } else {
+        // Binary format
+        const byteArray = stream.byteArrayFromUint8Array(uint8Array);
+        const memStream = new stream.MemoryStream(byteArray);
+        loadedBrain = new BrainDef();
+        loadedBrain.deserialize(memStream);
+      }
 
       // Ensure at least one page exists
       if (loadedBrain.pages().size() === 0) {
