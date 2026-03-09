@@ -86,6 +86,16 @@ export class PlantComp {
       this.actor.sprite.setVelocity(0, 0);
     }
   }
+
+  /**
+   * Inject a velocity impulse into the spring integrator.
+   * Use this instead of setVelocity() on the Matter body -- tick() zeros
+   * Matter velocity every frame, so body impulses are discarded immediately.
+   */
+  applyImpulse(vx: number, vy: number): void {
+    this.springVelX += vx;
+    this.springVelY += vy;
+  }
 }
 
 export class Actor {

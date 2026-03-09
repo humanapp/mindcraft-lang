@@ -19,7 +19,5 @@ const root = document.getElementById("root");
 if (!root) throw new Error("Failed to find the root element");
 
 ReactDOM.createRoot(root).render(
-  <React.StrictMode>
-    {window.location.pathname.startsWith("/docs") ? <DocsPage /> : <App />}
-  </React.StrictMode>
+  <React.StrictMode>{window.location.pathname.startsWith("/docs") ? <DocsPage /> : <App />}</React.StrictMode>
 );
