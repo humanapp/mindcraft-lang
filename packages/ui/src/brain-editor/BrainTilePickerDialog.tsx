@@ -1,9 +1,11 @@
 import { List, type ReadonlyBitSet, type ReadonlyList } from "@mindcraft-lang/core";
 import {
+  CoreActuatorId,
   CoreSensorId,
   getBrainServices,
   type IBrainTileDef,
   type ITileCatalog,
+  mkActuatorTileId,
   mkSensorTileId,
   type RuleSide,
   TilePlacement,
@@ -123,18 +125,36 @@ export function BrainTilePickerDialog({
       }
     };
 
-    const groupOrder: string[] = [
-      "actuator",
-      "sensor",
-      "function",
-      "parameter+modifier",
-      "variable",
-      "accessor",
-      "literal",
-      "page",
-      "operator+controlFlow",
-      "other",
-    ];
+    const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
+    const precedingIndex = replaceTileIndex != null ? replaceTileIndex - 1 : (existingTiles?.size() ?? 0) - 1;
+    const precedingTile = precedingIndex >= 0 ? existingTiles?.get(precedingIndex) : undefined;
+    const pagesFirst = precedingTile?.tileId === switchPageTileId;
+
+    const groupOrder: string[] = pagesFirst
+      ? [
+          "page",
+          "literal",
+          "variable",
+          "function",
+          "actuator",
+          "sensor",
+          "parameter+modifier",
+          "accessor",
+          "operator+controlFlow",
+          "other",
+        ]
+      : [
+          "actuator",
+          "sensor",
+          "function",
+          "parameter+modifier",
+          "variable",
+          "accessor",
+          "literal",
+          "page",
+          "operator+controlFlow",
+          "other",
+        ];
     const groupIndex = (g: string) => {
       const idx = groupOrder.indexOf(g);
       return idx === -1 ? groupOrder.length : idx;
