@@ -246,6 +246,10 @@ export class Brain implements IBrain {
       this.desiredPageIndex = -1;
       return;
     }
+    if (pageIndex === this.currentPageIndex) {
+      this.requestPageRestart();
+      return;
+    }
     this.desiredPageIndex = pageIndex;
     // Cancel active fibers so no more rules evaluate this tick
     this.cancelActiveFibers();
@@ -276,6 +280,12 @@ export class Brain implements IBrain {
     this.restartPageRequested = true;
     // Cancel active fibers so no more rules evaluate this tick
     this.cancelActiveFibers();
+  }
+
+  getCurrentPageId(): string {
+    if (!this.program || !this.isValidPageIndex(this.currentPageIndex)) return "";
+    const meta = this.program.pages.get(this.currentPageIndex);
+    return meta ? meta.pageId : "";
   }
 
   startup() {

@@ -1220,10 +1220,13 @@ function findReplacementRole(expr: Expr, tileIndex: number, parentRole: Replacem
           });
         }
       }
-      // If the tile is at the action tile's own position, suggest all
-      // expression tiles (the user is replacing the actuator/sensor itself).
+      // If the tile is at the action tile's own position, the user is
+      // replacing the actuator/sensor itself. Use the parent role so
+      // that when this sensor/actuator is nested inside another action
+      // call's slot, suggestions are constrained to that slot's context
+      // (e.g., value-producing tiles) rather than offering all tiles.
       if (tileIndex === expr.span.from) {
-        return { kind: "expressionPosition" };
+        return parentRole;
       }
       // The tile is inside the action call span but not in any child AST
       // node. This happens with transparent control flow tokens (like
@@ -1620,7 +1623,7 @@ function suggestExpressionTiles(
       const tileDef = allTiles.get(ti);
 
       // Skip hidden tiles
-      if (tileDef.hidden) continue;
+      if (tileDef.hidden || tileDef.deprecated) continue;
 
       // Skip modifier, parameter, and accessor tiles (only valid in specific contexts)
       if (tileDef.kind === "modifier" || tileDef.kind === "parameter" || tileDef.kind === "accessor") continue;
@@ -1746,7 +1749,7 @@ function suggestInfixOperators(
     for (let ti = 0; ti < allTiles.size(); ti++) {
       const tileDef = allTiles.get(ti);
 
-      if (tileDef.hidden) continue;
+      if (tileDef.hidden || tileDef.deprecated) continue;
       if (tileDef.kind !== "operator") continue;
 
       const opDef = tileDef as BrainTileOperatorDef;
@@ -1827,7 +1830,7 @@ function suggestAccessorTiles(
     for (let ti = 0; ti < allTiles.size(); ti++) {
       const tileDef = allTiles.get(ti);
 
-      if (tileDef.hidden) continue;
+      if (tileDef.hidden || tileDef.deprecated) continue;
       if (tileDef.kind !== "accessor") continue;
 
       const accessorDef = tileDef as BrainTileAccessorDef;
@@ -1894,7 +1897,7 @@ function suggestPrefixOperatorsForValue(
     for (let ti = 0; ti < allTiles.size(); ti++) {
       const tileDef = allTiles.get(ti);
 
-      if (tileDef.hidden) continue;
+      if (tileDef.hidden || tileDef.deprecated) continue;
       if (tileDef.kind !== "operator") continue;
 
       const opDef = tileDef as BrainTileOperatorDef;
@@ -1951,7 +1954,7 @@ function suggestPrefixOperators(
     for (let ti = 0; ti < allTiles.size(); ti++) {
       const tileDef = allTiles.get(ti);
 
-      if (tileDef.hidden) continue;
+      if (tileDef.hidden || tileDef.deprecated) continue;
       if (tileDef.kind !== "operator") continue;
 
       const opDef = tileDef as BrainTileOperatorDef;
@@ -2200,7 +2203,7 @@ function suggestExpressionsForAnonymousSlots(
       const tileDef = allTiles.get(ti);
 
       // Skip hidden tiles
-      if (tileDef.hidden) continue;
+      if (tileDef.hidden || tileDef.deprecated) continue;
 
       // Only value-producing expression tiles
       if (!isValueProducingTile(tileDef)) continue;

@@ -107,12 +107,6 @@ export const coreTileDocs: readonly CoreTileDocMeta[] = [
     category: "Control Flow",
     contentKey: "cf-switch-page",
   },
-  {
-    tileId: "tile.actuator->restart-page",
-    tags: ["pages", "navigation", "control flow"],
-    category: "Control Flow",
-    contentKey: "cf-restart-page",
-  },
 
   // -- Core sensors ----------------------------------------------------------
   {
@@ -134,6 +128,12 @@ export const coreTileDocs: readonly CoreTileDocMeta[] = [
     tags: ["random", "numbers", "functions"],
     category: "Functions",
     contentKey: "sensor-random",
+  },
+  {
+    tileId: "tile.sensor->current-page",
+    tags: ["pages", "navigation", "functions"],
+    category: "Functions",
+    contentKey: "sensor-current-page",
   },
 
   // -- Variable factories ----------------------------------------------------

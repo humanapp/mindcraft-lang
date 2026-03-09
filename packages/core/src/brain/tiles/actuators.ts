@@ -38,6 +38,6 @@ export function registerCoreActuatorTileDefs() {
     tiles.registerTileDef(tileDef);
   };
   register(fnSwitchPage.fnId);
-  register(fnRestartPage.fnId);
+  register(fnRestartPage.fnId, { deprecated: true });
   //register(fnYield.fnId);
 }

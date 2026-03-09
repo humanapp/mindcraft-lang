@@ -64,6 +64,7 @@ export const tileVisuals = new Dict<string, Partial<TileVisual>>([
   [mkSensorTileId(CoreSensorId.Random), { label: "random number", iconUrl: "/assets/brain/icons/random.svg" }],
   [mkSensorTileId(CoreSensorId.OnPageEntered), { label: "on page entered", iconUrl: "/assets/brain/icons/on-page-enter.svg" }],
   [mkSensorTileId(CoreSensorId.Timeout), { label: "timeout", iconUrl: "/assets/brain/icons/timer.svg" }],
+  [mkSensorTileId(CoreSensorId.CurrentPage), { label: "current page", iconUrl: "/assets/brain/icons/page.svg" }],
   // Actuators
   [mkActuatorTileId(CoreActuatorId.SwitchPage), { label: "switch page", iconUrl: "/assets/brain/icons/switch_page.svg" }],
   [mkActuatorTileId(CoreActuatorId.RestartPage), { label: "restart page", iconUrl: "/assets/brain/icons/restart-page.svg" }],

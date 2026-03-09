@@ -96,12 +96,6 @@ export const appTileDocs: readonly AppTileDocMeta[] = [
 
   // -- Parameters & Modifiers: parameters ------------------------------------
   {
-    tileId: "tile.parameter->parameter.delay.ms",
-    tags: ["time", "delay", "timer", "parameter"],
-    category: "Parameters & Modifiers",
-    contentKey: "parameter-delay-ms",
-  },
-  {
     tileId: "tile.parameter->parameter.duration",
     tags: ["time", "duration", "parameter"],
     category: "Parameters & Modifiers",

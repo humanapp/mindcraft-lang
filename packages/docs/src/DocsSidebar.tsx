@@ -366,7 +366,10 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
 
   // Filter entries based on search
   const filteredTiles = useMemo(() => {
-    const tiles = Array.from(registry.tiles.values());
+    const tiles = Array.from(registry.tiles.values()).filter((t) => {
+      const tileDef = getBrainServices().tiles.get(t.tileId);
+      return !tileDef?.hidden && !tileDef?.deprecated;
+    });
     if (!search) return tiles;
     return tiles.filter((t) => matchesSearch(search, getTileLabel(t.tileId), t.tileId, t.tags, t.category, t.content));
   }, [registry, search]);

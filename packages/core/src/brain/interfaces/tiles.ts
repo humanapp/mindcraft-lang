@@ -233,6 +233,7 @@ export enum CoreSensorId {
   Random = "random",
   OnPageEntered = "on-page-entered",
   Timeout = "sensor.timeout",
+  CurrentPage = "current-page",
 }
 
 export enum CoreParameterId {
