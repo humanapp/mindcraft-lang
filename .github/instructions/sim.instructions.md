@@ -2,7 +2,7 @@
 applyTo: "apps/sim/**"
 ---
 
-<!-- Last reviewed: 2026-02-24 -->
+<!-- Last reviewed: 2026-03-10 -->
 
 # Sim App -- Architecture & Conventions
 
@@ -15,6 +15,7 @@ The sim app (`apps/sim/`) is a **Vite + React + Phaser 3** web application that 
 - **Phaser 3** -- game canvas and Matter.js physics
 - **Tailwind CSS v4** -- styling (via `@tailwindcss/postcss`)
 - **@mindcraft-lang/ui** -- shared React UI components and brain editor (local source-only dependency)
+- **@mindcraft-lang/docs** -- documentation framework and markdown renderer (local source-only dependency)
 - **Biome** -- formatter and linter (`biome.json`, 120-char line width, 2-space indent)
 - **miniplex** -- ECS (entity-component-system) for actor management
 
@@ -22,6 +23,7 @@ The sim app (`apps/sim/`) is a **Vite + React + Phaser 3** web application that 
 
 - `@/*` maps to `./src/*` (configured in `tsconfig.json`). Always prefer `@/` paths over deep relative paths when importing across directory boundaries. Use relative paths only within the same directory or for sibling files.
 - `@mindcraft-lang/ui` maps to `../../packages/ui/src` (Vite alias + tsconfig paths). UI primitives and brain editor components are imported from this package.
+- `@mindcraft-lang/docs` maps to `../../packages/docs/src` (Vite alias + tsconfig paths). Documentation framework components are imported from this package.
 
 ## Build & Scripts
 
@@ -39,12 +41,14 @@ The `prebuild` script automatically rebuilds `packages/core` before building the
 
 ```
 src/
-|-- main.tsx              # React entry point (renders <App>, imports bootstrap)
+|-- main.tsx              # React entry point (routes /docs -> DocsPage, else -> App)
 |-- App.tsx               # Root layout: Phaser canvas + sidebar + brain editor dialog
 |-- PhaserGame.tsx        # React <-> Phaser bridge component
 |-- bootstrap.ts          # Side-effect module: logger, services, brain registration
 |-- brain-editor-config.tsx  # BrainEditorConfig for @mindcraft-lang/ui provider
+|-- DocsPage.tsx          # Standalone /docs page wrapper
 |-- globals.css           # Tailwind import, fonts, theme tokens (oklch)
+|-- vite-env.d.ts         # Vite client types
 |
 |-- brain/                # Simulation engine + brain language integration
 |   |-- index.ts          # Barrel: registerBrainComponents()
@@ -64,7 +68,7 @@ src/
 |   |   |-- utils.ts      # Shared host function helpers
 |   |   |-- action-def.ts # ActionDef type (shared by all sensors/actuators)
 |   |   |-- actuators/    # Move, Eat, Say, Turn, Shoot actuators
-|   |   \-- sensors/      # Bump, See, Timeout sensors
+|   |   \-- sensors/      # Bump, See sensors
 |   \-- tiles/            # Tile definitions and visual config
 |       |-- index.ts      # Barrel: registerTiles()
 |       |-- types.ts      # TileVisual and TileColorDef types
@@ -83,8 +87,8 @@ src/
 |-- game/                 # Phaser game layer
 |   |-- main.ts           # Phaser Game config + StartGame factory (Matter physics, 1024x768)
 |   \-- scenes/
-|       |-- Boot.ts       # Boot scene (loads background)
-|       |-- Preloader.ts  # Asset loading with progress bar
+|       |-- Boot.ts       # Boot scene (transitions to Preloader)
+|       |-- Preloader.ts  # Loads .brain assets with progress bar
 |       \-- Playground.ts # Main game scene (spawning, collisions, obstacles)
 |
 |-- services/
@@ -94,8 +98,13 @@ src/
 |-- lib/                  # Sim-specific utilities
 |   \-- color.ts          # heatColor(), energyTint() for Phaser rendering
 |
-\-- components/           # React UI components
-    \-- Sidebar.tsx       # Dashboard sidebar (stats, time scale, population, debug)
+|-- components/           # React UI components
+|   \-- Sidebar.tsx       # Dashboard sidebar (stats, time scale, population, debug)
+|
+\-- docs/                 # Documentation content and registry
+    |-- docs-registry.ts  # Builds docs registry from manifest + globbed markdown
+    |-- manifest.ts       # Metadata for all tile/pattern docs
+    \-- content/en/       # Markdown docs (tiles/, patterns/)
 ```
 
 The brain editor UI and shadcn/ui primitives have been factored out to `@mindcraft-lang/ui`.
@@ -131,8 +140,8 @@ The `Engine` wraps a miniplex ECS `World<Actor>`, handling spawning, tick update
 
 The sim registers app-specific brain components through a layered registration:
 
-1. **Types** (`type-system.ts`): `ActorId` and `Vector2` custom types
-2. **Host Functions** (`fns/`): Sensor/actuator implementations (move, bump, see, timeout)
+1. **Types** (`type-system.ts`): `ActorRef` and `Vector2` custom types
+2. **Host Functions** (`fns/`): Sensor/actuator implementations (Move, Eat, Say, Turn, Shoot, Bump, See)
 3. **Tiles** (`tiles/`): Tile definitions with visual metadata for the UI
 
 Each sensor/actuator follows the `ActionDef` pattern:
@@ -210,7 +219,7 @@ These helpers are in `brain/execution-context-types.ts`.
 
 ### Scoring System
 
-The sim tracks per-archetype survival statistics and computes a composite **ecosystem score** displayed in a live scoreboard overlay (bottom-right corner).
+The sim tracks per-archetype survival statistics and computes a composite **ecosystem score** displayed in the Sidebar dashboard.
 
 **Tracked stats** (per archetype):
 
@@ -219,9 +228,9 @@ The sim tracks per-archetype survival statistics and computes a composite **ecos
 - Alive count and average energy
 - Total deaths
 
-**Ecosystem score**: geometric mean of all three archetypes' average lifespans. Uses `((avgC + 1) * (avgH + 1) * (avgP + 1)) ** (1/3) - 1` so all species must thrive for a high score -- optimizing only one archetype yields diminishing returns.
+**Ecosystem score**: geometric mean of animal average lifespans (plants excluded -- their passive regen makes lifespans incomparable). Uses `sqrt((avgC + 1) * (avgH + 1)) - 1` so both predator and prey must thrive for a high score.
 
-**Data flow**: `Engine.tick()` updates the `ScoreTracker` each frame with alive counts, energy sums, and elapsed time. `Engine.killActor()` records death lifespans. The React `Sidebar` component displays stats polled from `App.tsx`, which reads `Playground.getScoreSnapshot()` at 4Hz via `setInterval`.
+**Data flow**: `Engine.tick()` updates the `ScoreTracker` each frame with alive counts, energy sums, and elapsed time. `Engine.killActor()` records death lifespans. The React `Sidebar` component displays stats polled from `App.tsx`, which reads `Playground.getScoreSnapshot()` at 4Hz (250ms) via `setInterval` with smart dedup.
 
 ### Brain Persistence
 
@@ -284,7 +293,8 @@ The sim app uses Biome for formatting and linting. Generate code that matches th
 
 - The `@mindcraft-lang/core` package is a **local dependency** (`file:../../packages/core`) -- changes to core require rebuilding it (`npm run build` in packages/core, or the sim's `prebuild` handles this)
 - The `@mindcraft-lang/ui` package is a **source-only local dependency** -- no build step required; Vite resolves the source directly via alias
+- The `@mindcraft-lang/docs` package is a **source-only local dependency** -- same pattern as ui
 - Tile visuals (icons) are SVGs stored in `public/assets/brain/icons/`
 - The Phaser game uses Matter.js physics with zero gravity (top-down 2D)
-- Collision categories use bitmasks: `CATEGORY_WALL = 0x0001`, `CATEGORY_ACTOR = 0x0002`
+- Collision categories use bitmasks: `CATEGORY_WALL = 0x0001`, `CATEGORY_ACTOR = 0x0002`, `CATEGORY_BLIP = 0x0004`
 - Actors use the `Mover` class for physics steering -- all movement goes through steering intents that are blended by weighted average
