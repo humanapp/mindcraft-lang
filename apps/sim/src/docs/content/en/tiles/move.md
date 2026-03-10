@@ -35,7 +35,7 @@ _Move toward the seen plant._
 
 | Parameter | Type | Description |
 |-----------|------|--------------|
-| Anonymous Actor | `Actor` | The target to move toward or away from. If not provided, the best target will be inferred from context. Default: `tile:tile.literal->struct:<actorRef>->it` |
+| (anonymous) | `Actor` | The target to move toward or away from. If not provided, the best target will be inferred from context. Default: `tile:tile.literal->struct:<actorRef>->it` |
 | `tile:tile.parameter->parameter.priority` | `Number` | Priority of this action in relation to other queued movements |
 
 

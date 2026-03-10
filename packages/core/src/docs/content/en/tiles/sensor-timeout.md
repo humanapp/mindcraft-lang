@@ -11,7 +11,7 @@ Fires at the specified time interval.
 
 ---
 
-Place `tile:tile.sensor->sensor.timeout` on the WHEN side of the rule to create time-based behavior.
+Place `tile:tile.sensor->sensor.timeout` on the **WHEN** side of the rule to create time-based behavior.
 Set the time interval by providing an anonymous numeric parameter. Value is in seconds.
 
 ## Example
@@ -53,13 +53,13 @@ Set the time interval by providing an anonymous numeric parameter. Value is in s
 }
 ```
 
-_After five seconds, switch to the page named "Regenerate"._
+_After five seconds, switch to the "Regenerate" page._
 
 ## Modifiers & Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| Anonymous Number | `Number` | The time interval, in seconds. Default: `1` |
+| (anonymous) | `Number` | The time interval, in seconds. Default: `1` |
 
 ## See Also
 

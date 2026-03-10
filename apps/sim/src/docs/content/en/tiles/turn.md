@@ -38,7 +38,7 @@ _Turns toward the detected carnivore._
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| Anonymous Actor | `Actor` | The target to turn toward or away from. If not provided, the best target will be inferred from context. |
+| (anonymous) | `Actor` | The target to turn toward or away from. If not provided, the best target will be inferred from context. |
 | `tile:tile.parameter->parameter.priority` | `Number` | Priority of this action in relation to other queued movements |
 
 ## See Also

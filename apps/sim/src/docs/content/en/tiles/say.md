@@ -47,7 +47,7 @@ _Say "Bumped!" when bumping another actor._
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| Anonymous Text | `Text` | The text to show in the speech bubble. If omitted, closes the current speech bubble. |
+| (anonymous) | `Text` | The text to show in the speech bubble. If omitted, closes the current speech bubble. |
 | `tile:tile.parameter->parameter.duration` | `Number` | How long the speech bubble should show, in seconds. Default: `5` |
 
 ## See Also
