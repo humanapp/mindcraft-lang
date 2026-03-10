@@ -10,16 +10,34 @@ loaded into the editor.
 
 ## End-to-End Flow
 
+### Single-turn (generation)
+
 ```
 User prompt ("make the animal chase herbivores and eat them")
-  -> Client UI (text input in brain editor)
-    -> Server API route (assembles system prompt + user prompt + current brain context)
+  -> Client UI (chat panel in brain editor)
+    -> Server API route (system prompt + user prompt)
       -> LLM API call (GPT-4o-mini / Haiku)
-        -> LLM returns BrainJson
+        -> LLM returns full BrainJson
       -> Validate via brainJsonFromPlain() -> BrainDef.fromJson()
       -> On failure: retry with error feedback (1-2x max)
     -> Return valid BrainDef to client
-  -> Preview generated rules -> User accepts/rejects/edits
+  -> Apply via ReplaceBrainCommand (undoable)
+  -> User reviews & accepts/edits
+```
+
+### Multi-turn (iterative editing)
+
+```
+User follow-up ("also make it run away from carnivores")
+  -> Client UI (appends to conversation history)
+    -> Server API route (system prompt + history + current brain state)
+      -> LLM API call
+        -> LLM returns edit payload (changed pages only + new catalog entries)
+      -> Validate changed pages
+    -> Client merges changed pages into current brain by pageId
+    -> Apply merged result via ReplaceBrainCommand (undoable per-turn)
+  -> User reviews & accepts/edits
+  -> (repeat)
 ```
 
 ## Model Selection
@@ -51,8 +69,23 @@ BrainJson structure:
   "version": 1,
   "name": "Generated Brain",
   "catalog": [
-    {"version": 2, "kind": "literal", "tileId": "tile.lit->number:42", "valueType": "type.number", "value": 42, "valueLabel": "42", "displayFormat": "default"},
-    {"version": 1, "kind": "variable", "tileId": "tile.var->uuid-abc", "varName": "myVar", "varType": "type.number", "uniqueId": "uuid-abc"}
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.lit->number:42",
+      "valueType": "type.number",
+      "value": 42,
+      "valueLabel": "42",
+      "displayFormat": "default"
+    },
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->uuid-abc",
+      "varName": "myVar",
+      "varType": "type.number",
+      "uniqueId": "uuid-abc"
+    }
   ],
   "pages": [
     {
@@ -75,6 +108,39 @@ BrainJson structure:
 Only persistent tiles (literals, variables, pages) go in the catalog. Operators, sensors,
 actuators, modifiers, and parameters are referenced by global tile ID in rule arrays.
 
+### Edit Payload (multi-turn)
+
+On subsequent turns, the LLM outputs only changed pages and new catalog entries instead
+of reproducing the entire brain. This avoids token bloat and eliminates accidental
+deletion of untouched rules.
+
+```json
+{
+  "mode": "edit",
+  "changedPages": [
+    {
+      "version": 2,
+      "pageId": "existing-page-id",
+      "name": "Main Page",
+      "rules": [...]
+    }
+  ],
+  "addedCatalog": [
+    {"version": 1, "kind": "variable", "tileId": "tile.var->new-uuid", "varName": "speed", "varType": "type.number", "uniqueId": "new-uuid"}
+  ],
+  "removedPageIds": []
+}
+```
+
+The client merges this into the current brain: match changed pages by `pageId` and
+replace, append new catalog entries (deduplicate by `tileId`), remove any pages listed
+in `removedPageIds`. The merged result is validated, then applied via
+`ReplaceBrainCommand`.
+
+The LLM must preserve existing `uniqueId`, `pageId`, and `tileId` values for entities
+it did not create. When adding new variables, it generates new `uniqueId` values that
+do not collide with existing ones.
+
 ## Implementation
 
 ### Phase 1: System Prompt Engineering
@@ -83,17 +149,17 @@ actuators, modifiers, and parameters are referenced by global tile ID in rule ar
 
 The system prompt (~3000-5000 tokens) contains:
 
-| Section | Content |
-|---|---|
-| Role | "You generate brain code for Mindcraft, a visual programming system" |
-| Language overview | Pages, rules, WHEN/DO sides, nesting, execution model |
-| Output schema | BrainJson with catalog (literals/variables) + pages (rules with tile ID arrays) |
-| Tile reference | All operators, sensors, actuators, modifiers, parameters, literals, variables -- with IDs, placement, types, and argument rules |
-| Call spec rules | Which modifiers/params are valid per sensor/actuator, ordering, repetition limits, mutual exclusion |
-| Expression rules | Operator precedence, type coercion, parenthesization |
-| Few-shot examples | 5-10 NL -> BrainJson pairs |
+| Section           | Content                                                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Role              | "You generate brain code for Mindcraft, a visual programming system"                                                            |
+| Language overview | Pages, rules, WHEN/DO sides, nesting, execution model                                                                           |
+| Output schema     | BrainJson with catalog (literals/variables) + pages (rules with tile ID arrays)                                                 |
+| Tile reference    | All operators, sensors, actuators, modifiers, parameters, literals, variables -- with IDs, placement, types, and argument rules |
+| Call spec rules   | Which modifiers/params are valid per sensor/actuator, ordering, repetition limits, mutual exclusion                             |
+| Expression rules  | Operator precedence, type coercion, parenthesization                                                                            |
+| Few-shot examples | 5-10 NL -> BrainJson pairs                                                                                                      |
 
-**Step 2 -- Create tile catalog export function** *(parallel with step 1)*
+**Step 2 -- Create tile catalog export function** _(parallel with step 1)_
 
 Build a function in `packages/core/` that programmatically generates the tile reference
 section of the system prompt from the live TileCatalog + FunctionRegistry. This ensures
@@ -104,7 +170,7 @@ the prompt stays in sync as tiles are added or changed.
   `suggestTiles(context, catalogs: ReadonlyList<ITileCatalog>)` pattern
 - Output as structured prose (LLMs read prose better than raw JSON for instructions)
 
-**Step 3 -- Curate few-shot examples** *(depends on step 1)*
+**Step 3 -- Curate few-shot examples** _(depends on step 1)_
 
 Source from existing docs content (`apps/sim/src/docs/content/en/tiles/`) and test
 fixtures. Each example:
@@ -114,6 +180,7 @@ fixtures. Each example:
 - Brief annotation of why specific tiles were chosen
 
 Example patterns to cover:
+
 - Chase and eat (see + move toward + eat)
 - Flee from predators (see + move away-from)
 - Wander randomly (move wander)
@@ -127,7 +194,7 @@ Example patterns to cover:
 
 ### Phase 2: LLM Integration
 
-**Step 4 -- Build LLM service module** *(depends on steps 1-3)*
+**Step 4 -- Build LLM service module** _(depends on steps 1-3)_
 
 - System prompt assembly from step 1-2 outputs + current brain context
 - User prompt formatting
@@ -136,7 +203,7 @@ Example patterns to cover:
 - Validation: `brainJsonFromPlain()` -> `BrainDef.fromJson()` with error handling
 - Self-correction retry: on validation failure, send error back to LLM (1-2 retries max)
 
-**Step 5 -- Add context injection** *(parallel with step 4)*
+**Step 5 -- Add context injection** _(parallel with step 4)_
 
 Include the user's current brain state so the LLM can make additive edits:
 
@@ -145,7 +212,18 @@ Include the user's current brain state so the LLM can make additive edits:
 - Page names and structure
 - Which rule/page the user is focused on (if editing a specific part)
 
-**Step 6 -- Server API route** *(depends on step 4)*
+**Step 6 -- Conversation state management** _(parallel with step 4)_
+
+- Message history: array of `{role, content}` pairs, stored client-side
+- Session ID to associate messages with a conversation
+- Brain snapshots: after each accepted turn, snapshot the brain state as the ground
+  truth for the next turn's context injection (not the LLM's output, since the user
+  may hand-edit between turns)
+- History truncation: summarize or drop early turns when context grows long; the
+  current brain state is always injected fresh, so losing history of how you got
+  there is acceptable
+
+**Step 7 -- Server API route** _(depends on step 4)_
 
 Server-side API route in the sim app for:
 
@@ -155,25 +233,43 @@ Server-side API route in the sim app for:
 
 ### Phase 3: UI Integration
 
-**Step 7 -- Prompt input UI** *(depends on step 6)*
+**Step 8 -- Chat panel UI** _(depends on step 7)_
 
-Add to the brain editor:
+Persistent chat panel (sidebar or bottom panel, not a modal) in the brain editor:
 
-- Text input field (modal, sidebar panel, or inline)
-- Submit button + loading state
-- Preview of generated brain before accepting
+- Message history display (conversation thread)
+- Text input with submit button + loading state
+- Preview of generated/changed rules before accepting
+- Indicators showing which pages/rules were added or modified in each turn
 
-**Step 8 -- Accept/reject/edit workflow** *(depends on step 7)*
+**Step 9 -- Accept/reject/edit workflow** _(depends on step 8)_
 
 - Show generated rules in a preview pane
 - Allow user to accept all, accept per-rule, or dismiss
 - On accept, deserialize and merge into current BrainDef
+- Undo per-turn: revert to the brain state before a specific LLM turn
+- User can hand-edit the brain between LLM turns; the next turn picks up the
+  actual current state
+- Session lifecycle: clear conversation / start new session
+
+### Applying Edits via the Command System
+
+All LLM output is applied through the existing `BrainCommand` infrastructure:
+
+- **Generation (turn 1)**: Wrap the validated BrainJson in a `ReplaceBrainCommand`.
+  This snapshots the before-state automatically, giving undo for free.
+- **Iterative edits (subsequent turns)**: Merge changed pages into the current brain
+  client-side, then apply the merged result via `ReplaceBrainCommand`. Each turn is
+  a single undoable operation.
+- The user can undo the last LLM edit, hand-tweak the brain, and try a different
+  prompt -- the command history stays coherent.
 
 ## System Prompt Detail
 
 ### Tile Reference (auto-generated from catalogs)
 
 **Operators** (15):
+
 - Arithmetic: `tile.op->add`, `tile.op->sub`, `tile.op->mul`, `tile.op->div`, `tile.op->neg`
 - Comparison: `tile.op->eq`, `tile.op->ne`, `tile.op->lt`, `tile.op->le`, `tile.op->gt`, `tile.op->ge`
 - Logical: `tile.op->and`, `tile.op->or`, `tile.op->not`
@@ -181,21 +277,25 @@ Add to the brain editor:
 - Placement: comparisons are WhenSide only, assign is DoSide only, rest are EitherSide
 
 **Core Sensors** (4):
+
 - `tile.sensor->random` -- inline, returns number (0-1), EitherSide
 - `tile.sensor->current-page` -- inline, returns string, EitherSide
 - `tile.sensor->on-page-entered` -- returns boolean, WhenSide only, fires once per page entry
 - `tile.sensor->sensor.timeout` -- returns boolean, WhenSide only, optional duration (number) parameter
 
 **Core Actuators** (3):
+
 - `tile.actuator->switch-page` -- DoSide, takes number (1-based index) or string (page name/ID)
 - `tile.actuator->restart-page` -- DoSide, no args (deprecated)
 - `tile.actuator->yield` -- DoSide, no args
 
 **Sim Sensors** (2):
+
 - `tile.sensor->sensor.see` -- WhenSide, boolean. Optional modifiers: archetype filter (carnivore|herbivore|plant), distance filter (nearby|faraway, repeatable 0-3x). Sets targetActor capability for DO side.
 - `tile.sensor->sensor.bump` -- WhenSide, boolean. Optional modifiers: archetype filter (carnivore|herbivore|plant). Sets targetActor capability.
 
 **Sim Actuators** (5):
+
 - `tile.actuator->actuator.move` -- DoSide. Required: direction modifier (forward|toward|away-from|avoid|wander). Toward/away-from/avoid accept optional ActorRef parameter. Optional: speed modifier (quickly|slowly, 0-3x), priority parameter (number).
 - `tile.actuator->actuator.turn` -- DoSide. Required: direction modifier (toward|away-from|around|left|right|north|south|east|west). Toward/away-from accept optional ActorRef. Optional: speed, priority.
 - `tile.actuator->actuator.eat` -- DoSide. Optional ActorRef parameter.
@@ -203,6 +303,7 @@ Add to the brain editor:
 - `tile.actuator->actuator.shoot` -- DoSide. Optional ActorRef parameter, optional rate parameter (number, shots/sec).
 
 **Modifiers** (22):
+
 - Movement direction: `modifier.movement.forward`, `modifier.movement.toward`, `modifier.movement.awayfrom`, `modifier.movement.avoid`, `modifier.movement.wander`
 - Turn direction: `modifier.turn.around`, `modifier.turn.left`, `modifier.turn.right`
 - Compass: `modifier.direction.north`, `modifier.direction.south`, `modifier.direction.east`, `modifier.direction.west`
@@ -212,10 +313,12 @@ Add to the brain editor:
 - Time: `modifier.time.ms`, `modifier.time.secs`
 
 **Parameters** (8):
+
 - Core: `tile.parameter->anon.number`, `tile.parameter->anon.string`, `tile.parameter->anon.boolean`
 - Sim: `anon.actorRef`, `parameter.duration`, `parameter.priority`, `parameter.rate`, `parameter.delay.ms`
 
 **Literals**:
+
 - Number: `tile.lit->number:<value>` (e.g., `tile.lit->number:42`)
 - String: `tile.lit->string:<value>`
 - Boolean: `tile.lit->boolean:true`, `tile.lit->boolean:false`
@@ -267,6 +370,8 @@ The LLM must produce tile sequences that satisfy these grammars. Invalid combina
 - `apps/sim/src/brain/fns/actuators/shoot.ts` -- Shoot actuator implementation
 - `apps/sim/src/docs/content/en/` -- Existing tile docs (few-shot material)
 - `packages/docs/src/DocsRegistry.ts` -- Documentation registry pattern
+- `packages/ui/src/brain-editor/commands/` -- BrainCommand system (undo/redo)
+- `packages/ui/src/brain-editor/commands/BrainCommands.ts` -- `ReplaceBrainCommand` for applying LLM output
 
 ## Verification
 
@@ -277,16 +382,25 @@ The LLM must produce tile sequences that satisfy these grammars. Invalid combina
 3. Load generated brains in sim, verify actors behave as described
 4. Test edge cases: ambiguous prompts, impossible requests, references to nonexistent tiles
 5. Measure token usage per generation to validate cost estimates
+6. Multi-turn: run 5-turn editing sessions that progressively build up a complex brain;
+   verify no rules are silently dropped, existing variable/page IDs are preserved, and
+   each turn's undo correctly reverts to the prior state
+7. Merge correctness: verify page-scoped edits merge cleanly when the user has
+   hand-edited the brain between LLM turns
 
 ## Decisions
 
-- **Output format**: BrainJson (reuse existing serialization -- no new format)
-- **Model class**: GPT-4o-mini or Haiku (structured output task, not reasoning)
+- **Output format**: BrainJson for generation; page-scoped edit payload for multi-turn
+  (hybrid approach -- see "Edit payload" above)
+- **Model class**: GPT-4o-mini or Haiku (structured output task, not reasoning).
+  Architecture supports model escalation for long sessions if needed.
 - **Integration point**: Server-side API route (key management, rate limiting)
-- **In scope**: Full brain generation from prompt, editing existing brains, system prompt
-  engineering, programmatic tile catalog export
-- **Out of scope**: Fine-tuning a custom model, real-time tile streaming, voice input,
-  multi-turn conversational editing
+- **Multi-turn**: Supported via conversation history + page-scoped edits. Not editor
+  commands -- the LLM outputs declarative structures, and the command system
+  (`ReplaceBrainCommand`) is used to apply them with undo/redo.
+- **In scope**: Full brain generation from prompt, iterative multi-turn editing of
+  existing brains, system prompt engineering, programmatic tile catalog export
+- **Out of scope**: Fine-tuning a custom model, real-time tile streaming, voice input
 
 ## Open Considerations
 
