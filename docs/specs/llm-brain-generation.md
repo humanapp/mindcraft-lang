@@ -418,3 +418,79 @@ The LLM must produce tile sequences that satisfy these grammars. Invalid combina
    but constrains the schema to what json_schema supports. Anthropic lacks an equivalent
    but handles JSON well with explicit instructions. Recommend starting with OpenAI
    structured output and adding Anthropic as a fallback.
+
+## Open Questions (resolve before implementation)
+
+### Must-have (blocks implementation)
+
+1. **Server infrastructure**: The sim app is a Vite SPA with no backend. What hosts the
+   API route? Options: Vite dev server middleware + serverless for production, a separate
+   service, or skip the server entirely and do client-side LLM calls for v1 (accepting
+   API-key-in-browser tradeoff).
+
+2. **Module placement**: Where does each piece of code live?
+   - Tile catalog export function: `packages/core/src/brain/llm/`? Needs to be
+     app-agnostic since it accepts multiple catalogs.
+   - LLM service module (API call, validation, retry): `apps/sim/src/services/`?
+     App-specific since it depends on server infrastructure.
+   - Conversation state manager: `packages/ui/`? Or sim app?
+   - Chat panel component: `packages/ui/src/brain-editor/` alongside existing editor
+     components? Or sim app?
+
+3. **Edit payload TypeScript types**: The edit payload JSON shape is shown but has no
+   TypeScript interface. Define a discriminated union alongside BrainJson
+   (`{ mode: "generate", ...BrainJson } | { mode: "edit", changedPages, addedCatalog,
+removedPageIds }`)? Or a separate type with a separate validator? How does
+   `brainJsonFromPlain()` relate to edit payload validation?
+
+4. **Mode discrimination**: How does the system decide whether to request full BrainJson
+   vs. edit payload? Always full on first message and edit on subsequent ones? A system
+   prompt instruction? A separate `mode` field in the API request selecting different
+   prompt variants?
+
+5. **LLM message format**: What is the concrete messages array sent to the LLM?
+   - Shape: `[system, ...history, user]`?
+   - Where does the current brain state go? System message? Injected into the latest
+     user message? A separate message?
+   - Are the LLM's previous JSON outputs included in history verbatim (costs tokens)
+     or summarized?
+   - How are assistant messages stored -- raw JSON response, a summary, or both?
+
+### Should-have (blocks quality)
+
+6. **Few-shot examples**: The spec lists 10 patterns but includes zero complete examples.
+   Need at least 3 fully worked NL -> BrainJson pairs before prompt engineering can
+   begin. Source from existing tile docs and test fixtures.
+
+7. **Merge edge cases**: The merge logic needs defined behavior for:
+   - LLM returns a `pageId` that doesn't exist in the current brain (create? error?)
+   - `addedCatalog` contains a `tileId` colliding with an existing entry but with
+     different properties (e.g., same variable ID, different type)
+   - User deleted a page between turns and the LLM returns edits for that page
+   - Orphaned catalog entries no longer referenced by any rule after merge
+
+8. **Tile catalog export output format**: Step 2 says "structured prose" but doesn't
+   define the format. Markdown tables? Numbered lists? The string template matters for
+   prompt quality. Should match what's in the System Prompt Detail section or be a
+   defined alternative.
+
+### Nice-to-have (can defer to iteration)
+
+9. **Per-rule acceptance**: Steps 8-9 mention "accept per-rule" but this requires
+   rule-level merge logic (can't apply a changed page wholesale if one rule is rejected).
+   Consider starting with accept-all / reject-all for v1.
+
+10. **API key UX**: Where does the user enter their key? Settings dialog? First-use
+    prompt? Storage mechanism (localStorage)? How is the key passed to the server?
+    What happens on invalid/rate-limited keys? Is there a "use our key" (hosted) mode
+    vs. BYOK? A simple localStorage + settings dialog suffices for v1.
+
+11. **Error UX**: What does the user see when retries are exhausted? Is there a
+    distinction between "bad JSON" (retryable) and "semantically invalid brain code"
+    (needs user-facing error)? A generic "generation failed, try again" suffices
+    initially.
+
+12. **Catalog export timing**: Is the tile catalog export function called at build time
+    (static string baked into server), at runtime (always current, needs catalog access),
+    or once at app startup (cached)? Runtime is most flexible but requires the sim app
+    context for access to both core and sim-specific catalogs.
