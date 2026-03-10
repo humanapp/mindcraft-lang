@@ -33,7 +33,7 @@ apps/
 |---------|-------------|
 | [@mindcraft-lang/core](packages/core/) | Language runtime -- tiles, parser, compiler, VM (multi-target: Roblox, Node.js, ESM) |
 | [@mindcraft-lang/ui](packages/ui/) | Shared React UI -- shadcn/ui primitives + brain editor components |
-| [@mindcraft-lang/docs](packages/docs/) | Shared documentation subsystem - renders as in-app sidebar or full-screen SPA |
+| [@mindcraft-lang/docs](packages/docs/) | Shared documentation subsystem -- renders as in-app sidebar or full-screen SPA |
 
 ## Apps
 
