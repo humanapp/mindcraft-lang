@@ -60,13 +60,17 @@ const STags = {
 // List-based BrainJson expected by BrainDef.fromJson.
 
 function convertPlainRule_(plain: unknown): RuleJson {
-  const r = plain as { version: number; when: string[]; do: string[]; children: unknown[] };
+  const r = plain as { version: number; when: string[]; do: string[]; children: unknown[]; comment?: string };
   const plainChildren = List.from(r.children);
   const children = new List<RuleJson>();
   for (let i = 0; i < plainChildren.size(); i++) {
     children.push(convertPlainRule_(plainChildren.get(i)));
   }
-  return { version: r.version, when: List.from(r.when), do: List.from(r.do), children };
+  const json: RuleJson = { version: r.version, when: List.from(r.when), do: List.from(r.do), children };
+  if (r.comment !== undefined) {
+    json.comment = r.comment;
+  }
+  return json;
 }
 
 function convertPlainPage_(plain: unknown): PageJson {

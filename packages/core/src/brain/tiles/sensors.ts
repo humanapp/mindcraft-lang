@@ -9,9 +9,9 @@ import {
   type TypeId,
 } from "../interfaces";
 import { BrainActionTileBase, BrainTileDefBase } from "../model/tiledef";
+import fnCurrentPage from "../runtime/sensors/current-page";
 import fnOnPageEntered from "../runtime/sensors/on-page-entered";
 import fnRandom from "../runtime/sensors/random";
-import fnCurrentPage from "../runtime/sensors/current-page";
 import fnTimeout from "../runtime/sensors/timeout";
 import { getBrainServices } from "../services";
 

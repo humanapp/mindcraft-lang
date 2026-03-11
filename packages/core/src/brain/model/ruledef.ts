@@ -2,6 +2,7 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { type IReadStream, type IWriteStream, MemoryStream } from "../../platform/stream";
+import { StringUtils as SU } from "../../platform/string";
 import { task, type thread } from "../../platform/task";
 import { fourCC } from "../../primitives";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
@@ -23,14 +24,24 @@ export interface RuleJson {
   when: ReadonlyList<string>;
   do: ReadonlyList<string>;
   children: ReadonlyList<RuleJson>;
+  comment?: string;
 }
 
 // Maximum allowed depth for rules in the tree
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
 export const kMaxBrainRuleDepth = 20; // never reduce this value!
 
-// Current serialization version -- shared by both binary and JSON codepaths.
+// Maximum allowed length for a rule comment.
+// WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
+export const kMaxBrainRuleCommentLength = 500; // never reduce this value!
+
+// JSON serialization version.
 const kVersion = 1;
+
+// Binary serialization version (separate from JSON so binary can bump independently).
+// v1: initial format
+// v2: added optional comment field
+const kBinaryVersion = 2;
 
 // Serialization tags
 const STags = {
@@ -40,6 +51,7 @@ const STags = {
   WHCT: fourCC("WHCT"), // When tile count
   DOCT: fourCC("DOCT"), // Do tile count
   CRCT: fourCC("CRCT"), // Child rule count
+  CMNT: fourCC("CMNT"), // Rule comment
 };
 
 export class BrainRuleDef implements IBrainRuleDef {
@@ -49,6 +61,7 @@ export class BrainRuleDef implements IBrainRuleDef {
   private readonly emitter_ = new EventEmitter<BrainRuleDefEvents>();
   private when_: BrainTileSet;
   private do_: BrainTileSet;
+  private comment_?: string;
   private readonly tileSetSubscriptions_ = new Dict<BrainTileSet, () => void>();
   private readonly childRuleSubscriptions_ = new Dict<BrainRuleDef, () => void>();
   private dirtyChangedDebounceThread_?: thread;
@@ -109,6 +122,17 @@ export class BrainRuleDef implements IBrainRuleDef {
 
   setAncestor(ancestor: IBrainRuleDef | undefined): void {
     this.ancestor_ = ancestor as BrainRuleDef | undefined;
+  }
+
+  comment(): string | undefined {
+    return this.comment_;
+  }
+
+  setComment(comment: string | undefined): void {
+    if (comment !== undefined && SU.length(comment) > kMaxBrainRuleCommentLength) {
+      comment = SU.substring(comment, 0, kMaxBrainRuleCommentLength);
+    }
+    this.comment_ = comment || undefined;
   }
 
   isDirty(): boolean {
@@ -490,7 +514,7 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   serialize(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.RUL1, kVersion);
+    stream.writeTaggedU8(STags.RUL1, kBinaryVersion);
     this.serializeThisLevelOnly(stream);
     // write child rules
     stream.writeTaggedU32(STags.CRCT, this.children_.size());
@@ -500,20 +524,21 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   serializeThisLevelOnly(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.RUL2, kVersion);
+    stream.writeTaggedU8(STags.RUL2, kBinaryVersion);
     this.when_.serialize(stream);
     this.do_.serialize(stream);
+    stream.writeTaggedString(STags.CMNT, this.comment_ ?? "");
   }
 
   serializeWithoutChildren(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.RUL3, kVersion);
+    stream.writeTaggedU8(STags.RUL3, kBinaryVersion);
     this.serializeThisLevelOnly(stream);
     stream.writeTaggedU32(STags.CRCT, 0); // zero child rules
   }
 
   deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void {
     const version = stream.readTaggedU8(STags.RUL1);
-    if (version !== kVersion) {
+    if (version < 1 || version > kBinaryVersion) {
       throw new Error(`Unsupported BrainRuleDef version: ${version}`);
     }
     this.deserializeThisLevelOnly(stream, catalogs);
@@ -532,7 +557,7 @@ export class BrainRuleDef implements IBrainRuleDef {
 
   deserializeThisLevelOnly(stream: IReadStream, catalogs_?: List<ITileCatalog>): void {
     const version = stream.readTaggedU8(STags.RUL2);
-    if (version !== kVersion) {
+    if (version < 1 || version > kBinaryVersion) {
       throw new Error(`Unsupported BrainRuleDef (this level only) version: ${version}`);
     }
     const catalogs = new List<ITileCatalog>();
@@ -546,6 +571,9 @@ export class BrainRuleDef implements IBrainRuleDef {
     catalogs.push(getBrainServices().tiles); // global catalog
     this.when_.deserialize(stream, catalogs);
     this.do_.deserialize(stream, catalogs);
+    if (version >= 2) {
+      this.comment_ = stream.readTaggedString(STags.CMNT) || undefined;
+    }
   }
 
   // -- JSON serialization (parallel to binary above) -------------------------
@@ -556,7 +584,16 @@ export class BrainRuleDef implements IBrainRuleDef {
       childRules.push(this.children_.get(i).toJson());
     }
 
-    return { version: kVersion, when: this.when_.toJson(), do: this.do_.toJson(), children: childRules };
+    const json: RuleJson = {
+      version: kVersion,
+      when: this.when_.toJson(),
+      do: this.do_.toJson(),
+      children: childRules,
+    };
+    if (this.comment_ !== undefined) {
+      json.comment = this.comment_;
+    }
+    return json;
   }
 
   static fromJson(json: RuleJson, page: IBrainPageDef, brain: IBrainDef): BrainRuleDef {
@@ -575,6 +612,7 @@ export class BrainRuleDef implements IBrainRuleDef {
     }
     this.when_.deserializeJson(json.when, catalogs);
     this.do_.deserializeJson(json.do, catalogs);
+    this.comment_ = json.comment || undefined;
 
     // Recursively deserialize child rules
     for (let i = 0; i < json.children.size(); i++) {

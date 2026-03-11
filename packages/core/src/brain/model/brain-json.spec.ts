@@ -32,6 +32,7 @@ interface PlainRuleJson {
   when: string[];
   do: string[];
   children: PlainRuleJson[];
+  comment?: string;
 }
 
 interface PlainPageJson {
@@ -54,12 +55,16 @@ function convertPlainRule(plain: PlainRuleJson): RuleJson {
   for (let i = 0; i < plainChildren.size(); i++) {
     children.push(convertPlainRule(plainChildren.get(i)));
   }
-  return {
+  const json: RuleJson = {
     version: plain.version,
     when: List.from(plain.when),
     do: List.from(plain.do),
     children,
   };
+  if (plain.comment !== undefined) {
+    json.comment = plain.comment;
+  }
+  return json;
 }
 
 function convertPlainPage(plain: PlainPageJson): PageJson {
@@ -492,5 +497,81 @@ describe("brain-json", () => {
     const restored = BrainRuleDef.fromJson(parsed, page, brain);
     assert.equal(restored.when().tiles().size(), 3);
     assert.equal(restored.when().tiles().get(1).tileId, "tile.op->add");
+  });
+
+  // -- Comment field ----------------------------------------------------------
+
+  test("rule comment round-trips through JSON", () => {
+    const brain = new BrainDef();
+    brain.appendNewPage();
+    const page = brain.pages().get(0)!;
+    const rule = page.children().get(0)! as BrainRuleDef;
+    rule.setComment("This rule handles the main attack logic");
+
+    const json = brain.toJson();
+    const restored = BrainDef.fromJson(json);
+    const restoredRule = restored.pages().get(0)!.children().get(0)!;
+    assert.equal(restoredRule.comment(), "This rule handles the main attack logic");
+  });
+
+  test("rule with no comment round-trips through JSON with undefined", () => {
+    const brain = new BrainDef();
+    brain.appendNewPage();
+    const page = brain.pages().get(0)!;
+    const rule = page.children().get(0)! as BrainRuleDef;
+    assert.equal(rule.comment(), undefined);
+
+    const json = brain.toJson();
+    const restored = BrainDef.fromJson(json);
+    const restoredRule = restored.pages().get(0)!.children().get(0)!;
+    assert.equal(restoredRule.comment(), undefined);
+  });
+
+  test("rule comment round-trips through binary (clone)", () => {
+    const brain = new BrainDef();
+    brain.appendNewPage();
+    const page = brain.pages().get(0)!;
+    const rule = page.children().get(0)! as BrainRuleDef;
+    rule.setComment("Binary comment test");
+
+    const cloned = brain.clone();
+    const clonedRule = cloned.pages().get(0)!.children().get(0)!;
+    assert.equal(clonedRule.comment(), "Binary comment test");
+  });
+
+  test("rule comment round-trips through JSON.stringify/parse via brainJsonFromPlain", () => {
+    const brain = new BrainDef();
+    brain.appendNewPage();
+    const page = brain.pages().get(0)!;
+    const rule = page.children().get(0)! as BrainRuleDef;
+    rule.setComment("Stringify comment");
+
+    const jsonStr = JSON.stringify(brain.toJson());
+    const parsed = brainJsonFromPlain(JSON.parse(jsonStr));
+    const restored = BrainDef.fromJson(parsed);
+    const restoredRule = restored.pages().get(0)!.children().get(0)!;
+    assert.equal(restoredRule.comment(), "Stringify comment");
+  });
+
+  test("setComment truncates to kMaxBrainRuleCommentLength", () => {
+    const brain = new BrainDef();
+    brain.appendNewPage();
+    const rule = brain.pages().get(0)!.children().get(0)! as BrainRuleDef;
+    const longComment = "x".repeat(600);
+    rule.setComment(longComment);
+    assert.equal(rule.comment()!.length, 500);
+  });
+
+  test("child rule comment round-trips through JSON", () => {
+    const brain = new BrainDef();
+    brain.appendNewPage();
+    const parentRule = brain.pages().get(0)!.children().get(0)! as BrainRuleDef;
+    const childRule = parentRule.appendNewRule() as BrainRuleDef;
+    childRule.setComment("Child rule comment");
+
+    const json = brain.toJson();
+    const restored = BrainDef.fromJson(json);
+    const restoredChild = restored.pages().get(0)!.children().get(0)!.children().get(0);
+    assert.equal(restoredChild.comment(), "Child rule comment");
   });
 });

@@ -64,6 +64,8 @@ export interface IBrainRuleDef {
   setPage(page: IBrainPageDef | undefined): void;
   ancestor(): IBrainRuleDef | undefined;
   setAncestor(ancestor: IBrainRuleDef | undefined): void;
+  comment(): string | undefined;
+  setComment(comment: string | undefined): void;
   isDirty(): boolean;
   markDirty(): void;
   typecheck(): void;

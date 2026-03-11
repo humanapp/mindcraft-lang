@@ -17,12 +17,18 @@ When making changes to `packages/core`:
 
 - Consider platform compatibility across all three targets
 - Avoid platform-specific APIs or Node.js-only features
-- Test builds with `npm run build` to verify all targets compile successfully
 - Be mindful of import/export patterns that work across all platforms
 - Remember that Roblox-TS has different constraints than Node.js/browser environments
 - **Prefer `List` and `Dict` containers** from `packages/core/src/platform` over native `Array` and `Map` for cross-platform compatibility
 - Use `unknown` or `never` type instead of `any` to ensure Roblox compatibility
-- After making changes, ensure the project builds cleanly (`npm run build`)
+
+## After Making Code Changes
+
+After making any code changes in `packages/core`, always run these commands in order from the `packages/core` directory:
+
+1. `npm run check:fix` -- lint and format
+2. `npm run build` -- compiles all three targets (Roblox-TS, Node.js, ESM); a build error here means the change is not done
+3. `npm test` -- runs the test suite
 
 ## Testing
 
