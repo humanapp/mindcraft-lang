@@ -2,7 +2,7 @@
 
 This document specifies the Mindcraft tile-based visual programming language architecture,
 covering everything from the type system and tile schema through parsing and tile suggestions.
-The runtime VM is out of scope -- it is covered by a separate spec.
+The bytecode compiler and runtime VM are out of scope -- they are covered by a separate spec.
 
 The implementation target is `packages/core/src/brain/`. All code must follow the multi-target
 constraints documented in `.github/instructions/core.instructions.md` (no `any`, no `typeof`,
@@ -29,10 +29,9 @@ including passing tests, before moving to the next.
 11. [Phase 10 -- Type Inference Pipeline](#11-phase-10----type-inference-pipeline)
 12. [Phase 11 -- Tile Suggestion Language Service](#12-phase-11----tile-suggestion-language-service)
 13. [Phase 12 -- Brain Model Layer](#13-phase-12----brain-model-layer)
-14. [Phase 13 -- Bytecode Compiler](#14-phase-13----bytecode-compiler)
-15. [Appendix A -- Core Operator Catalog](#appendix-a----core-operator-catalog)
-16. [Appendix B -- Core Conversion Catalog](#appendix-b----core-conversion-catalog)
-17. [Appendix C -- Diagnostic Code Ranges](#appendix-c----diagnostic-code-ranges)
+14. [Appendix A -- Core Operator Catalog](#appendix-a----core-operator-catalog)
+15. [Appendix B -- Core Conversion Catalog](#appendix-b----core-conversion-catalog)
+16. [Appendix C -- Diagnostic Code Ranges](#appendix-c----diagnostic-code-ranges)
 
 ---
 
@@ -44,7 +43,8 @@ including passing tests, before moving to the next.
 Tiles -> Parser (Pratt + grammar) -> AST (Expr) -> Type Inference -> Bytecode Compiler -> Program -> VM
 ```
 
-This spec covers everything left of `-> VM`.
+This spec covers everything left of `-> Bytecode Compiler`. The bytecode compiler and VM
+are covered in the VM spec.
 
 ### Key Design Principles
 
@@ -82,10 +82,6 @@ packages/core/src/brain/
     parser.ts        -- BrainParser (Pratt + grammar-based)
     expected-types.ts    -- Top-down expected type pass
     inferred-types.ts    -- Bottom-up inferred type pass
-    brain-compiler.ts    -- Whole-brain compiler
-    rule-compiler.ts     -- Single-rule expression compiler (ExprCompiler)
-    emitter.ts       -- BytecodeEmitter (label-based two-pass)
-    constant-pool.ts -- Deduplicated constant storage
     diag-codes.ts    -- ParseDiagCode, TypeDiagCode, CompilationDiagCode
     expr-mapper.ts   -- AST node-ID -> Expr index
     expr-printer.ts  -- Debug printing
@@ -1367,114 +1363,6 @@ An ordered list of tiles for one side of a rule:
 
 ---
 
-## 14. Phase 13 -- Bytecode Compiler
-
-### Goal
-
-Compile parsed and type-checked AST expressions into bytecode instructions. This phase
-produces `BrainProgram` structures ready for the VM (VM execution is out of scope).
-
-### 14.1 Expression Compiler (ExprCompiler)
-
-Implements `ExprVisitor<void>`, emitting bytecode via `IBytecodeEmitter`:
-
-| Node Type      | Emitted Instructions                                              |
-| -------------- | ----------------------------------------------------------------- |
-| `literal`      | `PUSH_CONST <idx>`                                                |
-| `variable`     | `LOAD_VAR <nameIdx>`                                              |
-| `assignment`   | `<value>, DUP, STORE_VAR <nameIdx>` (assignment is an expression) |
-| `fieldAccess`  | `<object>, PUSH_CONST <fieldName>, GET_FIELD`                     |
-| `field assign` | `<object>, PUSH_CONST <fieldName>, <value>, SET_FIELD`            |
-| `binaryOp`     | `<left>, [conv], <right>, [conv], HOST_CALL_ARGS <opFnId> 2`      |
-| `binaryOp &&`  | Short-circuit: `<left>, DUP, JMP_IF_FALSE end, POP, <right>`      |
-| `binaryOp or`  | Short-circuit: `<left>, DUP, JMP_IF_TRUE end, POP, <right>`       |
-| `unaryOp`      | `<operand>, [conv], HOST_CALL_ARGS <opFnId> 1`                    |
-| `actuator`     | `<build args map>, HOST_CALL <fnId> 1 [+AWAIT if async]`          |
-| `sensor`       | `<build args map>, HOST_CALL <fnId> 1 [+AWAIT if async]`          |
-| `parameter`    | `<value>` (transparent wrapper)                                   |
-| `modifier`     | no-op (emitted as boolean flags in the args map)                  |
-| `empty`        | no-op                                                             |
-| `errorExpr`    | log error (should not occur in compiled code)                     |
-
-### 14.2 Action Argument Map Emission
-
-For actuators and sensors, arguments are packed into a `MapValue`:
-
-1. `MAP_NEW 0` -- create empty map.
-2. For each anonymous slot: `PUSH_CONST slotId`, `<emit value expr>`, `MAP_SET`.
-3. For each parameter slot: `PUSH_CONST slotId`, `<emit value expr>`, `MAP_SET`.
-4. For each modifier: count occurrences, `PUSH_CONST slotId`, `PUSH_CONST count`, `MAP_SET`.
-5. `HOST_CALL fnId 1` -- single map argument.
-
-### 14.3 Implicit Conversion Emission
-
-When a node's `TypeInfo.conversion` is set, emit `HOST_CALL_ARGS <conversionFnId> 1` after
-the value it applies to. This pops the value and pushes the converted value.
-
-### 14.4 BytecodeEmitter (Two-Pass)
-
-- **Pass 1:** Emit instructions with placeholder values for jump targets.
-- **Pass 2 (`finalize`):** Resolve labels to instruction indices, patch jump offsets as
-  relative (signed) values.
-
-Labels are created with `label()`, marked with `mark(labelId)`, and referenced by
-jump instructions (`jmp`, `jmpIfFalse`, `jmpIfTrue`, `whenEnd`).
-
-### 14.5 ConstantPool
-
-Deduplicates constant values. Primitive types (nil, boolean, number, string, enum) are
-keyed by value for deduplication. Complex types (list, map, struct) use unique keys (no dedup).
-
-### 14.6 BrainCompiler (Whole-Brain)
-
-`BrainCompiler.compile(brainDef)` -> `BrainProgram`:
-
-1. **First pass:** Assign function IDs to all rules in depth-first order.
-2. **Second pass:** Compile each rule body (WHEN + DO + child CALLs).
-
-Function layout per rule:
-
-```
-WHEN_START
-  ... when bytecode ...
-WHEN_END skip_label    ; jump to skip_label if false
-DO_START
-  ... do bytecode ...
-DO_END
-CALL child_rule_0, 0
-POP
-CALL child_rule_1, 0
-POP
-...
-skip_label:
-PUSH_CONST nil         ; return value placeholder
-RET
-```
-
-### 14.7 parseRule() (Combined Parse + Typecheck)
-
-`parseRule(whenSrc, doSrc, catalogs) -> TypecheckResult`:
-
-1. Parse WHEN and DO sides separately (each gets its own span space).
-2. Combine expressions, propagating `nextNodeId` from WHEN to DO for unique IDs.
-3. Run `computeExpectedTypes` on both sides.
-4. Run `computeInferredTypes` on both sides.
-5. Return combined `ParseResult` + `nodes` index + `TypeEnv` + diagnostics.
-
-### Tests
-
-- Compile a literal -> `PUSH_CONST`.
-- Compile a variable -> `LOAD_VAR`.
-- Compile an assignment -> `PUSH_CONST, DUP, STORE_VAR`.
-- Compile a binary op -> `PUSH_CONST, PUSH_CONST, HOST_CALL_ARGS`.
-- Compile short-circuit AND -> verify jump structure.
-- Compile short-circuit OR -> verify jump structure.
-- Compile actuator with args -> verify map construction + `HOST_CALL`.
-- Compile with implicit conversion -> verify `HOST_CALL_ARGS` conversion call.
-- Whole-brain: multiple pages, nested rules -> correct function IDs and CALLs.
-
----
-
 ## Appendix A -- Core Operator Catalog
 
 ### Prefix Operators
@@ -1563,9 +1451,4 @@ RET
 | 2004 | TileNotFound          | Tile ID not found in catalogs         |
 | 2005 | DataTypeConverted     | Implicit conversion applied           |
 
-### Compilation Diagnostics (3000-3001)
-
-| Code | Name                    | Meaning                             |
-| ---- | ----------------------- | ----------------------------------- |
-| 3000 | MissingTypeInfo         | No TypeInfo for node during codegen |
-| 3001 | MissingOperatorOverload | No overload found during codegen    |
+Compilation diagnostics (3000+) are defined in the VM spec alongside the bytecode compiler.
