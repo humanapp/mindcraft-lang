@@ -110,6 +110,18 @@
   flex-shrink: 0;
 }
 
+.brain-print-rule-comment {
+  width: 100%;
+  font-size: 0.625rem;
+  font-style: italic;
+  color: #64748b;
+  font-family:
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    sans-serif;
+}
+
 /* -- WHEN / DO chip -- */
 
 .brain-print-chip {

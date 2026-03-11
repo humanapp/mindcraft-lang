@@ -32,6 +32,7 @@ function parseMeta(meta: string): BrainFenceMeta {
 interface PlainRule {
   version?: number;
   catalog?: CatalogTileJson[];
+  comment?: string;
   when?: string[];
   do?: string[];
   children?: PlainRule[];
@@ -104,6 +105,7 @@ function resolveTiles(tileIds: string[], localCatalog?: TileCatalog): IBrainTile
 
 function convertRule(plain: PlainRule, localCatalog: TileCatalog | undefined, depth = 0): DocsRuleData {
   return {
+    comment: plain.comment,
     whenTiles: resolveTiles(plain.when ?? [], localCatalog),
     doTiles: resolveTiles(plain.do ?? [], localCatalog),
     depth,

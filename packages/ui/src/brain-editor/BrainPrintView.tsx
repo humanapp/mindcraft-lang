@@ -83,9 +83,11 @@ interface PrintRuleProps {
 function PrintRule({ ruleDef, depth, lineNumber }: PrintRuleProps) {
   const whenTiles = ruleDef.when().tiles().toArray();
   const doTiles = ruleDef.do().tiles().toArray();
+  const comment = ruleDef.comment();
 
   return (
     <div className="brain-print-rule" style={{ marginLeft: `${depth * 24}px` }}>
+      {comment && <div className="brain-print-rule-comment">{comment}</div>}
       {/* Line number */}
       <div className="brain-print-rule-number">{lineNumber}</div>
 

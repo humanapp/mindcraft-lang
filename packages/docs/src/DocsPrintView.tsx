@@ -34,15 +34,17 @@ function PrintTileChip({ tileDef, side }: PrintTileChipProps) {
 // ---------------------------------------------------------------------------
 
 interface PrintRuleRowProps {
+  comment?: string;
   whenTiles: IBrainTileDef[];
   doTiles: IBrainTileDef[];
   depth: number;
   lineNumber: number;
 }
 
-function PrintRuleRow({ whenTiles, doTiles, depth, lineNumber }: PrintRuleRowProps) {
+function PrintRuleRow({ comment, whenTiles, doTiles, depth, lineNumber }: PrintRuleRowProps) {
   return (
     <div className="docs-print-rule" style={{ marginLeft: `${depth * 24}px` }}>
+      {comment && <div className="docs-print-rule-comment">{comment}</div>}
       <div className="docs-print-rule-number">{lineNumber}</div>
       <div className="docs-print-chip docs-print-chip-when">WHEN</div>
       {whenTiles.map((tile, i) => (
@@ -67,6 +69,7 @@ function PrintRuleRow({ whenTiles, doTiles, depth, lineNumber }: PrintRuleRowPro
 interface PlainRule {
   version?: number;
   catalog?: CatalogTileJson[];
+  comment?: string;
   when?: string[];
   do?: string[];
   children?: PlainRule[];
@@ -91,6 +94,7 @@ interface PlainMultiTile {
 }
 
 interface FlatPrintRule {
+  comment?: string;
   whenTiles: IBrainTileDef[];
   doTiles: IBrainTileDef[];
   depth: number;
@@ -129,6 +133,7 @@ function flattenPlainRules(
   let line = startLine;
   for (const rule of rules) {
     result.push({
+      comment: rule.comment,
       whenTiles: resolveTiles(rule.when ?? [], localCatalog),
       doTiles: resolveTiles(rule.do ?? [], localCatalog),
       depth,
@@ -204,6 +209,7 @@ function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string 
         {flat.map((r) => (
           <PrintRuleRow
             key={r.lineNumber}
+            comment={r.comment}
             whenTiles={r.whenTiles}
             doTiles={r.doTiles}
             depth={r.depth}

@@ -1,6 +1,7 @@
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import { Fragment } from "react";
 import type { TileVisual } from "./types";
 
 // -- Tile label formatting ----------------------------------------------------
@@ -36,6 +37,7 @@ function tilesToText(tiles: IBrainTileDef[]): string {
 interface TextRule {
   lineNumber: number;
   depth: number;
+  comment?: string;
   whenText: string;
   doText: string;
 }
@@ -50,6 +52,7 @@ function flattenRulesText(rules: BrainRuleDef[], depth: number = 0, startLine: n
       result.push({
         lineNumber: currentLine,
         depth,
+        comment: ruleDef.comment(),
         whenText: tilesToText(ruleDef.when().tiles().toArray()),
         doText: tilesToText(ruleDef.do().tiles().toArray()),
       });
@@ -104,15 +107,29 @@ export function BrainPrintTextView({ brainDef }: BrainPrintTextViewProps) {
                 </thead>
                 <tbody>
                   {rules.map((rule) => (
-                    <tr key={rule.lineNumber} className="brain-print-text-row">
-                      <td className="brain-print-text-td brain-print-text-td-num">{rule.lineNumber}</td>
-                      <td className="brain-print-text-td" style={{ paddingLeft: `${rule.depth * 20 + 8}px` }}>
-                        {rule.whenText}
-                      </td>
-                      <td className="brain-print-text-td" style={{ paddingLeft: `${rule.depth * 20 + 8}px` }}>
-                        {rule.doText}
-                      </td>
-                    </tr>
+                    <Fragment key={rule.lineNumber}>
+                      {rule.comment && (
+                        <tr className="brain-print-text-row">
+                          <td className="brain-print-text-td brain-print-text-td-num" />
+                          <td
+                            colSpan={2}
+                            className="brain-print-text-td brain-print-text-comment"
+                            style={{ paddingLeft: `${rule.depth * 20 + 8}px` }}
+                          >
+                            {rule.comment}
+                          </td>
+                        </tr>
+                      )}
+                      <tr className="brain-print-text-row">
+                        <td className="brain-print-text-td brain-print-text-td-num">{rule.lineNumber}</td>
+                        <td className="brain-print-text-td" style={{ paddingLeft: `${rule.depth * 20 + 8}px` }}>
+                          {rule.whenText}
+                        </td>
+                        <td className="brain-print-text-td" style={{ paddingLeft: `${rule.depth * 20 + 8}px` }}>
+                          {rule.doText}
+                        </td>
+                      </tr>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

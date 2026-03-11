@@ -198,13 +198,14 @@ export function InlineTileIcon({ tileDef }: InlineTileIconProps) {
 // ---------------------------------------------------------------------------
 
 interface DocsRuleRowProps {
+  comment?: string;
   whenTiles: IBrainTileDef[];
   doTiles: IBrainTileDef[];
   depth?: number;
   lineNumber?: number;
 }
 
-function DocsRuleRow({ whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowProps) {
+function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowProps) {
   const whenLabel = whenTiles.map((t) => (t.visual as TileVisual | undefined)?.label ?? t.tileId).join(", ");
   const doLabel = doTiles.map((t) => (t.visual as TileVisual | undefined)?.label ?? t.tileId).join(", ");
   const rowLabel =
@@ -215,65 +216,68 @@ function DocsRuleRow({ whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowP
   return (
     <div
       role="img"
-      className="flex gap-1 rounded-xl p-2 mb-1 shadow-sm overflow-x-auto"
+      className={`flex flex-col rounded-xl p-2 mb-1 shadow-sm overflow-x-auto${comment ? "" : " h-30"}`}
       aria-label={rowLabel}
       style={{
         marginLeft: depth * 32,
         background: "linear-gradient(55deg, #16143A 0%, #8B6CF3 100%)",
       }}
     >
-      {/* Line number badge -- aria-hidden because the number is already in the group aria-label */}
-      {lineNumber !== undefined && (
-        <span
-          className="self-center shrink-0 h-9 w-9 rounded-full bg-slate-100 text-slate-700 text-lg font-semibold flex items-center justify-center border-2 border-slate-300"
+      {comment && <span className="text-xs text-white/70 italic mb-1">{comment}</span>}
+      <div className="flex flex-1 gap-1">
+        {/* Line number badge -- aria-hidden because the number is already in the group aria-label */}
+        {lineNumber !== undefined && (
+          <span
+            className="self-center shrink-0 h-9 w-9 rounded-full bg-slate-100 text-slate-700 text-lg font-semibold flex items-center justify-center border-2 border-slate-300"
+            aria-hidden="true"
+          >
+            {lineNumber}
+          </span>
+        )}
+
+        {/* WHEN chip */}
+        <div
+          className="px-2 py-1 ml-2 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+          style={{ writingMode: "vertical-rl", ...chipGlass.containerStyle }}
           aria-hidden="true"
         >
-          {lineNumber}
-        </span>
-      )}
+          <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} />
+          <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
+            <span className="inline-block rotate-270 mx-0">W</span>
+            <span className="inline-block rotate-270 mx-0.5">H</span>
+            <span className="inline-block rotate-270 mx-0.5">E</span>
+            <span className="inline-block rotate-270 mx-0.5">N</span>
+          </span>
+        </div>
 
-      {/* WHEN chip */}
-      <div
-        className="px-2 py-1 ml-2 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
-        style={{ writingMode: "vertical-rl", ...chipGlass.containerStyle }}
-        aria-hidden="true"
-      >
-        <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} />
-        <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
-          <span className="inline-block rotate-270 mx-0">W</span>
-          <span className="inline-block rotate-270 mx-0.5">H</span>
-          <span className="inline-block rotate-270 mx-0.5">E</span>
-          <span className="inline-block rotate-270 mx-0.5">N</span>
-        </span>
-      </div>
+        {/* WHEN tiles */}
+        <div className="self-center flex gap-1">
+          {whenTiles.map((tile, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
+            <DocsTileChip key={i} tileDef={tile} side={RuleSide.When} />
+          ))}
+        </div>
 
-      {/* WHEN tiles */}
-      <div className="self-center flex gap-1">
-        {whenTiles.map((tile, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
-          <DocsTileChip key={i} tileDef={tile} side={RuleSide.When} />
-        ))}
-      </div>
+        {/* DO chip */}
+        <div
+          className="px-2 py-1 ml-3 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
+          style={{ writingMode: "vertical-rl", ...chipGlass.containerStyle }}
+          aria-hidden="true"
+        >
+          <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} />
+          <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
+            <span className="inline-block rotate-270 mx-0">D</span>
+            <span className="inline-block rotate-270 mx-0.5">O</span>
+          </span>
+        </div>
 
-      {/* DO chip */}
-      <div
-        className="px-2 py-1 ml-3 bg-linear-to-br from-slate-800 to-slate-900 border-2 border-slate-500 rounded-md rounded-l-2xl flex items-center justify-center shadow-sm relative overflow-hidden shrink-0"
-        style={{ writingMode: "vertical-rl", ...chipGlass.containerStyle }}
-        aria-hidden="true"
-      >
-        <span className="absolute inset-0 pointer-events-none" style={chipGlass.overlayStyle} />
-        <span className="rotate-[-90] text-white font-semibold text-md cursor-default">
-          <span className="inline-block rotate-270 mx-0">D</span>
-          <span className="inline-block rotate-270 mx-0.5">O</span>
-        </span>
-      </div>
-
-      {/* DO tiles */}
-      <div className="self-center flex gap-1">
-        {doTiles.map((tile, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
-          <DocsTileChip key={i} tileDef={tile} side={RuleSide.Do} />
-        ))}
+        {/* DO tiles */}
+        <div className="self-center flex gap-1">
+          {doTiles.map((tile, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: stable in read-only view
+            <DocsTileChip key={i} tileDef={tile} side={RuleSide.Do} />
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -284,6 +288,7 @@ function DocsRuleRow({ whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowP
 // ---------------------------------------------------------------------------
 
 export interface DocsRuleData {
+  comment?: string;
   whenTiles: IBrainTileDef[];
   doTiles: IBrainTileDef[];
   depth: number;
@@ -319,6 +324,7 @@ export function DocsRuleBlock({ rules }: DocsRuleBlockProps) {
       {flat.map((rule) => (
         <DocsRuleRow
           key={rule.lineNumber}
+          comment={rule.comment}
           whenTiles={rule.whenTiles}
           doTiles={rule.doTiles}
           depth={rule.depth}

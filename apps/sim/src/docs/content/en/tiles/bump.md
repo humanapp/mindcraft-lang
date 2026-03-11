@@ -16,10 +16,47 @@ Place `tile:tile.sensor->sensor.bump` on the **WHEN** side of a rule to detect c
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.bump","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.awayfrom"]}]
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->sensor.bump",
+        "tile.modifier->modifier.actor_kind.carnivore"
+      ],
+      "do": [
+        "tile.actuator->actuator.move",
+        "tile.modifier->modifier.movement.awayfrom",
+        "tile.modifier->modifier.quickly",
+        "tile.modifier->modifier.quickly",
+        "tile.modifier->modifier.quickly"
+      ],
+      "children": [],
+      "comment": "If a carnivore bumps me, flee!"
+    }
+  ],
+  "catalog": [
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->string:<string>->yikes!",
+      "valueType": "string:<string>",
+      "value": "yikes!",
+      "valueLabel": "yikes!",
+      "displayFormat": "default"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->0.5[time_seconds]",
+      "valueType": "number:<number>",
+      "value": 0.5,
+      "valueLabel": "0.5",
+      "displayFormat": "time_seconds"
+    }
+  ]
+}
 ```
-
-_Move away from the bumped carnivore._
 
 ## Modifiers
 
