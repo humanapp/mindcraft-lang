@@ -3,6 +3,8 @@
 
 # Copilot Instructions
 
+Before working in any area of the codebase, list `.github/instructions/` and read `global.instructions.md` plus any files whose name matches the area you are working in.
+
 These instructions apply to all Copilot features, including inline tab completions.
 
 ## Code Quality
