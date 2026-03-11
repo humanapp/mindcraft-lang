@@ -42,8 +42,8 @@ including passing tests, before moving to the next.
 
 ```
 Tiles -> Parser -> AST (Expr) -> Type Inference -> Bytecode Compiler -> Program -> VM
-                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-                                                   This spec covers this portion.
+                                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                                                     This spec covers this portion.
 ```
 
 The bytecode compiler consumes the typed AST produced by the parser and type inference

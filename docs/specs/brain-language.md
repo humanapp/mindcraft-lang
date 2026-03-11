@@ -2,7 +2,8 @@
 
 This document specifies the Mindcraft tile-based visual programming language architecture,
 covering everything from the type system and tile schema through parsing and tile suggestions.
-The bytecode compiler and runtime VM are out of scope -- they are covered by a separate spec.
+The bytecode compiler and runtime VM are out of scope -- they are covered by the companion
+spec in `brain-runtime.md`.
 
 The implementation target is `packages/core/src/brain/`. All code must follow the multi-target
 constraints documented in `.github/instructions/core.instructions.md` (no `any`, no `typeof`,
@@ -40,7 +41,9 @@ including passing tests, before moving to the next.
 ### Pipeline
 
 ```
-Tiles -> Parser (Pratt + grammar) -> AST (Expr) -> Type Inference -> Bytecode Compiler -> Program -> VM
+Tiles -> Parser -> AST (Expr) -> Type Inference -> Bytecode Compiler -> Program -> VM
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        This spec covers this portion.
 ```
 
 This spec covers everything left of `-> Bytecode Compiler`. The bytecode compiler and VM
