@@ -1657,6 +1657,69 @@
       "tileId": "tile.page->xC3Z0iAC3gfvxOS1",
       "pageId": "xC3Z0iAC3gfvxOS1",
       "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->iaSDHhSlAERGvp8I",
+      "pageId": "iaSDHhSlAERGvp8I",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->VWnduJdlcq3bZZNE",
+      "pageId": "VWnduJdlcq3bZZNE",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->6VHMf8kBB46Bbdbh",
+      "pageId": "6VHMf8kBB46Bbdbh",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->PSlb1MVsnT9LvaNz",
+      "pageId": "PSlb1MVsnT9LvaNz",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->agxeotbeunqA0JM2",
+      "pageId": "agxeotbeunqA0JM2",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->clZUFWgy7DXwaVku",
+      "pageId": "clZUFWgy7DXwaVku",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->XpI0vSYtoEik83k4",
+      "pageId": "XpI0vSYtoEik83k4",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->X53utaQTsRt3I3LL",
+      "pageId": "X53utaQTsRt3I3LL",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->0H223pdQ57mMXEnQ",
+      "pageId": "0H223pdQ57mMXEnQ",
+      "label": "Unnamed Page"
     }
   ],
   "pages": [
@@ -1684,9 +1747,11 @@
                 "tile.parameter->parameter.duration",
                 "tile.literal->number:<number>->0.5[time_seconds]"
               ],
-              "children": []
+              "children": [],
+              "comment": "Say \"chomp!\" briefly"
             }
-          ]
+          ],
+          "comment": "When I bump an herbivore, eat it. Also run child rules"
         },
         {
           "version": 1,
@@ -1707,17 +1772,21 @@
                 "tile.actuator->switch-page",
                 "tile.sensor->current-page"
               ],
-              "children": []
+              "children": [],
+              "comment": "...and stop executing rules. restart at the top of the page in the next frame"
             }
-          ]
+          ],
+          "comment": "When I see an herbivore, make a beeline for it"
         },
         {
           "version": 1,
           "when": [],
           "do": [
-            "tile.actuator->actuator.move"
+            "tile.actuator->actuator.move",
+            "tile.modifier->modifier.movement.wander"
           ],
-          "children": []
+          "children": [],
+          "comment": "Default behavior: wander around the map"
         },
         {
           "version": 1,

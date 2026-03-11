@@ -11,7 +11,7 @@ A demo application built with the [Mindcraft language](../../README.md). Carnivo
 </div>
 
 <div align="center">
-  <img src="./assets/2026-03-09_09-13-46.png" alt="Sim Screenshot 2" width="80%" />
+  <img src="./assets/2026-03-11_15-25-31.png" alt="Sim Screenshot 2" width="80%" />
 </div>
 
 This app also serves as a reference integration for developers: it shows how to embed `@mindcraft-lang/core` and `@mindcraft-lang/ui` into a React application, and how to write custom sensors and actuators.

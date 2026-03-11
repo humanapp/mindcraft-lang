@@ -1,5 +1,5 @@
 import type { IBrainDef, IBrainRuleDef, IBrainTileSet } from "@mindcraft-lang/core/brain";
-import type { BrainDef, BrainPageDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import type { BrainCommand } from "./BrainCommand";
 
@@ -120,5 +120,28 @@ export class RenameVariableCommand implements BrainCommand {
         tileSet.replaceTileAtIndex(ti, toTile);
       }
     }
+  }
+}
+
+export class SetRuleCommentCommand implements BrainCommand {
+  private oldComment: string | undefined;
+
+  constructor(
+    private ruleDef: BrainRuleDef,
+    private newComment: string | undefined
+  ) {
+    this.oldComment = ruleDef.comment();
+  }
+
+  execute(): void {
+    this.ruleDef.setComment(this.newComment);
+  }
+
+  undo(): void {
+    this.ruleDef.setComment(this.oldComment);
+  }
+
+  getDescription(): string {
+    return this.newComment ? `Set rule comment to "${this.newComment}"` : "Remove rule comment";
   }
 }

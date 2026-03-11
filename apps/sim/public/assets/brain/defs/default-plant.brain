@@ -1536,6 +1536,55 @@
       "tileId": "tile.page->H0BlsnRs0ZID9mnS",
       "pageId": "H0BlsnRs0ZID9mnS",
       "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->wjNmk4LiqZHl1Tni",
+      "pageId": "wjNmk4LiqZHl1Tni",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->xAJ502hHZyiOB4lU",
+      "pageId": "xAJ502hHZyiOB4lU",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->gAcdlNgrIUM6PAhD",
+      "pageId": "gAcdlNgrIUM6PAhD",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->rVjcQLfaf2kPlVHX",
+      "pageId": "rVjcQLfaf2kPlVHX",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->gJeZdY6LRhQZGY8a",
+      "pageId": "gJeZdY6LRhQZGY8a",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->sVbyegHKsDHkxRuv",
+      "pageId": "sVbyegHKsDHkxRuv",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->enRhF3Tu2x4J5GfP",
+      "pageId": "enRhF3Tu2x4J5GfP",
+      "label": "Unnamed Page"
     }
   ],
   "pages": [
@@ -1555,7 +1604,8 @@
             "tile.parameter->parameter.rate",
             "tile.literal->number:<number>->0.5"
           ],
-          "children": []
+          "children": [],
+          "comment": "Shoot carnivores. We don't like them!"
         },
         {
           "version": 1,

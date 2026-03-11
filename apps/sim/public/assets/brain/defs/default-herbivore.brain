@@ -2095,6 +2095,27 @@
       "tileId": "tile.page->PQLF6guUVhi5a8w2",
       "pageId": "PQLF6guUVhi5a8w2",
       "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->91OnyvuyOdfu1fhU",
+      "pageId": "91OnyvuyOdfu1fhU",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->YzvAcDQ3Z49sijU7",
+      "pageId": "YzvAcDQ3Z49sijU7",
+      "label": "Unnamed Page"
+    },
+    {
+      "version": 2,
+      "kind": "page",
+      "tileId": "tile.page->Gn6YoRDb5Nl1GMwb",
+      "pageId": "Gn6YoRDb5Nl1GMwb",
+      "label": "Unnamed Page"
     }
   ],
   "pages": [
@@ -2122,9 +2143,11 @@
                 "tile.parameter->parameter.duration",
                 "tile.literal->number:<number>->0.5[time_seconds]"
               ],
-              "children": []
+              "children": [],
+              "comment": "...say \"nom!\" briefly"
             }
-          ]
+          ],
+          "comment": "When I bump a plant, take a bite. Also run child rules"
         },
         {
           "version": 1,
@@ -2149,9 +2172,11 @@
                 "tile.parameter->parameter.duration",
                 "tile.literal->number:<number>->0.5[time_seconds]"
               ],
-              "children": []
+              "children": [],
+              "comment": "...and say \"yikes!\""
             }
-          ]
+          ],
+          "comment": "If a carnivore bumps me, flee!"
         },
         {
           "version": 1,
@@ -2181,22 +2206,27 @@
                     "tile.actuator->switch-page",
                     "tile.sensor->current-page"
                   ],
-                  "children": []
+                  "children": [],
+                  "comment": "if i saw a plant, then I'm moving toward it, so don't run any more rules."
                 }
-              ]
+              ],
+              "comment": "if i see a plant, move toward it"
             }
-          ]
+          ],
+          "comment": "if my energy is below 75%, run the child rules"
         },
         {
           "version": 1,
           "when": [],
           "do": [
             "tile.actuator->actuator.move",
+            "tile.modifier->modifier.movement.wander",
             "tile.modifier->modifier.slowly",
             "tile.modifier->modifier.slowly",
             "tile.modifier->modifier.slowly"
           ],
-          "children": []
+          "children": [],
+          "comment": "Default behavior: wander around the map very slowly"
         },
         {
           "version": 1,
