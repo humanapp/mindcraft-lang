@@ -13,6 +13,7 @@ import { List } from "@mindcraft-lang/core";
 import {
   CoreTypeIds,
   getBrainServices,
+  mkPageTileId,
   mkVariableTileId,
   registerCoreBrainComponents,
 } from "@mindcraft-lang/core/brain";
@@ -551,6 +552,44 @@ describe("brain-json", () => {
     const restored = BrainDef.fromJson(parsed);
     const restoredRule = restored.pages().get(0)!.children().get(0)!;
     assert.equal(restoredRule.comment(), "Stringify comment");
+  });
+
+  test("purgeUnusedTiles removes orphaned page tiles from deleted pages", () => {
+    const brain = new BrainDef();
+    brain.appendNewPage();
+    brain.appendNewPage();
+
+    const page0Id = brain.pages().get(0)!.pageId();
+    const page1Id = brain.pages().get(1)!.pageId();
+
+    // Both page tiles should be in the catalog after adding pages
+    assert.ok(brain.catalog().get(mkPageTileId(page0Id)), "page0 tile should exist");
+    assert.ok(brain.catalog().get(mkPageTileId(page1Id)), "page1 tile should exist");
+
+    // Remove the second page -- its tile becomes orphaned (hidden)
+    brain.removePageAtIndex(1);
+
+    // Before purge: orphaned tile is still in the catalog (just hidden)
+    const orphanedTile = brain.catalog().get(mkPageTileId(page1Id));
+    assert.ok(orphanedTile, "orphaned page tile should still exist before purge");
+    assert.equal(orphanedTile.hidden, true, "orphaned page tile should be hidden");
+
+    brain.purgeUnusedTiles();
+
+    // After purge: orphaned tile should be gone
+    assert.equal(
+      brain.catalog().get(mkPageTileId(page1Id)),
+      undefined,
+      "orphaned page tile should be removed after purge"
+    );
+
+    // Living page tile should still be present
+    assert.ok(brain.catalog().get(mkPageTileId(page0Id)), "living page tile should remain after purge");
+
+    // And the serialized JSON should not contain the orphaned tile
+    const json = brain.toJson();
+    const orphanInCatalog = json.catalog.find((t: CatalogTileJson) => t.tileId === mkPageTileId(page1Id));
+    assert.equal(orphanInCatalog, undefined, "orphaned page tile should not appear in serialized JSON");
   });
 
   test("setComment truncates to kMaxBrainRuleCommentLength", () => {

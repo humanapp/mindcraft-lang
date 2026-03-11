@@ -234,8 +234,6 @@ export class BrainDef implements IBrainDef {
 
     for (let i = 0; i < allTiles.size(); i++) {
       const tile = allTiles.get(i);
-      // Never purge page tiles -- they are managed by syncPageTiles_
-      if (isPageTileId(tile.tileId)) continue;
       if (!this.containsTileId(tile.tileId)) {
         tilesToRemove.push(tile.tileId);
       }
