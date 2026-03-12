@@ -7,11 +7,52 @@
 
 # Gets
 
-Assigns a value a variable.
+Sets a variable to a new value.
 
 ---
 
-Place the variable on the left, the `tile:tile.op->assign` in the middle, and the value on the right.
+Place the variable on the left, the `tile:tile.op->assign` tile in the middle, and the value you want to store on the right. You can read this as "variable **gets** value."
+
+## Examples
+
+```brain
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->on-page-entered"
+      ],
+      "do": [
+        "tile.var->xScore0000000001",
+        "tile.op->assign",
+        "tile.literal->number:<number>->0"
+      ],
+      "children": [],
+      "comment": "When the page starts, set `score` to `0`."
+    }
+  ],
+  "catalog": [
+    {
+      "version": 1,
+      "kind": "variable",
+      "tileId": "tile.var->xScore0000000001",
+      "varName": "score",
+      "varType": "number:<number>",
+      "uniqueId": "xScore0000000001"
+    },
+    {
+      "version": 2,
+      "kind": "literal",
+      "tileId": "tile.literal->number:<number>->0",
+      "valueType": "number:<number>",
+      "value": 0,
+      "valueLabel": "0",
+      "displayFormat": "default"
+    }
+  ]
+}
+```
 
 ```brain
 {
@@ -54,7 +95,7 @@ Place the variable on the left, the `tile:tile.op->assign` in the middle, and th
 }
 ```
 
-The `tile:tile.op->assign` operator works with all variable types -- numbers, booleans, strings, even custom types defined by the application.
+Works with any variable type -- numbers, booleans, and strings.
 
 ## See Also
 
