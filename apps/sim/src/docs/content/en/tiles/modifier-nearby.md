@@ -10,10 +10,26 @@ or to filter detection to only nearby actors.
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore", "tile.modifier->modifier.distance.nearby"],"do":["tile.actuator->actuator.move","modifier->modifier.movement.awayfrom"]}]
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->sensor.see",
+        "tile.modifier->modifier.actor_kind.carnivore",
+        "tile.modifier->modifier.distance.nearby"
+      ],
+      "do": [
+        "tile.actuator->actuator.move",
+        "modifier->modifier.movement.awayfrom"
+      ],
+      "children": [],
+      "comment": "Move away from a nearby carnivore."
+    }
+  ],
+  "catalog": []
+}
 ```
-
-_Move away from a nearby carnivore._
 
 ## See Also
 

@@ -17,10 +17,26 @@ to restrict it to herbivores. Herbivores eat plants and are eaten by carnivores.
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.herbivore", "tile.modifier->modifier.distance.faraway"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.toward"]}]
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->sensor.see",
+        "tile.modifier->modifier.actor_kind.herbivore",
+        "tile.modifier->modifier.distance.faraway"
+      ],
+      "do": [
+        "tile.actuator->actuator.move",
+        "tile.modifier->modifier.movement.toward"
+      ],
+      "children": [],
+      "comment": "Move toward a distant herbivore."
+    }
+  ],
+  "catalog": []
+}
 ```
-
-_Move toward a distant herbivore._
 
 ## See Also
 

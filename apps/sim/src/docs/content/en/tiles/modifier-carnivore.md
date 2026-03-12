@@ -17,10 +17,25 @@ to restrict it to carnivores. Carnivores are predator actors that eat herbivores
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.carnivore"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.awayfrom"]}]
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->sensor.see",
+        "tile.modifier->modifier.actor_kind.carnivore"
+      ],
+      "do": [
+        "tile.actuator->actuator.move",
+        "tile.modifier->modifier.movement.awayfrom"
+      ],
+      "children": [],
+      "comment": "Flee from visible carnivores."
+    }
+  ],
+  "catalog": []
+}
 ```
-
-_Flee from visible carnivores._
 
 ## See Also
 

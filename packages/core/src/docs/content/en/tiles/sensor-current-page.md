@@ -25,14 +25,13 @@ Use on either side of a rule wherever you would use a page tile, but want it to 
         "tile.actuator->switch-page",
         "tile.sensor->current-page"
       ],
-      "children": []
+      "children": [],
+      "comment": "Restart execution of the current page."
     }
   ],
   "catalog": []
 }
 ```
-
-_Restart execution of the current page._
 
 ## See Also
 

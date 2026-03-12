@@ -16,28 +16,42 @@ Without modifiers, the actor moves forward in the direction it is facing.
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.plant"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.toward"]}]
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->sensor.see",
+        "tile.modifier->modifier.actor_kind.plant"
+      ],
+      "do": [
+        "tile.actuator->actuator.move",
+        "tile.modifier->modifier.movement.toward"
+      ],
+      "children": [],
+      "comment": "Move toward the seen plant."
+    }
+  ],
+  "catalog": []
+}
 ```
-
-_Move toward the seen plant._
 
 ## Modifiers & Parameters
 
-| Modifier | Description |
-|----------|-------------|
-| `tile:tile.modifier->modifier.movement.forward` | Move forward |
-| `tile:tile.modifier->modifier.movement.toward` | Move toward the target |
-| `tile:tile.modifier->modifier.movement.awayfrom` | Move away from the target |
-| `tile:tile.modifier->modifier.movement.avoid` | Move to avoid the target |
-| `tile:tile.modifier->modifier.movement.wander` | Wander around the map |
-| `tile:tile.modifier->modifier.quickly` | Move quickly. Up to three instances of this tile may be added, to increase the effect |
-| `tile:tile.modifier->modifier.slowly` | Move slowly. Up to three instances of this tile may be added, to increase the effect |
+| Modifier                                         | Description                                                                           |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| `tile:tile.modifier->modifier.movement.forward`  | Move forward                                                                          |
+| `tile:tile.modifier->modifier.movement.toward`   | Move toward the target                                                                |
+| `tile:tile.modifier->modifier.movement.awayfrom` | Move away from the target                                                             |
+| `tile:tile.modifier->modifier.movement.avoid`    | Move to avoid the target                                                              |
+| `tile:tile.modifier->modifier.movement.wander`   | Wander around the map                                                                 |
+| `tile:tile.modifier->modifier.quickly`           | Move quickly. Up to three instances of this tile may be added, to increase the effect |
+| `tile:tile.modifier->modifier.slowly`            | Move slowly. Up to three instances of this tile may be added, to increase the effect  |
 
-| Parameter | Type | Description |
-|-----------|------|--------------|
-| (anonymous) | `Actor` | The target to move toward or away from. If not provided, the best target will be inferred from context. Default: `tile:tile.literal->struct:<actorRef>->it` |
-| `tile:tile.parameter->parameter.priority` | `Number` | Priority of this action in relation to other queued movements |
-
+| Parameter                                 | Type     | Description                                                                                                                                                 |
+| ----------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| (anonymous)                               | `Actor`  | The target to move toward or away from. If not provided, the best target will be inferred from context. Default: `tile:tile.literal->struct:<actorRef>->it` |
+| `tile:tile.parameter->parameter.priority` | `Number` | Priority of this action in relation to other queued movements                                                                                               |
 
 ## See Also
 

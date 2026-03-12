@@ -25,7 +25,8 @@ Place on the **DO** side to navigate to another page when a rule fires. The brai
         "tile.actuator->switch-page",
         "tile.page->1KQvjJVmrZZ2BqOd"
       ],
-      "children": []
+      "children": [],
+      "comment": "Switch execution to the 'Hunt' page."
     }
   ],
   "catalog": [
@@ -40,8 +41,6 @@ Place on the **DO** side to navigate to another page when a rule fires. The brai
 }
 ```
 
-_Switch execution to the 'Hunt' page._
-
 ```brain
 {
   "ruleJsons": [
@@ -52,19 +51,18 @@ _Switch execution to the 'Hunt' page._
         "tile.actuator->switch-page",
         "tile.sensor->current-page"
       ],
-      "children": []
+      "children": [],
+      "comment": "Restart execution of the current page."
     }
   ],
   "catalog": []
 }
 ```
 
-_Restart execution of the current page._
-
 ## Parameters & Modifiers
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
+| Parameter   | Type                          | Description                                                                                                                          |
+| ----------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | (anonymous) | `Page`, `String`, or `Number` | A page tile, the page's string name, or its 1-based numeric index. Use `tile:tile.sensor->current-page` to restart the current page. |
 
 ## See Also

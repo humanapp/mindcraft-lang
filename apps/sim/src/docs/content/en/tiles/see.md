@@ -15,21 +15,36 @@ Combine with modifier tiles like `tile:tile.modifier->modifier.actor_kind.carniv
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.see","tile.modifier->modifier.actor_kind.herbivore","tile.modifier->modifier.distance.nearby"],"do":["tile.actuator->actuator.move","tile.modifier->modifier.movement.toward"]}]
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->sensor.see",
+        "tile.modifier->modifier.actor_kind.herbivore",
+        "tile.modifier->modifier.distance.nearby"
+      ],
+      "do": [
+        "tile.actuator->actuator.move",
+        "tile.modifier->modifier.movement.toward"
+      ],
+      "children": [],
+      "comment": "Move toward a nearby herbivore in vision range."
+    }
+  ],
+  "catalog": []
+}
 ```
-
-_Move toward a nearby herbivore in vision range._
 
 ## Modifiers
 
-| Tile | Description |
-|------|-------------|
-| `tile:tile.modifier->modifier.actor_kind.carnivore` | Only see carnivores |
-| `tile:tile.modifier->modifier.actor_kind.herbivore` | Only see herbivores |
-| `tile:tile.modifier->modifier.actor_kind.plant` | Only see plants |
-| `tile:tile.modifier->modifier.distance.nearby` | Filter by distance. Up to three instances of this tile may be added to increase effect. |
-| `tile:tile.modifier->modifier.distance.faraway` | Filter by distance. Up to three instances of this tile may be added to increase effect. |
-
+| Tile                                                | Description                                                                             |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `tile:tile.modifier->modifier.actor_kind.carnivore` | Only see carnivores                                                                     |
+| `tile:tile.modifier->modifier.actor_kind.herbivore` | Only see herbivores                                                                     |
+| `tile:tile.modifier->modifier.actor_kind.plant`     | Only see plants                                                                         |
+| `tile:tile.modifier->modifier.distance.nearby`      | Filter by distance. Up to three instances of this tile may be added to increase effect. |
+| `tile:tile.modifier->modifier.distance.faraway`     | Filter by distance. Up to three instances of this tile may be added to increase effect. |
 
 ## See Also
 

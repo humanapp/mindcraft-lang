@@ -22,7 +22,8 @@ Place the variable tile on the WHEN or DO side of any rule to read and make use 
         "tile.literal->number:<number>->42"
       ],
       "do": [],
-      "children": []
+      "children": [],
+      "comment": "\"foo == 42\" (checks if variable `foo`'s value is equal to `42`)"
     }
   ],
   "catalog": [
@@ -47,9 +48,6 @@ Place the variable tile on the WHEN or DO side of any rule to read and make use 
 }
 ```
 
-_"foo == 42" (checks if variable `foo`'s value is equal to `42`)_
-
-
 ## Writing to a Variable
 
 Use the `tile:tile.op->assign` operator to update a variable's value.
@@ -66,7 +64,8 @@ Put the variable tile on the left and a value expression on the right.
         "tile.op->assign",
         "tile.literal->number:<number>->42"
       ],
-      "children": []
+      "children": [],
+      "comment": "\"foo = 42\" (gives variable `foo` the value `42`)"
     }
   ],
   "catalog": [
@@ -90,8 +89,6 @@ Put the variable tile on the left and a value expression on the right.
   ]
 }
 ```
-
-_"foo = 42" (gives variable `foo` the value `42`)_
 
 ## Variable Scope
 

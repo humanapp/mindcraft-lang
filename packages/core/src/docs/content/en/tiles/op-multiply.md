@@ -28,7 +28,8 @@ Use on the **DO** side to compute a product, or on the **WHEN** side inside a co
         "tile.op->mul",
         "tile.var->oQ7jcLxIYNZb7gds"
       ],
-      "children": []
+      "children": [],
+      "comment": "a = b * c"
     }
   ],
   "catalog": [
@@ -59,7 +60,6 @@ Use on the **DO** side to compute a product, or on the **WHEN** side inside a co
   ]
 }
 ```
-_a = b * c_
 
 ```brain
 {
@@ -74,7 +74,8 @@ _a = b * c_
         "tile.var->wmkXhqjQRJqAAxhx"
       ],
       "do": [],
-      "children": []
+      "children": [],
+      "comment": "a > b * c"
     }
   ],
   "catalog": [
@@ -105,7 +106,6 @@ _a = b * c_
   ]
 }
 ```
-_a > b * c_
 
 ## See Also
 

@@ -28,7 +28,8 @@ Place the variable on the left, the `tile:tile.op->assign` in the middle, and th
         "tile.op->sub",
         "tile.literal->number:<number>->1"
       ],
-      "children": []
+      "children": [],
+      "comment": "Once per second, subtract `1` from `countdown`."
     }
   ],
   "catalog": [
@@ -52,8 +53,6 @@ Place the variable on the left, the `tile:tile.op->assign` in the middle, and th
   ]
 }
 ```
-
-_Once per second, subtract `1` from `countdown`._
 
 The `tile:tile.op->assign` operator works with all variable types -- numbers, booleans, strings, even custom types defined by the application.
 

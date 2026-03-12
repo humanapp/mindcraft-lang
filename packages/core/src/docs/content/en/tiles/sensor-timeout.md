@@ -29,7 +29,8 @@ Set the time interval by providing an anonymous numeric parameter. Value is in s
         "tile.actuator->switch-page",
         "tile.page->VaDrD7HLljXhpwy7"
       ],
-      "children": []
+      "children": [],
+      "comment": "After five seconds, switch to the \"Regenerate\" page."
     }
   ],
   "catalog": [
@@ -53,12 +54,10 @@ Set the time interval by providing an anonymous numeric parameter. Value is in s
 }
 ```
 
-_After five seconds, switch to the "Regenerate" page._
-
 ## Modifiers & Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
+| Parameter   | Type     | Description                                 |
+| ----------- | -------- | ------------------------------------------- |
 | (anonymous) | `Number` | The time interval, in seconds. Default: `1` |
 
 ## See Also

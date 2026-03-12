@@ -24,7 +24,8 @@ Place `tile:tile.actuator->actuator.say` on the **DO** side of a rule to show a 
         "tile.actuator->actuator.say",
         "tile.literal->string:<string>->Bumped!"
       ],
-      "children": []
+      "children": [],
+      "comment": "Say \"Bumped!\" when bumping another actor."
     }
   ],
   "catalog": [
@@ -41,14 +42,12 @@ Place `tile:tile.actuator->actuator.say` on the **DO** side of a rule to show a 
 }
 ```
 
-_Say "Bumped!" when bumping another actor._
-
 ## Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| (anonymous) | `Text` | The text to show in the speech bubble. If omitted, closes the current speech bubble. |
-| `tile:tile.parameter->parameter.duration` | `Number` | How long the speech bubble should show, in seconds. Default: `5` |
+| Parameter                                 | Type     | Description                                                                          |
+| ----------------------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| (anonymous)                               | `Text`   | The text to show in the speech bubble. If omitted, closes the current speech bubble. |
+| `tile:tile.parameter->parameter.duration` | `Number` | How long the speech bubble should show, in seconds. Default: `5`                     |
 
 ## See Also
 

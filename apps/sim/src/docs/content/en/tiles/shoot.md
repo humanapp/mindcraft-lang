@@ -27,7 +27,8 @@ Place `tile:tile.actuator->actuator.shoot` on the **DO** side of a rule to launc
         "tile.parameter->parameter.rate",
         "tile.literal->number:<number>->3"
       ],
-      "children": []
+      "children": [],
+      "comment": "Shoot blips at the nearby carnivore at a rate of 3 per second."
     }
   ],
   "catalog": [
@@ -44,12 +45,10 @@ Place `tile:tile.actuator->actuator.shoot` on the **DO** side of a rule to launc
 }
 ```
 
-_Shoot blips at the nearby carnivore at a rate of 3 per second._
-
 ## Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
+| Parameter                             | Type   | Description                                              |
+| ------------------------------------- | ------ | -------------------------------------------------------- |
 | `tile:tile.parameter->parameter.rate` | Number | The per-second rate of fire. Maximum: `5`. Default: `1`. |
 
 ## See Also

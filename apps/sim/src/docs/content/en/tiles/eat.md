@@ -20,10 +20,24 @@ Carnivores may eat only herbivores; herbivores may eat only plants.
 ## Example
 
 ```brain
-[{"when":["tile.sensor->sensor.bump","tile.modifier->modifier.actor_kind.plant"],"do":["tile.actuator->actuator.eat"]}]
+{
+  "ruleJsons": [
+    {
+      "version": 1,
+      "when": [
+        "tile.sensor->sensor.bump",
+        "tile.modifier->modifier.actor_kind.plant"
+      ],
+      "do": [
+        "tile.actuator->actuator.eat"
+      ],
+      "children": [],
+      "comment": "Take a bite of the bumped plant."
+    }
+  ],
+  "catalog": []
+}
 ```
-
-_Take a bite of the bumped plant._
 
 ## See Also
 
