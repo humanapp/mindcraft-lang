@@ -55,8 +55,3 @@ These instructions apply to all Copilot features, including inline tab completio
   context. App-specific tile visuals, data type icons, and custom literal types are
   injected through the config, not imported directly.
 - Do not add app-specific types (e.g., Archetype, Actor) to this package.
-
-### Text and Comments
-
-- Use only ASCII characters in comments, documentation, and log strings.
-  - Use `->` not Unicode arrow, `--` not em-dash, `-` not bullet characters.
