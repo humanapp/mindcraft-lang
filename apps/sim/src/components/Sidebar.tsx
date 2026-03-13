@@ -1,6 +1,6 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
 import { Button, Slider } from "@mindcraft-lang/ui";
-import { BookOpen } from "lucide-react";
+import { BookOpen, Info } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
@@ -57,7 +57,12 @@ export function Sidebar({
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const { toggle: toggleDocs, isOpen: isDocsOpen } = useDocsSidebar();
+  const { toggle: toggleDocs, isOpen: isDocsOpen, open: openDocs, navigateToEntry } = useDocsSidebar();
+
+  const openAbout = () => {
+    openDocs();
+    navigateToEntry("concepts", "about");
+  };
 
   const updateDesiredCount = (archetype: Archetype, count: number) => {
     setDesiredCounts((prev) => {
@@ -82,6 +87,16 @@ export function Sidebar({
     >
       {/* Toolbar */}
       <div className="flex items-center justify-end gap-1 px-2 py-1.5 border-b border-border shrink-0">
+        <Button
+          onClick={openAbout}
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          title="About"
+          aria-label="About this app"
+        >
+          <Info className="h-4 w-4" aria-hidden="true" />
+        </Button>
         <Button
           onClick={toggleDocs}
           variant="ghost"

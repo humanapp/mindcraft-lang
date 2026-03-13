@@ -20,6 +20,12 @@ const appPatternModules = import.meta.glob<string>("./content/en/patterns/*.md",
   eager: true,
 });
 
+const appConceptModules = import.meta.glob<string>("./content/en/concepts/*.md", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -43,8 +49,12 @@ function buildContentMap(modules: Record<string, string>): Record<string, string
 // Build the registry
 // ---------------------------------------------------------------------------
 
+const APP_CONCEPT_TITLES: Record<string, string> = {
+  about: "About this App",
+};
+
 export function createDocsRegistry() {
-  return buildDocsRegistry({
+  const registry = buildDocsRegistry({
     appTiles: {
       meta: appTileDocs,
       content: buildContentMap(appTileModules),
@@ -54,4 +64,16 @@ export function createDocsRegistry() {
       content: buildContentMap(appPatternModules),
     },
   });
+
+  const conceptContent = buildContentMap(appConceptModules);
+  registry.register({
+    concepts: Object.entries(conceptContent).map(([id, content]) => ({
+      id,
+      title: APP_CONCEPT_TITLES[id] ?? id,
+      tags: [],
+      content,
+    })),
+  });
+
+  return registry;
 }
