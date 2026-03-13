@@ -1,0 +1,40 @@
+{
+  "name": "mindcraft-lbb",
+  "description": "Little Big Brains - A Kodu-like Mindcraft experience",
+  "version": "0.1.0",
+  "type": "module",
+  "author": "humanapp",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite --config vite/config.dev.mjs --force",
+    "build": "vite build --config vite/config.prod.mjs",
+    "clean": "rm -rf dist && rm -rf node_modules/.vite",
+    "lint": "biome lint ./src",
+    "lint:fix": "biome lint ./src --write",
+    "format": "biome format ./src --write",
+    "format:check": "biome format ./src",
+    "check": "biome check ./src",
+    "check:fix": "biome check ./src --write"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.14.0",
+    "@react-three/drei": "^10.7.0",
+    "@react-three/fiber": "^9.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.183.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.15",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "@vitejs/plugin-react": "^4.3.4",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "terser": "^5.28.1",
+    "typescript": "~5.7.2",
+    "vite": "^6.3.1"
+  }
+}
