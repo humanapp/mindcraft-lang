@@ -1,4 +1,4 @@
-# Welcome to Mindcraft Ecosystem Sim
+# Mindcraft Ecosystem Sim
 
 A living ecosystem where **carnivores**, **herbivores**, and **plants** compete to survive -- and you program their brains.
 
