@@ -63,7 +63,7 @@ Place `tile:tile.sensor->sensor.bump` on the **WHEN** side of a rule to detect c
 | Modifier | Description |
 |------|------|
 |`tile:tile.modifier->modifier.actor_kind.plant` | Only fire if bumping a plant|
-|`tile:tile.modifier->modifier.actor_kind.herbivore` | Only fire if bumping an herbivore|
+|`tile:tile.modifier->modifier.actor_kind.herbivore` | Only fire if bumping a herbivore|
 |`tile:tile.modifier->modifier.actor_kind.carnivore` | Only fire if bumping a carnivore|
 
 ## See Also

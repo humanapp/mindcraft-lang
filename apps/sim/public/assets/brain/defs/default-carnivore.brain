@@ -1751,7 +1751,7 @@
               "comment": "Say \"chomp!\" briefly"
             }
           ],
-          "comment": "When I bump an herbivore, eat it. Also run child rules"
+          "comment": "When I bump a herbivore, eat it. Also run child rules"
         },
         {
           "version": 1,
@@ -1776,7 +1776,7 @@
               "comment": "...and stop executing rules. restart at the top of the page in the next frame"
             }
           ],
-          "comment": "When I see an herbivore, make a beeline for it"
+          "comment": "When I see a herbivore, move toward it"
         },
         {
           "version": 1,
