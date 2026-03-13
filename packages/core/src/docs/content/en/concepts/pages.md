@@ -14,7 +14,7 @@ If `tile:tile.sensor->current-page` is passed in, execution of the current page 
 
 ## Previous Page
 
-The `tile:tile.sensor->previous-page` sensor returns the Page ID of the page that was
+The `tile:tile.sensor->previous-page` sensor returns the `Page ID` of the page that was
 active before the most recent page switch. If no switch has occurred, it returns the
 current page. Use it to navigate back to the page you came from.
 
