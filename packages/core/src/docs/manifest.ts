@@ -135,6 +135,12 @@ export const coreTileDocs: readonly CoreTileDocMeta[] = [
     category: "Functions",
     contentKey: "sensor-current-page",
   },
+  {
+    tileId: "tile.sensor->previous-page",
+    tags: ["pages", "navigation", "functions"],
+    category: "Functions",
+    contentKey: "sensor-previous-page",
+  },
 
   // -- Variable factories ----------------------------------------------------
   {

@@ -47,7 +47,7 @@ export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
     }
   } else if (tileDef.kind === "page") {
     if (!vis.iconUrl) {
-      vis.iconUrl = "/assets/brain/icons/page.svg";
+      vis.iconUrl = "/assets/brain/icons/page3.svg";
     }
   }
 

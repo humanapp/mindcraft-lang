@@ -68,4 +68,5 @@ Place on the **DO** side to navigate to another page when a rule fires. The brai
 ## See Also
 
 `tile:tile.sensor->current-page`
+`tile:tile.sensor->previous-page`
 `tile:tile.sensor->on-page-entered`

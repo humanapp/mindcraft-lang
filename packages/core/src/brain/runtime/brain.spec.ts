@@ -15,9 +15,11 @@ import { List } from "@mindcraft-lang/core";
 import {
   type BooleanValue,
   type BrainProgram,
+  CoreSensorId,
   CoreTypeIds,
   type ExecutionContext,
   extractNumberValue,
+  extractStringValue,
   getBrainServices,
   type HandleId,
   type HostAsyncFn,
@@ -418,6 +420,143 @@ describe("Brain behavioral -- multi-page", () => {
     brain.requestPageChange(1);
     brain.think(32);
     assert.equal(extractNumberValue(brain.getVariable(v.varName)), 2);
+  });
+});
+
+describe("Brain behavioral -- page sensors", () => {
+  test("current-page sensor returns active page ID", () => {
+    const v = mkVar("cp", CoreTypeIds.String);
+    const fnEntry = getBrainServices().functions.get(CoreSensorId.CurrentPage);
+    assert.ok(fnEntry, "current-page function should be registered");
+    const cpSensor = new BrainTileSensorDef(CoreSensorId.CurrentPage, fnEntry!, CoreTypeIds.String, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    const brainDef = buildBrain([], [v, opAssign, cpSensor]);
+    const brain = runBrain(brainDef);
+
+    const program = brain.getProgram();
+    assert.ok(program);
+    const expectedPageId = program!.pages.get(0)!.pageId;
+
+    const val = brain.getVariable(v.varName);
+    assert.ok(val !== undefined);
+    assert.equal(val!.t, NativeType.String);
+    assert.equal(val!.v, expectedPageId);
+  });
+
+  test("previous-page returns current page when no switch has occurred", () => {
+    const v = mkVar("pp-no-switch", CoreTypeIds.String);
+    const fnEntry = getBrainServices().functions.get(CoreSensorId.PreviousPage);
+    assert.ok(fnEntry, "previous-page function should be registered");
+    const ppSensor = new BrainTileSensorDef(CoreSensorId.PreviousPage, fnEntry!, CoreTypeIds.String, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    const brainDef = buildBrain([], [v, opAssign, ppSensor]);
+    const brain = runBrain(brainDef);
+
+    const program = brain.getProgram();
+    assert.ok(program);
+    const currentPageId = program!.pages.get(0)!.pageId;
+
+    const val = brain.getVariable(v.varName);
+    assert.ok(val !== undefined);
+    assert.equal(val!.t, NativeType.String);
+    assert.equal(val!.v, currentPageId);
+  });
+
+  test("previous-page returns page 0 ID after switching to page 1", () => {
+    const v = mkVar("pp-after-switch", CoreTypeIds.String);
+    const fnEntry = getBrainServices().functions.get(CoreSensorId.PreviousPage);
+    assert.ok(fnEntry);
+    const ppSensor = new BrainTileSensorDef(CoreSensorId.PreviousPage, fnEntry!, CoreTypeIds.String, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    const brainDef = new BrainDef();
+
+    // Page 0 (empty)
+    const p0Result = brainDef.appendNewPage();
+    assert.ok(p0Result.success);
+
+    // Page 1: assign previous-page to variable
+    const p1Result = brainDef.appendNewPage();
+    assert.ok(p1Result.success);
+    const rule1 = p1Result.value!.page.children().get(0)!;
+    rule1.do().appendTile(v as never);
+    rule1.do().appendTile(opAssign as never);
+    rule1.do().appendTile(ppSensor as never);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+
+    const program = brain.getProgram();
+    assert.ok(program);
+    const page0Id = program!.pages.get(0)!.pageId;
+
+    // Tick on page 0
+    brain.think(16);
+
+    // Switch to page 1
+    brain.requestPageChange(1);
+    brain.think(32);
+
+    const val = brain.getVariable(v.varName);
+    assert.ok(val !== undefined);
+    assert.equal(val!.t, NativeType.String);
+    assert.equal(val!.v, page0Id);
+  });
+
+  test("previous-page updates after multiple page switches", () => {
+    const v = mkVar("pp-multi", CoreTypeIds.String);
+    const fnEntry = getBrainServices().functions.get(CoreSensorId.PreviousPage);
+    assert.ok(fnEntry);
+    const ppSensor = new BrainTileSensorDef(CoreSensorId.PreviousPage, fnEntry!, CoreTypeIds.String, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    const brainDef = new BrainDef();
+
+    // Page 0: assign previous-page to var
+    const p0Result = brainDef.appendNewPage();
+    assert.ok(p0Result.success);
+    const rule0 = p0Result.value!.page.children().get(0)!;
+    rule0.do().appendTile(v as never);
+    rule0.do().appendTile(opAssign as never);
+    rule0.do().appendTile(ppSensor as never);
+
+    // Page 1: assign previous-page to var
+    const p1Result = brainDef.appendNewPage();
+    assert.ok(p1Result.success);
+    const rule1 = p1Result.value!.page.children().get(0)!;
+    rule1.do().appendTile(v as never);
+    rule1.do().appendTile(opAssign as never);
+    rule1.do().appendTile(ppSensor as never);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+
+    const program = brain.getProgram();
+    assert.ok(program);
+    const page0Id = program!.pages.get(0)!.pageId;
+    const page1Id = program!.pages.get(1)!.pageId;
+
+    // Tick on page 0 -- previous is current (no switch yet)
+    brain.think(16);
+    assert.equal(extractStringValue(brain.getVariable(v.varName)), page0Id);
+
+    // Switch to page 1, tick -- previous should be page 0
+    brain.requestPageChange(1);
+    brain.think(32);
+    assert.equal(extractStringValue(brain.getVariable(v.varName)), page0Id);
+
+    // Switch back to page 0, tick -- previous should be page 1
+    brain.requestPageChange(0);
+    brain.think(48);
+    assert.equal(extractStringValue(brain.getVariable(v.varName)), page1Id);
   });
 });
 

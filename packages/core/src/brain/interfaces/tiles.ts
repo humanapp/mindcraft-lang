@@ -210,6 +210,18 @@ export function getPageIdFromTileId(tileId: string): string | undefined {
 }
 
 // ----------------------------------------------------
+// Core Capability Bits
+// Bits 0-31 are reserved for core language use.
+// Apps must start at APP_CAPABILITY_BIT_OFFSET (32).
+// ----------------------------------------------------
+
+export const APP_CAPABILITY_BIT_OFFSET = 32;
+
+export const CoreCapabilityBits = {
+  PageSensor: 0,
+} as const;
+
+// ----------------------------------------------------
 // Core Tile IDs
 // ----------------------------------------------------
 
@@ -234,6 +246,7 @@ export enum CoreSensorId {
   OnPageEntered = "on-page-entered",
   Timeout = "sensor.timeout",
   CurrentPage = "current-page",
+  PreviousPage = "previous-page",
 }
 
 export enum CoreParameterId {
