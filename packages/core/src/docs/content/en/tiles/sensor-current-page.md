@@ -7,7 +7,7 @@
 
 # Current Page
 
-Returns the Page ID of the currently executing brain page.
+Returns the `Page ID` of the currently executing brain page.
 
 ---
 
@@ -35,5 +35,6 @@ Use on either side of a rule wherever you would use a page tile, but want it to 
 
 ## See Also
 
+`tile:tile.sensor->previous-page`
 `tile:tile.actuator->switch-page`
 `tile:tile.sensor->on-page-entered`

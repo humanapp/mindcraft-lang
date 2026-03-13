@@ -46,6 +46,7 @@ export class Brain implements IBrain {
   private interrupted: boolean = false;
   private currentPageIndex: number = 0;
   private desiredPageIndex: number = 0;
+  private previousPageIndex: number = -1;
   private restartPageRequested: boolean = false;
   private lastThinkTime: number = 0;
 
@@ -288,8 +289,17 @@ export class Brain implements IBrain {
     return meta ? meta.pageId : "";
   }
 
+  getPreviousPageId(): string {
+    if (!this.program || !this.isValidPageIndex(this.previousPageIndex)) {
+      return this.getCurrentPageId();
+    }
+    const meta = this.program.pages.get(this.previousPageIndex);
+    return meta ? meta.pageId : this.getCurrentPageId();
+  }
+
   startup() {
     this.currentPageIndex = this.desiredPageIndex = 0;
+    this.previousPageIndex = -1;
     this.restartPageRequested = false;
     this.lastThinkTime = 0;
     this.interrupted = false;
@@ -328,6 +338,7 @@ export class Brain implements IBrain {
       // Deactivate current page
       this.deactivateCurrentPage();
 
+      this.previousPageIndex = this.currentPageIndex;
       this.currentPageIndex = this.desiredPageIndex;
 
       // Activate new page

@@ -1,12 +1,11 @@
 import { List, type ReadonlyBitSet, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   CoreActuatorId,
-  CoreSensorId,
+  CoreCapabilityBits,
   getBrainServices,
   type IBrainTileDef,
   type ITileCatalog,
   mkActuatorTileId,
-  mkSensorTileId,
   type RuleSide,
   TilePlacement,
   type TypeId,
@@ -128,8 +127,7 @@ export function BrainTilePickerDialog({
         tileDef.placement !== undefined &&
         (tileDef.placement & TilePlacement.Inline) !== 0
       ) {
-        // Current-page sensor should appear alongside page tiles
-        if (tileDef.tileId === mkSensorTileId(CoreSensorId.CurrentPage)) return "page";
+        if (tileDef.capabilities().get(CoreCapabilityBits.PageSensor) !== 0) return "page";
         return "function";
       }
       if (tileDef.kind === "factory") {

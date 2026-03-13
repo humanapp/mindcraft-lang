@@ -12,6 +12,12 @@ The current page stops executing and the new page begins on the next frame.
 
 If `tile:tile.sensor->current-page` is passed in, execution of the current page will be interrupted and will restart from the top on the next frame. This can be useful for conditionally skipping execution of rules below the current one.
 
+## Previous Page
+
+The `tile:tile.sensor->previous-page` sensor returns the Page ID of the page that was
+active before the most recent page switch. If no switch has occurred, it returns the
+current page. Use it to navigate back to the page you came from.
+
 ## On Page Entered
 
 The `tile:tile.sensor->on-page-entered` sensor fires once on the first frame after

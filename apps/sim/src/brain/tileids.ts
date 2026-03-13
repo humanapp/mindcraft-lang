@@ -1,4 +1,5 @@
 import { BitSet } from "@mindcraft-lang/core";
+import { APP_CAPABILITY_BIT_OFFSET } from "@mindcraft-lang/core/brain";
 
 export const TileIds = {
   Modifier: {
@@ -46,7 +47,7 @@ export const TileIds = {
 } as const;
 
 export const TileCapabilityBits = {
-  TargetActor: 1,
+  TargetActor: APP_CAPABILITY_BIT_OFFSET + 0,
 } as const;
 
 export const TargetActorCapabilityBitSet = new BitSet().set(TileCapabilityBits.TargetActor);

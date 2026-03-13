@@ -1,7 +1,9 @@
 import { Error } from "../../platform/error";
+import { BitSet } from "../../util/bitset";
 import {
   type BrainFunctionEntry,
   type BrainTileDefCreateOptions,
+  CoreCapabilityBits,
   CoreSensorId,
   CoreTypeIds,
   mkSensorTileId,
@@ -11,6 +13,7 @@ import {
 import { BrainActionTileBase, BrainTileDefBase } from "../model/tiledef";
 import fnCurrentPage from "../runtime/sensors/current-page";
 import fnOnPageEntered from "../runtime/sensors/on-page-entered";
+import fnPreviousPage from "../runtime/sensors/previous-page";
 import fnRandom from "../runtime/sensors/random";
 import fnTimeout from "../runtime/sensors/timeout";
 import { getBrainServices } from "../services";
@@ -65,7 +68,13 @@ export function registerCoreSensorTileDefs() {
   });
   register(fnOnPageEntered.fnId, CoreTypeIds.Boolean);
   register(fnTimeout.fnId, CoreTypeIds.Boolean);
+  const pageSensorCaps = new BitSet().set(CoreCapabilityBits.PageSensor);
   register(fnCurrentPage.fnId, CoreTypeIds.String, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    capabilities: pageSensorCaps,
+  });
+  register(fnPreviousPage.fnId, CoreTypeIds.String, {
+    placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    capabilities: pageSensorCaps,
   });
 }

@@ -108,6 +108,7 @@ export interface IBrain {
   requestPageChangeByName(name: string): void;
   requestPageRestart(): void;
   getCurrentPageId(): string;
+  getPreviousPageId(): string;
 }
 
 export interface IBrainPage {
