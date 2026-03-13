@@ -3,7 +3,15 @@
 
 # Copilot Instructions
 
-Before working in any area of the codebase, list `.github/instructions/` and read `global.instructions.md` plus any files whose name matches the area you are working in.
+## MANDATORY: Read Instruction Files Before Every Task
+
+**This is a non-negotiable first step.** Before writing or editing any code, you MUST:
+
+1. List `.github/instructions/`
+2. Read `global.instructions.md`
+3. Read every file whose name matches the area(s) you are working in
+
+Do not skip this even for small changes. Do not proceed until the relevant files have been read. Failing to read instruction files before starting work is a critical error.
 
 These instructions apply to all Copilot features, including inline tab completions.
 

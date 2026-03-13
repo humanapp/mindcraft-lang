@@ -22,7 +22,11 @@
     /* Path mapping */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@mindcraft-lang/docs": ["../../packages/docs/src/index.ts"],
+      "@mindcraft-lang/docs/*": ["../../packages/docs/src/*"],
+      "@mindcraft-lang/ui": ["../../packages/ui/src/index.ts"],
+      "@mindcraft-lang/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": ["src"],
