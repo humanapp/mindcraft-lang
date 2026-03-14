@@ -51,16 +51,35 @@ export interface WorldState {
 
 const workerBridge = new TerrainWorkerBridge();
 
+const dispatchedVersions = new Map<string, number>();
+
 function applyMeshResult(id: string, mesh: MeshData): void {
   const state = useWorldStore.getState();
-  const existing = state.chunkMeshes.get(id);
   const newMeshes = new Map(state.chunkMeshes);
+  const existing = state.chunkMeshes.get(id);
   newMeshes.set(id, { mesh, collider: existing?.collider ?? null });
   const newInflight = new Set(state.inflightChunks);
   newInflight.delete(id);
   const newStale = new Set(state.staleColliders);
   newStale.add(id);
-  useWorldStore.setState({ chunkMeshes: newMeshes, inflightChunks: newInflight, staleColliders: newStale });
+
+  const chunk = state.chunks.get(id);
+  const dispatchedVer = dispatchedVersions.get(id);
+  dispatchedVersions.delete(id);
+  const isStale = chunk && dispatchedVer !== undefined && chunk.version !== dispatchedVer;
+
+  if (isStale) {
+    const newDirty = new Set(state.dirtyChunks);
+    newDirty.add(id);
+    useWorldStore.setState({
+      chunkMeshes: newMeshes,
+      inflightChunks: newInflight,
+      staleColliders: newStale,
+      dirtyChunks: newDirty,
+    });
+  } else {
+    useWorldStore.setState({ chunkMeshes: newMeshes, inflightChunks: newInflight, staleColliders: newStale });
+  }
 }
 
 export const useWorldStore = create<WorldState>((set, get) => ({
@@ -154,7 +173,6 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     for (const id of dirty) {
       if (maxChunks !== undefined && dispatched >= maxChunks) break;
       if (newInflight.has(id)) {
-        newDirty.delete(id);
         continue;
       }
       const chunk = state.chunks.get(id);
@@ -165,6 +183,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       syncChunkPadding(chunk, state.chunks);
       newDirty.delete(id);
       newInflight.add(id);
+      dispatchedVersions.set(id, chunk.version);
       dispatched++;
 
       workerBridge
