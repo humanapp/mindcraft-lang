@@ -42,6 +42,7 @@ export interface WorldState {
   remeshDirtyChunks: () => void;
   markChunkDirty: (id: string) => void;
   applyFieldValues: (patches: Array<{ chunkId: string; index: number; value: number }>, clamp?: boolean) => void;
+  expandDensityRange: (values: ArrayLike<number>) => void;
   recomputeDensityRange: () => void;
 }
 
@@ -187,7 +188,25 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     for (const id of remeshSet) {
       state.remeshChunk(id);
     }
-    state.recomputeDensityRange();
+    state.expandDensityRange(patches.map((p) => p.value));
+  },
+
+  expandDensityRange: (values) => {
+    const { densityRange } = get();
+    let { min, max } = densityRange;
+    let changed = false;
+    for (let i = 0, len = values.length; i < len; i++) {
+      const v = values[i];
+      if (v < min) {
+        min = v;
+        changed = true;
+      }
+      if (v > max) {
+        max = v;
+        changed = true;
+      }
+    }
+    if (changed) set({ densityRange: { min, max } });
   },
 
   recomputeDensityRange: () => {

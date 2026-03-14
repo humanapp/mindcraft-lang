@@ -20,12 +20,13 @@ export class TerrainPatchCommand implements Command {
   }
 
   undo(): void {
-    const apply = useWorldStore.getState().applyFieldValues;
+    const { applyFieldValues, recomputeDensityRange } = useWorldStore.getState();
     const clamp = useEditorStore.getState().clampDensity;
-    apply(
+    applyFieldValues(
       this.patches.map((p) => ({ chunkId: p.chunkId, index: p.index, value: p.before })),
       clamp
     );
+    recomputeDensityRange();
   }
 }
 
