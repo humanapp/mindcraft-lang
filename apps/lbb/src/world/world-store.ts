@@ -113,11 +113,21 @@ export const useWorldStore = create<WorldState>((set, get) => ({
 
     set({ chunks });
 
-    // Mesh all chunks
+    // Mesh all chunks in a single batched update
     const state = get();
-    for (const id of chunks.keys()) {
-      state.remeshChunk(id);
+    const normalSmoothing = useEditorStore.getState().normalSmoothing;
+    const newMeshes = new Map(state.chunkMeshes);
+    for (const [id, chunk] of chunks) {
+      syncChunkPadding(chunk, chunks);
+      const mesh = extractSurfaceNets(chunk.field, chunk.coord, normalSmoothing);
+      const existing = newMeshes.get(id);
+      let collider: RAPIER.Collider | null = null;
+      if (state.rapierWorld && state.rapierModule) {
+        collider = replaceTrimeshCollider(state.rapierWorld, state.rapierModule, existing?.collider ?? null, mesh);
+      }
+      newMeshes.set(id, { mesh, collider });
     }
+    set({ chunkMeshes: newMeshes });
     state.recomputeDensityRange();
   },
 
@@ -146,9 +156,23 @@ export const useWorldStore = create<WorldState>((set, get) => ({
 
   remeshDirtyChunks: () => {
     const state = get();
-    for (const id of state.dirtyChunks) {
-      state.remeshChunk(id);
+    const dirty = state.dirtyChunks;
+    if (dirty.size === 0) return;
+    const normalSmoothing = useEditorStore.getState().normalSmoothing;
+    const newMeshes = new Map(state.chunkMeshes);
+    for (const id of dirty) {
+      const chunk = state.chunks.get(id);
+      if (!chunk) continue;
+      syncChunkPadding(chunk, state.chunks);
+      const mesh = extractSurfaceNets(chunk.field, chunk.coord, normalSmoothing);
+      const existing = newMeshes.get(id);
+      let collider: RAPIER.Collider | null = null;
+      if (state.rapierWorld && state.rapierModule) {
+        collider = replaceTrimeshCollider(state.rapierWorld, state.rapierModule, existing?.collider ?? null, mesh);
+      }
+      newMeshes.set(id, { mesh, collider });
     }
+    set({ chunkMeshes: newMeshes, dirtyChunks: new Set() });
   },
 
   markChunkDirty: (id) => {
@@ -185,9 +209,23 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       }
     }
 
+    const normalSmoothing = useEditorStore.getState().normalSmoothing;
+    const newMeshes = new Map(state.chunkMeshes);
+    const newDirty = new Set(state.dirtyChunks);
     for (const id of remeshSet) {
-      state.remeshChunk(id);
+      const chunk = state.chunks.get(id);
+      if (!chunk) continue;
+      syncChunkPadding(chunk, state.chunks);
+      const mesh = extractSurfaceNets(chunk.field, chunk.coord, normalSmoothing);
+      const existing = newMeshes.get(id);
+      let collider: RAPIER.Collider | null = null;
+      if (state.rapierWorld && state.rapierModule) {
+        collider = replaceTrimeshCollider(state.rapierWorld, state.rapierModule, existing?.collider ?? null, mesh);
+      }
+      newMeshes.set(id, { mesh, collider });
+      newDirty.delete(id);
     }
+    set({ chunkMeshes: newMeshes, dirtyChunks: newDirty });
     state.expandDensityRange(patches.map((p) => p.value));
   },
 
