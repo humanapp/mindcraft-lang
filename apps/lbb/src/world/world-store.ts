@@ -56,33 +56,26 @@ const NEIGHBOR_OFFSETS: [number, number, number][] = [
 
 function syncChunkPadding(chunk: ChunkData, chunks: Map<string, ChunkData>): void {
   const { cx, cy, cz } = chunk.coord;
+  const CORE_MIN = FIELD_PAD;
+  const CORE_MAX = FIELD_PAD + CHUNK_SIZE + 1;
 
   for (const [dx, dy, dz] of NEIGHBOR_OFFSETS) {
     const neighbor = chunks.get(chunkId({ cx: cx + dx, cy: cy + dy, cz: cz + dz }));
     if (!neighbor) continue;
 
-    let xMin = 0;
-    let xMax = SAMPLES - 1;
-    let yMin = 0;
-    let yMax = SAMPLES - 1;
-    let zMin = 0;
-    let zMax = SAMPLES - 1;
-    if (dx < 0) xMax = FIELD_PAD - 1;
-    if (dx > 0) xMin = FIELD_PAD + CHUNK_SIZE + 2;
-    if (dy < 0) yMax = FIELD_PAD - 1;
-    if (dy > 0) yMin = FIELD_PAD + CHUNK_SIZE + 2;
-    if (dz < 0) zMax = FIELD_PAD - 1;
-    if (dz > 0) zMin = FIELD_PAD + CHUNK_SIZE + 2;
+    const xMin = dx < 0 ? 0 : dx > 0 ? CORE_MAX + 1 : CORE_MIN;
+    const xMax = dx < 0 ? CORE_MIN - 1 : dx > 0 ? SAMPLES - 1 : CORE_MAX;
+    const yMin = dy < 0 ? 0 : dy > 0 ? CORE_MAX + 1 : CORE_MIN;
+    const yMax = dy < 0 ? CORE_MIN - 1 : dy > 0 ? SAMPLES - 1 : CORE_MAX;
+    const zMin = dz < 0 ? 0 : dz > 0 ? CORE_MAX + 1 : CORE_MIN;
+    const zMax = dz < 0 ? CORE_MIN - 1 : dz > 0 ? SAMPLES - 1 : CORE_MAX;
 
     for (let lz = zMin; lz <= zMax; lz++) {
       const srcZ = lz - dz * CHUNK_SIZE;
-      if (srcZ < 0 || srcZ >= SAMPLES) continue;
       for (let ly = yMin; ly <= yMax; ly++) {
         const srcY = ly - dy * CHUNK_SIZE;
-        if (srcY < 0 || srcY >= SAMPLES) continue;
         for (let lx = xMin; lx <= xMax; lx++) {
           const srcX = lx - dx * CHUNK_SIZE;
-          if (srcX < 0 || srcX >= SAMPLES) continue;
           chunk.field[lx + ly * SAMPLES + lz * SAMPLES_SQ] = neighbor.field[srcX + srcY * SAMPLES + srcZ * SAMPLES_SQ];
         }
       }
