@@ -19,6 +19,9 @@ export interface EditorState {
   // In-progress stroke
   pendingPatches: TerrainPatch[];
 
+  // Render options
+  wireframe: boolean;
+
   // Actions
   setActiveTool: (tool: ToolType) => void;
   setBrushRadius: (radius: number) => void;
@@ -28,6 +31,7 @@ export interface EditorState {
   cancelStroke: () => void;
   undo: () => void;
   redo: () => void;
+  toggleWireframe: () => void;
 }
 
 function syncUndoState(stack: UndoStack): Partial<EditorState> {
@@ -54,6 +58,8 @@ export const useEditorStore = create<EditorState>((set, get) => {
     redoCount: 0,
 
     pendingPatches: [],
+
+    wireframe: false,
 
     setActiveTool: (tool) => set({ activeTool: tool }),
 
@@ -94,5 +100,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     undo: () => undoStack.undo(),
     redo: () => undoStack.redo(),
+    toggleWireframe: () => set((s) => ({ wireframe: !s.wireframe })),
   };
 });

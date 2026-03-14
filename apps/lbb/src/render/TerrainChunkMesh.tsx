@@ -6,11 +6,12 @@ import type { MeshData } from "../world/terrain/types";
 interface TerrainChunkMeshProps {
   chunkId: string;
   mesh: MeshData;
+  wireframe?: boolean;
   onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
   onPointerMove?: (e: ThreeEvent<PointerEvent>) => void;
 }
 
-export function TerrainChunkMesh({ mesh, onPointerDown, onPointerMove }: TerrainChunkMeshProps) {
+export function TerrainChunkMesh({ mesh, wireframe, onPointerDown, onPointerMove }: TerrainChunkMeshProps) {
   const geoRef = useRef<BufferGeometry>(null);
 
   const geometry = useMemo(() => {
@@ -33,7 +34,7 @@ export function TerrainChunkMesh({ mesh, onPointerDown, onPointerMove }: Terrain
 
   return (
     <mesh ref={geoRef as never} geometry={geometry} onPointerDown={onPointerDown} onPointerMove={onPointerMove}>
-      <meshStandardMaterial color="#5a8f3c" side={DoubleSide} flatShading={false} />
+      <meshStandardMaterial color="#5a8f3c" side={DoubleSide} flatShading={false} wireframe={wireframe} />
     </mesh>
   );
 }

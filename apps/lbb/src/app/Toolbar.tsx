@@ -11,6 +11,8 @@ export function Toolbar() {
   const canRedo = useEditorStore((s) => s.canRedo);
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
+  const wireframe = useEditorStore((s) => s.wireframe);
+  const toggleWireframe = useEditorStore((s) => s.toggleWireframe);
 
   const tools: { id: ToolType; label: string }[] = [
     { id: "raise", label: "Raise" },
@@ -90,6 +92,31 @@ export function Toolbar() {
           </button>
         </div>
       </div>
+
+      {/* Render options */}
+      <div style={panelStyle}>
+        <div style={labelStyle}>Render</div>
+        <div style={toggleRowStyle}>
+          <span>Wireframe</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={wireframe}
+            onClick={toggleWireframe}
+            style={{
+              ...toggleTrackStyle,
+              background: wireframe ? "#3b82f6" : "#3f3f46",
+            }}
+          >
+            <span
+              style={{
+                ...toggleThumbStyle,
+                transform: wireframe ? "translateX(16px)" : "translateX(2px)",
+              }}
+            />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -135,4 +162,35 @@ const sliderLabelStyle: React.CSSProperties = {
 const sliderStyle: React.CSSProperties = {
   width: "100%",
   accentColor: "#3b82f6",
+};
+
+const toggleRowStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  fontSize: 12,
+  color: "#a1a1aa",
+  cursor: "pointer",
+};
+
+const toggleTrackStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  width: 36,
+  height: 20,
+  borderRadius: 10,
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+  transition: "background 0.15s",
+  flexShrink: 0,
+};
+
+const toggleThumbStyle: React.CSSProperties = {
+  width: 16,
+  height: 16,
+  borderRadius: "50%",
+  background: "#e4e4e7",
+  transition: "transform 0.15s",
 };

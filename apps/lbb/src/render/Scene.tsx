@@ -11,6 +11,7 @@ import { TerrainChunkMesh } from "./TerrainChunkMesh";
 function Terrain() {
   const chunkMeshes = useWorldStore((s) => s.chunkMeshes);
   const setHoverWorldPos = useSessionStore((s) => s.setHoverWorldPos);
+  const wireframe = useEditorStore((s) => s.wireframe);
   const entries = Array.from(chunkMeshes.entries());
 
   const handlePointerEvent = useCallback(
@@ -27,6 +28,7 @@ function Terrain() {
           key={id}
           chunkId={id}
           mesh={data.mesh}
+          wireframe={wireframe}
           onPointerDown={handlePointerEvent}
           onPointerMove={handlePointerEvent}
         />
