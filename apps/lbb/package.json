@@ -11,12 +11,12 @@
     "build": "vite build --config vite/config.prod.mjs",
     "test": "node --import tsx --test test/terrain/*.test.ts",
     "clean": "rm -rf dist && rm -rf node_modules/.vite",
-    "lint": "biome lint ./src",
-    "lint:fix": "biome lint ./src --write",
-    "format": "biome format ./src --write",
-    "format:check": "biome format ./src",
-    "check": "biome check ./src",
-    "check:fix": "biome check ./src --write"
+    "lint": "biome lint ./src ./test",
+    "lint:fix": "biome lint ./src ./test --write",
+    "format": "biome format ./src ./test --write",
+    "format:check": "biome format ./src ./test",
+    "check": "biome check ./src ./test",
+    "check:fix": "biome check ./src ./test --write"
   },
   "dependencies": {
     "@mindcraft-lang/core": "file:../../packages/core",
