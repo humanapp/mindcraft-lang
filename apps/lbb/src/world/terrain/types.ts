@@ -1,5 +1,8 @@
 export const CHUNK_SIZE = 32;
-export const SAMPLES = CHUNK_SIZE + 1;
+// +1 because N cells require N+1 sample points per axis, and another +1
+// so each chunk overlaps its positive neighbor by one cell, allowing the
+// mesher to emit boundary quads without cross-chunk lookups.
+export const SAMPLES = CHUNK_SIZE + 2;
 export const SAMPLES_SQ = SAMPLES * SAMPLES;
 export const SAMPLES_TOTAL = SAMPLES * SAMPLES * SAMPLES;
 

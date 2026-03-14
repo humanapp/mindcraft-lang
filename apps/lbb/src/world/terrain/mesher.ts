@@ -49,8 +49,8 @@ function clampedGradient(field: Float32Array, gx: number, gy: number, gz: number
  *          connecting the 4 cells that share that edge.
  */
 export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord): MeshData {
-  const size = CHUNK_SIZE;
-  const cellCount = size * size * size;
+  const meshDim = CHUNK_SIZE + 1;
+  const cellCount = meshDim * meshDim * meshDim;
 
   // Phase 1: Compute cell vertices
   const cellVertex = new Int32Array(cellCount).fill(-1);
@@ -58,13 +58,13 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord): Mesh
   const normals: number[] = [];
   let vertCount = 0;
 
-  const wx0 = coord.cx * size;
-  const wy0 = coord.cy * size;
-  const wz0 = coord.cz * size;
+  const wx0 = coord.cx * CHUNK_SIZE;
+  const wy0 = coord.cy * CHUNK_SIZE;
+  const wz0 = coord.cz * CHUNK_SIZE;
 
-  for (let cz = 0; cz < size; cz++) {
-    for (let cy = 0; cy < size; cy++) {
-      for (let cx = 0; cx < size; cx++) {
+  for (let cz = 0; cz < meshDim; cz++) {
+    for (let cy = 0; cy < meshDim; cy++) {
+      for (let cx = 0; cx < meshDim; cx++) {
         const d: number[] = new Array(8);
         for (let i = 0; i < 8; i++) {
           const [dx, dy, dz] = CORNERS[i];
@@ -111,7 +111,7 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord): Mesh
         const glen = Math.sqrt(gx * gx + gy * gy + gz * gz);
         const invLen = glen > 1e-8 ? 1 / glen : 0;
 
-        const cellIdx = cx + cy * size + cz * size * size;
+        const cellIdx = cx + cy * meshDim + cz * meshDim * meshDim;
         cellVertex[cellIdx] = vertCount;
         positions.push(wx0 + px, wy0 + py, wz0 + pz);
         normals.push(gx * invLen, gy * invLen, gz * invLen);
@@ -124,14 +124,14 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord): Mesh
   const indices: number[] = [];
 
   function cellVert(cx: number, cy: number, cz: number): number {
-    if (cx < 0 || cx >= size || cy < 0 || cy >= size || cz < 0 || cz >= size) return -1;
-    return cellVertex[cx + cy * size + cz * size * size];
+    if (cx < 0 || cx >= meshDim || cy < 0 || cy >= meshDim || cz < 0 || cz >= meshDim) return -1;
+    return cellVertex[cx + cy * meshDim + cz * meshDim * meshDim];
   }
 
   // X-edges: from (gx, gy, gz) to (gx+1, gy, gz)
-  for (let gz = 1; gz < size; gz++) {
-    for (let gy = 1; gy < size; gy++) {
-      for (let gx = 0; gx < size; gx++) {
+  for (let gz = 1; gz < meshDim; gz++) {
+    for (let gy = 1; gy < meshDim; gy++) {
+      for (let gx = 0; gx < meshDim; gx++) {
         const d0 = field[sampleIndex(gx, gy, gz)];
         const d1 = field[sampleIndex(gx + 1, gy, gz)];
         if (d0 > 0 === d1 > 0) continue;
@@ -152,9 +152,9 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord): Mesh
   }
 
   // Y-edges: from (gx, gy, gz) to (gx, gy+1, gz)
-  for (let gz = 1; gz < size; gz++) {
-    for (let gy = 0; gy < size; gy++) {
-      for (let gx = 1; gx < size; gx++) {
+  for (let gz = 1; gz < meshDim; gz++) {
+    for (let gy = 0; gy < meshDim; gy++) {
+      for (let gx = 1; gx < meshDim; gx++) {
         const d0 = field[sampleIndex(gx, gy, gz)];
         const d1 = field[sampleIndex(gx, gy + 1, gz)];
         if (d0 > 0 === d1 > 0) continue;
@@ -175,9 +175,9 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord): Mesh
   }
 
   // Z-edges: from (gx, gy, gz) to (gx, gy, gz+1)
-  for (let gz = 0; gz < size; gz++) {
-    for (let gy = 1; gy < size; gy++) {
-      for (let gx = 1; gx < size; gx++) {
+  for (let gz = 0; gz < meshDim; gz++) {
+    for (let gy = 1; gy < meshDim; gy++) {
+      for (let gx = 1; gx < meshDim; gx++) {
         const d0 = field[sampleIndex(gx, gy, gz)];
         const d1 = field[sampleIndex(gx, gy, gz + 1)];
         if (d0 > 0 === d1 > 0) continue;
