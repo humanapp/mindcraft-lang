@@ -119,7 +119,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     const newMeshes = new Map(state.chunkMeshes);
     for (const [id, chunk] of chunks) {
       syncChunkPadding(chunk, chunks);
-      const mesh = extractSurfaceNets(chunk.field, chunk.coord, normalSmoothing);
+      const mesh = extractSurfaceNets(chunk.field, chunk.coord, { normalSmoothingIterations: normalSmoothing });
       const existing = newMeshes.get(id);
       let collider: RAPIER.Collider | null = null;
       if (state.rapierWorld && state.rapierModule) {
@@ -138,7 +138,9 @@ export const useWorldStore = create<WorldState>((set, get) => ({
 
     syncChunkPadding(chunk, state.chunks);
 
-    const mesh = extractSurfaceNets(chunk.field, chunk.coord, useEditorStore.getState().normalSmoothing);
+    const mesh = extractSurfaceNets(chunk.field, chunk.coord, {
+      normalSmoothingIterations: useEditorStore.getState().normalSmoothing,
+    });
     const existing = state.chunkMeshes.get(id);
 
     let collider: RAPIER.Collider | null = null;
@@ -164,7 +166,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       const chunk = state.chunks.get(id);
       if (!chunk) continue;
       syncChunkPadding(chunk, state.chunks);
-      const mesh = extractSurfaceNets(chunk.field, chunk.coord, normalSmoothing);
+      const mesh = extractSurfaceNets(chunk.field, chunk.coord, { normalSmoothingIterations: normalSmoothing });
       const existing = newMeshes.get(id);
       let collider: RAPIER.Collider | null = null;
       if (state.rapierWorld && state.rapierModule) {
@@ -216,7 +218,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       const chunk = state.chunks.get(id);
       if (!chunk) continue;
       syncChunkPadding(chunk, state.chunks);
-      const mesh = extractSurfaceNets(chunk.field, chunk.coord, normalSmoothing);
+      const mesh = extractSurfaceNets(chunk.field, chunk.coord, { normalSmoothingIterations: normalSmoothing });
       const existing = newMeshes.get(id);
       let collider: RAPIER.Collider | null = null;
       if (state.rapierWorld && state.rapierModule) {

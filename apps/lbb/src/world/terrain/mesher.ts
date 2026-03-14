@@ -119,6 +119,11 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
   return [gx, gy, gz];
 }
 
+export interface MesherOptions {
+  readonly normalSmoothingIterations?: number;
+  readonly vertexRelaxation?: boolean;
+}
+
 /**
  * Surface Nets isosurface extraction.
  *
@@ -127,7 +132,8 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
  * Phase 2: For each grid edge that crosses the isosurface, emit a quad (2 tris)
  *          connecting the 4 cells that share that edge.
  */
-export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, normalSmoothingIterations = 0): MeshData {
+export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, options: MesherOptions = {}): MeshData {
+  const { normalSmoothingIterations = 0, vertexRelaxation = false } = options;
   const meshDim = CHUNK_SIZE + 1;
   const cellCount = meshDim * meshDim * meshDim;
 
@@ -191,7 +197,7 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, norma
   }
 
   // Vertex relaxation: smooth positions by averaging with grid neighbors
-  const RELAX_ITERATIONS = 2;
+  const RELAX_ITERATIONS = vertexRelaxation ? 2 : 0;
   const RELAX_FACTOR = 0.5;
   const neighborOffsets: [number, number, number][] = [
     [-1, 0, 0],
