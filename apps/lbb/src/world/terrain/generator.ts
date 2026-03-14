@@ -52,7 +52,7 @@ export function generateChunkField(coord: ChunkCoord): Float32Array {
 
         const noiseScale = 0.02;
         const n = fbmNoise2d(wx * noiseScale, wz * noiseScale, 4);
-        const height = 16 + n * 12;
+        const height = 32 + n * 12;
 
         // Positive = solid, negative = air
         const density = height - wy;

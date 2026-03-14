@@ -4,7 +4,7 @@ import { Layout } from "./app/Layout";
 import { useEditorStore } from "./editor/editor-store";
 import { useWorldStore } from "./world/world-store";
 
-const CHUNK_GRID = { x: 4, y: 1, z: 4 };
+const CHUNK_GRID = { x: 4, y: 4, z: 4 };
 
 let rapierInitPromise: Promise<void> | null = null;
 function ensureRapierInit(): Promise<void> {

@@ -17,8 +17,8 @@ export interface SessionState {
 }
 
 export const useSessionStore = create<SessionState>((set) => ({
-  cameraTarget: [48, 16, 48],
-  cameraDistance: 60,
+  cameraTarget: [48, 40, 48],
+  cameraDistance: 120,
   hoverWorldPos: null,
   isPointerDown: false,
 
