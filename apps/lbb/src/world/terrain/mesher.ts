@@ -1,19 +1,28 @@
 import type { ChunkCoord, MeshData } from "./types";
-import { CHUNK_SIZE, FIELD_PAD, SAMPLES, sampleIndex } from "./types";
+import { CHUNK_SIZE, FIELD_PAD, SAMPLES, SAMPLES_SQ, sampleIndex } from "./types";
 
-// Corner offsets for a voxel cell: corner index -> (dx, dy, dz)
-const CORNERS: [number, number, number][] = [
-  [0, 0, 0], // 0
-  [1, 0, 0], // 1
-  [0, 1, 0], // 2
-  [1, 1, 0], // 3
-  [0, 0, 1], // 4
-  [1, 0, 1], // 5
-  [0, 1, 1], // 6
-  [1, 1, 1], // 7
+const CORNER_OFFSETS = [
+  0,
+  1,
+  SAMPLES,
+  SAMPLES + 1,
+  SAMPLES_SQ,
+  SAMPLES_SQ + 1,
+  SAMPLES_SQ + SAMPLES,
+  SAMPLES_SQ + SAMPLES + 1,
 ];
 
-// 12 edges of a cube as pairs of corner indices
+const CORNERS: [number, number, number][] = [
+  [0, 0, 0],
+  [1, 0, 0],
+  [0, 1, 0],
+  [1, 1, 0],
+  [0, 0, 1],
+  [1, 0, 1],
+  [0, 1, 1],
+  [1, 1, 1],
+];
+
 const CUBE_EDGES: [number, number][] = [
   [0, 1],
   [2, 3],
@@ -28,6 +37,15 @@ const CUBE_EDGES: [number, number][] = [
   [2, 6],
   [3, 7],
 ];
+
+const _d = new Float64Array(8);
+const _grad = new Float64Array(3);
+const _wx = new Float64Array(4);
+const _wy = new Float64Array(4);
+const _wz = new Float64Array(4);
+const _dwx = new Float64Array(4);
+const _dwy = new Float64Array(4);
+const _dwz = new Float64Array(4);
 
 function sampleFieldTrilinear(field: Float32Array, x: number, y: number, z: number): number {
   x += FIELD_PAD;
@@ -64,18 +82,24 @@ function sampleFieldTrilinear(field: Float32Array, x: number, y: number, z: numb
   );
 }
 
-function catmullRomWeights(t: number): [number, number, number, number] {
+function catmullRomWeights(t: number, out: Float64Array): void {
   const t2 = t * t;
   const t3 = t2 * t;
-  return [0.5 * (-t3 + 2 * t2 - t), 0.5 * (3 * t3 - 5 * t2 + 2), 0.5 * (-3 * t3 + 4 * t2 + t), 0.5 * (t3 - t2)];
+  out[0] = 0.5 * (-t3 + 2 * t2 - t);
+  out[1] = 0.5 * (3 * t3 - 5 * t2 + 2);
+  out[2] = 0.5 * (-3 * t3 + 4 * t2 + t);
+  out[3] = 0.5 * (t3 - t2);
 }
 
-function catmullRomDerivWeights(t: number): [number, number, number, number] {
+function catmullRomDerivWeights(t: number, out: Float64Array): void {
   const t2 = t * t;
-  return [0.5 * (-3 * t2 + 4 * t - 1), 0.5 * (9 * t2 - 10 * t), 0.5 * (-9 * t2 + 8 * t + 1), 0.5 * (3 * t2 - 2 * t)];
+  out[0] = 0.5 * (-3 * t2 + 4 * t - 1);
+  out[1] = 0.5 * (9 * t2 - 10 * t);
+  out[2] = 0.5 * (-9 * t2 + 8 * t + 1);
+  out[3] = 0.5 * (3 * t2 - 2 * t);
 }
 
-function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: number): [number, number, number] {
+function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: number): void {
   x += FIELD_PAD;
   y += FIELD_PAD;
   z += FIELD_PAD;
@@ -87,12 +111,12 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
   const ty = y - y0;
   const tz = z - z0;
 
-  const wx = catmullRomWeights(tx);
-  const wy = catmullRomWeights(ty);
-  const wz = catmullRomWeights(tz);
-  const dwx = catmullRomDerivWeights(tx);
-  const dwy = catmullRomDerivWeights(ty);
-  const dwz = catmullRomDerivWeights(tz);
+  catmullRomWeights(tx, _wx);
+  catmullRomWeights(ty, _wy);
+  catmullRomWeights(tz, _wz);
+  catmullRomDerivWeights(tx, _dwx);
+  catmullRomDerivWeights(ty, _dwy);
+  catmullRomDerivWeights(tz, _dwz);
 
   let gx = 0;
   let gy = 0;
@@ -103,20 +127,47 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
     const sz = Math.min(Math.max(z0 - 1 + k, 0), maxIdx);
     for (let j = 0; j < 4; j++) {
       const sy = Math.min(Math.max(y0 - 1 + j, 0), maxIdx);
-      const wyz = wy[j] * wz[k];
-      const dwyz = dwy[j] * wz[k];
-      const wydz = wy[j] * dwz[k];
+      const wyz = _wy[j] * _wz[k];
+      const dwyz = _dwy[j] * _wz[k];
+      const wydz = _wy[j] * _dwz[k];
       for (let i = 0; i < 4; i++) {
         const sx = Math.min(Math.max(x0 - 1 + i, 0), maxIdx);
         const val = field[sampleIndex(sx, sy, sz)];
-        gx += val * dwx[i] * wyz;
-        gy += val * wx[i] * dwyz;
-        gz += val * wx[i] * wydz;
+        gx += val * _dwx[i] * wyz;
+        gy += val * _wx[i] * dwyz;
+        gz += val * _wx[i] * wydz;
       }
     }
   }
 
-  return [gx, gy, gz];
+  _grad[0] = gx;
+  _grad[1] = gy;
+  _grad[2] = gz;
+}
+
+const EMPTY_MESH: MeshData = {
+  positions: new Float32Array(0),
+  normals: new Float32Array(0),
+  gradientMag: new Float32Array(0),
+  indices: new Uint32Array(0),
+  vertexCount: 0,
+  indexCount: 0,
+};
+
+function isUniformSign(field: Float32Array): boolean {
+  const gMin = FIELD_PAD;
+  const gMax = FIELD_PAD + CHUNK_SIZE + 1;
+  const firstSign = field[gMin + gMin * SAMPLES + gMin * SAMPLES_SQ] > 0;
+  for (let gz = gMin; gz <= gMax; gz++) {
+    const zOff = gz * SAMPLES_SQ;
+    for (let gy = gMin; gy <= gMax; gy++) {
+      const yzOff = gy * SAMPLES + zOff;
+      for (let gx = gMin; gx <= gMax; gx++) {
+        if (field[gx + yzOff] > 0 !== firstSign) return false;
+      }
+    }
+  }
+  return true;
 }
 
 export interface MesherOptions {
@@ -134,6 +185,9 @@ export interface MesherOptions {
  */
 export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, options: MesherOptions = {}): MeshData {
   const { normalSmoothingIterations = 0, vertexRelaxation = false } = options;
+
+  if (isUniformSign(field)) return EMPTY_MESH;
+
   const meshDim = CHUNK_SIZE + 1;
   const cellCount = meshDim * meshDim * meshDim;
 
@@ -151,15 +205,12 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
   for (let cz = 0; cz < meshDim; cz++) {
     for (let cy = 0; cy < meshDim; cy++) {
       for (let cx = 0; cx < meshDim; cx++) {
-        const d: number[] = new Array(8);
-        for (let i = 0; i < 8; i++) {
-          const [dx, dy, dz] = CORNERS[i];
-          d[i] = field[sampleIndex(cx + dx + FIELD_PAD, cy + dy + FIELD_PAD, cz + dz + FIELD_PAD)];
-        }
+        const base = cx + FIELD_PAD + (cy + FIELD_PAD) * SAMPLES + (cz + FIELD_PAD) * SAMPLES_SQ;
+        for (let i = 0; i < 8; i++) _d[i] = field[base + CORNER_OFFSETS[i]];
 
         let mask = 0;
         for (let i = 0; i < 8; i++) {
-          if (d[i] > 0) mask |= 1 << i;
+          if (_d[i] > 0) mask |= 1 << i;
         }
         if (mask === 0 || mask === 0xff) continue;
 
@@ -168,9 +219,11 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
         let vz = 0;
         let crossings = 0;
 
-        for (const [a, b] of CUBE_EDGES) {
-          if (d[a] > 0 !== d[b] > 0) {
-            const t = d[a] / (d[a] - d[b]);
+        for (let e = 0; e < 12; e++) {
+          const a = CUBE_EDGES[e][0];
+          const b = CUBE_EDGES[e][1];
+          if (_d[a] > 0 !== _d[b] > 0) {
+            const t = _d[a] / (_d[a] - _d[b]);
             vx += CORNERS[a][0] + t * (CORNERS[b][0] - CORNERS[a][0]);
             vy += CORNERS[a][1] + t * (CORNERS[b][1] - CORNERS[a][1]);
             vz += CORNERS[a][2] + t * (CORNERS[b][2] - CORNERS[a][2]);
@@ -255,10 +308,10 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
 
   const gradientMag = new Float32Array(vertCount);
   for (let i = 0; i < vertCount; i++) {
-    const lx = positions[i * 3] - wx0;
-    const ly = positions[i * 3 + 1] - wy0;
-    const lz = positions[i * 3 + 2] - wz0;
-    const [gx, gy, gz] = sampleGradientTricubic(field, lx, ly, lz);
+    sampleGradientTricubic(field, positions[i * 3] - wx0, positions[i * 3 + 1] - wy0, positions[i * 3 + 2] - wz0);
+    const gx = _grad[0];
+    const gy = _grad[1];
+    const gz = _grad[2];
     const len = Math.sqrt(gx * gx + gy * gy + gz * gz);
     gradientMag[i] = len;
     const invLen = len > 1e-8 ? 1 / len : 0;
