@@ -20,6 +20,8 @@ const MAX_DISTANCE = 600;
 export class DollyPanGesture implements GestureHandler {
   private lastScreenX = 0;
   private lastScreenY = 0;
+  private readonly _anchor = new THREE.Vector3();
+  private hasAnchor = false;
 
   private readonly _right = new THREE.Vector3();
   private readonly _forward = new THREE.Vector3();
@@ -35,6 +37,12 @@ export class DollyPanGesture implements GestureHandler {
   begin(input: PointerInput): void {
     this.lastScreenX = input.screenX;
     this.lastScreenY = input.screenY;
+    if (input.worldPos !== null) {
+      this._anchor.set(input.worldPos[0], input.worldPos[1], input.worldPos[2]);
+      this.hasAnchor = true;
+    } else {
+      this.hasAnchor = false;
+    }
   }
 
   move(input: PointerInput): void {
@@ -62,10 +70,10 @@ export class DollyPanGesture implements GestureHandler {
   }
 
   private applyDolly(dy: number): void {
-    const pivot = this.getPivot();
-    const distance = this.camera.position.distanceTo(pivot);
+    const target = this.hasAnchor ? this._anchor : this.getPivot();
+    const distance = this.camera.position.distanceTo(target);
     const newDist = Math.max(MIN_DISTANCE, Math.min(MAX_DISTANCE, distance * (1 + dy * DRAG_DOLLY_FACTOR)));
-    this._forward.subVectors(this.camera.position, pivot).normalize();
-    this.camera.position.copy(pivot).addScaledVector(this._forward, newDist);
+    this._forward.subVectors(this.camera.position, target).normalize();
+    this.camera.position.copy(target).addScaledVector(this._forward, newDist);
   }
 }
