@@ -3,8 +3,7 @@ import { create } from "zustand";
 import { useEditorStore } from "../editor/editor-store";
 import type { Entity, EntityId } from "./entities";
 import { replaceTrimeshCollider } from "./terrain/collider";
-import { createChunkData } from "./terrain/generator";
-import { extractSurfaceNets } from "./terrain/mesher";
+import { TerrainWorkerBridge } from "./terrain/terrain-worker-bridge";
 import type { ChunkData, MeshData } from "./terrain/types";
 import { CHUNK_SIZE, chunkId, FIELD_PAD, SAMPLES, SAMPLES_SQ } from "./terrain/types";
 
@@ -26,6 +25,7 @@ export interface WorldState {
   chunks: Map<string, ChunkData>;
   chunkMeshes: Map<string, ChunkRenderData>;
   dirtyChunks: Set<string>;
+  inflightChunks: Set<string>;
   staleColliders: Set<string>;
   densityRange: DensityRange;
 
@@ -86,10 +86,25 @@ function syncChunkPadding(chunk: ChunkData, chunks: Map<string, ChunkData>): voi
   }
 }
 
+const workerBridge = new TerrainWorkerBridge();
+
+function applyMeshResult(id: string, mesh: MeshData): void {
+  const state = useWorldStore.getState();
+  const existing = state.chunkMeshes.get(id);
+  const newMeshes = new Map(state.chunkMeshes);
+  newMeshes.set(id, { mesh, collider: existing?.collider ?? null });
+  const newInflight = new Set(state.inflightChunks);
+  newInflight.delete(id);
+  const newStale = new Set(state.staleColliders);
+  newStale.add(id);
+  useWorldStore.setState({ chunkMeshes: newMeshes, inflightChunks: newInflight, staleColliders: newStale });
+}
+
 export const useWorldStore = create<WorldState>((set, get) => ({
   chunks: new Map(),
   chunkMeshes: new Map(),
   dirtyChunks: new Set(),
+  inflightChunks: new Set(),
   staleColliders: new Set(),
   densityRange: { min: 0, max: 0 },
   entities: {},
@@ -103,57 +118,66 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   },
 
   initTerrain: ({ x, y, z }) => {
-    const chunks = new Map<string, ChunkData>();
+    const coords: { id: string; coord: { cx: number; cy: number; cz: number } }[] = [];
     for (let cz = 0; cz < z; cz++) {
       for (let cy = 0; cy < y; cy++) {
         for (let cx = 0; cx < x; cx++) {
           const coord = { cx, cy, cz };
-          const id = chunkId(coord);
-          chunks.set(id, createChunkData(coord));
+          coords.push({ id: chunkId(coord), coord });
         }
       }
     }
 
+    const chunks = new Map<string, ChunkData>();
     set({ chunks });
 
-    // Mesh all chunks in a single batched update
-    const state = get();
-    const normalSmoothing = useEditorStore.getState().normalSmoothing;
-    const newMeshes = new Map(state.chunkMeshes);
-    for (const [id, chunk] of chunks) {
-      syncChunkPadding(chunk, chunks);
-      const mesh = extractSurfaceNets(chunk.field, chunk.coord, { normalSmoothingIterations: normalSmoothing });
-      const existing = newMeshes.get(id);
-      let collider: RAPIER.Collider | null = null;
-      if (state.rapierWorld && state.rapierModule) {
-        collider = replaceTrimeshCollider(state.rapierWorld, state.rapierModule, existing?.collider ?? null, mesh);
-      }
-      newMeshes.set(id, { mesh, collider });
+    let remaining = coords.length;
+    for (const { id, coord } of coords) {
+      workerBridge.requestGenerate(id, coord).then((result) => {
+        const state = get();
+        const chunkData: ChunkData = { coord: result.coord, field: result.field, version: 0 };
+        state.chunks.set(result.chunkId, chunkData);
+        remaining--;
+
+        if (remaining === 0) {
+          const allChunks = get().chunks;
+          for (const chunk of allChunks.values()) {
+            syncChunkPadding(chunk, allChunks);
+          }
+
+          const allDirty = new Set<string>();
+          for (const cid of allChunks.keys()) {
+            allDirty.add(cid);
+          }
+          set({ dirtyChunks: allDirty });
+          get().recomputeDensityRange();
+        }
+      });
     }
-    set({ chunkMeshes: newMeshes });
-    state.recomputeDensityRange();
   },
 
   remeshChunk: (id) => {
     const state = get();
     const chunk = state.chunks.get(id);
     if (!chunk) return;
+    if (state.inflightChunks.has(id)) return;
 
     syncChunkPadding(chunk, state.chunks);
 
-    const mesh = extractSurfaceNets(chunk.field, chunk.coord, {
-      normalSmoothingIterations: useEditorStore.getState().normalSmoothing,
-    });
-    const existing = state.chunkMeshes.get(id);
-
-    const newMeshes = new Map(state.chunkMeshes);
-    newMeshes.set(id, { mesh, collider: existing?.collider ?? null });
+    const normalSmoothing = useEditorStore.getState().normalSmoothing;
+    const newInflight = new Set(state.inflightChunks);
+    newInflight.add(id);
     const newDirty = new Set(state.dirtyChunks);
     newDirty.delete(id);
-    const newStale = new Set(state.staleColliders);
-    newStale.add(id);
+    set({ inflightChunks: newInflight, dirtyChunks: newDirty });
 
-    set({ chunkMeshes: newMeshes, dirtyChunks: newDirty, staleColliders: newStale });
+    workerBridge
+      .requestMesh(id, chunk.coord, chunk.field, {
+        normalSmoothingIterations: normalSmoothing,
+      })
+      .then((result) => {
+        applyMeshResult(result.chunkId, result.mesh);
+      });
   },
 
   remeshDirtyChunks: (maxChunks) => {
@@ -161,26 +185,36 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     const dirty = state.dirtyChunks;
     if (dirty.size === 0) return;
     const normalSmoothing = useEditorStore.getState().normalSmoothing;
-    const newMeshes = new Map(state.chunkMeshes);
     const newDirty = new Set(dirty);
-    const newStale = new Set(state.staleColliders);
-    let processed = 0;
+    const newInflight = new Set(state.inflightChunks);
+    let dispatched = 0;
     for (const id of dirty) {
-      if (maxChunks !== undefined && processed >= maxChunks) break;
+      if (maxChunks !== undefined && dispatched >= maxChunks) break;
+      if (newInflight.has(id)) {
+        newDirty.delete(id);
+        continue;
+      }
       const chunk = state.chunks.get(id);
       if (!chunk) {
         newDirty.delete(id);
         continue;
       }
       syncChunkPadding(chunk, state.chunks);
-      const mesh = extractSurfaceNets(chunk.field, chunk.coord, { normalSmoothingIterations: normalSmoothing });
-      const existing = newMeshes.get(id);
-      newMeshes.set(id, { mesh, collider: existing?.collider ?? null });
       newDirty.delete(id);
-      newStale.add(id);
-      processed++;
+      newInflight.add(id);
+      dispatched++;
+
+      workerBridge
+        .requestMesh(id, chunk.coord, chunk.field, {
+          normalSmoothingIterations: normalSmoothing,
+        })
+        .then((result) => {
+          applyMeshResult(result.chunkId, result.mesh);
+        });
     }
-    set({ chunkMeshes: newMeshes, dirtyChunks: newDirty, staleColliders: newStale });
+    if (dispatched > 0) {
+      set({ dirtyChunks: newDirty, inflightChunks: newInflight });
+    }
   },
 
   markChunkDirty: (id) => {

@@ -38,15 +38,6 @@ const CUBE_EDGES: [number, number][] = [
   [3, 7],
 ];
 
-const _d = new Float64Array(8);
-const _grad = new Float64Array(3);
-const _wx = new Float64Array(4);
-const _wy = new Float64Array(4);
-const _wz = new Float64Array(4);
-const _dwx = new Float64Array(4);
-const _dwy = new Float64Array(4);
-const _dwz = new Float64Array(4);
-
 function sampleFieldTrilinear(field: Float32Array, x: number, y: number, z: number): number {
   x += FIELD_PAD;
   y += FIELD_PAD;
@@ -99,7 +90,7 @@ function catmullRomDerivWeights(t: number, out: Float64Array): void {
   out[3] = 0.5 * (3 * t2 - 2 * t);
 }
 
-function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: number): void {
+function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: number, gradOut: Float64Array): void {
   x += FIELD_PAD;
   y += FIELD_PAD;
   z += FIELD_PAD;
@@ -111,12 +102,19 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
   const ty = y - y0;
   const tz = z - z0;
 
-  catmullRomWeights(tx, _wx);
-  catmullRomWeights(ty, _wy);
-  catmullRomWeights(tz, _wz);
-  catmullRomDerivWeights(tx, _dwx);
-  catmullRomDerivWeights(ty, _dwy);
-  catmullRomDerivWeights(tz, _dwz);
+  const wx = new Float64Array(4);
+  const wy = new Float64Array(4);
+  const wz = new Float64Array(4);
+  const dwx = new Float64Array(4);
+  const dwy = new Float64Array(4);
+  const dwz = new Float64Array(4);
+
+  catmullRomWeights(tx, wx);
+  catmullRomWeights(ty, wy);
+  catmullRomWeights(tz, wz);
+  catmullRomDerivWeights(tx, dwx);
+  catmullRomDerivWeights(ty, dwy);
+  catmullRomDerivWeights(tz, dwz);
 
   let gx = 0;
   let gy = 0;
@@ -127,22 +125,22 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
     const sz = Math.min(Math.max(z0 - 1 + k, 0), maxIdx);
     for (let j = 0; j < 4; j++) {
       const sy = Math.min(Math.max(y0 - 1 + j, 0), maxIdx);
-      const wyz = _wy[j] * _wz[k];
-      const dwyz = _dwy[j] * _wz[k];
-      const wydz = _wy[j] * _dwz[k];
+      const wyz = wy[j] * wz[k];
+      const dwyz = dwy[j] * wz[k];
+      const wydz = wy[j] * dwz[k];
       for (let i = 0; i < 4; i++) {
         const sx = Math.min(Math.max(x0 - 1 + i, 0), maxIdx);
         const val = field[sampleIndex(sx, sy, sz)];
-        gx += val * _dwx[i] * wyz;
-        gy += val * _wx[i] * dwyz;
-        gz += val * _wx[i] * wydz;
+        gx += val * dwx[i] * wyz;
+        gy += val * wx[i] * dwyz;
+        gz += val * wx[i] * wydz;
       }
     }
   }
 
-  _grad[0] = gx;
-  _grad[1] = gy;
-  _grad[2] = gz;
+  gradOut[0] = gx;
+  gradOut[1] = gy;
+  gradOut[2] = gz;
 }
 
 const EMPTY_MESH: MeshData = {
@@ -170,24 +168,6 @@ function isUniformSign(field: Float32Array): boolean {
   return true;
 }
 
-let _poolMeshDim = 0;
-let _cellVertex = new Int32Array(0);
-let _positions = new Float32Array(0);
-let _normals = new Float32Array(0);
-let _boundaryFlags = new Uint8Array(0);
-let _indices = new Uint32Array(0);
-
-function ensurePool(meshDim: number): void {
-  if (meshDim === _poolMeshDim) return;
-  _poolMeshDim = meshDim;
-  const cellCount = meshDim * meshDim * meshDim;
-  _cellVertex = new Int32Array(cellCount);
-  _positions = new Float32Array(cellCount * 3);
-  _normals = new Float32Array(cellCount * 3);
-  _boundaryFlags = new Uint8Array(cellCount);
-  _indices = new Uint32Array(3 * meshDim * (meshDim - 1) * (meshDim - 1) * 6);
-}
-
 export interface MesherOptions {
   readonly normalSmoothingIterations?: number;
   readonly vertexRelaxation?: boolean;
@@ -207,11 +187,16 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
   if (isUniformSign(field)) return EMPTY_MESH;
 
   const meshDim = CHUNK_SIZE + 1;
-  ensurePool(meshDim);
   const cellCount = meshDim * meshDim * meshDim;
+  const cellVertex = new Int32Array(cellCount).fill(-1);
+  const positions = new Float32Array(cellCount * 3);
+  const normals = new Float32Array(cellCount * 3);
+  const boundaryFlags = new Uint8Array(cellCount);
+  const indices = new Uint32Array(3 * meshDim * (meshDim - 1) * (meshDim - 1) * 6);
+  const d = new Float64Array(8);
+  const grad = new Float64Array(3);
 
   // Phase 1: Compute cell vertices
-  _cellVertex.fill(-1);
   let vertCount = 0;
 
   const wx0 = coord.cx * CHUNK_SIZE;
@@ -222,11 +207,11 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
     for (let cy = 0; cy < meshDim; cy++) {
       for (let cx = 0; cx < meshDim; cx++) {
         const base = cx + FIELD_PAD + (cy + FIELD_PAD) * SAMPLES + (cz + FIELD_PAD) * SAMPLES_SQ;
-        for (let i = 0; i < 8; i++) _d[i] = field[base + CORNER_OFFSETS[i]];
+        for (let i = 0; i < 8; i++) d[i] = field[base + CORNER_OFFSETS[i]];
 
         let mask = 0;
         for (let i = 0; i < 8; i++) {
-          if (_d[i] > 0) mask |= 1 << i;
+          if (d[i] > 0) mask |= 1 << i;
         }
         if (mask === 0 || mask === 0xff) continue;
 
@@ -238,8 +223,8 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
         for (let e = 0; e < 12; e++) {
           const a = CUBE_EDGES[e][0];
           const b = CUBE_EDGES[e][1];
-          if (_d[a] > 0 !== _d[b] > 0) {
-            const t = _d[a] / (_d[a] - _d[b]);
+          if (d[a] > 0 !== d[b] > 0) {
+            const t = d[a] / (d[a] - d[b]);
             vx += CORNERS[a][0] + t * (CORNERS[b][0] - CORNERS[a][0]);
             vy += CORNERS[a][1] + t * (CORNERS[b][1] - CORNERS[a][1]);
             vz += CORNERS[a][2] + t * (CORNERS[b][2] - CORNERS[a][2]);
@@ -255,13 +240,13 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
         const pz = cz + vz * inv;
 
         const cellIdx = cx + cy * meshDim + cz * meshDim * meshDim;
-        _cellVertex[cellIdx] = vertCount;
+        cellVertex[cellIdx] = vertCount;
         const vi3 = vertCount * 3;
-        _positions[vi3] = wx0 + px;
-        _positions[vi3 + 1] = wy0 + py;
-        _positions[vi3 + 2] = wz0 + pz;
+        positions[vi3] = wx0 + px;
+        positions[vi3 + 1] = wy0 + py;
+        positions[vi3 + 2] = wz0 + pz;
         const lastCell = meshDim - 1;
-        _boundaryFlags[vertCount] =
+        boundaryFlags[vertCount] =
           cx === 0 || cx === lastCell || cy === 0 || cy === lastCell || cz === 0 || cz === lastCell ? 1 : 0;
         vertCount++;
       }
@@ -282,7 +267,7 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
 
   for (let iter = 0; iter < RELAX_ITERATIONS; iter++) {
     const newPos = new Float32Array(vertCount * 3);
-    for (let i = 0; i < vertCount * 3; i++) newPos[i] = _positions[i];
+    for (let i = 0; i < vertCount * 3; i++) newPos[i] = positions[i];
 
     const lastCell = meshDim - 1;
     for (let cz = 0; cz < meshDim; cz++) {
@@ -290,7 +275,7 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
         for (let cx = 0; cx < meshDim; cx++) {
           if (cx === 0 || cx === lastCell || cy === 0 || cy === lastCell || cz === 0 || cz === lastCell) continue;
           const cellIdx = cx + cy * meshDim + cz * meshDim * meshDim;
-          const vi = _cellVertex[cellIdx];
+          const vi = cellVertex[cellIdx];
           if (vi < 0) continue;
 
           let avgX = 0;
@@ -303,40 +288,40 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
             const ny = cy + dy;
             const nz = cz + dz;
             if (nx < 0 || nx >= meshDim || ny < 0 || ny >= meshDim || nz < 0 || nz >= meshDim) continue;
-            const ni = _cellVertex[nx + ny * meshDim + nz * meshDim * meshDim];
+            const ni = cellVertex[nx + ny * meshDim + nz * meshDim * meshDim];
             if (ni < 0) continue;
-            avgX += _positions[ni * 3];
-            avgY += _positions[ni * 3 + 1];
-            avgZ += _positions[ni * 3 + 2];
+            avgX += positions[ni * 3];
+            avgY += positions[ni * 3 + 1];
+            avgZ += positions[ni * 3 + 2];
             nCount++;
           }
 
           if (nCount > 0) {
             const inv = 1 / nCount;
             const vi3 = vi * 3;
-            newPos[vi3] = _positions[vi3] + RELAX_FACTOR * (avgX * inv - _positions[vi3]);
-            newPos[vi3 + 1] = _positions[vi3 + 1] + RELAX_FACTOR * (avgY * inv - _positions[vi3 + 1]);
-            newPos[vi3 + 2] = _positions[vi3 + 2] + RELAX_FACTOR * (avgZ * inv - _positions[vi3 + 2]);
+            newPos[vi3] = positions[vi3] + RELAX_FACTOR * (avgX * inv - positions[vi3]);
+            newPos[vi3 + 1] = positions[vi3 + 1] + RELAX_FACTOR * (avgY * inv - positions[vi3 + 1]);
+            newPos[vi3 + 2] = positions[vi3 + 2] + RELAX_FACTOR * (avgZ * inv - positions[vi3 + 2]);
           }
         }
       }
     }
 
-    for (let i = 0; i < vertCount * 3; i++) _positions[i] = newPos[i];
+    for (let i = 0; i < vertCount * 3; i++) positions[i] = newPos[i];
   }
 
   const gradientMag = new Float32Array(vertCount);
   for (let i = 0; i < vertCount; i++) {
-    sampleGradientTricubic(field, _positions[i * 3] - wx0, _positions[i * 3 + 1] - wy0, _positions[i * 3 + 2] - wz0);
-    const gx = _grad[0];
-    const gy = _grad[1];
-    const gz = _grad[2];
+    sampleGradientTricubic(field, positions[i * 3] - wx0, positions[i * 3 + 1] - wy0, positions[i * 3 + 2] - wz0, grad);
+    const gx = grad[0];
+    const gy = grad[1];
+    const gz = grad[2];
     const len = Math.sqrt(gx * gx + gy * gy + gz * gz);
     gradientMag[i] = len;
     const invLen = len > 1e-8 ? 1 / len : 0;
-    _normals[i * 3] = -gx * invLen;
-    _normals[i * 3 + 1] = -gy * invLen;
-    _normals[i * 3 + 2] = -gz * invLen;
+    normals[i * 3] = -gx * invLen;
+    normals[i * 3 + 1] = -gy * invLen;
+    normals[i * 3 + 2] = -gz * invLen;
   }
 
   // Phase 2: Generate quads for crossing edges
@@ -344,7 +329,7 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
 
   function cellVert(cx: number, cy: number, cz: number): number {
     if (cx < 0 || cx >= meshDim || cy < 0 || cy >= meshDim || cz < 0 || cz >= meshDim) return -1;
-    return _cellVertex[cx + cy * meshDim + cz * meshDim * meshDim];
+    return cellVertex[cx + cy * meshDim + cz * meshDim * meshDim];
   }
 
   // X-edges: from (gx, gy, gz) to (gx+1, gy, gz)
@@ -362,19 +347,19 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
         if (a < 0 || b < 0 || c < 0 || dd < 0) continue;
 
         if (d0 > 0) {
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = b;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = dd;
+          indices[idxCount++] = a;
+          indices[idxCount++] = b;
+          indices[idxCount++] = c;
+          indices[idxCount++] = a;
+          indices[idxCount++] = c;
+          indices[idxCount++] = dd;
         } else {
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = dd;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = b;
+          indices[idxCount++] = a;
+          indices[idxCount++] = dd;
+          indices[idxCount++] = c;
+          indices[idxCount++] = a;
+          indices[idxCount++] = c;
+          indices[idxCount++] = b;
         }
       }
     }
@@ -395,19 +380,19 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
         if (a < 0 || b < 0 || c < 0 || dd < 0) continue;
 
         if (d0 > 0) {
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = b;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = dd;
+          indices[idxCount++] = a;
+          indices[idxCount++] = b;
+          indices[idxCount++] = c;
+          indices[idxCount++] = a;
+          indices[idxCount++] = c;
+          indices[idxCount++] = dd;
         } else {
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = dd;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = b;
+          indices[idxCount++] = a;
+          indices[idxCount++] = dd;
+          indices[idxCount++] = c;
+          indices[idxCount++] = a;
+          indices[idxCount++] = c;
+          indices[idxCount++] = b;
         }
       }
     }
@@ -428,31 +413,31 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
         if (a < 0 || b < 0 || c < 0 || dd < 0) continue;
 
         if (d0 > 0) {
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = b;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = dd;
+          indices[idxCount++] = a;
+          indices[idxCount++] = b;
+          indices[idxCount++] = c;
+          indices[idxCount++] = a;
+          indices[idxCount++] = c;
+          indices[idxCount++] = dd;
         } else {
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = dd;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = a;
-          _indices[idxCount++] = c;
-          _indices[idxCount++] = b;
+          indices[idxCount++] = a;
+          indices[idxCount++] = dd;
+          indices[idxCount++] = c;
+          indices[idxCount++] = a;
+          indices[idxCount++] = c;
+          indices[idxCount++] = b;
         }
       }
     }
   }
 
-  const posArr = _positions.slice(0, vertCount * 3);
-  const normArr = _normals.subarray(0, vertCount * 3);
-  const idxArr = _indices.subarray(0, idxCount);
+  const posArr = positions.slice(0, vertCount * 3);
+  const normArr = normals.subarray(0, vertCount * 3);
+  const idxArr = indices.subarray(0, idxCount);
 
   if (normalSmoothingIterations > 0 && idxCount > 0) {
     const adj = buildVertexAdjacency(vertCount, idxArr);
-    smoothNormals(normArr, adj, vertCount, normalSmoothingIterations, _boundaryFlags);
+    smoothNormals(normArr, adj, vertCount, normalSmoothingIterations, boundaryFlags);
   }
 
   return {
