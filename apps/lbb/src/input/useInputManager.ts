@@ -1,0 +1,77 @@
+import { useFrame } from "@react-three/fiber";
+import { useEffect, useRef } from "react";
+import type * as THREE from "three";
+import { useEditorStore } from "../editor/editor-store";
+import { useSessionStore } from "../session/session-store";
+import { computeBrushPatches } from "../world/terrain/edit";
+import { useWorldStore } from "../world/world-store";
+import { GestureRouter } from "./GestureRouter";
+import { DollyPanGesture } from "./gestures/DollyPanGesture";
+import { OrbitGesture } from "./gestures/OrbitGesture";
+import { SculptGesture } from "./gestures/SculptGesture";
+import { InputManager } from "./InputManager";
+import type { GestureHandler, PointerInput } from "./types";
+
+/**
+ * Constructs and wires the full input stack for the 3D viewport.
+ *
+ * Must be called from a component rendered inside a R3F Canvas so that
+ * useFrame is available. R3F registers its own canvas event listeners during
+ * Canvas mount, which happens before any useEffect runs, so R3F raycasting
+ * always fires before InputManager's listeners — meaning sessionStore
+ * hoverWorldPos is already current when InputManager reads it.
+ */
+export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): void {
+  const orbitRef = useRef<OrbitGesture | null>(null);
+
+  useEffect(() => {
+    // reroute is a closure over `router`. It is only ever called during an active
+    // drag, which requires the InputManager to already be set up — at which point
+    // `router` is always assigned.
+    let router: GestureRouter;
+    const reroute = (input: PointerInput): GestureHandler | null => router.pick(input);
+
+    const sculpt = new SculptGesture(
+      {
+        applyBrush: (worldPos) => {
+          const { brush, activeTool, addPendingPatches } = useEditorStore.getState();
+          const { chunks, applyFieldValues } = useWorldStore.getState();
+          const patches = computeBrushPatches(
+            [worldPos[0], worldPos[1], worldPos[2]],
+            brush,
+            activeTool === "raise",
+            chunks
+          );
+          if (patches.length === 0) return;
+          addPendingPatches(patches);
+          applyFieldValues(patches.map((p) => ({ chunkId: p.chunkId, index: p.index, value: p.after })));
+        },
+        commitStroke: () => useEditorStore.getState().commitStroke(),
+        setPointerDown: (down) => useSessionStore.getState().setPointerDown(down),
+      },
+      reroute
+    );
+
+    const orbit = new OrbitGesture(camera, reroute);
+    const dollyPan = new DollyPanGesture(
+      camera,
+      () => orbit.getPivot(),
+      (offset) => orbit.translatePivot(offset),
+      reroute
+    );
+
+    orbitRef.current = orbit;
+    router = new GestureRouter(sculpt, orbit, dollyPan);
+
+    const manager = new InputManager(domElement, router, () => useSessionStore.getState().hoverWorldPos, orbit);
+
+    return () => {
+      manager.dispose();
+      orbitRef.current = null;
+    };
+  }, [camera, domElement]);
+
+  useFrame(() => {
+    orbitRef.current?.update();
+  }, -1);
+}
