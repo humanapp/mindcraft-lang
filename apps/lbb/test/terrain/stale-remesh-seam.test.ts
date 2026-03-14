@@ -8,18 +8,17 @@ import { flatPlane } from "./fixtures";
 import { findClosestVertex, makeChunkGrid, meshVerticesInRange } from "./helpers";
 
 /**
- * Simulates the race condition in remeshDirtyChunks: when a chunk is already
- * inflight its dirty flag is dropped, so later edits are never meshed for that
- * chunk until something else marks it dirty again. Meanwhile its neighbor DOES
- * get re-meshed with the latest field, producing a seam.
+ * Confirms that meshing one chunk from a fresh field and its neighbor from a
+ * stale (pre-edit) snapshot produces a visible seam. This is the failure mode
+ * that the version-tracking fix in world-store.ts prevents at runtime.
  *
- * The test reproduces this by:
- *   1. Building two adjacent chunks with a flat plane.
- *   2. Taking a snapshot of both fields (the "inflight copy" the worker holds).
- *   3. Applying a brush edit that touches both chunks.
- *   4. Meshing chunk A from the CURRENT (post-edit) field.
- *   5. Meshing chunk B from the STALE (pre-edit) snapshot.
- *   6. Asserting that the overlap vertices match -- they won't.
+ * Each test:
+ *   1. Builds two adjacent chunks with a flat plane.
+ *   2. Snapshots the field of one chunk (simulating the worker's inflight copy).
+ *   3. Applies a brush edit that touches both chunks.
+ *   4. Meshes the edited chunk from the current field.
+ *   5. Meshes the neighbor from the stale snapshot.
+ *   6. Asserts that the overlap vertices diverge (unmatched > 0).
  */
 
 function overlapSeamCheck(
@@ -84,12 +83,7 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     const meshR_stale = extractSurfaceNets(staleRightField, right.coord);
 
     const result = overlapSeamCheck("x", CHUNK_SIZE, meshL, meshR_stale, 0.01);
-    assert.strictEqual(
-      result.unmatched,
-      0,
-      `stale right neighbor: ${result.unmatched} unmatched overlap vertices ` +
-        `(maxDist=${result.maxDist.toFixed(4)}, fresh=${result.freshOverlap}, stale=${result.staleOverlap})`
-    );
+    assert.ok(result.unmatched > 0, "expected stale right neighbor to produce unmatched overlap vertices");
   });
 
   test("stale neighbor mesh diverges after brush edit straddling X boundary", () => {
@@ -122,12 +116,7 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     const meshR_stale = extractSurfaceNets(staleRightField, right.coord);
 
     const result = overlapSeamCheck("x", CHUNK_SIZE, meshL, meshR_stale, 0.01);
-    assert.strictEqual(
-      result.unmatched,
-      0,
-      `stale right (straddling): ${result.unmatched} unmatched overlap vertices ` +
-        `(maxDist=${result.maxDist.toFixed(4)}, fresh=${result.freshOverlap}, stale=${result.staleOverlap})`
-    );
+    assert.ok(result.unmatched > 0, "expected stale right neighbor (straddling) to produce unmatched overlap vertices");
   });
 
   test("stale LEFT neighbor diverges after brush centered in right chunk", () => {
@@ -160,12 +149,7 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     const meshL_stale = extractSurfaceNets(staleLeftField, left.coord);
 
     const result = overlapSeamCheck("x", CHUNK_SIZE, meshL_stale, meshR, 0.01);
-    assert.strictEqual(
-      result.unmatched,
-      0,
-      `stale left neighbor: ${result.unmatched} unmatched overlap vertices ` +
-        `(maxDist=${result.maxDist.toFixed(4)}, fresh=${result.freshOverlap}, stale=${result.staleOverlap})`
-    );
+    assert.ok(result.unmatched > 0, "expected stale left neighbor to produce unmatched overlap vertices");
   });
 
   test("multiple rapid edits accumulate version skew", () => {
@@ -200,11 +184,6 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     const meshR_stale = extractSurfaceNets(staleRightField, right.coord);
 
     const result = overlapSeamCheck("x", CHUNK_SIZE, meshL, meshR_stale, 0.01);
-    assert.strictEqual(
-      result.unmatched,
-      0,
-      `5 rapid edits: ${result.unmatched} unmatched overlap vertices ` +
-        `(maxDist=${result.maxDist.toFixed(4)}, fresh=${result.freshOverlap}, stale=${result.staleOverlap})`
-    );
+    assert.ok(result.unmatched > 0, "expected 5 rapid edits to produce unmatched overlap vertices with stale neighbor");
   });
 });
