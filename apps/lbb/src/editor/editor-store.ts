@@ -78,7 +78,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     terrainShading: "default",
     normalSmoothing: 0,
     voxelDebugMode: "off",
-    clampDensity: true,
+    clampDensity: false,
     debugBrush: false,
 
     setActiveTool: (tool) => set({ activeTool: tool }),
