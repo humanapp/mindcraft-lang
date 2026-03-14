@@ -1,9 +1,14 @@
 import { create } from "zustand";
 import type { BrushParams, TerrainPatch } from "../world/terrain/edit";
+import { useWorldStore } from "../world/world-store";
 import { TerrainPatchCommand } from "./commands";
 import { UndoStack } from "./undo-stack";
 
 export type ToolType = "raise" | "lower";
+
+export type VoxelDebugMode = "off" | "active-cells" | "edge-intersections" | "surface-vertices" | "density-sign";
+
+export type TerrainShadingMode = "default" | "plain" | "normals" | "gradient-mag";
 
 export interface EditorState {
   // Tool
@@ -21,6 +26,11 @@ export interface EditorState {
 
   // Render options
   wireframe: boolean;
+  terrainShading: TerrainShadingMode;
+  normalSmoothing: number;
+  voxelDebugMode: VoxelDebugMode;
+  clampDensity: boolean;
+  debugBrush: boolean;
 
   // Actions
   setActiveTool: (tool: ToolType) => void;
@@ -32,6 +42,11 @@ export interface EditorState {
   undo: () => void;
   redo: () => void;
   toggleWireframe: () => void;
+  setTerrainShading: (mode: TerrainShadingMode) => void;
+  setNormalSmoothing: (iterations: number) => void;
+  setVoxelDebugMode: (mode: VoxelDebugMode) => void;
+  toggleClampDensity: () => void;
+  toggleDebugBrush: () => void;
 }
 
 function syncUndoState(stack: UndoStack): Partial<EditorState> {
@@ -50,7 +65,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
   return {
     activeTool: "raise",
-    brush: { radius: 4, strength: 2 },
+    brush: { radius: 4, strength: 3 },
 
     canUndo: false,
     canRedo: false,
@@ -60,13 +75,18 @@ export const useEditorStore = create<EditorState>((set, get) => {
     pendingPatches: [],
 
     wireframe: false,
+    terrainShading: "default",
+    normalSmoothing: 0,
+    voxelDebugMode: "off",
+    clampDensity: true,
+    debugBrush: false,
 
     setActiveTool: (tool) => set({ activeTool: tool }),
 
     setBrushRadius: (radius) => set((s) => ({ brush: { ...s.brush, radius: Math.max(1, Math.min(16, radius)) } })),
 
     setBrushStrength: (strength) =>
-      set((s) => ({ brush: { ...s.brush, strength: Math.max(0.1, Math.min(10, strength)) } })),
+      set((s) => ({ brush: { ...s.brush, strength: Math.max(0.5, Math.min(20, strength)) } })),
 
     addPendingPatches: (patches) => {
       set((s) => ({ pendingPatches: [...s.pendingPatches, ...patches] }));
@@ -91,6 +111,9 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const command = new TerrainPatchCommand(Array.from(merged.values()));
       undoStack.record(command);
 
+      const { densityRange } = useWorldStore.getState();
+      console.log(`[brush] density range: [${densityRange.min.toFixed(4)}, ${densityRange.max.toFixed(4)}]`);
+
       set({ pendingPatches: [] });
     },
 
@@ -101,5 +124,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
     undo: () => undoStack.undo(),
     redo: () => undoStack.redo(),
     toggleWireframe: () => set((s) => ({ wireframe: !s.wireframe })),
+    setTerrainShading: (mode) => set({ terrainShading: mode }),
+    setNormalSmoothing: (iterations) => set({ normalSmoothing: Math.max(0, Math.min(4, iterations)) }),
+    setVoxelDebugMode: (mode) => set({ voxelDebugMode: mode }),
+    toggleClampDensity: () => set((s) => ({ clampDensity: !s.clampDensity })),
+    toggleDebugBrush: () => set((s) => ({ debugBrush: !s.debugBrush })),
   };
 });

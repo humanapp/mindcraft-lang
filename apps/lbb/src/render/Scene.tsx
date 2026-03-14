@@ -6,12 +6,14 @@ import { useInputManager } from "../input/useInputManager";
 import { useSessionStore } from "../session/session-store";
 import { useWorldStore } from "../world/world-store";
 import { BrushCursor } from "./BrushCursor";
+import { VoxelSamplesOverlay } from "./debug/VoxelSamplesOverlay";
 import { TerrainChunkMesh } from "./TerrainChunkMesh";
 
 function Terrain() {
   const chunkMeshes = useWorldStore((s) => s.chunkMeshes);
   const setHoverWorldPos = useSessionStore((s) => s.setHoverWorldPos);
   const wireframe = useEditorStore((s) => s.wireframe);
+  const terrainShading = useEditorStore((s) => s.terrainShading);
   const entries = Array.from(chunkMeshes.entries());
 
   const handlePointerEvent = useCallback(
@@ -29,6 +31,7 @@ function Terrain() {
           chunkId={id}
           mesh={data.mesh}
           wireframe={wireframe}
+          shadingMode={terrainShading}
           onPointerDown={handlePointerEvent}
           onPointerMove={handlePointerEvent}
         />
@@ -72,6 +75,7 @@ export function Scene() {
       <BrushCursor radius={brushRadius} />
       <InputHandler />
       <gridHelper args={[256, 64, "#333344", "#222233"]} position={[64, -0.1, 64]} />
+      <VoxelSamplesOverlay />
     </Canvas>
   );
 }

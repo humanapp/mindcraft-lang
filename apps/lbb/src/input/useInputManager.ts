@@ -33,18 +33,25 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
 
     const sculpt = new SculptGesture(
       {
-        applyBrush: (worldPos) => {
+        applyBrush: (worldPos, dt) => {
           const { brush, activeTool, addPendingPatches } = useEditorStore.getState();
           const { chunks, applyFieldValues } = useWorldStore.getState();
+          const clamp = useEditorStore.getState().clampDensity;
+          const debug = useEditorStore.getState().debugBrush;
           const patches = computeBrushPatches(
             [worldPos[0], worldPos[1], worldPos[2]],
             brush,
             activeTool === "raise",
-            chunks
+            chunks,
+            dt,
+            debug
           );
           if (patches.length === 0) return;
           addPendingPatches(patches);
-          applyFieldValues(patches.map((p) => ({ chunkId: p.chunkId, index: p.index, value: p.after })));
+          applyFieldValues(
+            patches.map((p) => ({ chunkId: p.chunkId, index: p.index, value: p.after })),
+            clamp
+          );
         },
         commitStroke: () => useEditorStore.getState().commitStroke(),
         setPointerDown: (down) => useSessionStore.getState().setPointerDown(down),

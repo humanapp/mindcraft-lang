@@ -1,8 +1,6 @@
 export const CHUNK_SIZE = 32;
-// +1 because N cells require N+1 sample points per axis, and another +1
-// so each chunk overlaps its positive neighbor by one cell, allowing the
-// mesher to emit boundary quads without cross-chunk lookups.
-export const SAMPLES = CHUNK_SIZE + 2;
+export const FIELD_PAD = 2;
+export const SAMPLES = CHUNK_SIZE + 2 + 2 * FIELD_PAD;
 export const SAMPLES_SQ = SAMPLES * SAMPLES;
 export const SAMPLES_TOTAL = SAMPLES * SAMPLES * SAMPLES;
 
@@ -15,6 +13,7 @@ export interface ChunkCoord {
 export interface MeshData {
   readonly positions: Float32Array;
   readonly normals: Float32Array;
+  readonly gradientMag: Float32Array;
   readonly indices: Uint32Array;
   readonly vertexCount: number;
   readonly indexCount: number;

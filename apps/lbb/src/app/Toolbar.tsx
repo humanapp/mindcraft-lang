@@ -1,5 +1,6 @@
-import type { ToolType } from "../editor/editor-store";
+import type { TerrainShadingMode, ToolType, VoxelDebugMode } from "../editor/editor-store";
 import { useEditorStore } from "../editor/editor-store";
+import { useWorldStore } from "../world/world-store";
 
 export function Toolbar() {
   const activeTool = useEditorStore((s) => s.activeTool);
@@ -13,6 +14,17 @@ export function Toolbar() {
   const redo = useEditorStore((s) => s.redo);
   const wireframe = useEditorStore((s) => s.wireframe);
   const toggleWireframe = useEditorStore((s) => s.toggleWireframe);
+  const terrainShading = useEditorStore((s) => s.terrainShading);
+  const setTerrainShading = useEditorStore((s) => s.setTerrainShading);
+  const normalSmoothing = useEditorStore((s) => s.normalSmoothing);
+  const setNormalSmoothing = useEditorStore((s) => s.setNormalSmoothing);
+  const voxelDebugMode = useEditorStore((s) => s.voxelDebugMode);
+  const setVoxelDebugMode = useEditorStore((s) => s.setVoxelDebugMode);
+  const clampDensity = useEditorStore((s) => s.clampDensity);
+  const toggleClampDensity = useEditorStore((s) => s.toggleClampDensity);
+  const debugBrush = useEditorStore((s) => s.debugBrush);
+  const toggleDebugBrush = useEditorStore((s) => s.toggleDebugBrush);
+  const densityRange = useWorldStore((s) => s.densityRange);
 
   const tools: { id: ToolType; label: string }[] = [
     { id: "raise", label: "Raise" },
@@ -68,12 +80,12 @@ export function Toolbar() {
           />
         </label>
         <label style={sliderLabelStyle}>
-          Strength: {brush.strength.toFixed(1)}
+          Strength (voxels/s): {brush.strength.toFixed(1)}
           <input
             type="range"
-            min={0.1}
-            max={10}
-            step={0.1}
+            min={0.5}
+            max={20}
+            step={0.5}
             value={brush.strength}
             onChange={(e) => setBrushStrength(Number(e.target.value))}
             style={sliderStyle}
@@ -112,6 +124,101 @@ export function Toolbar() {
               style={{
                 ...toggleThumbStyle,
                 transform: wireframe ? "translateX(16px)" : "translateX(2px)",
+              }}
+            />
+          </button>
+        </div>
+        <select
+          value={terrainShading}
+          onChange={(e) => setTerrainShading(e.target.value as TerrainShadingMode)}
+          style={selectStyle}
+        >
+          <option value="default">Default Material</option>
+          <option value="plain">Plain Shaded</option>
+          <option value="normals">Normal Debug</option>
+          <option value="gradient-mag">Gradient Magnitude</option>
+        </select>
+        <label style={sliderLabelStyle}>
+          Normal Smooth: {normalSmoothing}
+          <input
+            type="range"
+            min={0}
+            max={4}
+            step={1}
+            value={normalSmoothing}
+            onChange={(e) => setNormalSmoothing(Number(e.target.value))}
+            style={sliderStyle}
+          />
+        </label>
+      </div>
+
+      {/* Debug overlay */}
+      <div style={panelStyle}>
+        <div style={labelStyle}>Debug</div>
+        <select
+          value={voxelDebugMode}
+          onChange={(e) => setVoxelDebugMode(e.target.value as VoxelDebugMode)}
+          style={selectStyle}
+        >
+          <option value="off">Off</option>
+          <option value="active-cells">Active Cells</option>
+          <option value="edge-intersections">Edge Intersections</option>
+          <option value="surface-vertices">Surface Vertices</option>
+          <option value="density-sign">Density Sign</option>
+        </select>
+        <div style={toggleRowStyle}>
+          <span>Log Brush</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={debugBrush}
+            onClick={toggleDebugBrush}
+            style={{
+              ...toggleTrackStyle,
+              background: debugBrush ? "#3b82f6" : "#3f3f46",
+            }}
+          >
+            <span
+              style={{
+                ...toggleThumbStyle,
+                transform: debugBrush ? "translateX(16px)" : "translateX(2px)",
+              }}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Density field info */}
+      <div style={panelStyle}>
+        <div style={labelStyle}>Density Field</div>
+        <div style={statRowStyle}>
+          <span>min:</span>
+          <span style={statValueStyle}>{densityRange.min.toFixed(2)}</span>
+        </div>
+        <div style={statRowStyle}>
+          <span>max:</span>
+          <span style={statValueStyle}>{densityRange.max.toFixed(2)}</span>
+        </div>
+        <div style={statRowStyle}>
+          <span>iso:</span>
+          <span style={statValueStyle}>0.0</span>
+        </div>
+        <div style={toggleRowStyle}>
+          <span>Clamp Density</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={clampDensity}
+            onClick={toggleClampDensity}
+            style={{
+              ...toggleTrackStyle,
+              background: clampDensity ? "#3b82f6" : "#3f3f46",
+            }}
+          >
+            <span
+              style={{
+                ...toggleThumbStyle,
+                transform: clampDensity ? "translateX(16px)" : "translateX(2px)",
               }}
             />
           </button>
@@ -162,6 +269,29 @@ const sliderLabelStyle: React.CSSProperties = {
 const sliderStyle: React.CSSProperties = {
   width: "100%",
   accentColor: "#3b82f6",
+};
+
+const selectStyle: React.CSSProperties = {
+  background: "#27272a",
+  color: "#e4e4e7",
+  border: "1px solid #3f3f46",
+  borderRadius: 6,
+  padding: "4px 8px",
+  fontSize: 12,
+  cursor: "pointer",
+  width: "100%",
+};
+
+const statRowStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  fontSize: 12,
+  color: "#a1a1aa",
+  fontFamily: "monospace",
+};
+
+const statValueStyle: React.CSSProperties = {
+  color: "#e4e4e7",
 };
 
 const toggleRowStyle: React.CSSProperties = {

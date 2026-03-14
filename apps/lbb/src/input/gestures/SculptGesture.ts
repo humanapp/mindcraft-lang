@@ -1,7 +1,10 @@
 import type { GestureHandler, PointerInput } from "../types";
 
+// Cap dt to avoid large jumps after tab-away or debugger pauses.
+const MAX_DT = 1 / 15;
+
 export interface SculptCallbacks {
-  applyBrush(worldPos: readonly [number, number, number]): void;
+  applyBrush(worldPos: readonly [number, number, number], dt: number): void;
   commitStroke(): void;
   setPointerDown(down: boolean): void;
 }
@@ -14,9 +17,13 @@ export interface SculptCallbacks {
  * hit position. Releasing the pointer or handing off to another gesture
  * commits the stroke via the undo stack.
  *
+ * Brush application is time-scaled: each call to applyBrush receives a dt
+ * (seconds since the last application, capped at MAX_DT) so brush strength
+ * is frame-rate independent.
  */
 export class SculptGesture implements GestureHandler {
   private isActive = false;
+  private lastApplyTime = 0;
 
   constructor(
     private readonly callbacks: SculptCallbacks,
@@ -26,13 +33,18 @@ export class SculptGesture implements GestureHandler {
   begin(input: PointerInput): void {
     if (input.worldPos === null) return;
     this.isActive = true;
+    this.lastApplyTime = performance.now();
     this.callbacks.setPointerDown(true);
-    this.callbacks.applyBrush(input.worldPos);
+    // First application uses a nominal 60fps frame interval.
+    this.callbacks.applyBrush(input.worldPos, 1 / 60);
   }
 
   move(input: PointerInput): void {
     if (!this.isActive || input.worldPos === null) return;
-    this.callbacks.applyBrush(input.worldPos);
+    const now = performance.now();
+    const dt = Math.min((now - this.lastApplyTime) / 1000, MAX_DT);
+    this.lastApplyTime = now;
+    this.callbacks.applyBrush(input.worldPos, dt);
   }
 
   end(_input: PointerInput): void {
