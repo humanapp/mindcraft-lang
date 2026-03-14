@@ -1,5 +1,5 @@
 import type { ChunkCoord } from "./types";
-import { CHUNK_SIZE, FIELD_PAD, sampleIndex } from "./types";
+import { CHUNK_SIZE, chunkId, FIELD_PAD, sampleIndex } from "./types";
 
 export interface TerrainPatch {
   readonly chunkId: string;
@@ -49,7 +49,25 @@ export function computeBrushPatches(
   const patches: TerrainPatch[] = [];
   let debugSamples = 0;
 
-  for (const [chunkId, chunk] of chunks) {
+  const cxMin = Math.floor((wx - r) / CHUNK_SIZE);
+  const cxMax = Math.floor((wx + r) / CHUNK_SIZE);
+  const cyMin = Math.floor((wy - r) / CHUNK_SIZE);
+  const cyMax = Math.floor((wy + r) / CHUNK_SIZE);
+  const czMin = Math.floor((wz - r) / CHUNK_SIZE);
+  const czMax = Math.floor((wz + r) / CHUNK_SIZE);
+
+  const overlapping: [string, { coord: ChunkCoord; field: Float32Array }][] = [];
+  for (let cz = czMin; cz <= czMax; cz++) {
+    for (let cy = cyMin; cy <= cyMax; cy++) {
+      for (let cx = cxMin; cx <= cxMax; cx++) {
+        const id = chunkId({ cx, cy, cz });
+        const chunk = chunks.get(id);
+        if (chunk) overlapping.push([id, chunk]);
+      }
+    }
+  }
+
+  for (const [id, chunk] of overlapping) {
     const ox = chunk.coord.cx * CHUNK_SIZE;
     const oy = chunk.coord.cy * CHUNK_SIZE;
     const oz = chunk.coord.cz * CHUNK_SIZE;
@@ -96,7 +114,7 @@ export function computeBrushPatches(
             debugSamples++;
           }
 
-          patches.push({ chunkId, index: idx, before, after });
+          patches.push({ chunkId: id, index: idx, before, after });
         }
       }
     }

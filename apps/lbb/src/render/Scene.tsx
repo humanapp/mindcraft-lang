@@ -1,5 +1,5 @@
 import type { ThreeEvent } from "@react-three/fiber";
-import { Canvas, useThree } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback } from "react";
 import { useEditorStore } from "../editor/editor-store";
 import { useInputManager } from "../input/useInputManager";
@@ -40,6 +40,19 @@ function Terrain() {
   );
 }
 
+const MESH_BUDGET_PER_FRAME = 4;
+const COLLIDER_BUDGET_PER_FRAME = 2;
+
+function TerrainUpdater() {
+  const remeshDirtyChunks = useWorldStore((s) => s.remeshDirtyChunks);
+  const flushStaleColliders = useWorldStore((s) => s.flushStaleColliders);
+  useFrame(() => {
+    remeshDirtyChunks(MESH_BUDGET_PER_FRAME);
+    flushStaleColliders(COLLIDER_BUDGET_PER_FRAME);
+  }, -10);
+  return null;
+}
+
 function Lighting() {
   return (
     <>
@@ -72,6 +85,7 @@ export function Scene() {
       <fog attach="fog" args={["#1a1a2e", 150, 300]} />
       <Lighting />
       <Terrain />
+      <TerrainUpdater />
       <BrushCursor radius={brushRadius} />
       <InputHandler />
       <gridHelper args={[256, 64, "#333344", "#222233"]} position={[64, -0.1, 64]} />

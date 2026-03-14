@@ -26,6 +26,7 @@ export interface WorldState {
   chunks: Map<string, ChunkData>;
   chunkMeshes: Map<string, ChunkRenderData>;
   dirtyChunks: Set<string>;
+  staleColliders: Set<string>;
   densityRange: DensityRange;
 
   // Entities
@@ -39,8 +40,9 @@ export interface WorldState {
   initPhysics: (rapier: typeof RAPIER) => void;
   initTerrain: (chunkGrid: { x: number; y: number; z: number }) => void;
   remeshChunk: (id: string) => void;
-  remeshDirtyChunks: () => void;
+  remeshDirtyChunks: (maxChunks?: number) => void;
   markChunkDirty: (id: string) => void;
+  flushStaleColliders: (max?: number) => void;
   applyFieldValues: (patches: Array<{ chunkId: string; index: number; value: number }>, clamp?: boolean) => void;
   expandDensityRange: (values: ArrayLike<number>) => void;
   recomputeDensityRange: () => void;
@@ -88,6 +90,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   chunks: new Map(),
   chunkMeshes: new Map(),
   dirtyChunks: new Set(),
+  staleColliders: new Set(),
   densityRange: { min: 0, max: 0 },
   entities: {},
   rapierWorld: null,
@@ -143,38 +146,41 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     });
     const existing = state.chunkMeshes.get(id);
 
-    let collider: RAPIER.Collider | null = null;
-    if (state.rapierWorld && state.rapierModule) {
-      collider = replaceTrimeshCollider(state.rapierWorld, state.rapierModule, existing?.collider ?? null, mesh);
-    }
-
     const newMeshes = new Map(state.chunkMeshes);
-    newMeshes.set(id, { mesh, collider });
+    newMeshes.set(id, { mesh, collider: existing?.collider ?? null });
     const newDirty = new Set(state.dirtyChunks);
     newDirty.delete(id);
+    const newStale = new Set(state.staleColliders);
+    newStale.add(id);
 
-    set({ chunkMeshes: newMeshes, dirtyChunks: newDirty });
+    set({ chunkMeshes: newMeshes, dirtyChunks: newDirty, staleColliders: newStale });
   },
 
-  remeshDirtyChunks: () => {
+  remeshDirtyChunks: (maxChunks) => {
     const state = get();
     const dirty = state.dirtyChunks;
     if (dirty.size === 0) return;
     const normalSmoothing = useEditorStore.getState().normalSmoothing;
     const newMeshes = new Map(state.chunkMeshes);
+    const newDirty = new Set(dirty);
+    const newStale = new Set(state.staleColliders);
+    let processed = 0;
     for (const id of dirty) {
+      if (maxChunks !== undefined && processed >= maxChunks) break;
       const chunk = state.chunks.get(id);
-      if (!chunk) continue;
+      if (!chunk) {
+        newDirty.delete(id);
+        continue;
+      }
       syncChunkPadding(chunk, state.chunks);
       const mesh = extractSurfaceNets(chunk.field, chunk.coord, { normalSmoothingIterations: normalSmoothing });
       const existing = newMeshes.get(id);
-      let collider: RAPIER.Collider | null = null;
-      if (state.rapierWorld && state.rapierModule) {
-        collider = replaceTrimeshCollider(state.rapierWorld, state.rapierModule, existing?.collider ?? null, mesh);
-      }
-      newMeshes.set(id, { mesh, collider });
+      newMeshes.set(id, { mesh, collider: existing?.collider ?? null });
+      newDirty.delete(id);
+      newStale.add(id);
+      processed++;
     }
-    set({ chunkMeshes: newMeshes, dirtyChunks: new Set() });
+    set({ chunkMeshes: newMeshes, dirtyChunks: newDirty, staleColliders: newStale });
   },
 
   markChunkDirty: (id) => {
@@ -183,6 +189,35 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       newDirty.add(id);
       return { dirtyChunks: newDirty };
     });
+  },
+
+  flushStaleColliders: (max) => {
+    const state = get();
+    const stale = state.staleColliders;
+    if (stale.size === 0) return;
+    if (!state.rapierWorld || !state.rapierModule) return;
+
+    const newMeshes = new Map(state.chunkMeshes);
+    const newStale = new Set(stale);
+    let processed = 0;
+    for (const id of stale) {
+      if (max !== undefined && processed >= max) break;
+      const renderData = newMeshes.get(id);
+      if (!renderData) {
+        newStale.delete(id);
+        continue;
+      }
+      const collider = replaceTrimeshCollider(
+        state.rapierWorld,
+        state.rapierModule,
+        renderData.collider,
+        renderData.mesh
+      );
+      newMeshes.set(id, { mesh: renderData.mesh, collider });
+      newStale.delete(id);
+      processed++;
+    }
+    set({ chunkMeshes: newMeshes, staleColliders: newStale });
   },
 
   applyFieldValues: (patches, clamp) => {
@@ -197,37 +232,21 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       touched.add(patch.chunkId);
     }
 
-    // Also remesh face neighbors whose halo data is now stale
-    const remeshSet = new Set(touched);
+    const newDirty = new Set(state.dirtyChunks);
     for (const id of touched) {
+      newDirty.add(id);
       const chunk = state.chunks.get(id);
       if (!chunk) continue;
       const { cx, cy, cz } = chunk.coord;
       for (const [dx, dy, dz] of NEIGHBOR_OFFSETS) {
         const nid = chunkId({ cx: cx + dx, cy: cy + dy, cz: cz + dz });
         if (state.chunks.has(nid)) {
-          remeshSet.add(nid);
+          newDirty.add(nid);
         }
       }
     }
 
-    const normalSmoothing = useEditorStore.getState().normalSmoothing;
-    const newMeshes = new Map(state.chunkMeshes);
-    const newDirty = new Set(state.dirtyChunks);
-    for (const id of remeshSet) {
-      const chunk = state.chunks.get(id);
-      if (!chunk) continue;
-      syncChunkPadding(chunk, state.chunks);
-      const mesh = extractSurfaceNets(chunk.field, chunk.coord, { normalSmoothingIterations: normalSmoothing });
-      const existing = newMeshes.get(id);
-      let collider: RAPIER.Collider | null = null;
-      if (state.rapierWorld && state.rapierModule) {
-        collider = replaceTrimeshCollider(state.rapierWorld, state.rapierModule, existing?.collider ?? null, mesh);
-      }
-      newMeshes.set(id, { mesh, collider });
-      newDirty.delete(id);
-    }
-    set({ chunkMeshes: newMeshes, dirtyChunks: newDirty });
+    set({ dirtyChunks: newDirty });
     state.expandDensityRange(patches.map((p) => p.value));
   },
 
