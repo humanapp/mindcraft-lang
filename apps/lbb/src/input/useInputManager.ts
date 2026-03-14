@@ -23,6 +23,7 @@ import type { GestureHandler, PointerInput } from "./types";
  */
 export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): void {
   const orbitRef = useRef<OrbitGesture | null>(null);
+  const sculptRef = useRef<SculptGesture | null>(null);
 
   useEffect(() => {
     // reroute is a closure over `router`. It is only ever called during an active
@@ -68,6 +69,7 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
     );
 
     orbitRef.current = orbit;
+    sculptRef.current = sculpt;
     router = new GestureRouter(sculpt, orbit, dollyPan);
 
     const manager = new InputManager(domElement, router, () => useSessionStore.getState().hoverWorldPos, orbit);
@@ -75,10 +77,12 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
     return () => {
       manager.dispose();
       orbitRef.current = null;
+      sculptRef.current = null;
     };
   }, [camera, domElement]);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     orbitRef.current?.update();
+    sculptRef.current?.tick(delta);
   }, -1);
 }
