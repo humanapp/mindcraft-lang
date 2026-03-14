@@ -6,6 +6,14 @@ import { useWorldStore } from "./world/world-store";
 
 const CHUNK_GRID = { x: 4, y: 1, z: 4 };
 
+let rapierInitPromise: Promise<void> | null = null;
+function ensureRapierInit(): Promise<void> {
+  if (!rapierInitPromise) {
+    rapierInitPromise = initRapier();
+  }
+  return rapierInitPromise;
+}
+
 function useKeyboardShortcuts() {
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
@@ -41,7 +49,7 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
 
-    initRapier().then(() => {
+    ensureRapierInit().then(() => {
       if (cancelled) return;
       initPhysics(RAPIER);
       initTerrain(CHUNK_GRID);
