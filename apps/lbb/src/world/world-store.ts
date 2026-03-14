@@ -177,8 +177,21 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       touched.add(patch.chunkId);
     }
 
-    // Trigger remesh for affected chunks
+    // Also remesh face neighbors whose halo data is now stale
+    const remeshSet = new Set(touched);
     for (const id of touched) {
+      const chunk = state.chunks.get(id);
+      if (!chunk) continue;
+      const { cx, cy, cz } = chunk.coord;
+      for (const [dx, dy, dz] of NEIGHBOR_OFFSETS) {
+        const nid = chunkId({ cx: cx + dx, cy: cy + dy, cz: cz + dz });
+        if (state.chunks.has(nid)) {
+          remeshSet.add(nid);
+        }
+      }
+    }
+
+    for (const id of remeshSet) {
       state.remeshChunk(id);
     }
     state.recomputeDensityRange();
