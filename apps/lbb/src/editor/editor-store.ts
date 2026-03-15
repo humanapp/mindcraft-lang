@@ -69,7 +69,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
   return {
     activeTool: "raise",
-    brush: { radius: 4, strength: 3, shape: "sphere", falloff: 1 },
+    brush: { radius: 4, strength: 8, shape: "sphere", falloff: 1 },
 
     canUndo: false,
     canRedo: false,
