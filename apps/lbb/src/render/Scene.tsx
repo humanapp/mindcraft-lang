@@ -1,6 +1,7 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { useCallback } from "react";
+import { PCFSoftShadowMap } from "three";
 import { useEditorStore } from "../editor/editor-store";
 import { useInputManager } from "../input/useInputManager";
 import { useSessionStore } from "../session/session-store";
@@ -57,9 +58,24 @@ function TerrainUpdater() {
 function Lighting() {
   return (
     <>
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[80, 100, 60]} intensity={0.8} castShadow={false} />
-      <directionalLight position={[-40, 60, -30]} intensity={0.3} />
+      <hemisphereLight args={["#b1c8e0", "#3a3020", 0.6]} />
+      <ambientLight intensity={0.25} />
+      <directionalLight
+        position={[80, 120, 60]}
+        intensity={1.0}
+        castShadow
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-left={-120}
+        shadow-camera-right={120}
+        shadow-camera-top={120}
+        shadow-camera-bottom={-120}
+        shadow-camera-near={1}
+        shadow-camera-far={400}
+        shadow-bias={-0.0005}
+        shadow-normalBias={0.3}
+      />
+      <directionalLight position={[-40, 60, -30]} intensity={0.2} />
     </>
   );
 }
@@ -77,6 +93,7 @@ export function Scene() {
 
   return (
     <Canvas
+      shadows={{ type: PCFSoftShadowMap }}
       camera={{ position: [80, 50, 80], fov: 55, near: 0.5, far: 1000 }}
       style={{ width: "100%", height: "100%" }}
       onPointerMissed={() => {

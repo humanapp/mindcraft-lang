@@ -19,10 +19,10 @@ export interface BrushParams {
   // falloff). Multiplied by dt each tick then converted to a density delta
   // via the local field gradient.
   readonly strength: number;
-  readonly shape?: BrushShape;
+  readonly shape: BrushShape;
   // Controls the falloff curve steepness. 1.0 = standard smoothstep,
   // <1 = flatter/broader, >1 = sharper/more peaked.
-  readonly falloff?: number;
+  readonly falloff: number;
 }
 
 // The base terrain generator uses `density = height - wy`, giving a vertical

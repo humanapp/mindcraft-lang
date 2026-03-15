@@ -61,7 +61,14 @@ export function TerrainChunkMesh({
   if (mesh.vertexCount === 0) return null;
 
   return (
-    <mesh ref={geoRef as never} geometry={geometry} onPointerDown={onPointerDown} onPointerMove={onPointerMove}>
+    <mesh
+      ref={geoRef as never}
+      geometry={geometry}
+      castShadow
+      receiveShadow
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+    >
       {shadingMode === "normals" ? (
         <meshNormalMaterial wireframe={wireframe} />
       ) : shadingMode === "gradient-mag" ? (
