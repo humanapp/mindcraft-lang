@@ -43,16 +43,22 @@ function effectiveStrength(raw: number): number {
   return raw + (raw * raw * raw) / 45;
 }
 
-function neighborAverage(field: Float32Array, idx: number): number {
-  return (
-    (field[idx - 1] +
-      field[idx + 1] +
-      field[idx - SAMPLES] +
-      field[idx + SAMPLES] +
-      field[idx - SAMPLES_SQ] +
-      field[idx + SAMPLES_SQ]) /
-    6
-  );
+function sampleFieldAt(
+  chunks: ReadonlyMap<string, { coord: ChunkCoord; field: Float32Array }>,
+  wx: number,
+  wy: number,
+  wz: number,
+  fallback: number
+): number {
+  const cx = Math.floor(wx / CHUNK_SIZE);
+  const cy = Math.floor(wy / CHUNK_SIZE);
+  const cz = Math.floor(wz / CHUNK_SIZE);
+  const chunk = chunks.get(chunkId({ cx, cy, cz }));
+  if (!chunk) return fallback;
+  const lx = wx - cx * CHUNK_SIZE;
+  const ly = wy - cy * CHUNK_SIZE;
+  const lz = wz - cz * CHUNK_SIZE;
+  return chunk.field[sampleIndex(lx + FIELD_PAD, ly + FIELD_PAD, lz + FIELD_PAD)];
 }
 
 function noiseHash(ix: number, iy: number, iz: number): number {
@@ -209,7 +215,17 @@ export function computeBrushPatches(
               break;
             }
             case "smooth": {
-              const avg = neighborAverage(chunk.field, idx);
+              const wvx = ox + lx;
+              const wvy = oy + ly;
+              const wvz = oz + lz;
+              const avg =
+                (sampleFieldAt(chunks, wvx - 1, wvy, wvz, before) +
+                  sampleFieldAt(chunks, wvx + 1, wvy, wvz, before) +
+                  sampleFieldAt(chunks, wvx, wvy - 1, wvz, before) +
+                  sampleFieldAt(chunks, wvx, wvy + 1, wvz, before) +
+                  sampleFieldAt(chunks, wvx, wvy, wvz - 1, before) +
+                  sampleFieldAt(chunks, wvx, wvy, wvz + 1, before)) /
+                6;
               after = before + (avg - before) * blendFactor * falloff;
               break;
             }
