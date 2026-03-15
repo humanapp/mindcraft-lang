@@ -253,17 +253,15 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     const state = get();
     const dirty = state.dirtyChunks;
     if (dirty.size === 0) return;
-    const seq = seamSeq();
     const normalSmoothing = useEditorStore.getState().normalSmoothing;
     const newDirty = new Set(dirty);
     const newInflight = new Set(state.inflightChunks);
     let dispatched = 0;
-    const skippedInflight: string[] = [];
-    const dispatchedIds: string[] = [];
+    let skippedInflight = 0;
     for (const id of dirty) {
       if (maxChunks !== undefined && dispatched >= maxChunks) break;
       if (newInflight.has(id)) {
-        skippedInflight.push(id);
+        skippedInflight++;
         continue;
       }
       const chunk = state.chunks.get(id);
@@ -276,7 +274,6 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       newInflight.add(id);
       dispatchedVersions.set(id, chunk.version);
       dispatched++;
-      dispatchedIds.push(`${id}(v${chunk.version})`);
 
       workerBridge
         .requestMesh(id, chunk.coord, chunk.field, {
@@ -288,9 +285,10 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     }
     if (dispatched > 0) {
       if (_seamLog) {
+        const seq = seamSeq();
         console.log(
-          `[seam:remesh] seq=${seq} dispatched=[${dispatchedIds.join(", ")}]` +
-            ` skippedInflight=${skippedInflight.length} remaining=${newDirty.size}`
+          `[seam:remesh] seq=${seq} dispatched=${dispatched}` +
+            ` skippedInflight=${skippedInflight} remaining=${newDirty.size}`
         );
       }
       set({ dirtyChunks: newDirty, inflightChunks: newInflight });
@@ -335,7 +333,6 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   },
 
   applyFieldValues: (patches, clamp) => {
-    const seq = seamSeq();
     const state = get();
     const touched = new Set<string>();
 
@@ -348,7 +345,6 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     }
 
     const newDirty = new Set(state.dirtyChunks);
-    const neighborsDirtied = new Set<string>();
     for (const id of touched) {
       newDirty.add(id);
       const chunk = state.chunks.get(id);
@@ -358,23 +354,21 @@ export const useWorldStore = create<WorldState>((set, get) => ({
         const nid = chunkId({ cx: cx + dx, cy: cy + dy, cz: cz + dz });
         if (state.chunks.has(nid)) {
           newDirty.add(nid);
-          if (!touched.has(nid)) neighborsDirtied.add(nid);
         }
       }
     }
 
-    const touchedVersions = [...touched].map((id) => {
-      const c = state.chunks.get(id);
-      return `${id}(v${c?.version})`;
-    });
-    const inflightOverlap = [...touched].filter((id) => state.inflightChunks.has(id));
-    const neighborInflightOverlap = [...neighborsDirtied].filter((id) => state.inflightChunks.has(id));
     if (_seamLog) {
+      const seq = seamSeq();
+      const touchedVersions = [...touched].map((id) => {
+        const c = state.chunks.get(id);
+        return `${id}(v${c?.version})`;
+      });
+      const inflightOverlap = [...touched].filter((id) => state.inflightChunks.has(id));
       console.log(
         `[seam:edit] seq=${seq} patches=${patches.length} touched=[${touchedVersions.join(", ")}]` +
-          ` neighborsDirtied=${neighborsDirtied.size} totalDirty=${newDirty.size}` +
-          (inflightOverlap.length > 0 ? ` TOUCHED_INFLIGHT=[${inflightOverlap.join(", ")}]` : "") +
-          (neighborInflightOverlap.length > 0 ? ` NEIGHBOR_INFLIGHT=[${neighborInflightOverlap.join(", ")}]` : "")
+          ` totalDirty=${newDirty.size}` +
+          (inflightOverlap.length > 0 ? ` TOUCHED_INFLIGHT=[${inflightOverlap.join(", ")}]` : "")
       );
     }
 
