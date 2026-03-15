@@ -49,11 +49,12 @@ export function computeBrushPatches(
   const patches: TerrainPatch[] = [];
   let debugSamples = 0;
 
-  const cxMin = Math.floor((wx - r) / CHUNK_SIZE);
+  const coreExtent = CHUNK_SIZE + 1;
+  const cxMin = Math.ceil((wx - r - coreExtent) / CHUNK_SIZE);
   const cxMax = Math.floor((wx + r) / CHUNK_SIZE);
-  const cyMin = Math.floor((wy - r) / CHUNK_SIZE);
+  const cyMin = Math.ceil((wy - r - coreExtent) / CHUNK_SIZE);
   const cyMax = Math.floor((wy + r) / CHUNK_SIZE);
-  const czMin = Math.floor((wz - r) / CHUNK_SIZE);
+  const czMin = Math.ceil((wz - r - coreExtent) / CHUNK_SIZE);
   const czMax = Math.floor((wz + r) / CHUNK_SIZE);
 
   const overlapping: [string, { coord: ChunkCoord; field: Float32Array }][] = [];

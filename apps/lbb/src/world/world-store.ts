@@ -46,32 +46,36 @@ function checkBoundaryAgreement(
   chunkB: ChunkData,
   axis: "x" | "y" | "z"
 ): { maxDiff: number; samples: number; mismatches: Array<{ pos: string; a: number; b: number }> } {
-  const face = FIELD_PAD + CHUNK_SIZE;
+  const face0 = FIELD_PAD + CHUNK_SIZE;
   const mismatches: Array<{ pos: string; a: number; b: number }> = [];
   let maxDiff = 0;
   let samples = 0;
-  for (let u = FIELD_PAD; u <= FIELD_PAD + CHUNK_SIZE; u++) {
-    for (let v = FIELD_PAD; v <= FIELD_PAD + CHUNK_SIZE; v++) {
-      let idxA: number;
-      let idxB: number;
-      if (axis === "x") {
-        idxA = face + u * SAMPLES + v * SAMPLES_SQ;
-        idxB = FIELD_PAD + u * SAMPLES + v * SAMPLES_SQ;
-      } else if (axis === "y") {
-        idxA = u + face * SAMPLES + v * SAMPLES_SQ;
-        idxB = u + FIELD_PAD * SAMPLES + v * SAMPLES_SQ;
-      } else {
-        idxA = u + v * SAMPLES + face * SAMPLES_SQ;
-        idxB = u + v * SAMPLES + FIELD_PAD * SAMPLES_SQ;
+  for (let faceOffset = 0; faceOffset <= 1; faceOffset++) {
+    const faceA = face0 + faceOffset;
+    const faceB = FIELD_PAD + faceOffset;
+    for (let u = FIELD_PAD; u <= FIELD_PAD + CHUNK_SIZE; u++) {
+      for (let v = FIELD_PAD; v <= FIELD_PAD + CHUNK_SIZE; v++) {
+        let idxA: number;
+        let idxB: number;
+        if (axis === "x") {
+          idxA = faceA + u * SAMPLES + v * SAMPLES_SQ;
+          idxB = faceB + u * SAMPLES + v * SAMPLES_SQ;
+        } else if (axis === "y") {
+          idxA = u + faceA * SAMPLES + v * SAMPLES_SQ;
+          idxB = u + faceB * SAMPLES + v * SAMPLES_SQ;
+        } else {
+          idxA = u + v * SAMPLES + faceA * SAMPLES_SQ;
+          idxB = u + v * SAMPLES + faceB * SAMPLES_SQ;
+        }
+        const a = chunkA.field[idxA];
+        const b = chunkB.field[idxB];
+        const diff = Math.abs(a - b);
+        if (diff > maxDiff) maxDiff = diff;
+        if (diff > 1e-6) {
+          mismatches.push({ pos: `face${faceOffset}:${u},${v}`, a, b });
+        }
+        samples++;
       }
-      const a = chunkA.field[idxA];
-      const b = chunkB.field[idxB];
-      const diff = Math.abs(a - b);
-      if (diff > maxDiff) maxDiff = diff;
-      if (diff > 1e-6) {
-        mismatches.push({ pos: `${u},${v}`, a, b });
-      }
-      samples++;
     }
   }
   return { maxDiff, samples, mismatches };
