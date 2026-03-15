@@ -4,7 +4,7 @@ import type { GestureHandler, PointerInput } from "../types";
 const PAN_SENSITIVITY = 0.002;
 const DRAG_DOLLY_FACTOR = 0.005;
 const MIN_DISTANCE = 2;
-const MAX_DISTANCE = 600;
+const MAX_DISTANCE = 1000;
 
 /**
  * DollyPan gesture: Ctrl/Cmd + left drag.

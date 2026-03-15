@@ -6,7 +6,7 @@ const _worldUp = new THREE.Vector3(0, 1, 0);
 const MIN_POLAR = 0.02;
 const MAX_POLAR = Math.PI - 0.02;
 const MIN_DISTANCE = 2;
-const MAX_DISTANCE = 600;
+const MAX_DISTANCE = 1000;
 const ORBIT_SENSITIVITY = 0.005;
 const DOLLY_FACTOR = 0.001;
 const DAMPING_FACTOR = 0.1;
@@ -27,7 +27,7 @@ const DAMPING_STOP = 0.00005;
  *
  */
 export class OrbitGesture implements GestureHandler, WheelHandler {
-  private readonly pivot = new THREE.Vector3(64, 16, 64);
+  private readonly pivot = new THREE.Vector3(128, 16, 128);
   private lastScreenX = 0;
   private lastScreenY = 0;
   private isDragging = false;
