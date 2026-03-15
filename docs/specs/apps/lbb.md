@@ -45,704 +45,1179 @@ Rapier 3D physics. Heavy computation (mesh extraction, field generation) runs on
 Workers. The current implementation establishes the terrain sculpting foundation; the
 creature creator, sculpt system, and entity programming are planned future systems.
 
-The app lives at `apps/lbb/` within the `mindcraft-lang` monorepo.
+---
+
+## 2. Product Goals
+
+- **Direct sculpt interaction** -- Editing should feel immediate, tactile, and readable.
+  Brush-based sculpting is the primary creation model.
+
+- **Deterministic terrain output** -- Identical density inputs must produce identical mesh
+  outputs. Terrain meshing must be repeatable and testable outside the browser.
+
+- **Invisible chunk seams** -- Chunk boundaries must remain visually continuous. Mesh
+  positions, normals, and smoothing behavior must agree across chunk edges.
+
+- **Responsive editing under load** -- Heavy computation must run off the main thread so
+  input and camera interaction remain smooth during sculpting.
+
+- **Extensible voxel foundation** -- Terrain, creatures, and sculpted objects should all
+  build on the same core ideas: voxel fields, brush edits, meshing, and reversible edit
+  commands.
+
+- **Clear subsystem boundaries** -- Data ownership, system responsibilities, and cross-
+  subsystem contracts must be explicit so the codebase can grow without turning into a
+  monolith.
+
+- **Scalability to larger worlds** -- The architecture should support chunk streaming,
+  job prioritization, save/load, and multiple voxel-field types, even if the current
+  implementation begins with a fixed terrain grid.
+
+- **Strong regression protection** -- The terrain pipeline must be backed by automated
+  tests that catch seam regressions, halo synchronization bugs, stale mesh behavior, and
+  non-deterministic output.
 
 ---
 
-## 2. Design Goals
+## 3. Non-Goals for the Current Phase
 
-- **Intuitive sculpt-based creation** -- Terrain editing should feel responsive and
-  direct. Brush-based sculpting with real-time feedback is the primary interaction model.
+The current phase does not attempt to fully solve:
 
-- **Deterministic terrain behavior** -- Identical density fields must produce identical
-  meshes. The meshing pipeline is repeatable and testable offline.
+- Infinite world streaming
+- Level of detail (LOD) terrain
+- Persistent world serialization
+- Creature editing
+- Freeform sculpt objects
+- General entity gameplay systems
+- Brain runtime integration
+- Production lighting authoring tools
 
-- **Seam-safe voxel meshing** -- Chunk boundaries must be invisible. Vertices, normals,
-  and relaxation at chunk edges are constrained to produce seamless results.
-
-- **Worker-based heavy computation** -- Mesh extraction and field generation run on Web
-  Workers to keep the main thread responsive during sculpting.
-
-- **Scalable editing systems** -- Brush tools, undo/redo, and the terrain pipeline are
-  designed for extensibility. Future systems (creatures, sculpted objects, programmable
-  entities) will build on the same patterns.
-
-- **Maintainable subsystem boundaries** -- State, rendering, input, and terrain are
-  separated into distinct modules with clear ownership. Zustand stores enforce data
-  boundaries between subsystems.
-
-- **Strong regression testing** -- The terrain pipeline has an extensive test suite
-  covering determinism, seam correctness, halo synchronization, and boundary normals.
-  Tests run outside the browser using Node's built-in test runner.
+The architecture should leave room for these systems without requiring a full rewrite.
 
 ---
 
-## 3. System Architecture
+## 4. Architectural Principles
 
-### Tech Stack
+### 4.1 Separate data from presentation
 
-| Dependency            | Role                                                 |
-| --------------------- | ---------------------------------------------------- |
-| Vite                  | Bundler, dev server, HMR                             |
-| React 19              | UI layer (toolbar, inspector, providers)             |
-| Three.js / R3F / Drei | 3D rendering, scene graph, camera, lighting          |
-| Rapier 3D             | Physics engine (trimesh colliders for hit testing)   |
-| Zustand               | State management (3 stores)                          |
-| Tailwind CSS          | Utility-first styling for UI panels                  |
-| Web Workers           | Off-main-thread mesh extraction and field generation |
-| Biome                 | Linter and formatter                                 |
-| TypeScript            | Type checking                                        |
+Voxel field storage, meshing, rendering, physics, and editor UI are distinct layers.
+No single store or module should own all of them.
 
-### Directory Layout
+### 4.2 Prefer explicit state transitions
+
+Chunk lifecycle should be modeled as an explicit state machine rather than an implicit
+sequence of booleans and sets.
+
+### 4.3 Make edit history first-class
+
+All user edits should be representable as reversible commands backed by deterministic
+data patches.
+
+### 4.4 Define stable subsystem contracts
+
+Future systems should be able to reuse voxel editing and meshing without depending on
+terrain-specific rendering or physics assumptions.
+
+### 4.5 Bias toward testable pure functions
+
+Density sampling, patch computation, halo synchronization, and mesh extraction should be
+testable without React, R3F, or the browser.
+
+---
+
+## 5. Technology Stack
+
+| Dependency            | Role                                                     |
+| --------------------- | -------------------------------------------------------- |
+| Vite                  | Bundler, dev server, HMR                                 |
+| React 19              | UI shell, providers, inspector, toolbar                  |
+| Three.js / R3F / Drei | 3D rendering, scene graph, camera, helpers               |
+| Rapier 3D             | Physics and collision queries                            |
+| Zustand               | App-level state stores                                   |
+| Tailwind CSS          | Editor UI styling                                        |
+| Web Workers           | Off-main-thread field generation and mesh extraction     |
+| Biome                 | Formatting and linting                                   |
+| TypeScript            | Static typing                                            |
+| Node test runner      | Deterministic terrain pipeline tests outside the browser |
+
+---
+
+## 6. High-Level Architecture
+
+### 6.1 Main subsystems
+
+LBB is organized around the following major subsystems:
+
+1. **Editor UI Layer**
+   - Toolbar
+   - Inspector panels
+   - Debug controls
+   - Undo/redo controls
+
+2. **Input and Gesture Layer**
+   - Pointer and keyboard input capture
+   - Gesture routing
+   - Sculpt / orbit / dolly-pan controllers
+
+3. **Voxel Data Layer**
+   - Density field storage
+   - Chunk indexing
+   - Halo synchronization
+   - Patch application
+   - Field versioning
+
+4. **Meshing Pipeline**
+   - Dirty chunk scheduling
+   - Worker job dispatch
+   - Surface Nets extraction
+   - Normal generation
+   - Stale result handling
+
+5. **Rendering Layer**
+   - R3F scene setup
+   - Chunk mesh presentation
+   - Brush cursor
+   - Debug overlays
+
+6. **Physics Layer**
+   - Terrain colliders
+   - Hit testing support
+   - Future entity-body integration
+
+7. **Edit History Layer**
+   - Stroke accumulation
+   - Command creation
+   - Undo/redo replay
+
+8. **Future Entity Layer**
+   - Creature fields
+   - Sculpt objects
+   - Entities with transforms, render bindings, brain bindings, and physics bindings
+
+### 6.2 Data flow
+
+The intended data flow is:
+
+```text
+Input -> Gesture -> Brush Operation -> Field Patch Application -> Chunk Dirtiness
+-> Meshing Scheduler -> Worker Extraction -> Mesh Result Application
+-> Collider Update -> Rendered Scene
 ```
 
+Undo and redo re-enter the pipeline at the field patch application step.
+
+### 6.3 Ownership model
+
+Ownership is intentionally split:
+
+- **EditorStore** owns editing configuration and undo state.
+- **SessionStore** owns transient interaction state.
+- **WorldStore** owns world-level registries and orchestration.
+- **Voxel field modules** own density storage and field operations.
+- **Meshing pipeline modules** own worker jobs and chunk mesh lifecycle.
+- **Render components** present current mesh state but do not compute terrain.
+
+The architecture should resist the tendency to turn `WorldStore` into a catch-all owner of
+every subsystem.
+
+---
+
+## 7. Coordinate Systems
+
+LBB uses several coordinate spaces. These must remain explicit.
+
+### 7.1 World space
+
+Continuous 3D coordinates used by camera, rendering, physics, and entity transforms.
+
+### 7.2 Chunk space
+
+Integer chunk coordinates `(cx, cy, cz)` that identify a chunk in the world grid.
+
+### 7.3 Local voxel space
+
+Coordinates local to a chunk's editable cell region. A chunk with `CHUNK_SIZE = 32`
+contains 32 x 32 x 32 editable cells.
+
+### 7.4 Sample space
+
+Coordinates into the chunk's padded density sample array. Sample space includes halo
+padding and the fence-post sample row needed for cell extraction.
+
+### 7.5 Render space
+
+Currently identical to world space. This may diverge later if non-uniform scale, preview
+modes, or specialized editors are introduced.
+
+### 7.6 Conversion rules
+
+The system must provide stable helpers for conversion between:
+
+- world position <-> chunk coordinate
+- world position <-> local voxel coordinate
+- local voxel coordinate <-> sample index
+- chunk coordinate + local voxel coordinate <-> world position
+
+These conversions are part of the architecture, not incidental implementation detail.
+
+---
+
+## 8. Directory Layout
+
+```text
 apps/lbb/
-src/
-App.tsx Application root; initializes Rapier and terrain
-main.tsx React entry point
-app/ UI shell: Layout, Toolbar, InspectorPanel
-editor/ EditorStore (Zustand), undo/redo, commands
-input/ InputManager, GestureRouter, gesture handlers
-render/ R3F Scene, TerrainChunkMesh, BrushCursor, debug overlays
-session/ SessionStore (transient pointer/hover state)
-world/ WorldStore (chunks, meshes, physics), entities
-terrain/ Core terrain system (density field, mesher, brushes, workers)
-test/
-terrain/ Terrain unit tests (node:test + tsx)
+  src/
+    App.tsx              Application root
+    main.tsx             React entry point
 
+    app/                 Layout, toolbar, inspector, panels
+    editor/              EditorStore, undo/redo, commands
+    input/               InputManager, GestureRouter, gesture handlers
+    session/             SessionStore
+    render/              Scene, terrain mesh presentation, cursor, overlays
+    world/               World orchestration and registries
+
+    world/terrain/       Terrain system (all modules currently flat in this directory)
+
+  test/
+    terrain/             Deterministic terrain tests
 ```
 
-### Subsystem Diagram
+A future refactoring may split `world/terrain/` into subdirectories (field, meshing,
+generation, physics, editing) as the system grows. The current layout is flat.
 
-```mermaid
-flowchart TD
-    UI["Toolbar / Inspector\n(React UI)"]
-    Editor["EditorStore\n(tools, brush, undo, render)"]
-    Session["SessionStore\n(hover pos, pointer state)"]
-    World["WorldStore\n(chunks, meshes, physics, dirty)"]
-    Input["InputManager + GestureRouter"]
-    Gestures["SculptGesture\nOrbitGesture\nDollyPanGesture"]
-    Bridge["TerrainWorkerBridge"]
-    Workers["Web Workers\n(mesh extraction)"]
-    Scene["R3F Scene\n(TerrainChunkMesh, BrushCursor,\nLighting, Debug Overlays)"]
+---
 
-    UI -- "reads/writes" --> Editor
-    Session -- "hover state" --> Editor
-    Editor -- "commitStroke" --> World
-    Input -- "sculpt / orbit / dolly-pan" --> Gestures
-    Gestures -- "applyBrush" --> World
-    Input -- "setHoverWorldPos" --> Session
-    World -- "remeshDirtyChunks" --> Bridge
-    Bridge -- "postMessage" --> Workers
-    Workers -- "applyMeshResult" --> World
-    World -- "chunkMeshes" --> Scene
-```
-
-### Initialization
+## 9. Application Initialization
 
 1. `main.tsx` mounts the React app inside `StrictMode`.
-2. `App.tsx` lazy-loads the Rapier WASM module (`ensureRapierInit()`).
-3. Once Rapier is ready, `initPhysics()` creates a gravity world and `initTerrain({x:8, y:4, z:8})` dispatches chunk generation to workers.
-4. Workers generate density fields via fBm noise and return them to the main thread.
-5. When all 256 chunks are generated, halo padding is synced across neighbors and all chunks are marked dirty.
-6. `TerrainUpdater` (a `useFrame` callback) drains dirty chunks each frame, dispatching meshing jobs to workers and flushing stale colliders.
-7. Keyboard shortcuts for undo/redo (`Cmd/Ctrl + Z/Y`) are registered at the `App` level.
+2. `App.tsx` initializes the UI shell and ensures Rapier is ready.
+3. `WorldStore` initializes world registries and terrain configuration.
+4. Terrain generation jobs are dispatched for the initial chunk region.
+5. Generated chunk fields are inserted into the voxel data layer.
+6. Halo synchronization is performed for all initialized chunks.
+7. Initialized chunks enter the dirty pipeline for first mesh extraction.
+8. Meshing results are applied and collider updates are scheduled.
+9. The scene begins interactive updates through the frame loop.
+10. Keyboard shortcuts and input event capture are registered.
+
+Initialization should be robust to future streaming. The current fixed-grid startup is an
+initial implementation, not a permanent world model.
 
 ---
 
-## 4. Terrain System
+## 10. Terrain Domain Model
 
-The terrain system is the core subsystem of LBB. It manages a volumetric density field,
-extracts a polygonal surface from it, and keeps the rendered mesh synchronized with edits.
+### 10.1 Terrain representation
 
-### 4.1 Density Field
+Terrain is represented as a scalar density field:
 
-Terrain geometry is defined by a 3D scalar density field. Each point in space has a
-density value:
+- Positive density = solid
+- Negative density = air
+- Zero density = surface boundary
 
-- **Positive** = solid material
-- **Negative** = air
-- **Zero** = the surface boundary (isosurface)
+The terrain field is subdivided into chunks.
 
-The field is subdivided into a regular grid of **chunks**. Each chunk covers a
-32x32x32 voxel region (`CHUNK_SIZE = 32`).
+### 10.2 Chunk dimensions
 
-### 4.2 Chunk Structure and Halo Padding
+Current terrain chunks use:
 
-Each chunk stores a padded density array of 38x38x38 samples (`SAMPLES = 38`). The
-extra samples form a **halo** of width 2 (`FIELD_PAD = 2`) around the core 32x32x32
-region:
+- `CHUNK_SIZE = 32` cells per axis
+- `FIELD_PAD = 2`
+- `SAMPLES = 38` samples per axis
 
+This layout supports:
+
+- 33 core sample points needed for 32 cells
+- 2 samples of halo padding on the negative side
+- 3 samples of effective margin on the positive side due to fence-post and stencil needs
+
+The asymmetry should be described by exact stencil requirements, not by casual shorthand.
+
+### 10.3 Chunk contents
+
+Each terrain chunk conceptually contains:
+
+- Chunk coordinate
+- Density sample storage
+- Version counter
+- Dirty state
+- Optional mesh state
+- Optional collider state
+- Optional debug metadata
+
+### 10.4 Density storage abstraction
+
+Density storage should be treated as a subsystem interface, not just an implementation
+detail.
+
+Initial implementation:
+
+- `Float32Array`
+
+Future-compatible requirements:
+
+- serialization
+- compression
+- pooling
+- alternate resolutions
+- shared field operations for creature and sculpt systems
+
+Recommended conceptual interface:
+
+```ts
+interface DensityFieldStorage {
+  getSample(index: number): number;
+  setSample(index: number, value: number): void;
+  cloneBuffer(): Float32Array;
+}
 ```
 
-[pad=2] [-------- core 32+1 --------] [pad=2+1]
-| 2 | 33 samples | 3 | = 38 per axis
+The actual implementation may remain a raw `Float32Array` initially.
 
+---
+
+## 11. Chunk Topology and Halo Synchronization
+
+### 11.1 Why halo padding exists
+
+Meshing and gradient evaluation require samples outside the editable core region. Cross-
+chunk runtime lookups inside hot loops are undesirable and complicate worker execution.
+
+Halo padding solves this by copying neighbor data into each chunk's padded sample region
+before meshing.
+
+### 11.2 Halo synchronization contract
+
+`syncChunkPadding` must guarantee:
+
+- All face-neighbor overlap samples are copied correctly
+- All edge-neighbor overlap samples are copied correctly
+- All corner-neighbor overlap samples are copied correctly
+- Halo contents match authoritative neighbor core samples at meshing time
+
+### 11.3 Dirtying rules after edits
+
+A field edit affecting chunk `C` must:
+
+- mark `C` as field-modified
+- mark `C` as mesh-dirty
+- mark neighboring chunks as halo-dirty if their halo depends on changed values
+- ensure neighboring chunks are remeshed when their surface output may change
+
+The current practical rule is to dirty the edited chunk and all 26 neighbors. That is
+safe and simple. Later optimization may narrow this to only affected neighbors.
+
+### 11.4 Scalability note
+
+Full 26-neighbor dirtying is correct but potentially expensive for heavy editing. The
+architecture should permit future refinement such as:
+
+- dirty-face tracking
+- lazy halo refresh
+- shared border caches
+- edit-region-aware neighbor invalidation
+
+---
+
+## 12. Procedural Terrain Generation
+
+### 12.1 Current generation model
+
+Initial terrain is generated procedurally from 2D fractal Brownian motion (fBm):
+
+```text
+density(wx, wy, wz) = BASE_HEIGHT + fBm(wx, wz) * HEIGHT_AMPLITUDE - wy
 ```
 
-The +1 accounts for the fence-post: meshing evaluates cells, and a 32-cell grid requires
-33 sample points, plus padding on both sides.
+Current parameters:
 
-The halo stores copies of neighboring chunks' density values. This allows the mesher
-to evaluate gradients and place vertices near chunk boundaries without cross-chunk
-lookups at runtime.
+- `BASE_HEIGHT = 32`
+- `HEIGHT_AMPLITUDE = 12`
+- `NOISE_SCALE = 0.02`
+- 4 octaves of 2D noise with smooth interpolation
 
-**Halo synchronization** (`syncChunkPadding`) copies density values from all 26
-neighbors (faces, edges, corners) into the padding region before meshing. After a brush
-edit, both the edited chunk and its neighbors must be marked dirty so their halos are
-re-synced before remeshing.
+### 12.2 Determinism requirements
 
-### 4.3 Procedural Generation
+Generation is currently deterministic via a fixed hash function but is not yet
+seed-parameterized. Adding an explicit `worldSeed` input is a future requirement.
 
-Initial terrain is generated procedurally using 2D fractal Brownian motion (fBm) noise:
+Deterministic generation is needed for:
 
+- reproducible tests
+- save/load
+- replay
+- streaming worlds
+- collaborative editing in future systems
+
+### 12.3 Current implementation note
+
+The current app initializes a fixed `8 x 4 x 8` chunk region. This is an implementation
+choice for the current phase, not a long-term architectural assumption.
+
+---
+
+## 13. Meshing Pipeline
+
+### 13.1 Purpose
+
+The meshing pipeline transforms authoritative density data into renderable geometry and
+collision geometry.
+
+### 13.2 Mesh algorithm
+
+Terrain uses Surface Nets because it offers a strong balance between smooth output,
+topological simplicity, and runtime cost.
+
+### 13.3 Surface Nets extraction overview
+
+For each chunk:
+
+1. Identify active cells whose corner signs differ.
+2. For each active cell, find zero-crossing points on cell edges.
+3. Average those crossings to place a dual vertex.
+4. Connect neighboring active cells into quads along sign-changing grid edges.
+5. Emit triangles with consistent winding.
+
+### 13.4 Vertex smoothing
+
+Optional vertex relaxation may be applied to interior vertices only.
+
+Rules:
+
+- boundary vertices are pinned
+- smoothing iterations are bounded
+- smoothing must not change seam alignment
+
+### 13.5 Normal generation
+
+Normals are derived from the density field gradient using tricubic Catmull-Rom
+interpolation over a 4 x 4 x 4 neighborhood.
+
+Rules:
+
+- a single operation must not mix trilinear and tricubic assumptions
+- density clamping before gradient evaluation is not part of the normal path
+- boundary normal smoothing must preserve chunk agreement
+
+### 13.6 Mesh output contract
+
+Each mesh result contains at minimum:
+
+- chunk id
+- vertex positions
+- vertex normals
+- gradient magnitude per vertex
+- indices
+
+This result is immutable once returned from the worker. Source field version tracking
+is maintained on the main thread side, not in the worker response.
+
+---
+
+## 14. Chunk Mesh State Machine
+
+Chunk mesh lifecycle should be modeled explicitly.
+
+### 14.1 States
+
+```text
+Uninitialized
+FieldReady
+HaloDirty
+MeshDirty
+MeshingQueued
+MeshingInFlight
+MeshReady
+ColliderDirty
+Ready
 ```
 
-density(wx, wy, wz) = BASE_HEIGHT + fBm(wx, wz) \* HEIGHT_AMPLITUDE - wy
+### 14.2 State meanings
 
+- **Uninitialized** -- no authoritative field exists yet
+- **FieldReady** -- field exists and halo is believed current
+- **HaloDirty** -- field exists but overlap data must be refreshed before meshing
+- **MeshDirty** -- chunk requires a new mesh
+- **MeshingQueued** -- eligible for worker dispatch
+- **MeshingInFlight** -- a worker is processing a snapshot
+- **MeshReady** -- a new mesh has been applied
+- **ColliderDirty** -- collider should be updated from current mesh
+- **Ready** -- mesh and collider match the authoritative field version
+
+### 14.3 Transition examples
+
+- field edit -> `HaloDirty`
+- halo refresh -> `MeshDirty`
+- job dispatch -> `MeshingInFlight`
+- accepted mesh result -> `MeshReady` then `ColliderDirty`
+- collider rebuild -> `Ready`
+- stale mesh result -> apply provisional mesh, then return to `MeshDirty`
+
+This state model should replace purely ad hoc combinations of dirty sets over time.
+
+---
+
+## 15. Worker Architecture
+
+### 15.1 Worker responsibilities
+
+Workers perform computationally heavy, deterministic tasks:
+
+- terrain field generation
+- mesh extraction
+- normal computation
+- optional smoothing steps
+
+Workers do not own authoritative world state.
+
+### 15.2 Worker pool
+
+`TerrainWorkerBridge` maintains a small worker pool, currently bounded by
+`navigator.hardwareConcurrency` with a cap of 4.
+
+### 15.3 Message types
+
+Initial protocol:
+
+- `"generate"` -- create a density field for a chunk
+- `"mesh"` -- extract a mesh from a field snapshot
+
+Each request includes:
+
+- unique job id
+- chunk id and coordinate
+- job-specific payload (field snapshot for mesh, nothing extra for generate)
+- deterministic options (e.g. normal smoothing iterations)
+
+Source field version is not included in the worker protocol. Version tracking for stale
+result detection is handled on the main thread via a dispatch-time version snapshot.
+
+### 15.4 Job queue model
+
+The pipeline should explicitly support:
+
+- queued jobs
+- inflight jobs
+- stale result rejection or requeue
+- per-chunk deduplication
+- bounded queue growth
+
+### 15.5 Priority strategy
+
+The scheduler should prefer:
+
+1. recently edited chunks
+2. chunks near the camera
+3. chunks near visible interaction zones
+4. background initialization work
+
+This matters once the world grows beyond the current fixed startup region.
+
+### 15.6 Cancellation model
+
+Workers may still finish stale jobs. The main thread remains authoritative.
+
+Result handling policy:
+
+- compare returned source version with current chunk version
+- accept if current
+- if stale, optionally apply as provisional visual output, then requeue fresh meshing
+
+The current policy of provisional apply + re-dirty is acceptable for this phase.
+
+### 15.7 Memory movement
+
+Fields and mesh buffers are transferred using transferable `ArrayBuffer`s.
+
+Current implementation copies the live field before transfer. This is correct but may
+become expensive at scale. The architecture should leave room for:
+
+- pooled field snapshots
+- shared memory
+- buffer reuse
+- incremental meshing inputs
+
+---
+
+## 16. Edit -> Remesh -> Render Pipeline
+
+### 16.1 Brush edit path
+
+1. Compute affected field samples from brush configuration and hit point.
+2. Produce `TerrainPatch` records with `{chunkId, index, before, after}`.
+3. Apply authoritative field mutations.
+4. Increment chunk version counters.
+5. Mark edited and dependent chunks dirty.
+6. Accumulate patches for undo/redo if inside an active stroke.
+
+### 16.2 Meshing path
+
+1. Refresh halo data for eligible dirty chunks.
+2. Snapshot current field data and version.
+3. Queue or dispatch worker job.
+4. Receive mesh result.
+5. Compare versions and accept or requeue accordingly.
+6. Update renderable mesh registry.
+7. Mark collider update required.
+
+### 16.3 Render path
+
+1. `TerrainChunkMesh` reads current mesh data.
+2. Three.js `BufferGeometry` updates are applied.
+3. Material mode reflects editor settings.
+4. Cursor and overlays render using current session/editor state.
+
+### 16.4 Collider path
+
+1. Mesh application marks collider dirty.
+2. Collider update system rebuilds the chunk collider from current mesh.
+3. Physics world swaps the old collider for the new one.
+4. Collider version should track the mesh version it represents.
+
+Collider updates should be treated as a separate system, not merely a postscript to
+meshing.
+
+---
+
+## 17. Brush Editing System
+
+### 17.1 Shared brush model
+
+Brushes are reusable editing operators over voxel fields. Terrain is the first consumer.
+
+Common brush parameters:
+
+- mode
+- shape
+- radius
+- strength
+- falloff
+- optional target parameters
+
+### 17.2 Brush shapes
+
+Supported shapes:
+
+- sphere
+- cube
+- cylinder
+
+Shape evaluation must be expressed in field-local coordinates.
+
+### 17.3 Falloff model
+
+The current falloff uses a smoothstep-derived curve controlled by an exponent-like input.
+The spec should preserve the user-facing control and the invariant that intensity drops
+smoothly toward the edge.
+
+### 17.4 Brush modes
+
+Current terrain modes:
+
+- raise
+- lower
+- smooth
+- roughen
+- flatten
+
+Each mode must define:
+
+- affected sample selection
+- patch computation rule
+- determinism expectations
+- whether the operation depends on existing neighboring sample values
+
+### 17.5 Frame-rate independence
+
+Brush strength is time-scaled. The system currently caps `dt` to avoid large jumps after
+tab-away or debugging pauses. That is correct and should remain part of the contract.
+
+### 17.6 TerrainPatch model
+
+Brush output is a list of reversible sample edits:
+
+```ts
+type TerrainPatch = {
+  chunkId: string;
+  index: number;
+  before: number;
+  after: number;
+};
 ```
 
-- `BASE_HEIGHT = 32` -- nominal surface height in world units
-- `HEIGHT_AMPLITUDE = 12` -- vertical variation range
-- `fBm` -- 4-octave 2D noise with smoothstep interpolation; frequency scaled by `NOISE_SCALE = 0.02`
+This patch format is intentionally field-centric and should remain reusable across
+terrain-like voxel editors.
 
-The result is a gently rolling terrain surface near Y=32. Generation runs on Web Workers
-via the `"generate"` message type.
+### 17.7 Memory considerations
 
-### 4.4 Surface Nets Mesh Extraction
+Large strokes can generate many patches. The architecture should allow future:
 
-The mesher converts the density field into a triangle mesh using the **Surface Nets**
-algorithm. Surface Nets is a dual contouring method that produces smoother meshes than
-Marching Cubes with lower computational cost than Dual Contouring.
-
-**Phase 1 -- Vertex placement:**
-
-For each voxel cell whose 8 corners have mixed density signs (some positive, some
-negative), the algorithm:
-
-1. Identifies all 12 cube edges that cross zero density.
-2. Linearly interpolates the zero-crossing position along each edge: `t = dA / (dA - dB)`.
-3. Averages all crossing positions to determine the cell's vertex location.
-
-Vertices on chunk boundaries are flagged so they can be excluded from relaxation and
-normal smoothing, preserving cross-chunk seam alignment.
-
-**Phase 2 -- Quad generation:**
-
-For each grid edge where density changes sign, the mesher connects the four cells sharing
-that edge into a quad (two triangles). Winding order is determined by the sign direction
-to ensure outward-facing normals.
-
-**Vertex relaxation** (optional, 2 iterations at factor 0.5):
-
-Interior vertices are averaged toward their 6 face-adjacent neighbors. Boundary vertices
-are pinned (never relaxed) to preserve seams.
-
-### 4.5 Normal Computation
-
-Normals are derived from the density field gradient using **tricubic Catmull-Rom
-interpolation**. The interpolator evaluates a 4x4x4 neighborhood of samples and computes
-analytical partial derivatives via Catmull-Rom basis weights.
-
-The surface normal is `-gradient / ||gradient||` (negated because normals point away from
-solid material, which has positive density).
-
-Normals may be optionally smoothed over multiple iterations using vertex adjacency
-averaging. Boundary normals are pinned during smoothing to preserve seam agreement.
-
-Trilinear and tricubic sampling are never mixed within a single operation. Density
-clamping before gradient evaluation introduces discontinuities and causes starburst
-normal artifacts; it exists only as a debug option and is normally disabled.
-
-### 4.6 Brush Editing
-
-Brushes modify density values within a region defined by shape, radius, and falloff.
-
-**Brush shapes:**
-
-- **Sphere** -- distance from center; `t = dist / radius`
-- **Cube** -- Chebyshev distance; `t = max(|dx|, |dy|, |dz|) / radius`
-- **Cylinder** -- radial + vertical; `t = max(radial/r, |dy|/r)`
-
-**Falloff:** Smoothstep function `1 - t^falloff * (3 - 2*t^falloff)` maps normalized
-distance to intensity.
-
-**Brush modes:**
-
-| Mode    | Behavior                                                   |
-| ------- | ---------------------------------------------------------- |
-| Raise   | Increases density by `delta * falloff`                     |
-| Lower   | Decreases density by `delta * falloff`; clamps at baseline |
-| Smooth  | Blends toward 6-neighbor Laplacian average                 |
-| Roughen | Adds 3D Perlin noise weighted by surface proximity         |
-| Flatten | Drives density toward a target Y-plane set on first stroke |
-
-Brush strength is frame-rate independent: `delta = effectiveStrength(strength) * dt`.
-The effective strength uses a non-linear ramp (`raw + raw^3/45`) so high strength
-values feel progressively more aggressive.
-
-Each brush application produces a set of `TerrainPatch` records containing `{chunkId,
-index, before, after}` values. These patches are the basis for undo/redo.
-
-### 4.7 Edit -> Remesh -> Render Pipeline
-
-The full pipeline from brush stroke to rendered mesh:
-
-1. **`computeBrushPatches()`** -- Calculates density deltas for all affected voxels.
-   Returns patches with before/after values.
-
-2. **`applyFieldValues()`** -- Writes new density values into chunk fields. Increments
-   chunk version counters. Marks the edited chunk and all 26 neighbors as dirty.
-
-3. **`addPendingPatches()`** -- Accumulates patches in the editor store for the duration
-   of the stroke (pointer-down to pointer-up).
-
-4. **`remeshDirtyChunks(budget)`** -- Called each frame by `TerrainUpdater` (budget: 4
-   chunks/frame). For each dirty chunk:
-   a. Syncs halo padding from neighbors.
-   b. Removes from dirty set, adds to inflight set.
-   c. Records the chunk's version at dispatch time.
-   d. Sends field to a worker for mesh extraction.
-
-5. **Worker `extractSurfaceNets()`** -- Runs Surface Nets, computes tricubic normals,
-   optionally relaxes vertices and smooths normals. Returns mesh data via transferable
-   buffers (zero-copy).
-
-6. **`applyMeshResult()`** -- Receives mesh from worker. Checks whether the chunk's
-   current version matches the version at dispatch time. If the chunk was edited while
-   the mesh was in flight (stale), the chunk is re-marked dirty for another pass. Marks
-   the collider as stale.
-
-7. **`flushStaleColliders(budget)`** -- Called each frame (budget: 2 chunks/frame).
-   Rebuilds Rapier trimesh colliders from updated mesh geometry.
-
-8. **React re-render** -- `TerrainChunkMesh` components read the updated `chunkMeshes`
-   map and update Three.js buffer geometry.
-
-### 4.8 Stale Mesh Handling
-
-When a brush edits a chunk that already has an inflight meshing job, the returned mesh
-will be based on outdated density data. The system detects this by comparing the chunk's
-current version against the version recorded at dispatch time. If they differ, the result
-is still applied (to avoid flicker) but the chunk is immediately re-marked dirty so a
-fresh mesh will be generated.
-
-This prevents visible seams that would occur if a stale mesh for one chunk was paired
-with a fresh mesh for its neighbor.
+- patch coalescing
+- run-length compression
+- region compression
+- command memory budgeting
 
 ---
 
-## 5. Editor Interaction Model
+## 18. Undo/Redo System
 
-### 5.1 Camera Control
+### 18.1 Command model
 
-The camera is positioned in 3D space and orbits around a world-space pivot point.
+Undo/redo is command-based. Terrain editing creates a `TerrainPatchCommand` from all
+patches accumulated during a stroke.
 
-**Orbit** (Shift + left drag):
+### 18.2 Stroke lifecycle
 
-- Rotates the camera around the pivot using azimuth (world Y) and elevation (camera right
-  axis) rotations.
-- The pivot position is set to the terrain point under the cursor at drag start.
-- Polar angle is clamped to avoid gimbal lock.
-- Post-release velocity damping provides smooth inertia.
+1. Pointer-down begins a stroke.
+2. Brush applications accumulate pending patches.
+3. Pointer-up commits a command.
+4. Command is pushed onto the undo stack.
+5. Redo stack is cleared on new user action.
 
-**Dolly/Pan** (Ctrl/Cmd + left drag):
+### 18.3 Merge behavior
 
-- Horizontal drag pans camera and pivot along the camera's local X axis.
-- Vertical drag dollies the camera toward/away from the pivot (or anchor point).
-- Movement speed scales with camera-to-target distance.
+For repeated edits to the same sample during a stroke:
 
-**Wheel zoom:**
+- preserve the original `before`
+- preserve the final `after`
 
-- Dollies toward/away from the orbit pivot.
-- Distance clamped to [2, 1000].
+This merge rule is correct and should be stated as an invariant.
 
-**WASD + Q/E keyboard movement:**
+### 18.4 Capacity and budgeting
 
-- WASD translates camera and pivot in the horizontal plane (camera-relative forward/right).
-- Q/E moves vertically.
-- Speed scales with camera elevation.
-- Smooth acceleration and deceleration.
-- Disabled when a text input is focused.
+Current capacity of 100 commands is acceptable for the first phase, but the system should
+be described in terms of memory budget rather than command count over time.
 
-### 5.2 Gesture Routing
+Future extensions may include:
 
-Input is managed by a three-layer system:
+- command byte-size estimation
+- adaptive history truncation
+- snapshot plus delta schemes
 
-1. **`InputManager`** -- Owns all raw DOM event listeners on the canvas. Translates
-   pointer events into typed `PointerInput` values. Handles `setPointerCapture` for
-   reliable drag tracking. Detects mid-drag modifier changes and swaps handlers without
-   requiring a pointer-up/down cycle.
+### 18.5 Future command families
 
-2. **`GestureRouter`** -- Maps modifier state to gesture handlers:
-   - No modifier -> `SculptGesture`
-   - Shift -> `OrbitGesture`
-   - Ctrl/Cmd -> `DollyPanGesture`
+The same command infrastructure should support:
 
-3. **Gesture handlers** -- Each handler implements `begin()`, `move()`, `end()`, and
-   `modifierChanged()`. Handlers can hand off to another handler mid-gesture via the
-   reroute mechanism.
-
-**`SpaceSculptController`** -- Allows spacebar to act as a virtual primary button for
-sculpting, synthesizing pointer events from keyboard input.
-
-### 5.3 Terrain Brushes
-
-Brush parameters are controlled via the Toolbar:
-
-- **Tool:** Raise, Lower, Smooth, Roughen, Flatten
-- **Radius:** 1-16 voxels
-- **Strength:** 0.5-20 voxels/second
-- **Shape:** Sphere, Cube, Cylinder
-- **Falloff:** 0.1-5 (exponent controlling edge softness)
-
-The `SculptGesture` handler calls `applyBrush()` every frame during a drag. Brush
-application is time-scaled by the R3F frame delta (capped at 1/15s to avoid large jumps
-after tab-away or debugger pauses).
-
-### 5.4 Cursor Hit Testing
-
-The brush cursor position is determined by R3F's built-in raycasting against the terrain
-mesh geometry. Pointer events on the `<Terrain>` group update `hoverWorldPos` in the
-session store. The `BrushCursor` component renders a wireframe shape (sphere, cube, or
-cylinder) at the hover position.
-
-Rapier trimesh colliders back the terrain mesh for physics-based hit testing, though the
-primary hover position currently comes from R3F raycasting.
-
-### 5.5 Undo/Redo Model
-
-Undo/redo uses a command pattern:
-
-1. During a brush stroke (pointer-down to pointer-up), all density patches are accumulated
-   in `pendingPatches`.
-
-2. On stroke commit (`commitStroke()`), patches are merged by `(chunkId, index)` key,
-   keeping the original `before` and final `after` values. A `TerrainPatchCommand` is
-   created and recorded on the `UndoStack`.
-
-3. `UndoStack` maintains two stacks (undo/redo) with a capacity of 100 commands. Redo is
-   cleared on any new command. Undo replays the `before` values; redo replays the `after`
-   values.
-
-4. Keyboard shortcuts: Cmd/Ctrl+Z for undo, Cmd/Ctrl+Y for redo.
-
-Commands are designed to be reversible and deterministic. The `UndoStack` notifies the
-editor store of state changes so the UI reflects undo/redo availability.
+- entity creation/deletion
+- entity transforms
+- property changes
+- sculpt edits
+- creature edits
+- brain edits
 
 ---
 
-## 6. Rendering System
+## 19. Input and Gesture System
 
-### 6.1 R3F Scene Structure
+### 19.1 Input architecture
 
-The `Scene` component sets up the R3F Canvas:
+The input layer is split into:
 
-- **Shadows:** `PCFSoftShadowMap`
-- **Camera:** Perspective, FOV 55, position [160, 50, 160], near 0.5, far 1500
-- **Background:** Dark navy (#1a1a2e) with distance fog (250-500 range)
+1. `InputManager`
+2. `GestureRouter`
+3. gesture handlers
 
-Scene children:
+This is a good separation and should remain.
 
-- `<Lighting>` -- Hemisphere, ambient, directional main + fill lights
-- `<Terrain>` -- Group of `<TerrainChunkMesh>` components
-- `<TerrainUpdater>` -- Frame callback driving remesh/collider flush
-- `<BrushCursor>` -- Wireframe brush preview at hover position
-- `<InputHandler>` -- Wires input system into the R3F lifecycle
-- `<VoxelSamplesOverlay>` -- Conditional debug visualizations
+### 19.2 InputManager responsibilities
 
-### 6.2 Lighting
+- own DOM event listeners
+- normalize raw input
+- manage pointer capture
+- track modifier keys
+- forward typed events to the gesture router
 
-| Light            | Color/Config                         | Intensity |
-| ---------------- | ------------------------------------ | --------- |
-| Hemisphere       | Sky #b1c8e0 / Ground #3a3020         | 0.6       |
-| Ambient          | White                                | 0.25      |
-| Directional main | Position [160, 180, 120], shadows    | 1.0       |
-| Directional fill | Position [-80, 100, -60], no shadows | 0.2       |
+### 19.3 GestureRouter responsibilities
 
-Shadow map: 2048x2048, camera bounds -200 to 200, bias -0.0005, normal bias 0.3.
+- choose active gesture handler from current mode + modifiers
+- support gesture handoff during modifier changes
+- keep tool logic out of raw DOM code
 
-### 6.3 Terrain Mesh Rendering
+### 19.4 Gesture handlers
 
-Each chunk's mesh is rendered by a `TerrainChunkMesh` component. It creates Three.js
-`BufferGeometry` with position, normal, and index attributes from the `MeshData` produced
-by workers.
+Current handlers:
 
-**Shading modes:**
+- sculpt
+- orbit
+- dolly-pan
 
-| Mode         | Material                                            |
-| ------------ | --------------------------------------------------- |
-| Default      | `MeshStandardMaterial`, green (#5a8f3c), PBR        |
-| Plain        | `MeshStandardMaterial`, light gray, no flat shading |
-| Normals      | `MeshNormalMaterial` (RGB = normal direction)       |
-| Gradient mag | `MeshBasicMaterial` with vertex colors (grayscale)  |
+Each handler implements:
 
-All materials support wireframe toggle and double-sided rendering. Meshes cast and
-receive shadows.
+- `begin()`
+- `move()`
+- `end()`
+- `modifierChanged()`
 
-### 6.4 Debug Overlays
+### 19.5 Virtual primary action
 
-When enabled via the toolbar, `VoxelSamplesOverlay` renders point clouds for each chunk:
-
-- **Density sign** -- All 38^3 sample points, colored blue (solid) or red (air).
-- **Active cells** -- Amber points at centers of cells where the isosurface passes.
-- **Edge intersections** -- Cyan points at linearly interpolated zero-crossings on cell
-  edges (the raw surface intersection points).
-- **Surface vertices** -- Green points at final mesh vertex positions (post-relaxation).
-
-### 6.5 Frame Budget
-
-`TerrainUpdater` runs at R3F priority -10 (early in the frame) and processes:
-
-- Up to 4 dirty chunk remesh dispatches per frame
-- Up to 2 stale collider rebuilds per frame
-
-This budgeting prevents frame drops during large edits by spreading work across multiple
-frames.
+`SpaceSculptController` allows the spacebar to act as a virtual primary sculpt action.
+This is an implementation convenience and should remain optional at the architecture
+level.
 
 ---
 
-## 7. State Architecture
+## 20. Camera Model
 
-### 7.1 EditorStore
+### 20.1 Current controls
 
-Owns tool and rendering configuration:
+- Shift + left drag -> orbit
+- Ctrl/Cmd + left drag -> dolly-pan
+- wheel -> zoom
+- WASD + Q/E -> free translation
 
-- Active tool (raise/lower/smooth/roughen/flatten)
-- Brush parameters (radius, strength, shape, falloff)
-- Pending patches for the current stroke
-- Flatten target (set on first contact with terrain)
-- Undo/redo state (counts, can-undo/can-redo flags)
-- Render options (wireframe, shading mode, normal smoothing iterations)
-- Debug options (voxel debug mode, density clamping, brush logging)
+### 20.2 Camera state
 
-The editor store also hosts the `UndoStack` instance and exposes `commitStroke()`,
-`undo()`, and `redo()` actions.
+The camera orbits around a world-space pivot.
 
-### 7.2 WorldStore
+The architecture should store:
 
-Owns all terrain and physics data:
+- pivot point
+- yaw / pitch or equivalent orientation
+- distance
+- optional inertial velocity state
 
-- `chunks: Map<string, ChunkData>` -- Density fields keyed by `"cx,cy,cz"`
-- `chunkMeshes: Map<string, ChunkRenderData>` -- Mesh + collider per chunk
-- `dirtyChunks: Set<string>` -- Chunks needing remesh
-- `inflightChunks: Set<string>` -- Chunks with pending worker jobs
-- `staleColliders: Set<string>` -- Chunks needing collider rebuild
-- `densityRange: {min, max}` -- Global density extremes
-- `entities: Record<EntityId, Entity>` -- Entity registry (skeleton for future use)
-- `rapierWorld` / `rapierModule` -- Physics engine references
+### 20.3 Long-term note
 
-Key actions: `initTerrain()`, `applyFieldValues()`, `remeshDirtyChunks()`,
-`flushStaleColliders()`, `markChunkDirty()`.
-
-The world store includes seam debug instrumentation (`seamDebug`) that tracks version
-numbers at mesh dispatch time to detect and log stale mesh results. This is diagnostic
-infrastructure that can be enabled at runtime via browser console.
-
-### 7.3 SessionStore
-
-Owns transient, frame-level state:
-
-- `hoverWorldPos` -- World-space position under the cursor (from R3F raycasting)
-- `isPointerDown` -- Whether the primary button is held
-- `cameraTarget` / `cameraDistance` -- Camera parameters (reserved for future use)
-
-### 7.4 Ownership Boundaries
-
-Each store has exclusive ownership of its domain:
-
-- **EditorStore** never reads or writes chunk data.
-- **WorldStore** never reads brush parameters directly (they are passed in via action
-  parameters).
-- **SessionStore** is written by the input system and read by rendering/input; it holds
-  no terrain or editor state.
-
-The one cross-store dependency is `commitStroke()`, which reads `pendingPatches` from
-the editor store and records a command that will call `WorldStore.applyFieldValues()`
-on undo/redo. The editor store also reads `normalSmoothing` and passes it to the world
-store's meshing actions.
+Camera control should eventually be its own subsystem rather than a side effect of
+session state. Creature editing, object sculpting, and terrain editing may want distinct
+camera defaults while sharing the same underlying controller.
 
 ---
 
-## 8. Worker Pipeline
+## 21. Hit Testing and Cursor Placement
 
-### 8.1 Worker Pool
+### 21.1 Current approach
 
-`TerrainWorkerBridge` maintains a pool of 1-4 Web Workers (capped at
-`navigator.hardwareConcurrency`). Jobs are distributed round-robin.
+Current hover position comes primarily from R3F raycasting against rendered terrain
+geometry. Rapier terrain colliders also exist and may support physics-driven queries.
 
-Each worker runs `terrain.worker.ts`, which handles two message types:
+### 21.2 Architectural guidance
 
-- **`"generate"`** -- Calls `generateChunkField(coord)` and returns the density field.
-- **`"mesh"`** -- Calls `extractSurfaceNets(field, coord, options)` and returns mesh data.
+Hit testing should be treated as its own service with a stable contract:
 
-### 8.2 Message Protocol
+```ts
+type TerrainHit = {
+  worldPos: Vector3Like;
+  normal?: Vector3Like;
+  chunkId?: string;
+};
+```
 
-Requests carry a unique `id` for matching responses. The bridge uses `Promise`-based
-async tracking with `pendingMesh` and `pendingGenerate` maps keyed by request ID.
+### 21.3 Future-proofing
 
-**Zero-copy transfers:** Field and mesh data are sent as transferable `ArrayBuffer`
-objects to avoid GC pressure. The bridge creates a fresh `Float32Array` copy of the field
-before sending to avoid transferring the live chunk field.
+Long term, the system may choose among:
 
-### 8.3 Performance Rationale
+- render mesh raycast
+- physics collider query
+- direct field raymarch / density intersection
 
-Mesh extraction (Surface Nets + tricubic normals + relaxation + normal smoothing) is the
-most expensive per-chunk operation. Running it on workers keeps the main thread free for
-input handling and rendering. The frame-budgeted dispatch (4 chunks/frame) prevents
-worker saturation during large edits.
-
-Field generation at startup also runs on workers to parallelize the initial 256-chunk
-grid construction.
+The rest of the editor should not care which implementation is currently backing hits.
 
 ---
 
-## 9. Testing Strategy
+## 22. Rendering System
 
-The test suite uses Node's built-in test runner (`node:test`) with `tsx` for TypeScript.
-Tests run outside the browser, importing terrain system modules directly.
+### 22.1 Scene contents
 
-### 9.1 Test Infrastructure
+The R3F scene contains:
 
-**Fixtures** provide deterministic density functions:
+- camera and controls
+- lighting
+- terrain chunk meshes
+- brush cursor
+- debug overlays
+- frame-driven update hooks
 
-- `flatPlane(height)` -- Horizontal surface at a given Y level
-- `sphere(center, radius)` -- Sphere of given radius
-- `slopedHill(baseHeight, slopeX, slopeZ)` -- Linearly sloped terrain
-- `tunnel(center, axis, radius, groundHeight)` -- Cylindrical tunnel
+### 22.2 Terrain presentation
 
-**Helpers** provide chunk construction, field filling, mesh vertex queries, and
-approximate equality assertions.
+Each chunk mesh is rendered by a `TerrainChunkMesh` component that consumes current mesh
+data and produces a Three.js `BufferGeometry`.
 
-### 9.2 Test Categories
+### 22.3 Material modes
 
-**Determinism** -- Verifies that identical density fields produce byte-identical meshes
-across multiple runs. Covers flat planes, spheres, and edited fields.
+Current material/debug modes:
 
-**Field continuity** -- Verifies that density values agree at chunk boundaries across
-all three axes, including multi-axis edges and 8-chunk corners. Tests both flat and
-curved (sphere) fields.
+- default terrain shading
+- plain shaded
+- normal visualization
+- gradient magnitude visualization
+- optional wireframe
 
-**Halo synchronization** -- Verifies that editing a chunk and re-syncing halos correctly
-propagates density values to all 26 neighbors. Tests single-axis, multi-axis, and corner
-propagation.
+These are rendering concerns only. They do not affect authoritative terrain data.
 
-**Mesh seam correctness** -- Verifies that vertices at chunk boundaries coincide between
-adjacent chunks. Tests flat planes and spheres across X, Y, and Z boundaries.
+### 22.4 Rendering scalability concerns
 
-**Normal boundary agreement** -- Verifies that normals at co-located boundary vertices
-agree between adjacent chunks. Tests with varying numbers of normal smoothing iterations.
+Per-chunk mesh components are acceptable at current scale. Future larger worlds may need:
 
-**Vertex relaxation seams** -- Verifies that vertex relaxation (position smoothing) does
-not break seam alignment. Tests all three axes with flat planes and curved surfaces.
+- geometry pooling
+- aggressive disposal discipline
+- chunk visibility culling
+- instancing where applicable
+- streaming-aware render registries
 
-**Brush operations** -- Verifies patch generation for all brush modes. Tests chunk
-overlap at boundaries (1, 2, 4, 8 affected chunks). Verifies smooth reduces variation,
-roughen introduces continuous variation, flatten drives toward target, and roughen is
-deterministic.
-
-**Stale mesh detection** -- Demonstrates that meshing a chunk with a stale neighbor field
-produces seams, validating the version-tracking mitigation in the production pipeline.
-
-**Overlap field divergence** -- Verifies that overlap-region field values remain
-consistent during boundary edits, and that overlap vertices align after edits.
-
-### 9.3 Design Invariants Under Test
-
-The test suite is specifically designed to catch:
-
-- **Chunk seam errors** -- Vertices or normals misaligned at boundaries
-- **Halo sync errors** -- Stale padding data producing incorrect mesh near edges
-- **Non-deterministic meshing** -- Any runtime state leaking into mesh output
-- **Gradient discontinuities** -- Normals jumping at boundaries due to sampling errors
-- **Relaxation/smoothing boundary leaks** -- Smoothing operations moving boundary
-  vertices out of alignment
+The spec should acknowledge this explicitly.
 
 ---
 
-## Future Systems
+## 23. Physics System
 
-The following systems are planned but not yet implemented. They represent the long-term
-creative direction of LBB.
+### 23.1 Current role
 
----
+Rapier is currently used for terrain colliders and supports terrain interaction needs.
 
-### F1. Creature Creator
+### 23.2 Separation from terrain data
 
-Inspired by the Spore Creature Creator.
+Physics does not own authoritative terrain state. It consumes mesh-derived collider data.
 
-Creatures are represented as high-resolution voxel fields (finer grid than terrain).
-The body is structured around an articulated spine with a variable number of segments.
-Spline nodes control body thickness along the spine's length.
+### 23.3 Collider update model
 
-**Limbs** attach to spine nodes and contain joints for articulation. **Senses** (eyes,
-ears) and **mouths** attach to specific body regions. **Accessories** can be placed
-freely.
+Terrain colliders should be updated by a dedicated collider system that listens for mesh
+state changes.
 
-The creature editor will share tooling with the sculpt system (brush tools, symmetry,
-voxel-field manipulation).
+### 23.4 Scalability risk
 
----
+Frequent trimesh rebuilds can become expensive. Future options may include:
 
-### F2. Sculpt System
+- cheaper temporary hit representations
+- collider throttling
+- lower-frequency collider updates
+- alternate collider approximations in some modes
 
-A general-purpose sculpting system inspired by Media Molecule's Dreams (PS4).
-
-Users sculpt arbitrary objects -- trees, buildings, props, decorations -- using
-voxel-field editing and node-based shaping tools. Sculpted objects exist as independent
-voxel fields that can be placed in the world.
-
-**Advanced sculpt tools:**
-
-- Mirror sculpting -- edit one side, the other mirrors automatically
-- Kaleidoscope / faceted sculpting -- radial pattern replication
-- Radial symmetry -- N-way rotational duplication of edits
-
-The goal is expressive creation without the tedium of traditional 3D modeling.
+The architecture should not assume trimesh rebuilds remain cheap forever.
 
 ---
 
-### F3. Unified Editing Model
+## 24. State Architecture
 
-The creature creator and sculpt system share a common editing foundation:
+### 24.1 EditorStore
 
-- Voxel-field density editing
-- Brush tools with shape/radius/falloff/strength
-- Symmetry tools (mirror, radial, kaleidoscope)
-- Node manipulation (spine nodes, attachment points)
+Owns:
 
-This unification keeps the codebase smaller and gives users a consistent experience
-across creation modes.
+- active tool
+- brush parameters
+- render options
+- debug options
+- pending stroke patches
+- flatten target
+- undo/redo state
+
+It may issue edit commands, but it does not own terrain fields.
+
+### 24.2 SessionStore
+
+Owns:
+
+- hover world position
+- pointer-down state
+- short-lived gesture/session values
+
+This is transient state. It is not a model store.
+
+### 24.3 WorldStore
+
+Owns world-level registries and orchestration such as:
+
+- loaded chunks
+- current mesh registry
+- worker bridge reference
+- terrain initialization region
+- entity registry
+- physics world reference
+
+### 24.4 Caution on WorldStore scope
+
+`WorldStore` should not become the owner of every terrain algorithm, edit operation, mesh
+scheduler, and physics detail. As the codebase grows, terrain-specific logic should live
+in terrain modules and services.
+
+### 24.5 Cross-store contracts
+
+Allowed examples:
+
+- editor initiates terrain edit with explicit brush parameters
+- session provides hit location to gesture handlers
+- world orchestrates system execution and registries
+
+Avoid hidden reach-through where one store reads another store's private domain as a
+convenience.
 
 ---
 
-### F4. Programmable Entities
+## 25. Testing Strategy
 
-Creatures and sculpted objects will receive **Mindcraft brains** -- visual programs that
-control entity behavior through sensors and actuators.
+### 25.1 Test philosophy
 
-- **Archetypes** define default behaviors shared by a class of entities.
-- **Instances** can override archetype behaviors with custom logic.
-- Brains interact with the simulation through a sensor/actuator API.
+Core terrain behavior must be testable outside the browser. Pure terrain modules should
+be importable in Node-based tests.
 
-The entity system skeleton (`entities.ts`) already defines `EntityId`, `Transform`, and
-stub component slots for render, brain, and physics components.
+### 25.2 Existing test categories
+
+The current categories are good and should remain:
+
+- determinism
+- field continuity
+- halo synchronization
+- mesh seam correctness
+- normal boundary agreement
+- vertex relaxation seam safety
+- brush operation behavior
+- stale mesh detection
+- overlap divergence detection
+
+### 25.3 Additional recommended test categories
+
+Add or formalize tests for:
+
+- explicit chunk state machine transitions
+- worker queue deduplication and stale result policy
+- seeded terrain reproducibility
+- undo/redo replay correctness across multi-chunk strokes
+- serialization readiness of field data
+- large-stroke patch memory behavior
+
+### 25.4 Golden invariants
+
+The spec should call out architectural invariants directly:
+
+- authoritative terrain lives in density fields, not meshes
+- halo data matches neighboring core data before meshing
+- mesh output is deterministic from field input and options
+- undo/redo replays identical field states
+- chunk seam vertices and normals agree at shared boundaries
 
 ---
 
-### F5. Programmable Lighting
+## 26. Current Performance Model
 
-Lighting will become a user-controllable creative tool:
+### 26.1 Present frame budgeting
 
-- Editable lighting environments (sky color, sun direction, fog)
-- Programmable lights that can be placed in the world
-- Brain API access to lighting parameters for dynamic effects
+Current frame loop budgets:
+
+- up to 4 dirty chunk remesh dispatches per frame
+- up to 2 collider rebuilds per frame
+
+This is a practical first-pass budget, not a hard architectural constant.
+
+### 26.2 Required future controls
+
+The scheduler should eventually expose:
+
+- max queued jobs
+- max inflight jobs
+- chunk prioritization policy
+- collider rebuild throttling
+- debug visibility into backlog depth
+
+### 26.3 Performance risks
+
+Known future pressure points:
+
+- field snapshot copying to workers
+- repeated neighbor dirtying during broad edits
+- collider rebuild churn
+- large undo patch memory
+- per-chunk render overhead in large worlds
+
+These are acceptable current tradeoffs but should be named.
 
 ---
 
-### F6. Entity Infrastructure
+## 27. Save/Load and Persistence Readiness
 
-The `commands.ts` file lists planned command types for the undo system:
+Persistence is not implemented yet, but the architecture should support it.
+
+### 27.1 Required persistent concepts
+
+- world seed
+- terrain generation config
+- edited chunk field deltas or full chunk snapshots
+- entity data
+- sculpt object data
+- creature field data
+- editor metadata as needed
+
+### 27.2 Why it matters now
+
+Persistence requirements influence:
+
+- chunk identity
+- deterministic generation
+- storage abstraction
+- command design
+- future collaboration and replay
+
+The spec should acknowledge persistence as a design pressure even if it is out of scope
+for the current phase.
+
+---
+
+## 28. Future System Alignment
+
+The following systems are planned but not yet implemented. They should align to the same
+architectural foundation rather than bolt on ad hoc.
+
+### 28.1 Creature creator
+
+Creatures are expected to use:
+
+- higher-resolution voxel fields
+- articulated spine structures
+- attachable limbs and senses
+- reusable brush tools
+- reversible edit commands
+
+Architectural implication:
+the terrain voxel stack should be generalized where practical, but terrain-specific
+assumptions such as world-scale chunk sizing should not leak into all voxel systems.
+
+### 28.2 Freeform sculpt objects
+
+Sculpt objects should use:
+
+- independent voxel fields
+- shared meshing pipeline patterns
+- symmetry tooling
+- reusable patch and undo infrastructure
+
+Architectural implication:
+voxel editing should become a reusable platform layer, with terrain as one concrete
+consumer.
+
+### 28.3 Unified editing model
+
+Terrain, creatures, and sculpts should share:
+
+- density editing
+- brush infrastructure
+- command history
+- hit testing patterns
+- meshing service patterns
+
+They should not be forced into one monolithic data model if their resolution and runtime
+needs differ.
+
+### 28.4 Programmable entities
+
+Entities will eventually combine:
+
+- transform
+- render binding
+- optional voxel-field binding
+- optional physics binding
+- optional brain binding
+
+The current `entities.ts` skeleton is a placeholder. The spec should avoid implying that
+the entity architecture is already established.
+
+### 28.5 Programmable lighting
+
+Lighting is a future creative system. It should be described as part of world authoring,
+not terrain architecture.
+
+### 28.6 Future undo command families
+
+Planned command types include:
 
 - `EntityCreateCommand`
 - `EntityDeleteCommand`
@@ -750,5 +1225,80 @@ The `commands.ts` file lists planned command types for the undo system:
 - `PropertyChangeCommand`
 - `BrainEditCommand`
 
-These will extend the undo/redo system to cover entity manipulation, property editing,
-and brain programming.
+These belong to the edit history layer and should remain independent of terrain-specific
+command types.
+
+---
+
+## 29. Concrete Current Implementation Notes
+
+This section captures real implementation choices without pretending they are the final
+architecture.
+
+- Terrain currently initializes as a fixed `8 x 4 x 8` chunk grid.
+- The terrain field uses `Float32Array` storage.
+- Halo width is currently 2 samples.
+- Surface Nets is the current mesh extraction algorithm.
+- R3F raycasting currently provides the primary hover position.
+- Rapier terrain colliders are rebuilt from chunk mesh results.
+- Worker jobs currently use generate and mesh message types.
+- Mesh staleness is currently handled by version comparison and re-dirtying.
+- Undo history currently stores merged `TerrainPatchCommand`s per stroke.
+
+These notes should be easy to update as implementation evolves.
+
+---
+
+## 30. Open Questions
+
+The spec should explicitly track unresolved architectural questions.
+
+### 30.1 Terrain scalability
+
+- When should the fixed-grid terrain model become a streaming model?
+- What chunk loading radius and persistence model will be used?
+
+### 30.2 Voxel platform generalization
+
+- Which field operations should be terrain-specific versus shared across all voxel
+  editors?
+- Should creature/sculpt fields use the same chunking model as terrain?
+
+### 30.3 Collider strategy
+
+- At what edit frequency does trimesh rebuild cost become unacceptable?
+- Should collider updates lag behind visual mesh updates under heavy editing?
+
+### 30.4 Hit testing source of truth
+
+- Should terrain hit testing continue using render mesh raycasts?
+- When should field-based or collider-based hit testing take over?
+
+### 30.5 Persistence model
+
+- Will saved worlds store full chunk snapshots, deltas from seed-generated terrain, or a
+  hybrid representation?
+
+### 30.6 Undo memory model
+
+- Should undo capacity be command-count-based, byte-budget-based, or hybrid?
+
+---
+
+## 31. Summary
+
+LBB is currently a terrain-focused 3D voxel editor with a strong deterministic terrain
+pipeline, worker-based mesh extraction, and reversible brush editing. Its next challenge
+is not raw correctness but architectural clarity as it grows beyond terrain.
+
+The intended direction is:
+
+- keep voxel field data authoritative
+- keep meshing deterministic and off-thread
+- keep rendering and physics as consumers of terrain state, not owners of it
+- keep edit history reversible and reusable
+- evolve toward a shared voxel editing platform that can support terrain, creatures,
+  sculpt objects, and programmable entities without collapsing into a single monolithic
+  store or service
+
+That is the architectural target this spec defines.
