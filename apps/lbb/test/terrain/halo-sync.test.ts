@@ -20,7 +20,7 @@ describe("halo sync after edits", () => {
     const right = chunks.get("1,0,0")!;
 
     // Apply a brush edit to the left chunk near the X boundary
-    const brush = { radius: 4, strength: 5 };
+    const brush = { radius: 4, strength: 5, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([CHUNK_SIZE - 3, 16, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
@@ -58,7 +58,7 @@ describe("halo sync after edits", () => {
     const right = chunks.get("1,0,0")!;
 
     // Edit straddles the X boundary
-    const brush = { radius: 5, strength: 3 };
+    const brush = { radius: 5, strength: 3, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([CHUNK_SIZE, 16, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
@@ -92,7 +92,7 @@ describe("halo sync after edits", () => {
     const lower = chunks.get("0,0,0")!;
     const upper = chunks.get("0,1,0")!;
 
-    const brush = { radius: 4, strength: 3 };
+    const brush = { radius: 4, strength: 3, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([16, CHUNK_SIZE - 2, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
@@ -125,7 +125,7 @@ describe("halo sync after edits", () => {
     const front = chunks.get("0,0,0")!;
     const back = chunks.get("0,0,1")!;
 
-    const brush = { radius: 4, strength: 3 };
+    const brush = { radius: 4, strength: 3, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([16, 16, CHUNK_SIZE - 2], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
@@ -158,7 +158,7 @@ describe("halo sync after edits", () => {
     const chunks = makeChunkGrid(allCoords, flatPlane(16));
 
     // Edit right at the 8-chunk corner
-    const brush = { radius: 4, strength: 3 };
+    const brush = { radius: 4, strength: 3, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);

@@ -27,7 +27,7 @@ describe("overlap field divergence after brush on chunk boundary", () => {
     const brushX = boundary + 1;
     const brushY = 1 * CHUNK_SIZE + 16;
     const brushZ = 1 * CHUNK_SIZE + 16;
-    const brush = { radius: 0.8, strength: 5 };
+    const brush = { radius: 0.8, strength: 5, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([brushX, brushY, brushZ], brush, "raise", chunks, 1.0);
 
     assert.ok(patches.length > 0, "brush should produce patches");
@@ -68,7 +68,7 @@ describe("overlap field divergence after brush on chunk boundary", () => {
     const boundary = 2 * CHUNK_SIZE;
     const worldZ = 1 * CHUNK_SIZE + 16;
     const surfaceY = 16 + (boundary + 1) * 0.3 + worldZ * 0.2;
-    const brush = { radius: 0.8, strength: 8 };
+    const brush = { radius: 0.8, strength: 8, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([boundary + 1, surfaceY, worldZ], brush, "lower", chunks, 1.0);
 
     for (const p of patches) {

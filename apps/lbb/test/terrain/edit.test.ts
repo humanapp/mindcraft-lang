@@ -25,7 +25,7 @@ describe("edit propagation", () => {
   test("brush edit at chunk center touches only one chunk", () => {
     const chunks = makeEditGrid();
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 3, strength: 1 };
+    const brush = { radius: 3, strength: 1, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "raise", chunks, 1.0);
     const affected = affectedChunkIds(patches);
 
@@ -37,7 +37,7 @@ describe("edit propagation", () => {
   test("brush edit near X face boundary touches two chunks", () => {
     const chunks = makeEditGrid();
     const center: [number, number, number] = [CHUNK_SIZE, 16, 16];
-    const brush = { radius: 3, strength: 1 };
+    const brush = { radius: 3, strength: 1, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "raise", chunks, 1.0);
     const affected = affectedChunkIds(patches);
 
@@ -51,7 +51,7 @@ describe("edit propagation", () => {
     const chunks = makeEditGrid();
     // Position at the edge where X and Y boundaries meet
     const center: [number, number, number] = [CHUNK_SIZE, CHUNK_SIZE, 16];
-    const brush = { radius: 3, strength: 1 };
+    const brush = { radius: 3, strength: 1, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "raise", chunks, 1.0);
     const affected = affectedChunkIds(patches);
 
@@ -66,7 +66,7 @@ describe("edit propagation", () => {
     const chunks = makeEditGrid();
     // Position at the corner where all three boundaries meet
     const center: [number, number, number] = [CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE];
-    const brush = { radius: 4, strength: 1 };
+    const brush = { radius: 4, strength: 1, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "raise", chunks, 1.0);
     const affected = affectedChunkIds(patches);
 
@@ -77,7 +77,7 @@ describe("edit propagation", () => {
   test("brush patches have valid before/after values", () => {
     const chunks = makeEditGrid();
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 3, strength: 1 };
+    const brush = { radius: 3, strength: 1, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "raise", chunks, 1.0);
 
     for (const patch of patches) {
@@ -94,7 +94,7 @@ describe("edit propagation", () => {
   test("lowering brush decreases density", () => {
     const chunks = makeEditGrid();
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 3, strength: 1 };
+    const brush = { radius: 3, strength: 1, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "lower", chunks, 1.0);
 
     for (const patch of patches) {
@@ -107,7 +107,7 @@ describe("edit chunk counting", () => {
   test("small brush produces expected patch count range", () => {
     const chunks = makeEditGrid();
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 2, strength: 1 };
+    const brush = { radius: 2, strength: 1, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "raise", chunks, 1.0);
 
     // A sphere of radius 2 contains roughly (4/3)*pi*8 ~ 33 voxels
@@ -121,7 +121,7 @@ describe("smooth brush", () => {
     const chunks = makeChunkGrid([{ cx: 0, cy: 0, cz: 0 }], slopedHill(16, 0.5, 0.3));
 
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 4, strength: 5 };
+    const brush = { radius: 4, strength: 5, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "smooth", chunks, 1.0);
 
     assert.ok(patches.length > 0, "smooth should produce patches");
@@ -156,7 +156,7 @@ describe("smooth brush", () => {
     const chunks = makeChunkGrid([{ cx: 0, cy: 0, cz: 0 }], flatPlane(16));
 
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 3, strength: 5 };
+    const brush = { radius: 3, strength: 5, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "smooth", chunks, 1.0);
 
     for (const p of patches) {
@@ -171,7 +171,7 @@ describe("roughen brush", () => {
     const chunks = makeChunkGrid([{ cx: 0, cy: 0, cz: 0 }], flatPlane(16));
 
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 4, strength: 3 };
+    const brush = { radius: 4, strength: 3, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "roughen", chunks, 1.0);
 
     assert.ok(patches.length > 0, "roughen should produce patches");
@@ -192,7 +192,7 @@ describe("roughen brush", () => {
     const chunks = makeChunkGrid([{ cx: 0, cy: 0, cz: 0 }], flatPlane(16));
 
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 6, strength: 3 };
+    const brush = { radius: 6, strength: 3, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "roughen", chunks, 1.0);
 
     const deltaByIndex = new Map<number, number>();
@@ -223,7 +223,7 @@ describe("roughen brush", () => {
     const chunks2 = makeChunkGrid([{ cx: 0, cy: 0, cz: 0 }], flatPlane(16));
 
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 3, strength: 2 };
+    const brush = { radius: 3, strength: 2, shape: "sphere" as const, falloff: 1 };
     const patches1 = computeBrushPatches(center, brush, "roughen", chunks1, 1.0);
     const patches2 = computeBrushPatches(center, brush, "roughen", chunks2, 1.0);
 
@@ -240,7 +240,7 @@ describe("flatten brush", () => {
 
     const targetHeight = 16;
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 4, strength: 10 };
+    const brush = { radius: 4, strength: 10, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "flatten", chunks, 1.0, targetHeight);
 
     assert.ok(patches.length > 0, "flatten should produce patches");
@@ -261,7 +261,7 @@ describe("flatten brush", () => {
     const chunks = makeChunkGrid([{ cx: 0, cy: 0, cz: 0 }], flatPlane(16));
 
     const center: [number, number, number] = [16, 16, 16];
-    const brush = { radius: 3, strength: 5 };
+    const brush = { radius: 3, strength: 5, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches(center, brush, "flatten", chunks, 1.0, 16);
 
     for (const p of patches) {

@@ -22,7 +22,7 @@ describe("edge/corner halo sync after edits", () => {
       flatPlane(16)
     );
 
-    const brush = { radius: 4, strength: 5 };
+    const brush = { radius: 4, strength: 5, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([CHUNK_SIZE - 1, CHUNK_SIZE - 1, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
@@ -68,7 +68,7 @@ describe("edge/corner halo sync after edits", () => {
     }
     const chunks = makeChunkGrid(allCoords, flatPlane(16));
 
-    const brush = { radius: 4, strength: 5 };
+    const brush = { radius: 4, strength: 5, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([CHUNK_SIZE - 1, CHUNK_SIZE - 1, CHUNK_SIZE - 1], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
@@ -118,7 +118,7 @@ describe("edge/corner halo sync after edits", () => {
       flatPlane(CHUNK_SIZE - 2)
     );
 
-    const brush = { radius: 6, strength: 8 };
+    const brush = { radius: 6, strength: 8, shape: "sphere" as const, falloff: 1 };
     const patches = computeBrushPatches([CHUNK_SIZE, CHUNK_SIZE, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
