@@ -1,10 +1,10 @@
 import { create } from "zustand";
-import type { BrushParams, BrushShape, TerrainPatch } from "../world/terrain/edit";
+import type { BrushMode, BrushParams, BrushShape, TerrainPatch } from "../world/terrain/edit";
 import { useWorldStore } from "../world/world-store";
 import { TerrainPatchCommand } from "./commands";
 import { UndoStack } from "./undo-stack";
 
-export type ToolType = "raise" | "lower";
+export type ToolType = BrushMode;
 
 export type VoxelDebugMode = "off" | "active-cells" | "edge-intersections" | "surface-vertices" | "density-sign";
 
@@ -23,6 +23,7 @@ export interface EditorState {
 
   // In-progress stroke
   pendingPatches: TerrainPatch[];
+  flattenTarget: number | null;
 
   // Render options
   wireframe: boolean;
@@ -39,6 +40,7 @@ export interface EditorState {
   setBrushShape: (shape: BrushShape) => void;
   setBrushFalloff: (falloff: number) => void;
   addPendingPatches: (patches: TerrainPatch[]) => void;
+  setFlattenTarget: (target: number | null) => void;
   commitStroke: () => void;
   cancelStroke: () => void;
   undo: () => void;
@@ -75,6 +77,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     redoCount: 0,
 
     pendingPatches: [],
+    flattenTarget: null,
 
     wireframe: false,
     terrainShading: "default",
@@ -98,6 +101,8 @@ export const useEditorStore = create<EditorState>((set, get) => {
       set((s) => ({ pendingPatches: [...s.pendingPatches, ...patches] }));
     },
 
+    setFlattenTarget: (target) => set({ flattenTarget: target }),
+
     commitStroke: () => {
       const { pendingPatches } = get();
       if (pendingPatches.length === 0) return;
@@ -120,11 +125,11 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const { densityRange } = useWorldStore.getState();
       console.log(`[brush] density range: [${densityRange.min.toFixed(4)}, ${densityRange.max.toFixed(4)}]`);
 
-      set({ pendingPatches: [] });
+      set({ pendingPatches: [], flattenTarget: null });
     },
 
     cancelStroke: () => {
-      set({ pendingPatches: [] });
+      set({ pendingPatches: [], flattenTarget: null });
     },
 
     undo: () => undoStack.undo(),

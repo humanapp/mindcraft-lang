@@ -2,15 +2,8 @@ import { Button, cn, Slider } from "@mindcraft-lang/ui";
 import type { ReactNode } from "react";
 import type { TerrainShadingMode, ToolType, VoxelDebugMode } from "../editor/editor-store";
 import { useEditorStore } from "../editor/editor-store";
-import type { BrushShape } from "../world/terrain/edit";
+import type { BrushParams, BrushShape } from "../world/terrain/edit";
 import { useWorldStore } from "../world/world-store";
-
-type BrushParams = {
-  radius: number;
-  strength: number;
-  falloff: number;
-  shape: BrushShape;
-};
 
 function Panel({ children }: { children: ReactNode }) {
   return (
@@ -87,6 +80,9 @@ function ToolPanel({ activeTool, setActiveTool }: { activeTool: ToolType; setAct
   const tools: { id: ToolType; label: string }[] = [
     { id: "raise", label: "Raise" },
     { id: "lower", label: "Lower" },
+    { id: "smooth", label: "Smooth" },
+    { id: "roughen", label: "Roughen" },
+    { id: "flatten", label: "Flatten" },
   ];
 
   return (
@@ -144,8 +140,8 @@ function BrushPanel({
       />
       <SliderField
         label="Falloff"
-        value={brush.falloff}
-        displayValue={brush.falloff.toFixed(1)}
+        value={brush.falloff ?? 1}
+        displayValue={(brush.falloff ?? 1).toFixed(1)}
         min={0.1}
         max={5}
         step={0.1}
@@ -156,7 +152,7 @@ function BrushPanel({
         {(["sphere", "cube", "cylinder"] as const).map((s) => (
           <Button
             key={s}
-            variant={brush.shape === s ? "default" : "secondary"}
+            variant={(brush.shape ?? "sphere") === s ? "default" : "secondary"}
             size="sm"
             onClick={() => setBrushShape(s)}
           >

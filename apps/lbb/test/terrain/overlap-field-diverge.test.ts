@@ -28,7 +28,7 @@ describe("overlap field divergence after brush on chunk boundary", () => {
     const brushY = 1 * CHUNK_SIZE + 16;
     const brushZ = 1 * CHUNK_SIZE + 16;
     const brush = { radius: 0.8, strength: 5 };
-    const patches = computeBrushPatches([brushX, brushY, brushZ], brush, true, chunks, 1.0);
+    const patches = computeBrushPatches([brushX, brushY, brushZ], brush, "raise", chunks, 1.0);
 
     assert.ok(patches.length > 0, "brush should produce patches");
 
@@ -57,8 +57,8 @@ describe("overlap field divergence after brush on chunk boundary", () => {
 
     assert.ok(
       Math.abs(valA - valB) < 1e-6,
-      `Overlap core samples at world x=${worldX65} diverged: ` +
-        `A.field=${valA.toFixed(6)} B.field=${valB.toFixed(6)} diff=${Math.abs(valA - valB).toExponential(3)}`
+      `Overlap core samples at world x=${worldX65} should agree: ` +
+        `A.field=${valA} B.field=${valB} diff=${Math.abs(valA - valB)}`
     );
   });
 
@@ -69,7 +69,7 @@ describe("overlap field divergence after brush on chunk boundary", () => {
     const worldZ = 1 * CHUNK_SIZE + 16;
     const surfaceY = 16 + (boundary + 1) * 0.3 + worldZ * 0.2;
     const brush = { radius: 0.8, strength: 8 };
-    const patches = computeBrushPatches([boundary + 1, surfaceY, worldZ], brush, false, chunks, 1.0);
+    const patches = computeBrushPatches([boundary + 1, surfaceY, worldZ], brush, "lower", chunks, 1.0);
 
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);

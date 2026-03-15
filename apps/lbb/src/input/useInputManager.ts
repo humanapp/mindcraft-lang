@@ -39,16 +39,22 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
     const sculpt = new SculptGesture(
       {
         applyBrush: (worldPos, dt) => {
-          const { brush, activeTool, addPendingPatches } = useEditorStore.getState();
+          const { brush, activeTool, addPendingPatches, setFlattenTarget } = useEditorStore.getState();
           const { chunks, applyFieldValues } = useWorldStore.getState();
           const clamp = useEditorStore.getState().clampDensity;
           const debug = useEditorStore.getState().debugBrush;
+          let { flattenTarget } = useEditorStore.getState();
+          if (activeTool === "flatten" && flattenTarget === null) {
+            flattenTarget = worldPos[1];
+            setFlattenTarget(flattenTarget);
+          }
           const patches = computeBrushPatches(
             [worldPos[0], worldPos[1], worldPos[2]],
             brush,
-            activeTool === "raise",
+            activeTool,
             chunks,
             dt,
+            activeTool === "flatten" ? (flattenTarget ?? undefined) : undefined,
             debug
           );
           if (patches.length === 0) return;

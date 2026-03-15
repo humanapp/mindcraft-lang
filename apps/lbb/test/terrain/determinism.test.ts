@@ -58,7 +58,7 @@ describe("deterministic mesh output", () => {
 
       // Apply a brush edit
       const brush = { radius: 4, strength: 2 };
-      const patches = computeBrushPatches([CHUNK_SIZE - 2, 16, 16], brush, true, chunks, 0.5);
+      const patches = computeBrushPatches([CHUNK_SIZE - 2, 16, 16], brush, "raise", chunks, 0.5);
       for (const p of patches) {
         const chunk = chunks.get(p.chunkId);
         if (chunk) chunk.field[p.index] = p.after;

@@ -21,7 +21,7 @@ describe("halo sync after edits", () => {
 
     // Apply a brush edit to the left chunk near the X boundary
     const brush = { radius: 4, strength: 5 };
-    const patches = computeBrushPatches([CHUNK_SIZE - 3, 16, 16], brush, true, chunks, 1.0);
+    const patches = computeBrushPatches([CHUNK_SIZE - 3, 16, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
       if (chunk) chunk.field[p.index] = p.after;
@@ -59,7 +59,7 @@ describe("halo sync after edits", () => {
 
     // Edit straddles the X boundary
     const brush = { radius: 5, strength: 3 };
-    const patches = computeBrushPatches([CHUNK_SIZE, 16, 16], brush, true, chunks, 1.0);
+    const patches = computeBrushPatches([CHUNK_SIZE, 16, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
       if (chunk) chunk.field[p.index] = p.after;
@@ -93,7 +93,7 @@ describe("halo sync after edits", () => {
     const upper = chunks.get("0,1,0")!;
 
     const brush = { radius: 4, strength: 3 };
-    const patches = computeBrushPatches([16, CHUNK_SIZE - 2, 16], brush, true, chunks, 1.0);
+    const patches = computeBrushPatches([16, CHUNK_SIZE - 2, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
       if (chunk) chunk.field[p.index] = p.after;
@@ -126,7 +126,7 @@ describe("halo sync after edits", () => {
     const back = chunks.get("0,0,1")!;
 
     const brush = { radius: 4, strength: 3 };
-    const patches = computeBrushPatches([16, 16, CHUNK_SIZE - 2], brush, true, chunks, 1.0);
+    const patches = computeBrushPatches([16, 16, CHUNK_SIZE - 2], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
       if (chunk) chunk.field[p.index] = p.after;
@@ -159,7 +159,7 @@ describe("halo sync after edits", () => {
 
     // Edit right at the 8-chunk corner
     const brush = { radius: 4, strength: 3 };
-    const patches = computeBrushPatches([CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE], brush, true, chunks, 1.0);
+    const patches = computeBrushPatches([CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
       if (chunk) chunk.field[p.index] = p.after;
