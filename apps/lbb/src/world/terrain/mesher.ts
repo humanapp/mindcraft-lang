@@ -73,21 +73,15 @@ function sampleFieldTrilinear(field: Float32Array, x: number, y: number, z: numb
   );
 }
 
-function catmullRomWeights(t: number, out: Float64Array): void {
+function catmullRomWeights(t: number): [number, number, number, number] {
   const t2 = t * t;
   const t3 = t2 * t;
-  out[0] = 0.5 * (-t3 + 2 * t2 - t);
-  out[1] = 0.5 * (3 * t3 - 5 * t2 + 2);
-  out[2] = 0.5 * (-3 * t3 + 4 * t2 + t);
-  out[3] = 0.5 * (t3 - t2);
+  return [0.5 * (-t3 + 2 * t2 - t), 0.5 * (3 * t3 - 5 * t2 + 2), 0.5 * (-3 * t3 + 4 * t2 + t), 0.5 * (t3 - t2)];
 }
 
-function catmullRomDerivWeights(t: number, out: Float64Array): void {
+function catmullRomDerivWeights(t: number): [number, number, number, number] {
   const t2 = t * t;
-  out[0] = 0.5 * (-3 * t2 + 4 * t - 1);
-  out[1] = 0.5 * (9 * t2 - 10 * t);
-  out[2] = 0.5 * (-9 * t2 + 8 * t + 1);
-  out[3] = 0.5 * (3 * t2 - 2 * t);
+  return [0.5 * (-3 * t2 + 4 * t - 1), 0.5 * (9 * t2 - 10 * t), 0.5 * (-9 * t2 + 8 * t + 1), 0.5 * (3 * t2 - 2 * t)];
 }
 
 function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: number, gradOut: Float64Array): void {
@@ -102,19 +96,19 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
   const ty = y - y0;
   const tz = z - z0;
 
-  const wx = new Float64Array(4);
-  const wy = new Float64Array(4);
-  const wz = new Float64Array(4);
-  const dwx = new Float64Array(4);
-  const dwy = new Float64Array(4);
-  const dwz = new Float64Array(4);
+  const [wx0, wx1, wx2, wx3] = catmullRomWeights(tx);
+  const [wy0, wy1, wy2, wy3] = catmullRomWeights(ty);
+  const [wz0, wz1, wz2, wz3] = catmullRomWeights(tz);
+  const [dwx0, dwx1, dwx2, dwx3] = catmullRomDerivWeights(tx);
+  const [dwy0, dwy1, dwy2, dwy3] = catmullRomDerivWeights(ty);
+  const [dwz0, dwz1, dwz2, dwz3] = catmullRomDerivWeights(tz);
 
-  catmullRomWeights(tx, wx);
-  catmullRomWeights(ty, wy);
-  catmullRomWeights(tz, wz);
-  catmullRomDerivWeights(tx, dwx);
-  catmullRomDerivWeights(ty, dwy);
-  catmullRomDerivWeights(tz, dwz);
+  const wxArr = [wx0, wx1, wx2, wx3];
+  const wyArr = [wy0, wy1, wy2, wy3];
+  const wzArr = [wz0, wz1, wz2, wz3];
+  const dwxArr = [dwx0, dwx1, dwx2, dwx3];
+  const dwyArr = [dwy0, dwy1, dwy2, dwy3];
+  const dwzArr = [dwz0, dwz1, dwz2, dwz3];
 
   let gx = 0;
   let gy = 0;
@@ -125,15 +119,15 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
     const sz = Math.min(Math.max(z0 - 1 + k, 0), maxIdx);
     for (let j = 0; j < 4; j++) {
       const sy = Math.min(Math.max(y0 - 1 + j, 0), maxIdx);
-      const wyz = wy[j] * wz[k];
-      const dwyz = dwy[j] * wz[k];
-      const wydz = wy[j] * dwz[k];
+      const wyz = wyArr[j] * wzArr[k];
+      const dwyz = dwyArr[j] * wzArr[k];
+      const wydz = wyArr[j] * dwzArr[k];
       for (let i = 0; i < 4; i++) {
         const sx = Math.min(Math.max(x0 - 1 + i, 0), maxIdx);
         const val = field[sampleIndex(sx, sy, sz)];
-        gx += val * dwx[i] * wyz;
-        gy += val * wx[i] * dwyz;
-        gz += val * wx[i] * wydz;
+        gx += val * dwxArr[i] * wyz;
+        gy += val * wxArr[i] * dwyz;
+        gz += val * wxArr[i] * wydz;
       }
     }
   }
