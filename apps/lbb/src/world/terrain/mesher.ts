@@ -103,32 +103,34 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
   const [dwy0, dwy1, dwy2, dwy3] = catmullRomDerivWeights(ty);
   const [dwz0, dwz1, dwz2, dwz3] = catmullRomDerivWeights(tz);
 
-  const wxArr = [wx0, wx1, wx2, wx3];
-  const wyArr = [wy0, wy1, wy2, wy3];
-  const wzArr = [wz0, wz1, wz2, wz3];
-  const dwxArr = [dwx0, dwx1, dwx2, dwx3];
-  const dwyArr = [dwy0, dwy1, dwy2, dwy3];
-  const dwzArr = [dwz0, dwz1, dwz2, dwz3];
-
   let gx = 0;
   let gy = 0;
   let gz = 0;
 
   const maxIdx = SAMPLES - 1;
+  const wyA = [wy0, wy1, wy2, wy3] as const;
+  const wzA = [wz0, wz1, wz2, wz3] as const;
+  const dwyA = [dwy0, dwy1, dwy2, dwy3] as const;
+  const dwzA = [dwz0, dwz1, dwz2, dwz3] as const;
   for (let k = 0; k < 4; k++) {
     const sz = Math.min(Math.max(z0 - 1 + k, 0), maxIdx);
     for (let j = 0; j < 4; j++) {
       const sy = Math.min(Math.max(y0 - 1 + j, 0), maxIdx);
-      const wyz = wyArr[j] * wzArr[k];
-      const dwyz = dwyArr[j] * wzArr[k];
-      const wydz = wyArr[j] * dwzArr[k];
-      for (let i = 0; i < 4; i++) {
-        const sx = Math.min(Math.max(x0 - 1 + i, 0), maxIdx);
-        const val = field[sampleIndex(sx, sy, sz)];
-        gx += val * dwxArr[i] * wyz;
-        gy += val * wxArr[i] * dwyz;
-        gz += val * wxArr[i] * wydz;
-      }
+      const wyz = wyA[j] * wzA[k];
+      const dwyz = dwyA[j] * wzA[k];
+      const wydz = wyA[j] * dwzA[k];
+
+      const s0 = Math.min(Math.max(x0 - 1, 0), maxIdx);
+      const s1 = Math.min(Math.max(x0, 0), maxIdx);
+      const s2 = Math.min(Math.max(x0 + 1, 0), maxIdx);
+      const s3 = Math.min(Math.max(x0 + 2, 0), maxIdx);
+      const v0 = field[sampleIndex(s0, sy, sz)];
+      const v1 = field[sampleIndex(s1, sy, sz)];
+      const v2 = field[sampleIndex(s2, sy, sz)];
+      const v3 = field[sampleIndex(s3, sy, sz)];
+      gx += v0 * dwx0 * wyz + v1 * dwx1 * wyz + v2 * dwx2 * wyz + v3 * dwx3 * wyz;
+      gy += v0 * wx0 * dwyz + v1 * wx1 * dwyz + v2 * wx2 * dwyz + v3 * wx3 * dwyz;
+      gz += v0 * wx0 * wydz + v1 * wx1 * wydz + v2 * wx2 * wydz + v3 * wx3 * wydz;
     }
   }
 
@@ -168,6 +170,15 @@ export interface MesherOptions {
   readonly normalSmoothingIterations?: number;
   readonly vertexRelaxation?: boolean;
 }
+
+const RELAX_NEIGHBOR_OFFSETS: readonly (readonly [number, number, number])[] = [
+  [-1, 0, 0],
+  [1, 0, 0],
+  [0, -1, 0],
+  [0, 1, 0],
+  [0, 0, -1],
+  [0, 0, 1],
+];
 
 /**
  * Surface Nets isosurface extraction.
@@ -252,14 +263,6 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
   // Vertex relaxation: smooth positions by averaging with grid neighbors
   const RELAX_ITERATIONS = vertexRelaxation ? 2 : 0;
   const RELAX_FACTOR = 0.5;
-  const neighborOffsets: [number, number, number][] = [
-    [-1, 0, 0],
-    [1, 0, 0],
-    [0, -1, 0],
-    [0, 1, 0],
-    [0, 0, -1],
-    [0, 0, 1],
-  ];
 
   for (let iter = 0; iter < RELAX_ITERATIONS; iter++) {
     const newPos = new Float32Array(vertCount * 3);
@@ -279,7 +282,7 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
           let avgZ = 0;
           let nCount = 0;
 
-          for (const [dx, dy, dz] of neighborOffsets) {
+          for (const [dx, dy, dz] of RELAX_NEIGHBOR_OFFSETS) {
             const nx = cx + dx;
             const ny = cy + dy;
             const nz = cz + dz;
