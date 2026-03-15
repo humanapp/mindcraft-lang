@@ -114,31 +114,28 @@ terrain/ Terrain unit tests (node:test + tsx)
 
 ### Subsystem Diagram
 
-```
+```mermaid
+flowchart TD
+    UI["Toolbar / Inspector\n(React UI)"]
+    Editor["EditorStore\n(tools, brush, undo, render)"]
+    Session["SessionStore\n(hover pos, pointer state)"]
+    World["WorldStore\n(chunks, meshes, physics, dirty)"]
+    Input["InputManager + GestureRouter"]
+    Gestures["SculptGesture\nOrbitGesture\nDollyPanGesture"]
+    Bridge["TerrainWorkerBridge"]
+    Workers["Web Workers\n(mesh extraction)"]
+    Scene["R3F Scene\n(TerrainChunkMesh, BrushCursor,\nLighting, Debug Overlays)"]
 
-Toolbar / Inspector (React UI)
-|
-| reads/writes
-v
-EditorStore <--------- SessionStore
-(tools, brush, (hover pos,
-undo, render) pointer state)
-| ^
-| commitStroke | setHoverWorldPos
-v |
-WorldStore <------ InputManager + GestureRouter
-(chunks, meshes, |
-physics, dirty) | sculpt / orbit / dolly-pan
-| v
-| remeshDirtyChunks SculptGesture, OrbitGesture, DollyPanGesture
-v
-TerrainWorkerBridge -----> Web Workers (mesh extraction)
-|
-| applyMeshResult
-v
-R3F Scene
-(TerrainChunkMesh, BrushCursor, Lighting, Debug Overlays)
-
+    UI -- "reads/writes" --> Editor
+    Session -- "hover state" --> Editor
+    Editor -- "commitStroke" --> World
+    Input -- "sculpt / orbit / dolly-pan" --> Gestures
+    Gestures -- "applyBrush" --> World
+    Input -- "setHoverWorldPos" --> Session
+    World -- "remeshDirtyChunks" --> Bridge
+    Bridge -- "postMessage" --> Workers
+    Workers -- "applyMeshResult" --> World
+    World -- "chunkMeshes" --> Scene
 ```
 
 ### Initialization
