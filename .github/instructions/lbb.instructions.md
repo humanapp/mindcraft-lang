@@ -7,8 +7,17 @@ applyTo: "apps/lbb/**"
 # LBB App -- Rules & Patterns
 
 The LBB app (`apps/lbb/`) is a **Vite + React + React-Three-Fiber** 3D terrain editor.
-It renders voxel-based terrain that users sculpt with raise/lower brushes. Physics use
-Rapier 3D. Terrain meshing runs in a Web Worker pool.
+
+This is a **long-lived, production-quality codebase**, not a prototype. Changes should
+prioritize **clarity, robustness, and maintainability**.
+
+Guidelines:
+
+- Prefer **clean architectural fixes** over quick patches.
+- Integrate changes into existing systems (terrain pipeline, input system, stores).
+- Avoid one-off hacks or parallel logic paths.
+- Preserve system invariants (terrain seams, determinism, state ownership).
+- Keep implementations **simple, explicit, and stable**.
 
 ## Tech Stack
 
@@ -48,94 +57,108 @@ test/
 
 ## Terrain System (`src/world/terrain/`)
 
-The core of the app. Key files:
+Core subsystem of the editor.
 
-- `types.ts` -- Constants (CHUNK_SIZE=32, FIELD_PAD=2, SAMPLES=38), ChunkData, MeshData,
-  sampleIndex()
-- `generator.ts` -- Procedural density field via fBm noise. Density = height - wy (positive
-  = solid).
-- `field.ts` -- Low-level field helpers: getSample, setSample, computeGradient (central
-  differences, used only in tests)
-- `mesher.ts` -- Surface Nets isosurface extraction + tricubic gradient normals. Two-phase
-  algorithm: Phase 1 computes cell vertices, Phase 2 emits quads. Includes optional vertex
-  relaxation and normal smoothing.
-- `edit.ts` -- Brush sculpting: computeBrushPatches() with smoothstep falloff
-- `halo.ts` -- syncChunkPadding() copies padding from 26 neighbors for gradient continuity
-- `collider.ts` -- Rapier trimesh collider from MeshData
-- `terrain.worker.ts` -- Web Worker entry: handles "mesh" and "generate" requests
-- `terrain-worker-bridge.ts` -- Worker pool (up to 4 workers), round-robin dispatch
+Key files:
+
+- `types.ts` -- constants (CHUNK_SIZE=32, FIELD_PAD=2, SAMPLES=38), ChunkData, MeshData
+- `generator.ts` -- procedural density field via fBm noise
+- `field.ts` -- density sampling helpers
+- `mesher.ts` -- Surface Nets extraction + tricubic gradient normals
+- `edit.ts` -- brush sculpting
+- `halo.ts` -- padding sync across neighbors
+- `collider.ts` -- Rapier trimesh collider
+- `terrain.worker.ts` -- worker entry
+- `terrain-worker-bridge.ts` -- worker pool
 
 ### Key Constants
 
-- `CHUNK_SIZE = 32` -- voxels per chunk side
-- `FIELD_PAD = 2` -- halo padding for tricubic gradient sampling
-- `SAMPLES = 38` -- CHUNK_SIZE + 2 + 2\*FIELD_PAD (total samples per axis)
-- Density convention: positive = solid, negative = air. Surface at density = 0.
+- `CHUNK_SIZE = 32`
+- `FIELD_PAD = 2`
+- `SAMPLES = 38`
+- Density: **positive = solid**, **negative = air**
+- Surface at **density = 0**
 
 ### Normal Computation
 
-Normals are computed from the **density gradient** using Catmull-Rom tricubic interpolation
-(`sampleGradientTricubic()` in mesher.ts). The gradient is analytically derived from the
-interpolation weights and their derivatives. Normal = -gradient (normalized). Boundary
-vertices are excluded from normal smoothing to preserve chunk-seam consistency.
+Normals come from the **density gradient** using tricubic Catmull-Rom interpolation
+(`sampleGradientTricubic()`).
 
-Do NOT mix trilinear and tricubic sampling -- inconsistency causes visible shading artifacts.
+Normal = `-gradient` normalized.
+
+Never mix trilinear and tricubic sampling.
 
 ### Density Clamping Caveat
 
-Clamping density values (e.g. to [-1, 1]) before gradient computation creates
-discontinuities that produce starburst/pinwheel normal artifacts. The `clampDensity` toggle
-exists as a debug option but should default to OFF.
+Clamping density values before gradient evaluation introduces discontinuities and causes
+**starburst/pinwheel normal artifacts**.
+
+`clampDensity` exists only as a debug option and should normally remain **OFF**.
 
 ### Meshing Pipeline
 
-1. `applyFieldValues()` writes density patches, marks affected + neighbor chunks dirty
-2. `remeshDirtyChunks()` (called per-frame) syncs halo, sends field to worker
-3. Worker runs `extractSurfaceNets()`, transfers MeshData back
+1. `applyFieldValues()` writes density patches, marks chunks dirty
+2. `remeshDirtyChunks()` syncs halo and dispatches worker jobs
+3. Worker runs `extractSurfaceNets()`
 4. `applyMeshResult()` stores mesh, marks collider stale
 5. `flushStaleColliders()` rebuilds Rapier trimesh colliders
 
 ### Halo Sync
 
-`syncChunkPadding()` must be called before meshing a chunk. It copies the padding region
-from all 26 neighbors. The world-store calls it in `remeshChunk()` and
-`remeshDirtyChunks()`. After brush edits, all affected chunks AND their neighbors are
-marked dirty.
+`syncChunkPadding()` copies padding from **26 neighbors** before meshing.
+
+After brush edits, both **affected chunks and neighbors** must be marked dirty.
 
 ## Input System
 
-Gesture-based: `GestureRouter` maps pointer events to handlers based on button + modifiers:
+Gesture-based via `GestureRouter`.
 
-- Left-click -> SculptGesture (raise/lower terrain)
-- Shift + left-click -> OrbitGesture (camera orbit)
-- Ctrl/Cmd + left-click -> DollyPanGesture (camera dolly/pan)
+- Left-click -> `SculptGesture`
+- Shift + left-click -> `OrbitGesture`
+- Ctrl/Cmd + left-click -> `DollyPanGesture`
 
-`InputManager` handles raw DOM events; `useInputManager` hook wires it into R3F.
+`InputManager` handles raw DOM events.
+
+Keep input logic centralized here.
 
 ## State Management
 
 Three Zustand stores:
 
-- `useEditorStore` -- tool selection, brush params, undo/redo, render options
-- `useWorldStore` -- chunk data, meshes, dirty tracking, physics, field mutations
+- `useEditorStore` -- tools, brush params, render options
+- `useWorldStore` -- chunk data, meshes, physics
 - `useSessionStore` -- transient pointer/hover state
+
+Maintain clear ownership boundaries between stores.
 
 ## Undo/Redo
 
-Command pattern: `TerrainPatchCommand` records before/after density values. `UndoStack`
-(capacity 100) manages history. Strokes are accumulated in `pendingPatches` during a drag,
-then committed on pointer-up via `commitStroke()` which merges per-voxel patches.
+Command pattern via `TerrainPatchCommand`.
+
+`UndoStack` (capacity 100) stores history.
+
+Brush strokes accumulate voxel edits during drag and commit on pointer-up.
+
+Commands must remain reversible and deterministic.
 
 ## Test Suite
 
-Tests use Node's built-in test runner (`node:test`) with `tsx` loader. Test fixtures in
-`test/terrain/fixtures.ts` provide standard density fields (flat plane, sphere, sloped
-hill, tunnel). Key test themes:
+Uses Node's built-in runner (`node:test`) with `tsx`.
 
-- Seam correctness across chunk boundaries
-- Normal boundary agreement
-- Halo sync after edits
-- Deterministic meshing
-- Vertex relaxation preserving seams
+Fixtures in `test/terrain/fixtures.ts` include flat plane, sphere, sloped hill, tunnel.
 
-Run tests: `npm run test` from `apps/lbb/`.
+Tests focus on:
+
+- chunk seam correctness
+- normal boundary agreement
+- halo sync after edits
+- deterministic meshing
+- vertex relaxation preserving seams
+
+Run tests:
+
+```
+npm run test
+```
+
+from `apps/lbb/`.
