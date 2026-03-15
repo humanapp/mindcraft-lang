@@ -143,14 +143,16 @@ function sampleGradientTricubic(field: Float32Array, x: number, y: number, z: nu
   gradOut[2] = gz;
 }
 
-const EMPTY_MESH: MeshData = {
-  positions: new Float32Array(0),
-  normals: new Float32Array(0),
-  gradientMag: new Float32Array(0),
-  indices: new Uint32Array(0),
-  vertexCount: 0,
-  indexCount: 0,
-};
+function emptyMesh(): MeshData {
+  return {
+    positions: new Float32Array(0),
+    normals: new Float32Array(0),
+    gradientMag: new Float32Array(0),
+    indices: new Uint32Array(0),
+    vertexCount: 0,
+    indexCount: 0,
+  };
+}
 
 function isUniformSign(field: Float32Array): boolean {
   const gMin = FIELD_PAD;
@@ -184,7 +186,7 @@ export interface MesherOptions {
 export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, options: MesherOptions = {}): MeshData {
   const { normalSmoothingIterations = 0, vertexRelaxation = false } = options;
 
-  if (isUniformSign(field)) return EMPTY_MESH;
+  if (isUniformSign(field)) return emptyMesh();
 
   const meshDim = CHUNK_SIZE + 1;
   const cellCount = meshDim * meshDim * meshDim;

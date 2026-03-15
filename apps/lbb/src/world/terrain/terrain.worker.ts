@@ -13,12 +13,13 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
       chunkId: msg.chunkId,
       mesh,
     };
-    self.postMessage(response, [
+    const transferables = [
       mesh.positions.buffer,
       mesh.normals.buffer,
       mesh.gradientMag.buffer,
       mesh.indices.buffer,
-    ] as never);
+    ].filter((b) => b.byteLength > 0);
+    self.postMessage(response, transferables as never);
     return;
   }
 

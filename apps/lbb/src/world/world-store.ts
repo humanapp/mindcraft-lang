@@ -6,7 +6,77 @@ import { replaceTrimeshCollider } from "./terrain/collider";
 import { NEIGHBOR_OFFSETS, syncChunkPadding } from "./terrain/halo";
 import { TerrainWorkerBridge } from "./terrain/terrain-worker-bridge";
 import type { ChunkData, MeshData } from "./terrain/types";
-import { CHUNK_SIZE, chunkId } from "./terrain/types";
+import { CHUNK_SIZE, chunkId, FIELD_PAD, SAMPLES, SAMPLES_SQ, sampleIndex } from "./terrain/types";
+
+// -- SEAM DEBUG INSTRUMENTATION (temporary) --
+// Set to true (or run `seamDebug.enableLog()` in browser console) to re-enable.
+let _seamLog = false;
+let _seamSeq = 0;
+function seamSeq(): number {
+  return _seamSeq++;
+}
+
+function boundaryDensitySample(
+  field: Float32Array,
+  axis: "x" | "y" | "z",
+  side: "lo" | "hi",
+  sampleCount: number
+): number[] {
+  const vals: number[] = [];
+  const face = side === "lo" ? FIELD_PAD : FIELD_PAD + CHUNK_SIZE;
+  const mid = FIELD_PAD + Math.floor(CHUNK_SIZE / 2);
+  const offsets = [-1, 0, 1];
+  for (const oa of offsets) {
+    for (const ob of offsets) {
+      const a = mid + oa;
+      const b = mid + ob;
+      let idx: number;
+      if (axis === "x") idx = face + a * SAMPLES + b * SAMPLES_SQ;
+      else if (axis === "y") idx = a + face * SAMPLES + b * SAMPLES_SQ;
+      else idx = a + b * SAMPLES + face * SAMPLES_SQ;
+      vals.push(field[idx]);
+      if (vals.length >= sampleCount) return vals;
+    }
+  }
+  return vals;
+}
+
+function checkBoundaryAgreement(
+  chunkA: ChunkData,
+  chunkB: ChunkData,
+  axis: "x" | "y" | "z"
+): { maxDiff: number; samples: number; mismatches: Array<{ pos: string; a: number; b: number }> } {
+  const face = FIELD_PAD + CHUNK_SIZE;
+  const mismatches: Array<{ pos: string; a: number; b: number }> = [];
+  let maxDiff = 0;
+  let samples = 0;
+  for (let u = FIELD_PAD; u <= FIELD_PAD + CHUNK_SIZE; u++) {
+    for (let v = FIELD_PAD; v <= FIELD_PAD + CHUNK_SIZE; v++) {
+      let idxA: number;
+      let idxB: number;
+      if (axis === "x") {
+        idxA = face + u * SAMPLES + v * SAMPLES_SQ;
+        idxB = FIELD_PAD + u * SAMPLES + v * SAMPLES_SQ;
+      } else if (axis === "y") {
+        idxA = u + face * SAMPLES + v * SAMPLES_SQ;
+        idxB = u + FIELD_PAD * SAMPLES + v * SAMPLES_SQ;
+      } else {
+        idxA = u + v * SAMPLES + face * SAMPLES_SQ;
+        idxB = u + v * SAMPLES + FIELD_PAD * SAMPLES_SQ;
+      }
+      const a = chunkA.field[idxA];
+      const b = chunkB.field[idxB];
+      const diff = Math.abs(a - b);
+      if (diff > maxDiff) maxDiff = diff;
+      if (diff > 1e-6) {
+        mismatches.push({ pos: `${u},${v}`, a, b });
+      }
+      samples++;
+    }
+  }
+  return { maxDiff, samples, mismatches };
+}
+// -- END SEAM DEBUG --
 
 export const DENSITY_MIN = -1;
 export const DENSITY_MAX = 1;
@@ -54,6 +124,7 @@ const workerBridge = new TerrainWorkerBridge();
 const dispatchedVersions = new Map<string, number>();
 
 function applyMeshResult(id: string, mesh: MeshData): void {
+  const seq = seamSeq();
   const state = useWorldStore.getState();
   const newMeshes = new Map(state.chunkMeshes);
   const existing = state.chunkMeshes.get(id);
@@ -68,6 +139,15 @@ function applyMeshResult(id: string, mesh: MeshData): void {
   dispatchedVersions.delete(id);
   const isStale = chunk && dispatchedVer !== undefined && chunk.version !== dispatchedVer;
 
+  const stillDirty = state.dirtyChunks.has(id);
+  if (_seamLog) {
+    console.log(
+      `[seam:mesh-result] seq=${seq} chunk=${id} verts=${mesh.vertexCount} stale=${isStale}` +
+        ` dispVer=${dispatchedVer} curVer=${chunk?.version} stillDirty=${stillDirty}` +
+        ` inflight=${state.inflightChunks.size - 1} dirty=${state.dirtyChunks.size}`
+    );
+  }
+
   if (isStale) {
     const newDirty = new Set(state.dirtyChunks);
     newDirty.add(id);
@@ -78,6 +158,13 @@ function applyMeshResult(id: string, mesh: MeshData): void {
       dirtyChunks: newDirty,
     });
   } else {
+    if (stillDirty) {
+      if (_seamLog) {
+        console.warn(
+          `[seam:accepted-but-dirty] seq=${seq} chunk=${id} -- mesh accepted but chunk is still dirty (will re-mesh)`
+        );
+      }
+    }
     useWorldStore.setState({ chunkMeshes: newMeshes, inflightChunks: newInflight, staleColliders: newStale });
   }
 }
@@ -166,13 +253,17 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     const state = get();
     const dirty = state.dirtyChunks;
     if (dirty.size === 0) return;
+    const seq = seamSeq();
     const normalSmoothing = useEditorStore.getState().normalSmoothing;
     const newDirty = new Set(dirty);
     const newInflight = new Set(state.inflightChunks);
     let dispatched = 0;
+    const skippedInflight: string[] = [];
+    const dispatchedIds: string[] = [];
     for (const id of dirty) {
       if (maxChunks !== undefined && dispatched >= maxChunks) break;
       if (newInflight.has(id)) {
+        skippedInflight.push(id);
         continue;
       }
       const chunk = state.chunks.get(id);
@@ -185,6 +276,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       newInflight.add(id);
       dispatchedVersions.set(id, chunk.version);
       dispatched++;
+      dispatchedIds.push(`${id}(v${chunk.version})`);
 
       workerBridge
         .requestMesh(id, chunk.coord, chunk.field, {
@@ -195,6 +287,12 @@ export const useWorldStore = create<WorldState>((set, get) => ({
         });
     }
     if (dispatched > 0) {
+      if (_seamLog) {
+        console.log(
+          `[seam:remesh] seq=${seq} dispatched=[${dispatchedIds.join(", ")}]` +
+            ` skippedInflight=${skippedInflight.length} remaining=${newDirty.size}`
+        );
+      }
       set({ dirtyChunks: newDirty, inflightChunks: newInflight });
     }
   },
@@ -237,6 +335,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
   },
 
   applyFieldValues: (patches, clamp) => {
+    const seq = seamSeq();
     const state = get();
     const touched = new Set<string>();
 
@@ -249,6 +348,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     }
 
     const newDirty = new Set(state.dirtyChunks);
+    const neighborsDirtied = new Set<string>();
     for (const id of touched) {
       newDirty.add(id);
       const chunk = state.chunks.get(id);
@@ -258,8 +358,24 @@ export const useWorldStore = create<WorldState>((set, get) => ({
         const nid = chunkId({ cx: cx + dx, cy: cy + dy, cz: cz + dz });
         if (state.chunks.has(nid)) {
           newDirty.add(nid);
+          if (!touched.has(nid)) neighborsDirtied.add(nid);
         }
       }
+    }
+
+    const touchedVersions = [...touched].map((id) => {
+      const c = state.chunks.get(id);
+      return `${id}(v${c?.version})`;
+    });
+    const inflightOverlap = [...touched].filter((id) => state.inflightChunks.has(id));
+    const neighborInflightOverlap = [...neighborsDirtied].filter((id) => state.inflightChunks.has(id));
+    if (_seamLog) {
+      console.log(
+        `[seam:edit] seq=${seq} patches=${patches.length} touched=[${touchedVersions.join(", ")}]` +
+          ` neighborsDirtied=${neighborsDirtied.size} totalDirty=${newDirty.size}` +
+          (inflightOverlap.length > 0 ? ` TOUCHED_INFLIGHT=[${inflightOverlap.join(", ")}]` : "") +
+          (neighborInflightOverlap.length > 0 ? ` NEIGHBOR_INFLIGHT=[${neighborInflightOverlap.join(", ")}]` : "")
+      );
     }
 
     set({ dirtyChunks: newDirty });
@@ -303,3 +419,184 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     set({ densityRange: { min, max } });
   },
 }));
+
+// -- SEAM DEBUG: console helpers (temporary) --
+// Usage from browser console: seamDebug.checkAll() or seamDebug.compare("0,0,0", "1,0,0", "x")
+
+interface SeamDebugAPI {
+  checkAll: () => void;
+  compare: (idA: string, idB: string, axis: "x" | "y" | "z") => void;
+  status: () => void;
+  boundaryVerts: (idA: string, idB: string, axis: "x" | "y" | "z") => void;
+  enableLog: () => void;
+  disableLog: () => void;
+}
+
+const seamDebug: SeamDebugAPI = {
+  status() {
+    const s = useWorldStore.getState();
+    console.log(
+      `[seam-debug] chunks=${s.chunks.size} meshes=${s.chunkMeshes.size}` +
+        ` dirty=${s.dirtyChunks.size} inflight=${s.inflightChunks.size}` +
+        ` staleColliders=${s.staleColliders.size}`
+    );
+    if (s.dirtyChunks.size > 0) {
+      console.log(`  dirty: [${[...s.dirtyChunks].join(", ")}]`);
+    }
+    if (s.inflightChunks.size > 0) {
+      console.log(`  inflight: [${[...s.inflightChunks].join(", ")}]`);
+    }
+  },
+
+  compare(idA: string, idB: string, axis: "x" | "y" | "z") {
+    const s = useWorldStore.getState();
+    const a = s.chunks.get(idA);
+    const b = s.chunks.get(idB);
+    if (!a || !b) {
+      console.error(`[seam-debug] chunk not found: ${!a ? idA : idB}`);
+      return;
+    }
+    const result = checkBoundaryAgreement(a, b, axis);
+    if (result.mismatches.length === 0) {
+      console.log(
+        `[seam-debug] ${idA} <-> ${idB} (${axis}): MATCH (${result.samples} samples, maxDiff=${result.maxDiff.toExponential(3)})`
+      );
+    } else {
+      console.warn(
+        `[seam-debug] ${idA} <-> ${idB} (${axis}): ${result.mismatches.length} MISMATCHES (maxDiff=${result.maxDiff.toExponential(3)})`
+      );
+      for (const m of result.mismatches.slice(0, 10)) {
+        console.warn(
+          `  pos=${m.pos} A=${m.a.toFixed(6)} B=${m.b.toFixed(6)} diff=${Math.abs(m.a - m.b).toExponential(3)}`
+        );
+      }
+    }
+    console.log(`  A.version=${a.version} B.version=${b.version}`);
+  },
+
+  checkAll() {
+    const s = useWorldStore.getState();
+    const coords = new Map<string, { cx: number; cy: number; cz: number }>();
+    for (const [id, chunk] of s.chunks) {
+      coords.set(id, chunk.coord);
+    }
+    let issues = 0;
+    for (const [id, coord] of coords) {
+      const a = s.chunks.get(id);
+      if (!a) continue;
+      for (const [axis, dx, dy, dz] of [
+        ["x", 1, 0, 0],
+        ["y", 0, 1, 0],
+        ["z", 0, 0, 1],
+      ] as const) {
+        const nid = chunkId({ cx: coord.cx + dx, cy: coord.cy + dy, cz: coord.cz + dz });
+        const b = s.chunks.get(nid);
+        if (!b) continue;
+        const result = checkBoundaryAgreement(a, b, axis);
+        if (result.mismatches.length > 0) {
+          console.warn(
+            `[seam-debug] MISMATCH ${id} <-> ${nid} (${axis}): ${result.mismatches.length} mismatches, maxDiff=${result.maxDiff.toExponential(3)}`
+          );
+          issues++;
+        }
+      }
+    }
+    if (issues === 0) {
+      console.log("[seam-debug] All chunk boundaries agree.");
+    } else {
+      console.warn(`[seam-debug] ${issues} boundary issues found.`);
+    }
+  },
+
+  boundaryVerts(idA: string, idB: string, axis: "x" | "y" | "z") {
+    const s = useWorldStore.getState();
+    const meshA = s.chunkMeshes.get(idA);
+    const meshB = s.chunkMeshes.get(idB);
+    if (!meshA || !meshB) {
+      console.error(`[seam-debug] mesh not found: ${!meshA ? idA : idB}`);
+      return;
+    }
+    const chunkA = s.chunks.get(idA);
+    const chunkB = s.chunks.get(idB);
+    if (!chunkA || !chunkB) return;
+    const boundaryWorld =
+      (axis === "x" ? chunkA.coord.cx + 1 : axis === "y" ? chunkA.coord.cy + 1 : chunkA.coord.cz + 1) * CHUNK_SIZE;
+    const axisIdx = axis === "x" ? 0 : axis === "y" ? 1 : 2;
+    const tolerance = 0.5;
+
+    const vertsA: Array<{ i: number; pos: [number, number, number] }> = [];
+    for (let i = 0; i < meshA.mesh.vertexCount; i++) {
+      const p = meshA.mesh.positions[i * 3 + axisIdx];
+      if (Math.abs(p - boundaryWorld) < tolerance) {
+        vertsA.push({
+          i,
+          pos: [meshA.mesh.positions[i * 3], meshA.mesh.positions[i * 3 + 1], meshA.mesh.positions[i * 3 + 2]],
+        });
+      }
+    }
+
+    const vertsB: Array<{ i: number; pos: [number, number, number] }> = [];
+    for (let i = 0; i < meshB.mesh.vertexCount; i++) {
+      const p = meshB.mesh.positions[i * 3 + axisIdx];
+      if (Math.abs(p - boundaryWorld) < tolerance) {
+        vertsB.push({
+          i,
+          pos: [meshB.mesh.positions[i * 3], meshB.mesh.positions[i * 3 + 1], meshB.mesh.positions[i * 3 + 2]],
+        });
+      }
+    }
+
+    console.log(
+      `[seam-debug] boundary verts at ${axis}=${boundaryWorld}: A has ${vertsA.length}, B has ${vertsB.length}`
+    );
+
+    let matched = 0;
+    let unmatched = 0;
+    const unmatchedList: Array<{ source: string; pos: [number, number, number] }> = [];
+    for (const va of vertsA) {
+      const match = vertsB.find(
+        (vb) =>
+          Math.abs(va.pos[0] - vb.pos[0]) < 0.001 &&
+          Math.abs(va.pos[1] - vb.pos[1]) < 0.001 &&
+          Math.abs(va.pos[2] - vb.pos[2]) < 0.001
+      );
+      if (match) {
+        matched++;
+      } else {
+        unmatched++;
+        if (unmatchedList.length < 10) unmatchedList.push({ source: "A", pos: va.pos });
+      }
+    }
+    for (const vb of vertsB) {
+      const match = vertsA.find(
+        (va) =>
+          Math.abs(va.pos[0] - vb.pos[0]) < 0.001 &&
+          Math.abs(va.pos[1] - vb.pos[1]) < 0.001 &&
+          Math.abs(va.pos[2] - vb.pos[2]) < 0.001
+      );
+      if (!match) {
+        unmatched++;
+        if (unmatchedList.length < 10) unmatchedList.push({ source: "B", pos: vb.pos });
+      }
+    }
+    console.log(`  matched=${matched} unmatched=${unmatched}`);
+    for (const u of unmatchedList) {
+      console.warn(
+        `  unmatched from ${u.source}: (${u.pos[0].toFixed(3)}, ${u.pos[1].toFixed(3)}, ${u.pos[2].toFixed(3)})`
+      );
+    }
+  },
+
+  enableLog() {
+    _seamLog = true;
+    console.log("[seam-debug] logging enabled");
+  },
+
+  disableLog() {
+    _seamLog = false;
+    console.log("[seam-debug] logging disabled");
+  },
+};
+
+(globalThis as Record<string, unknown>).seamDebug = seamDebug;
+// -- END SEAM DEBUG console helpers --

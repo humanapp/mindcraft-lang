@@ -30,6 +30,9 @@ export class TerrainWorkerBridge {
     for (let i = 0; i < POOL_SIZE; i++) {
       const w = new Worker(new URL("./terrain.worker.ts", import.meta.url), { type: "module" });
       w.onmessage = (e: MessageEvent<WorkerResponse>) => this.handleResponse(e.data);
+      w.onerror = (e) => {
+        console.error(`[terrain-worker] worker ${i} error:`, e.message);
+      };
       this.workers.push(w);
     }
   }
