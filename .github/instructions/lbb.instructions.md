@@ -4,7 +4,7 @@ applyTo: "apps/lbb/**"
 
 <!-- Last reviewed: 2026-03-14 -->
 
-# LBB App -- Rules & Patterns
+# "Little Big Brains" (LBB) App -- Rules & Patterns
 
 The LBB app (`apps/lbb/`) is a **Vite + React + React-Three-Fiber** 3D terrain editor.
 
