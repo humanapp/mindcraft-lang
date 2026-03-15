@@ -1,17 +1,32 @@
 @import "tailwindcss";
+@import "../../../packages/ui/src/ui.css";
+@source "../../../packages/ui/src";
+
+@theme {
+  --color-background: #0a0a0f;
+  --color-foreground: #e4e4e7;
+  --color-card: #18181b;
+  --color-card-foreground: #e4e4e7;
+  --color-popover: #18181b;
+  --color-popover-foreground: #e4e4e7;
+  --color-primary: #3b82f6;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #27272a;
+  --color-secondary-foreground: #e4e4e7;
+  --color-muted: #27272a;
+  --color-muted-foreground: #71717a;
+  --color-accent: #3f3f46;
+  --color-accent-foreground: #e4e4e7;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #3f3f46;
+  --color-input: #27272a;
+  --color-ring: #3b82f6;
+  --radius: 0.5rem;
+  --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
 
 @layer base {
-  :root {
-    --color-background: #0a0a0f;
-    --color-foreground: #e4e4e7;
-    --color-surface: #18181b;
-    --color-surface-hover: #27272a;
-    --color-border: #3f3f46;
-    --color-primary: #3b82f6;
-    --color-primary-hover: #2563eb;
-    --color-muted: #71717a;
-  }
-
   * {
     margin: 0;
     padding: 0;

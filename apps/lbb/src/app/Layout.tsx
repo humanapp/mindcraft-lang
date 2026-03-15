@@ -4,7 +4,7 @@ import { Toolbar } from "./Toolbar";
 
 export function Layout() {
   return (
-    <div style={{ width: "100%", height: "100%", position: "relative" }}>
+    <div className="relative w-full h-full">
       <Scene />
       <Toolbar />
       <InspectorPanel />

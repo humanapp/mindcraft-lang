@@ -1,7 +1,298 @@
+import { Button, cn, Slider } from "@mindcraft-lang/ui";
+import type { ReactNode } from "react";
 import type { TerrainShadingMode, ToolType, VoxelDebugMode } from "../editor/editor-store";
 import { useEditorStore } from "../editor/editor-store";
 import type { BrushShape } from "../world/terrain/edit";
 import { useWorldStore } from "../world/world-store";
+
+type BrushParams = {
+  radius: number;
+  strength: number;
+  falloff: number;
+  shape: BrushShape;
+};
+
+function Panel({ children }: { children: ReactNode }) {
+  return (
+    <div className="bg-card/90 backdrop-blur-sm border border-border rounded-lg px-3 py-2 flex flex-col gap-1.5">
+      {children}
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: ReactNode }) {
+  return <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{children}</div>;
+}
+
+function SliderField({
+  label,
+  value,
+  displayValue,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  displayValue: string;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">{label}</span>
+        <span className="text-xs text-muted-foreground font-mono tabular-nums">{displayValue}</span>
+      </div>
+      <Slider value={[value]} onValueChange={([v]) => onChange(v)} min={min} max={max} step={step} />
+    </div>
+  );
+}
+
+function ToggleSwitch({ checked, onToggle }: { checked: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onToggle}
+      className={cn(
+        "relative flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full px-0.5 transition-colors",
+        checked ? "bg-primary" : "bg-secondary"
+      )}
+    >
+      <span
+        className={cn(
+          "h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
+          checked ? "translate-x-4" : "translate-x-0"
+        )}
+      />
+    </button>
+  );
+}
+
+function ToggleRow({ label, checked, onToggle }: { label: string; checked: boolean; onToggle: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-xs text-foreground">{label}</span>
+      <ToggleSwitch checked={checked} onToggle={onToggle} />
+    </div>
+  );
+}
+
+function ToolPanel({ activeTool, setActiveTool }: { activeTool: ToolType; setActiveTool: (tool: ToolType) => void }) {
+  const tools: { id: ToolType; label: string }[] = [
+    { id: "raise", label: "Raise" },
+    { id: "lower", label: "Lower" },
+  ];
+
+  return (
+    <Panel>
+      <SectionLabel>Tool</SectionLabel>
+      <div className="flex gap-1">
+        {tools.map((t) => (
+          <Button
+            key={t.id}
+            variant={activeTool === t.id ? "default" : "secondary"}
+            size="sm"
+            onClick={() => setActiveTool(t.id)}
+          >
+            {t.label}
+          </Button>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function BrushPanel({
+  brush,
+  setBrushRadius,
+  setBrushStrength,
+  setBrushFalloff,
+  setBrushShape,
+}: {
+  brush: BrushParams;
+  setBrushRadius: (r: number) => void;
+  setBrushStrength: (s: number) => void;
+  setBrushFalloff: (f: number) => void;
+  setBrushShape: (s: BrushShape) => void;
+}) {
+  return (
+    <Panel>
+      <SectionLabel>Brush</SectionLabel>
+      <SliderField
+        label="Radius"
+        value={brush.radius}
+        displayValue={String(brush.radius)}
+        min={1}
+        max={16}
+        step={1}
+        onChange={setBrushRadius}
+      />
+      <SliderField
+        label="Strength (voxels/s)"
+        value={brush.strength}
+        displayValue={brush.strength.toFixed(1)}
+        min={0.5}
+        max={20}
+        step={0.5}
+        onChange={setBrushStrength}
+      />
+      <SliderField
+        label="Falloff"
+        value={brush.falloff}
+        displayValue={brush.falloff.toFixed(1)}
+        min={0.1}
+        max={5}
+        step={0.1}
+        onChange={setBrushFalloff}
+      />
+      <SectionLabel>Shape</SectionLabel>
+      <div className="flex gap-1">
+        {(["sphere", "cube", "cylinder"] as const).map((s) => (
+          <Button
+            key={s}
+            variant={brush.shape === s ? "default" : "secondary"}
+            size="sm"
+            onClick={() => setBrushShape(s)}
+          >
+            {s[0].toUpperCase() + s.slice(1)}
+          </Button>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function UndoRedoPanel({
+  canUndo,
+  canRedo,
+  undo,
+  redo,
+}: {
+  canUndo: boolean;
+  canRedo: boolean;
+  undo: () => void;
+  redo: () => void;
+}) {
+  return (
+    <Panel>
+      <div className="flex gap-1">
+        <Button variant="secondary" size="sm" onClick={undo} disabled={!canUndo}>
+          Undo
+        </Button>
+        <Button variant="secondary" size="sm" onClick={redo} disabled={!canRedo}>
+          Redo
+        </Button>
+      </div>
+    </Panel>
+  );
+}
+
+function RenderPanel({
+  wireframe,
+  toggleWireframe,
+  terrainShading,
+  setTerrainShading,
+  normalSmoothing,
+  setNormalSmoothing,
+}: {
+  wireframe: boolean;
+  toggleWireframe: () => void;
+  terrainShading: TerrainShadingMode;
+  setTerrainShading: (mode: TerrainShadingMode) => void;
+  normalSmoothing: number;
+  setNormalSmoothing: (v: number) => void;
+}) {
+  return (
+    <Panel>
+      <SectionLabel>Render</SectionLabel>
+      <ToggleRow label="Wireframe" checked={wireframe} onToggle={toggleWireframe} />
+      <select
+        value={terrainShading}
+        onChange={(e) => setTerrainShading(e.target.value as TerrainShadingMode)}
+        className="w-full rounded-md bg-secondary border border-border px-2 py-1 text-xs text-foreground cursor-pointer"
+      >
+        <option value="default">Default Material</option>
+        <option value="plain">Plain Shaded</option>
+        <option value="normals">Normal Debug</option>
+        <option value="gradient-mag">Gradient Magnitude</option>
+      </select>
+      <SliderField
+        label="Normal Smooth"
+        value={normalSmoothing}
+        displayValue={String(normalSmoothing)}
+        min={0}
+        max={4}
+        step={1}
+        onChange={setNormalSmoothing}
+      />
+    </Panel>
+  );
+}
+
+function DebugPanel({
+  voxelDebugMode,
+  setVoxelDebugMode,
+  debugBrush,
+  toggleDebugBrush,
+}: {
+  voxelDebugMode: VoxelDebugMode;
+  setVoxelDebugMode: (mode: VoxelDebugMode) => void;
+  debugBrush: boolean;
+  toggleDebugBrush: () => void;
+}) {
+  return (
+    <Panel>
+      <SectionLabel>Debug</SectionLabel>
+      <select
+        value={voxelDebugMode}
+        onChange={(e) => setVoxelDebugMode(e.target.value as VoxelDebugMode)}
+        className="w-full rounded-md bg-secondary border border-border px-2 py-1 text-xs text-foreground cursor-pointer"
+      >
+        <option value="off">Off</option>
+        <option value="active-cells">Active Cells</option>
+        <option value="edge-intersections">Edge Intersections</option>
+        <option value="surface-vertices">Surface Vertices</option>
+        <option value="density-sign">Density Sign</option>
+      </select>
+      <ToggleRow label="Log Brush" checked={debugBrush} onToggle={toggleDebugBrush} />
+    </Panel>
+  );
+}
+
+function DensityFieldPanel({
+  densityRange,
+  clampDensity,
+  toggleClampDensity,
+}: {
+  densityRange: { min: number; max: number };
+  clampDensity: boolean;
+  toggleClampDensity: () => void;
+}) {
+  return (
+    <Panel>
+      <SectionLabel>Density Field</SectionLabel>
+      <div className="flex justify-between text-xs text-muted-foreground font-mono tabular-nums">
+        <span>min:</span>
+        <span className="text-foreground">{densityRange.min.toFixed(2)}</span>
+      </div>
+      <div className="flex justify-between text-xs text-muted-foreground font-mono tabular-nums">
+        <span>max:</span>
+        <span className="text-foreground">{densityRange.max.toFixed(2)}</span>
+      </div>
+      <div className="flex justify-between text-xs text-muted-foreground font-mono tabular-nums">
+        <span>iso:</span>
+        <span className="text-foreground">0.0</span>
+      </div>
+      <ToggleRow label="Clamp Density" checked={clampDensity} onToggle={toggleClampDensity} />
+    </Panel>
+  );
+}
 
 export function Toolbar() {
   const activeTool = useEditorStore((s) => s.activeTool);
@@ -29,329 +320,38 @@ export function Toolbar() {
   const toggleDebugBrush = useEditorStore((s) => s.toggleDebugBrush);
   const densityRange = useWorldStore((s) => s.densityRange);
 
-  const tools: { id: ToolType; label: string }[] = [
-    { id: "raise", label: "Raise" },
-    { id: "lower", label: "Lower" },
-  ];
-
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: 12,
-        left: 12,
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        zIndex: 10,
-        pointerEvents: "auto",
-      }}
-    >
-      {/* Tool selection */}
-      <div style={panelStyle}>
-        <div style={labelStyle}>Tool</div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {tools.map((t) => (
-            <button
-              type="button"
-              key={t.id}
-              onClick={() => setActiveTool(t.id)}
-              style={{
-                ...buttonStyle,
-                background: activeTool === t.id ? "#3b82f6" : "#27272a",
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Brush params */}
-      <div style={panelStyle}>
-        <div style={labelStyle}>Brush</div>
-        <label style={sliderLabelStyle}>
-          Radius: {brush.radius}
-          <input
-            type="range"
-            min={1}
-            max={16}
-            step={1}
-            value={brush.radius}
-            onChange={(e) => setBrushRadius(Number(e.target.value))}
-            style={sliderStyle}
-          />
-        </label>
-        <label style={sliderLabelStyle}>
-          Strength (voxels/s): {brush.strength.toFixed(1)}
-          <input
-            type="range"
-            min={0.5}
-            max={20}
-            step={0.5}
-            value={brush.strength}
-            onChange={(e) => setBrushStrength(Number(e.target.value))}
-            style={sliderStyle}
-          />
-        </label>
-        <label style={sliderLabelStyle}>
-          Falloff: {brush.falloff.toFixed(1)}
-          <input
-            type="range"
-            min={0.1}
-            max={5}
-            step={0.1}
-            value={brush.falloff}
-            onChange={(e) => setBrushFalloff(Number(e.target.value))}
-            style={sliderStyle}
-          />
-        </label>
-        <div style={labelStyle}>Shape</div>
-        <div style={{ display: "flex", gap: 4 }}>
-          {(["sphere", "cube", "cylinder"] as const).map((s) => (
-            <button
-              type="button"
-              key={s}
-              onClick={() => setBrushShape(s)}
-              style={{
-                ...buttonStyle,
-                background: brush.shape === s ? "#3b82f6" : "#27272a",
-              }}
-            >
-              {s[0].toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Undo/Redo */}
-      <div style={panelStyle}>
-        <div style={{ display: "flex", gap: 4 }}>
-          <button type="button" onClick={undo} disabled={!canUndo} style={buttonStyle}>
-            Undo
-          </button>
-          <button type="button" onClick={redo} disabled={!canRedo} style={buttonStyle}>
-            Redo
-          </button>
-        </div>
-      </div>
-
-      {/* Render options */}
-      <div style={panelStyle}>
-        <div style={labelStyle}>Render</div>
-        <div style={toggleRowStyle}>
-          <span>Wireframe</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={wireframe}
-            onClick={toggleWireframe}
-            style={{
-              ...toggleTrackStyle,
-              background: wireframe ? "#3b82f6" : "#3f3f46",
-            }}
-          >
-            <span
-              style={{
-                ...toggleThumbStyle,
-                transform: wireframe ? "translateX(16px)" : "translateX(2px)",
-              }}
-            />
-          </button>
-        </div>
-        <select
-          value={terrainShading}
-          onChange={(e) => setTerrainShading(e.target.value as TerrainShadingMode)}
-          style={selectStyle}
-        >
-          <option value="default">Default Material</option>
-          <option value="plain">Plain Shaded</option>
-          <option value="normals">Normal Debug</option>
-          <option value="gradient-mag">Gradient Magnitude</option>
-        </select>
-        <label style={sliderLabelStyle}>
-          Normal Smooth: {normalSmoothing}
-          <input
-            type="range"
-            min={0}
-            max={4}
-            step={1}
-            value={normalSmoothing}
-            onChange={(e) => setNormalSmoothing(Number(e.target.value))}
-            style={sliderStyle}
-          />
-        </label>
-      </div>
-
-      {/* Debug overlay */}
-      <div style={panelStyle}>
-        <div style={labelStyle}>Debug</div>
-        <select
-          value={voxelDebugMode}
-          onChange={(e) => setVoxelDebugMode(e.target.value as VoxelDebugMode)}
-          style={selectStyle}
-        >
-          <option value="off">Off</option>
-          <option value="active-cells">Active Cells</option>
-          <option value="edge-intersections">Edge Intersections</option>
-          <option value="surface-vertices">Surface Vertices</option>
-          <option value="density-sign">Density Sign</option>
-        </select>
-        <div style={toggleRowStyle}>
-          <span>Log Brush</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={debugBrush}
-            onClick={toggleDebugBrush}
-            style={{
-              ...toggleTrackStyle,
-              background: debugBrush ? "#3b82f6" : "#3f3f46",
-            }}
-          >
-            <span
-              style={{
-                ...toggleThumbStyle,
-                transform: debugBrush ? "translateX(16px)" : "translateX(2px)",
-              }}
-            />
-          </button>
-        </div>
-      </div>
-
-      {/* Density field info */}
-      <div style={panelStyle}>
-        <div style={labelStyle}>Density Field</div>
-        <div style={statRowStyle}>
-          <span>min:</span>
-          <span style={statValueStyle}>{densityRange.min.toFixed(2)}</span>
-        </div>
-        <div style={statRowStyle}>
-          <span>max:</span>
-          <span style={statValueStyle}>{densityRange.max.toFixed(2)}</span>
-        </div>
-        <div style={statRowStyle}>
-          <span>iso:</span>
-          <span style={statValueStyle}>0.0</span>
-        </div>
-        <div style={toggleRowStyle}>
-          <span>Clamp Density</span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={clampDensity}
-            onClick={toggleClampDensity}
-            style={{
-              ...toggleTrackStyle,
-              background: clampDensity ? "#3b82f6" : "#3f3f46",
-            }}
-          >
-            <span
-              style={{
-                ...toggleThumbStyle,
-                transform: clampDensity ? "translateX(16px)" : "translateX(2px)",
-              }}
-            />
-          </button>
-        </div>
-      </div>
+    <div className="absolute top-3 left-3 flex flex-col gap-2 z-10 pointer-events-auto">
+      <ToolPanel activeTool={activeTool} setActiveTool={setActiveTool} />
+      <BrushPanel
+        brush={brush}
+        setBrushRadius={setBrushRadius}
+        setBrushStrength={setBrushStrength}
+        setBrushFalloff={setBrushFalloff}
+        setBrushShape={setBrushShape}
+      />
+      <UndoRedoPanel canUndo={canUndo} canRedo={canRedo} undo={undo} redo={redo} />
+      <RenderPanel
+        wireframe={wireframe}
+        toggleWireframe={toggleWireframe}
+        terrainShading={terrainShading}
+        setTerrainShading={setTerrainShading}
+        normalSmoothing={normalSmoothing}
+        setNormalSmoothing={setNormalSmoothing}
+      />
+      <DebugPanel
+        voxelDebugMode={voxelDebugMode}
+        setVoxelDebugMode={setVoxelDebugMode}
+        debugBrush={debugBrush}
+        toggleDebugBrush={toggleDebugBrush}
+      />
+      {false && (
+        <DensityFieldPanel
+          densityRange={densityRange}
+          clampDensity={clampDensity}
+          toggleClampDensity={toggleClampDensity}
+        />
+      )}
     </div>
   );
 }
-
-const panelStyle: React.CSSProperties = {
-  background: "rgba(24, 24, 27, 0.9)",
-  border: "1px solid #3f3f46",
-  borderRadius: 8,
-  padding: "8px 12px",
-  display: "flex",
-  flexDirection: "column",
-  gap: 6,
-  backdropFilter: "blur(8px)",
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.05em",
-  color: "#71717a",
-};
-
-const buttonStyle: React.CSSProperties = {
-  background: "#27272a",
-  color: "#e4e4e7",
-  border: "1px solid #3f3f46",
-  borderRadius: 6,
-  padding: "4px 12px",
-  fontSize: 13,
-  cursor: "pointer",
-  transition: "background 0.15s",
-};
-
-const sliderLabelStyle: React.CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: 2,
-  fontSize: 12,
-  color: "#a1a1aa",
-};
-
-const sliderStyle: React.CSSProperties = {
-  width: "100%",
-  accentColor: "#3b82f6",
-};
-
-const selectStyle: React.CSSProperties = {
-  background: "#27272a",
-  color: "#e4e4e7",
-  border: "1px solid #3f3f46",
-  borderRadius: 6,
-  padding: "4px 8px",
-  fontSize: 12,
-  cursor: "pointer",
-  width: "100%",
-};
-
-const statRowStyle: React.CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  fontSize: 12,
-  color: "#a1a1aa",
-  fontFamily: "monospace",
-};
-
-const statValueStyle: React.CSSProperties = {
-  color: "#e4e4e7",
-};
-
-const toggleRowStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  fontSize: 12,
-  color: "#a1a1aa",
-  cursor: "pointer",
-};
-
-const toggleTrackStyle: React.CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  width: 36,
-  height: 20,
-  borderRadius: 10,
-  border: "none",
-  padding: 0,
-  cursor: "pointer",
-  transition: "background 0.15s",
-  flexShrink: 0,
-};
-
-const toggleThumbStyle: React.CSSProperties = {
-  width: 16,
-  height: 16,
-  borderRadius: "50%",
-  background: "#e4e4e7",
-  transition: "transform 0.15s",
-};
