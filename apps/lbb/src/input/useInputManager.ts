@@ -11,6 +11,7 @@ import { OrbitGesture } from "./gestures/OrbitGesture";
 import { SculptGesture } from "./gestures/SculptGesture";
 import { InputManager } from "./InputManager";
 import type { GestureHandler, PointerInput } from "./types";
+import { WasdController } from "./WasdController";
 
 /**
  * Constructs and wires the full input stack for the 3D viewport.
@@ -24,6 +25,7 @@ import type { GestureHandler, PointerInput } from "./types";
 export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): void {
   const orbitRef = useRef<OrbitGesture | null>(null);
   const sculptRef = useRef<SculptGesture | null>(null);
+  const wasdRef = useRef<WasdController | null>(null);
 
   useEffect(() => {
     // reroute is a closure over `router`. It is only ever called during an active
@@ -74,15 +76,22 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
 
     const manager = new InputManager(domElement, router, () => useSessionStore.getState().hoverWorldPos, orbit);
 
+    const wasd = new WasdController(camera, (offset) => orbit.translatePivot(offset));
+    wasd.listen();
+    wasdRef.current = wasd;
+
     return () => {
       manager.dispose();
+      wasd.dispose();
       orbitRef.current = null;
       sculptRef.current = null;
+      wasdRef.current = null;
     };
   }, [camera, domElement]);
 
   useFrame((_, delta) => {
     orbitRef.current?.update();
     sculptRef.current?.tick(delta);
+    wasdRef.current?.update(delta);
   }, -1);
 }
