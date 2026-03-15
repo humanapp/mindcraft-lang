@@ -89,7 +89,6 @@ export function Scene() {
       <TerrainUpdater />
       <BrushCursor radius={brushRadius} />
       <InputHandler />
-      <gridHelper args={[256, 64, "#333344", "#222233"]} position={[64, -0.1, 64]} />
       <VoxelSamplesOverlay />
     </Canvas>
   );
