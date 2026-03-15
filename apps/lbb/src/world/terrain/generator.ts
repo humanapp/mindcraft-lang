@@ -36,6 +36,16 @@ function fbmNoise2d(x: number, z: number, octaves: number): number {
   return value / maxAmp;
 }
 
+const NOISE_SCALE = 0.02;
+const NOISE_OCTAVES = 4;
+const BASE_HEIGHT = 32;
+const HEIGHT_AMPLITUDE = 12;
+
+export function baselineDensity(wx: number, wy: number, wz: number): number {
+  const n = fbmNoise2d(wx * NOISE_SCALE, wz * NOISE_SCALE, NOISE_OCTAVES);
+  return BASE_HEIGHT + n * HEIGHT_AMPLITUDE - wy;
+}
+
 export function generateChunkField(coord: ChunkCoord): Float32Array {
   const field = new Float32Array(SAMPLES_TOTAL);
 
@@ -50,12 +60,7 @@ export function generateChunkField(coord: ChunkCoord): Float32Array {
         const wy = wy0 + ly - FIELD_PAD;
         const wz = wz0 + lz - FIELD_PAD;
 
-        const noiseScale = 0.02;
-        const n = fbmNoise2d(wx * noiseScale, wz * noiseScale, 4);
-        const height = 32 + n * 12;
-
-        // Positive = solid, negative = air
-        const density = height - wy;
+        const density = baselineDensity(wx, wy, wz);
 
         field[sampleIndex(lx, ly, lz)] = density;
       }

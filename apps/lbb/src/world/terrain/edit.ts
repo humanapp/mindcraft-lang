@@ -1,3 +1,4 @@
+import { baselineDensity } from "./generator";
 import type { ChunkCoord } from "./types";
 import { CHUNK_SIZE, chunkId, FIELD_PAD, sampleIndex } from "./types";
 
@@ -31,6 +32,13 @@ const FIELD_GRADIENT = 1.0;
 // needed to achieve it, given the local field gradient.
 function displacementToDelta(voxels: number): number {
   return voxels * FIELD_GRADIENT;
+}
+
+// Remap the raw slider strength so low/medium values stay controlled while
+// high values ramp up aggressively. The cubic term dominates above ~10.
+//   0.5 -> 0.5,  3 -> 3.6,  10 -> 32,  20 -> 198
+function effectiveStrength(raw: number): number {
+  return raw + (raw * raw * raw) / 45;
 }
 
 function computeFalloff(
@@ -138,11 +146,15 @@ export function computeBrushPatches(
           if (falloff === null) continue;
 
           const dist = Math.sqrt(sx * sx + sy * sy + sz * sz);
-          const delta = displacementToDelta(brush.strength * dt) * falloff * (raise ? 1 : -1);
+          const delta = displacementToDelta(effectiveStrength(brush.strength) * dt) * falloff * (raise ? 1 : -1);
 
           const idx = sampleIndex(lx + FIELD_PAD, ly + FIELD_PAD, lz + FIELD_PAD);
           const before = chunk.field[idx];
-          const after = before + delta;
+          let after = before + delta;
+
+          if (!raise && before > 0 && after <= 0) {
+            after = Math.min(after, baselineDensity(ox + lx, oy + ly, oz + lz));
+          }
 
           if (debug && debugSamples < 8 && dist < 2) {
             console.log(
