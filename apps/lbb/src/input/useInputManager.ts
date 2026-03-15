@@ -10,6 +10,7 @@ import { DollyPanGesture } from "./gestures/DollyPanGesture";
 import { OrbitGesture } from "./gestures/OrbitGesture";
 import { SculptGesture } from "./gestures/SculptGesture";
 import { InputManager } from "./InputManager";
+import { SpaceSculptController } from "./SpaceSculptController";
 import type { GestureHandler, PointerInput } from "./types";
 import { WasdController } from "./WasdController";
 
@@ -26,6 +27,7 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
   const orbitRef = useRef<OrbitGesture | null>(null);
   const sculptRef = useRef<SculptGesture | null>(null);
   const wasdRef = useRef<WasdController | null>(null);
+  const spaceRef = useRef<SpaceSculptController | null>(null);
 
   useEffect(() => {
     // reroute is a closure over `router`. It is only ever called during an active
@@ -80,12 +82,18 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
     wasd.listen();
     wasdRef.current = wasd;
 
+    const space = new SpaceSculptController(sculpt, () => useSessionStore.getState().hoverWorldPos);
+    space.listen();
+    spaceRef.current = space;
+
     return () => {
       manager.dispose();
       wasd.dispose();
+      space.dispose();
       orbitRef.current = null;
       sculptRef.current = null;
       wasdRef.current = null;
+      spaceRef.current = null;
     };
   }, [camera, domElement]);
 
@@ -93,5 +101,6 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
     orbitRef.current?.update();
     sculptRef.current?.tick(delta);
     wasdRef.current?.update(delta);
+    spaceRef.current?.update();
   }, -1);
 }
