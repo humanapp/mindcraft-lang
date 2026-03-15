@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { BrushParams, TerrainPatch } from "../world/terrain/edit";
+import type { BrushParams, BrushShape, TerrainPatch } from "../world/terrain/edit";
 import { useWorldStore } from "../world/world-store";
 import { TerrainPatchCommand } from "./commands";
 import { UndoStack } from "./undo-stack";
@@ -36,6 +36,8 @@ export interface EditorState {
   setActiveTool: (tool: ToolType) => void;
   setBrushRadius: (radius: number) => void;
   setBrushStrength: (strength: number) => void;
+  setBrushShape: (shape: BrushShape) => void;
+  setBrushFalloff: (falloff: number) => void;
   addPendingPatches: (patches: TerrainPatch[]) => void;
   commitStroke: () => void;
   cancelStroke: () => void;
@@ -65,7 +67,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
   return {
     activeTool: "raise",
-    brush: { radius: 4, strength: 3 },
+    brush: { radius: 4, strength: 3, shape: "sphere", falloff: 1 },
 
     canUndo: false,
     canRedo: false,
@@ -87,6 +89,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     setBrushStrength: (strength) =>
       set((s) => ({ brush: { ...s.brush, strength: Math.max(0.5, Math.min(20, strength)) } })),
+
+    setBrushShape: (shape) => set((s) => ({ brush: { ...s.brush, shape } })),
+
+    setBrushFalloff: (falloff) => set((s) => ({ brush: { ...s.brush, falloff: Math.max(0.1, Math.min(5, falloff)) } })),
 
     addPendingPatches: (patches) => {
       set((s) => ({ pendingPatches: [...s.pendingPatches, ...patches] }));

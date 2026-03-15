@@ -1,5 +1,6 @@
 import type { TerrainShadingMode, ToolType, VoxelDebugMode } from "../editor/editor-store";
 import { useEditorStore } from "../editor/editor-store";
+import type { BrushShape } from "../world/terrain/edit";
 import { useWorldStore } from "../world/world-store";
 
 export function Toolbar() {
@@ -8,6 +9,8 @@ export function Toolbar() {
   const brush = useEditorStore((s) => s.brush);
   const setBrushRadius = useEditorStore((s) => s.setBrushRadius);
   const setBrushStrength = useEditorStore((s) => s.setBrushStrength);
+  const setBrushShape = useEditorStore((s) => s.setBrushShape);
+  const setBrushFalloff = useEditorStore((s) => s.setBrushFalloff);
   const canUndo = useEditorStore((s) => s.canUndo);
   const canRedo = useEditorStore((s) => s.canRedo);
   const undo = useEditorStore((s) => s.undo);
@@ -91,6 +94,34 @@ export function Toolbar() {
             style={sliderStyle}
           />
         </label>
+        <label style={sliderLabelStyle}>
+          Falloff: {brush.falloff.toFixed(1)}
+          <input
+            type="range"
+            min={0.1}
+            max={5}
+            step={0.1}
+            value={brush.falloff}
+            onChange={(e) => setBrushFalloff(Number(e.target.value))}
+            style={sliderStyle}
+          />
+        </label>
+        <div style={labelStyle}>Shape</div>
+        <div style={{ display: "flex", gap: 4 }}>
+          {(["sphere", "cube", "cylinder"] as const).map((s) => (
+            <button
+              type="button"
+              key={s}
+              onClick={() => setBrushShape(s)}
+              style={{
+                ...buttonStyle,
+                background: brush.shape === s ? "#3b82f6" : "#27272a",
+              }}
+            >
+              {s[0].toUpperCase() + s.slice(1)}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Undo/Redo */}

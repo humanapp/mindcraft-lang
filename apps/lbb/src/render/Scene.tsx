@@ -73,6 +73,7 @@ function InputHandler() {
 
 export function Scene() {
   const brushRadius = useEditorStore((s) => s.brush.radius);
+  const brushShape = useEditorStore((s) => s.brush.shape);
 
   return (
     <Canvas
@@ -87,7 +88,7 @@ export function Scene() {
       <Lighting />
       <Terrain />
       <TerrainUpdater />
-      <BrushCursor radius={brushRadius} />
+      <BrushCursor radius={brushRadius} shape={brushShape} />
       <InputHandler />
       <VoxelSamplesOverlay />
     </Canvas>

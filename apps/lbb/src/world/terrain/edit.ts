@@ -8,12 +8,18 @@ export interface TerrainPatch {
   readonly after: number;
 }
 
+export type BrushShape = "sphere" | "cube" | "cylinder";
+
 export interface BrushParams {
   readonly radius: number;
   // Voxels of surface displacement per second at the brush center (before
   // falloff). Multiplied by dt each tick then converted to a density delta
   // via the local field gradient.
   readonly strength: number;
+  readonly shape: BrushShape;
+  // Controls the falloff curve steepness. 1.0 = standard smoothstep,
+  // <1 = flatter/broader, >1 = sharper/more peaked.
+  readonly falloff: number;
 }
 
 // The base terrain generator uses `density = height - wy`, giving a vertical
@@ -27,8 +33,45 @@ function displacementToDelta(voxels: number): number {
   return voxels * FIELD_GRADIENT;
 }
 
+function computeFalloff(
+  shape: BrushShape,
+  sx: number,
+  sy: number,
+  sz: number,
+  r: number,
+  falloffExp: number
+): number | null {
+  let t: number;
+  switch (shape) {
+    case "sphere": {
+      const distSq = sx * sx + sy * sy + sz * sz;
+      if (distSq > r * r) return null;
+      t = Math.sqrt(distSq) / r;
+      break;
+    }
+    case "cube": {
+      const ax = Math.abs(sx);
+      const ay = Math.abs(sy);
+      const az = Math.abs(sz);
+      if (ax > r || ay > r || az > r) return null;
+      t = Math.max(ax, ay, az) / r;
+      break;
+    }
+    case "cylinder": {
+      const distSqXZ = sx * sx + sz * sz;
+      if (distSqXZ > r * r || Math.abs(sy) > r) return null;
+      const tRadial = Math.sqrt(distSqXZ) / r;
+      const tVertical = Math.abs(sy) / r;
+      t = Math.max(tRadial, tVertical);
+      break;
+    }
+  }
+  const shaped = t ** falloffExp;
+  return 1 - shaped * shaped * (3 - 2 * shaped);
+}
+
 /**
- * Compute density field edits for a spherical brush centered at a world position.
+ * Compute density field edits for a brush centered at a world position.
  * Returns patches with before/after values suitable for undo.
  *
  * `dt` is the time step in seconds. brush.strength (voxels/second) is
@@ -45,7 +88,8 @@ export function computeBrushPatches(
 ): TerrainPatch[] {
   const [wx, wy, wz] = worldPos;
   const r = brush.radius;
-  const rSq = r * r;
+  const shape = brush.shape ?? "sphere";
+  const falloffExp = brush.falloff ?? 1;
   const patches: TerrainPatch[] = [];
   let debugSamples = 0;
 
@@ -89,17 +133,11 @@ export function computeBrushPatches(
           const sx = ox + lx - wx;
           const sy = oy + ly - wy;
           const sz = oz + lz - wz;
-          const distSq = sx * sx + sy * sy + sz * sz;
 
-          if (distSq > rSq) continue;
+          const falloff = computeFalloff(shape, sx, sy, sz, r, falloffExp);
+          if (falloff === null) continue;
 
-          const dist = Math.sqrt(distSq);
-          const t = dist / r;
-          // Smoothstep falloff: 1 at center, 0 at edge, zero derivative at
-          // both ends. Tighter than (1-t)^2 -- concentrates effect near the
-          // center and reduces the broad plateau that causes thick active-cell
-          // bands during additive painting.
-          const falloff = 1 - t * t * (3 - 2 * t);
+          const dist = Math.sqrt(sx * sx + sy * sy + sz * sz);
           const delta = displacementToDelta(brush.strength * dt) * falloff * (raise ? 1 : -1);
 
           const idx = sampleIndex(lx + FIELD_PAD, ly + FIELD_PAD, lz + FIELD_PAD);
