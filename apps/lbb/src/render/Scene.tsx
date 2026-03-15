@@ -18,6 +18,7 @@ function Terrain() {
 
   const handlePointerEvent = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
+      e.stopPropagation();
       setHoverWorldPos([e.point.x, e.point.y, e.point.z]);
     },
     [setHoverWorldPos]
