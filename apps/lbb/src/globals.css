@@ -47,3 +47,7 @@
     font-family: ui-sans-serif, system-ui, sans-serif;
   }
 }
+
+span[role="slider"] {
+  background-color: white;
+}
