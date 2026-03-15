@@ -78,7 +78,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     wireframe: false,
     terrainShading: "default",
-    normalSmoothing: 0,
+    normalSmoothing: 2,
     voxelDebugMode: "off",
     clampDensity: false,
     debugBrush: false,
