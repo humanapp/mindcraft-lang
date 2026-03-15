@@ -230,11 +230,8 @@ export function computeBrushPatches(
               break;
             }
             case "roughen": {
-              const noise = smoothNoise3D(
-                (ox + lx) * ROUGHEN_NOISE_SCALE,
-                (oy + ly) * ROUGHEN_NOISE_SCALE,
-                (oz + lz) * ROUGHEN_NOISE_SCALE
-              );
+              const noiseScale = ROUGHEN_NOISE_SCALE * Math.sqrt(falloffExp);
+              const noise = smoothNoise3D((ox + lx) * noiseScale, (oy + ly) * noiseScale, (oz + lz) * noiseScale);
               const band = Math.max(0, 1 - Math.abs(before) / r);
               const surfaceWeight = band * band * (3 - 2 * band);
               after = before + displacementToDelta(displacementPerTick) * falloff * noise * surfaceWeight;
