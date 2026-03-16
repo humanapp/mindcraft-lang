@@ -71,15 +71,22 @@ function noiseHash(ix: number, iy: number, iz: number): number {
   return ((h & 0x7fffffff) / 0x7fffffff) * 2 - 1;
 }
 
-function smoothNoise2D(x: number, z: number): number {
+function smoothNoise3D(x: number, y: number, z: number): number {
   const ix = Math.floor(x);
+  const iy = Math.floor(y);
   const iz = Math.floor(z);
   let fx = x - ix;
+  let fy = y - iy;
   let fz = z - iz;
   fx = fx * fx * (3 - 2 * fx);
+  fy = fy * fy * (3 - 2 * fy);
   fz = fz * fz * (3 - 2 * fz);
-  const v0 = noiseHash(ix, 0, iz) + (noiseHash(ix + 1, 0, iz) - noiseHash(ix, 0, iz)) * fx;
-  const v1 = noiseHash(ix, 0, iz + 1) + (noiseHash(ix + 1, 0, iz + 1) - noiseHash(ix, 0, iz + 1)) * fx;
+  const v00 = noiseHash(ix, iy, iz) + (noiseHash(ix + 1, iy, iz) - noiseHash(ix, iy, iz)) * fx;
+  const v10 = noiseHash(ix, iy + 1, iz) + (noiseHash(ix + 1, iy + 1, iz) - noiseHash(ix, iy + 1, iz)) * fx;
+  const v01 = noiseHash(ix, iy, iz + 1) + (noiseHash(ix + 1, iy, iz + 1) - noiseHash(ix, iy, iz + 1)) * fx;
+  const v11 = noiseHash(ix, iy + 1, iz + 1) + (noiseHash(ix + 1, iy + 1, iz + 1) - noiseHash(ix, iy + 1, iz + 1)) * fx;
+  const v0 = v00 + (v10 - v00) * fy;
+  const v1 = v01 + (v11 - v01) * fy;
   return v0 + (v1 - v0) * fz;
 }
 
@@ -223,8 +230,31 @@ export function computeBrushPatches(
               break;
             }
             case "roughen": {
+              const wvx = ox + lx;
+              const wvy = oy + ly;
+              const wvz = oz + lz;
+              const gx =
+                sampleFieldAt(chunks, wvx + 1, wvy, wvz, before) - sampleFieldAt(chunks, wvx - 1, wvy, wvz, before);
+              const gy =
+                sampleFieldAt(chunks, wvx, wvy + 1, wvz, before) - sampleFieldAt(chunks, wvx, wvy - 1, wvz, before);
+              const gz =
+                sampleFieldAt(chunks, wvx, wvy, wvz + 1, before) - sampleFieldAt(chunks, wvx, wvy, wvz - 1, before);
+              const gradMagSq = gx * gx + gy * gy + gz * gz;
               const noiseScale = ROUGHEN_NOISE_SCALE * Math.sqrt(falloffExp);
-              const noise = smoothNoise2D((ox + lx) * noiseScale, (oz + lz) * noiseScale);
+              let sx: number;
+              let sy: number;
+              let sz: number;
+              if (gradMagSq > 1e-8) {
+                const t = before / gradMagSq;
+                sx = wvx - gx * t;
+                sy = wvy - gy * t;
+                sz = wvz - gz * t;
+              } else {
+                sx = wvx;
+                sy = 0;
+                sz = wvz;
+              }
+              const noise = smoothNoise3D(sx * noiseScale, sy * noiseScale, sz * noiseScale);
               after = before + displacementToDelta(displacementPerTick) * falloff * noise;
               break;
             }
