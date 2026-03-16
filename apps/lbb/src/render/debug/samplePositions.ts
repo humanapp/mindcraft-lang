@@ -1,5 +1,13 @@
 import type { ChunkCoord } from "../../world/terrain/types";
-import { CHUNK_SIZE, FIELD_PAD, SAMPLES, SAMPLES_TOTAL, sampleIndex } from "../../world/terrain/types";
+import {
+  CORE_SAMPLES,
+  chunkWorldOrigin,
+  FIELD_PAD,
+  localVoxelToSampleIndex,
+  SAMPLES,
+  SAMPLES_TOTAL,
+  sampleIndex,
+} from "../../world/terrain/types";
 
 // Corner and edge definitions mirror the mesher exactly so debug geometry
 // aligns with the extracted surface.
@@ -29,10 +37,9 @@ const CUBE_EDGES: [number, number][] = [
   [3, 7],
 ];
 
-// The mesher iterates MESH_DIM^3 cells (CHUNK_SIZE+1 = 33 per axis).
+// The mesher iterates CORE_SAMPLES^3 cells (CHUNK_SIZE+1 = 33 per axis).
 // Cell (cx, cy, cz) occupies sample corners at [cx..cx+1, cy..cy+1, cz..cz+1].
 // All corner indices fit within SAMPLES = CHUNK_SIZE+2 = 34.
-const MESH_DIM = CHUNK_SIZE + 1;
 
 // A cell is active when the iso surface passes through it: at least one corner
 // has density > 0 (solid) and at least one has density <= 0 (air or surface).
@@ -40,20 +47,18 @@ const MESH_DIM = CHUNK_SIZE + 1;
 // The debug point is placed at the cell center in world space:
 //   center = chunkOrigin + (cx + 0.5, cy + 0.5, cz + 0.5)
 export function buildActiveCellPoints(field: Float32Array, coord: ChunkCoord): Float32Array {
-  const ox = coord.cx * CHUNK_SIZE;
-  const oy = coord.cy * CHUNK_SIZE;
-  const oz = coord.cz * CHUNK_SIZE;
+  const [ox, oy, oz] = chunkWorldOrigin(coord);
 
   const pts: number[] = [];
 
-  for (let cz = 0; cz < MESH_DIM; cz++) {
-    for (let cy = 0; cy < MESH_DIM; cy++) {
-      for (let cx = 0; cx < MESH_DIM; cx++) {
+  for (let cz = 0; cz < CORE_SAMPLES; cz++) {
+    for (let cy = 0; cy < CORE_SAMPLES; cy++) {
+      for (let cx = 0; cx < CORE_SAMPLES; cx++) {
         let hasPos = false;
         let hasNeg = false;
         for (let i = 0; i < 8; i++) {
           const [dx, dy, dz] = CORNERS[i];
-          if (field[sampleIndex(cx + dx + FIELD_PAD, cy + dy + FIELD_PAD, cz + dz + FIELD_PAD)] > 0) {
+          if (field[localVoxelToSampleIndex(cx + dx, cy + dy, cz + dz)] > 0) {
             hasPos = true;
           } else {
             hasNeg = true;
@@ -75,20 +80,18 @@ export function buildActiveCellPoints(field: Float32Array, coord: ChunkCoord): F
 // These points lie exactly on the iso surface (density = 0) by linear
 // interpolation along each edge.
 export function buildEdgeIntersectionPoints(field: Float32Array, coord: ChunkCoord): Float32Array {
-  const ox = coord.cx * CHUNK_SIZE;
-  const oy = coord.cy * CHUNK_SIZE;
-  const oz = coord.cz * CHUNK_SIZE;
+  const [ox, oy, oz] = chunkWorldOrigin(coord);
 
   const pts: number[] = [];
 
-  for (let cz = 0; cz < MESH_DIM; cz++) {
-    for (let cy = 0; cy < MESH_DIM; cy++) {
-      for (let cx = 0; cx < MESH_DIM; cx++) {
+  for (let cz = 0; cz < CORE_SAMPLES; cz++) {
+    for (let cy = 0; cy < CORE_SAMPLES; cy++) {
+      for (let cx = 0; cx < CORE_SAMPLES; cx++) {
         const d: number[] = new Array(8);
         let mask = 0;
         for (let i = 0; i < 8; i++) {
           const [dx, dy, dz] = CORNERS[i];
-          d[i] = field[sampleIndex(cx + dx + FIELD_PAD, cy + dy + FIELD_PAD, cz + dz + FIELD_PAD)];
+          d[i] = field[localVoxelToSampleIndex(cx + dx, cy + dy, cz + dz)];
           if (d[i] > 0) mask |= 1 << i;
         }
         if (mask === 0 || mask === 0xff) continue;
@@ -119,19 +122,17 @@ export interface DensitySignData {
 export function buildDensitySignPoints(field: Float32Array, coord: ChunkCoord): DensitySignData {
   const positions = new Float32Array(SAMPLES_TOTAL * 3);
   const colors = new Float32Array(SAMPLES_TOTAL * 3);
-  const ox = coord.cx * CHUNK_SIZE;
-  const oy = coord.cy * CHUNK_SIZE;
-  const oz = coord.cz * CHUNK_SIZE;
+  const [ox, oy, oz] = chunkWorldOrigin(coord);
 
   let i = 0;
-  for (let lz = 0; lz < SAMPLES; lz++) {
-    for (let ly = 0; ly < SAMPLES; ly++) {
-      for (let lx = 0; lx < SAMPLES; lx++) {
-        positions[i] = ox + lx - FIELD_PAD;
-        positions[i + 1] = oy + ly - FIELD_PAD;
-        positions[i + 2] = oz + lz - FIELD_PAD;
+  for (let sz = 0; sz < SAMPLES; sz++) {
+    for (let sy = 0; sy < SAMPLES; sy++) {
+      for (let sx = 0; sx < SAMPLES; sx++) {
+        positions[i] = ox + sx - FIELD_PAD;
+        positions[i + 1] = oy + sy - FIELD_PAD;
+        positions[i + 2] = oz + sz - FIELD_PAD;
 
-        const d = field[sampleIndex(lx, ly, lz)];
+        const d = field[sampleIndex(sx, sy, sz)];
         if (d > 0) {
           // solid -> blue
           colors[i] = 0;

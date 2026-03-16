@@ -1,5 +1,13 @@
 import type { ChunkCoord, MeshData } from "./types";
-import { CHUNK_SIZE, FIELD_PAD, SAMPLES, SAMPLES_SQ, sampleIndex } from "./types";
+import {
+  CORE_SAMPLES,
+  chunkWorldOrigin,
+  FIELD_PAD,
+  localVoxelToSampleIndex,
+  SAMPLES,
+  SAMPLES_SQ,
+  sampleIndex,
+} from "./types";
 
 const CORNER_OFFSETS = [
   0,
@@ -152,7 +160,7 @@ function emptyMesh(): MeshData {
 
 function isUniformSign(field: Float32Array): boolean {
   const gMin = FIELD_PAD;
-  const gMax = FIELD_PAD + CHUNK_SIZE + 1;
+  const gMax = FIELD_PAD + CORE_SAMPLES;
   const firstSign = field[gMin + gMin * SAMPLES + gMin * SAMPLES_SQ] > 0;
   for (let gz = gMin; gz <= gMax; gz++) {
     const zOff = gz * SAMPLES_SQ;
@@ -193,7 +201,7 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
 
   if (isUniformSign(field)) return emptyMesh();
 
-  const meshDim = CHUNK_SIZE + 1;
+  const meshDim = CORE_SAMPLES;
   const cellCount = meshDim * meshDim * meshDim;
   const cellVertex = new Int32Array(cellCount).fill(-1);
   const positions = new Float32Array(cellCount * 3);
@@ -206,14 +214,12 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
   // Phase 1: Compute cell vertices
   let vertCount = 0;
 
-  const wx0 = coord.cx * CHUNK_SIZE;
-  const wy0 = coord.cy * CHUNK_SIZE;
-  const wz0 = coord.cz * CHUNK_SIZE;
+  const [wx0, wy0, wz0] = chunkWorldOrigin(coord);
 
   for (let cz = 0; cz < meshDim; cz++) {
     for (let cy = 0; cy < meshDim; cy++) {
       for (let cx = 0; cx < meshDim; cx++) {
-        const base = cx + FIELD_PAD + (cy + FIELD_PAD) * SAMPLES + (cz + FIELD_PAD) * SAMPLES_SQ;
+        const base = localVoxelToSampleIndex(cx, cy, cz);
         for (let i = 0; i < 8; i++) d[i] = field[base + CORNER_OFFSETS[i]];
 
         let mask = 0;
@@ -335,8 +341,8 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
   for (let gz = 1; gz < meshDim; gz++) {
     for (let gy = 1; gy < meshDim; gy++) {
       for (let gx = 0; gx < meshDim; gx++) {
-        const d0 = field[sampleIndex(gx + FIELD_PAD, gy + FIELD_PAD, gz + FIELD_PAD)];
-        const d1 = field[sampleIndex(gx + 1 + FIELD_PAD, gy + FIELD_PAD, gz + FIELD_PAD)];
+        const d0 = field[localVoxelToSampleIndex(gx, gy, gz)];
+        const d1 = field[localVoxelToSampleIndex(gx + 1, gy, gz)];
         if (d0 > 0 === d1 > 0) continue;
 
         const a = cellVert(gx, gy - 1, gz - 1);
@@ -368,8 +374,8 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
   for (let gz = 1; gz < meshDim; gz++) {
     for (let gy = 0; gy < meshDim; gy++) {
       for (let gx = 1; gx < meshDim; gx++) {
-        const d0 = field[sampleIndex(gx + FIELD_PAD, gy + FIELD_PAD, gz + FIELD_PAD)];
-        const d1 = field[sampleIndex(gx + FIELD_PAD, gy + 1 + FIELD_PAD, gz + FIELD_PAD)];
+        const d0 = field[localVoxelToSampleIndex(gx, gy, gz)];
+        const d1 = field[localVoxelToSampleIndex(gx, gy + 1, gz)];
         if (d0 > 0 === d1 > 0) continue;
 
         const a = cellVert(gx - 1, gy, gz - 1);
@@ -401,8 +407,8 @@ export function extractSurfaceNets(field: Float32Array, coord: ChunkCoord, optio
   for (let gz = 0; gz < meshDim; gz++) {
     for (let gy = 1; gy < meshDim; gy++) {
       for (let gx = 1; gx < meshDim; gx++) {
-        const d0 = field[sampleIndex(gx + FIELD_PAD, gy + FIELD_PAD, gz + FIELD_PAD)];
-        const d1 = field[sampleIndex(gx + FIELD_PAD, gy + FIELD_PAD, gz + 1 + FIELD_PAD)];
+        const d0 = field[localVoxelToSampleIndex(gx, gy, gz)];
+        const d1 = field[localVoxelToSampleIndex(gx, gy, gz + 1)];
         if (d0 > 0 === d1 > 0) continue;
 
         const a = cellVert(gx - 1, gy - 1, gz);

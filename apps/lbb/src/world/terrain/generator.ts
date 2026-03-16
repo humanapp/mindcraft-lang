@@ -1,5 +1,5 @@
 import type { ChunkCoord, ChunkData } from "./types";
-import { CHUNK_SIZE, FIELD_PAD, SAMPLES, SAMPLES_TOTAL, sampleIndex } from "./types";
+import { chunkWorldOrigin, FIELD_PAD, SAMPLES, SAMPLES_TOTAL, sampleIndex } from "./types";
 
 // Simple deterministic noise using sine-based hash
 function hash2d(x: number, z: number): number {
@@ -49,20 +49,18 @@ export function baselineDensity(wx: number, wy: number, wz: number): number {
 export function generateChunkField(coord: ChunkCoord): Float32Array {
   const field = new Float32Array(SAMPLES_TOTAL);
 
-  const wx0 = coord.cx * CHUNK_SIZE;
-  const wy0 = coord.cy * CHUNK_SIZE;
-  const wz0 = coord.cz * CHUNK_SIZE;
+  const [wx0, wy0, wz0] = chunkWorldOrigin(coord);
 
-  for (let lz = 0; lz < SAMPLES; lz++) {
-    for (let ly = 0; ly < SAMPLES; ly++) {
-      for (let lx = 0; lx < SAMPLES; lx++) {
-        const wx = wx0 + lx - FIELD_PAD;
-        const wy = wy0 + ly - FIELD_PAD;
-        const wz = wz0 + lz - FIELD_PAD;
+  for (let sz = 0; sz < SAMPLES; sz++) {
+    for (let sy = 0; sy < SAMPLES; sy++) {
+      for (let sx = 0; sx < SAMPLES; sx++) {
+        const wx = wx0 + sx - FIELD_PAD;
+        const wy = wy0 + sy - FIELD_PAD;
+        const wz = wz0 + sz - FIELD_PAD;
 
         const density = baselineDensity(wx, wy, wz);
 
-        field[sampleIndex(lx, ly, lz)] = density;
+        field[sampleIndex(sx, sy, sz)] = density;
       }
     }
   }

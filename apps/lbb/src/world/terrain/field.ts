@@ -4,21 +4,21 @@ export function createField(): Float32Array {
   return new Float32Array(SAMPLES_TOTAL);
 }
 
-export function getSample(field: Float32Array, lx: number, ly: number, lz: number): number {
-  return field[sampleIndex(lx, ly, lz)];
+export function getSample(field: Float32Array, sx: number, sy: number, sz: number): number {
+  return field[sampleIndex(sx, sy, sz)];
 }
 
-export function setSample(field: Float32Array, lx: number, ly: number, lz: number, value: number): void {
-  field[sampleIndex(lx, ly, lz)] = value;
+export function setSample(field: Float32Array, sx: number, sy: number, sz: number, value: number): void {
+  field[sampleIndex(sx, sy, sz)] = value;
 }
 
-export function computeGradient(field: Float32Array, lx: number, ly: number, lz: number): [number, number, number] {
-  const x0 = lx > 0 ? field[sampleIndex(lx - 1, ly, lz)] : field[sampleIndex(lx, ly, lz)];
-  const x1 = lx < SAMPLES - 1 ? field[sampleIndex(lx + 1, ly, lz)] : field[sampleIndex(lx, ly, lz)];
-  const y0 = ly > 0 ? field[sampleIndex(lx, ly - 1, lz)] : field[sampleIndex(lx, ly, lz)];
-  const y1 = ly < SAMPLES - 1 ? field[sampleIndex(lx, ly + 1, lz)] : field[sampleIndex(lx, ly, lz)];
-  const z0 = lz > 0 ? field[sampleIndex(lx, ly, lz - 1)] : field[sampleIndex(lx, ly, lz)];
-  const z1 = lz < SAMPLES - 1 ? field[sampleIndex(lx, ly, lz + 1)] : field[sampleIndex(lx, ly, lz)];
+export function computeGradient(field: Float32Array, sx: number, sy: number, sz: number): [number, number, number] {
+  const x0 = sx > 0 ? field[sampleIndex(sx - 1, sy, sz)] : field[sampleIndex(sx, sy, sz)];
+  const x1 = sx < SAMPLES - 1 ? field[sampleIndex(sx + 1, sy, sz)] : field[sampleIndex(sx, sy, sz)];
+  const y0 = sy > 0 ? field[sampleIndex(sx, sy - 1, sz)] : field[sampleIndex(sx, sy, sz)];
+  const y1 = sy < SAMPLES - 1 ? field[sampleIndex(sx, sy + 1, sz)] : field[sampleIndex(sx, sy, sz)];
+  const z0 = sz > 0 ? field[sampleIndex(sx, sy, sz - 1)] : field[sampleIndex(sx, sy, sz)];
+  const z1 = sz < SAMPLES - 1 ? field[sampleIndex(sx, sy, sz + 1)] : field[sampleIndex(sx, sy, sz)];
 
   return [x0 - x1, y0 - y1, z0 - z1];
 }

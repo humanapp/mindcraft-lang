@@ -1,5 +1,5 @@
 import type { ChunkCoord, ChunkData } from "./types";
-import { CHUNK_SIZE, chunkId, FIELD_PAD, SAMPLES, SAMPLES_SQ } from "./types";
+import { CHUNK_SIZE, CORE_SAMPLES, chunkId, FIELD_PAD, SAMPLES, SAMPLES_SQ } from "./types";
 
 export const NEIGHBOR_OFFSETS: readonly (readonly [number, number, number])[] = (() => {
   const offsets: [number, number, number][] = [];
@@ -17,7 +17,7 @@ export const NEIGHBOR_OFFSETS: readonly (readonly [number, number, number])[] = 
 export function syncChunkPadding(chunk: ChunkData, chunks: ReadonlyMap<string, ChunkData>): void {
   const { cx, cy, cz } = chunk.coord;
   const CORE_MIN = FIELD_PAD;
-  const CORE_MAX = FIELD_PAD + CHUNK_SIZE + 1;
+  const CORE_MAX = FIELD_PAD + CORE_SAMPLES;
 
   for (const [dx, dy, dz] of NEIGHBOR_OFFSETS) {
     const neighbor = chunks.get(chunkId({ cx: cx + dx, cy: cy + dy, cz: cz + dz }));

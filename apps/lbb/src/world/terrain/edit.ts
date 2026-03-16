@@ -1,6 +1,14 @@
 import { baselineDensity } from "./generator";
 import type { ChunkCoord } from "./types";
-import { CHUNK_SIZE, chunkId, FIELD_PAD, SAMPLES, SAMPLES_SQ, sampleIndex } from "./types";
+import {
+  CHUNK_SIZE,
+  CORE_SAMPLES,
+  chunkId,
+  chunkWorldOrigin,
+  localVoxelToSampleIndex,
+  worldToChunkCoord,
+  worldToLocalVoxel,
+} from "./types";
 
 export interface TerrainPatch {
   readonly chunkId: string;
@@ -50,15 +58,11 @@ function sampleFieldAt(
   wz: number,
   fallback: number
 ): number {
-  const cx = Math.floor(wx / CHUNK_SIZE);
-  const cy = Math.floor(wy / CHUNK_SIZE);
-  const cz = Math.floor(wz / CHUNK_SIZE);
-  const chunk = chunks.get(chunkId({ cx, cy, cz }));
+  const coord = worldToChunkCoord(wx, wy, wz);
+  const chunk = chunks.get(chunkId(coord));
   if (!chunk) return fallback;
-  const lx = wx - cx * CHUNK_SIZE;
-  const ly = wy - cy * CHUNK_SIZE;
-  const lz = wz - cz * CHUNK_SIZE;
-  return chunk.field[sampleIndex(lx + FIELD_PAD, ly + FIELD_PAD, lz + FIELD_PAD)];
+  const [lx, ly, lz] = worldToLocalVoxel(wx, wy, wz);
+  return chunk.field[localVoxelToSampleIndex(lx, ly, lz)];
 }
 
 function noiseHash(ix: number, iy: number, iz: number): number {
@@ -155,12 +159,11 @@ export function computeBrushPatches(
   const displacementPerTick = effectiveStrength(brush.strength) * dt;
   const blendFactor = 1 - Math.exp(-effectiveStrength(brush.strength) * dt);
 
-  const coreExtent = CHUNK_SIZE + 1;
-  const cxMin = Math.ceil((wx - r - coreExtent) / CHUNK_SIZE);
+  const cxMin = Math.ceil((wx - r - CORE_SAMPLES) / CHUNK_SIZE);
   const cxMax = Math.floor((wx + r) / CHUNK_SIZE);
-  const cyMin = Math.ceil((wy - r - coreExtent) / CHUNK_SIZE);
+  const cyMin = Math.ceil((wy - r - CORE_SAMPLES) / CHUNK_SIZE);
   const cyMax = Math.floor((wy + r) / CHUNK_SIZE);
-  const czMin = Math.ceil((wz - r - coreExtent) / CHUNK_SIZE);
+  const czMin = Math.ceil((wz - r - CORE_SAMPLES) / CHUNK_SIZE);
   const czMax = Math.floor((wz + r) / CHUNK_SIZE);
 
   const overlapping: [string, { coord: ChunkCoord; field: Float32Array }][] = [];
@@ -175,17 +178,14 @@ export function computeBrushPatches(
   }
 
   for (const [id, chunk] of overlapping) {
-    const ox = chunk.coord.cx * CHUNK_SIZE;
-    const oy = chunk.coord.cy * CHUNK_SIZE;
-    const oz = chunk.coord.cz * CHUNK_SIZE;
+    const [ox, oy, oz] = chunkWorldOrigin(chunk.coord);
 
-    const clampMax = CHUNK_SIZE + 1;
     const lxMin = Math.max(0, Math.floor(wx - r - ox));
-    const lxMax = Math.min(clampMax, Math.ceil(wx + r - ox));
+    const lxMax = Math.min(CORE_SAMPLES, Math.ceil(wx + r - ox));
     const lyMin = Math.max(0, Math.floor(wy - r - oy));
-    const lyMax = Math.min(clampMax, Math.ceil(wy + r - oy));
+    const lyMax = Math.min(CORE_SAMPLES, Math.ceil(wy + r - oy));
     const lzMin = Math.max(0, Math.floor(wz - r - oz));
-    const lzMax = Math.min(clampMax, Math.ceil(wz + r - oz));
+    const lzMax = Math.min(CORE_SAMPLES, Math.ceil(wz + r - oz));
 
     if (lxMin > lxMax || lyMin > lyMax || lzMin > lzMax) continue;
 
@@ -199,7 +199,7 @@ export function computeBrushPatches(
           const falloff = computeFalloff(shape, sx, sy, sz, r, falloffExp);
           if (falloff === null) continue;
 
-          const idx = sampleIndex(lx + FIELD_PAD, ly + FIELD_PAD, lz + FIELD_PAD);
+          const idx = localVoxelToSampleIndex(lx, ly, lz);
           const before = chunk.field[idx];
           let after: number;
 
@@ -264,12 +264,12 @@ export function computeBrushPatches(
     if (debug && debugSamples > 0) {
       const centerLx = Math.round(wx - ox);
       const centerLz = Math.round(wz - oz);
-      if (centerLx >= 0 && centerLx <= CHUNK_SIZE + 1 && centerLz >= 0 && centerLz <= CHUNK_SIZE + 1) {
+      if (centerLx >= 0 && centerLx <= CORE_SAMPLES && centerLz >= 0 && centerLz <= CORE_SAMPLES) {
         const lyLow = Math.max(0, Math.floor(wy - oy) - 4);
-        const lyHigh = Math.min(CHUNK_SIZE + 1, Math.floor(wy - oy) + 4);
+        const lyHigh = Math.min(CORE_SAMPLES, Math.floor(wy - oy) + 4);
         const gradient: string[] = [];
         for (let ly = lyLow; ly <= lyHigh; ly++) {
-          const gIdx = sampleIndex(centerLx + FIELD_PAD, ly + FIELD_PAD, centerLz + FIELD_PAD);
+          const gIdx = localVoxelToSampleIndex(centerLx, ly, centerLz);
           const d = chunk.field[gIdx];
           gradient.push(`  y=${(oy + ly).toFixed(0)} density=${d.toFixed(4)}`);
         }

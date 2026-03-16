@@ -1,23 +1,28 @@
 import { strict as assert } from "node:assert";
 import { syncChunkPadding } from "../../src/world/terrain/halo";
 import type { ChunkCoord, ChunkData, MeshData } from "../../src/world/terrain/types";
-import { CHUNK_SIZE, chunkId, FIELD_PAD, SAMPLES, SAMPLES_TOTAL, sampleIndex } from "../../src/world/terrain/types";
+import {
+  chunkId,
+  chunkWorldOrigin,
+  FIELD_PAD,
+  SAMPLES,
+  SAMPLES_TOTAL,
+  sampleIndex,
+} from "../../src/world/terrain/types";
 
 export type FieldFiller = (wx: number, wy: number, wz: number) => number;
 
 export function fillChunkField(coord: ChunkCoord, filler: FieldFiller): Float32Array {
   const field = new Float32Array(SAMPLES_TOTAL);
-  const wx0 = coord.cx * CHUNK_SIZE;
-  const wy0 = coord.cy * CHUNK_SIZE;
-  const wz0 = coord.cz * CHUNK_SIZE;
+  const [wx0, wy0, wz0] = chunkWorldOrigin(coord);
 
-  for (let lz = 0; lz < SAMPLES; lz++) {
-    for (let ly = 0; ly < SAMPLES; ly++) {
-      for (let lx = 0; lx < SAMPLES; lx++) {
-        const wx = wx0 + lx - FIELD_PAD;
-        const wy = wy0 + ly - FIELD_PAD;
-        const wz = wz0 + lz - FIELD_PAD;
-        field[sampleIndex(lx, ly, lz)] = filler(wx, wy, wz);
+  for (let sz = 0; sz < SAMPLES; sz++) {
+    for (let sy = 0; sy < SAMPLES; sy++) {
+      for (let sx = 0; sx < SAMPLES; sx++) {
+        const wx = wx0 + sx - FIELD_PAD;
+        const wy = wy0 + sy - FIELD_PAD;
+        const wz = wz0 + sz - FIELD_PAD;
+        field[sampleIndex(sx, sy, sz)] = filler(wx, wy, wz);
       }
     }
   }
