@@ -48,8 +48,9 @@ const COLLIDER_BUDGET_PER_FRAME = 2;
 function TerrainUpdater() {
   const remeshDirtyChunks = useWorldStore((s) => s.remeshDirtyChunks);
   const flushStaleColliders = useWorldStore((s) => s.flushStaleColliders);
+  const normalSmoothing = useEditorStore((s) => s.normalSmoothing);
   useFrame(() => {
-    remeshDirtyChunks(MESH_BUDGET_PER_FRAME);
+    remeshDirtyChunks(MESH_BUDGET_PER_FRAME, { normalSmoothingIterations: normalSmoothing });
     flushStaleColliders(COLLIDER_BUDGET_PER_FRAME);
   }, -10);
   return null;

@@ -1,10 +1,10 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { create } from "zustand";
-import { useEditorStore } from "@/editor/editor-store";
 import type { Entity, EntityId } from "./entities";
 import { TerrainWorkerBridge } from "./terrain/terrain-worker-bridge";
 import { replaceTrimeshCollider } from "./voxel/collider";
 import { NEIGHBOR_OFFSETS, syncChunkPadding } from "./voxel/halo";
+import type { MesherOptions } from "./voxel/mesher";
 import type { ChunkData, MeshData } from "./voxel/types";
 import { CHUNK_SIZE, chunkId, FIELD_PAD, SAMPLES, SAMPLES_SQ, sampleIndex } from "./voxel/types";
 
@@ -114,8 +114,8 @@ export interface WorldState {
   // Actions
   initPhysics: (rapier: typeof RAPIER) => void;
   initTerrain: (chunkGrid: { x: number; y: number; z: number }) => void;
-  remeshChunk: (id: string) => void;
-  remeshDirtyChunks: (maxChunks?: number) => void;
+  remeshChunk: (id: string, mesherOptions?: MesherOptions) => void;
+  remeshDirtyChunks: (maxChunks?: number, mesherOptions?: MesherOptions) => void;
   markChunkDirty: (id: string) => void;
   flushStaleColliders: (max?: number) => void;
   applyFieldValues: (patches: Array<{ chunkId: string; fieldIndex: number; value: number }>, clamp?: boolean) => void;
@@ -229,7 +229,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     }
   },
 
-  remeshChunk: (id) => {
+  remeshChunk: (id, mesherOptions = {}) => {
     const state = get();
     const chunk = state.chunks.get(id);
     if (!chunk) return;
@@ -237,27 +237,21 @@ export const useWorldStore = create<WorldState>((set, get) => ({
 
     syncChunkPadding(chunk, state.chunks);
 
-    const normalSmoothing = useEditorStore.getState().normalSmoothing;
     const newInflight = new Set(state.inflightChunks);
     newInflight.add(id);
     const newDirty = new Set(state.dirtyChunks);
     newDirty.delete(id);
     set({ inflightChunks: newInflight, dirtyChunks: newDirty });
 
-    workerBridge
-      .requestMesh(id, chunk.coord, chunk.field, {
-        normalSmoothingIterations: normalSmoothing,
-      })
-      .then((result) => {
-        applyMeshResult(result.chunkId, result.mesh);
-      });
+    workerBridge.requestMesh(id, chunk.coord, chunk.field, mesherOptions).then((result) => {
+      applyMeshResult(result.chunkId, result.mesh);
+    });
   },
 
-  remeshDirtyChunks: (maxChunks) => {
+  remeshDirtyChunks: (maxChunks, mesherOptions = {}) => {
     const state = get();
     const dirty = state.dirtyChunks;
     if (dirty.size === 0) return;
-    const normalSmoothing = useEditorStore.getState().normalSmoothing;
     const newDirty = new Set(dirty);
     const newInflight = new Set(state.inflightChunks);
     let dispatched = 0;
@@ -279,13 +273,9 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       inflightVersions.set(id, chunk.version);
       dispatched++;
 
-      workerBridge
-        .requestMesh(id, chunk.coord, chunk.field, {
-          normalSmoothingIterations: normalSmoothing,
-        })
-        .then((result) => {
-          applyMeshResult(result.chunkId, result.mesh);
-        });
+      workerBridge.requestMesh(id, chunk.coord, chunk.field, mesherOptions).then((result) => {
+        applyMeshResult(result.chunkId, result.mesh);
+      });
     }
     if (dispatched > 0) {
       if (_seamLog) {

@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import type { BrushMode, BrushParams, BrushShape, TerrainPatch } from "@/world/terrain/edit";
-import { useWorldStore } from "@/world/world-store";
 import { TerrainPatchCommand } from "./commands";
 import { UndoStack } from "./undo-stack";
 
@@ -121,9 +120,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
       const command = new TerrainPatchCommand(Array.from(merged.values()));
       undoStack.record(command);
-
-      const { densityRange } = useWorldStore.getState();
-      console.log(`[brush] density range: [${densityRange.min.toFixed(4)}, ${densityRange.max.toFixed(4)}]`);
 
       set({ pendingPatches: [], flattenTarget: null });
     },
