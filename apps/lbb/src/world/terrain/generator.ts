@@ -48,8 +48,8 @@ export function baselineDensity(wx: number, wy: number, wz: number): number {
 
 const ISLAND_CENTER_X = 128;
 const ISLAND_CENTER_Z = 128;
-const ISLAND_RADIUS = 100;
-const ISLAND_EDGE_FALLOFF = 1.5;
+const ISLAND_RADIUS = 75;
+const ISLAND_EDGE_FALLOFF = 1;
 
 function islandRadialFalloff(wx: number, wz: number): number {
   const dx = wx - ISLAND_CENTER_X;
@@ -70,7 +70,8 @@ export function generateInitialChunkField(coord: ChunkCoord): Float32Array {
         const wy = wy0 + sy - FIELD_PAD;
         const wz = wz0 + sz - FIELD_PAD;
 
-        const density = baselineDensity(wx, wy, wz) - islandRadialFalloff(wx, wz);
+        const falloff = islandRadialFalloff(wx, wz);
+        const density = baselineDensity(wx, wy, wz) - falloff * falloff;
 
         field[sampleIndex(sx, sy, sz)] = density;
       }
