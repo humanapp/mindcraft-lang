@@ -34,7 +34,7 @@ describe("overlap field divergence after brush on chunk boundary", () => {
 
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     const worldX65 = boundary + 1;
@@ -73,7 +73,7 @@ describe("overlap field divergence after brush on chunk boundary", () => {
 
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     for (const c of chunks.values()) syncChunkPadding(c, chunks);

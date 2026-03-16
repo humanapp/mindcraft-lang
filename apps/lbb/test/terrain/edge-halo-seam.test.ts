@@ -26,7 +26,7 @@ describe("edge/corner halo sync after edits", () => {
     const patches = computeBrushPatches([CHUNK_SIZE - 1, CHUNK_SIZE - 1, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     for (const chunk of chunks.values()) {
@@ -72,7 +72,7 @@ describe("edge/corner halo sync after edits", () => {
     const patches = computeBrushPatches([CHUNK_SIZE - 1, CHUNK_SIZE - 1, CHUNK_SIZE - 1], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     for (const chunk of chunks.values()) {
@@ -122,7 +122,7 @@ describe("edge/corner halo sync after edits", () => {
     const patches = computeBrushPatches([CHUNK_SIZE, CHUNK_SIZE, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     for (const chunk of chunks.values()) {

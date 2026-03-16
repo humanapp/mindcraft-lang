@@ -61,7 +61,7 @@ describe("deterministic mesh output", () => {
       const patches = computeBrushPatches([CHUNK_SIZE - 2, 16, 16], brush, "raise", chunks, 0.5);
       for (const p of patches) {
         const chunk = chunks.get(p.chunkId);
-        if (chunk) chunk.field[p.index] = p.after;
+        if (chunk) chunk.field[p.fieldIndex] = p.after;
       }
 
       // Re-sync halos after editing

@@ -24,7 +24,7 @@ describe("halo sync after edits", () => {
     const patches = computeBrushPatches([CHUNK_SIZE - 3, 16, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     // Re-sync halos for the right chunk
@@ -62,7 +62,7 @@ describe("halo sync after edits", () => {
     const patches = computeBrushPatches([CHUNK_SIZE, 16, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     // Re-sync both chunks
@@ -96,7 +96,7 @@ describe("halo sync after edits", () => {
     const patches = computeBrushPatches([16, CHUNK_SIZE - 2, 16], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     syncChunkPadding(upper, chunks);
@@ -129,7 +129,7 @@ describe("halo sync after edits", () => {
     const patches = computeBrushPatches([16, 16, CHUNK_SIZE - 2], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     syncChunkPadding(back, chunks);
@@ -162,7 +162,7 @@ describe("halo sync after edits", () => {
     const patches = computeBrushPatches([CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE], brush, "raise", chunks, 1.0);
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
 
     // Re-sync all halos

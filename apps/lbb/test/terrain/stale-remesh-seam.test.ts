@@ -74,7 +74,7 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     );
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
     for (const chunk of chunks.values()) syncChunkPadding(chunk, chunks);
 
@@ -113,7 +113,7 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     );
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
     for (const chunk of chunks.values()) syncChunkPadding(chunk, chunks);
 
@@ -152,7 +152,7 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     );
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
-      if (chunk) chunk.field[p.index] = p.after;
+      if (chunk) chunk.field[p.fieldIndex] = p.after;
     }
     for (const chunk of chunks.values()) syncChunkPadding(chunk, chunks);
 
@@ -192,7 +192,7 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
       );
       for (const p of patches) {
         const chunk = chunks.get(p.chunkId);
-        if (chunk) chunk.field[p.index] = p.after;
+        if (chunk) chunk.field[p.fieldIndex] = p.after;
       }
       for (const chunk of chunks.values()) syncChunkPadding(chunk, chunks);
     }

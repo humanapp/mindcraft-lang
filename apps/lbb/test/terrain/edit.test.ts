@@ -132,7 +132,7 @@ describe("smooth brush", () => {
     let count = 0;
 
     for (const p of patches) {
-      const idx = p.index;
+      const idx = p.fieldIndex;
       const neighborsBefore = (chunk.field[idx - 1] + chunk.field[idx + 1]) / 2;
       varianceBefore += (p.before - neighborsBefore) ** 2;
 
@@ -141,7 +141,7 @@ describe("smooth brush", () => {
     }
 
     for (const p of patches) {
-      const idx = p.index;
+      const idx = p.fieldIndex;
       const neighborsAfter = (chunk.field[idx - 1] + chunk.field[idx + 1]) / 2;
       varianceAfter += (p.after - neighborsAfter) ** 2;
     }
@@ -197,7 +197,7 @@ describe("roughen brush", () => {
 
     const deltaByIndex = new Map<number, number>();
     for (const p of patches) {
-      deltaByIndex.set(p.index, p.after - p.before);
+      deltaByIndex.set(p.fieldIndex, p.after - p.before);
     }
 
     let maxJump = 0;
@@ -246,7 +246,7 @@ describe("flatten brush", () => {
     assert.ok(patches.length > 0, "flatten should produce patches");
 
     for (const p of patches) {
-      const worldY = Math.round(16 + (p.index % 38) - FIELD_PAD);
+      const worldY = Math.round(16 + (p.fieldIndex % 38) - FIELD_PAD);
       const targetDensity = targetHeight - worldY;
       const distBefore = Math.abs(p.before - targetDensity);
       const distAfter = Math.abs(p.after - targetDensity);
