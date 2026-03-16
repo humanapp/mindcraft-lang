@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { GestureHandler, PointerInput } from "../types";
+import type { GestureHandler, PointerInput } from "@/input/types";
 
 const PAN_SENSITIVITY = 0.002;
 const DRAG_DOLLY_FACTOR = 0.005;

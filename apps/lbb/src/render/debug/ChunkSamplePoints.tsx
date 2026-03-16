@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { BufferAttribute, BufferGeometry } from "three";
-import type { VoxelDebugMode } from "../../editor/editor-store";
-import type { ChunkData } from "../../world/terrain/types";
+import type { VoxelDebugMode } from "@/editor/editor-store";
+import type { ChunkData } from "@/world/terrain/types";
 import { buildActiveCellPoints, buildEdgeIntersectionPoints } from "./samplePositions";
 
 type ActiveMode = Exclude<VoxelDebugMode, "off" | "density-sign">;

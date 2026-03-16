@@ -1,6 +1,6 @@
 import type RAPIER from "@dimforge/rapier3d-compat";
 import { create } from "zustand";
-import { useEditorStore } from "../editor/editor-store";
+import { useEditorStore } from "@/editor/editor-store";
 import type { Entity, EntityId } from "./entities";
 import { replaceTrimeshCollider } from "./terrain/collider";
 import { NEIGHBOR_OFFSETS, syncChunkPadding } from "./terrain/halo";

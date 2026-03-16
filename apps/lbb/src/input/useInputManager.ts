@@ -1,10 +1,10 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useRef } from "react";
 import type * as THREE from "three";
-import { useEditorStore } from "../editor/editor-store";
-import { useSessionStore } from "../session/session-store";
-import { computeBrushPatches } from "../world/terrain/edit";
-import { useWorldStore } from "../world/world-store";
+import { useEditorStore } from "@/editor/editor-store";
+import { useSessionStore } from "@/session/session-store";
+import { computeBrushPatches } from "@/world/terrain/edit";
+import { useWorldStore } from "@/world/world-store";
 import { GestureRouter } from "./GestureRouter";
 import { DollyPanGesture } from "./gestures/DollyPanGesture";
 import { OrbitGesture } from "./gestures/OrbitGesture";

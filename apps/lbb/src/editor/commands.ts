@@ -1,5 +1,5 @@
-import type { TerrainPatch } from "../world/terrain/edit";
-import { useWorldStore } from "../world/world-store";
+import type { TerrainPatch } from "@/world/terrain/edit";
+import { useWorldStore } from "@/world/world-store";
 import { useEditorStore } from "./editor-store";
 import type { Command } from "./undo-stack";
 

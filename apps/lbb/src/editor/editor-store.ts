@@ -1,6 +1,6 @@
 import { create } from "zustand";
-import type { BrushMode, BrushParams, BrushShape, TerrainPatch } from "../world/terrain/edit";
-import { useWorldStore } from "../world/world-store";
+import type { BrushMode, BrushParams, BrushShape, TerrainPatch } from "@/world/terrain/edit";
+import { useWorldStore } from "@/world/world-store";
 import { TerrainPatchCommand } from "./commands";
 import { UndoStack } from "./undo-stack";
 

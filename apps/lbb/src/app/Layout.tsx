@@ -1,4 +1,4 @@
-import { Scene } from "../render/Scene";
+import { Scene } from "@/render/Scene";
 import { InspectorPanel } from "./InspectorPanel";
 import { Toolbar } from "./Toolbar";
 

@@ -1,5 +1,5 @@
-import { useEditorStore } from "../../editor/editor-store";
-import { useWorldStore } from "../../world/world-store";
+import { useEditorStore } from "@/editor/editor-store";
+import { useWorldStore } from "@/world/world-store";
 import { ChunkDensitySign } from "./ChunkDensitySign";
 import { ChunkDebugPoints } from "./ChunkSamplePoints";
 

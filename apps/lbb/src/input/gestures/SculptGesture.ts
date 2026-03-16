@@ -1,4 +1,4 @@
-import type { GestureHandler, PointerInput } from "../types";
+import type { GestureHandler, PointerInput } from "@/input/types";
 
 // Cap dt to avoid large jumps after tab-away or debugger pauses.
 const MAX_DT = 1 / 15;

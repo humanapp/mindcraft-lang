@@ -1,9 +1,9 @@
 import { Button, cn, Slider } from "@mindcraft-lang/ui";
 import type { ReactNode } from "react";
-import type { TerrainShadingMode, ToolType, VoxelDebugMode } from "../editor/editor-store";
-import { useEditorStore } from "../editor/editor-store";
-import type { BrushParams, BrushShape } from "../world/terrain/edit";
-import { useWorldStore } from "../world/world-store";
+import type { TerrainShadingMode, ToolType, VoxelDebugMode } from "@/editor/editor-store";
+import { useEditorStore } from "@/editor/editor-store";
+import type { BrushParams, BrushShape } from "@/world/terrain/edit";
+import { useWorldStore } from "@/world/world-store";
 
 function Panel({ children }: { children: ReactNode }) {
   return (

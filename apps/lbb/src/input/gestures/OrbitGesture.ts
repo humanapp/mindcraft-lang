@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import type { GestureHandler, PointerInput, WheelHandler } from "../types";
+import type { GestureHandler, PointerInput, WheelHandler } from "@/input/types";
 
 const _worldUp = new THREE.Vector3(0, 1, 0);
 

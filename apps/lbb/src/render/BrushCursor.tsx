@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import type { Mesh } from "three";
-import { useSessionStore } from "../session/session-store";
-import type { BrushShape } from "../world/terrain/edit";
+import { useSessionStore } from "@/session/session-store";
+import type { BrushShape } from "@/world/terrain/edit";
 
 interface BrushCursorProps {
   radius: number;
