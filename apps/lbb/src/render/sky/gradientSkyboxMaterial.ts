@@ -29,11 +29,10 @@ void main() {
   vec3 col = uColors[0];
   for (int i = 1; i < ${MAX_STOPS}; i++) {
     if (i >= uStopCount) break;
-    float t = clamp(
-      (h - uPositions[i - 1]) / (uPositions[i] - uPositions[i - 1]),
-      0.0,
-      1.0
-    );
+    float segLen = uPositions[i] - uPositions[i - 1];
+    float t = segLen > 0.0
+      ? clamp((h - uPositions[i - 1]) / segLen, 0.0, 1.0)
+      : (h >= uPositions[i] ? 1.0 : 0.0);
     col = mix(col, uColors[i], t);
   }
 

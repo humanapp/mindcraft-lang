@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { SkyGradientId } from "@/render/sky/gradientSkyboxUtils";
 import type { BrushMode, BrushParams, BrushShape, TerrainPatch } from "@/world/terrain/edit";
 import { TerrainPatchCommand } from "./commands";
 import { UndoStack } from "./undo-stack";
@@ -27,6 +28,7 @@ export interface EditorState {
   // Render options
   wireframe: boolean;
   terrainShading: TerrainShadingMode;
+  skyGradient: SkyGradientId;
   normalSmoothing: number;
   voxelDebugMode: VoxelDebugMode;
   clampDensity: boolean;
@@ -46,6 +48,7 @@ export interface EditorState {
   redo: () => void;
   toggleWireframe: () => void;
   setTerrainShading: (mode: TerrainShadingMode) => void;
+  setSkyGradient: (gradient: SkyGradientId) => void;
   setNormalSmoothing: (iterations: number) => void;
   setVoxelDebugMode: (mode: VoxelDebugMode) => void;
   toggleClampDensity: () => void;
@@ -80,6 +83,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     wireframe: false,
     terrainShading: "default",
+    skyGradient: "Default",
     normalSmoothing: 2,
     voxelDebugMode: "off",
     clampDensity: false,
@@ -132,6 +136,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     redo: () => undoStack.redo(),
     toggleWireframe: () => set((s) => ({ wireframe: !s.wireframe })),
     setTerrainShading: (mode) => set({ terrainShading: mode }),
+    setSkyGradient: (gradient) => set({ skyGradient: gradient }),
     setNormalSmoothing: (iterations) => set({ normalSmoothing: Math.max(0, Math.min(4, iterations)) }),
     setVoxelDebugMode: (mode) => set({ voxelDebugMode: mode }),
     toggleClampDensity: () => set((s) => ({ clampDensity: !s.clampDensity })),

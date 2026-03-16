@@ -2,6 +2,7 @@ import { Button, cn, Slider } from "@mindcraft-lang/ui";
 import type { ReactNode } from "react";
 import type { TerrainShadingMode, ToolType, VoxelDebugMode } from "@/editor/editor-store";
 import { useEditorStore } from "@/editor/editor-store";
+import { SKY_GRADIENTS, type SkyGradientId } from "@/render/sky/gradientSkyboxUtils";
 import type { BrushParams, BrushShape } from "@/world/terrain/edit";
 import { useWorldStore } from "@/world/world-store";
 
@@ -194,6 +195,8 @@ function RenderPanel({
   toggleWireframe,
   terrainShading,
   setTerrainShading,
+  skyGradient,
+  setSkyGradient,
   normalSmoothing,
   setNormalSmoothing,
 }: {
@@ -201,6 +204,8 @@ function RenderPanel({
   toggleWireframe: () => void;
   terrainShading: TerrainShadingMode;
   setTerrainShading: (mode: TerrainShadingMode) => void;
+  skyGradient: SkyGradientId;
+  setSkyGradient: (gradient: SkyGradientId) => void;
   normalSmoothing: number;
   setNormalSmoothing: (v: number) => void;
 }) {
@@ -217,6 +222,18 @@ function RenderPanel({
         <option value="plain">Plain Shaded</option>
         <option value="normals">Normal Debug</option>
         <option value="gradient-mag">Gradient Magnitude</option>
+      </select>
+      <span className="text-xs text-muted-foreground">Sky</span>
+      <select
+        value={skyGradient}
+        onChange={(e) => setSkyGradient(e.target.value as SkyGradientId)}
+        className="w-full rounded-md bg-secondary border border-border px-2 py-1 text-xs text-foreground cursor-pointer"
+      >
+        {(Object.keys(SKY_GRADIENTS) as SkyGradientId[]).map((id) => (
+          <option key={id} value={id}>
+            {id}
+          </option>
+        ))}
       </select>
       <SliderField
         label="Normal Smooth"
@@ -306,6 +323,8 @@ export function Toolbar() {
   const toggleWireframe = useEditorStore((s) => s.toggleWireframe);
   const terrainShading = useEditorStore((s) => s.terrainShading);
   const setTerrainShading = useEditorStore((s) => s.setTerrainShading);
+  const skyGradient = useEditorStore((s) => s.skyGradient);
+  const setSkyGradient = useEditorStore((s) => s.setSkyGradient);
   const normalSmoothing = useEditorStore((s) => s.normalSmoothing);
   const setNormalSmoothing = useEditorStore((s) => s.setNormalSmoothing);
   const voxelDebugMode = useEditorStore((s) => s.voxelDebugMode);
@@ -332,6 +351,8 @@ export function Toolbar() {
         toggleWireframe={toggleWireframe}
         terrainShading={terrainShading}
         setTerrainShading={setTerrainShading}
+        skyGradient={skyGradient}
+        setSkyGradient={setSkyGradient}
         normalSmoothing={normalSmoothing}
         setNormalSmoothing={setNormalSmoothing}
       />

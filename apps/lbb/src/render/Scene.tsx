@@ -9,6 +9,7 @@ import { useWorldStore } from "@/world/world-store";
 import { BrushCursor } from "./BrushCursor";
 import { VoxelSamplesOverlay } from "./debug/VoxelSamplesOverlay";
 import { GradientSkybox } from "./sky/GradientSkybox";
+import { SKY_GRADIENTS } from "./sky/gradientSkyboxUtils";
 import { TerrainChunkMesh } from "./TerrainChunkMesh";
 
 function Terrain() {
@@ -92,6 +93,7 @@ function InputHandler() {
 export function Scene() {
   const brushRadius = useEditorStore((s) => s.brush.radius);
   const brushShape = useEditorStore((s) => s.brush.shape);
+  const skyGradient = useEditorStore((s) => s.skyGradient);
 
   return (
     <Canvas
@@ -102,9 +104,7 @@ export function Scene() {
         useSessionStore.getState().setHoverWorldPos(null);
       }}
     >
-      <color attach="background" args={["#1a1a2e"]} />
-      <fog attach="fog" args={["#1a1a2e", 250, 500]} />
-      <GradientSkybox />
+      <GradientSkybox gradientStops={SKY_GRADIENTS[skyGradient]} fog={{ near: 150, far: 350 }} />
       <Lighting />
       <Terrain />
       <TerrainUpdater />
