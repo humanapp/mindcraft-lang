@@ -8,6 +8,7 @@ import { useSessionStore } from "@/session/session-store";
 import { useWorldStore } from "@/world/world-store";
 import { BrushCursor } from "./BrushCursor";
 import { VoxelSamplesOverlay } from "./debug/VoxelSamplesOverlay";
+import { GradientSkybox } from "./sky/GradientSkybox";
 import { TerrainChunkMesh } from "./TerrainChunkMesh";
 
 function Terrain() {
@@ -103,6 +104,7 @@ export function Scene() {
     >
       <color attach="background" args={["#1a1a2e"]} />
       <fog attach="fog" args={["#1a1a2e", 250, 500]} />
+      <GradientSkybox />
       <Lighting />
       <Terrain />
       <TerrainUpdater />
