@@ -3,8 +3,9 @@ import {
   CHUNK_SIZE,
   CORE_SAMPLES,
   chunkId,
-  chunkWorldOrigin,
   localVoxelToSampleIndex,
+  SAMPLES,
+  SAMPLES_SQ,
   worldToChunkCoord,
   worldToLocalVoxel,
 } from "@/world/voxel/types";
@@ -157,6 +158,7 @@ export function computeBrushPatches(
   let debugSamples = 0;
 
   const displacementPerTick = effectiveStrength(brush.strength) * dt;
+  const densityDelta = displacementToDelta(displacementPerTick);
   const blendFactor = 1 - Math.exp(-effectiveStrength(brush.strength) * dt);
 
   const cxMin = Math.ceil((wx - r - CORE_SAMPLES) / CHUNK_SIZE);
@@ -166,137 +168,178 @@ export function computeBrushPatches(
   const czMin = Math.ceil((wz - r - CORE_SAMPLES) / CHUNK_SIZE);
   const czMax = Math.floor((wz + r) / CHUNK_SIZE);
 
-  const overlapping: [string, { coord: ChunkCoord; field: Float32Array }][] = [];
   for (let cz = czMin; cz <= czMax; cz++) {
     for (let cy = cyMin; cy <= cyMax; cy++) {
       for (let cx = cxMin; cx <= cxMax; cx++) {
         const id = chunkId({ cx, cy, cz });
         const chunk = chunks.get(id);
-        if (chunk) overlapping.push([id, chunk]);
-      }
-    }
-  }
+        if (!chunk) continue;
 
-  for (const [id, chunk] of overlapping) {
-    const [ox, oy, oz] = chunkWorldOrigin(chunk.coord);
+        const ox = cx * CHUNK_SIZE;
+        const oy = cy * CHUNK_SIZE;
+        const oz = cz * CHUNK_SIZE;
 
-    const lxMin = Math.max(0, Math.floor(wx - r - ox));
-    const lxMax = Math.min(CORE_SAMPLES, Math.ceil(wx + r - ox));
-    const lyMin = Math.max(0, Math.floor(wy - r - oy));
-    const lyMax = Math.min(CORE_SAMPLES, Math.ceil(wy + r - oy));
-    const lzMin = Math.max(0, Math.floor(wz - r - oz));
-    const lzMax = Math.min(CORE_SAMPLES, Math.ceil(wz + r - oz));
+        const lxMin = Math.max(0, Math.floor(wx - r - ox));
+        const lxMax = Math.min(CORE_SAMPLES, Math.ceil(wx + r - ox));
+        const lyMin = Math.max(0, Math.floor(wy - r - oy));
+        const lyMax = Math.min(CORE_SAMPLES, Math.ceil(wy + r - oy));
+        const lzMin = Math.max(0, Math.floor(wz - r - oz));
+        const lzMax = Math.min(CORE_SAMPLES, Math.ceil(wz + r - oz));
 
-    if (lxMin > lxMax || lyMin > lyMax || lzMin > lzMax) continue;
+        if (lxMin > lxMax || lyMin > lyMax || lzMin > lzMax) continue;
 
-    for (let lz = lzMin; lz <= lzMax; lz++) {
-      for (let ly = lyMin; ly <= lyMax; ly++) {
-        for (let lx = lxMin; lx <= lxMax; lx++) {
-          const dx = ox + lx - wx;
-          const dy = oy + ly - wy;
-          const dz = oz + lz - wz;
+        const { field } = chunk;
+        const baseIdx = localVoxelToSampleIndex(lxMin, lyMin, lzMin);
+        let idxZ = baseIdx;
+        for (let lz = lzMin; lz <= lzMax; lz++, idxZ += SAMPLES_SQ) {
+          let idxY = idxZ;
+          for (let ly = lyMin; ly <= lyMax; ly++, idxY += SAMPLES) {
+            let idx = idxY;
+            for (let lx = lxMin; lx <= lxMax; lx++, idx++) {
+              const dx = ox + lx - wx;
+              const dy = oy + ly - wy;
+              const dz = oz + lz - wz;
 
-          const falloff = computeFalloff(shape, dx, dy, dz, r, falloffExp);
-          if (falloff === null) continue;
+              const falloff = computeFalloff(shape, dx, dy, dz, r, falloffExp);
+              if (falloff === null) continue;
 
-          const idx = localVoxelToSampleIndex(lx, ly, lz);
-          const before = chunk.field[idx];
-          let after: number;
+              const before = field[idx];
+              let after: number;
 
-          switch (mode) {
-            case "raise":
-              after = before + displacementToDelta(displacementPerTick) * falloff;
-              break;
-            case "lower": {
-              after = before - displacementToDelta(displacementPerTick) * falloff;
-              if (before > 0 && after <= 0) {
-                after = Math.min(after, baselineDensity(ox + lx, oy + ly, oz + lz));
+              switch (mode) {
+                case "raise":
+                  after = before + densityDelta * falloff;
+                  break;
+                case "lower": {
+                  after = before - densityDelta * falloff;
+                  if (before > 0 && after <= 0) {
+                    after = Math.min(after, baselineDensity(ox + lx, oy + ly, oz + lz));
+                  }
+                  break;
+                }
+                case "smooth": {
+                  let avg: number;
+                  if (
+                    lx === 0 ||
+                    lx === CORE_SAMPLES ||
+                    ly === 0 ||
+                    ly === CORE_SAMPLES ||
+                    lz === 0 ||
+                    lz === CORE_SAMPLES
+                  ) {
+                    const wvx = ox + lx;
+                    const wvy = oy + ly;
+                    const wvz = oz + lz;
+                    avg =
+                      (sampleFieldAt(chunks, wvx - 1, wvy, wvz, before) +
+                        sampleFieldAt(chunks, wvx + 1, wvy, wvz, before) +
+                        sampleFieldAt(chunks, wvx, wvy - 1, wvz, before) +
+                        sampleFieldAt(chunks, wvx, wvy + 1, wvz, before) +
+                        sampleFieldAt(chunks, wvx, wvy, wvz - 1, before) +
+                        sampleFieldAt(chunks, wvx, wvy, wvz + 1, before)) /
+                      6;
+                  } else {
+                    avg =
+                      (field[idx - 1] +
+                        field[idx + 1] +
+                        field[idx - SAMPLES] +
+                        field[idx + SAMPLES] +
+                        field[idx - SAMPLES_SQ] +
+                        field[idx + SAMPLES_SQ]) /
+                      6;
+                  }
+                  after = before + (avg - before) * blendFactor * falloff;
+                  break;
+                }
+                case "roughen": {
+                  const wvx = ox + lx;
+                  const wvy = oy + ly;
+                  const wvz = oz + lz;
+                  let gx: number;
+                  let gy: number;
+                  let gz: number;
+                  if (
+                    lx === 0 ||
+                    lx === CORE_SAMPLES ||
+                    ly === 0 ||
+                    ly === CORE_SAMPLES ||
+                    lz === 0 ||
+                    lz === CORE_SAMPLES
+                  ) {
+                    gx =
+                      sampleFieldAt(chunks, wvx + 1, wvy, wvz, before) -
+                      sampleFieldAt(chunks, wvx - 1, wvy, wvz, before);
+                    gy =
+                      sampleFieldAt(chunks, wvx, wvy + 1, wvz, before) -
+                      sampleFieldAt(chunks, wvx, wvy - 1, wvz, before);
+                    gz =
+                      sampleFieldAt(chunks, wvx, wvy, wvz + 1, before) -
+                      sampleFieldAt(chunks, wvx, wvy, wvz - 1, before);
+                  } else {
+                    gx = field[idx + 1] - field[idx - 1];
+                    gy = field[idx + SAMPLES] - field[idx - SAMPLES];
+                    gz = field[idx + SAMPLES_SQ] - field[idx - SAMPLES_SQ];
+                  }
+                  const gradMagSq = gx * gx + gy * gy + gz * gz;
+                  const noiseScale = ROUGHEN_NOISE_SCALE * Math.sqrt(falloffExp);
+                  let sx: number;
+                  let sy: number;
+                  let sz: number;
+                  if (gradMagSq > 1e-8) {
+                    const t = before / gradMagSq;
+                    sx = wvx - gx * t;
+                    sy = wvy - gy * t;
+                    sz = wvz - gz * t;
+                  } else {
+                    sx = wvx;
+                    sy = 0;
+                    sz = wvz;
+                  }
+                  const noise = smoothNoise3D(sx * noiseScale, sy * noiseScale, sz * noiseScale);
+                  after = before + densityDelta * falloff * noise;
+                  break;
+                }
+                case "flatten": {
+                  const targetDensity = (flattenTarget ?? oy + ly) - (oy + ly);
+                  after = before + (targetDensity - before) * blendFactor * falloff;
+                  break;
+                }
               }
-              break;
-            }
-            case "smooth": {
-              const wvx = ox + lx;
-              const wvy = oy + ly;
-              const wvz = oz + lz;
-              const avg =
-                (sampleFieldAt(chunks, wvx - 1, wvy, wvz, before) +
-                  sampleFieldAt(chunks, wvx + 1, wvy, wvz, before) +
-                  sampleFieldAt(chunks, wvx, wvy - 1, wvz, before) +
-                  sampleFieldAt(chunks, wvx, wvy + 1, wvz, before) +
-                  sampleFieldAt(chunks, wvx, wvy, wvz - 1, before) +
-                  sampleFieldAt(chunks, wvx, wvy, wvz + 1, before)) /
-                6;
-              after = before + (avg - before) * blendFactor * falloff;
-              break;
-            }
-            case "roughen": {
-              const wvx = ox + lx;
-              const wvy = oy + ly;
-              const wvz = oz + lz;
-              const gx =
-                sampleFieldAt(chunks, wvx + 1, wvy, wvz, before) - sampleFieldAt(chunks, wvx - 1, wvy, wvz, before);
-              const gy =
-                sampleFieldAt(chunks, wvx, wvy + 1, wvz, before) - sampleFieldAt(chunks, wvx, wvy - 1, wvz, before);
-              const gz =
-                sampleFieldAt(chunks, wvx, wvy, wvz + 1, before) - sampleFieldAt(chunks, wvx, wvy, wvz - 1, before);
-              const gradMagSq = gx * gx + gy * gy + gz * gz;
-              const noiseScale = ROUGHEN_NOISE_SCALE * Math.sqrt(falloffExp);
-              let sx: number;
-              let sy: number;
-              let sz: number;
-              if (gradMagSq > 1e-8) {
-                const t = before / gradMagSq;
-                sx = wvx - gx * t;
-                sy = wvy - gy * t;
-                sz = wvz - gz * t;
-              } else {
-                sx = wvx;
-                sy = 0;
-                sz = wvz;
+
+              if (debug && debugSamples < 8) {
+                const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (dist < 2) {
+                  console.log(
+                    `[brush-sample] world=(${(ox + lx).toFixed(1)},${(oy + ly).toFixed(1)},${(oz + lz).toFixed(1)})` +
+                      ` dist=${dist.toFixed(2)} falloff=${falloff.toFixed(3)}` +
+                      ` before=${before.toFixed(4)} after=${after.toFixed(4)}`
+                  );
+                  debugSamples++;
+                }
               }
-              const noise = smoothNoise3D(sx * noiseScale, sy * noiseScale, sz * noiseScale);
-              after = before + displacementToDelta(displacementPerTick) * falloff * noise;
-              break;
-            }
-            case "flatten": {
-              const targetDensity = (flattenTarget ?? oy + ly) - (oy + ly);
-              after = before + (targetDensity - before) * blendFactor * falloff;
-              break;
+
+              patches.push({ chunkId: id, fieldIndex: idx, before, after });
             }
           }
+        }
 
-          if (debug && debugSamples < 8) {
-            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            if (dist < 2) {
-              console.log(
-                `[brush-sample] world=(${(ox + lx).toFixed(1)},${(oy + ly).toFixed(1)},${(oz + lz).toFixed(1)})` +
-                  ` dist=${dist.toFixed(2)} falloff=${falloff.toFixed(3)}` +
-                  ` before=${before.toFixed(4)} after=${after.toFixed(4)}`
-              );
-              debugSamples++;
+        if (debug && debugSamples > 0) {
+          const centerLx = Math.round(wx - ox);
+          const centerLz = Math.round(wz - oz);
+          if (centerLx >= 0 && centerLx <= CORE_SAMPLES && centerLz >= 0 && centerLz <= CORE_SAMPLES) {
+            const lyLow = Math.max(0, Math.floor(wy - oy) - 4);
+            const lyHigh = Math.min(CORE_SAMPLES, Math.floor(wy - oy) + 4);
+            const gradient: string[] = [];
+            for (let ly = lyLow; ly <= lyHigh; ly++) {
+              const gIdx = localVoxelToSampleIndex(centerLx, ly, centerLz);
+              const d = chunk.field[gIdx];
+              gradient.push(`  y=${(oy + ly).toFixed(0)} density=${d.toFixed(4)}`);
             }
+            console.log(
+              `[brush-gradient] vertical column at x=${ox + centerLx}, z=${oz + centerLz}:\n${gradient.join("\n")}`
+            );
           }
-
-          patches.push({ chunkId: id, fieldIndex: idx, before, after });
         }
-      }
-    }
-
-    if (debug && debugSamples > 0) {
-      const centerLx = Math.round(wx - ox);
-      const centerLz = Math.round(wz - oz);
-      if (centerLx >= 0 && centerLx <= CORE_SAMPLES && centerLz >= 0 && centerLz <= CORE_SAMPLES) {
-        const lyLow = Math.max(0, Math.floor(wy - oy) - 4);
-        const lyHigh = Math.min(CORE_SAMPLES, Math.floor(wy - oy) + 4);
-        const gradient: string[] = [];
-        for (let ly = lyLow; ly <= lyHigh; ly++) {
-          const gIdx = localVoxelToSampleIndex(centerLx, ly, centerLz);
-          const d = chunk.field[gIdx];
-          gradient.push(`  y=${(oy + ly).toFixed(0)} density=${d.toFixed(4)}`);
-        }
-        console.log(
-          `[brush-gradient] vertical column at x=${ox + centerLx}, z=${oz + centerLz}:\n${gradient.join("\n")}`
-        );
       }
     }
   }
