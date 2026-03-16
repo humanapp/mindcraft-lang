@@ -71,22 +71,15 @@ function noiseHash(ix: number, iy: number, iz: number): number {
   return ((h & 0x7fffffff) / 0x7fffffff) * 2 - 1;
 }
 
-function smoothNoise3D(x: number, y: number, z: number): number {
+function smoothNoise2D(x: number, z: number): number {
   const ix = Math.floor(x);
-  const iy = Math.floor(y);
   const iz = Math.floor(z);
   let fx = x - ix;
-  let fy = y - iy;
   let fz = z - iz;
   fx = fx * fx * (3 - 2 * fx);
-  fy = fy * fy * (3 - 2 * fy);
   fz = fz * fz * (3 - 2 * fz);
-  const v00 = noiseHash(ix, iy, iz) + (noiseHash(ix + 1, iy, iz) - noiseHash(ix, iy, iz)) * fx;
-  const v10 = noiseHash(ix, iy + 1, iz) + (noiseHash(ix + 1, iy + 1, iz) - noiseHash(ix, iy + 1, iz)) * fx;
-  const v01 = noiseHash(ix, iy, iz + 1) + (noiseHash(ix + 1, iy, iz + 1) - noiseHash(ix, iy, iz + 1)) * fx;
-  const v11 = noiseHash(ix, iy + 1, iz + 1) + (noiseHash(ix + 1, iy + 1, iz + 1) - noiseHash(ix, iy + 1, iz + 1)) * fx;
-  const v0 = v00 + (v10 - v00) * fy;
-  const v1 = v01 + (v11 - v01) * fy;
+  const v0 = noiseHash(ix, 0, iz) + (noiseHash(ix + 1, 0, iz) - noiseHash(ix, 0, iz)) * fx;
+  const v1 = noiseHash(ix, 0, iz + 1) + (noiseHash(ix + 1, 0, iz + 1) - noiseHash(ix, 0, iz + 1)) * fx;
   return v0 + (v1 - v0) * fz;
 }
 
@@ -231,10 +224,8 @@ export function computeBrushPatches(
             }
             case "roughen": {
               const noiseScale = ROUGHEN_NOISE_SCALE * Math.sqrt(falloffExp);
-              const noise = smoothNoise3D((ox + lx) * noiseScale, (oy + ly) * noiseScale, (oz + lz) * noiseScale);
-              const band = Math.max(0, 1 - Math.abs(before) / r);
-              const surfaceWeight = band * band * (3 - 2 * band);
-              after = before + displacementToDelta(displacementPerTick) * falloff * noise * surfaceWeight;
+              const noise = smoothNoise2D((ox + lx) * noiseScale, (oz + lz) * noiseScale);
+              after = before + displacementToDelta(displacementPerTick) * falloff * noise;
               break;
             }
             case "flatten": {
