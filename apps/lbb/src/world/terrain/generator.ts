@@ -1,4 +1,4 @@
-import type { ChunkCoord, ChunkData } from "@/world/voxel/types";
+import type { ChunkCoord } from "@/world/voxel/types";
 import { chunkWorldOrigin, FIELD_PAD, SAMPLES, SAMPLES_TOTAL, sampleIndex } from "@/world/voxel/types";
 
 // Simple deterministic noise using sine-based hash
@@ -46,7 +46,19 @@ export function baselineDensity(wx: number, wy: number, wz: number): number {
   return BASE_HEIGHT + n * HEIGHT_AMPLITUDE - wy;
 }
 
-export function generateChunkField(coord: ChunkCoord): Float32Array {
+const ISLAND_CENTER_X = 128;
+const ISLAND_CENTER_Z = 128;
+const ISLAND_RADIUS = 100;
+const ISLAND_EDGE_FALLOFF = 1.5;
+
+function islandRadialFalloff(wx: number, wz: number): number {
+  const dx = wx - ISLAND_CENTER_X;
+  const dz = wz - ISLAND_CENTER_Z;
+  const dist = Math.sqrt(dx * dx + dz * dz);
+  return Math.max(0, dist - ISLAND_RADIUS) * ISLAND_EDGE_FALLOFF;
+}
+
+export function generateInitialChunkField(coord: ChunkCoord): Float32Array {
   const field = new Float32Array(SAMPLES_TOTAL);
 
   const [wx0, wy0, wz0] = chunkWorldOrigin(coord);
@@ -58,7 +70,7 @@ export function generateChunkField(coord: ChunkCoord): Float32Array {
         const wy = wy0 + sy - FIELD_PAD;
         const wz = wz0 + sz - FIELD_PAD;
 
-        const density = baselineDensity(wx, wy, wz);
+        const density = baselineDensity(wx, wy, wz) - islandRadialFalloff(wx, wz);
 
         field[sampleIndex(sx, sy, sz)] = density;
       }
@@ -66,12 +78,4 @@ export function generateChunkField(coord: ChunkCoord): Float32Array {
   }
 
   return field;
-}
-
-export function createChunkData(coord: ChunkCoord): ChunkData {
-  return {
-    coord,
-    field: generateChunkField(coord),
-    version: 0,
-  };
 }

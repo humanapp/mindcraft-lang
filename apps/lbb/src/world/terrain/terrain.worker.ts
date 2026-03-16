@@ -1,5 +1,5 @@
 import { extractSurfaceNets } from "@/world/voxel/mesher";
-import { generateChunkField } from "./generator";
+import { generateInitialChunkField } from "./generator";
 import type { WorkerRequest, WorkerResponse } from "./worker-types";
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {
@@ -24,7 +24,7 @@ self.onmessage = (e: MessageEvent<WorkerRequest>) => {
   }
 
   if (msg.type === "generate") {
-    const field = generateChunkField(msg.coord);
+    const field = generateInitialChunkField(msg.coord);
     const response: WorkerResponse = {
       type: "generate",
       id: msg.id,
