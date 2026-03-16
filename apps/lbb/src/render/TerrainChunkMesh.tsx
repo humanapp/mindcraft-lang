@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { BufferAttribute, BufferGeometry, DoubleSide } from "three";
 import type { TerrainShadingMode } from "@/editor/editor-store";
 import type { MeshData } from "@/world/voxel/types";
+import { TerrainMaterial } from "./materials/terrain/TerrainMaterial";
 
 interface TerrainChunkMeshProps {
   chunkId: string;
@@ -73,13 +74,10 @@ export function TerrainChunkMesh({
         <meshNormalMaterial wireframe={wireframe} />
       ) : shadingMode === "gradient-mag" ? (
         <meshBasicMaterial vertexColors wireframe={wireframe} />
+      ) : shadingMode === "plain" ? (
+        <meshStandardMaterial color="#b0b0b0" side={DoubleSide} flatShading={false} wireframe={wireframe} />
       ) : (
-        <meshStandardMaterial
-          color={shadingMode === "plain" ? "#b0b0b0" : "#5a8f3c"}
-          side={DoubleSide}
-          flatShading={false}
-          wireframe={wireframe}
-        />
+        <TerrainMaterial wireframe={wireframe} />
       )}
     </mesh>
   );
