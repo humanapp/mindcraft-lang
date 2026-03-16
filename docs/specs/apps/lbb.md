@@ -20,15 +20,14 @@ The creation experience spans several interconnected systems:
   to a volumetric density field. The terrain system supports raise, lower, smooth,
   roughen, and flatten operations with configurable brush shapes and falloff.
 
-- **Creature creation** -- Users build creatures from high-resolution voxel fields,
-  defining articulated spines, attaching limbs and joints, adding senses and mouths, and
-  controlling body shape through spline-based thickness curves. Inspired by the Spore
-  Creature Creator.
+- **Creature creation** -- Users build creatures using a sculpt field system based on
+  composable signed distance fields. Creatures support articulated spines, attachable
+  limbs and joints, senses and mouths, and organic body shapes built through brush-based
+  sculpting. Inspired by the Spore Creature Creator.
 
 - **Object sculpting** -- A general-purpose sculpt system (inspired by Media Molecule's
-  Dreams) lets users create trees, buildings, props, and decorations using voxel-field
-  editing with advanced tools like mirror sculpting, kaleidoscope patterns, and radial
-  symmetry.
+  Dreams) lets users create trees, buildings, props, and decorations using sculpt field
+  editing with tools like mirror sculpting, kaleidoscope patterns, and radial symmetry.
 
 - **Programmable entities** -- Creatures and objects receive Mindcraft brains -- visual
   programs that control behavior through sensors and actuators. Archetypes define shared
@@ -37,8 +36,10 @@ The creation experience spans several interconnected systems:
 - **Programmable environment** -- Lighting environments, placed lights, and atmospheric
   effects are user-editable and accessible through brain tiles for dynamic control.
 
-Terrain, creatures, and sculpted objects all share a unified editing model built on
-voxel-field density manipulation, brush tools, and symmetry operations.
+Terrain uses a voxel density-field system optimized for large continuous landscapes.
+Creatures and sculpted objects use a sculpt field system based on composable signed
+distance fields, supporting organic shapes, smooth blending, and high-resolution detail.
+Both systems share brush tools, symmetry operations, and reversible edit infrastructure.
 
 The application is built with Vite, React 19, Three.js (via React Three Fiber), and
 Rapier 3D physics. Heavy computation (mesh extraction, field generation) runs on Web
@@ -61,9 +62,10 @@ creature creator, sculpt system, and entity programming are planned future syste
 - **Responsive editing under load** -- Heavy computation must run off the main thread so
   input and camera interaction remain smooth during sculpting.
 
-- **Extensible voxel foundation** -- Terrain, creatures, and sculpted objects should all
-  build on the same core ideas: voxel fields, brush edits, meshing, and reversible edit
-  commands.
+- **Shared editing foundation** -- Terrain, creatures, and sculpted objects should all
+  build on common infrastructure: brush edits, meshing pipelines, symmetry tools, and
+  reversible edit commands. Terrain uses a voxel density field; creatures and sculpt
+  objects use a composable sculpt field (SDF-based).
 
 - **Clear subsystem boundaries** -- Data ownership, system responsibilities, and cross-
   subsystem contracts must be explicit so the codebase can grow without turning into a
@@ -1159,40 +1161,36 @@ architectural foundation rather than bolt on ad hoc.
 
 ### 28.1 Creature creator
 
-Creatures are expected to use:
-
-- higher-resolution voxel fields
-- articulated spine structures
-- attachable limbs and senses
-- reusable brush tools
-- reversible edit commands
+Creatures use the sculpt field system (see Section 29), layered with additional structure
+that supports articulated bodies, limb attachment, sensors and actuators, and behavioral
+brains.
 
 Architectural implication:
-the terrain voxel stack should be generalized where practical, but terrain-specific
-assumptions such as world-scale chunk sizing should not leak into all voxel systems.
+the sculpt field system is a shared platform for creatures and sculpt objects.
+Terrain-specific assumptions such as world-scale chunk sizing must not leak into the
+sculpt field or creature systems.
 
 ### 28.2 Freeform sculpt objects
 
-Sculpt objects should use:
-
-- independent voxel fields
-- shared meshing pipeline patterns
-- symmetry tooling
-- reusable patch and undo infrastructure
+Sculpt objects use the sculpt field system (see Section 29). They are freeform authored
+assets intended for props, environmental elements, and decorative structures.
 
 Architectural implication:
-voxel editing should become a reusable platform layer, with terrain as one concrete
-consumer.
+the sculpt field system is a reusable platform layer shared by both creatures and sculpt
+objects. Terrain is a separate, independent system using voxel density fields.
 
 ### 28.3 Unified editing model
 
 Terrain, creatures, and sculpts should share:
 
-- density editing
 - brush infrastructure
 - command history
 - hit testing patterns
 - meshing service patterns
+
+Terrain uses a voxel density field. Creatures and sculpt objects use the composable
+sculpt field system. Each system manages its own field representation, but they share
+the surrounding editing, history, and rendering infrastructure.
 
 They should not be forced into one monolithic data model if their resolution and runtime
 needs differ.
@@ -1230,7 +1228,151 @@ command types.
 
 ---
 
-## 29. Concrete Current Implementation Notes
+## 29. Sculpt Field System
+
+Creatures and sculpted objects are defined by a **sculpt field system** based on
+composable scalar fields (SDF-style). This is the shared modeling foundation for both
+asset types. The difference between them lies in presentation, editing tools, and
+downstream systems such as rigging and behavior.
+
+The system is designed to support:
+
+- Expressive, playful modeling suitable for a creative sandbox
+- Both crisp shapes and soft clay-like forms
+- Intuitive sculpting tools that feel physical and responsive
+- Inspectable structures that can be understood and remixed
+
+A major design inspiration is **Media Molecule's Dreams**, whose sculpting approach
+demonstrates how field-based modeling can feel tactile, playful, and accessible while
+supporting complex forms.
+
+### 29.1 Scalar Fields
+
+Creatures and sculpted objects are defined by a scalar field in a bounded modeling
+volume. At any point in space, the field produces a scalar value representing the
+distance-like relationship to the surface of the shape. The visible surface is the
+implicit boundary where the field crosses the surface threshold.
+
+Shapes are not defined as polygon meshes during editing. Instead, they are defined as a
+continuous field constructed from composable elements and operations. This supports both
+hard shape combinations and smooth clay-like blending.
+
+Meshes are generated from the field for rendering.
+
+### 29.2 Shape Composition
+
+Shapes are constructed from primitives combined with field operations.
+
+Example primitives:
+
+- Sphere
+- Ellipsoid
+- Capsule
+- Box
+- Rounded Box
+- Tubes or curve-based forms
+
+Primitives can be positioned, rotated, scaled, and parameterized.
+
+Field operations determine how primitives combine with existing geometry:
+
+- Add
+- Subtract
+- Intersect
+- Smooth blend
+- Blobby blend
+
+This allows shapes that range from crisp mechanical forms to organic clay-like bodies.
+
+### 29.3 Soft Blending
+
+The system supports controllable smooth blending between primitives and sculpt
+operations. This enables effects similar to metaballs or clay fusion, where neighboring
+shapes merge into a continuous form.
+
+Examples:
+
+- Limbs smoothly blending into a body
+- Organic bulges and folds
+- Soft transitions between sculpted regions
+
+Blend behavior is adjustable through brush parameters such as hardness and falloff.
+Blending is localized so that only nearby shapes influence one another, preventing the
+entire model from collapsing into a single merged field.
+
+### 29.4 Sculpt Brushes
+
+Users interact with the sculpt field primarily through brush tools. Brushes apply
+parametric field modifications along a stroke path or at a stamp location.
+
+Typical brush behaviors:
+
+- Add material
+- Carve material
+- Fuse shapes
+- Blob or inflate regions
+- Flatten or smooth surfaces
+- Stamp primitives into the field
+
+Brush parameters:
+
+- Size
+- Strength
+- Hardness
+- Falloff
+
+### 29.5 Symmetry and Pattern Sculpting
+
+Sculpt tools support procedural symmetry modes that replicate edits across the modeling
+space.
+
+**Mirror sculpting** -- Brush strokes can be mirrored across one or more axes. This
+supports common modeling tasks such as sculpting symmetrical creatures, faces, or
+mechanical parts.
+
+**Radial symmetry** -- Brush strokes can be repeated around an axis using a configurable
+number of segments. This is useful for circular structures, flowers, star-shaped forms,
+and mechanical patterns.
+
+**Kaleidoscope patterning** -- More advanced modes propagate sculpt strokes through
+mirrored and rotated transforms simultaneously, producing kaleidoscopic patterns.
+
+These modes encourage exploratory creation and allow visually rich forms to emerge
+quickly from simple sculpt actions.
+
+### 29.6 Creatures vs. Sculpt Objects
+
+Creatures and sculpted objects share the same sculpt field foundation but are presented
+differently in the editor.
+
+**Sculpt Objects** are freeform creations intended for props, environmental assets, or
+decorative elements. The sculpting workflow focuses on direct sculpting, shape stamping,
+blending, and carving.
+
+**Creatures** use the same sculpt field system but are layered with additional structure
+that supports articulated bodies, limb attachment, sensors and actuators, and behavioral
+brains. Creature editing tools emphasize building recognizable bodies and appendages
+rather than purely freeform shapes.
+
+Despite these differences, both ultimately produce geometry from the same sculpt field
+modeling approach.
+
+### 29.7 Relationship to Terrain
+
+Terrain uses the voxel density-field system described in Sections 10 through 17,
+optimized for large continuous landscapes.
+
+The sculpt field system is designed for bounded authored assets such as creatures and
+props.
+
+Both are scalar-field-based modeling systems, but each is tuned for its specific role:
+
+- Terrain: efficient editing and streaming for large landscapes
+- Sculpt fields: higher-quality detail for individual authored assets
+
+---
+
+## 30. Concrete Current Implementation Notes
 
 This section captures real implementation choices without pretending they are the final
 architecture.
@@ -1249,43 +1391,43 @@ These notes should be easy to update as implementation evolves.
 
 ---
 
-## 30. Open Questions
+## 31. Open Questions
 
 The spec should explicitly track unresolved architectural questions.
 
-### 30.1 Terrain scalability
+### 31.1 Terrain scalability
 
 - When should the fixed-grid terrain model become a streaming model?
 - What chunk loading radius and persistence model will be used?
 
-### 30.2 Voxel platform generalization
+### 31.2 Voxel platform generalization
 
 - Which field operations should be terrain-specific versus shared across all voxel
   editors?
 - Should creature/sculpt fields use the same chunking model as terrain?
 
-### 30.3 Collider strategy
+### 31.3 Collider strategy
 
 - At what edit frequency does trimesh rebuild cost become unacceptable?
 - Should collider updates lag behind visual mesh updates under heavy editing?
 
-### 30.4 Hit testing source of truth
+### 31.4 Hit testing source of truth
 
 - Should terrain hit testing continue using render mesh raycasts?
 - When should field-based or collider-based hit testing take over?
 
-### 30.5 Persistence model
+### 31.5 Persistence model
 
 - Will saved worlds store full chunk snapshots, deltas from seed-generated terrain, or a
   hybrid representation?
 
-### 30.6 Undo memory model
+### 31.6 Undo memory model
 
 - Should undo capacity be command-count-based, byte-budget-based, or hybrid?
 
 ---
 
-## 31. Summary
+## 32. Summary
 
 LBB is currently a terrain-focused 3D voxel editor with a strong deterministic terrain
 pipeline, worker-based mesh extraction, and reversible brush editing. Its next challenge
