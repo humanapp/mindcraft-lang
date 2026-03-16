@@ -83,7 +83,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     wireframe: false,
     terrainShading: "default",
-    skyGradient: "Default",
+    skyGradient: "Lavender Sunset",
     normalSmoothing: 2,
     voxelDebugMode: "off",
     clampDensity: false,
