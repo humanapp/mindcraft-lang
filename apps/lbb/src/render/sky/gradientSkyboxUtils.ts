@@ -13,86 +13,6 @@ const DEFAULT_GRADIENT: GradientStop[] = [
   { position: 1.0, color: "#f0a96e" },
 ];
 
-const GRASS_AND_SKY: GradientStop[] = [
-  { position: 0.15, color: "#264D33" },
-  { position: 0.45, color: "#4DB366" },
-  { position: 0.5, color: "#99CCB3" },
-  { position: 0.51, color: "#33B3FF" },
-  { position: 0.8, color: "#335999" },
-];
-
-const SPACE: GradientStop[] = [
-  { position: 0.0, color: "#000000" },
-  { position: 1.0, color: "#000000" },
-  { position: 1.0, color: "#000000" },
-  { position: 1.0, color: "#000000" },
-  { position: 1.0, color: "#000000" },
-];
-
-const RAMP_BW: GradientStop[] = [
-  { position: 0.0, color: "#000000" },
-  { position: 1.0, color: "#FFFFFF" },
-  { position: 1.0, color: "#FFFFFF" },
-  { position: 1.0, color: "#FFFFFF" },
-  { position: 1.0, color: "#FFFFFF" },
-];
-
-const PINK: GradientStop[] = [
-  { position: 0.0, color: "#8080CC" },
-  { position: 0.47, color: "#9900E6" },
-  { position: 0.5, color: "#FFFFFF" },
-  { position: 0.6, color: "#F5CCF2" },
-  { position: 0.9, color: "#F599CC" },
-];
-
-const VENUS: GradientStop[] = [
-  { position: 0.0, color: "#66FF1A" },
-  { position: 0.7, color: "#000000" },
-  { position: 1.0, color: "#000000" },
-  { position: 1.0, color: "#000000" },
-  { position: 1.0, color: "#000000" },
-];
-
-const SUNSET: GradientStop[] = [
-  { position: 0.49, color: "#000000" },
-  { position: 0.5, color: "#FFCC00" },
-  { position: 0.52, color: "#990000" },
-  { position: 0.6, color: "#000000" },
-  { position: 0.6, color: "#000000" },
-];
-
-const MARS: GradientStop[] = [
-  { position: 0.0, color: "#331A0D" },
-  { position: 0.2, color: "#BF5929" },
-  { position: 0.5, color: "#D49E6E" },
-  { position: 0.501, color: "#F5E3C2" },
-  { position: 1.0, color: "#917057" },
-];
-
-const BLUES: GradientStop[] = [
-  { position: 0.0, color: "#66C2FF" },
-  { position: 0.5, color: "#459EFF" },
-  { position: 1.0, color: "#0D42AB" },
-  { position: 1.0, color: "#000000" },
-  { position: 1.0, color: "#000000" },
-];
-
-const MARS2: GradientStop[] = [
-  { position: 0.0, color: "#437E35" },
-  { position: 0.494, color: "#562645" },
-  { position: 0.518, color: "#6C2F2F" },
-  { position: 0.784, color: "#370000" },
-  { position: 1.0, color: "#000000" },
-];
-
-const TWILIGHT: GradientStop[] = [
-  { position: 0.4, color: "#00001A" },
-  { position: 0.5, color: "#6680CC" },
-  { position: 0.6, color: "#E6F2FF" },
-  { position: 0.65, color: "#6680CC" },
-  { position: 0.7, color: "#00001A" },
-];
-
 const G1: GradientStop[] = [
   { position: 0.0, color: "#EAF7E0" },
   { position: 0.3, color: "#89F1BF" },
@@ -182,18 +102,18 @@ const G11: GradientStop[] = [
 ];
 
 export const SKY_GRADIENTS = {
-  Default: DEFAULT_GRADIENT,
-  G1,
-  G2,
-  G3,
-  G4,
-  G5,
-  G6,
-  G7,
-  G8,
-  G9,
-  G10,
-  G11,
+  "Lavender Sunset": DEFAULT_GRADIENT,
+  "Mint Sea Horizon": G1,
+  "Lilac Dream": G2,
+  "Silver Overcast": G3,
+  "Orchid Twilight": G4,
+  "Tropical Sky": G5,
+  "Stormlit Teal": G6,
+  "Clear Summer Day": G7,
+  "Atmospheric Haze": G8,
+  "Neon Dusk": G9,
+  "Molten Sunset": G10,
+  "Aurora Garden": G11,
 };
 
 export type SkyGradientId = keyof typeof SKY_GRADIENTS;
