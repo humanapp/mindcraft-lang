@@ -2,7 +2,7 @@ import type { ThreeEvent } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import { BufferAttribute, BufferGeometry, DoubleSide } from "three";
 import type { TerrainShadingMode } from "@/editor/editor-store";
-import type { MeshData } from "@/world/terrain/types";
+import type { MeshData } from "@/world/voxel/types";
 
 interface TerrainChunkMeshProps {
   chunkId: string;

@@ -1,5 +1,5 @@
+import { extractSurfaceNets } from "../voxel/mesher";
 import { generateChunkField } from "./generator";
-import { extractSurfaceNets } from "./mesher";
 import type { WorkerRequest, WorkerResponse } from "./worker-types";
 
 self.onmessage = (e: MessageEvent<WorkerRequest>) => {

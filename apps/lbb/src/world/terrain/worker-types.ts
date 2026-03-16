@@ -1,5 +1,5 @@
-import type { MesherOptions } from "./mesher";
-import type { ChunkCoord, MeshData } from "./types";
+import type { MesherOptions } from "../voxel/mesher";
+import type { ChunkCoord, MeshData } from "../voxel/types";
 
 export interface MeshRequest {
   readonly type: "mesh";

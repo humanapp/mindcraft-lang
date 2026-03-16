@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, test } from "node:test";
 import { affectedChunkIds, computeBrushPatches } from "../../src/world/terrain/edit";
-import { CHUNK_SIZE, chunkId, FIELD_PAD, sampleIndex } from "../../src/world/terrain/types";
+import { CHUNK_SIZE, chunkId, FIELD_PAD, sampleIndex } from "../../src/world/voxel/types";
 import { flatPlane, slopedHill } from "./fixtures";
 import { makeChunkGrid } from "./helpers";
 

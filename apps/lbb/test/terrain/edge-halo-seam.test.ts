@@ -1,9 +1,9 @@
 import { strict as assert } from "node:assert";
 import { describe, test } from "node:test";
 import { computeBrushPatches } from "../../src/world/terrain/edit";
-import { syncChunkPadding } from "../../src/world/terrain/halo";
-import { extractSurfaceNets } from "../../src/world/terrain/mesher";
-import { CHUNK_SIZE, FIELD_PAD, SAMPLES, SAMPLES_SQ, sampleIndex } from "../../src/world/terrain/types";
+import { syncChunkPadding } from "../../src/world/voxel/halo";
+import { extractSurfaceNets } from "../../src/world/voxel/mesher";
+import { CHUNK_SIZE, FIELD_PAD, SAMPLES, SAMPLES_SQ, sampleIndex } from "../../src/world/voxel/types";
 import { flatPlane } from "./fixtures";
 import { assertApproxEqual, makeChunkGrid, meshVerticesInRange } from "./helpers";
 

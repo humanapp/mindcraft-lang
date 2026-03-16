@@ -1,9 +1,9 @@
 import { strict as assert } from "node:assert";
 import { describe, test } from "node:test";
 import { computeBrushPatches } from "../../src/world/terrain/edit";
-import { syncChunkPadding } from "../../src/world/terrain/halo";
-import { extractSurfaceNets } from "../../src/world/terrain/mesher";
-import { CHUNK_SIZE, chunkId } from "../../src/world/terrain/types";
+import { syncChunkPadding } from "../../src/world/voxel/halo";
+import { extractSurfaceNets } from "../../src/world/voxel/mesher";
+import { CHUNK_SIZE, chunkId } from "../../src/world/voxel/types";
 import { flatPlane } from "./fixtures";
 import { findClosestVertex, makeChunkGrid, meshVerticesInRange } from "./helpers";
 
@@ -65,7 +65,13 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     const rightId = chunkId({ cx: 1, cy: 0, cz: 0 });
     const staleRightField = new Float32Array(chunks.get(rightId)!.field);
 
-    const patches = computeBrushPatches([CHUNK_SIZE - 2, 16, 16], { radius: 5, strength: 5 }, true, chunks, 1.0);
+    const patches = computeBrushPatches(
+      [CHUNK_SIZE - 2, 16, 16],
+      { radius: 5, strength: 5, shape: "sphere", falloff: 1 },
+      "raise",
+      chunks,
+      1.0
+    );
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
       if (chunk) chunk.field[p.index] = p.after;
@@ -98,7 +104,13 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     const rightId = chunkId({ cx: 1, cy: 0, cz: 0 });
     const staleRightField = new Float32Array(chunks.get(rightId)!.field);
 
-    const patches = computeBrushPatches([CHUNK_SIZE, 16, 16], { radius: 6, strength: 8 }, true, chunks, 1.0);
+    const patches = computeBrushPatches(
+      [CHUNK_SIZE, 16, 16],
+      { radius: 6, strength: 8, shape: "sphere", falloff: 1 },
+      "raise",
+      chunks,
+      1.0
+    );
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
       if (chunk) chunk.field[p.index] = p.after;
@@ -131,7 +143,13 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     const leftId = chunkId({ cx: 0, cy: 0, cz: 0 });
     const staleLeftField = new Float32Array(chunks.get(leftId)!.field);
 
-    const patches = computeBrushPatches([CHUNK_SIZE + 2, 16, 16], { radius: 5, strength: 5 }, true, chunks, 1.0);
+    const patches = computeBrushPatches(
+      [CHUNK_SIZE + 2, 16, 16],
+      { radius: 5, strength: 5, shape: "sphere", falloff: 1 },
+      "raise",
+      chunks,
+      1.0
+    );
     for (const p of patches) {
       const chunk = chunks.get(p.chunkId);
       if (chunk) chunk.field[p.index] = p.after;
@@ -165,7 +183,13 @@ describe("stale-remesh seam (inflight dirty-flag drop)", () => {
     const staleRightField = new Float32Array(chunks.get(rightId)!.field);
 
     for (let i = 0; i < 5; i++) {
-      const patches = computeBrushPatches([CHUNK_SIZE - 3 + i, 16, 16], { radius: 4, strength: 3 }, true, chunks, 1.0);
+      const patches = computeBrushPatches(
+        [CHUNK_SIZE - 3 + i, 16, 16],
+        { radius: 4, strength: 3, shape: "sphere", falloff: 1 },
+        "raise",
+        chunks,
+        1.0
+      );
       for (const p of patches) {
         const chunk = chunks.get(p.chunkId);
         if (chunk) chunk.field[p.index] = p.after;

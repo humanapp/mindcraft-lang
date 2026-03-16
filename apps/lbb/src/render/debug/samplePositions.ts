@@ -1,4 +1,4 @@
-import type { ChunkCoord } from "@/world/terrain/types";
+import type { ChunkCoord } from "@/world/voxel/types";
 import {
   CORE_SAMPLES,
   chunkWorldOrigin,
@@ -7,7 +7,7 @@ import {
   SAMPLES,
   SAMPLES_TOTAL,
   sampleIndex,
-} from "@/world/terrain/types";
+} from "@/world/voxel/types";
 
 // Corner and edge definitions mirror the mesher exactly so debug geometry
 // aligns with the extracted surface.

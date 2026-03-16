@@ -1,14 +1,7 @@
 import { strict as assert } from "node:assert";
-import { syncChunkPadding } from "../../src/world/terrain/halo";
-import type { ChunkCoord, ChunkData, MeshData } from "../../src/world/terrain/types";
-import {
-  chunkId,
-  chunkWorldOrigin,
-  FIELD_PAD,
-  SAMPLES,
-  SAMPLES_TOTAL,
-  sampleIndex,
-} from "../../src/world/terrain/types";
+import { syncChunkPadding } from "../../src/world/voxel/halo";
+import type { ChunkCoord, ChunkData, MeshData } from "../../src/world/voxel/types";
+import { chunkId, chunkWorldOrigin, FIELD_PAD, SAMPLES, SAMPLES_TOTAL, sampleIndex } from "../../src/world/voxel/types";
 
 export type FieldFiller = (wx: number, wy: number, wz: number) => number;
 

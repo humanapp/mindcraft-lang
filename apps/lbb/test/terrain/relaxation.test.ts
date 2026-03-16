@@ -1,8 +1,8 @@
 import { strict as assert } from "node:assert";
 import { describe, test } from "node:test";
-import type { MesherOptions } from "../../src/world/terrain/mesher";
-import { extractSurfaceNets } from "../../src/world/terrain/mesher";
-import { CHUNK_SIZE } from "../../src/world/terrain/types";
+import type { MesherOptions } from "../../src/world/voxel/mesher";
+import { extractSurfaceNets } from "../../src/world/voxel/mesher";
+import { CHUNK_SIZE } from "../../src/world/voxel/types";
 import { flatPlane, sphere } from "./fixtures";
 import { assertApproxEqual, findClosestVertex, makeChunkGrid, meshVerticesInRange } from "./helpers";
 

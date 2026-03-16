@@ -2,11 +2,11 @@ import type RAPIER from "@dimforge/rapier3d-compat";
 import { create } from "zustand";
 import { useEditorStore } from "@/editor/editor-store";
 import type { Entity, EntityId } from "./entities";
-import { replaceTrimeshCollider } from "./terrain/collider";
-import { NEIGHBOR_OFFSETS, syncChunkPadding } from "./terrain/halo";
 import { TerrainWorkerBridge } from "./terrain/terrain-worker-bridge";
-import type { ChunkData, MeshData } from "./terrain/types";
-import { CHUNK_SIZE, chunkId, FIELD_PAD, SAMPLES, SAMPLES_SQ, sampleIndex } from "./terrain/types";
+import { replaceTrimeshCollider } from "./voxel/collider";
+import { NEIGHBOR_OFFSETS, syncChunkPadding } from "./voxel/halo";
+import type { ChunkData, MeshData } from "./voxel/types";
+import { CHUNK_SIZE, chunkId, FIELD_PAD, SAMPLES, SAMPLES_SQ, sampleIndex } from "./voxel/types";
 
 // -- SEAM DEBUG INSTRUMENTATION (temporary) --
 // Set to true (or run `seamDebug.enableLog()` in browser console) to re-enable.

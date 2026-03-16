@@ -1,8 +1,8 @@
 import { strict as assert } from "node:assert";
 import { describe, test } from "node:test";
-import { computeGradient } from "../../src/world/terrain/field";
-import { extractSurfaceNets } from "../../src/world/terrain/mesher";
-import { CHUNK_SIZE, FIELD_PAD, sampleIndex } from "../../src/world/terrain/types";
+import { computeGradient } from "../../src/world/voxel/field";
+import { extractSurfaceNets } from "../../src/world/voxel/mesher";
+import { CHUNK_SIZE, FIELD_PAD, sampleIndex } from "../../src/world/voxel/types";
 import { flatPlane, slopedHill, sphere } from "./fixtures";
 import { assertApproxEqual, findClosestVertex, makeChunkGrid, meshVerticesInRange } from "./helpers";
 

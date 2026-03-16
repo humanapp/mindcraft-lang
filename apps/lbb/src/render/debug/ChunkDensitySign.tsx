@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { BufferAttribute, BufferGeometry } from "three";
-import type { ChunkData } from "@/world/terrain/types";
+import type { ChunkData } from "@/world/voxel/types";
 import { buildDensitySignPoints } from "./samplePositions";
 
 interface ChunkDensitySignProps {

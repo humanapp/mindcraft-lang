@@ -1,8 +1,8 @@
 import { strict as assert } from "node:assert";
 import { describe, test } from "node:test";
-import { computeGradient } from "../../src/world/terrain/field";
-import { syncChunkPadding } from "../../src/world/terrain/halo";
-import { CHUNK_SIZE, FIELD_PAD, sampleIndex } from "../../src/world/terrain/types";
+import { computeGradient } from "../../src/world/voxel/field";
+import { syncChunkPadding } from "../../src/world/voxel/halo";
+import { CHUNK_SIZE, FIELD_PAD, sampleIndex } from "../../src/world/voxel/types";
 import { flatPlane, slopedHill, sphere } from "./fixtures";
 import { assertApproxEqual, makeChunkGrid } from "./helpers";
 

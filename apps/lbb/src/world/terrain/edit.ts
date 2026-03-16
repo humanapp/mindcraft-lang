@@ -1,5 +1,4 @@
-import { baselineDensity } from "./generator";
-import type { ChunkCoord } from "./types";
+import type { ChunkCoord } from "../voxel/types";
 import {
   CHUNK_SIZE,
   CORE_SAMPLES,
@@ -8,7 +7,8 @@ import {
   localVoxelToSampleIndex,
   worldToChunkCoord,
   worldToLocalVoxel,
-} from "./types";
+} from "../voxel/types";
+import { baselineDensity } from "./generator";
 
 export interface TerrainPatch {
   readonly chunkId: string;
