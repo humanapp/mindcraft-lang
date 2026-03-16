@@ -91,7 +91,34 @@ function smoothNoise3D(x: number, y: number, z: number): number {
   return v0 + (v1 - v0) * fz;
 }
 
-const ROUGHEN_NOISE_SCALE = 0.3;
+function ridgedNoise3D(x: number, y: number, z: number): number {
+  return 1 - Math.abs(smoothNoise3D(x, y, z));
+}
+
+function ridgedFBM3D(x: number, y: number, z: number): number {
+  const o0 = ridgedNoise3D(x, y, z) * 1.0;
+  const o1 = ridgedNoise3D(x * 2.17, y * 2.17, z * 2.17) * 0.45;
+  const o2 = ridgedNoise3D(x * 4.51, y * 4.51, z * 4.51) * 0.15;
+  return (o0 + o1 + o2) / 1.6;
+}
+
+function domainWarp3D(x: number, y: number, z: number, strength: number): [number, number, number] {
+  const wx = smoothNoise3D(x + 31.7, y + 47.3, z + 11.2) * strength;
+  const wy = smoothNoise3D(x + 73.1, y + 19.8, z + 59.4) * strength;
+  const wz = smoothNoise3D(x + 53.9, y + 81.6, z + 37.5) * strength;
+  return [x + wx, y + wy, z + wz];
+}
+
+const ROUGHEN_REF_RADIUS = 4;
+const ROUGHEN_LARGE_SCALE_BASE = 0.12;
+const ROUGHEN_MID_SCALE_BASE = 0.3;
+const ROUGHEN_SMALL_SCALE_BASE = 0.7;
+const ROUGHEN_DOMAIN_WARP_SCALE_BASE = 0.06;
+const ROUGHEN_DOMAIN_WARP_STRENGTH = 1.5;
+const ROUGHEN_UPLIFT_BIAS = 0.35;
+const ROUGHEN_NEGATIVE_LIMIT = -0.15;
+const ROUGHEN_SLOPE_SUPPRESSION = 1.2;
+const ROUGHEN_SLOPE_FLOOR = 0.3;
 
 function computeFalloff(
   shape: BrushShape,
@@ -281,7 +308,7 @@ export function computeBrushPatches(
                     gz = field[idx + SAMPLES_SQ] - field[idx - SAMPLES_SQ];
                   }
                   const gradMagSq = gx * gx + gy * gy + gz * gz;
-                  const noiseScale = ROUGHEN_NOISE_SCALE * Math.sqrt(falloffExp);
+
                   let sx: number;
                   let sy: number;
                   let sz: number;
@@ -295,8 +322,49 @@ export function computeBrushPatches(
                     sy = 0;
                     sz = wvz;
                   }
-                  const noise = smoothNoise3D(sx * noiseScale, sy * noiseScale, sz * noiseScale);
-                  after = before + densityDelta * falloff * noise;
+
+                  const slopeFactor =
+                    gradMagSq > 1e-8
+                      ? (() => {
+                          const invGradMag = 1 / Math.sqrt(gradMagSq);
+                          const ny = gy * invGradMag;
+                          const slope = 1 - Math.abs(ny);
+                          return Math.max(ROUGHEN_SLOPE_FLOOR, 1 - slope * ROUGHEN_SLOPE_SUPPRESSION);
+                        })()
+                      : 1;
+
+                  const tBrush = Math.sqrt(dx * dx + dy * dy + dz * dz) / r;
+
+                  const radiusScale = ROUGHEN_REF_RADIUS / r;
+                  const largeScale = ROUGHEN_LARGE_SCALE_BASE * radiusScale;
+                  const midScale = ROUGHEN_MID_SCALE_BASE * radiusScale;
+                  const smallScale = ROUGHEN_SMALL_SCALE_BASE * radiusScale;
+                  const warpScale = ROUGHEN_DOMAIN_WARP_SCALE_BASE * radiusScale;
+
+                  const [wsx, wsy, wsz] = domainWarp3D(
+                    sx * warpScale,
+                    sy * warpScale,
+                    sz * warpScale,
+                    ROUGHEN_DOMAIN_WARP_STRENGTH
+                  );
+                  const warpedX = sx + (wsx - sx * warpScale) / warpScale;
+                  const warpedY = sy + (wsy - sy * warpScale) / warpScale;
+                  const warpedZ = sz + (wsz - sz * warpScale) / warpScale;
+
+                  const centerW = Math.max(0, 1 - tBrush * 2.5);
+                  const midW = Math.max(0, 1 - Math.abs(tBrush - 0.4) * 3);
+                  const outerW = Math.max(0, tBrush - 0.5) * 2;
+
+                  const largeNoise = ridgedFBM3D(warpedX * largeScale, warpedY * largeScale, warpedZ * largeScale);
+                  const midNoise = ridgedFBM3D(warpedX * midScale, warpedY * midScale, warpedZ * midScale);
+                  const smallNoise = smoothNoise3D(warpedX * smallScale, warpedY * smallScale, warpedZ * smallScale);
+
+                  let delta =
+                    (ROUGHEN_UPLIFT_BIAS + largeNoise) * centerW + midNoise * midW + smallNoise * 0.15 * outerW;
+                  delta = Math.max(delta, ROUGHEN_NEGATIVE_LIMIT);
+                  delta *= densityDelta * falloff * slopeFactor;
+
+                  after = before + delta;
                   break;
                 }
                 case "flatten": {

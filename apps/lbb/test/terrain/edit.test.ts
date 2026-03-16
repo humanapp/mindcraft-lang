@@ -167,7 +167,7 @@ describe("smooth brush", () => {
 });
 
 describe("roughen brush", () => {
-  test("roughen introduces spatially continuous variation", () => {
+  test("roughen produces uplift-dominated displacement with variation", () => {
     const chunks = makeChunkGrid([{ cx: 0, cy: 0, cz: 0 }], flatPlane(16));
 
     const center: [number, number, number] = [16, 16, 16];
@@ -176,16 +176,27 @@ describe("roughen brush", () => {
 
     assert.ok(patches.length > 0, "roughen should produce patches");
 
-    let hasPositiveDelta = false;
-    let hasNegativeDelta = false;
+    let positiveSum = 0;
+    let negativeSum = 0;
+    let minDelta = Number.POSITIVE_INFINITY;
+    let maxDelta = Number.NEGATIVE_INFINITY;
     for (const p of patches) {
       const delta = p.after - p.before;
-      if (delta > 1e-8) hasPositiveDelta = true;
-      if (delta < -1e-8) hasNegativeDelta = true;
+      if (delta > 1e-8) positiveSum += delta;
+      else if (delta < -1e-8) negativeSum += Math.abs(delta);
+      if (delta < minDelta) minDelta = delta;
+      if (delta > maxDelta) maxDelta = delta;
     }
 
-    assert.ok(hasPositiveDelta, "roughen should raise some voxels");
-    assert.ok(hasNegativeDelta, "roughen should lower some voxels");
+    assert.ok(positiveSum > 0, "roughen should raise voxels");
+    assert.ok(
+      positiveSum > negativeSum * 2,
+      `uplift should dominate: positiveSum=${positiveSum.toFixed(6)} negativeSum=${negativeSum.toFixed(6)}`
+    );
+    assert.ok(
+      maxDelta - minDelta > 1e-4,
+      `roughen should create variation: min=${minDelta.toFixed(6)} max=${maxDelta.toFixed(6)}`
+    );
   });
 
   test("roughen produces continuous deltas between adjacent voxels", () => {
@@ -231,6 +242,28 @@ describe("roughen brush", () => {
     for (let i = 0; i < patches1.length; i++) {
       assert.equal(patches1[i].after, patches2[i].after, `patch ${i} should be identical`);
     }
+  });
+
+  test("roughen applies less displacement on steep slopes", () => {
+    const chunks = makeChunkGrid([{ cx: 0, cy: 0, cz: 0 }], slopedHill(16, 0.5, 0.3));
+
+    const center: [number, number, number] = [16, 16, 16];
+    const brush = { radius: 4, strength: 3, shape: "sphere" as const, falloff: 1 };
+    const slopedPatches = computeBrushPatches(center, brush, "roughen", chunks, 1.0);
+
+    const flatChunks = makeChunkGrid([{ cx: 0, cy: 0, cz: 0 }], flatPlane(16));
+    const flatPatches = computeBrushPatches(center, brush, "roughen", flatChunks, 1.0);
+
+    let slopedSum = 0;
+    for (const p of slopedPatches) slopedSum += Math.abs(p.after - p.before);
+
+    let flatSum = 0;
+    for (const p of flatPatches) flatSum += Math.abs(p.after - p.before);
+
+    assert.ok(
+      flatSum > 0 && slopedSum <= flatSum,
+      `sloped terrain should receive equal or less displacement: sloped=${slopedSum.toFixed(6)} flat=${flatSum.toFixed(6)}`
+    );
   });
 });
 
