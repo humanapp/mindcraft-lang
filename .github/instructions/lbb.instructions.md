@@ -30,6 +30,13 @@ Vite, React 19, Three.js (via @react-three/fiber + @react-three/drei), Rapier 3D
 - `@mindcraft-lang/ui` -> `../../packages/ui/src` (source-only, no build step)
 - `@mindcraft-lang/docs` -> `../../packages/docs/src` (source-only, no build step)
 
+Prefer path aliases over relative paths for all imports that cross directory boundaries.
+Use a relative path only when importing from the same directory (e.g., `"./utils"`).
+
+Exception: test files under `test/` are run directly with `tsx` outside the Vite build
+and cannot use `@/` aliases. They must use relative paths to reach `src/` (e.g.,
+`"../../src/world/voxel/types"`).
+
 ## Build & Scripts
 
 ```

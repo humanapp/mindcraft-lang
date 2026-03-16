@@ -1,5 +1,5 @@
-import type { ChunkCoord, ChunkData } from "../voxel/types";
-import { chunkWorldOrigin, FIELD_PAD, SAMPLES, SAMPLES_TOTAL, sampleIndex } from "../voxel/types";
+import type { ChunkCoord, ChunkData } from "@/world/voxel/types";
+import { chunkWorldOrigin, FIELD_PAD, SAMPLES, SAMPLES_TOTAL, sampleIndex } from "@/world/voxel/types";
 
 // Simple deterministic noise using sine-based hash
 function hash2d(x: number, z: number): number {

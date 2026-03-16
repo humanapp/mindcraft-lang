@@ -1,4 +1,4 @@
-import { extractSurfaceNets } from "../voxel/mesher";
+import { extractSurfaceNets } from "@/world/voxel/mesher";
 import { generateChunkField } from "./generator";
 import type { WorkerRequest, WorkerResponse } from "./worker-types";
 
