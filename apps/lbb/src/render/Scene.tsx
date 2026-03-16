@@ -11,11 +11,11 @@ import { VoxelSamplesOverlay } from "./debug/VoxelSamplesOverlay";
 import { TerrainChunkMesh } from "./TerrainChunkMesh";
 
 function Terrain() {
-  const chunkMeshes = useWorldStore((s) => s.chunkMeshes);
+  const chunkRenderData = useWorldStore((s) => s.chunkRenderData);
   const setHoverWorldPos = useSessionStore((s) => s.setHoverWorldPos);
   const wireframe = useEditorStore((s) => s.wireframe);
   const terrainShading = useEditorStore((s) => s.terrainShading);
-  const entries = Array.from(chunkMeshes.entries());
+  const entries = Array.from(chunkRenderData.entries());
 
   const handlePointerEvent = useCallback(
     (e: ThreeEvent<PointerEvent>) => {

@@ -60,7 +60,7 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
           if (patches.length === 0) return;
           addPendingPatches(patches);
           applyFieldValues(
-            patches.map((p) => ({ chunkId: p.chunkId, index: p.index, value: p.after })),
+            patches.map((p) => ({ chunkId: p.chunkId, fieldIndex: p.fieldIndex, value: p.after })),
             clamp
           );
         },

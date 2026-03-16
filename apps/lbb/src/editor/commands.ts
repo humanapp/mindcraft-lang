@@ -14,7 +14,7 @@ export class TerrainPatchCommand implements Command {
     const apply = useWorldStore.getState().applyFieldValues;
     const clamp = useEditorStore.getState().clampDensity;
     apply(
-      this.patches.map((p) => ({ chunkId: p.chunkId, index: p.index, value: p.after })),
+      this.patches.map((p) => ({ chunkId: p.chunkId, fieldIndex: p.fieldIndex, value: p.after })),
       clamp
     );
   }
@@ -23,7 +23,7 @@ export class TerrainPatchCommand implements Command {
     const { applyFieldValues, recomputeDensityRange } = useWorldStore.getState();
     const clamp = useEditorStore.getState().clampDensity;
     applyFieldValues(
-      this.patches.map((p) => ({ chunkId: p.chunkId, index: p.index, value: p.before })),
+      this.patches.map((p) => ({ chunkId: p.chunkId, fieldIndex: p.fieldIndex, value: p.before })),
       clamp
     );
     recomputeDensityRange();

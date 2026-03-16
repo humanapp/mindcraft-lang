@@ -12,7 +12,7 @@ import { baselineDensity } from "./generator";
 
 export interface TerrainPatch {
   readonly chunkId: string;
-  readonly index: number;
+  readonly fieldIndex: number;
   readonly before: number;
   readonly after: number;
 }
@@ -94,33 +94,33 @@ const ROUGHEN_NOISE_SCALE = 0.3;
 
 function computeFalloff(
   shape: BrushShape,
-  sx: number,
-  sy: number,
-  sz: number,
+  dx: number,
+  dy: number,
+  dz: number,
   r: number,
   falloffExp: number
 ): number | null {
   let t: number;
   switch (shape) {
     case "sphere": {
-      const distSq = sx * sx + sy * sy + sz * sz;
+      const distSq = dx * dx + dy * dy + dz * dz;
       if (distSq > r * r) return null;
       t = Math.sqrt(distSq) / r;
       break;
     }
     case "cube": {
-      const ax = Math.abs(sx);
-      const ay = Math.abs(sy);
-      const az = Math.abs(sz);
+      const ax = Math.abs(dx);
+      const ay = Math.abs(dy);
+      const az = Math.abs(dz);
       if (ax > r || ay > r || az > r) return null;
       t = Math.max(ax, ay, az) / r;
       break;
     }
     case "cylinder": {
-      const distSqXZ = sx * sx + sz * sz;
-      if (distSqXZ > r * r || Math.abs(sy) > r) return null;
+      const distSqXZ = dx * dx + dz * dz;
+      if (distSqXZ > r * r || Math.abs(dy) > r) return null;
       const tRadial = Math.sqrt(distSqXZ) / r;
-      const tVertical = Math.abs(sy) / r;
+      const tVertical = Math.abs(dy) / r;
       t = Math.max(tRadial, tVertical);
       break;
     }
@@ -192,11 +192,11 @@ export function computeBrushPatches(
     for (let lz = lzMin; lz <= lzMax; lz++) {
       for (let ly = lyMin; ly <= lyMax; ly++) {
         for (let lx = lxMin; lx <= lxMax; lx++) {
-          const sx = ox + lx - wx;
-          const sy = oy + ly - wy;
-          const sz = oz + lz - wz;
+          const dx = ox + lx - wx;
+          const dy = oy + ly - wy;
+          const dz = oz + lz - wz;
 
-          const falloff = computeFalloff(shape, sx, sy, sz, r, falloffExp);
+          const falloff = computeFalloff(shape, dx, dy, dz, r, falloffExp);
           if (falloff === null) continue;
 
           const idx = localVoxelToSampleIndex(lx, ly, lz);
@@ -245,7 +245,7 @@ export function computeBrushPatches(
           }
 
           if (debug && debugSamples < 8) {
-            const dist = Math.sqrt(sx * sx + sy * sy + sz * sz);
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
             if (dist < 2) {
               console.log(
                 `[brush-sample] world=(${(ox + lx).toFixed(1)},${(oy + ly).toFixed(1)},${(oz + lz).toFixed(1)})` +
@@ -256,7 +256,7 @@ export function computeBrushPatches(
             }
           }
 
-          patches.push({ chunkId: id, index: idx, before, after });
+          patches.push({ chunkId: id, fieldIndex: idx, before, after });
         }
       }
     }

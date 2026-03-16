@@ -5,14 +5,14 @@ import { ChunkDebugPoints } from "./ChunkSamplePoints";
 
 export function VoxelSamplesOverlay() {
   const mode = useEditorStore((s) => s.voxelDebugMode);
-  const chunkMeshes = useWorldStore((s) => s.chunkMeshes);
+  const chunkRenderData = useWorldStore((s) => s.chunkRenderData);
   const chunks = useWorldStore((s) => s.chunks);
 
   if (mode === "off") return null;
 
   return (
     <>
-      {Array.from(chunkMeshes.entries()).map(([id, renderData]) => {
+      {Array.from(chunkRenderData.entries()).map(([id, renderData]) => {
         const chunk = chunks.get(id);
         if (!chunk) return null;
         if (mode === "density-sign") {

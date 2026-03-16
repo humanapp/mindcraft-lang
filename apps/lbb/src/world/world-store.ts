@@ -98,7 +98,7 @@ export interface ChunkRenderData {
 export interface WorldState {
   // Terrain
   chunks: Map<string, ChunkData>;
-  chunkMeshes: Map<string, ChunkRenderData>;
+  chunkRenderData: Map<string, ChunkRenderData>;
   dirtyChunks: Set<string>;
   inflightChunks: Set<string>;
   staleColliders: Set<string>;
@@ -118,20 +118,20 @@ export interface WorldState {
   remeshDirtyChunks: (maxChunks?: number) => void;
   markChunkDirty: (id: string) => void;
   flushStaleColliders: (max?: number) => void;
-  applyFieldValues: (patches: Array<{ chunkId: string; index: number; value: number }>, clamp?: boolean) => void;
+  applyFieldValues: (patches: Array<{ chunkId: string; fieldIndex: number; value: number }>, clamp?: boolean) => void;
   expandDensityRange: (values: ArrayLike<number>) => void;
   recomputeDensityRange: () => void;
 }
 
 const workerBridge = new TerrainWorkerBridge();
 
-const dispatchedVersions = new Map<string, number>();
+const inflightVersions = new Map<string, number>();
 
 function applyMeshResult(id: string, mesh: MeshData): void {
   const seq = seamSeq();
   const state = useWorldStore.getState();
-  const newMeshes = new Map(state.chunkMeshes);
-  const existing = state.chunkMeshes.get(id);
+  const newMeshes = new Map(state.chunkRenderData);
+  const existing = state.chunkRenderData.get(id);
   newMeshes.set(id, { mesh, collider: existing?.collider ?? null });
   const newInflight = new Set(state.inflightChunks);
   newInflight.delete(id);
@@ -139,15 +139,15 @@ function applyMeshResult(id: string, mesh: MeshData): void {
   newStale.add(id);
 
   const chunk = state.chunks.get(id);
-  const dispatchedVer = dispatchedVersions.get(id);
-  dispatchedVersions.delete(id);
-  const isStale = chunk && dispatchedVer !== undefined && chunk.version !== dispatchedVer;
+  const inflightVer = inflightVersions.get(id);
+  inflightVersions.delete(id);
+  const isStale = chunk && inflightVer !== undefined && chunk.version !== inflightVer;
 
   const stillDirty = state.dirtyChunks.has(id);
   if (_seamLog) {
     console.log(
       `[seam:mesh-result] seq=${seq} chunk=${id} verts=${mesh.vertexCount} stale=${isStale}` +
-        ` dispVer=${dispatchedVer} curVer=${chunk?.version} stillDirty=${stillDirty}` +
+        ` inflightVer=${inflightVer} curVer=${chunk?.version} stillDirty=${stillDirty}` +
         ` inflight=${state.inflightChunks.size - 1} dirty=${state.dirtyChunks.size}`
     );
   }
@@ -156,7 +156,7 @@ function applyMeshResult(id: string, mesh: MeshData): void {
     const newDirty = new Set(state.dirtyChunks);
     newDirty.add(id);
     useWorldStore.setState({
-      chunkMeshes: newMeshes,
+      chunkRenderData: newMeshes,
       inflightChunks: newInflight,
       staleColliders: newStale,
       dirtyChunks: newDirty,
@@ -169,13 +169,13 @@ function applyMeshResult(id: string, mesh: MeshData): void {
         );
       }
     }
-    useWorldStore.setState({ chunkMeshes: newMeshes, inflightChunks: newInflight, staleColliders: newStale });
+    useWorldStore.setState({ chunkRenderData: newMeshes, inflightChunks: newInflight, staleColliders: newStale });
   }
 }
 
 export const useWorldStore = create<WorldState>((set, get) => ({
   chunks: new Map(),
-  chunkMeshes: new Map(),
+  chunkRenderData: new Map(),
   dirtyChunks: new Set(),
   inflightChunks: new Set(),
   staleColliders: new Set(),
@@ -276,7 +276,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       syncChunkPadding(chunk, state.chunks);
       newDirty.delete(id);
       newInflight.add(id);
-      dispatchedVersions.set(id, chunk.version);
+      inflightVersions.set(id, chunk.version);
       dispatched++;
 
       workerBridge
@@ -313,7 +313,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     if (stale.size === 0) return;
     if (!state.rapierWorld || !state.rapierModule) return;
 
-    const newMeshes = new Map(state.chunkMeshes);
+    const newMeshes = new Map(state.chunkRenderData);
     const newStale = new Set(stale);
     let processed = 0;
     for (const id of stale) {
@@ -333,7 +333,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
       newStale.delete(id);
       processed++;
     }
-    set({ chunkMeshes: newMeshes, staleColliders: newStale });
+    set({ chunkRenderData: newMeshes, staleColliders: newStale });
   },
 
   applyFieldValues: (patches, clamp) => {
@@ -343,7 +343,7 @@ export const useWorldStore = create<WorldState>((set, get) => ({
     for (const patch of patches) {
       const chunk = state.chunks.get(patch.chunkId);
       if (!chunk) continue;
-      chunk.field[patch.index] = clamp ? Math.max(DENSITY_MIN, Math.min(DENSITY_MAX, patch.value)) : patch.value;
+      chunk.field[patch.fieldIndex] = clamp ? Math.max(DENSITY_MIN, Math.min(DENSITY_MAX, patch.value)) : patch.value;
       chunk.version++;
       touched.add(patch.chunkId);
     }
@@ -434,7 +434,7 @@ const seamDebug: SeamDebugAPI = {
   status() {
     const s = useWorldStore.getState();
     console.log(
-      `[seam-debug] chunks=${s.chunks.size} meshes=${s.chunkMeshes.size}` +
+      `[seam-debug] chunks=${s.chunks.size} meshes=${s.chunkRenderData.size}` +
         ` dirty=${s.dirtyChunks.size} inflight=${s.inflightChunks.size}` +
         ` staleColliders=${s.staleColliders.size}`
     );
@@ -508,8 +508,8 @@ const seamDebug: SeamDebugAPI = {
 
   boundaryVerts(idA: string, idB: string, axis: "x" | "y" | "z") {
     const s = useWorldStore.getState();
-    const meshA = s.chunkMeshes.get(idA);
-    const meshB = s.chunkMeshes.get(idB);
+    const meshA = s.chunkRenderData.get(idA);
+    const meshB = s.chunkRenderData.get(idB);
     if (!meshA || !meshB) {
       console.error(`[seam-debug] mesh not found: ${!meshA ? idA : idB}`);
       return;

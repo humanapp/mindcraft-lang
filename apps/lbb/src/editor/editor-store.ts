@@ -107,10 +107,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const { pendingPatches } = get();
       if (pendingPatches.length === 0) return;
 
-      // Merge patches: keep only the last patch per (chunkId, index)
+      // Merge patches: keep only the last patch per (chunkId, fieldIndex)
       const merged = new Map<string, TerrainPatch>();
       for (const p of pendingPatches) {
-        const key = `${p.chunkId}:${p.index}`;
+        const key = `${p.chunkId}:${p.fieldIndex}`;
         const existing = merged.get(key);
         if (existing) {
           merged.set(key, { ...p, before: existing.before });
