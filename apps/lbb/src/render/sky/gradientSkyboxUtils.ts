@@ -112,10 +112,10 @@ export const SKY_GRADIENTS = {
   "Stormy Coastal Sky": G6,
   "Clear Summer Day": G7,
   "Clear Sky With Atmospheric Band": G8,
-  "Night Horizon Glow": G9,
+  "Warm Horizon Glow": G9,
   "Fiery Sunset Horizon": G10,
   "Aurora Sky": G11,  
-  "Night Horizon Line": BLACK_HORIZON_LINE,
+  "Thin Horizon Line": BLACK_HORIZON_LINE,
 };
 
 export type SkyGradientId = keyof typeof SKY_GRADIENTS;
