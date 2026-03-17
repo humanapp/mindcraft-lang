@@ -1,89 +1,73 @@
 import { useFrame } from "@react-three/fiber";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useEditorStore } from "@/editor/editor-store";
+import { createInfinitePlaneMaterial } from "@/render/materials/workingPlane/infinitePlaneMaterial";
+import { useSessionStore } from "@/session/session-store";
 
-const PLANE_SIZE = 80;
-const GRID_DIVISIONS = 40;
+const PLANE_EXTENT = 4000;
+const BEHIND_OPACITY = 0.3;
+const FRONT_OPACITY = 0.6;
+const NORMAL_COLOR = new THREE.Color(0xffffff);
+const ACTIVE_COLOR = new THREE.Color(0xffffff);
 
-const NORMAL_OPACITY = 0.08;
-const NORMAL_GRID_OPACITY = 0.2;
-const ACTIVE_OPACITY = 0.15;
-const ACTIVE_GRID_OPACITY = 0.5;
-
-const PLANE_COLOR = new THREE.Color(0x4488ff);
-const ACTIVE_PLANE_COLOR = new THREE.Color(0x66aaff);
-
-function GridLineMaterial({ opacity, color }: { opacity: number; color: THREE.Color }) {
-  return <lineBasicMaterial color={color} transparent opacity={opacity} depthWrite={false} depthTest />;
-}
-
-function PlaneGrid({
-  size,
-  divisions,
-  opacity,
-  color,
-}: {
-  size: number;
-  divisions: number;
-  opacity: number;
-  color: THREE.Color;
-}) {
-  const geometry = useMemo(() => {
-    const half = size / 2;
-    const step = size / divisions;
-    const positions: number[] = [];
-    for (let i = 0; i <= divisions; i++) {
-      const t = -half + i * step;
-      positions.push(t, 0, -half, t, 0, half);
-      positions.push(-half, 0, t, half, 0, t);
-    }
-    const geom = new THREE.BufferGeometry();
-    geom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-    return geom;
-  }, [size, divisions]);
-
-  return (
-    <lineSegments geometry={geometry}>
-      <GridLineMaterial opacity={opacity} color={color} />
-    </lineSegments>
-  );
-}
+const _cursor = new THREE.Vector3();
 
 export function WorkingPlaneVisual() {
   const enabled = useEditorStore((s) => s.workingPlaneEnabled);
   const plane = useEditorStore((s) => s.workingPlane);
-  const spaceHeld = useEditorStore((s) => s.spaceHeld);
-  const version = useEditorStore((s) => s.workingPlaneVersion);
   const groupRef = useRef<THREE.Group>(null);
+
+  const geometry = useMemo(() => {
+    const geom = new THREE.PlaneGeometry(PLANE_EXTENT, PLANE_EXTENT, 1, 1);
+    geom.rotateX(-Math.PI / 2);
+    return geom;
+  }, []);
+
+  const behindMat = useMemo(() => createInfinitePlaneMaterial({ depthTest: false, opacityScale: BEHIND_OPACITY }), []);
+
+  const frontMat = useMemo(() => createInfinitePlaneMaterial({ depthTest: true, opacityScale: FRONT_OPACITY }), []);
+
+  useEffect(() => {
+    return () => {
+      geometry.dispose();
+      behindMat.dispose();
+      frontMat.dispose();
+    };
+  }, [geometry, behindMat, frontMat]);
 
   useFrame(() => {
     const g = groupRef.current;
     if (!g) return;
+
+    const { spaceHeld } = useEditorStore.getState();
+    const { hoverWorldPos } = useSessionStore.getState();
+
     g.position.copy(plane.position);
     g.quaternion.copy(plane.quaternion);
+
+    if (hoverWorldPos) {
+      _cursor.set(hoverWorldPos[0], hoverWorldPos[1], hoverWorldPos[2]);
+    } else {
+      _cursor.set(1e6, 1e6, 1e6);
+    }
+
+    const color = spaceHeld ? ACTIVE_COLOR : NORMAL_COLOR;
+    const radius = spaceHeld ? 500.0 : 60.0;
+
+    for (const mat of [behindMat, frontMat]) {
+      mat.uniforms.uCursorPos.value.copy(_cursor);
+      mat.uniforms.uFalloffRadius.value = radius;
+      mat.uniforms.uColor.value.copy(color);
+    }
   });
 
   if (!enabled) return null;
 
-  const fillOpacity = spaceHeld ? ACTIVE_OPACITY : NORMAL_OPACITY;
-  const gridOpacity = spaceHeld ? ACTIVE_GRID_OPACITY : NORMAL_GRID_OPACITY;
-  const color = spaceHeld ? ACTIVE_PLANE_COLOR : PLANE_COLOR;
-
   return (
-    <group ref={groupRef} renderOrder={1}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[PLANE_SIZE, PLANE_SIZE]} />
-        <meshBasicMaterial
-          color={color}
-          transparent
-          opacity={fillOpacity}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-          depthTest
-        />
-      </mesh>
-      <PlaneGrid size={PLANE_SIZE} divisions={GRID_DIVISIONS} opacity={gridOpacity} color={color} />
+    <group ref={groupRef}>
+      <mesh renderOrder={10} geometry={geometry} material={behindMat} />
+      <mesh renderOrder={11} geometry={geometry} material={frontMat} />
     </group>
   );
 }

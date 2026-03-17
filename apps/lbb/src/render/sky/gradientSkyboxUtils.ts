@@ -114,7 +114,7 @@ export const SKY_GRADIENTS = {
   "Clear Sky With Atmospheric Band": G8,
   "Warm Horizon Glow": G9,
   "Fiery Sunset Horizon": G10,
-  "Aurora Sky": G11,  
+  "Aurora Sky": G11,
   "Thin Horizon Line": BLACK_HORIZON_LINE,
 };
 
