@@ -17,6 +17,7 @@ function ensureRapierInit(): Promise<void> {
 function useKeyboardShortcuts() {
   const undo = useEditorStore((s) => s.undo);
   const redo = useEditorStore((s) => s.redo);
+  const toggleWorkingPlane = useEditorStore((s) => s.toggleWorkingPlane);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -33,10 +34,14 @@ function useKeyboardShortcuts() {
         e.preventDefault();
         redo();
       }
+      if (!mod && e.code === "KeyP" && !e.shiftKey && !e.altKey) {
+        e.preventDefault();
+        toggleWorkingPlane();
+      }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [undo, redo]);
+  }, [undo, redo, toggleWorkingPlane]);
 }
 
 export function App() {
