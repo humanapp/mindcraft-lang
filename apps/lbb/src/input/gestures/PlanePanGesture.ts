@@ -42,8 +42,8 @@ export class PlanePanGesture implements GestureHandler {
 
     this._offset
       .set(0, 0, 0)
-      .addScaledVector(this._right, -dx * distance * PAN_SENSITIVITY)
-      .addScaledVector(this._up, dy * distance * PAN_SENSITIVITY);
+      .addScaledVector(this._right, dx * distance * PAN_SENSITIVITY)
+      .addScaledVector(this._up, -dy * distance * PAN_SENSITIVITY);
 
     this.plane.translate(this._offset);
     this.onChanged();
