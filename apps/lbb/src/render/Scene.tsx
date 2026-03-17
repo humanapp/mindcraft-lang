@@ -11,10 +11,12 @@ import { VoxelSamplesOverlay } from "./debug/VoxelSamplesOverlay";
 import { GradientSkybox } from "./sky/GradientSkybox";
 import { SKY_GRADIENTS } from "./sky/gradientSkyboxUtils";
 import { TerrainChunkMesh } from "./TerrainChunkMesh";
+import { BrushTargetResolver } from "./WorkingPlaneHitTester";
+import { WorkingPlaneVisual } from "./WorkingPlaneVisual";
 
 function Terrain() {
   const chunkRenderData = useWorldStore((s) => s.chunkRenderData);
-  const setHoverWorldPos = useSessionStore((s) => s.setHoverWorldPos);
+  const setTerrainHit = useSessionStore((s) => s.setTerrainHit);
   const wireframe = useEditorStore((s) => s.wireframe);
   const terrainShading = useEditorStore((s) => s.terrainShading);
   const entries = Array.from(chunkRenderData.entries());
@@ -22,13 +24,17 @@ function Terrain() {
   const handlePointerEvent = useCallback(
     (e: ThreeEvent<PointerEvent>) => {
       e.stopPropagation();
-      setHoverWorldPos([e.point.x, e.point.y, e.point.z]);
+      setTerrainHit([e.point.x, e.point.y, e.point.z], e.distance);
     },
-    [setHoverWorldPos]
+    [setTerrainHit]
   );
 
+  const handlePointerLeave = useCallback(() => {
+    setTerrainHit(null, Number.POSITIVE_INFINITY);
+  }, [setTerrainHit]);
+
   return (
-    <group>
+    <group onPointerLeave={handlePointerLeave}>
       {entries.map(([id, data]) => (
         <TerrainChunkMesh
           key={id}
@@ -101,7 +107,7 @@ export function Scene() {
       camera={{ position: [160, 50, 160], fov: 55, near: 0.5, far: 1500 }}
       style={{ width: "100%", height: "100%" }}
       onPointerMissed={() => {
-        useSessionStore.getState().setHoverWorldPos(null);
+        useSessionStore.getState().setTerrainHit(null, Number.POSITIVE_INFINITY);
       }}
     >
       <GradientSkybox gradientStops={SKY_GRADIENTS[skyGradient]} fog={{ near: 150, far: 350 }} />
@@ -109,6 +115,8 @@ export function Scene() {
       <Terrain />
       <TerrainUpdater />
       <BrushCursor radius={brushRadius} shape={brushShape} />
+      <WorkingPlaneVisual />
+      <BrushTargetResolver />
       <InputHandler />
       <VoxelSamplesOverlay />
     </Canvas>

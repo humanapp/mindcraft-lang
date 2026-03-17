@@ -8,11 +8,13 @@ import { useWorldStore } from "@/world/world-store";
 import { GestureRouter } from "./GestureRouter";
 import { DollyPanGesture } from "./gestures/DollyPanGesture";
 import { OrbitGesture } from "./gestures/OrbitGesture";
+import { PlanePanGesture } from "./gestures/PlanePanGesture";
+import { PlaneRotateGesture } from "./gestures/PlaneRotateGesture";
 import { SculptGesture } from "./gestures/SculptGesture";
 import { InputManager } from "./InputManager";
-import { SpaceSculptController } from "./SpaceSculptController";
 import type { GestureHandler, PointerInput } from "./types";
 import { WasdController } from "./WasdController";
+import { WorkingPlaneController } from "./WorkingPlaneController";
 
 /**
  * Constructs and wires the full input stack for the 3D viewport.
@@ -27,12 +29,9 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
   const orbitRef = useRef<OrbitGesture | null>(null);
   const sculptRef = useRef<SculptGesture | null>(null);
   const wasdRef = useRef<WasdController | null>(null);
-  const spaceRef = useRef<SpaceSculptController | null>(null);
+  const planeCtrlRef = useRef<WorkingPlaneController | null>(null);
 
   useEffect(() => {
-    // reroute is a closure over `router`. It is only ever called during an active
-    // drag, which requires the InputManager to already be set up — at which point
-    // `router` is always assigned.
     let router: GestureRouter;
     const reroute = (input: PointerInput): GestureHandler | null => router.pick(input);
 
@@ -82,31 +81,44 @@ export function useInputManager(camera: THREE.Camera, domElement: HTMLElement): 
     sculptRef.current = sculpt;
     router = new GestureRouter(sculpt, orbit, dollyPan);
 
+    const { workingPlane, bumpWorkingPlaneVersion } = useEditorStore.getState();
+
+    const planePan = new PlanePanGesture(camera, workingPlane, bumpWorkingPlaneVersion, reroute);
+    const planeRotate = new PlaneRotateGesture(camera, workingPlane, bumpWorkingPlaneVersion, reroute);
+
     const manager = new InputManager(domElement, router, () => useSessionStore.getState().hoverWorldPos, orbit);
 
     const wasd = new WasdController(camera, (offset) => orbit.translatePivot(offset));
     wasd.listen();
     wasdRef.current = wasd;
 
-    const space = new SpaceSculptController(sculpt, () => useSessionStore.getState().hoverWorldPos);
-    space.listen();
-    spaceRef.current = space;
+    const planeCtrl = new WorkingPlaneController(camera, workingPlane, bumpWorkingPlaneVersion);
+    planeCtrl.listen();
+    planeCtrlRef.current = planeCtrl;
+
+    router.setPlaneGestures(planeRotate, planePan, () => planeCtrl.spaceHeld);
 
     return () => {
       manager.dispose();
       wasd.dispose();
-      space.dispose();
+      planeCtrl.dispose();
       orbitRef.current = null;
       sculptRef.current = null;
       wasdRef.current = null;
-      spaceRef.current = null;
+      planeCtrlRef.current = null;
     };
   }, [camera, domElement]);
 
   useFrame((_, delta) => {
+    const planeCtrl = planeCtrlRef.current;
+
     orbitRef.current?.update();
     sculptRef.current?.tick(delta);
-    wasdRef.current?.update(delta);
-    spaceRef.current?.update();
+
+    if (planeCtrl?.spaceHeld) {
+      planeCtrl.update(delta);
+    } else {
+      wasdRef.current?.update(delta);
+    }
   }, -1);
 }

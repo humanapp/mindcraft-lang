@@ -334,6 +334,8 @@ export function Toolbar() {
   const debugBrush = useEditorStore((s) => s.debugBrush);
   const toggleDebugBrush = useEditorStore((s) => s.toggleDebugBrush);
   const densityRange = useWorldStore((s) => s.densityRange);
+  const workingPlaneEnabled = useEditorStore((s) => s.workingPlaneEnabled);
+  const toggleWorkingPlane = useEditorStore((s) => s.toggleWorkingPlane);
 
   return (
     <div className="absolute top-3 left-3 flex flex-col gap-2 z-10 pointer-events-auto">
@@ -346,6 +348,11 @@ export function Toolbar() {
         setBrushShape={setBrushShape}
       />
       <UndoRedoPanel canUndo={canUndo} canRedo={canRedo} undo={undo} redo={redo} />
+      <Panel>
+        <SectionLabel>Working Plane</SectionLabel>
+        <ToggleRow label="Enabled" checked={workingPlaneEnabled} onToggle={toggleWorkingPlane} />
+        {workingPlaneEnabled && <span className="text-[10px] text-muted-foreground">Hold Space to move/rotate</span>}
+      </Panel>
       <RenderPanel
         wireframe={wireframe}
         toggleWireframe={toggleWireframe}

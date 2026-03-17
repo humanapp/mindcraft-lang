@@ -1,8 +1,10 @@
 import { create } from "zustand";
 import type { SkyGradientId } from "@/render/sky/gradientSkyboxUtils";
+import { useSessionStore } from "@/session/session-store";
 import type { BrushMode, BrushParams, BrushShape, TerrainPatch } from "@/world/terrain/edit";
 import { TerrainPatchCommand } from "./commands";
 import { UndoStack } from "./undo-stack";
+import { WorkingPlane } from "./working-plane";
 
 export type ToolType = BrushMode;
 
@@ -34,6 +36,12 @@ export interface EditorState {
   clampDensity: boolean;
   debugBrush: boolean;
 
+  // Working plane
+  workingPlaneEnabled: boolean;
+  workingPlane: WorkingPlane;
+  spaceHeld: boolean;
+  workingPlaneVersion: number;
+
   // Actions
   setActiveTool: (tool: ToolType) => void;
   setBrushRadius: (radius: number) => void;
@@ -53,6 +61,9 @@ export interface EditorState {
   setVoxelDebugMode: (mode: VoxelDebugMode) => void;
   toggleClampDensity: () => void;
   toggleDebugBrush: () => void;
+  toggleWorkingPlane: () => void;
+  setSpaceHeld: (held: boolean) => void;
+  bumpWorkingPlaneVersion: () => void;
 }
 
 function syncUndoState(stack: UndoStack): Partial<EditorState> {
@@ -88,6 +99,11 @@ export const useEditorStore = create<EditorState>((set, get) => {
     voxelDebugMode: "off",
     clampDensity: false,
     debugBrush: false,
+
+    workingPlaneEnabled: false,
+    workingPlane: new WorkingPlane(),
+    spaceHeld: false,
+    workingPlaneVersion: 0,
 
     setActiveTool: (tool) => set({ activeTool: tool }),
 
@@ -141,5 +157,17 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setVoxelDebugMode: (mode) => set({ voxelDebugMode: mode }),
     toggleClampDensity: () => set((s) => ({ clampDensity: !s.clampDensity })),
     toggleDebugBrush: () => set((s) => ({ debugBrush: !s.debugBrush })),
+    toggleWorkingPlane: () =>
+      set((s) => {
+        if (!s.workingPlaneEnabled) {
+          const hoverPos = useSessionStore.getState().hoverWorldPos;
+          if (hoverPos) {
+            s.workingPlane.position.set(hoverPos[0], hoverPos[1], hoverPos[2]);
+          }
+        }
+        return { workingPlaneEnabled: !s.workingPlaneEnabled };
+      }),
+    setSpaceHeld: (held) => set({ spaceHeld: held }),
+    bumpWorkingPlaneVersion: () => set((s) => ({ workingPlaneVersion: s.workingPlaneVersion + 1 })),
   };
 });

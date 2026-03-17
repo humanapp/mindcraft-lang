@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import type { Mesh } from "three";
+import { useEditorStore } from "@/editor/editor-store";
 import { useSessionStore } from "@/session/session-store";
 import type { BrushShape } from "@/world/terrain/edit";
 
@@ -22,8 +23,9 @@ function BrushGeometry({ radius, shape }: { radius: number; shape: BrushShape })
 export function BrushCursor({ radius, shape }: BrushCursorProps) {
   const meshRef = useRef<Mesh>(null);
   const hoverPos = useSessionStore((s) => s.hoverWorldPos);
+  const spaceHeld = useEditorStore((s) => s.spaceHeld);
 
-  if (!hoverPos) return null;
+  if (!hoverPos || spaceHeld) return null;
 
   return (
     <mesh ref={meshRef} position={[hoverPos[0], hoverPos[1] + 0.1, hoverPos[2]]}>

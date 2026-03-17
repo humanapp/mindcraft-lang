@@ -1,3 +1,4 @@
+import { useEditorStore } from "@/editor/editor-store";
 import type { GestureHandler, PointerInput } from "@/input/types";
 
 // Cap dt to avoid large jumps after tab-away or debugger pauses.
@@ -44,6 +45,16 @@ export class SculptGesture implements GestureHandler {
 
   tick(dt: number): void {
     if (!this.isActive || this.lastWorldPos === null) return;
+    if (useEditorStore.getState().spaceHeld) {
+      this.end({
+        screenX: 0,
+        screenY: 0,
+        worldPos: null,
+        modifiers: { shift: false, ctrl: false, meta: false, alt: false },
+        button: 0,
+      });
+      return;
+    }
     this.callbacks.applyBrush(this.lastWorldPos, Math.min(dt, MAX_DT));
   }
 
