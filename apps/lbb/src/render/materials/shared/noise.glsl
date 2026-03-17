@@ -1,4 +1,3 @@
-export const glslNoise3D = /* glsl */ `
 // Based on Morgan McGuire's "noise" -- compact 3D value noise
 // Returns value in [-1, 1]
 vec3 _mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -66,4 +65,3 @@ float snoise3(vec3 v) {
   m = m * m;
   return 105.0 * dot(m * m, vec4(dot(p0,x0), dot(p1,x1), dot(p2,x2), dot(p3,x3)));
 }
-`;
