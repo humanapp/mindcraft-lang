@@ -88,6 +88,28 @@ export class WorkingPlaneController {
     this.onChanged();
   }
 
+  // Moves the plane one discrete step in the camera-relative lateral direction.
+  // Used for arrow keys when Meta is held so no keyup is required to stop.
+  private nudgeLateral(fwd: number, str: number): void {
+    this.camera.getWorldDirection(_forward);
+    _forward.y = 0;
+    const fwdLen = _forward.length();
+    if (fwdLen < 1e-6) return;
+    _forward.divideScalar(fwdLen);
+
+    _right.set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    _right.y = 0;
+    const rightLen = _right.length();
+    if (rightLen < 1e-6) return;
+    _right.divideScalar(rightLen);
+
+    _target.set(0, 0, 0).addScaledVector(_forward, fwd).addScaledVector(_right, str);
+    if (_target.lengthSq() > 0) _target.normalize();
+    _target.multiplyScalar(NORMAL_STEP);
+    this.plane.translate(_target);
+    this.onChanged();
+  }
+
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (isTypingTarget(document.activeElement)) return;
 
@@ -103,25 +125,47 @@ export class WorkingPlaneController {
 
     if (!this._spaceHeld) return;
 
+    // On macOS, keyup events are suppressed while Meta is held, so arrow keys
+    // use discrete steps when Meta is down to avoid stuck keys.
     switch (e.code) {
       case "KeyW":
       case "ArrowUp":
-        this.keys.w = true;
+        if (e.metaKey) {
+          this.nudgeLateral(1, 0);
+        } else {
+          this.keys.w = true;
+          this.keys.s = false;
+        }
         e.preventDefault();
         break;
       case "KeyA":
       case "ArrowLeft":
-        this.keys.a = true;
+        if (e.metaKey) {
+          this.nudgeLateral(0, -1);
+        } else {
+          this.keys.a = true;
+          this.keys.d = false;
+        }
         e.preventDefault();
         break;
       case "KeyS":
       case "ArrowDown":
-        this.keys.s = true;
+        if (e.metaKey) {
+          this.nudgeLateral(-1, 0);
+        } else {
+          this.keys.s = true;
+          this.keys.w = false;
+        }
         e.preventDefault();
         break;
       case "KeyD":
       case "ArrowRight":
-        this.keys.d = true;
+        if (e.metaKey) {
+          this.nudgeLateral(0, 1);
+        } else {
+          this.keys.d = true;
+          this.keys.a = false;
+        }
         e.preventDefault();
         break;
       case "KeyE":
@@ -159,6 +203,16 @@ export class WorkingPlaneController {
       this.keys.r = false;
       this.keys.f = false;
       useEditorStore.getState().setSpaceHeld(false);
+      return;
+    }
+
+    // On macOS, keyup events for other keys are suppressed while Meta is held.
+    // Clear all direction keys when Meta releases so none stay stuck.
+    if (e.code === "MetaLeft" || e.code === "MetaRight") {
+      this.keys.w = false;
+      this.keys.a = false;
+      this.keys.s = false;
+      this.keys.d = false;
       return;
     }
 

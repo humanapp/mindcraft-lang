@@ -135,7 +135,7 @@ function BrushPanel({
         value={brush.strength}
         displayValue={brush.strength.toFixed(1)}
         min={0.5}
-        max={20}
+        max={50}
         step={0.5}
         onChange={setBrushStrength}
       />

@@ -51,6 +51,13 @@ export class WorkingPlane {
     this.syncPlane();
   }
 
+  applyQuaternionAroundPivot(q: THREE.Quaternion, pivot: THREE.Vector3): void {
+    this.position.sub(pivot).applyQuaternion(q).add(pivot);
+    this.normal.applyQuaternion(q).normalize();
+    this.quaternion.premultiply(q);
+    this.syncPlane();
+  }
+
   raycast(origin: THREE.Vector3, direction: THREE.Vector3): PlaneHit | null {
     this.syncPlane();
     _ray.set(origin, direction);

@@ -16,7 +16,8 @@
     "format": "biome format ./src ./test --write",
     "format:check": "biome format ./src ./test",
     "check": "biome check ./src ./test",
-    "check:fix": "biome check ./src ./test --write"
+    "check:fix": "biome check ./src ./test --write",
+    "typecheck": "tsc"
   },
   "dependencies": {
     "@mindcraft-lang/core": "file:../../packages/core",

@@ -94,7 +94,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     wireframe: false,
     terrainShading: "default",
-    skyGradient: "Lavender Sunset",
+    skyGradient: "Purple Evening Sky",
     normalSmoothing: 2,
     voxelDebugMode: "off",
     clampDensity: false,
@@ -110,7 +110,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setBrushRadius: (radius) => set((s) => ({ brush: { ...s.brush, radius: Math.max(1, Math.min(16, radius)) } })),
 
     setBrushStrength: (strength) =>
-      set((s) => ({ brush: { ...s.brush, strength: Math.max(0.5, Math.min(20, strength)) } })),
+      set((s) => ({ brush: { ...s.brush, strength: Math.max(0.5, Math.min(50, strength)) } })),
 
     setBrushShape: (shape) => set((s) => ({ brush: { ...s.brush, shape } })),
 
@@ -123,7 +123,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     setFlattenTarget: (target) => set({ flattenTarget: target }),
 
     commitStroke: () => {
-      const { pendingPatches } = get();
+      const { pendingPatches, clampDensity } = get();
       if (pendingPatches.length === 0) return;
 
       // Merge patches: keep only the last patch per (chunkId, fieldIndex)
@@ -138,7 +138,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
         }
       }
 
-      const command = new TerrainPatchCommand(Array.from(merged.values()));
+      const command = new TerrainPatchCommand(Array.from(merged.values()), clampDensity);
       undoStack.record(command);
 
       set({ pendingPatches: [], flattenTarget: null });

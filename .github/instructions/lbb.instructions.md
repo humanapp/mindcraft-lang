@@ -45,7 +45,13 @@ npm run build     # Builds core (prebuild), then Vite production build
 npm run test      # Node test runner: node --import tsx --test test/terrain/*.test.ts
 npm run check     # Biome check (lint + format)
 npm run check:fix # Biome check + auto-fix
+npm run typecheck # TypeScript type check (tsc --noEmit)
 ```
+
+After making code changes, always run both:
+
+1. `npm run check:fix` -- Biome lint + format
+2. `npm run typecheck` -- TypeScript type errors
 
 ## Directory Layout
 

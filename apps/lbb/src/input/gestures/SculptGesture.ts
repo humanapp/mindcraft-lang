@@ -57,6 +57,8 @@ export class SculptGesture implements GestureHandler {
       this.end({
         screenX: 0,
         screenY: 0,
+        ndcX: 0,
+        ndcY: 0,
         worldPos: null,
         modifiers: { shift: false, ctrl: false, meta: false, alt: false },
         button: 0,

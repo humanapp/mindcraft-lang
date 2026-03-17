@@ -19,6 +19,7 @@ export class InputManager {
   private lastScreenX = 0;
   private lastScreenY = 0;
   private modifiers: ModifierState = { shift: false, ctrl: false, meta: false, alt: false };
+  private cachedRect: DOMRect | null = null;
 
   constructor(
     private readonly domElement: HTMLElement,
@@ -49,9 +50,14 @@ export class InputManager {
   }
 
   private makeInput(screenX: number, screenY: number, button: number): PointerInput {
+    const rect = this.cachedRect ?? this.domElement.getBoundingClientRect();
+    const ndcX = ((screenX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((screenY - rect.top) / rect.height) * 2 + 1;
     return {
       screenX,
       screenY,
+      ndcX,
+      ndcY,
       worldPos: this.getWorldPos(),
       modifiers: this.modifiers,
       button,
@@ -64,6 +70,7 @@ export class InputManager {
     this.lastScreenX = e.clientX;
     this.lastScreenY = e.clientY;
     this.modifiers = { shift: e.shiftKey, ctrl: e.ctrlKey, meta: e.metaKey, alt: e.altKey };
+    this.cachedRect = this.domElement.getBoundingClientRect();
     this.domElement.setPointerCapture(e.pointerId);
     const input = this.makeInput(e.clientX, e.clientY, e.button);
     this.activeHandler = this.router.pick(input);
@@ -91,6 +98,7 @@ export class InputManager {
   private finishDrag(clientX: number, clientY: number, button: number): void {
     this.isDown = false;
     const input = this.makeInput(clientX, clientY, button);
+    this.cachedRect = null;
     this.activeHandler?.end(input);
     this.activeHandler = null;
   }

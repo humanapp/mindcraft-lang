@@ -11,7 +11,7 @@ function isTypingTarget(el: Element | null): boolean {
 const NO_MODIFIERS = { shift: false, ctrl: false, meta: false, alt: false } as const;
 
 function syntheticInput(worldPos: readonly [number, number, number] | null): PointerInput {
-  return { screenX: 0, screenY: 0, worldPos, modifiers: NO_MODIFIERS, button: 0 };
+  return { screenX: 0, screenY: 0, ndcX: 0, ndcY: 0, worldPos, modifiers: NO_MODIFIERS, button: 0 };
 }
 
 /**

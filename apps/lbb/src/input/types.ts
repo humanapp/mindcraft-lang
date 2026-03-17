@@ -8,6 +8,9 @@ export interface ModifierState {
 export interface PointerInput {
   readonly screenX: number;
   readonly screenY: number;
+  /** NDC coordinates in [-1, 1] for both axes, suitable for camera raycasting. */
+  readonly ndcX: number;
+  readonly ndcY: number;
   /** World-space terrain hit, or null if the pointer is not over terrain. */
   readonly worldPos: readonly [number, number, number] | null;
   readonly modifiers: ModifierState;
