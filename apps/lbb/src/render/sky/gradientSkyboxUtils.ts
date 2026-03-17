@@ -37,14 +37,6 @@ const G3: GradientStop[] = [
   { position: 1.0, color: "#000000" },
 ];
 
-const G4: GradientStop[] = [
-  { position: 0.0, color: "#F1CDFD" },
-  { position: 0.37, color: "#FDFDF6" },
-  { position: 0.77, color: "#9894E3" },
-  { position: 1.0, color: "#5F5E9E" },
-  { position: 1.0, color: "#000000" },
-];
-
 const G5: GradientStop[] = [
   { position: 0.0, color: "#EAF7E1" },
   { position: 0.24, color: "#93F3BE" },
@@ -101,19 +93,29 @@ const G11: GradientStop[] = [
   { position: 0.74, color: "#009492" },
 ];
 
+const BLACK_HORIZON_LINE: GradientStop[] = [
+  { position: 0.0, color: "#000000" },
+  { position: 0.4, color: "#000000" },
+  { position: 0.45, color: "#1E6BFF" }, // thin blue
+  { position: 0.5, color: "#FFFFFF" }, // thin white horizon
+  { position: 0.55, color: "#1E6BFF" }, // thin blue
+  { position: 0.6, color: "#000000" },
+  { position: 1.0, color: "#000000" },
+];
+
 export const SKY_GRADIENTS = {
-  "Lavender Sunset": DEFAULT_GRADIENT,
-  "Mint Sea Horizon": G1,
-  "Lilac Dream": G2,
-  "Silver Overcast": G3,
-  "Orchid Twilight": G4,
-  "Tropical Sky": G5,
-  "Stormlit Teal": G6,
+  "Purple Evening Sky": DEFAULT_GRADIENT,
+  "Tropical Sea Sky": G1,
+  "Soft Lavender Morning": G2,
+  "Cool Overcast Sky": G3,
+  "Bright Tropical Sky": G5,
+  "Stormy Coastal Sky": G6,
   "Clear Summer Day": G7,
-  "Atmospheric Haze": G8,
-  "Neon Dusk": G9,
-  "Molten Sunset": G10,
-  "Aurora Garden": G11,
+  "Clear Sky With Atmospheric Band": G8,
+  "Night Horizon Glow": G9,
+  "Fiery Sunset Horizon": G10,
+  "Aurora Sky": G11,  
+  "Night Horizon Line": BLACK_HORIZON_LINE,
 };
 
 export type SkyGradientId = keyof typeof SKY_GRADIENTS;
