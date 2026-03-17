@@ -14,7 +14,7 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 
 ## Demos
 
-- [Ecosystem Sim](https://mindcraft-sim.humanappliance.io) -- carnivores, herbivores, and plants driven by user-editable Mindcraft brains
+- [Ecosystem Sim](https://sim.mindcraft-lang.org) -- carnivores, herbivores, and plants driven by user-editable Mindcraft brains
 
 ## Repository Structure
 
@@ -60,7 +60,7 @@ For full setup instructions -- Vite config, TypeScript paths, Tailwind, and comp
 
 ## Documentation
 
-Documentation is a work in progress. Browse the sim demo's [language documentation](https://mindcraft-sim.humanappliance.io/docs) online. See also the [core package README](packages/core/README.md) for language architecture, the [ui package README](packages/ui/README.md) for the shared React components, and the [docs package README](packages/docs/README.md) for the documentation system.
+Documentation is a work in progress. Browse the sim demo's [language documentation](https://sim.mindcraft-lang.org/docs) online. See also the [core package README](packages/core/README.md) for language architecture, the [ui package README](packages/ui/README.md) for the shared React components, and the [docs package README](packages/docs/README.md) for the documentation system.
 
 ## Contributing
 

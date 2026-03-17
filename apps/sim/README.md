@@ -4,7 +4,7 @@
 
 A demo application built with the [Mindcraft language](../../README.md). Carnivores, herbivores, and plants survive in a 2D physics world -- each driven by a brain you can program.
 
-**Live demo:** <https://mindcraft-sim.humanappliance.io> | **Language docs:** <https://mindcraft-sim.humanappliance.io/docs>
+**Live demo:** <https://sim.mindcraft-lang.org> | **Language docs:** <https://sim.mindcraft-lang.org/docs>
 
 <div align="center">
   <img src="./assets/2026-03-07_15-11-12.png" alt="Sim Screenshot 1" width="80%" />
