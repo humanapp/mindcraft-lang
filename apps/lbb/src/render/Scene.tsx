@@ -13,6 +13,7 @@ import { SKY_GRADIENTS } from "./sky/gradientSkyboxUtils";
 import { TerrainChunkMesh } from "./TerrainChunkMesh";
 import { BrushTargetResolver } from "./WorkingPlaneHitTester";
 import { WorkingPlaneVisual } from "./WorkingPlaneVisual";
+import { OceanSurface } from "./water/OceanSurface";
 
 function Terrain() {
   const chunkRenderData = useWorldStore((s) => s.chunkRenderData);
@@ -100,6 +101,8 @@ export function Scene() {
   const brushRadius = useEditorStore((s) => s.brush.radius);
   const brushShape = useEditorStore((s) => s.brush.shape);
   const skyGradient = useEditorStore((s) => s.skyGradient);
+  const seaLevel = useEditorStore((s) => s.seaLevel);
+  const waterEnabled = useEditorStore((s) => s.waterEnabled);
 
   return (
     <Canvas
@@ -114,6 +117,7 @@ export function Scene() {
       <Lighting />
       <Terrain />
       <TerrainUpdater />
+      {waterEnabled && <OceanSurface seaLevel={seaLevel} />}
       <BrushCursor radius={brushRadius} shape={brushShape} />
       <WorkingPlaneVisual />
       <BrushTargetResolver />

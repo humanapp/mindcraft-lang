@@ -199,6 +199,12 @@ function RenderPanel({
   setSkyGradient,
   normalSmoothing,
   setNormalSmoothing,
+  seaLevel,
+  setSeaLevel,
+  waterEnabled,
+  toggleWater,
+  waterSunAngle,
+  setWaterSunAngle,
 }: {
   wireframe: boolean;
   toggleWireframe: () => void;
@@ -208,6 +214,12 @@ function RenderPanel({
   setSkyGradient: (gradient: SkyGradientId) => void;
   normalSmoothing: number;
   setNormalSmoothing: (v: number) => void;
+  seaLevel: number;
+  setSeaLevel: (v: number) => void;
+  waterEnabled: boolean;
+  toggleWater: () => void;
+  waterSunAngle: number;
+  setWaterSunAngle: (v: number) => void;
 }) {
   return (
     <Panel>
@@ -243,6 +255,26 @@ function RenderPanel({
         max={4}
         step={1}
         onChange={setNormalSmoothing}
+      />
+      <SectionLabel>Water</SectionLabel>
+      <ToggleRow label="Visible" checked={waterEnabled} onToggle={toggleWater} />
+      <SliderField
+        label="Sea Level"
+        value={seaLevel}
+        displayValue={seaLevel.toFixed(0)}
+        min={-10}
+        max={80}
+        step={1}
+        onChange={setSeaLevel}
+      />
+      <SliderField
+        label="Sun Angle"
+        value={waterSunAngle}
+        displayValue={`${waterSunAngle.toFixed(0)}\u00B0`}
+        min={-180}
+        max={180}
+        step={5}
+        onChange={setWaterSunAngle}
       />
     </Panel>
   );
@@ -327,6 +359,12 @@ export function Toolbar() {
   const setSkyGradient = useEditorStore((s) => s.setSkyGradient);
   const normalSmoothing = useEditorStore((s) => s.normalSmoothing);
   const setNormalSmoothing = useEditorStore((s) => s.setNormalSmoothing);
+  const seaLevel = useEditorStore((s) => s.seaLevel);
+  const setSeaLevel = useEditorStore((s) => s.setSeaLevel);
+  const waterEnabled = useEditorStore((s) => s.waterEnabled);
+  const toggleWater = useEditorStore((s) => s.toggleWater);
+  const waterSunAngle = useEditorStore((s) => s.waterSunAngle);
+  const setWaterSunAngle = useEditorStore((s) => s.setWaterSunAngle);
   const voxelDebugMode = useEditorStore((s) => s.voxelDebugMode);
   const setVoxelDebugMode = useEditorStore((s) => s.setVoxelDebugMode);
   const clampDensity = useEditorStore((s) => s.clampDensity);
@@ -362,6 +400,12 @@ export function Toolbar() {
         setSkyGradient={setSkyGradient}
         normalSmoothing={normalSmoothing}
         setNormalSmoothing={setNormalSmoothing}
+        seaLevel={seaLevel}
+        setSeaLevel={setSeaLevel}
+        waterEnabled={waterEnabled}
+        toggleWater={toggleWater}
+        waterSunAngle={waterSunAngle}
+        setWaterSunAngle={setWaterSunAngle}
       />
       <DebugPanel
         voxelDebugMode={voxelDebugMode}

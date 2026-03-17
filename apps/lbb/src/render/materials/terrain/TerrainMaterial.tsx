@@ -1,6 +1,7 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import { DoubleSide, MeshStandardMaterial } from "three";
+import { useEditorStore } from "@/editor/editor-store";
 import { applyTerrainShaderPatch } from "./terrainShaderPatch";
 import { createTerrainUniforms, type TerrainUniformMap, type TerrainUniformValues } from "./terrainUniforms";
 
@@ -67,6 +68,9 @@ export function TerrainMaterial({
     u.noiseStrength.value = noiseStrength;
     u.roughnessBase.value = roughnessBase;
     u.roughnessVariation.value = roughnessVariation;
+
+    const { seaLevel, waterEnabled } = useEditorStore.getState();
+    u.seaLevel.value = waterEnabled ? seaLevel : -9999;
   });
 
   return <primitive object={material} attach="material" wireframe={wireframe} />;

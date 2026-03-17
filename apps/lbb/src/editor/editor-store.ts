@@ -27,6 +27,11 @@ export interface EditorState {
   pendingPatches: TerrainPatch[];
   flattenTarget: number | null;
 
+  // Environment
+  seaLevel: number;
+  waterEnabled: boolean;
+  waterSunAngle: number;
+
   // Render options
   wireframe: boolean;
   terrainShading: TerrainShadingMode;
@@ -54,6 +59,9 @@ export interface EditorState {
   cancelStroke: () => void;
   undo: () => void;
   redo: () => void;
+  setSeaLevel: (level: number) => void;
+  toggleWater: () => void;
+  setWaterSunAngle: (angle: number) => void;
   toggleWireframe: () => void;
   setTerrainShading: (mode: TerrainShadingMode) => void;
   setSkyGradient: (gradient: SkyGradientId) => void;
@@ -91,6 +99,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     pendingPatches: [],
     flattenTarget: null,
+
+    seaLevel: 22,
+    waterEnabled: true,
+    waterSunAngle: -130,
 
     wireframe: false,
     terrainShading: "default",
@@ -150,6 +162,9 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     undo: () => undoStack.undo(),
     redo: () => undoStack.redo(),
+    setSeaLevel: (level) => set({ seaLevel: Math.max(-10, Math.min(80, level)) }),
+    toggleWater: () => set((s) => ({ waterEnabled: !s.waterEnabled })),
+    setWaterSunAngle: (angle) => set({ waterSunAngle: angle }),
     toggleWireframe: () => set((s) => ({ wireframe: !s.wireframe })),
     setTerrainShading: (mode) => set({ terrainShading: mode }),
     setSkyGradient: (gradient) => set({ skyGradient: gradient }),

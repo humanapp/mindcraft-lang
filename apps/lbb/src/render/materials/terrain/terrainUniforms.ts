@@ -10,6 +10,7 @@ export interface TerrainUniformValues {
   noiseStrength: number;
   roughnessBase: number;
   roughnessVariation: number;
+  seaLevel: number;
 }
 
 export type TerrainUniformMap = {
@@ -26,6 +27,7 @@ export const TERRAIN_DEFAULTS: TerrainUniformValues = {
   noiseStrength: 0.08,
   roughnessBase: 0.85,
   roughnessVariation: 0.1,
+  seaLevel: -9999,
 };
 
 export function createTerrainUniforms(overrides?: Partial<TerrainUniformValues>): TerrainUniformMap {
@@ -40,5 +42,6 @@ export function createTerrainUniforms(overrides?: Partial<TerrainUniformValues>)
     noiseStrength: { value: vals.noiseStrength },
     roughnessBase: { value: vals.roughnessBase },
     roughnessVariation: { value: vals.roughnessVariation },
+    seaLevel: { value: vals.seaLevel },
   };
 }
