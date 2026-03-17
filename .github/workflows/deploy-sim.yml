@@ -1,4 +1,4 @@
-name: Deploy mindcraft-sim
+name: Deploy sim
 
 on:
   workflow_dispatch:
@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 env:
-  S3_BUCKET: mindcraft-sim.humanappliance.io
+  S3_BUCKET: sim.mindcraft-lang.org
   AWS_REGION: us-east-1
 
 jobs:
