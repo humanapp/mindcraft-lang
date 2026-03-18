@@ -1,4 +1,4 @@
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useEditorStore } from "@/editor/editor-store";
@@ -12,10 +12,15 @@ const NORMAL_COLOR = new THREE.Color(0xffffff);
 const ACTIVE_COLOR = new THREE.Color(0xffffff);
 
 const _cursor = new THREE.Vector3();
+const _cameraDir = new THREE.Vector3();
+const _planeUp = new THREE.Vector3();
+const _planeRight = new THREE.Vector3();
+const _orientMatrix = new THREE.Matrix4();
 
 export function WorkingPlaneVisual() {
   const enabled = useEditorStore((s) => s.workingPlaneEnabled);
   const plane = useEditorStore((s) => s.workingPlane);
+  const camera = useThree((s) => s.camera);
   const groupRef = useRef<THREE.Group>(null);
 
   const geometry = useMemo(() => {
@@ -27,6 +32,27 @@ export function WorkingPlaneVisual() {
   const behindMat = useMemo(() => createInfinitePlaneMaterial({ depthTest: false, opacityScale: BEHIND_OPACITY }), []);
 
   const frontMat = useMemo(() => createInfinitePlaneMaterial({ depthTest: true, opacityScale: FRONT_OPACITY }), []);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    // Project the camera direction onto the horizontal plane so the working plane
+    // stays upright (vertical) and only rotates around world Y to face the camera.
+    camera.getWorldDirection(_cameraDir);
+    _cameraDir.y = 0;
+    if (_cameraDir.lengthSq() < 1e-6) {
+      _cameraDir.set(0, 0, 1);
+    }
+    _cameraDir.normalize().negate();
+    plane.setFromPositionAndNormal(plane.position, _cameraDir);
+
+    // The geometry's local +Z is the visual up (after rotateX(-PI/2)).
+    // For a vertical plane: up = world +Y, right = normal x up.
+    _planeUp.set(0, 1, 0);
+    _planeRight.crossVectors(plane.normal, _planeUp);
+    _orientMatrix.makeBasis(_planeRight, plane.normal, _planeUp);
+    plane.quaternion.setFromRotationMatrix(_orientMatrix);
+  }, [enabled, camera, plane]);
 
   useEffect(() => {
     return () => {
