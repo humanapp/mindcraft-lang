@@ -77,7 +77,27 @@ function ToggleRow({ label, checked, onToggle }: { label: string; checked: boole
   );
 }
 
-function ToolPanel({ activeTool, setActiveTool }: { activeTool: ToolType; setActiveTool: (tool: ToolType) => void }) {
+function ToolPanel({
+  activeTool,
+  setActiveTool,
+  brush,
+  setBrushRadius,
+  setBrushStrength,
+  setBrushFalloff,
+  setBrushShape,
+  workingPlaneEnabled,
+  toggleWorkingPlane,
+}: {
+  activeTool: ToolType;
+  setActiveTool: (tool: ToolType) => void;
+  brush: BrushParams;
+  setBrushRadius: (r: number) => void;
+  setBrushStrength: (s: number) => void;
+  setBrushFalloff: (f: number) => void;
+  setBrushShape: (s: BrushShape) => void;
+  workingPlaneEnabled: boolean;
+  toggleWorkingPlane: () => void;
+}) {
   const tools: { id: ToolType; label: string }[] = [
     { id: "raise", label: "Raise" },
     { id: "lower", label: "Lower" },
@@ -101,25 +121,6 @@ function ToolPanel({ activeTool, setActiveTool }: { activeTool: ToolType; setAct
           </Button>
         ))}
       </div>
-    </Panel>
-  );
-}
-
-function BrushPanel({
-  brush,
-  setBrushRadius,
-  setBrushStrength,
-  setBrushFalloff,
-  setBrushShape,
-}: {
-  brush: BrushParams;
-  setBrushRadius: (r: number) => void;
-  setBrushStrength: (s: number) => void;
-  setBrushFalloff: (f: number) => void;
-  setBrushShape: (s: BrushShape) => void;
-}) {
-  return (
-    <Panel>
       <SectionLabel>Brush</SectionLabel>
       <SliderField
         label="Radius"
@@ -161,6 +162,9 @@ function BrushPanel({
           </Button>
         ))}
       </div>
+        <SectionLabel>Working Plane</SectionLabel>
+        <ToggleRow label="Enabled" checked={workingPlaneEnabled} onToggle={toggleWorkingPlane} />
+        {workingPlaneEnabled && <span className="text-[10px] text-muted-foreground">Hold Space to move/rotate</span>}
     </Panel>
   );
 }
@@ -377,20 +381,18 @@ export function Toolbar() {
 
   return (
     <div className="absolute top-3 left-3 flex flex-col gap-2 z-10 pointer-events-auto">
-      <ToolPanel activeTool={activeTool} setActiveTool={setActiveTool} />
-      <BrushPanel
+      <ToolPanel
+        activeTool={activeTool}
+        setActiveTool={setActiveTool}
         brush={brush}
         setBrushRadius={setBrushRadius}
         setBrushStrength={setBrushStrength}
         setBrushFalloff={setBrushFalloff}
         setBrushShape={setBrushShape}
+        workingPlaneEnabled={workingPlaneEnabled}
+        toggleWorkingPlane={toggleWorkingPlane}
       />
       <UndoRedoPanel canUndo={canUndo} canRedo={canRedo} undo={undo} redo={redo} />
-      <Panel>
-        <SectionLabel>Working Plane</SectionLabel>
-        <ToggleRow label="Enabled" checked={workingPlaneEnabled} onToggle={toggleWorkingPlane} />
-        {workingPlaneEnabled && <span className="text-[10px] text-muted-foreground">Hold Space to move/rotate</span>}
-      </Panel>
       <RenderPanel
         wireframe={wireframe}
         toggleWireframe={toggleWireframe}
@@ -407,19 +409,6 @@ export function Toolbar() {
         waterSunAngle={waterSunAngle}
         setWaterSunAngle={setWaterSunAngle}
       />
-      <DebugPanel
-        voxelDebugMode={voxelDebugMode}
-        setVoxelDebugMode={setVoxelDebugMode}
-        debugBrush={debugBrush}
-        toggleDebugBrush={toggleDebugBrush}
-      />
-      {false && (
-        <DensityFieldPanel
-          densityRange={densityRange}
-          clampDensity={clampDensity}
-          toggleClampDensity={toggleClampDensity}
-        />
-      )}
     </div>
   );
 }
