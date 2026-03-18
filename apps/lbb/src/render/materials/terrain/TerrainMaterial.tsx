@@ -71,6 +71,7 @@ export function TerrainMaterial({
 
     const { seaLevel, waterEnabled } = useEditorStore.getState();
     u.seaLevel.value = waterEnabled ? seaLevel : -9999;
+    u.hazeStrength.value = waterEnabled ? 3 : 0.0;
   });
 
   return <primitive object={material} attach="material" wireframe={wireframe} />;

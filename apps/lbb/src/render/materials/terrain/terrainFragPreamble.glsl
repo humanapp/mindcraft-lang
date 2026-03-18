@@ -12,6 +12,12 @@ uniform float noiseStrength;
 uniform float roughnessBase;
 uniform float roughnessVariation;
 uniform float seaLevel;
+uniform vec3 hazeColor;
+uniform float hazeHeight;
+uniform float hazeStrength;
+uniform float hazeNear;
+uniform float hazeFar;
+uniform float hazeSlopeBoost;
 
 varying vec3 vWorldPosition;
 varying vec3 vWorldNormal;

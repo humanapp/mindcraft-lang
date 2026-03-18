@@ -11,6 +11,12 @@ export interface TerrainUniformValues {
   roughnessBase: number;
   roughnessVariation: number;
   seaLevel: number;
+  hazeColor: Color;
+  hazeHeight: number;
+  hazeStrength: number;
+  hazeNear: number;
+  hazeFar: number;
+  hazeSlopeBoost: number;
 }
 
 export type TerrainUniformMap = {
@@ -28,6 +34,12 @@ export const TERRAIN_DEFAULTS: TerrainUniformValues = {
   roughnessBase: 0.85,
   roughnessVariation: 0.1,
   seaLevel: -9999,
+  hazeColor: new Color("#9ab0be"),
+  hazeHeight: 15.0,
+  hazeStrength: 0.5,
+  hazeNear: 5.0,
+  hazeFar: 100.0,
+  hazeSlopeBoost: 1.3,
 };
 
 export function createTerrainUniforms(overrides?: Partial<TerrainUniformValues>): TerrainUniformMap {
@@ -43,5 +55,11 @@ export function createTerrainUniforms(overrides?: Partial<TerrainUniformValues>)
     roughnessBase: { value: vals.roughnessBase },
     roughnessVariation: { value: vals.roughnessVariation },
     seaLevel: { value: vals.seaLevel },
+    hazeColor: { value: vals.hazeColor.clone() },
+    hazeHeight: { value: vals.hazeHeight },
+    hazeStrength: { value: vals.hazeStrength },
+    hazeNear: { value: vals.hazeNear },
+    hazeFar: { value: vals.hazeFar },
+    hazeSlopeBoost: { value: vals.hazeSlopeBoost },
   };
 }

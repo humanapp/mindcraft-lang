@@ -162,9 +162,9 @@ function ToolPanel({
           </Button>
         ))}
       </div>
-        <SectionLabel>Working Plane</SectionLabel>
-        <ToggleRow label="Enabled" checked={workingPlaneEnabled} onToggle={toggleWorkingPlane} />
-        {workingPlaneEnabled && <span className="text-[10px] text-muted-foreground">Hold Space to move/rotate</span>}
+      <SectionLabel>Working Plane</SectionLabel>
+      <ToggleRow label="Enabled" checked={workingPlaneEnabled} onToggle={toggleWorkingPlane} />
+      {workingPlaneEnabled && <span className="text-[10px] text-muted-foreground">Hold Space to move/rotate</span>}
     </Panel>
   );
 }
