@@ -1,15 +1,10 @@
 import type { WebGLProgramParametersWithUniforms } from "three";
-import heightMaskGlsl from "../shared/heightMask.glsl?raw";
-import noiseGlsl from "../shared/noise.glsl?raw";
-import slopeMaskGlsl from "../shared/slopeMask.glsl?raw";
-import fragmentColorReplace from "./terrainFragColor.glsl?raw";
-import fragmentPreambleGlsl from "./terrainFragPreamble.glsl?raw";
-import fragmentRoughnessReplace from "./terrainFragRoughness.glsl?raw";
+import fragmentColorReplace from "./terrainFragColor.glsl";
+import fragmentPreamble from "./terrainFragPreamble.glsl";
+import fragmentRoughnessReplace from "./terrainFragRoughness.glsl";
 import type { TerrainUniformMap } from "./terrainUniforms";
-import vertexMain from "./terrainVertMain.glsl?raw";
-import vertexPreamble from "./terrainVertPreamble.glsl?raw";
-
-const fragmentPreamble = `${fragmentPreambleGlsl}\n${noiseGlsl}\n${slopeMaskGlsl}\n${heightMaskGlsl}`;
+import vertexMain from "./terrainVertMain.glsl";
+import vertexPreamble from "./terrainVertPreamble.glsl";
 
 export function applyTerrainShaderPatch(shader: WebGLProgramParametersWithUniforms, uniforms: TerrainUniformMap): void {
   for (const [key, entry] of Object.entries(uniforms)) {

@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import glsl from "vite-plugin-glsl";
 import commonjs from "@rollup/plugin-commonjs";
 import path from "path";
 import { uiPlugin } from "../../../packages/ui/src/vite-plugin.ts";
@@ -7,6 +8,7 @@ import { uiPlugin } from "../../../packages/ui/src/vite-plugin.ts";
 export default defineConfig({
   base: "/",
   plugins: [
+    glsl(),
     react(),
     uiPlugin(),
   ],

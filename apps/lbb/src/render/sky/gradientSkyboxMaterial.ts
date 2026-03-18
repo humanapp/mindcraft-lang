@@ -1,6 +1,6 @@
 import { Color, type ColorRepresentation, ShaderMaterial } from "three";
-import fragmentShader from "./sky.frag?raw";
-import vertexShader from "./sky.vert?raw";
+import fragmentShader from "./sky.frag";
+import vertexShader from "./sky.vert";
 
 const MAX_STOPS = 8;
 

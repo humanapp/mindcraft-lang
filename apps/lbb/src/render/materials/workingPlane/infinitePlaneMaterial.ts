@@ -1,6 +1,6 @@
 import { Color, DoubleSide, ShaderMaterial, Vector3 } from "three";
-import fragmentShader from "./workingPlane.frag?raw";
-import vertexShader from "./workingPlane.vert?raw";
+import fragmentShader from "./workingPlane.frag";
+import vertexShader from "./workingPlane.vert";
 
 export interface InfinitePlaneMaterialOptions {
   depthTest: boolean;

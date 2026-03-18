@@ -1,3 +1,7 @@
+#include "../shared/noise.glsl"
+#include "../shared/slopeMask.glsl"
+#include "../shared/heightMask.glsl"
+
 uniform vec3 lowColor;
 uniform vec3 highColor;
 uniform vec3 steepColor;

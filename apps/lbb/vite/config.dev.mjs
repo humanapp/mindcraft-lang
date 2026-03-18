@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import glsl from "vite-plugin-glsl";
 import path from "path";
 import { uiPlugin } from "../../../packages/ui/src/vite-plugin.ts";
 
@@ -13,6 +14,7 @@ export default defineConfig({
   base: "/",
   appType: "spa",
   plugins: [
+    glsl(),
     react(),
     uiPlugin(),
   ],

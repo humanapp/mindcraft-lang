@@ -1,6 +1,6 @@
 import { Color, DoubleSide, ShaderMaterial, Vector2, Vector3 } from "three";
-import fragmentShader from "./water.frag?raw";
-import vertexShader from "./water.vert?raw";
+import fragmentShader from "./water.frag";
+import vertexShader from "./water.vert";
 
 const SUN_DIR = new Vector3(160, 180, 120).normalize();
 

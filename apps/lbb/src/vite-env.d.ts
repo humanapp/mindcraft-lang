@@ -1,16 +1,16 @@
 /// <reference types="vite/client" />
 
-declare module "*.vert?raw" {
+declare module "*.vert" {
   const src: string;
   export default src;
 }
 
-declare module "*.frag?raw" {
+declare module "*.frag" {
   const src: string;
   export default src;
 }
 
-declare module "*.glsl?raw" {
+declare module "*.glsl" {
   const src: string;
   export default src;
 }
