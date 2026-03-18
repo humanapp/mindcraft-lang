@@ -1,7 +1,15 @@
 import { useFrame } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
-import type { Mesh } from "three";
-import { Fog, PlaneGeometry, Vector3 } from "three";
+import type { Mesh, PerspectiveCamera } from "three";
+import {
+  DepthTexture,
+  Fog,
+  MeshBasicMaterial,
+  PlaneGeometry,
+  UnsignedIntType,
+  Vector3,
+  WebGLRenderTarget,
+} from "three";
 import { useEditorStore } from "@/editor/editor-store";
 import { createWaterMaterial } from "./waterMaterial";
 
@@ -22,14 +30,29 @@ export function OceanSurface({ seaLevel }: OceanSurfaceProps) {
 
   const material = useMemo(() => createWaterMaterial(), []);
 
+  const depthTarget = useMemo(() => {
+    const dt = new DepthTexture(1, 1);
+    dt.type = UnsignedIntType;
+    const rt = new WebGLRenderTarget(1, 1, { depthTexture: dt });
+    return rt;
+  }, []);
+
+  const depthPassMaterial = useMemo(() => {
+    const mat = new MeshBasicMaterial();
+    mat.colorWrite = false;
+    return mat;
+  }, []);
+
   useEffect(() => {
     return () => {
       geometry.dispose();
       material.dispose();
+      depthTarget.dispose();
+      depthPassMaterial.dispose();
     };
-  }, [geometry, material]);
+  }, [geometry, material, depthTarget, depthPassMaterial]);
 
-  useFrame(({ camera, clock, scene }) => {
+  useFrame(({ camera, clock, scene, gl, size }) => {
     const mesh = meshRef.current;
     if (!mesh) return;
 
@@ -54,6 +77,27 @@ export function OceanSurface({ seaLevel }: OceanSurfaceProps) {
       material.uniforms.uFogNear.value = scene.fog.near;
       material.uniforms.uFogFar.value = scene.fog.far;
     }
+
+    const dpr = gl.getPixelRatio();
+    const pw = Math.ceil(size.width * dpr);
+    const ph = Math.ceil(size.height * dpr);
+    if (depthTarget.width !== pw || depthTarget.height !== ph) {
+      depthTarget.setSize(pw, ph);
+    }
+
+    mesh.visible = false;
+    scene.overrideMaterial = depthPassMaterial;
+    gl.setRenderTarget(depthTarget);
+    gl.render(scene, camera);
+    gl.setRenderTarget(null);
+    scene.overrideMaterial = null;
+    mesh.visible = true;
+
+    const perspCam = camera as PerspectiveCamera;
+    material.uniforms.uDepthTexture.value = depthTarget.depthTexture;
+    material.uniforms.uCameraNear.value = perspCam.near;
+    material.uniforms.uCameraFar.value = perspCam.far;
+    material.uniforms.uResolution.value.set(pw, ph);
   });
 
   return (

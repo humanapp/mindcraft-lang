@@ -9,6 +9,13 @@ uniform vec3 uSunDirection;
 uniform float uTime;
 uniform vec2 uIslandCenter;
 uniform float uIslandRadius;
+uniform sampler2D uDepthTexture;
+uniform float uCameraNear;
+uniform float uCameraFar;
+uniform vec2 uResolution;
+uniform vec3 uFoamColor;
+uniform float uFoamStrength;
+uniform float uShoreMaxDist;
 
 varying vec3 vWorldPosition;
 varying vec3 vNormal;
@@ -29,6 +36,10 @@ float valueNoise(vec2 p) {
   float c = hash(i + vec2(0.0, 1.0));
   float d = hash(i + vec2(1.0, 1.0));
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float linearizeDepth(float d) {
+  return uCameraNear * uCameraFar / (uCameraFar - d * (uCameraFar - uCameraNear));
 }
 
 void main() {
@@ -89,6 +100,89 @@ void main() {
 
   // Clamp additive highlight so it never blows out
   color = min(color, vec3(1.1));
+
+  // -- Shoreline intersection (depth-based) --
+  vec2 screenUV = gl_FragCoord.xy / uResolution;
+  float rawSceneDepth = texture2D(uDepthTexture, screenUV).r;
+  float linearScene = linearizeDepth(rawSceneDepth);
+  float linearWater = linearizeDepth(gl_FragCoord.z);
+  float thickness = linearScene - linearWater;
+  float validMask = step(0.0, thickness);
+
+  // Normalized thickness ratio for band derivation
+  float tNorm = clamp(thickness / uShoreMaxDist, 0.0, 1.0);
+
+  // -- Directional wave bias --
+  vec2 waveDir = normalize(vec2(0.7, 0.45));
+  float dirProj = dot(wpos, waveDir);
+  float dirWave = sin(dirProj * 0.18 + uTime * 0.9) * 0.5 + 0.5;
+  float dirBias = 0.8 + 0.2 * dirWave;
+
+  // -- Three shoreline bands from thickness --
+  // Inner: tight contact foam (thickness 0..30% of max)
+  float bandInner = smoothstep(0.3, 0.0, tNorm) * validMask;
+  // Mid: broken churn region (thickness 10..65% of max)
+  float bandMid = smoothstep(0.1, 0.25, tNorm) * smoothstep(0.65, 0.35, tNorm) * validMask;
+  // Outer: subtle disturbance (thickness 40..100% of max)
+  float bandOuter = smoothstep(0.4, 0.55, tNorm) * smoothstep(1.0, 0.7, tNorm) * validMask;
+
+  // -- Noise layers --
+  // Fine noise: sharp breakup for inner band
+  float noiseFine = valueNoise(wpos * 4.0 + vec2(uTime * 0.2, -uTime * 0.15));
+  // Medium noise: softer modulation for mid band
+  float noiseMed = valueNoise(wpos * 1.6 + vec2(-uTime * 0.12, uTime * 0.18) + 77.0);
+  // Coarse noise: large-scale variation across all bands
+  float noiseCoarse = valueNoise(wpos * 0.7 + vec2(uTime * 0.08, uTime * 0.06) + 150.0);
+
+  // Wave-phase temporal modulation
+  float wavePhase = sin(dirProj * 0.14 + uTime * 1.1);
+  float waveMod = 0.7 + 0.3 * wavePhase;
+
+  // -- Inner foam: bright, sharp, tight --
+  float innerFoam = bandInner * smoothstep(0.35, 0.65, noiseFine) * dirBias * waveMod;
+
+  // -- Mid churn: softer, wider, more broken --
+  float midFoam = bandMid * smoothstep(0.4, 0.7, noiseMed * 0.55 + noiseCoarse * 0.45);
+  midFoam *= 0.65 * dirBias;
+
+  // -- Outer disturbance: very subtle --
+  float outerFoam = bandOuter * smoothstep(0.45, 0.7, noiseCoarse) * 0.3;
+
+  // Combine foam bands with spatial intensity variation
+  float intensityVar = 0.7 + 0.3 * noiseCoarse;
+  float totalFoam = (innerFoam * 0.85 + midFoam * 0.5 + outerFoam * 0.2) * intensityVar;
+  totalFoam = min(totalFoam, 0.75);
+
+  color = mix(color, uFoamColor, totalFoam * uFoamStrength);
+
+  // -- Turbidity: clouded shallow water, separate from foam --
+  float turbidZone = smoothstep(0.5, 0.0, tNorm) * validMask;
+  float turbidNoise = valueNoise(wpos * 0.9 + vec2(uTime * 0.05, -uTime * 0.04) + 300.0);
+  float turbidity = turbidZone * (0.6 + 0.4 * turbidNoise) * 0.3;
+  vec3 turbidColor = mix(uShallowColor, uFoamColor, 0.35);
+  color = mix(color, turbidColor, turbidity);
+
+  // -- Contact haze: very soft blend at the immediate boundary --
+  float haze = (bandInner * 0.6 + bandMid * 0.3) * 0.15;
+  color = mix(color, uFoamColor * 0.9 + color * 0.1, haze);
+
+  // -- Outer softness veil: broad, low-contrast transition beyond foam --
+  // Extends to 2.5x the foam range for a wide soft falloff
+  float veilWidth = uShoreMaxDist * 2.5;
+  float veilRaw = clamp(1.0 - thickness / veilWidth, 0.0, 1.0) * validMask;
+  // Shape: fade in beyond the foam/churn region, peak around 60-90% of foam range
+  float veilMask = veilRaw * veilRaw * smoothstep(0.0, 0.25, tNorm);
+  // Low-frequency noise for irregular edge (no sparkle)
+  float veilNoise = valueNoise(wpos * 0.35 + vec2(uTime * 0.03, -uTime * 0.025) + 420.0);
+  veilMask *= 0.65 + 0.35 * veilNoise;
+  // Blend toward a color only slightly milkier than the surrounding water
+  vec3 veilTone = mix(color, turbidColor, 0.4);
+  color = mix(color, veilTone, veilMask * 0.18);
+
+  // -- Wet/dark band: subtle darkening just outside the foam edge --
+  float wetBand = smoothstep(0.6, 0.85, tNorm) * smoothstep(1.3, 0.95, thickness / uShoreMaxDist) * validMask;
+  wetBand *= 0.6 + 0.4 * veilNoise;
+  color *= 1.0 - wetBand * 0.06;
 
   // -- Fog / horizon blend --
   float fogFactor = smoothstep(uFogNear, uFogFar, dist);

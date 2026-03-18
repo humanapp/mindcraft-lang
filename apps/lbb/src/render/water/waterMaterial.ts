@@ -1,3 +1,4 @@
+import type { DepthTexture } from "three";
 import { Color, DoubleSide, ShaderMaterial, Vector2, Vector3 } from "three";
 import fragmentShader from "./water.frag";
 import vertexShader from "./water.vert";
@@ -24,6 +25,13 @@ export function createWaterMaterial(): ShaderMaterial {
       uSunDirection: { value: SUN_DIR.clone() },
       uIslandCenter: { value: new Vector2(ISLAND_CENTER_X, ISLAND_CENTER_Z) },
       uIslandRadius: { value: ISLAND_RADIUS },
+      uDepthTexture: { value: null as DepthTexture | null },
+      uCameraNear: { value: 0.5 },
+      uCameraFar: { value: 1500 },
+      uResolution: { value: new Vector2(1, 1) },
+      uFoamColor: { value: new Color(0.83, 0.89, 0.86) },
+      uFoamStrength: { value: 0.55 },
+      uShoreMaxDist: { value: 3.0 },
     },
     transparent: true,
     depthWrite: true,
