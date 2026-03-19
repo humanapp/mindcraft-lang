@@ -151,7 +151,7 @@ function ToolPanel({
       />
       <SectionLabel>Shape</SectionLabel>
       <div className="flex gap-1">
-        {(["sphere", "cube", "cylinder"] as const).map((s) => (
+        {(["sphere", "cube", "capsule"] as const).map((s) => (
           <Button
             key={s}
             variant={(brush.shape ?? "sphere") === s ? "default" : "secondary"}

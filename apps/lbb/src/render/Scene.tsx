@@ -7,7 +7,7 @@ import { useInputManager } from "@/input/useInputManager";
 import { LAYER_EDITOR } from "@/render/layers";
 import { useSessionStore } from "@/session/session-store";
 import { useWorldStore } from "@/world/world-store";
-import { BrushCursor } from "./BrushCursor";
+import { BrushCursor } from "./brushCursor/BrushCursor";
 import { VoxelSamplesOverlay } from "./debug/VoxelSamplesOverlay";
 import { GradientSkybox } from "./sky/GradientSkybox";
 import { SKY_GRADIENTS } from "./sky/gradientSkyboxUtils";

@@ -18,7 +18,7 @@ export interface TerrainPatch {
   readonly after: number;
 }
 
-export type BrushShape = "sphere" | "cube" | "cylinder";
+export type BrushShape = "sphere" | "cube" | "capsule";
 
 export type BrushMode = "raise" | "lower" | "smooth" | "roughen" | "flatten";
 
@@ -144,12 +144,15 @@ function computeFalloff(
       t = Math.max(ax, ay, az) / r;
       break;
     }
-    case "cylinder": {
-      const distSqXZ = dx * dx + dz * dz;
-      if (distSqXZ > r * r || Math.abs(dy) > r) return null;
-      const tRadial = Math.sqrt(distSqXZ) / r;
-      const tVertical = Math.abs(dy) / r;
-      t = Math.max(tRadial, tVertical);
+    case "capsule": {
+      const halfBody = r * 0.5;
+      const clampedDy = Math.max(-halfBody, Math.min(halfBody, dy));
+      const capDx = dx;
+      const capDy = dy - clampedDy;
+      const capDz = dz;
+      const capDistSq = capDx * capDx + capDy * capDy + capDz * capDz;
+      if (capDistSq > r * r) return null;
+      t = Math.sqrt(capDistSq) / r;
       break;
     }
   }
@@ -188,10 +191,12 @@ export function computeBrushPatches(
   const densityDelta = displacementToDelta(displacementPerTick);
   const blendFactor = 1 - Math.exp(-effectiveStrength(brush.strength) * dt);
 
+  const ry = shape === "capsule" ? r * 1.5 : r;
+
   const cxMin = Math.ceil((wx - r - CORE_SAMPLES) / CHUNK_SIZE);
   const cxMax = Math.floor((wx + r) / CHUNK_SIZE);
-  const cyMin = Math.ceil((wy - r - CORE_SAMPLES) / CHUNK_SIZE);
-  const cyMax = Math.floor((wy + r) / CHUNK_SIZE);
+  const cyMin = Math.ceil((wy - ry - CORE_SAMPLES) / CHUNK_SIZE);
+  const cyMax = Math.floor((wy + ry) / CHUNK_SIZE);
   const czMin = Math.ceil((wz - r - CORE_SAMPLES) / CHUNK_SIZE);
   const czMax = Math.floor((wz + r) / CHUNK_SIZE);
 
@@ -208,8 +213,8 @@ export function computeBrushPatches(
 
         const lxMin = Math.max(0, Math.floor(wx - r - ox));
         const lxMax = Math.min(CORE_SAMPLES, Math.ceil(wx + r - ox));
-        const lyMin = Math.max(0, Math.floor(wy - r - oy));
-        const lyMax = Math.min(CORE_SAMPLES, Math.ceil(wy + r - oy));
+        const lyMin = Math.max(0, Math.floor(wy - ry - oy));
+        const lyMax = Math.min(CORE_SAMPLES, Math.ceil(wy + ry - oy));
         const lzMin = Math.max(0, Math.floor(wz - r - oz));
         const lzMax = Math.min(CORE_SAMPLES, Math.ceil(wz + r - oz));
 
