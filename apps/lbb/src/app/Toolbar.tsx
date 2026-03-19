@@ -197,31 +197,19 @@ function UndoRedoPanel({
 function RenderPanel({
   wireframe,
   toggleWireframe,
-  terrainShading,
-  setTerrainShading,
   skyGradient,
   setSkyGradient,
-  normalSmoothing,
-  setNormalSmoothing,
   seaLevel,
   setSeaLevel,
-  waterEnabled,
-  toggleWater,
   waterSunAngle,
   setWaterSunAngle,
 }: {
   wireframe: boolean;
   toggleWireframe: () => void;
-  terrainShading: TerrainShadingMode;
-  setTerrainShading: (mode: TerrainShadingMode) => void;
   skyGradient: SkyGradientId;
   setSkyGradient: (gradient: SkyGradientId) => void;
-  normalSmoothing: number;
-  setNormalSmoothing: (v: number) => void;
   seaLevel: number;
   setSeaLevel: (v: number) => void;
-  waterEnabled: boolean;
-  toggleWater: () => void;
   waterSunAngle: number;
   setWaterSunAngle: (v: number) => void;
 }) {
@@ -229,16 +217,6 @@ function RenderPanel({
     <Panel>
       <SectionLabel>Render</SectionLabel>
       <ToggleRow label="Wireframe" checked={wireframe} onToggle={toggleWireframe} />
-      <select
-        value={terrainShading}
-        onChange={(e) => setTerrainShading(e.target.value as TerrainShadingMode)}
-        className="w-full rounded-md bg-secondary border border-border px-2 py-1 text-xs text-foreground cursor-pointer"
-      >
-        <option value="default">Default Material</option>
-        <option value="plain">Plain Shaded</option>
-        <option value="normals">Normal Debug</option>
-        <option value="gradient-mag">Gradient Magnitude</option>
-      </select>
       <span className="text-xs text-muted-foreground">Sky</span>
       <select
         value={skyGradient}
@@ -251,17 +229,6 @@ function RenderPanel({
           </option>
         ))}
       </select>
-      <SliderField
-        label="Normal Smooth"
-        value={normalSmoothing}
-        displayValue={String(normalSmoothing)}
-        min={0}
-        max={4}
-        step={1}
-        onChange={setNormalSmoothing}
-      />
-      <SectionLabel>Water</SectionLabel>
-      <ToggleRow label="Visible" checked={waterEnabled} onToggle={toggleWater} />
       <SliderField
         label="Sea Level"
         value={seaLevel}
@@ -392,23 +359,17 @@ export function Toolbar() {
         workingPlaneEnabled={workingPlaneEnabled}
         toggleWorkingPlane={toggleWorkingPlane}
       />
-      <UndoRedoPanel canUndo={canUndo} canRedo={canRedo} undo={undo} redo={redo} />
       <RenderPanel
         wireframe={wireframe}
         toggleWireframe={toggleWireframe}
-        terrainShading={terrainShading}
-        setTerrainShading={setTerrainShading}
         skyGradient={skyGradient}
         setSkyGradient={setSkyGradient}
-        normalSmoothing={normalSmoothing}
-        setNormalSmoothing={setNormalSmoothing}
         seaLevel={seaLevel}
         setSeaLevel={setSeaLevel}
-        waterEnabled={waterEnabled}
-        toggleWater={toggleWater}
         waterSunAngle={waterSunAngle}
         setWaterSunAngle={setWaterSunAngle}
       />
+      <UndoRedoPanel canUndo={canUndo} canRedo={canRedo} undo={undo} redo={redo} />
     </div>
   );
 }
