@@ -35,10 +35,10 @@ export const TERRAIN_DEFAULTS: TerrainUniformValues = {
   roughnessVariation: 0.1,
   seaLevel: -9999,
   hazeColor: new Color("#9ab0be"),
-  hazeHeight: 15.0,
-  hazeStrength: 0.5,
-  hazeNear: 5.0,
-  hazeFar: 100.0,
+  hazeHeight: 3.0,
+  hazeStrength: 0.25,
+  hazeNear: 25.0,
+  hazeFar: 180.0,
   hazeSlopeBoost: 1.3,
 };
 
