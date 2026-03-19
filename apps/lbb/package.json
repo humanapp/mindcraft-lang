@@ -9,6 +9,7 @@
     "dev": "vite --config vite/config.dev.mjs --force",
     "prebuild": "cd ../../packages/core && npm run build",
     "build": "vite build --config vite/config.prod.mjs",
+    "preview": "vite preview",
     "test": "node --import tsx --test test/terrain/*.test.ts",
     "clean": "rm -rf dist && rm -rf node_modules/.vite",
     "lint": "biome lint ./src ./test",
