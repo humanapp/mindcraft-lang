@@ -42,6 +42,27 @@ float linearizeDepth(float d) {
   return uCameraNear * uCameraFar / (uCameraFar - d * (uCameraFar - uCameraNear));
 }
 
+const mat2 ROT = mat2(0.80, -0.60, 0.60, 0.80);
+
+float fbm3(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 3; i++) {
+    v += a * valueNoise(p);
+    p = ROT * p * 2.05 + 17.0;
+    a *= 0.45;
+  }
+  return v;
+}
+
+float warpedNoise(vec2 p, float t) {
+  vec2 q = vec2(
+    fbm3(p + vec2(t * 0.07, t * 0.05)),
+    fbm3(p + vec2(t * 0.05, -t * 0.06) + 40.0)
+  );
+  return fbm3(p + q * 2.2);
+}
+
 void main() {
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
   float dist = vDistToCamera;
@@ -126,13 +147,11 @@ void main() {
   // Outer: subtle disturbance (thickness 40..100% of max)
   float bandOuter = smoothstep(0.4, 0.55, tNorm) * smoothstep(1.0, 0.7, tNorm) * validMask;
 
-  // -- Noise layers --
-  // Fine noise: sharp breakup for inner band
-  float noiseFine = valueNoise(wpos * 4.0 + vec2(uTime * 0.2, -uTime * 0.15));
-  // Medium noise: softer modulation for mid band
-  float noiseMed = valueNoise(wpos * 1.6 + vec2(-uTime * 0.12, uTime * 0.18) + 77.0);
-  // Coarse noise: large-scale variation across all bands
-  float noiseCoarse = valueNoise(wpos * 0.7 + vec2(uTime * 0.08, uTime * 0.06) + 150.0);
+  // -- Noise layers (domain-warped, rotated FBM) --
+  vec2 shoreP = ROT * wpos;
+  float noiseFine = warpedNoise(shoreP * 0.28, uTime * 1.2);
+  float noiseMed = warpedNoise(shoreP * 0.12 + 77.0, uTime * 0.8);
+  float noiseCoarse = warpedNoise(shoreP * 0.05 + 150.0, uTime * 0.5);
 
   // Wave-phase temporal modulation
   float wavePhase = sin(dirProj * 0.14 + uTime * 1.1);
@@ -157,7 +176,7 @@ void main() {
 
   // -- Turbidity: clouded shallow water, separate from foam --
   float turbidZone = smoothstep(0.5, 0.0, tNorm) * validMask;
-  float turbidNoise = valueNoise(wpos * 0.9 + vec2(uTime * 0.05, -uTime * 0.04) + 300.0);
+  float turbidNoise = warpedNoise(shoreP * 0.06 + 300.0, uTime * 0.35);
   float turbidity = turbidZone * (0.6 + 0.4 * turbidNoise) * 0.3;
   vec3 turbidColor = mix(uShallowColor, uFoamColor, 0.35);
   color = mix(color, turbidColor, turbidity);
@@ -173,7 +192,7 @@ void main() {
   // Shape: fade in beyond the foam/churn region, peak around 60-90% of foam range
   float veilMask = veilRaw * veilRaw * smoothstep(0.0, 0.25, tNorm);
   // Low-frequency noise for irregular edge (no sparkle)
-  float veilNoise = valueNoise(wpos * 0.35 + vec2(uTime * 0.03, -uTime * 0.025) + 420.0);
+  float veilNoise = warpedNoise(shoreP * 0.03 + 420.0, uTime * 0.25);
   veilMask *= 0.65 + 0.35 * veilNoise;
   // Blend toward a color only slightly milkier than the surrounding water
   vec3 veilTone = mix(color, turbidColor, 0.4);
