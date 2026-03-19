@@ -1,5 +1,7 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import type { Points } from "three";
 import { BufferAttribute, BufferGeometry } from "three";
+import { LAYER_EDITOR } from "@/render/layers";
 import type { ChunkData } from "@/world/voxel/types";
 import { buildDensitySignPoints } from "./samplePositions";
 
@@ -27,10 +29,18 @@ export function ChunkDensitySign({ chunk }: ChunkDensitySignProps) {
     };
   }, [geometry]);
 
+  const ref = useRef<Points>(null);
+  useEffect(() => {
+    const pts = ref.current;
+    if (!pts) return;
+    pts.layers.disableAll();
+    pts.layers.enable(LAYER_EDITOR);
+  });
+
   if (!geometry) return null;
 
   return (
-    <points geometry={geometry}>
+    <points ref={ref} geometry={geometry}>
       <pointsMaterial size={0.3} sizeAttenuation vertexColors />
     </points>
   );

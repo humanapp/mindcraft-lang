@@ -1,9 +1,10 @@
 import type { ThreeEvent } from "@react-three/fiber";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { PCFSoftShadowMap } from "three";
 import { useEditorStore } from "@/editor/editor-store";
 import { useInputManager } from "@/input/useInputManager";
+import { LAYER_EDITOR } from "@/render/layers";
 import { useSessionStore } from "@/session/session-store";
 import { useWorldStore } from "@/world/world-store";
 import { BrushCursor } from "./BrushCursor";
@@ -90,6 +91,14 @@ function Lighting() {
   );
 }
 
+function CameraLayerSetup() {
+  const camera = useThree((s) => s.camera);
+  useEffect(() => {
+    camera.layers.enable(LAYER_EDITOR);
+  }, [camera]);
+  return null;
+}
+
 function InputHandler() {
   const camera = useThree((s) => s.camera);
   const gl = useThree((s) => s.gl);
@@ -113,6 +122,7 @@ export function Scene() {
         useSessionStore.getState().setTerrainHit(null, Number.POSITIVE_INFINITY);
       }}
     >
+      <CameraLayerSetup />
       <GradientSkybox gradientStops={SKY_GRADIENTS[skyGradient]} fog={{ near: 150, far: 350 }} />
       <Lighting />
       <Terrain />

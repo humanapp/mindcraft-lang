@@ -1,6 +1,8 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import type { Points } from "three";
 import { BufferAttribute, BufferGeometry } from "three";
 import type { VoxelDebugMode } from "@/editor/editor-store";
+import { LAYER_EDITOR } from "@/render/layers";
 import type { ChunkData } from "@/world/voxel/types";
 import { buildActiveCellPoints, buildEdgeIntersectionPoints } from "./samplePositions";
 
@@ -64,10 +66,18 @@ export function ChunkDebugPoints({ chunk, meshPositions, mode }: ChunkDebugPoint
     };
   }, [geometry]);
 
+  const ref = useRef<Points>(null);
+  useEffect(() => {
+    const pts = ref.current;
+    if (!pts) return;
+    pts.layers.disableAll();
+    pts.layers.enable(LAYER_EDITOR);
+  });
+
   if (!geometry) return null;
 
   return (
-    <points geometry={geometry}>
+    <points ref={ref} geometry={geometry}>
       <pointsMaterial color={POINT_COLOR[mode]} size={POINT_SIZE[mode]} sizeAttenuation />
     </points>
   );

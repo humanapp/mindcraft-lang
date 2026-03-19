@@ -2,6 +2,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useEditorStore } from "@/editor/editor-store";
+import { LAYER_EDITOR } from "@/render/layers";
 import { createInfinitePlaneMaterial } from "@/render/materials/workingPlane/infinitePlaneMaterial";
 import { useSessionStore } from "@/session/session-store";
 
@@ -86,6 +87,15 @@ export function WorkingPlaneVisual() {
       mat.uniforms.uFalloffRadius.value = radius;
       mat.uniforms.uColor.value.copy(color);
     }
+  });
+
+  useEffect(() => {
+    const g = groupRef.current;
+    if (!g) return;
+    g.traverse((obj) => {
+      obj.layers.disableAll();
+      obj.layers.enable(LAYER_EDITOR);
+    });
   });
 
   if (!enabled) return null;

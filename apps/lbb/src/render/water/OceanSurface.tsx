@@ -1,4 +1,4 @@
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef } from "react";
 import type { Mesh, PerspectiveCamera } from "three";
 import {
@@ -11,6 +11,7 @@ import {
   WebGLRenderTarget,
 } from "three";
 import { useEditorStore } from "@/editor/editor-store";
+import { LAYER_WORLD } from "@/render/layers";
 import { createWaterMaterial } from "./waterMaterial";
 
 const PLANE_SIZE = 2000;
@@ -42,6 +43,14 @@ export function OceanSurface({ seaLevel }: OceanSurfaceProps) {
     mat.colorWrite = false;
     return mat;
   }, []);
+
+  const mainCamera = useThree((s) => s.camera);
+  const depthCamera = useMemo(() => {
+    const cam = mainCamera.clone();
+    cam.layers.disableAll();
+    cam.layers.enable(LAYER_WORLD);
+    return cam;
+  }, [mainCamera]);
 
   useEffect(() => {
     return () => {
@@ -85,10 +94,14 @@ export function OceanSurface({ seaLevel }: OceanSurfaceProps) {
       depthTarget.setSize(pw, ph);
     }
 
+    depthCamera.position.copy(camera.position);
+    depthCamera.quaternion.copy(camera.quaternion);
+    (depthCamera as PerspectiveCamera).projectionMatrix.copy((camera as PerspectiveCamera).projectionMatrix);
+
     mesh.visible = false;
     scene.overrideMaterial = depthPassMaterial;
     gl.setRenderTarget(depthTarget);
-    gl.render(scene, camera);
+    gl.render(scene, depthCamera);
     gl.setRenderTarget(null);
     scene.overrideMaterial = null;
     mesh.visible = true;
