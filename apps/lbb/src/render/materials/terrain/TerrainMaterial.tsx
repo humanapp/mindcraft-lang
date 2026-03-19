@@ -30,13 +30,9 @@ export function TerrainMaterial({
   roughnessVariation = 0.1,
   wireframe = false,
 }: TerrainMaterialProps) {
-  const uniformsRef = useRef<TerrainUniformMap | null>(null);
+  const uniformsRef = useRef<TerrainUniformMap>(createTerrainUniforms());
 
-  // Material is created once; props are synced to uniforms via useFrame
   const material = useMemo(() => {
-    const uniforms = createTerrainUniforms();
-    uniformsRef.current = uniforms;
-
     const mat = new MeshStandardMaterial({
       side: DoubleSide,
       roughness: 1,
@@ -44,7 +40,7 @@ export function TerrainMaterial({
     });
 
     mat.onBeforeCompile = (shader) => {
-      applyTerrainShaderPatch(shader, uniforms);
+      applyTerrainShaderPatch(shader, uniformsRef.current);
     };
 
     return mat;
@@ -58,7 +54,6 @@ export function TerrainMaterial({
 
   useFrame(() => {
     const u = uniformsRef.current;
-    if (!u) return;
     u.lowColor.value.set(lowColor);
     u.highColor.value.set(highColor);
     u.steepColor.value.set(steepColor);
@@ -71,7 +66,6 @@ export function TerrainMaterial({
 
     const { seaLevel, waterEnabled } = useEditorStore.getState();
     u.seaLevel.value = waterEnabled ? seaLevel : -9999;
-    u.hazeStrength.value = waterEnabled ? 3 : 0.0;
   });
 
   return <primitive object={material} attach="material" wireframe={wireframe} />;

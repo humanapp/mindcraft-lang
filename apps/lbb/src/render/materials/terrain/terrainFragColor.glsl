@@ -26,15 +26,6 @@
                      terrainColor * underwaterTint + underwaterTint * 0.12,
                      underFactor * 0.7);
 
-  // -- shoreline atmospheric haze --
-  float hazeH = abs(vWorldPosition.y - seaLevel);
-  float shoreFactor = 1.0 - smoothstep(0.0, hazeHeight, hazeH);
-  float hazeDist = length(vWorldPosition - cameraPosition);
-  float distFactor = smoothstep(hazeNear, hazeFar, hazeDist);
-  float slopeFac = 1.0 - abs(vWorldNormal.y);
-  float haze = shoreFactor * distFactor * mix(1.0, hazeSlopeBoost, slopeFac) * hazeStrength;
-  terrainColor = mix(terrainColor, hazeColor, clamp(haze, 0.0, 1.0));
-
   // -- apply to diffuse --
   diffuseColor.rgb = terrainColor;
 }
