@@ -1,0 +1,3 @@
+# Machine-generated files that should not be read during codebase exploration.
+# lib-dts.generated.ts repackages TypeScript's lib.d.ts as a string constant.
+packages/typescript/src/compiler/lib-dts.generated.ts

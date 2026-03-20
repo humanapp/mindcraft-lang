@@ -43,6 +43,10 @@ Common substitutions:
 
 **Avoid excessive agreement and reinforcement phrases** such as "You're right!", "Exactly!", "Perfect!", etc. Be direct and matter-of-fact in responses. Focus on providing solutions and information rather than validating the user's statements.
 
+## Generated Files -- Do Not Read
+
+**Never read `packages/typescript/src/compiler/lib-dts.generated.ts`** when exploring the codebase. It is a machine-generated file that repackages TypeScript's `lib.d.ts` as a string constant. It contains no project logic and is extremely large. Skip it in all searches and explorations.
+
 ## After Making Code Changes
 
 After making any code changes in this workspace, always run `npm run check` in the package directory where the files were modified. This runs Biome (linter/formatter) to ensure code style consistency.
