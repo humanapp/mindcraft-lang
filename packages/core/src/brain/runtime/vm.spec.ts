@@ -321,9 +321,6 @@ describe("VM -- function calls", () => {
   });
 
   test("CALL passes arguments into callee locals", () => {
-    // func 0: push 10, push 20, CALL func 1 (argc=2), RET
-    // func 1 (numParams=2, numLocals=2): LOAD_LOCAL 0, LOAD_LOCAL 1, add via HOST_CALL_ARGS, RET
-    // Simpler: just return the first argument
     const prog = mkProgram(
       [
         mkFunc([
@@ -353,6 +350,222 @@ describe("VM -- function calls", () => {
     assert.equal(result.status, VmStatus.DONE);
     if (result.status === VmStatus.DONE) {
       assert.equal((result.result as { v: number }).v, 20);
+    }
+  });
+
+  test("CALL preserves argument order (first arg is local 0)", () => {
+    // Push A then B onto stack; callee should get A as local 0, B as local 1
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 }, // push "first"
+          { op: Op.PUSH_CONST, a: 1 }, // push "second"
+          { op: Op.CALL, a: 1, b: 2 },
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([
+            { op: Op.LOAD_LOCAL, a: 0 }, // load first arg
+            { op: Op.RET },
+          ]),
+          numParams: 2,
+          numLocals: 2,
+          name: "getFirst",
+        },
+      ],
+      [mkStringValue("first"), mkStringValue("second")]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: string }).v, "first");
+    }
+  });
+
+  test("CALL with single argument", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.CALL, a: 1, b: 1 }, { op: Op.RET }]),
+        {
+          code: List.from([{ op: Op.LOAD_LOCAL, a: 0 }, { op: Op.RET }]),
+          numParams: 1,
+          numLocals: 1,
+          name: "identity",
+        },
+      ],
+      [mkNumberValue(99)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 99);
+    }
+  });
+
+  test("CALL args are removed from caller stack", () => {
+    // Push sentinel, push arg, call, pop return value, ret -> should return sentinel
+    const prog = mkProgram(
+      [
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 0 }, // push sentinel 111
+            { op: Op.PUSH_CONST, a: 1 }, // push arg 222
+            { op: Op.CALL, a: 1, b: 1 }, // call func 1 with 1 arg (pops 222)
+            { op: Op.POP }, // pop return value
+            { op: Op.RET }, // return sentinel 111
+          ]),
+          numParams: 0,
+          numLocals: 0,
+          name: "caller",
+        },
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 2 }, // push 333 (return value)
+            { op: Op.RET },
+          ]),
+          numParams: 1,
+          numLocals: 1,
+          name: "callee",
+        },
+      ],
+      [mkNumberValue(111), mkNumberValue(222), mkNumberValue(333)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 111);
+    }
+  });
+
+  test("callee locals include extra slots beyond params", () => {
+    // func with 1 param but 3 locals -- extra slots start as NIL
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 }, // push arg 5
+          { op: Op.CALL, a: 1, b: 1 },
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 1 }, // push 10
+            { op: Op.STORE_LOCAL, a: 2 }, // store into extra local slot 2
+            { op: Op.LOAD_LOCAL, a: 2 }, // load it back
+            { op: Op.RET }, // return 10
+          ]),
+          numParams: 1,
+          numLocals: 3,
+          name: "extraLocals",
+        },
+      ],
+      [mkNumberValue(5), mkNumberValue(10)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 10);
+    }
+  });
+
+  test("nested CALL chains pass args correctly", () => {
+    // func 0: push 7, call func 1(1 arg), ret
+    // func 1: load local 0 (7), push 3, call func 2(2 args), ret
+    // func 2: load local 0, load local 1 -> return local 0 (should be 7)
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 }, // push 7
+          { op: Op.CALL, a: 1, b: 1 },
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([
+            { op: Op.LOAD_LOCAL, a: 0 }, // push 7 (received arg)
+            { op: Op.PUSH_CONST, a: 1 }, // push 3
+            { op: Op.CALL, a: 2, b: 2 },
+            { op: Op.RET },
+          ]),
+          numParams: 1,
+          numLocals: 1,
+          name: "middle",
+        },
+        {
+          code: List.from([
+            { op: Op.LOAD_LOCAL, a: 0 }, // first arg (7)
+            { op: Op.RET },
+          ]),
+          numParams: 2,
+          numLocals: 2,
+          name: "leaf",
+        },
+      ],
+      [mkNumberValue(7), mkNumberValue(3)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 7);
+    }
+  });
+
+  test("callee can mutate its locals without affecting caller", () => {
+    // func 0: push 50, call func 1(1 arg), ret
+    // func 1: store 999 into local 0 (overwriting arg), load local 0, ret
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 }, // push 50
+          { op: Op.CALL, a: 1, b: 1 },
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 1 }, // push 999
+            { op: Op.STORE_LOCAL, a: 0 }, // overwrite arg with 999
+            { op: Op.LOAD_LOCAL, a: 0 },
+            { op: Op.RET },
+          ]),
+          numParams: 1,
+          numLocals: 1,
+          name: "mutator",
+        },
+      ],
+      [mkNumberValue(50), mkNumberValue(999)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 999);
     }
   });
 });
