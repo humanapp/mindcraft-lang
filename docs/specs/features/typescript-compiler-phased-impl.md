@@ -73,12 +73,21 @@ not survive. Keep this doc current.
 - All compiler code must run in the browser at authoring time. No Node.js-only APIs
   (`node:fs`, `node:path`, etc.) in runtime code paths. Build-time scripts (code
   generation, lib bundling) may use Node.js. See the spec's Stage 1 for details.
-- (Added 2026-03-20) **Open design question:** The `params` / `ExtractedParam[]`
-  representation must be redesigned as a `callDef` to integrate with the brain's
-  `BrainActionCallDef` / `BrainActionArgSlot[]` system. This includes resolving
-  how callSpec helpers (`param()`, `seq()`, `bag()`) are exposed to user code, how
-  tileIds are assigned to arg slots, and how the `onExecute` parameter shape is
-  determined by the callDef rather than a fixed object type.
+- (Added 2026-03-20, resolved 2026-03-20) **CallDef design resolved.** The `params` /
+  `ExtractedParam[]` representation maps mechanically to a `BrainActionCallDef` via a
+  builder function (`buildCallDef`). Each named param becomes a `param()` arg spec
+  scoped to the tile (`user.<tileName>.<paramName>`). Each anonymous param
+  (`anonymous: true` in the descriptor) references a shared `anon.<type>` tile def
+  that is auto-registered on the fly if it does not already exist. All params go into
+  a `bag()`, with optional params wrapped in `optional()`. SlotIds are assigned in
+  declaration order. The `onExecute` function receives the MapValue of args; compiled
+  bytecode unpacks each param into a local variable in a preamble, applying defaults
+  for absent optional params. `ExtractedParam` gains an `anonymous: boolean` field.
+  `UserAuthoredProgram` includes `callDef: BrainActionCallDef` and
+  `outputType?: TypeId`. TileIds use a `user.` prefix (e.g.,
+  `tile.sensor->user.nearby-enemy`). See the spec's updated Section A (Params
+  descriptor shape), Stage 3, and Section C (Integration with tile system) for full
+  details.
 
 ---
 
@@ -223,14 +232,11 @@ checker, and return diagnostics. This is spec Stage 1 in isolation.
   `compile.ts` from Phase 0. Phase 2's planned `types.ts` should either import from
   there or relocate them -- avoid duplication.
 
-**Prerequisite before Phase 3:** The `params` representation in the `Sensor()` /
-`Actuator()` descriptor must be formalized and must map to the existing `callDef`
-grammar (`BrainActionCallDef` / `BrainActionArgSlot[]` built via `mkCallDef` and the
-call-spec helpers `param()`, `seq()`, `bag()`, etc.). Descriptor extraction in this
-phase should produce an `ExtractedParam[]` that can be mechanically converted to a
-`BrainActionCallDef` -- otherwise Phase 3 cannot emit correct HOST_CALL argument
-passing and the compiled tile cannot integrate with the tile system. This mapping
-design should be settled before lowering begins.
+**Prerequisite before Phase 3:** The `params` representation has been formalized
+(resolved 2026-03-20). `ExtractedParam[]` maps mechanically to a `BrainActionCallDef`
+via the callDef builder. Named params create per-tile `BrainTileParameterDef` entries;
+anonymous params reuse or auto-create shared `anon.<type>` tile defs. Phase 3 can
+proceed with this design. See the spec's updated Section A and Section C for details.
 
 ---
 
@@ -249,8 +255,16 @@ No helpers, no callsite vars, no control flow.
   parameter access
 - `packages/typescript/src/compiler/emit.ts` -- IR -> `FunctionBytecode` using
   `BytecodeEmitter` + `ConstantPool` from core
+- `packages/typescript/src/compiler/call-def-builder.ts` -- converts
+  `ExtractedDescriptor` to `BrainActionCallDef`
 - `packages/typescript/src/compiler/compile.ts` -- wire lowering + emission into the
   pipeline, produce a `UserAuthoredProgram`
+- `packages/typescript/src/compiler/types.ts` -- add `anonymous: boolean` to
+  `ExtractedParam`
+- `packages/typescript/src/compiler/descriptor.ts` -- extract `anonymous` flag from
+  param definitions
+- `packages/typescript/src/compiler/ambient.ts` -- make `params` optional, add
+  `anonymous?: boolean` to `ParamDef`
 - Tests that compile a source string and execute the resulting bytecode in the VM
 
 **Concrete deliverables:**
@@ -270,7 +284,11 @@ No helpers, no callsite vars, no control flow.
 
 2. The bytecode passes `BytecodeVerifier`
 3. The bytecode executes in a real `VM` instance and returns the correct value
-4. `UserAuthoredProgram` is fully assembled with functions, constants, and metadata
+4. `UserAuthoredProgram` is fully assembled with functions, constants, callDef, and
+   metadata
+5. `buildCallDef()` produces correct `BrainActionCallDef` from `ExtractedDescriptor`:
+   correct argSlots, slotIds, tileId strings, optional/required distinction,
+   anonymous flag
 
 **Acceptance criteria:**
 
@@ -279,6 +297,10 @@ No helpers, no callsite vars, no control flow.
 - Test covers: number literal, boolean literal, string literal, `<` comparison,
   `return`
 - `BytecodeVerifier` passes on output
+- Test: `buildCallDef` for a descriptor with one required param and one optional
+  param -> callDef has 2 argSlots with correct tileIds and optional/required flags
+- Test: `buildCallDef` for a descriptor with an anonymous param -> argSpec has
+  `anonymous: true` and tileId starts with `tile.parameter->anon.`
 
 **Key risks:**
 
@@ -290,18 +312,15 @@ No helpers, no callsite vars, no control flow.
   individual args or a `MapValue`.
 - This is the hardest phase because it forces all the plumbing to work for the first
   time.
-- (Added 2026-03-20) The `params` descriptor must be redesigned as a `callDef` that
-  maps to the brain's `BrainActionCallDef` / `BrainActionArgSlot[]` system. The
-  current `ExtractedParam[]` is a placeholder. The callDef system supports `param()`,
-  `seq()`, `bag()`, and other combinators -- user-authored tiles need to express
-  which modifiers and parameters are valid arguments. Each non-anonymous arg in a
-  callDef corresponds to a tileDef in the tile catalog, so each arg needs a `tileId`.
-  The ambient types for the `"mindcraft"` module need to expose callDef helpers or
-  an equivalent declarative syntax. The `onExecute` parameter shape depends on what
-  the callDef specifies, not a fixed `params` object -- this is a significant
-  design question to resolve before lowering begins. Research the callSpec helpers
-  in `packages/core/src/brain/` and sensor/actuator registration in `apps/sim/`
-  before starting Phase 3.
+- (Updated 2026-03-20) **CallDef design resolved.** The `ExtractedParam[]` maps to a
+  `BrainActionCallDef` via `buildCallDef()`. Named params produce per-tile parameter
+  tileIds (`user.<tileName>.<paramName>`). Anonymous params reference shared
+  `anon.<type>` tile defs (auto-registered on the fly if missing). The `onExecute`
+  bytecode receives a MapValue keyed by slotId and unpacks params into locals in a
+  preamble. `ambient.ts` needs `params` made optional, and `ParamDef` needs
+  `anonymous?: boolean`. `ExtractedParam` gains `anonymous: boolean`. New file
+  `call-def-builder.ts` handles the conversion. No callSpec combinators are exposed
+  to user code.
 
 ---
 
@@ -749,11 +768,12 @@ imports (`Op`, `BytecodeEmitter`, `ConstantPool`, type-only imports for `Program
    expressions with `import` keyword, and forbidden global identifiers.
 6. Descriptor extraction handles both property assignment syntax
    (`onExecute: function(...)`) and method declaration syntax (`onExecute(...)`).
-7. The `params` representation as `ExtractedParam[]` is a placeholder. The Phase 3
-   prerequisite note stands: this must be redesigned as a `callDef` that maps to
-   the brain's `BrainActionCallDef` / `BrainActionArgSlot[]` system before lowering
-   can begin. This is a significant open design question -- see the Phase 3
-   updated risks.
+7. The `params` representation as `ExtractedParam[]` was a placeholder at time of
+   Phase 2 completion. Resolved 2026-03-20: `ExtractedParam[]` maps mechanically
+   to a `BrainActionCallDef` via `buildCallDef()`. Named params create per-tile
+   parameter tileIds; anonymous params reuse shared `anon.<type>` tile defs
+   (auto-registered if missing). See the Phase 3 updated risks and the spec's
+   updated Section A and Section C.
 8. The `ExtractedDescriptor.onPageEnteredNode` type changed from
    `ts.FunctionDeclaration` to `ts.MethodDeclaration | ts.FunctionExpression |
 ts.ArrowFunction` since it now comes from an object literal method rather than

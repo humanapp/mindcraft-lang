@@ -137,7 +137,10 @@ Key properties of this shape:
   exactly what to compile.
 - **Declarative metadata.** `name`, `output`, `params` are statically analyzable. The
   compiler reads them at compile time to generate `BrainActionCallDef` and tile
-  registration data.
+  registration data. Each named param becomes a `param()` arg spec scoped to the
+  tile (`user.<tileName>.<paramName>`). Each anonymous param reuses a shared
+  `anon.<type>` tile def, auto-registering one if it does not already exist.
+  (Updated 2026-03-20: callDef design settled. See Stage 3 and Section C.)
 - **`onExecute` is the entrypoint.** Compiles to the primary `FunctionBytecode`. Parameters
   are derived from the `params` descriptor.
   (Updated 2026-03-20: renamed from `exec` to `onExecute` for consistency with `onPageEntered`.)
@@ -164,6 +167,53 @@ files. The compiler resolves those imports at compile time and links the
 
 When parameter types become richer (enums, structs, lists), the `params` descriptor
 extends naturally without changing the authoring pattern.
+
+#### Params descriptor shape
+
+(Added 2026-03-20)
+
+Each entry in the `params` object describes a single argument slot:
+
+```typescript
+interface ParamDef {
+  type: string; // "number" | "boolean" | "string" (v1); app types later
+  default?: unknown; // literal default value; omit for required params
+  anonymous?: boolean; // if true, brain editor accepts any expression (no label tile)
+}
+```
+
+- **Named params** (default, `anonymous` omitted or `false`): The user sees a labeled
+  tile in the brain editor. A per-tile `BrainTileParameterDef` is created with tileId
+  `tile.parameter->user.<tileName>.<paramName>`.
+- **Anonymous params** (`anonymous: true`): The brain editor shows an expression slot
+  without a label tile. The callDef references a shared hidden tile
+  `tile.parameter->anon.<type>`. If that tile def does not already exist in the catalog,
+  the registration bridge creates it on the fly -- no app-side pre-registration needed.
+- A param with a `default` value is optional; a param without `default` is required.
+- `params` itself is optional on the descriptor. If omitted, the tile takes no arguments
+  and the callDef is an empty bag.
+
+Example with anonymous param:
+
+```typescript
+export default Actuator({
+  name: "chase",
+  params: {
+    target: { type: "actorRef", anonymous: true },
+    speed: { type: "number", default: 1 },
+  },
+  onExecute(ctx: Context, params: { target: unknown; speed: number }): void {
+    // ...
+  },
+});
+```
+
+This produces:
+
+| Param    | callDef arg spec                              | Tile def                                                        |
+| -------- | --------------------------------------------- | --------------------------------------------------------------- |
+| `target` | `param("anon.actorRef", { anonymous: true })` | Reuses or auto-creates `BrainTileParameterDef("anon.actorRef")` |
+| `speed`  | `optional(param("user.chase.speed"))`         | New `BrainTileParameterDef("user.chase.speed", Number)`         |
 
 ---
 
@@ -290,13 +340,27 @@ interface ExtractedParam {
   type: string;
   defaultValue?: number | string | boolean | null;
   required: boolean;
+  anonymous: boolean;
 }
 ```
 
 The extraction walks the object literal passed to `Sensor()` or `Actuator()` and reads
 property values. Because the descriptor must be a literal object expression (not a
-variable reference), extraction is straightforward AST analysis. This produces the
-`BrainActionCallDef` that integrates with the existing tile system.
+variable reference), extraction is straightforward AST analysis.
+
+(Added 2026-03-20) After extraction, a callDef construction step converts
+`ExtractedParam[]` into a `BrainActionCallDef`. This is a mechanical mapping:
+
+- Each named param -> `param("user.<tileName>.<paramName>")`
+- Each anonymous param -> `param("anon.<type>", { anonymous: true })`
+- Optional params (those with defaults) -> wrapped in `optional()`
+- All params -> wrapped in `bag()`
+
+The callDef is stored on `UserAuthoredProgram` and used during tile registration.
+Parameter slotIds are assigned in declaration order (first param -> slotId 0, etc.).
+At runtime, the compiled bytecode accesses params via `MAP_GET` with the param's
+known slotId, with a preamble that unpacks each param into a local variable
+(applying defaults when the arg is absent in the MapValue).
 
 `onPageEntered`, if present, is an optional method on the descriptor object with
 signature `(ctx: Context) => void`. It is stored in the `ExtractedDescriptor` for
@@ -570,8 +634,8 @@ can load. The core fields (`version`, `functions`, `constants`, `variableNames`,
 interface UserAuthoredProgram extends Program {
   kind: "sensor" | "actuator";
   name: string;
-  outputType: TypeId; // sensors only
-  callDef: BrainActionCallDef; // parameter spec for tile system
+  outputType?: TypeId; // sensors only; mapped from "boolean" -> CoreTypeIds.Boolean, etc.
+  callDef: BrainActionCallDef; // constructed from ExtractedParam[] via callDef builder
   callsiteVarCount: number; // number of callsite-persistent top-level variables
   hasOnPageEntered: boolean; // whether the source file exports onPageEntered
   debugMetadata: DebugMetadata; // source mapping and scope metadata
@@ -1085,19 +1149,72 @@ function. Step-over skips past it.
 
 ### Integration with tile system
 
-User-authored sensors and actuators follow the **same two-step registration flow** that
-built-in ones use today:
+(Updated 2026-03-20: expanded with callDef construction, tileId naming, and anonymous
+param auto-registration.)
 
-**Step 1 -- Register in `FunctionRegistry`.** The compiled user program produces a
-`BrainFunctionEntry` whose `exec` function dispatches into the VM instead of running
-native TypeScript. This entry is registered via `getBrainServices().functions.register()`
-with the `BrainActionCallDef` derived from the user's `params` descriptor:
+User-authored sensors and actuators follow a **three-step registration flow**: ensure
+parameter tile defs exist, register the function entry, then register the tile def.
+
+#### TileId naming convention
+
+All user-authored tile IDs use a `user.` prefix to avoid collisions with core and
+app-defined tiles:
+
+| Concept                | Value                                       |
+| ---------------------- | ------------------------------------------- |
+| User's `name`          | `"chase"`                                   |
+| Internal actuator ID   | `"user.chase"`                              |
+| Function registry name | `"user.chase"`                              |
+| Actuator tileId        | `"tile.actuator->user.chase"`               |
+| Named param `speed`    | `"user.chase.speed"`                        |
+| Named param tileId     | `"tile.parameter->user.chase.speed"`        |
+| Anon param `target`    | `"anon.actorRef"` (shared, not tile-scoped) |
+| Anon param tileId      | `"tile.parameter->anon.actorRef"`           |
+
+The `user.` prefix is applied automatically by the registration bridge. The user
+never writes it.
+
+#### Step 0 -- Ensure parameter tile defs exist
+
+For each param declared in the descriptor:
+
+- **Named params:** Register a new `BrainTileParameterDef` scoped to this tile:
+
+  ```typescript
+  const typeId = resolveTypeId(p.type); // "number" -> CoreTypeIds.Number, etc.
+  tiles.registerTileDef(
+    new BrainTileParameterDef(`user.${tileName}.${p.name}`, typeId, {
+      visual: { label: p.name },
+    }),
+  );
+  ```
+
+- **Anonymous params:** Check if a shared `anon.<type>` tile def already exists.
+  If not, create it on the fly:
+  ```typescript
+  const anonId = `anon.${p.type}`;
+  const tileId = mkParameterTileId(anonId);
+  if (!tiles.has(tileId)) {
+    tiles.registerTileDef(new BrainTileParameterDef(anonId, resolveTypeId(p.type), { hidden: true }));
+  }
+  ```
+  This removes ordering dependencies -- the user tile does not need to know whether
+  the app pre-registered anonymous tile defs for a given type. Novel anonymous param
+  types work as long as the type can be resolved to a `TypeId`.
+
+#### Step 1 -- Register in `FunctionRegistry`
+
+The compiled user program produces a `BrainFunctionEntry` whose `exec` function
+dispatches into the VM instead of running native TypeScript. This entry is registered
+via `getBrainServices().functions.register()` with the `BrainActionCallDef` from the
+compiled program:
 
 ```typescript
 const { functions, tiles } = getBrainServices();
+const userId = `user.${userProgram.name}`;
 
 const fnEntry = functions.register(
-  userProgram.name,
+  userId,
   true, // always async -- unified invocation model
   {
     onPageEntered: (ctx) => vmDispatchPageEnter(userProgram, ctx),
@@ -1114,20 +1231,21 @@ All user-authored tiles register as async (`isAsync: true`) and use a single `vm
 function. If the user's code completes without hitting any AWAIT instruction, the handle
 resolves immediately within the same tick.
 
-**Step 2 -- Add to `TileCatalog`.** A `BrainTileSensorDef` or `BrainTileActuatorDef` is
-created from the `BrainFunctionEntry` and added to the catalog via
-`tiles.registerTileDef()`:
+#### Step 2 -- Add to `TileCatalog`
+
+A `BrainTileSensorDef` or `BrainTileActuatorDef` is created from the
+`BrainFunctionEntry` and added to the catalog via `tiles.registerTileDef()`:
 
 ```typescript
 if (userProgram.kind === "sensor") {
   tiles.registerTileDef(
-    new BrainTileSensorDef(userProgram.name, fnEntry, userProgram.outputType, {
+    new BrainTileSensorDef(userId, fnEntry, userProgram.outputType, {
       visual: userProgram.visual,
     }),
   );
 } else {
   tiles.registerTileDef(
-    new BrainTileActuatorDef(userProgram.name, fnEntry, {
+    new BrainTileActuatorDef(userId, fnEntry, {
       visual: userProgram.visual,
     }),
   );
@@ -1137,11 +1255,11 @@ if (userProgram.kind === "sensor") {
 This mirrors how the sim app creates tile definitions (e.g.,
 `new BrainTileSensorDef(fnDef.tileId, fn, fnDef.returnType, { visual: fnDef.visual })`).
 
-After both steps, the user-authored tile is indistinguishable from a built-in one in the
-catalog. The brain compiler discovers it the same way it discovers built-in tiles: by
-looking up tile defs from the catalogs passed to `compileBrain()`. The rule compiler emits
-`HOST_CALL` / `HOST_CALL_ASYNC` with the `fnEntry.id`, and the VM dispatches to the
-registered exec function -- which happens to run user bytecode.
+After all three steps, the user-authored tile is indistinguishable from a built-in one
+in the catalog. The brain compiler discovers it the same way it discovers built-in tiles:
+by looking up tile defs from the catalogs passed to `compileBrain()`. The rule compiler
+emits `HOST_CALL` / `HOST_CALL_ASYNC` with the `fnEntry.id`, and the VM dispatches to
+the registered exec function -- which happens to run user bytecode.
 
 The user sees their custom sensor/actuator as a tile alongside built-in ones.
 
