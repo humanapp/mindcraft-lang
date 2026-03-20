@@ -303,8 +303,8 @@ IrOp =
   | HostCallAsync(fnId: number, argc: number, callSiteId: number)
   | Await
   | Yield
-  | LoadModuleVar(index: number)    // module-scoped persistent variable
-  | StoreModuleVar(index: number)
+  | LoadCallsiteVar(index: number)  // callsite-persistent top-level variable
+  | StoreCallsiteVar(index: number)
   | MapNew(typeId: number)
   | MapSet | MapGet | MapHas | MapDelete
   | ListNew(typeId: number)
@@ -343,9 +343,9 @@ with local state. The `Frame` interface currently has three fields (`funcId`, `p
 well-contained VM extension.
 
 For callsite-persistent top-level variables (top-level `let` / `const` in the user's
-file), the compiler emits `LOAD_MODULE_VAR` / `STORE_MODULE_VAR` instead. These index
-into a per-callsite `moduleVars` storage that persists across fiber lifetimes. See
-section C for details.
+file), the compiler emits `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` instead. These
+index into a per-callsite `callsiteVars` storage that persists across fiber lifetimes.
+See section C for details.
 
 **If/else:**
 
@@ -470,9 +470,9 @@ For v1, this can be a no-op pass. Future optimizations:
 
 Walk the IR and emit bytecode using `BytecodeEmitter`. The emitter already has methods
 for all existing opcodes (`pushConst`, `call`, `hostCall`, `loadVar`, `storeVar`, etc.).
-New opcodes (`LOAD_LOCAL`, `STORE_LOCAL`, `LOAD_MODULE_VAR`, `STORE_MODULE_VAR`) will
-need corresponding new emitter methods (`loadLocal`, `storeLocal`, `loadModuleVar`,
-`storeModuleVar`).
+New opcodes (`LOAD_LOCAL`, `STORE_LOCAL`, `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR`)
+will need corresponding new emitter methods (`loadLocal`, `storeLocal`,
+`loadCallsiteVar`, `storeCallsiteVar`).
 
 ```typescript
 for (const op of irOps) {
@@ -541,7 +541,7 @@ interface UserAuthoredProgram extends Program {
   name: string;
   outputType: TypeId; // sensors only
   callDef: BrainActionCallDef; // parameter spec for tile system
-  moduleVarCount: number; // number of callsite-persistent top-level variables
+  callsiteVarCount: number; // number of callsite-persistent top-level variables
   hasOnPageEntered: boolean; // whether the source file exports onPageEntered
   debugMetadata: DebugMetadata; // source mapping and scope metadata
   programRevisionId: string; // unique per successful compilation
@@ -604,20 +604,73 @@ the new opcodes.)
 
 ### Where this code lives
 
+The compiler and runtime wrapper live in the `@mindcraft-lang/typescript` package, not in
+`packages/core`. Core must remain free of TypeScript compiler API dependencies to
+preserve roblox-ts compatibility. Core provides the VM, bytecode interfaces, and
+FunctionRegistry -- the TypeScript package consumes those to compile and link user code.
+
 ```
-packages/core/src/brain/
-  authored/
-    compiler/
-      ts-compiler.ts          -- orchestrates the full pipeline
-      ts-validator.ts         -- Stage 2: AST subset validation
-      ts-descriptor.ts        -- Stage 3: descriptor + lifecycle extraction
-      ts-lowering.ts          -- Stage 4: TS AST -> IR
-      ir.ts                   -- IR types
-    runtime/
-      authored-function.ts    -- VM-callable wrapper for user bytecode
-    types/
-      mindcraft-ambient.d.ts  -- ambient type declarations for user code
+packages/typescript/src/
+  compiler/
+    ts-compiler.ts          -- orchestrates the full pipeline
+    ts-validator.ts         -- Stage 2: AST subset validation
+    ts-descriptor.ts        -- Stage 3: descriptor + lifecycle extraction
+    ts-lowering.ts          -- Stage 4: TS AST -> IR
+    ir.ts                   -- IR types
+  linker/
+    linker.ts               -- merges UserAuthoredProgram into BrainProgram
+  runtime/
+    authored-function.ts    -- VM-callable wrapper for user bytecode
+  types/
+    mindcraft-ambient.d.ts  -- ambient type declarations for user code
 ```
+
+### Linking user-authored bytecode into the brain program
+
+The VM has one `Program` with a flat `functions: List<FunctionBytecode>`. The `CALL`
+opcode indexes into `Program.functions`. A `UserAuthoredProgram` has its own `functions`
+list with funcIds starting at 0. These two function ID spaces must be unified for the
+single-VM model to work. (HOST_CALL IDs are a separate namespace -- global
+FunctionRegistry -- and have no conflict.)
+
+The linking step is a pure data transformation that happens after `compileBrain()`
+produces the `BrainProgram` and before `new VM(program, handles)`:
+
+1. `compileBrain()` produces a `BrainProgram` with N rule functions at funcIds `0..N-1`.
+2. For each user-authored tile referenced in the brain (discoverable from page metadata's
+   sensor/actuator tile sets), retrieve its `UserAuthoredProgram`.
+3. Append its `FunctionBytecode` entries to `BrainProgram.functions` -- the first entry
+   gets funcId `N`, the next `N+1`, etc.
+4. Merge its constants into `BrainProgram.constants`, recording old-to-new index mapping.
+5. Rewrite the copied user bytecode: remap `CALL` funcId operands (+offset) and
+   `PUSH_CONST` index operands (per constant mapping).
+6. Record the remapped entry point funcId for each user tile.
+
+The HOST_CALL exec wrapper for user tiles captures a mutable reference cell that the
+linker populates:
+
+```typescript
+const entryRef = { funcId: -1 };
+// linker sets entryRef.funcId = N + userProgram.entryPoint
+
+exec: (ctx, args, handleId) => {
+  const callSiteId = ctx.currentCallSiteId!;
+  let vars = getCallSiteState<List<Value>>(ctx);
+  if (!vars) {
+    vars = allocateCallsiteVars(userProgram.callsiteVarCount);
+    setCallSiteState(ctx, vars);
+    // run module init function to set initial values
+  }
+  const fiberId = scheduler.spawn(entryRef.funcId, mapArgsToList(args), ctx);
+  const fiber = scheduler.getFiber(fiberId)!;
+  fiber.callsiteVars = vars;
+};
+```
+
+The linker itself is ~50 lines: iterate user programs, compute offset, copy+remap
+bytecode instructions, merge constants. It lives in `@mindcraft-lang/typescript`, not
+in core. Core provides no linking API -- the linker manipulates `List<>` contents on
+the `BrainProgram` before passing it to the VM constructor.
 
 ---
 
@@ -641,12 +694,21 @@ Built-in tiles have native TypeScript `exec` functions:
 ```
 
 User-authored tiles have a **VM-dispatch exec** that follows one unified invocation model
-regardless of whether the tile is a sensor or an actuator:
+regardless of whether the tile is a sensor or an actuator. The entry function ID used
+here is the **linked** ID (remapped after merging user bytecode into the brain program --
+see "Linking user-authored bytecode into the brain program" below):
 
 ```typescript
 {
   exec: (ctx, args, handleId) => {
-    const fiberId = scheduler.spawn(userProgram.entryPoint, mapArgsToList(args, userProgram.callDef), ctx);
+    let vars = getCallSiteState<List<Value>>(ctx);
+    if (!vars) {
+      vars = allocateCallsiteVars(userProgram.callsiteVarCount);
+      setCallSiteState(ctx, vars);
+    }
+    const fiberId = scheduler.spawn(linkedEntryFuncId, mapArgsToList(args, userProgram.callDef), ctx);
+    const fiber = scheduler.getFiber(fiberId)!;
+    fiber.callsiteVars = vars;
     scheduler.onFiberDone = (fid, result) => {
       if (fid === fiberId) {
         handles.resolve(handleId, result ?? VOID_VALUE);
@@ -690,7 +752,7 @@ a `callSiteId`. The brain compiler assigns callsite IDs when it compiles rules c
 HOST_CALL_ASYNC instructions that reference user-authored tiles. Multiple callsites may
 reference the same `UserAuthoredProgram` (same bytecode, same entry function). Each
 callsite gets its own independent copy of callsite-persistent top-level state
-(`moduleVars`).
+(`callsiteVars`).
 
 **Fibers.** Each brain rule executes as a fiber. When a rule's fiber reaches a
 HOST_CALL_ASYNC that dispatches to a user-authored tile (sensor or actuator), the `exec`
@@ -742,19 +804,19 @@ fiber's call stack alongside any tile-compiled frames that invoked it via HOST_C
 This spec uses the term **callsite-persistent top-level state** for variables declared
 at the top level of a user's source file. These variables persist across fiber lifetimes
 (surviving between ticks) and are scoped per callsite (each usage of the tile in a brain
-rule gets independent state). The opcodes are `LOAD_MODULE_VAR` / `STORE_MODULE_VAR` and
-the runtime storage is the `moduleVars` array. The debugger spec presents these as
-"Callsite State" in the DAP Scopes pane.
+rule gets independent state). The opcodes are `LOAD_CALLSITE_VAR` /
+`STORE_CALLSITE_VAR` and the runtime storage is the `callsiteVars` array on the `Fiber`.
+The debugger spec presents these as "Callsite State" in the DAP Scopes pane.
 
 User-authored code has two scopes of variable storage:
 
 - **Frame-local variables** (`LOAD_LOCAL` / `STORE_LOCAL`) live on the fiber's frame.
   They survive across await points because the fiber preserves its full execution state,
   but they are lost when the fiber completes or is cancelled.
-- **Callsite-persistent top-level variables** (`LOAD_MODULE_VAR` / `STORE_MODULE_VAR`)
-  persist across ticks and across fiber lifetimes. These are the right place for state
-  that must survive between invocations -- cooldown timers, remembered targets,
-  accumulated counts, etc.
+- **Callsite-persistent top-level variables** (`LOAD_CALLSITE_VAR` /
+  `STORE_CALLSITE_VAR`) persist across ticks and across fiber lifetimes. These are the
+  right place for state that must survive between invocations -- cooldown timers,
+  remembered targets, accumulated counts, etc.
 
 #### Per-callsite scoping
 
@@ -766,11 +828,11 @@ how built-in sensors work: the `Timeout` sensor stores `{ fireTime, lastTick }` 
 
 Note the distinction between the three variable scopes:
 
-| Scope               | Opcodes                                | Lifetime               | Sharing                           |
-| ------------------- | -------------------------------------- | ---------------------- | --------------------------------- |
-| Frame-local         | `LOAD_LOCAL` / `STORE_LOCAL`           | Single fiber execution | None -- private to the call frame |
-| Callsite-persistent | `LOAD_MODULE_VAR` / `STORE_MODULE_VAR` | Persists across ticks  | Independent per callsite          |
-| Brain               | `LOAD_VAR` / `STORE_VAR`               | Persists across ticks  | Shared across all rules           |
+| Scope               | Opcodes                                    | Lifetime               | Sharing                           |
+| ------------------- | ------------------------------------------ | ---------------------- | --------------------------------- |
+| Frame-local         | `LOAD_LOCAL` / `STORE_LOCAL`               | Single fiber execution | None -- private to the call frame |
+| Callsite-persistent | `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` | Persists across ticks  | Independent per callsite          |
+| Brain               | `LOAD_VAR` / `STORE_VAR`                   | Persists across ticks  | Shared across all rules           |
 
 Brain variables (`LOAD_VAR` / `STORE_VAR`) are visible to all rules in the brain and
 correspond to variables the user creates in the tile editor. Callsite-persistent
@@ -806,49 +868,55 @@ If this sensor is placed in two different WHEN clauses, each callsite tracks its
 `lastFireTime` and `fireCount` independently. The user does not need to think about
 this -- the scoping is automatic.
 
-#### VM support: LOAD_MODULE_VAR / STORE_MODULE_VAR
+#### VM support: LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR
 
 Two new opcodes:
 
-| Opcode             | Operands     | Behavior                                                 |
-| ------------------ | ------------ | -------------------------------------------------------- |
-| `LOAD_MODULE_VAR`  | a = varIndex | Push `moduleVars[varIndex]` onto stack                   |
-| `STORE_MODULE_VAR` | a = varIndex | Pop value from stack and store in `moduleVars[varIndex]` |
+| Opcode               | Operands     | Behavior                                                   |
+| -------------------- | ------------ | ---------------------------------------------------------- |
+| `LOAD_CALLSITE_VAR`  | a = varIndex | Push `callsiteVars[varIndex]` onto stack                   |
+| `STORE_CALLSITE_VAR` | a = varIndex | Pop value from stack and store in `callsiteVars[varIndex]` |
 
-The `moduleVars` storage is a `List<Value>` allocated **per callsite**. The size is known
-at compile time (the compiler counts the number of callsite-persistent top-level variables
-in the source file). Each callsite that uses the user-authored sensor/actuator gets its
-own independent `moduleVars` array.
+The `callsiteVars` storage is a `List<Value>` allocated **per callsite**. The size is
+known at compile time (the compiler counts the number of callsite-persistent top-level
+variables in the source file). Each callsite that uses the user-authored sensor/actuator
+gets its own independent `callsiteVars` array.
+
+The `callsiteVars` reference is stored on the `Fiber` (not on `ExecutionContext`,
+because `ExecutionContext` is shared across all fibers in a brain -- two concurrent
+user-authored fibers from different callsites need different var arrays). The backing
+`List<Value>` is persisted in call-site state so it survives fiber destruction.
 
 This piggybacks on the existing call-site state mechanism. Built-in sensors already
 store per-callsite state via `getCallSiteState()` / `setCallSiteState()` keyed by
-`callSiteId`. For user-authored code, the `moduleVars` array is stored as the call-site
-state for that callsite:
+`callSiteId`. For user-authored code, the `callsiteVars` array is stored as the
+call-site state for that callsite:
 
 ```
 HOST_CALL_ASYNC (user-authored tile, callSiteId = N)
   -> look up callSiteState[N]
-  -> if absent, allocate List<Value> of length moduleVarCount and run init function
-  -> attach moduleVars to execution context
+  -> if absent, allocate List<Value> of length callsiteVarCount and run init function
+  -> store callsiteVars in callSiteState[N]
   -> spawn fiber for user bytecode
-  -> LOAD_MODULE_VAR / STORE_MODULE_VAR index into the attached moduleVars
+  -> attach callsiteVars to the spawned Fiber
+  -> LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR index into fiber.callsiteVars
 ```
 
-The `moduleVars` reference is attached to the `ExecutionContext` (or a sub-object of it)
-before executing the user's bytecode. When the fiber runs `LOAD_MODULE_VAR(i)`, the VM
-reads `moduleVars[i]`. When it runs `STORE_MODULE_VAR(i)`, it writes `moduleVars[i]`.
-Because the `moduleVars` array is stored in call-site state (not on the fiber), it
-survives fiber destruction and persists across ticks.
+The `callsiteVars` reference is attached to the `Fiber` before executing the user's
+bytecode. When the fiber runs `LOAD_CALLSITE_VAR(i)`, the VM reads
+`fiber.callsiteVars[i]`. When it runs `STORE_CALLSITE_VAR(i)`, it writes
+`fiber.callsiteVars[i]`. Because the backing `List<Value>` is stored in call-site
+state (not on the fiber), it survives fiber destruction and persists across ticks.
 
 #### Callsite-persistent variable initialization
 
 Callsite-persistent variable initializers (e.g., `let lastFireTime = 0`) compile to a
 compiler-generated **module init function**. This function evaluates initializer
-expressions in source order and stores results via `STORE_MODULE_VAR`.
+expressions in source order and stores results via `STORE_CALLSITE_VAR`.
 
 The module init function runs:
 
-1. **On first allocation** -- when a callsite's `moduleVars` array is created for the
+1. **On first allocation** -- when a callsite's `callsiteVars` array is created for the
    first time (the callsite has never been invoked before).
 2. **On every page entry** -- via the generated `onPageEntered` wrapper (see
    "Compiler-generated functions" below), resetting callsite-persistent state to
@@ -857,7 +925,7 @@ The module init function runs:
 
 If the file also declares an authored `export function onPageEntered(ctx)`, the
 generated wrapper calls the module init first (to reset state), then calls the user's
-`onPageEntered` body. The user function runs with freshly-reset `moduleVars`. If no
+`onPageEntered` body. The user function runs with freshly-reset `callsiteVars`. If no
 authored `onPageEntered` exists, the wrapper calls only the module init.
 
 This means top-level initializers always re-run on page entry. Authors who want to
@@ -869,26 +937,26 @@ perform additional setup (clearing external state, logging, etc.) declare
 Helper functions declared in the same file as the `exec` entry point share access to
 the callsite-persistent top-level state of their containing module. State access is
 resolved **lexically** -- a helper function that references a top-level variable compiles
-to the same `LOAD_MODULE_VAR` / `STORE_MODULE_VAR` instructions as the `exec` function
-itself. No new state instances are created when a helper is called.
+to the same `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` instructions as the `exec`
+function itself. No new state instances are created when a helper is called.
 
 The same rule applies to `onPageEntered` when declared as a named export: it is compiled
 as a regular user-authored function in the same file, and its references to top-level
 variables resolve against the same callsite-persistent state instance.
 
 ```typescript
-let hitCount = 0; // callsite-persistent (STORE_MODULE_VAR index 0)
+let hitCount = 0; // callsite-persistent (STORE_CALLSITE_VAR index 0)
 
 function incrementHits(): void {
-  hitCount += 1; // LOAD_MODULE_VAR 0, add 1, STORE_MODULE_VAR 0
+  hitCount += 1; // LOAD_CALLSITE_VAR 0, add 1, STORE_CALLSITE_VAR 0
 }
 
 export default Sensor({
   name: "hit-tracker",
   output: "number",
   exec(ctx: Context): number {
-    incrementHits(); // CALL -- shares the same moduleVars array
-    return hitCount; // LOAD_MODULE_VAR 0
+    incrementHits(); // CALL -- shares the same callsiteVars array
+    return hitCount; // LOAD_CALLSITE_VAR 0
   },
 });
 
@@ -900,16 +968,16 @@ export function onPageEntered(ctx: Context): void {
 
 In the compiled bytecode, `incrementHits` and `onPageEntered` are separate
 `FunctionBytecode` entries invoked via CALL. They run in new frames on the same fiber,
-but the `moduleVars` array is attached to the `ExecutionContext`, not to the frame. All
-frames within the same fiber invocation read and write the same `moduleVars`. This is the
-standard behavior for module-level variables in any language with module scope.
+and the `callsiteVars` array is attached to the `Fiber`, not to the frame. All
+frames within the same fiber invocation read and write the same `callsiteVars`. This is
+the standard behavior for module-level variables in any language with module scope.
 
 The semantic rule: **`exec`, `onPageEntered`, and all helper functions in the same source
 file resolve top-level bindings against the same callsite-persistent state instance for
-that tile usage.** No function in the file gets a separate copy of `moduleVars`.
+that tile usage.** No function in the file gets a separate copy of `callsiteVars`.
 
 Helper functions do not get their own callsite-persistent state. Only top-level
-declarations in the source file produce `moduleVars` slots.
+declarations in the source file produce `callsiteVars` slots.
 
 #### Future: variable storage annotations
 
@@ -960,7 +1028,7 @@ functions. Each generated function has `isGenerated: true` in its `DebugFunction
 
 **Module init function:** Compiled from top-level `let`/`const` initializer expressions.
 Runs on first callsite allocation and again on every page entry. Contains
-`STORE_MODULE_VAR` instructions for each declared top-level variable. The compiler
+`STORE_CALLSITE_VAR` instructions for each declared top-level variable. The compiler
 emits debug spans for the initializer expressions so that stack traces through the init
 function show meaningful source locations. However, the init function is not a valid
 breakpoint target in v1 -- users cannot set breakpoints on top-level initializer lines.
@@ -971,8 +1039,8 @@ an authored `onPageEntered`. The wrapper is a small generated function that:
 1. Calls the module init function (resets all callsite-persistent variables to their
    declared initial values).
 2. If the user's file exports `onPageEntered`, calls it. The user's function runs with
-   freshly-reset `moduleVars`, so it can perform additional setup or override specific
-   variable values.
+   freshly-reset `callsiteVars`, so it can perform additional setup or override
+   specific variable values.
 
 The authored `onPageEntered` (if present) is a regular user-authored `FunctionBytecode`
 entry -- it is **not** generated. It is a valid breakpoint target and appears in stack
@@ -1063,9 +1131,9 @@ whether the source changed semantically.
 4. VMs that have already loaded the old bytecode into a running fiber continue executing
    the old code until that fiber completes or is cancelled. There is no in-flight
    bytecode replacement.
-5. Callsite-persistent state (`moduleVars`) is **not** automatically cleared on
-   recompilation. If the new revision changes the number or meaning of module variables,
-   the init function runs on the next page entry to re-initialize them. Between recompile
+5. Callsite-persistent state (`callsiteVars`) is **not** automatically cleared on
+   recompilation. If the new revision changes the number or meaning of callsite-persistent
+   variables, the init function runs on the next page entry to re-initialize them. Between recompile
    and page re-entry, stale state may be read by the new bytecode -- this is acceptable
    for v1 because the typical workflow is recompile-then-restart.
 
@@ -1489,7 +1557,8 @@ use it as a tile in their brain.
 - `Sensor()` / `Actuator()` descriptor API
 - Compiler pipeline stages 1-8
 - `LOAD_LOCAL` / `STORE_LOCAL` VM opcodes for frame-local variables
-- `LOAD_MODULE_VAR` / `STORE_MODULE_VAR` VM opcodes for callsite-persistent top-level state
+- `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` VM opcodes for callsite-persistent
+  top-level state
 - Common Mindcraft context (`ctx.time`, `ctx.dt`, `ctx.self.*`)
 - One host app's engine context (sim app as reference implementation)
 - Sensors and actuators, sync or async (unified invocation model)
@@ -1519,7 +1588,8 @@ use it as a tile in their brain.
 6. `authored-function.ts` -- VM-dispatch wrapper
 7. `mindcraft-ambient.d.ts` -- common API declarations
 8. VM extension: `LOAD_LOCAL` / `STORE_LOCAL` opcodes (`Frame.locals`),
-   `LOAD_MODULE_VAR` / `STORE_MODULE_VAR` opcodes (callsite-persistent `moduleVars` storage)
+   `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` opcodes (callsite-persistent
+   `callsiteVars` storage on `Fiber`)
 9. Test suite covering all supported constructs
 10. Sim app integration: engine ambient declarations + host function mappings
 
@@ -1587,12 +1657,13 @@ The Phase 1 single-file compiler already uses virtual source files (the user's s
 plus `mindcraft-ambient.d.ts`). Multi-file support extends this by adding more entries
 to the virtual file map. No architectural migration is needed.
 
-Callsite-persistent top-level variables (via `LOAD_MODULE_VAR` / `STORE_MODULE_VAR`) are
-scoped per callsite and per file. When multiple files are compiled into a single
-`UserAuthoredProgram`, each file's top-level variables get a contiguous segment within
-the `moduleVars` array. The compiler assigns non-overlapping index ranges so that
-callsite-persistent variables from different files do not collide. At runtime, each
-callsite still gets its own independent `moduleVars` array containing all segments.
+Callsite-persistent top-level variables (via `LOAD_CALLSITE_VAR` /
+`STORE_CALLSITE_VAR`) are scoped per callsite and per file. When multiple files are
+compiled into a single `UserAuthoredProgram`, each file's top-level variables get a
+contiguous segment within the `callsiteVars` array. The compiler assigns non-overlapping
+index ranges so that callsite-persistent variables from different files do not collide.
+At runtime, each callsite still gets its own independent `callsiteVars` array containing
+all segments.
 
 ---
 
