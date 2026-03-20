@@ -39,9 +39,12 @@ not survive. Keep this doc current.
   no compiler code.
 - `@mindcraft-lang/core` already has all VM primitives needed: `LOAD_LOCAL`,
   `STORE_LOCAL`, `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR` opcodes are implemented in
-  the VM. `BytecodeEmitter` has corresponding methods. `ConstantPool` is exported.
+  the VM. `BytecodeEmitter` has corresponding methods. `ConstantPool` is available.
   `FunctionBytecode` / `Program` / `Op` / `Instr` interfaces are available.
   The seam exists.
+- (Updated 2026-03-20) `BytecodeEmitter` and `ConstantPool` are now exported from
+  `@mindcraft-lang/core/brain` via the compiler barrel. Previously they were
+  internal-only. Added in Phase 0.
 
 ---
 
@@ -173,6 +176,9 @@ checker, and return diagnostics. This is spec Stage 1 in isolation.
 - The validator needs to be exhaustive over disallowed AST node kinds. Use
   `ts.SyntaxKind` enum to enumerate. Reject unknown nodes rather than silently
   accepting.
+- (Added 2026-03-20) `CompileDiagnostic` and `CompileResult` types already exist in
+  `compile.ts` from Phase 0. Phase 2's planned `types.ts` should either import from
+  there or relocate them -- avoid duplication.
 
 **Prerequisite before Phase 3:** The `params` representation in the `Sensor()` /
 `Actuator()` descriptor must be formalized and must map to the existing `callDef`
@@ -545,4 +551,35 @@ Everything after it is incremental.
 
 Completed phases are recorded here with dates, actual outcomes, and deviations.
 
-(No phases completed yet.)
+### Phase 0 -- 2026-03-20
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                               | Actual  | Notes                                                                                                                                        |
+| --------------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `package.json`: `typescript` to prod deps, `tsx` devDep, test scripts | Done    | --                                                                                                                                           |
+| `tsconfig.json`: add path aliases                                     | Skipped | Already had `@mindcraft-lang/core` path alias. `@mindcraft-lang/core/brain` resolves via the workspace `file:` dep without a separate alias. |
+| `src/index.ts`: re-export proving core seam                           | Skipped | Seam proof lives in `core-imports.spec.ts` instead. No reason to add a re-export to the public API.                                          |
+| `src/compiler/compile.ts`: stub API                                   | Done    | `CompileDiagnostic`, `CompileResult`, `compileUserTile()`                                                                                    |
+| `src/compiler/compile.spec.ts`: one test                              | Done    | --                                                                                                                                           |
+| Core types importable                                                 | Done    | Required adding `BytecodeEmitter` and `ConstantPool` exports to `packages/core/src/brain/compiler/index.ts`.                                 |
+| `biome.json`                                                          | Added   | Not in planned file list but implied by acceptance criteria. Extends root config.                                                            |
+
+**Extra file:** `src/compiler/core-imports.spec.ts` -- dedicated test for core brain
+imports (`Op`, `BytecodeEmitter`, `ConstantPool`, type-only imports for `Program`,
+`FunctionBytecode`, `Value`).
+
+**Discoveries:**
+
+1. `BytecodeEmitter` and `ConstantPool` were not exported from `@mindcraft-lang/core/brain`.
+   The Current State section was inaccurate -- said "ConstantPool is exported" but it
+   was only defined, not re-exported from the barrel. Fixed in this phase.
+2. The `Op` enum uses `RET`, not `RETURN`. Future code must use `Op.RET`.
+3. The existing `tsconfig.json` paths entry for `@mindcraft-lang/core` already worked.
+   Subpath imports (`/brain`) resolve through the workspace `file:` dependency and
+   the core package's `exports` map -- no additional tsconfig paths needed.
+4. Test runner pattern: `tsx --tsconfig tsconfig.json --test $(find src -name '*.spec.ts')`.
+   The `pretest` script runs `npm run build` (full tsc) since the typescript package has
+   no platform-specific build steps unlike core's `build:node`.

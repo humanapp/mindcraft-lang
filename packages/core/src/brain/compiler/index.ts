@@ -1,5 +1,7 @@
 export { BrainCompiler, compileBrain } from "./brain-compiler";
+export { ConstantPool } from "./constant-pool";
 export { CompilationDiagCode, type DiagCode, ParseDiagCode, TypeDiagCode } from "./diag-codes";
+export { BytecodeEmitter } from "./emitter";
 export { parseBrainTiles } from "./parser";
 export type { CompilationDiag, CompilationResult } from "./rule-compiler";
 export type {
