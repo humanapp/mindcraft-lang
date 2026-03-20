@@ -329,6 +329,15 @@ class BytecodeVerifier {
         }
         break;
       }
+      case Op.LOAD_LOCAL:
+      case Op.STORE_LOCAL: {
+        const idx = ins.a ?? 0;
+        const numLocals = fn.numLocals ?? fn.numParams;
+        if (idx < 0 || idx >= numLocals) {
+          errors.push(`${site}: ${Op[ins.op]} index ${idx} out of bounds [0, ${numLocals})`);
+        }
+        break;
+      }
     }
   }
 }
@@ -382,12 +391,14 @@ export class VM implements IVM {
     // Set the fiber ID in the execution context
     executionContext.fiberId = fiberId;
 
+    const locals = this.allocLocals(fn, args);
+
     const now = Time.nowMs();
     const fiber: Fiber = {
       id: fiberId,
       state: FiberState.RUNNABLE,
       vstack,
-      frames: List.from([{ funcId, pc: 0, base }]),
+      frames: List.from([{ funcId, pc: 0, base, locals }]),
       handlers: List.empty<Handler>(),
       instrBudget: 0,
       createdAt: now,
@@ -543,6 +554,14 @@ export class VM implements IVM {
           return this.execGetField(fiber, frame);
         case Op.SET_FIELD:
           return this.execSetField(fiber, frame);
+        case Op.LOAD_LOCAL:
+          return this.execLoadLocal(fiber, ins, frame);
+        case Op.STORE_LOCAL:
+          return this.execStoreLocal(fiber, ins, frame);
+        case Op.LOAD_CALLSITE_VAR:
+          return this.execLoadCallsiteVar(fiber, ins, frame);
+        case Op.STORE_CALLSITE_VAR:
+          return this.execStoreCallsiteVar(fiber, ins, frame);
         default: {
           const err: ErrorValue = {
             tag: "ScriptError",
@@ -617,6 +636,46 @@ export class VM implements IVM {
     const varName = this.prog.variableNames.get(nameIdx)!;
     const value = deepCopyValue(this.pop(fiber), this.services.types, fiber.executionContext);
     this.setResolvedVariable(fiber, varName, value);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execLoadLocal(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const idx = ins.a ?? 0;
+    if (idx < 0 || idx >= frame.locals.size()) {
+      throw new Error(`LOAD_LOCAL: index ${idx} out of bounds [0, ${frame.locals.size()})`);
+    }
+    this.push(fiber, frame.locals.get(idx)!);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execStoreLocal(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const idx = ins.a ?? 0;
+    if (idx < 0 || idx >= frame.locals.size()) {
+      throw new Error(`STORE_LOCAL: index ${idx} out of bounds [0, ${frame.locals.size()})`);
+    }
+    frame.locals.set(idx, this.pop(fiber));
+    frame.pc++;
+    return undefined;
+  }
+
+  private execLoadCallsiteVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const idx = ins.a ?? 0;
+    if (!fiber.callsiteVars || idx < 0 || idx >= fiber.callsiteVars.size()) {
+      throw new Error(`LOAD_CALLSITE_VAR: index ${idx} out of bounds [0, ${fiber.callsiteVars?.size() ?? 0})`);
+    }
+    this.push(fiber, fiber.callsiteVars.get(idx)!);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execStoreCallsiteVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const idx = ins.a ?? 0;
+    if (!fiber.callsiteVars || idx < 0 || idx >= fiber.callsiteVars.size()) {
+      throw new Error(`STORE_CALLSITE_VAR: index ${idx} out of bounds [0, ${fiber.callsiteVars?.size() ?? 0})`);
+    }
+    fiber.callsiteVars.set(idx, this.pop(fiber));
     frame.pc++;
     return undefined;
   }
@@ -1289,6 +1348,15 @@ export class VM implements IVM {
     ctx.setVariable(name, value);
   }
 
+  private allocLocals(fn: FunctionBytecode, args: List<Value>): List<Value> {
+    const numLocals = fn.numLocals ?? fn.numParams;
+    const locals = List.empty<Value>();
+    for (let i = 0; i < numLocals; i++) {
+      locals.push(i < args.size() ? args.get(i)! : V.nil());
+    }
+    return locals;
+  }
+
   private doCall(fiber: Fiber, calleeId: number, argc: number): void {
     if (calleeId < 0 || calleeId >= this.prog.functions.size()) {
       throw new Error(`CALL: function ${calleeId} out of bounds`);
@@ -1303,10 +1371,10 @@ export class VM implements IVM {
       throw new Error(`CALL: argc ${argc} != numParams ${callee.numParams}`);
     }
 
-    // Pop arguments and store in reverse order to avoid double reversal
+    // Pop arguments from stack in correct order
     const args = List.empty<Value>();
     for (let i = 0; i < argc; i++) {
-      args.push(V.nil()); // Pre-allocate space
+      args.push(V.nil());
     }
     for (let i = argc - 1; i >= 0; i--) {
       args.set(i, this.pop(fiber));
@@ -1316,8 +1384,9 @@ export class VM implements IVM {
     if (caller) caller.pc++;
 
     const base = fiber.vstack.size();
+    const locals = this.allocLocals(callee, args);
 
-    fiber.frames.push({ funcId: calleeId, pc: 0, base });
+    fiber.frames.push({ funcId: calleeId, pc: 0, base, locals });
   }
 
   private doRet(fiber: Fiber, retv: Value): boolean {

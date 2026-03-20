@@ -292,6 +292,38 @@ export interface IBytecodeEmitter {
   setField(): void;
 
   // ==========================================
+  // Frame-local variables
+  // ==========================================
+
+  /**
+   * Load a frame-local variable onto the stack.
+   * @param slotIdx Index into the current frame's locals array
+   */
+  loadLocal(slotIdx: number): void;
+
+  /**
+   * Store the top stack value into a frame-local variable.
+   * @param slotIdx Index into the current frame's locals array
+   */
+  storeLocal(slotIdx: number): void;
+
+  // ==========================================
+  // Callsite-persistent variables
+  // ==========================================
+
+  /**
+   * Load a callsite-persistent variable onto the stack.
+   * @param slotIdx Index into the fiber's callsiteVars array
+   */
+  loadCallsiteVar(slotIdx: number): void;
+
+  /**
+   * Store the top stack value into a callsite-persistent variable.
+   * @param slotIdx Index into the fiber's callsiteVars array
+   */
+  storeCallsiteVar(slotIdx: number): void;
+
+  // ==========================================
   // Finalization
   // ==========================================
 

@@ -319,6 +319,248 @@ describe("VM -- function calls", () => {
       assert.equal((result.result as { v: number }).v, 42);
     }
   });
+
+  test("CALL passes arguments into callee locals", () => {
+    // func 0: push 10, push 20, CALL func 1 (argc=2), RET
+    // func 1 (numParams=2, numLocals=2): LOAD_LOCAL 0, LOAD_LOCAL 1, add via HOST_CALL_ARGS, RET
+    // Simpler: just return the first argument
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 }, // push 10
+          { op: Op.PUSH_CONST, a: 1 }, // push 20
+          { op: Op.CALL, a: 1, b: 2 }, // call func 1 with 2 args
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([
+            { op: Op.LOAD_LOCAL, a: 1 }, // load second arg (20)
+            { op: Op.RET },
+          ]),
+          numParams: 2,
+          numLocals: 2,
+          name: "add",
+        },
+      ],
+      [mkNumberValue(10), mkNumberValue(20)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 20);
+    }
+  });
+});
+
+// ---- Local variables ----
+
+describe("VM -- local variables", () => {
+  test("LOAD_LOCAL and STORE_LOCAL work within a function", () => {
+    // func with 0 params, 2 locals
+    // PUSH 5, STORE_LOCAL 0, PUSH 10, STORE_LOCAL 1, LOAD_LOCAL 0, LOAD_LOCAL 1 -> stack has [5, 10]
+    // Pop 10, return 5
+    const prog = mkProgram(
+      [
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 0 }, // push 5
+            { op: Op.STORE_LOCAL, a: 0 }, // local[0] = 5
+            { op: Op.PUSH_CONST, a: 1 }, // push 10
+            { op: Op.STORE_LOCAL, a: 1 }, // local[1] = 10
+            { op: Op.LOAD_LOCAL, a: 0 }, // push local[0] (5)
+            { op: Op.RET },
+          ]),
+          numParams: 0,
+          numLocals: 2,
+          name: "test",
+        },
+      ],
+      [mkNumberValue(5), mkNumberValue(10)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 5);
+    }
+  });
+
+  test("locals are isolated between frames", () => {
+    // func 0: PUSH 99, STORE_LOCAL 0, CALL func 1, POP, LOAD_LOCAL 0, RET
+    // func 1: PUSH 1, STORE_LOCAL 0, LOAD_LOCAL 0, RET
+    // func 0 should return 99, not 1
+    const prog = mkProgram(
+      [
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 0 }, // push 99
+            { op: Op.STORE_LOCAL, a: 0 }, // local[0] = 99
+            { op: Op.CALL, a: 1, b: 0 },
+            { op: Op.POP }, // discard callee result
+            { op: Op.LOAD_LOCAL, a: 0 }, // load MY local[0] -> should be 99
+            { op: Op.RET },
+          ]),
+          numParams: 0,
+          numLocals: 1,
+          name: "caller",
+        },
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 1 }, // push 1
+            { op: Op.STORE_LOCAL, a: 0 }, // local[0] = 1
+            { op: Op.LOAD_LOCAL, a: 0 }, // push 1
+            { op: Op.RET },
+          ]),
+          numParams: 0,
+          numLocals: 1,
+          name: "callee",
+        },
+      ],
+      [mkNumberValue(99), mkNumberValue(1)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 99);
+    }
+  });
+
+  test("entry function receives args as locals via spawnFiber", () => {
+    const prog = mkProgram(
+      [{ code: List.from([{ op: Op.LOAD_LOCAL, a: 0 }, { op: Op.RET }]), numParams: 1, numLocals: 1, name: "entry" }],
+      [mkNumberValue(77)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.from([mkNumberValue(77)]), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 77);
+    }
+  });
+
+  test("LOAD_LOCAL out of bounds rejected by verifier", () => {
+    const prog = mkProgram([
+      {
+        code: List.from([
+          { op: Op.LOAD_LOCAL, a: 5 }, // only 1 local, index 5 is oob
+          { op: Op.RET },
+        ]),
+        numParams: 0,
+        numLocals: 1,
+        name: "test",
+      },
+    ]);
+    const handles = new HandleTable(100);
+    assert.throws(() => new VM(prog, handles), /LOAD_LOCAL index 5 out of bounds/);
+  });
+});
+
+// ---- Callsite-persistent variables ----
+
+describe("VM -- callsite-persistent variables", () => {
+  test("LOAD_CALLSITE_VAR and STORE_CALLSITE_VAR read/write fiber.callsiteVars", () => {
+    const prog = mkProgram(
+      [
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 0 }, // push 42
+            { op: Op.STORE_CALLSITE_VAR, a: 0 }, // callsiteVars[0] = 42
+            { op: Op.LOAD_CALLSITE_VAR, a: 0 }, // push callsiteVars[0]
+            { op: Op.RET },
+          ]),
+          numParams: 0,
+          numLocals: 0,
+          name: "test",
+        },
+      ],
+      [mkNumberValue(42)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.callsiteVars = List.from([NIL_VALUE, NIL_VALUE]);
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 42);
+    }
+  });
+
+  test("LOAD_CALLSITE_VAR without callsiteVars faults", () => {
+    const prog = mkProgram([
+      {
+        code: List.from([{ op: Op.LOAD_CALLSITE_VAR, a: 0 }, { op: Op.RET }]),
+        numParams: 0,
+        numLocals: 0,
+        name: "test",
+      },
+    ]);
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT);
+  });
+
+  test("callsiteVars persist across calls within same fiber", () => {
+    // func 0: store 100 into callsiteVar[0], call func 1, ret
+    // func 1: load callsiteVar[0], ret
+    const prog = mkProgram(
+      [
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 0 },
+            { op: Op.STORE_CALLSITE_VAR, a: 0 },
+            { op: Op.CALL, a: 1, b: 0 },
+            { op: Op.RET },
+          ]),
+          numParams: 0,
+          numLocals: 0,
+          name: "outer",
+        },
+        {
+          code: List.from([{ op: Op.LOAD_CALLSITE_VAR, a: 0 }, { op: Op.RET }]),
+          numParams: 0,
+          numLocals: 0,
+          name: "inner",
+        },
+      ],
+      [mkNumberValue(100)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.callsiteVars = List.from([NIL_VALUE]);
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 100);
+    }
+  });
 });
 
 // ---- Fiber state machine ----

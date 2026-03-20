@@ -1,0 +1,20 @@
+{
+  "name": "@mindcraft-lang/typescript",
+  "version": "0.1.0",
+  "private": true,
+  "description": "TypeScript-to-Mindcraft bytecode compiler for user-authored sensors and actuators",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "check:fix": "biome check ./src --write"
+  },
+  "dependencies": {
+    "@mindcraft-lang/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.0"
+  }
+}

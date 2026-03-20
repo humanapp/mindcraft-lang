@@ -327,6 +327,30 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   }
 
   // ==========================================
+  // Frame-local variables
+  // ==========================================
+
+  loadLocal(slotIdx: number): void {
+    this.emit({ op: Op.LOAD_LOCAL, a: slotIdx });
+  }
+
+  storeLocal(slotIdx: number): void {
+    this.emit({ op: Op.STORE_LOCAL, a: slotIdx });
+  }
+
+  // ==========================================
+  // Callsite-persistent variables
+  // ==========================================
+
+  loadCallsiteVar(slotIdx: number): void {
+    this.emit({ op: Op.LOAD_CALLSITE_VAR, a: slotIdx });
+  }
+
+  storeCallsiteVar(slotIdx: number): void {
+    this.emit({ op: Op.STORE_CALLSITE_VAR, a: slotIdx });
+  }
+
+  // ==========================================
   // Finalization
   // ==========================================
 

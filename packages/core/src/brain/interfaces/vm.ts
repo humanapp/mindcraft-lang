@@ -287,6 +287,14 @@ export enum Op {
   // Generic field access (works with Struct, extensible for custom types)
   GET_FIELD = 120,
   SET_FIELD,
+
+  // Frame-local variables (indexed slots on the current call frame)
+  LOAD_LOCAL = 130,
+  STORE_LOCAL,
+
+  // Callsite-persistent variables (per-callsite state that survives across ticks)
+  LOAD_CALLSITE_VAR = 140,
+  STORE_CALLSITE_VAR,
 }
 
 export const BYTECODE_VERSION = 1;
@@ -305,6 +313,8 @@ export interface Instr {
 export interface FunctionBytecode {
   code: List<Instr>;
   numParams: number;
+  /** Total number of local variable slots (includes params). Defaults to numParams. */
+  numLocals?: number;
   name?: string;
   maxStackDepth?: number;
 }
@@ -408,6 +418,7 @@ export interface Frame {
   funcId: number;
   pc: number;
   base: number;
+  locals: List<Value>;
 }
 
 export interface Handler {
@@ -440,6 +451,12 @@ export interface Fiber {
    * Provides access to the rule, variables, and other execution state.
    */
   executionContext: ExecutionContext;
+  /**
+   * Per-callsite persistent variable storage for user-authored tiles.
+   * Set by the host exec wrapper before fiber execution.
+   * Accessed by LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR opcodes.
+   */
+  callsiteVars?: List<Value>;
 }
 
 ///////////////////////////
