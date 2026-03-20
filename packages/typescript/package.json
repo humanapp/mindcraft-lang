@@ -36,7 +36,14 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
+    "prebuild": "node scripts/bundle-lib-dts.js",
     "build": "tsc",
     "clean": "rm -rf dist",
     "lint:only": "biome lint ./src",

@@ -15,7 +15,7 @@ Each phase follows this loop:
 1. **Kick off** -- "Implement Phase N." The implementer reads this doc, the spec,
    and any relevant instruction files before writing code.
 2. **Review + refine** -- Followup prompts within the same conversation.
-3. **Declare done** -- "Phase N is complete."
+3. **Declare done** -- "Phase N is complete." Only the user can declare the phase complete. Do not move to the post-mortem step until the user requests it.
 4. **Post-mortem** -- "Run post-mortem for Phase N." This step:
    - Diffs planned deliverables vs what was actually built.
    - Records the outcome in the Phase Log (bottom of this doc).
@@ -33,18 +33,33 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- `packages/typescript` exists as a shell: `package.json`, `tsconfig.json`, a single
-  `src/index.ts` with `UserAuthoredProgram` and `UserTileLinkInfo` interfaces.
-- No test infrastructure, no `typescript` runtime dependency (only in devDependencies),
-  no compiler code.
+- (Updated 2026-03-20) Phase 0 and Phase 1 are complete. `packages/typescript` has a
+  working build, test suite, and type-checking pipeline.
+- `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `CompileDiagnostic`,
+  `CompileResult` from the compiler module alongside `UserAuthoredProgram` and
+  `UserTileLinkInfo` interfaces.
+- `src/compiler/compile.ts` exports `compileUserTile(source)` which accepts a
+  TypeScript source string, runs it through a fully in-memory virtual
+  `ts.CompilerHost`, and returns diagnostics. No bytecode emission yet (Phase 3+).
+  The lib `.d.ts` content is lazy-loaded via `initCompiler()` (async, dynamic
+  `import()`) so bundlers like Vite automatically chunk the ~230KB lib strings
+  into a separate file loaded on demand.
+- `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
+  browser-compatible `ts.CompilerHost` with zero Node.js API usage.
+- `src/compiler/ambient.ts` declares the `"mindcraft"` ambient module with `Context`,
+  `Sensor`, `Actuator`, and supporting types.
+- `scripts/bundle-lib-dts.js` generates `src/compiler/lib-dts.generated.ts` at build
+  time, bundling TypeScript's `lib.es5.d.ts` + decorator libs as string constants.
+- `package.json` has an `exports` map for proper bundler resolution.
+- `apps/sim` depends on `@mindcraft-lang/typescript` (local `file:` dep) and calls
+  `initCompiler()` in `bootstrap.ts` to preload the compiler in the background.
 - `@mindcraft-lang/core` already has all VM primitives needed: `LOAD_LOCAL`,
   `STORE_LOCAL`, `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR` opcodes are implemented in
   the VM. `BytecodeEmitter` has corresponding methods. `ConstantPool` is available.
   `FunctionBytecode` / `Program` / `Op` / `Instr` interfaces are available.
   The seam exists.
-- (Updated 2026-03-20) `BytecodeEmitter` and `ConstantPool` are now exported from
-  `@mindcraft-lang/core/brain` via the compiler barrel. Previously they were
-  internal-only. Added in Phase 0.
+- `BytecodeEmitter` and `ConstantPool` are exported from
+  `@mindcraft-lang/core/brain` via the compiler barrel (added in Phase 0).
 - All compiler code must run in the browser at authoring time. No Node.js-only APIs
   (`node:fs`, `node:path`, etc.) in runtime code paths. Build-time scripts (code
   generation, lib bundling) may use Node.js. See the spec's Stage 1 for details.
@@ -595,3 +610,63 @@ imports (`Op`, `BytecodeEmitter`, `ConstantPool`, type-only imports for `Program
 4. Test runner pattern: `tsx --tsconfig tsconfig.json --test $(find src -name '*.spec.ts')`.
    The `pretest` script runs `npm run build` (full tsc) since the typescript package has
    no platform-specific build steps unlike core's `build:node`.
+
+### Phase 1 -- 2026-03-20
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                       | Actual | Notes                                                                                                                                         |
+| ------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/compiler/virtual-host.ts`: `createVirtualCompilerHost()` | Done   | Includes `resolveModuleNameLiterals` for `"mindcraft"` import resolution.                                                                     |
+| `src/compiler/ambient.ts`: hardcoded `mindcraft.d.ts`         | Done   | Ambient module declaration (`declare module "mindcraft"`) with `Context`, `Sensor`, `Actuator`, `ParamDef`, `SensorConfig`, `ActuatorConfig`. |
+| `src/compiler/compile.ts`: wire up type checking              | Done   | Uses `ts.createProgram` + `ts.getPreEmitDiagnostics`. Filters diagnostics to user code only.                                                  |
+| `src/compiler/compile.spec.ts`: 3 required tests              | Done   | 5 tests total (3 required + line/column info + empty source).                                                                                 |
+| Lib `.d.ts` bundled at build time                             | Done   | `scripts/bundle-lib-dts.js` generates `src/compiler/lib-dts.generated.ts`. `prebuild` npm script runs it before `tsc`.                        |
+
+**Additional work (review iteration):**
+
+| Item                         | Notes                                                                                                                                                                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lazy-loading / chunking      | Lib `.d.ts` content loaded via dynamic `import()` in `initCompiler()`. Vite automatically splits the ~230KB into a separate chunk. `compileUserTile()` stays sync; requires `initCompiler()` to have been called first. |
+| `package.json` `exports` map | Added `"."` entry with `types` + `import` conditions for proper bundler resolution.                                                                                                                                     |
+| `src/index.ts` re-exports    | Now re-exports `compileUserTile`, `initCompiler`, `CompileDiagnostic`, `CompileResult` from the compiler module.                                                                                                        |
+| `apps/sim` integration       | Added `@mindcraft-lang/typescript` as `file:` dep. `bootstrap.ts` calls `initCompiler()` to preload in the background. Vite prod build confirms separate chunk (`lib-dts.generated-*.js`, 231KB).                       |
+| Biome fix in generator       | `scripts/bundle-lib-dts.js` now escapes only `${` (not all `$`) in template literals, eliminating `noUselessEscapeInString` warnings.                                                                                   |
+
+**Extra files:**
+
+- `scripts/bundle-lib-dts.js` -- build script that reads `lib.es5.d.ts`,
+  `lib.decorators.d.ts`, `lib.decorators.legacy.d.ts` from
+  `node_modules/typescript/lib/` and generates a source module with string constants.
+- `src/compiler/lib-dts.generated.ts` -- generated file (not committed), contains
+  ~5000 lines of embedded lib type definitions.
+
+**Discoveries:**
+
+1. TypeScript 5.7's `lib.es5.d.ts` has `/// <reference lib="decorators" />` and
+   `/// <reference lib="decorators.legacy" />` directives. All three files
+   (`lib.es5.d.ts`, `lib.decorators.d.ts`, `lib.decorators.legacy.d.ts`) must be
+   bundled for type checking to work without errors.
+2. The virtual host needs `resolveModuleNameLiterals` for resolving `import ... from
+"mindcraft"` to the ambient `.d.ts` file. TypeScript's built-in module resolution
+   does not find virtual files on its own.
+3. The `"mindcraft"` ambient types use `declare module "mindcraft" { ... }` pattern.
+   The `.d.ts` file must be included in `rootNames` passed to `ts.createProgram`
+   for the ambient module declaration to be visible.
+4. `getDefaultLibFileName` returns a virtual path (`/lib/lib.es5.d.ts`). TypeScript
+   resolves `/// <reference lib="..." />` directives relative to this path's directory.
+5. Compiler options for the virtual program: `target: ES5`, `module: ES2015`,
+   `strict: true`, `noEmit: true`. These are sufficient for Phase 1 type checking.
+6. Diagnostics are filtered to `d.file?.fileName === "/user-code.ts"` to avoid
+   surfacing internal lib/ambient diagnostics to the user.
+7. The generated `lib-dts.generated.ts` file uses template literal strings. Content
+   is escaped for backticks, `${` sequences, and backslash characters. Only `${`
+   needs escaping (not bare `$`), otherwise Biome reports `noUselessEscapeInString`.
+8. The lib `.d.ts` module (~230KB) should be loaded lazily via dynamic `import()` so
+   bundlers like Vite automatically split it into a separate chunk. The async
+   `initCompiler()` function handles this. Webapps should call it at startup so the
+   chunk loads in the background before the user's first compile.
+9. The `exports` map in `package.json` is needed for bundlers to resolve the package
+   entry point correctly. Use `"types"` + `"import"` conditions under `"."`.

@@ -45,6 +45,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@mindcraft-lang/core": "file:../../packages/core",
     "@mindcraft-lang/docs": "file:../../packages/docs",
+    "@mindcraft-lang/typescript": "file:../../packages/typescript",
     "@mindcraft-lang/ui": "file:../../packages/ui",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
