@@ -38,7 +38,7 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: Rewrite local file: deps to version ranges
+      - name: "Rewrite local file: deps to version ranges"
         run: |
           node - <<'EOF'
           const fs = require('fs');
