@@ -4,6 +4,7 @@
     "module": "ES2022",
     "moduleResolution": "bundler",
     "declaration": true,
+    "declarationMap": true,
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
@@ -11,7 +12,8 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "preserveSymlinks": true
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist", "**/*.spec.ts"],
