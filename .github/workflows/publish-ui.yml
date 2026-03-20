@@ -32,6 +32,20 @@ jobs:
       - name: Lint & format check
         run: npm run check
 
+      - name: Rewrite local file: deps to version ranges
+        run: |
+          node - <<'EOF'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          for (const [name, val] of Object.entries(pkg.dependencies || {})) {
+            if (val.startsWith('file:')) {
+              const sibling = JSON.parse(fs.readFileSync(`${val.slice(5)}/package.json`, 'utf8'));
+              pkg.dependencies[name] = `^${sibling.version}`;
+            }
+          }
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          EOF
+
       - name: Verify package version matches tag
         run: |
           PACKAGE_VERSION="ui-v$(node -p "require('./package.json').version")"

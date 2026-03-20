@@ -1,20 +1,20 @@
-name: Publish @mindcraft-lang/docs
+name: Publish @mindcraft-lang/typescript
 
 on:
   push:
     tags:
-      - "docs-v*"
+      - "typescript-v*"
 
 permissions:
   contents: write
 
 jobs:
   publish:
-    name: Lint, Publish & Release
+    name: Build, Lint, Publish & Release
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/docs
+        working-directory: packages/typescript
 
     steps:
       - name: Checkout
@@ -30,7 +30,10 @@ jobs:
         run: npm ci
 
       - name: Lint & format check
-        run: npm run check
+        run: npm run check:only
+
+      - name: Build
+        run: npm run build
 
       - name: Rewrite local file: deps to version ranges
         run: |
@@ -48,7 +51,7 @@ jobs:
 
       - name: Verify package version matches tag
         run: |
-          PACKAGE_VERSION="docs-v$(node -p "require('./package.json').version")"
+          PACKAGE_VERSION="typescript-v$(node -p "require('./package.json').version")"
           if [ "$PACKAGE_VERSION" != "${{ github.ref_name }}" ]; then
             echo "Tag ${{ github.ref_name }} does not match package.json version $PACKAGE_VERSION"
             exit 1
