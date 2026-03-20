@@ -32,6 +32,12 @@ interface. User-authored code targets `Program` directly.) From Phase 1, the com
 uses a virtual file host so that multi-file support can be added later without
 architectural migration.
 
+The compiler pipeline runs **entirely in the browser** at authoring time. There is
+no server-side compilation step. The full flow -- from TypeScript source to
+diagnostics (and eventually bytecode) -- executes client-side in the user's
+browser. All file access goes through an in-memory virtual host; no Node.js-only
+APIs (`node:fs`, `node:path`, etc.) may appear in runtime code paths.
+
 This is not a parallel system. It is a second entry point into the same compiler
 back-end and the same VM.
 
@@ -195,10 +201,29 @@ TypeScript source
 
 Use `ts.createSourceFile()` for parsing and `ts.createProgram()` for full type checking.
 
-The TypeScript compiler API runs at **authoring time and build time** -- not at gameplay
-runtime. It is acceptable to depend on the TypeScript compiler package in the toolchain
-(editor, build system) but the compiled bytecode must not carry any TypeScript runtime
-dependency.
+The TypeScript compiler API runs at **authoring time** (in-browser, client-side) and
+may also run during **build-time** tooling (code generation scripts, etc.) -- it does
+**not** run at gameplay runtime. "Authoring time" means the compiler executes inside the
+user's browser with no server roundtrip. Build-time scripts (e.g., bundling lib `.d.ts`
+files) may use Node.js APIs, but the compiled output that ships to the browser must not
+depend on them.
+
+The virtual file host must be **fully in-memory** with zero filesystem access:
+
+- No `node:fs`, `node:path`, or any other Node.js-only API in runtime code paths.
+- TypeScript's lib `.d.ts` files (e.g., `lib.es5.d.ts`) must be bundled as strings
+  or otherwise made available without `node:fs`. A build script may read them from
+  `node_modules/typescript/lib/` and generate a source module that embeds them as
+  string constants.
+- `getDefaultLibFileName` must return a virtual path that exists in the in-memory
+  file map, not a real filesystem path.
+- `ts.sys` must not be used. The virtual host replaces all default host functions
+  that would ordinarily access the filesystem.
+
+It is acceptable to depend on the `typescript` npm package in the toolchain because
+its compiler API works in the browser. However, TypeScript's default `CompilerHost`
+implementation calls `node:fs` internally, so a custom virtual host is required.
+The compiled bytecode must not carry any TypeScript runtime dependency.
 
 For v1, create virtual in-memory source files. Provide ambient type declarations for
 the Mindcraft API (`mindcraft.d.ts`) so the TypeScript checker validates user code against
@@ -1781,6 +1806,21 @@ sensors too.
 For strict determinism (e.g., replay), all host functions must be deterministic or
 record-and-replay their outputs. This is an orthogonal concern not specific to user
 authoring.
+
+### TypeScript compiler API browser compatibility
+
+The `typescript` npm package's compiler API is designed to work in any JavaScript
+environment, but its **default host functions** (`ts.sys`, the default `CompilerHost`)
+use Node.js filesystem APIs (`node:fs`, `node:path`). When running the compiler
+in the browser, these defaults are unavailable. A custom virtual `CompilerHost` must
+be provided that implements `readFile`, `fileExists`, `getSourceFile`,
+`getDefaultLibFileName`, and related methods using an in-memory file map. Failure to
+do so results in runtime errors or a Node.js-only implementation that cannot ship to
+the browser.
+
+Build-time tooling (scripts that generate source modules, bundle lib `.d.ts` content,
+etc.) may freely use Node.js APIs. The constraint applies only to code that executes
+at authoring time in the browser.
 
 ### Bytecode verification
 

@@ -45,6 +45,9 @@ not survive. Keep this doc current.
 - (Updated 2026-03-20) `BytecodeEmitter` and `ConstantPool` are now exported from
   `@mindcraft-lang/core/brain` via the compiler barrel. Previously they were
   internal-only. Added in Phase 0.
+- All compiler code must run in the browser at authoring time. No Node.js-only APIs
+  (`node:fs`, `node:path`, etc.) in runtime code paths. Build-time scripts (code
+  generation, lib bundling) may use Node.js. See the spec's Stage 1 for details.
 
 ---
 
@@ -89,7 +92,7 @@ not survive. Keep this doc current.
   `@mindcraft-lang/core`'s built dist exports resolve correctly for the TS package's
   compilation and tests
 - `typescript` as a prod dep vs devDep: it must be prod because user code compilation
-  happens at runtime (authoring time), not just build time
+  happens in-browser at authoring time, not just at build time
 
 ---
 
@@ -132,6 +135,15 @@ checker, and return diagnostics. This is spec Stage 1 in isolation.
   `~5.7.2` (already done in package.json).
 - `mindcraft.d.ts` surface design -- start tiny, expand later. Don't try to design
   the full engine context API now.
+- **Browser compatibility.** The virtual host must be fully in-memory -- no `node:fs`,
+  `node:path`, or any other Node.js-only API. TypeScript's default `CompilerHost`
+  uses `node:fs` internally, so every host method (`readFile`, `fileExists`,
+  `getSourceFile`, `getDefaultLibFileName`, etc.) must be replaced with an in-memory
+  implementation. `ts.sys` must not be used. TypeScript's lib `.d.ts` files (e.g.,
+  `lib.es5.d.ts`) must be bundled as string constants at build time (a build script
+  may read them from `node_modules/typescript/lib/` and generate a source module).
+  `getDefaultLibFileName` must return a virtual path that exists in the in-memory
+  file map, not a real filesystem path.
 
 ---
 
