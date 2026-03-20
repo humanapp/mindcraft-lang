@@ -40,9 +40,9 @@
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
     "format": "biome format ./src --write",
-    "release:patch": "npm run build && npm run check:only && node ../../scripts/release.js patch",
-    "release:minor": "npm run build && npm run check:only && node ../../scripts/release.js minor",
-    "release:major": "npm run build && npm run check:only && node ../../scripts/release.js major"
+    "release:patch": "npm run check:only && node ../../scripts/release.js patch",
+    "release:minor": "npm run check:only && node ../../scripts/release.js minor",
+    "release:major": "npm run check:only && node ../../scripts/release.js major"
   },
   "dependencies": {
     "@mindcraft-lang/core": "file:../core",
