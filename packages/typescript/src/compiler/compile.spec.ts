@@ -11,7 +11,7 @@ export default Sensor({
   params: {
     distance: { type: "number", default: 5 },
   },
-  exec(ctx: Context, params: { distance: number }): boolean {
+  onExecute(ctx: Context, params: { distance: number }): boolean {
     return params.distance < 10;
   },
 });
@@ -67,8 +67,317 @@ function doStuff(ctx: Context): void {
     assert.ok(typeof diag.column === "number", "expected column number");
   });
 
-  test("empty source produces no diagnostics", () => {
+  test("empty source produces missing default export diagnostic", () => {
     const result = compileUserTile("");
+    assert.ok(result.diagnostics.length > 0, "expected at least one diagnostic");
+    assert.ok(
+      result.diagnostics.some((d) => d.message.includes("default export")),
+      "expected diagnostic about missing default export"
+    );
+  });
+});
+
+describe("AST validation", () => {
+  before(async () => {
+    await initCompiler();
+  });
+
+  test("class declaration produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Foo {
+  bar(): number { return 42; }
+}
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes("Classes are not supported")));
+  });
+
+  test("var declaration produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+var x = 1;
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes("var")));
+  });
+
+  test("for...in produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean {
+    const obj = { a: 1 };
+    for (const k in obj) {}
+    return true;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes("for...in")));
+  });
+
+  test("eval reference produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean {
+    eval("1+1");
+    return true;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes("eval")));
+  });
+
+  test("computed property name produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean {
+    const key = "x";
+    const obj = { [key]: 1 };
+    return true;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes("Computed property names")));
+  });
+
+  test("enum declaration produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+enum Direction { Up, Down }
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes("Enums are not supported")));
+  });
+
+  test("let and const pass validation", () => {
+    const result = compileUserTile(VALID_SENSOR_SOURCE);
     assert.deepStrictEqual(result.diagnostics, []);
+  });
+});
+
+describe("descriptor extraction", () => {
+  before(async () => {
+    await initCompiler();
+  });
+
+  test("valid sensor extracts correct descriptor", () => {
+    const result = compileUserTile(VALID_SENSOR_SOURCE);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
+    assert.equal(result.descriptor.kind, "sensor");
+    assert.equal(result.descriptor.name, "is-close");
+    assert.equal(result.descriptor.outputType, "boolean");
+    assert.equal(result.descriptor.params.length, 1);
+    assert.equal(result.descriptor.params[0].name, "distance");
+    assert.equal(result.descriptor.params[0].type, "number");
+    assert.equal(result.descriptor.params[0].defaultValue, 5);
+    assert.equal(result.descriptor.params[0].required, false);
+    assert.equal(result.descriptor.execIsAsync, false);
+    assert.ok(result.descriptor.onExecuteNode);
+    assert.equal(result.descriptor.onPageEnteredNode, null);
+  });
+
+  test("actuator with async exec extracts async flag", () => {
+    const source = `
+import { Actuator, type Context } from "mindcraft";
+
+export default Actuator({
+  name: "flee",
+  params: {
+    speed: { type: "number", default: 1 },
+  },
+  async onExecute(ctx: Context, params: { speed: number }): Promise<void> {
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
+    assert.equal(result.descriptor.kind, "actuator");
+    assert.equal(result.descriptor.name, "flee");
+    assert.equal(result.descriptor.execIsAsync, true);
+    assert.equal(result.descriptor.outputType, undefined);
+  });
+
+  test("onPageEntered inside descriptor is detected", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+  onPageEntered(ctx: Context): void {},
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
+    assert.ok(result.descriptor.onPageEnteredNode !== null, "expected onPageEnteredNode to be present");
+  });
+
+  test("multiple params are extracted correctly", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "multi-param",
+  output: "number",
+  params: {
+    range: { type: "number", default: 10 },
+    label: { type: "string" },
+    active: { type: "boolean", default: true },
+  },
+  onExecute(ctx: Context, params: { range: number; label: string; active: boolean }): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
+    assert.equal(result.descriptor.params.length, 3);
+
+    assert.equal(result.descriptor.params[0].name, "range");
+    assert.equal(result.descriptor.params[0].type, "number");
+    assert.equal(result.descriptor.params[0].defaultValue, 10);
+    assert.equal(result.descriptor.params[0].required, false);
+
+    assert.equal(result.descriptor.params[1].name, "label");
+    assert.equal(result.descriptor.params[1].type, "string");
+    assert.equal(result.descriptor.params[1].required, true);
+
+    assert.equal(result.descriptor.params[2].name, "active");
+    assert.equal(result.descriptor.params[2].type, "boolean");
+    assert.equal(result.descriptor.params[2].defaultValue, true);
+    assert.equal(result.descriptor.params[2].required, false);
+  });
+
+  test("missing name produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes("name")));
+  });
+
+  test("sensor missing output produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes("output")));
+  });
+
+  test("missing onExecute produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes("onExecute")));
+  });
+
+  test("descriptor without onPageEntered has null node", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
+    assert.equal(result.descriptor.onPageEnteredNode, null);
+  });
+
+  test("actuator with no params extracts empty params list", () => {
+    const source = `
+import { Actuator, type Context } from "mindcraft";
+
+export default Actuator({
+  name: "simple",
+  params: {},
+  onExecute(ctx: Context): void {},
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
+    assert.equal(result.descriptor.kind, "actuator");
+    assert.equal(result.descriptor.params.length, 0);
   });
 });

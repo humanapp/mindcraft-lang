@@ -125,11 +125,10 @@ export default Actuator({
       await ctx.engine.moveAwayFrom(ctx.self, threat.position, params.speed);
     }
   },
+  onPageEntered(ctx: Context): void {
+    moveCount = 0;
+  },
 });
-
-export function onPageEntered(ctx: Context): void {
-  moveCount = 0;
-}
 ```
 
 Key properties of this shape:
@@ -139,18 +138,21 @@ Key properties of this shape:
 - **Declarative metadata.** `name`, `output`, `params` are statically analyzable. The
   compiler reads them at compile time to generate `BrainActionCallDef` and tile
   registration data.
-- **`exec` is the entrypoint.** Compiles to the primary `FunctionBytecode`. Parameters
+- **`onExecute` is the entrypoint.** Compiles to the primary `FunctionBytecode`. Parameters
   are derived from the `params` descriptor.
+  (Updated 2026-03-20: renamed from `exec` to `onExecute` for consistency with `onPageEntered`.)
 - **`ctx` is the injected context.** Not a global. Not an import. It is a function
   parameter whose type is known at compile time.
-- **`async exec` compiles to HOST_CALL_ASYNC + AWAIT.** The compiler detects `async` on
-  `exec` and emits async bytecode. Both sensors and actuators may be sync or async.
+- **`async onExecute` compiles to HOST_CALL_ASYNC + AWAIT.** The compiler detects `async` on
+  `onExecute` and emits async bytecode. Both sensors and actuators may be sync or async.
   The runtime uses one unified invocation model regardless (see section C).
 - **Helper functions are allowed.** Users can define local functions within the file. These
   compile to additional `FunctionBytecode` entries invoked via CALL.
-- **`onPageEntered` is a named export.** If present, it is a lifecycle function authored
-  in the same file, sharing the same lexical scope and callsite-persistent state as `exec`
-  and helpers. It is not declared on the descriptor object.
+- **`onPageEntered` is part of the descriptor.** If present, it is a lifecycle method
+  on the descriptor object, sharing the same lexical scope and callsite-persistent
+  state as `onExecute` and helpers.
+  (Updated 2026-03-20: moved from a separate named export into the descriptor object
+  for cohesion and simpler extraction.)
 - **No class instantiation needed.** `Sensor()` and `Actuator()` are compile-time markers,
   not runtime constructors. They do not exist at bytecode level.
 
@@ -266,23 +268,27 @@ compiler does not proceed to lowering if validation fails.
 
 ### Stage 3: Descriptor and Lifecycle Extraction
 
-Statically analyze the default export and named exports to extract sensor/actuator
+Statically analyze the default export to extract sensor/actuator
 metadata and lifecycle functions:
+
+(Updated 2026-03-20: `exec` renamed to `onExecute`. `onPageEntered` moved inside the
+descriptor object -- no longer a separate named export. See Phase 2 log.)
 
 ```typescript
 interface ExtractedDescriptor {
   kind: "sensor" | "actuator";
   name: string;
-  outputType: TypeId; // sensors only
-  params: List<ExtractedParam>;
-  execFuncNode: ts.FunctionExpression; // the exec function body
-  onPageEnteredNode: ts.FunctionDeclaration | null; // lifecycle, if present
+  outputType: string | undefined; // sensors only
+  params: ExtractedParam[];
+  execIsAsync: boolean;
+  onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction;
+  onPageEnteredNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null;
 }
 
 interface ExtractedParam {
   name: string;
-  typeId: TypeId;
-  defaultValue?: Value; // from default in descriptor
+  type: string;
+  defaultValue?: number | string | boolean | null;
   required: boolean;
 }
 ```
@@ -292,11 +298,11 @@ property values. Because the descriptor must be a literal object expression (not
 variable reference), extraction is straightforward AST analysis. This produces the
 `BrainActionCallDef` that integrates with the existing tile system.
 
-After descriptor extraction, the compiler scans for a named export called
-`onPageEntered`. If found, it must be a file-level function declaration with signature
-`(ctx: Context) => void`. It is stored in the `ExtractedDescriptor` for lowering
-alongside `exec` and any helper functions. If `onPageEntered` is not present, the
-field is null and the compiler omits the lifecycle hook from the assembled program.
+`onPageEntered`, if present, is an optional method on the descriptor object with
+signature `(ctx: Context) => void`. It is stored in the `ExtractedDescriptor` for
+lowering alongside `onExecute` and any helper functions. If `onPageEntered` is not
+present, the field is null and the compiler omits the lifecycle hook from the
+assembled program.
 
 ### Stage 4: Function Lowering (TS AST -> Mindcraft IR)
 

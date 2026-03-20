@@ -1,4 +1,18 @@
 export const AMBIENT_MINDCRAFT_DTS = `
+interface Promise<T> {
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null
+  ): Promise<TResult1 | TResult2>;
+  catch<TResult = never>(
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | undefined | null
+  ): Promise<TResult>;
+}
+
+declare var Promise: {
+  new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: unknown) => void) => void): Promise<T>;
+};
+
 declare module "mindcraft" {
   export interface Context {
     time: number;
@@ -27,13 +41,15 @@ declare module "mindcraft" {
     name: string;
     output: string;
     params: Record<string, ParamDef>;
-    exec(ctx: Context, params: Record<string, unknown>): unknown;
+    onExecute(ctx: Context, params: Record<string, unknown>): unknown;
+    onPageEntered?(ctx: Context): void;
   }
 
   export interface ActuatorConfig {
     name: string;
     params: Record<string, ParamDef>;
-    exec(ctx: Context, params: Record<string, unknown>): void | Promise<void>;
+    onExecute(ctx: Context, params: Record<string, unknown>): void | Promise<void>;
+    onPageEntered?(ctx: Context): void;
   }
 
   export function Sensor(config: SensorConfig): unknown;

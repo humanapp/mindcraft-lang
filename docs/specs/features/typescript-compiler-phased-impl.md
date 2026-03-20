@@ -33,21 +33,31 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-20) Phase 0 and Phase 1 are complete. `packages/typescript` has a
-  working build, test suite, and type-checking pipeline.
+- (Updated 2026-03-20) Phases 0, 1, and 2 are complete. `packages/typescript` has a
+  working build, test suite, type-checking pipeline, AST validation, and descriptor
+  extraction.
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `CompileDiagnostic`,
-  `CompileResult` from the compiler module alongside `UserAuthoredProgram` and
-  `UserTileLinkInfo` interfaces.
+  `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from the compiler module
+  alongside `UserAuthoredProgram` and `UserTileLinkInfo` interfaces.
 - `src/compiler/compile.ts` exports `compileUserTile(source)` which accepts a
   TypeScript source string, runs it through a fully in-memory virtual
-  `ts.CompilerHost`, and returns diagnostics. No bytecode emission yet (Phase 3+).
-  The lib `.d.ts` content is lazy-loaded via `initCompiler()` (async, dynamic
-  `import()`) so bundlers like Vite automatically chunk the ~230KB lib strings
-  into a separate file loaded on demand.
+  `ts.CompilerHost`, validates the AST, and extracts descriptor metadata. No bytecode
+  emission yet (Phase 3+). The lib `.d.ts` content is lazy-loaded via `initCompiler()`
+  (async, dynamic `import()`) so bundlers like Vite automatically chunk the ~230KB
+  lib strings into a separate file loaded on demand.
+- Pipeline: parse -> type check -> validate AST -> extract descriptor.
+- `src/compiler/validator.ts` rejects unsupported constructs (classes, enums, `var`,
+  `for...in`, `eval`, computed property names, etc.) with positioned diagnostics.
+- `src/compiler/descriptor.ts` extracts `ExtractedDescriptor` from the
+  `Sensor()`/`Actuator()` default export: `kind`, `name`, `outputType`, `params`,
+  `execIsAsync`, `onExecuteNode`, `onPageEnteredNode`.
+- `src/compiler/types.ts` defines `CompileDiagnostic`, `ExtractedDescriptor`,
+  `ExtractedParam`.
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
   browser-compatible `ts.CompilerHost` with zero Node.js API usage.
 - `src/compiler/ambient.ts` declares the `"mindcraft"` ambient module with `Context`,
-  `Sensor`, `Actuator`, and supporting types.
+  `Sensor`, `Actuator`, `SensorConfig`, `ActuatorConfig` (with `onExecute` and
+  optional `onPageEntered`), and a minimal `Promise<T>` ambient for async support.
 - `scripts/bundle-lib-dts.js` generates `src/compiler/lib-dts.generated.ts` at build
   time, bundling TypeScript's `lib.es5.d.ts` + decorator libs as string constants.
 - `package.json` has an `exports` map for proper bundler resolution.
@@ -63,6 +73,12 @@ not survive. Keep this doc current.
 - All compiler code must run in the browser at authoring time. No Node.js-only APIs
   (`node:fs`, `node:path`, etc.) in runtime code paths. Build-time scripts (code
   generation, lib bundling) may use Node.js. See the spec's Stage 1 for details.
+- (Added 2026-03-20) **Open design question:** The `params` / `ExtractedParam[]`
+  representation must be redesigned as a `callDef` to integrate with the brain's
+  `BrainActionCallDef` / `BrainActionArgSlot[]` system. This includes resolving
+  how callSpec helpers (`param()`, `seq()`, `bag()`) are exposed to user code, how
+  tileIds are assigned to arg slots, and how the `onExecute` parameter shape is
+  determined by the callDef rather than a fixed object type.
 
 ---
 
@@ -246,7 +262,7 @@ No helpers, no callsite vars, no control flow.
      name: "is-close",
      output: "boolean",
      params: { distance: { type: "number", default: 5 } },
-     exec(ctx: Context, params: { distance: number }): boolean {
+     onExecute(ctx: Context, params: { distance: number }): boolean {
        return params.distance < 10;
      },
    });
@@ -266,7 +282,7 @@ No helpers, no callsite vars, no control flow.
 
 **Key risks:**
 
-- Getting parameter passing right. The `exec` function receives `(ctx, params)`.
+- Getting parameter passing right. The `onExecute` function receives `(ctx, params)`.
   `params` must be a struct/map. Need to decide how parameters map to local slots.
 - Binary expression lowering -- need to decide if `<` compiles to a HOST_CALL
   (existing operator overload) or a new mechanism. The spec says arithmetic operators
@@ -274,6 +290,18 @@ No helpers, no callsite vars, no control flow.
   individual args or a `MapValue`.
 - This is the hardest phase because it forces all the plumbing to work for the first
   time.
+- (Added 2026-03-20) The `params` descriptor must be redesigned as a `callDef` that
+  maps to the brain's `BrainActionCallDef` / `BrainActionArgSlot[]` system. The
+  current `ExtractedParam[]` is a placeholder. The callDef system supports `param()`,
+  `seq()`, `bag()`, and other combinators -- user-authored tiles need to express
+  which modifiers and parameters are valid arguments. Each non-anonymous arg in a
+  callDef corresponds to a tileDef in the tile catalog, so each arg needs a `tileId`.
+  The ambient types for the `"mindcraft"` module need to expose callDef helpers or
+  an equivalent declarative syntax. The `onExecute` parameter shape depends on what
+  the callDef specifies, not a fixed `params` object -- this is a significant
+  design question to resolve before lowering begins. Research the callSpec helpers
+  in `packages/core/src/brain/` and sensor/actuator registration in `apps/sim/`
+  before starting Phase 3.
 
 ---
 
@@ -670,3 +698,63 @@ imports (`Op`, `BytecodeEmitter`, `ConstantPool`, type-only imports for `Program
    chunk loads in the background before the user's first compile.
 9. The `exports` map in `package.json` is needed for bundlers to resolve the package
    entry point correctly. Use `"types"` + `"import"` conditions under `"."`.
+
+### Phase 2 -- 2026-03-20
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                             | Actual  | Notes                                                                                                                                                                                                         |
+| --------------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/compiler/validator.ts`: AST validation walker  | Done    | Rejects classes, enums, `var`, `for...in`, `with`, `switch`, generators/`yield`, computed property names, `debugger`, labeled statements, `delete`, regex, dynamic `import()`, decorators, forbidden globals. |
+| `src/compiler/descriptor.ts`: descriptor extraction | Done    | Extracts `kind`, `name`, `outputType`, `params`, `onExecuteNode`, `onPageEnteredNode` from the default export object literal.                                                                                 |
+| `src/compiler/types.ts`: shared types               | Done    | `CompileDiagnostic` relocated from `compile.ts`. `ExtractedDescriptor`, `ExtractedParam` defined.                                                                                                             |
+| Pipeline: parse -> check -> validate -> extract     | Done    | `compileUserTile()` returns `CompileResult` with optional `descriptor`. Stages short-circuit on first failure.                                                                                                |
+| `onPageEntered` as named export                     | Changed | Moved inside the `Sensor()`/`Actuator()` descriptor object. See design change below.                                                                                                                          |
+| `exec` method name                                  | Changed | Renamed to `onExecute` for consistency with `onPageEntered`. See design change below.                                                                                                                         |
+
+**Design changes from spec:**
+
+1. **`exec` renamed to `onExecute`.** All lifecycle/entry-point methods now share a
+   consistent `on*` naming convention: `onExecute`, `onPageEntered`.
+2. **`onPageEntered` moved inside the descriptor.** Instead of a separate named export
+   (`export function onPageEntered`), it is now an optional method on the
+   `Sensor()`/`Actuator()` config object. This keeps all tile behavior in a single
+   cohesive unit, simplifies extraction (no separate file-level scan), and gives
+   automatic type checking via the `SensorConfig`/`ActuatorConfig` interfaces.
+3. **`Promise<T>` ambient declaration.** TypeScript's type checker requires a `Promise`
+   constructor declaration for `async` functions even with `target: ES5` and
+   `noEmit: true`. Instead of bundling `lib.es2015.promise.d.ts` (which has
+   `/// <reference no-default-lib="true"/>` that suppresses `lib.es5.d.ts`), a minimal
+   `Promise<T>` interface + constructor was added to `ambient.ts`.
+
+**Test counts:** 24 total (5 type-checking, 7 validation, 9 extraction, 3 core imports).
+
+**Discoveries:**
+
+1. `exec` -> `onExecute` is a better naming convention. The spec used `exec` but
+   `onExecute` aligns with `onPageEntered` and any future `on*` lifecycle hooks.
+2. `onPageEntered` belongs inside the descriptor object, not as a separate file-level
+   export. This is simpler for users, simpler for extraction, and gives TypeScript
+   type checking for free via the config interfaces.
+3. TypeScript's ES5 target fails on `async` functions unless a `Promise` type is
+   globally available. The `lib.es2015.promise.d.ts` file cannot simply be added
+   to rootNames because it has `/// <reference no-default-lib="true"/>` which
+   suppresses `lib.es5.d.ts`. A minimal ambient declaration is the cleanest fix.
+4. `CompileDiagnostic` was relocated from `compile.ts` to `types.ts` to avoid
+   duplication. `compile.ts` re-exports it for API compatibility.
+5. The validator checks 13 distinct construct categories. It uses a `switch` on
+   `SyntaxKind` plus targeted checks for `VariableDeclarationList` flags, call
+   expressions with `import` keyword, and forbidden global identifiers.
+6. Descriptor extraction handles both property assignment syntax
+   (`onExecute: function(...)`) and method declaration syntax (`onExecute(...)`).
+7. The `params` representation as `ExtractedParam[]` is a placeholder. The Phase 3
+   prerequisite note stands: this must be redesigned as a `callDef` that maps to
+   the brain's `BrainActionCallDef` / `BrainActionArgSlot[]` system before lowering
+   can begin. This is a significant open design question -- see the Phase 3
+   updated risks.
+8. The `ExtractedDescriptor.onPageEnteredNode` type changed from
+   `ts.FunctionDeclaration` to `ts.MethodDeclaration | ts.FunctionExpression |
+ts.ArrowFunction` since it now comes from an object literal method rather than
+   a file-level function declaration.

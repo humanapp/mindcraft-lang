@@ -1,17 +1,17 @@
 import type { Program } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
 import { AMBIENT_MINDCRAFT_DTS } from "./ambient.js";
+import { extractDescriptor } from "./descriptor.js";
+import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
+import { validateAst } from "./validator.js";
 import { createVirtualCompilerHost } from "./virtual-host.js";
 
-export interface CompileDiagnostic {
-  message: string;
-  line?: number;
-  column?: number;
-}
+export type { CompileDiagnostic, ExtractedDescriptor, ExtractedParam } from "./types.js";
 
 export interface CompileResult {
   diagnostics: CompileDiagnostic[];
   program?: Program;
+  descriptor?: ExtractedDescriptor;
 }
 
 const LIB_DIR = "/lib/";
@@ -64,5 +64,24 @@ export function compileUserTile(source: string): CompileResult {
       return result;
     });
 
-  return { diagnostics };
+  if (diagnostics.length > 0) {
+    return { diagnostics };
+  }
+
+  const sourceFile = tsProgram.getSourceFile("/user-code.ts");
+  if (!sourceFile) {
+    return { diagnostics: [{ message: "Internal error: source file not found" }] };
+  }
+
+  const validationDiags = validateAst(sourceFile);
+  if (validationDiags.length > 0) {
+    return { diagnostics: validationDiags };
+  }
+
+  const extractionResult = extractDescriptor(sourceFile);
+  if (extractionResult.diagnostics.length > 0) {
+    return { diagnostics: extractionResult.diagnostics };
+  }
+
+  return { diagnostics: [], descriptor: extractionResult.descriptor };
 }
