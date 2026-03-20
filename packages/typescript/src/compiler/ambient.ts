@@ -35,19 +35,20 @@ declare module "mindcraft" {
   export interface ParamDef {
     type: string;
     default?: unknown;
+    anonymous?: boolean;
   }
 
   export interface SensorConfig {
     name: string;
     output: string;
-    params: Record<string, ParamDef>;
+    params?: Record<string, ParamDef>;
     onExecute(ctx: Context, params: Record<string, unknown>): unknown;
     onPageEntered?(ctx: Context): void;
   }
 
   export interface ActuatorConfig {
     name: string;
-    params: Record<string, ParamDef>;
+    params?: Record<string, ParamDef>;
     onExecute(ctx: Context, params: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;
   }

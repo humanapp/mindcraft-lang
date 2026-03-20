@@ -180,6 +180,7 @@ function extractParams(node: ts.Expression, addDiag: (node: ts.Node, message: st
     let type: string | undefined;
     let defaultValue: number | string | boolean | null | undefined;
     let hasDefault = false;
+    let anonymous = false;
 
     for (const paramProp of prop.initializer.properties) {
       if (!ts.isPropertyAssignment(paramProp)) continue;
@@ -197,6 +198,14 @@ function extractParams(node: ts.Expression, addDiag: (node: ts.Node, message: st
         if (defaultValue === undefined && !isNullishLiteral(paramProp.initializer)) {
           addDiag(paramProp.initializer, "Param `default` must be a literal value.");
         }
+      } else if (propName === "anonymous") {
+        if (paramProp.initializer.kind === ts.SyntaxKind.TrueKeyword) {
+          anonymous = true;
+        } else if (paramProp.initializer.kind === ts.SyntaxKind.FalseKeyword) {
+          anonymous = false;
+        } else {
+          addDiag(paramProp.initializer, "Param `anonymous` must be a boolean literal.");
+        }
       }
     }
 
@@ -209,6 +218,7 @@ function extractParams(node: ts.Expression, addDiag: (node: ts.Node, message: st
       name: paramName,
       type,
       required: !hasDefault,
+      anonymous,
     };
 
     if (hasDefault) {

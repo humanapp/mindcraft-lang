@@ -220,6 +220,7 @@ describe("descriptor extraction", () => {
     assert.equal(result.descriptor.params[0].type, "number");
     assert.equal(result.descriptor.params[0].defaultValue, 5);
     assert.equal(result.descriptor.params[0].required, false);
+    assert.equal(result.descriptor.params[0].anonymous, false);
     assert.equal(result.descriptor.execIsAsync, false);
     assert.ok(result.descriptor.onExecuteNode);
     assert.equal(result.descriptor.onPageEnteredNode, null);
@@ -291,15 +292,18 @@ export default Sensor({
     assert.equal(result.descriptor.params[0].type, "number");
     assert.equal(result.descriptor.params[0].defaultValue, 10);
     assert.equal(result.descriptor.params[0].required, false);
+    assert.equal(result.descriptor.params[0].anonymous, false);
 
     assert.equal(result.descriptor.params[1].name, "label");
     assert.equal(result.descriptor.params[1].type, "string");
     assert.equal(result.descriptor.params[1].required, true);
+    assert.equal(result.descriptor.params[1].anonymous, false);
 
     assert.equal(result.descriptor.params[2].name, "active");
     assert.equal(result.descriptor.params[2].type, "boolean");
     assert.equal(result.descriptor.params[2].defaultValue, true);
     assert.equal(result.descriptor.params[2].required, false);
+    assert.equal(result.descriptor.params[2].anonymous, false);
   });
 
   test("missing name produces diagnostic", () => {
@@ -378,6 +382,52 @@ export default Actuator({
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.kind, "actuator");
+    assert.equal(result.descriptor.params.length, 0);
+  });
+
+  test("anonymous param extracts anonymous flag", () => {
+    const source = `
+import { Actuator, type Context } from "mindcraft";
+
+export default Actuator({
+  name: "chase",
+  params: {
+    target: { type: "number", anonymous: true },
+    speed: { type: "number", default: 1 },
+  },
+  onExecute(ctx: Context, params: { target: number; speed: number }): void {},
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
+    assert.equal(result.descriptor.params.length, 2);
+
+    assert.equal(result.descriptor.params[0].name, "target");
+    assert.equal(result.descriptor.params[0].type, "number");
+    assert.equal(result.descriptor.params[0].anonymous, true);
+    assert.equal(result.descriptor.params[0].required, true);
+
+    assert.equal(result.descriptor.params[1].name, "speed");
+    assert.equal(result.descriptor.params[1].type, "number");
+    assert.equal(result.descriptor.params[1].anonymous, false);
+    assert.equal(result.descriptor.params[1].required, false);
+    assert.equal(result.descriptor.params[1].defaultValue, 1);
+  });
+
+  test("omitted params produces empty params list", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "no-params",
+  output: "boolean",
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
     assert.equal(result.descriptor.params.length, 0);
   });
 });

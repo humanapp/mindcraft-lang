@@ -21,4 +21,5 @@ export interface ExtractedParam {
   type: string;
   defaultValue?: number | string | boolean | null;
   required: boolean;
+  anonymous: boolean;
 }

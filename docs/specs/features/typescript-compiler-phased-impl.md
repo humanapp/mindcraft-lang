@@ -33,9 +33,10 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-20) Phases 0, 1, and 2 are complete. `packages/typescript` has a
-  working build, test suite, type-checking pipeline, AST validation, and descriptor
-  extraction.
+- (Updated 2026-03-20) Phases 0, 1, 2, and 2.5 are complete. `packages/typescript`
+  has a working build, test suite, type-checking pipeline, AST validation, descriptor
+  extraction, and the callDef design back-propagated into types and ambient
+  declarations.
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `CompileDiagnostic`,
   `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from the compiler module
   alongside `UserAuthoredProgram` and `UserTileLinkInfo` interfaces.
@@ -778,3 +779,27 @@ imports (`Op`, `BytecodeEmitter`, `ConstantPool`, type-only imports for `Program
    `ts.FunctionDeclaration` to `ts.MethodDeclaration | ts.FunctionExpression |
 ts.ArrowFunction` since it now comes from an object literal method rather than
    a file-level function declaration.
+
+### Phase 2.5 -- 2026-03-20
+
+**Status:** Complete. Back-propagated the resolved callDef design into Phase 0-2 code.
+
+**Objective:** The callDef/callSpec/param design was resolved during the Phase 2
+post-mortem but the implementation code predated it. This phase updated the existing
+Phase 0-2 types, ambient declarations, descriptor extraction, and tests to align
+with the design as documented in the spec.
+
+**Changes:**
+
+| File                           | Change                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `src/compiler/types.ts`        | Added `anonymous: boolean` field to `ExtractedParam`.                                                                    |
+| `src/compiler/ambient.ts`      | Added `anonymous?: boolean` to `ParamDef`. Made `params` optional on `SensorConfig` and `ActuatorConfig`.                |
+| `src/compiler/descriptor.ts`   | Extracts `anonymous` flag from param definitions (boolean literal, defaults to `false`).                                 |
+| `src/index.ts`                 | Added `callDef: BrainActionCallDef` and `outputType?: TypeId` to `UserAuthoredProgram`, importing types from core/brain. |
+| `src/compiler/compile.spec.ts` | Updated existing param assertions to verify `anonymous: false`. Added tests for anonymous params and omitted `params`.   |
+
+**Test counts:** 26 total (5 type-checking, 7 validation, 11 extraction, 3 core imports).
+
+**No new discoveries.** All changes were mechanical alignment with the already-resolved
+design. No spec amendments needed.
