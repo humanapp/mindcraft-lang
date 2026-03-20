@@ -56,11 +56,11 @@ The app lives at `apps/sim/` within the `mindcraft-lang` monorepo.
 
 ## Build and Dev Scripts
 
-```
+```bash
 npm run dev          # Vite dev server (port 8080, --force)
 npm run build        # Builds packages/core first (prebuild), then Vite prod build
 npm run clean        # rm -rf dist && rm -rf node_modules/.vite
-npm run check:fix    # Biome lint + format (auto-fix)
+npm run check        # Biome lint + format (auto-fix)
 ```
 
 The dev server watches `packages/core` ESM output for live reload. The prod build splits Phaser into a separate chunk and minifies with Terser (2-pass, mangle enabled).

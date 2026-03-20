@@ -27,8 +27,7 @@
     "creative-coding",
     "roblox",
     "kodu",
-    "project-spark",
-    "sklanch"
+    "project-spark"
   ],
   "publishConfig": {
     "access": "public"
@@ -366,16 +365,15 @@
     "build:rbx": "rbxtsc --type package --project tsconfig.rbx.json && node scripts/post-build-rbx.js",
     "watch:rbx": "node scripts/watch-rbx.js",
     "clean": "rm -rf ./dist",
-    "lint": "biome lint ./src",
-    "lint:fix": "biome lint ./src --write",
-    "lint:eslint": "eslint \"src/**/*.ts\"",
+    "lint:only": "biome lint ./src",
+    "check:only": "biome check ./src",
+    "format:only": "biome format ./src",
+    "lint": "biome lint ./src --write",
+    "check": "biome check ./src --write",
     "format": "biome format ./src --write",
-    "format:check": "biome format ./src",
-    "check": "biome check ./src",
-    "check:fix": "biome check ./src --write",
     "pretest": "npm run build:node",
     "test": "tsx --tsconfig tsconfig.node.json --test $(find src -name '*.spec.ts')",
-    "prepublishOnly": "npm run build",
+    "prepublishOnly": "npm run build && npm run check:only",
     "release:patch": "node ../../scripts/release.js patch",
     "release:minor": "node ../../scripts/release.js minor",
     "release:major": "node ../../scripts/release.js major"

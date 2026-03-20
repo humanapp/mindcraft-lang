@@ -132,5 +132,4 @@ src/
 
 ```bash
 npm run check      # Biome lint + format check
-npm run check:fix  # Auto-fix
 ```

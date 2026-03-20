@@ -31,12 +31,12 @@
     "prebuild": "cd ../../packages/core && npm run build",
     "build": "vite build --config vite/config.prod.mjs",
     "clean": "rm -rf dist && rm -rf node_modules/.vite",
-    "lint": "biome lint ./src",
-    "lint:fix": "biome lint ./src --write",
-    "format": "biome format ./src --write",
-    "format:check": "biome format ./src",
-    "check": "biome check ./src",
-    "check:fix": "biome check ./src --write"
+    "lint:only": "biome lint ./src",
+    "check:only": "biome check ./src",
+    "format:only": "biome format ./src",
+    "lint": "biome lint ./src --write",
+    "check": "biome check ./src --write",
+    "format": "biome format ./src --write"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

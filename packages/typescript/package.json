@@ -1,20 +1,56 @@
 {
   "name": "@mindcraft-lang/typescript",
   "version": "0.1.0",
-  "private": true,
-  "description": "TypeScript-to-Mindcraft bytecode compiler for user-authored sensors and actuators",
+  "description": "TypeScript-to-Mindcraft bytecode compiler for sensors and actuators implemented in TypeScript",
   "license": "MIT",
   "type": "module",
+  "author": "humanapp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "directory": "packages/typescript"
+  },
+  "bugs": {
+    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+  },
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/typescript#readme",
+  "keywords": [
+    "mindcraft",
+    "visual-programming",
+    "tile-based",
+    "typescript",
+    "language",
+    "education",
+    "stem",
+    "coding",
+    "game-development",
+    "creative-coding",
+    "kodu",
+    "project-spark"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "check:fix": "biome check ./src --write"
+    "clean": "rm -rf dist",
+    "lint:only": "biome lint ./src",
+    "check:only": "biome check ./src",
+    "format:only": "biome format ./src",
+    "lint": "biome lint ./src --write",
+    "check": "biome check ./src --write",
+    "format": "biome format ./src --write"
   },
   "dependencies": {
-    "@mindcraft-lang/core": "workspace:*"
+    "@mindcraft-lang/core": "file:../core"
   },
   "devDependencies": {
-    "typescript": "~5.8.0"
+    "@biomejs/biome": "2.3.15",
+    "typescript": "~5.7.2"
   }
 }

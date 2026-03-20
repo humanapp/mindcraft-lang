@@ -14,5 +14,10 @@
     "isolatedModules": true
   },
   "include": ["src"],
-  "exclude": ["node_modules", "dist", "**/*.spec.ts"]
+  "exclude": ["node_modules", "dist", "**/*.spec.ts"],
+  "paths": {
+    "@mindcraft-lang/core": [
+      "../core/src/index.ts"
+    ]
+  }
 }

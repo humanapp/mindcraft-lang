@@ -26,7 +26,7 @@ When making changes to `packages/core`:
 
 After making any code changes in `packages/core`, always run these commands in order from the `packages/core` directory:
 
-1. `npm run check:fix` -- lint and format
+1. `npm run check` -- lint and format
 2. `npm run build` -- compiles all three targets (Roblox-TS, Node.js, ESM); a build error here means the change is not done
 3. `npm test` -- runs the test suite
 

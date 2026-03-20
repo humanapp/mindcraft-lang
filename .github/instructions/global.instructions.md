@@ -45,4 +45,4 @@ Common substitutions:
 
 ## After Making Code Changes
 
-After making any code changes in this workspace, always run `npm run check:fix` in the package directory where the files were modified. This runs Biome (linter/formatter) to ensure code style consistency.
+After making any code changes in this workspace, always run `npm run check` in the package directory where the files were modified. This runs Biome (linter/formatter) to ensure code style consistency.

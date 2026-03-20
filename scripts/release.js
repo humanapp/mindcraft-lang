@@ -39,6 +39,7 @@ function syncInternalDeps(pkg) {
   let changed = false;
   for (const [name, range] of Object.entries(deps)) {
     if (!name.startsWith(SCOPE)) continue;
+    if (range.startsWith("file:")) continue; // npm publish rewrites these automatically
     const siblingName = name.replace(SCOPE, "");
     const siblingPkgPath = join(packagesDir, siblingName, "package.json");
     let siblingPkg;
