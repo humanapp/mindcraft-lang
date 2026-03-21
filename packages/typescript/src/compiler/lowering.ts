@@ -18,6 +18,7 @@ export interface ProgramLoweringResult {
   functions: FunctionEntry[];
   entryFuncId: number;
   initFuncId?: number;
+  onPageEnteredWrapperId: number;
   numCallsiteVars: number;
   diagnostics: CompileDiagnostic[];
 }
@@ -74,11 +75,18 @@ export function lowerProgram(
     }
   }
 
+  let userOnPageEnteredFuncId: number | undefined;
+  if (descriptor.onPageEnteredNode) {
+    userOnPageEnteredFuncId = nextFuncId++;
+  }
+
   const hasInitializers = hasTopLevelInitializers(sourceFile);
   let initFuncId: number | undefined;
   if (hasInitializers) {
     initFuncId = nextFuncId++;
   }
+
+  const onPageEnteredWrapperId = nextFuncId++;
 
   const functions: FunctionEntry[] = [];
 
@@ -97,6 +105,18 @@ export function lowerProgram(
     functions.push(entry);
   }
 
+  if (descriptor.onPageEnteredNode) {
+    const entry = lowerOnPageEnteredBody(
+      descriptor,
+      checker,
+      resolveOperator,
+      callsiteVars,
+      functionTable,
+      diagnostics
+    );
+    functions.push(entry);
+  }
+
   if (hasInitializers && initFuncId !== undefined) {
     const initEntry = generateModuleInit(
       sourceFile,
@@ -109,12 +129,95 @@ export function lowerProgram(
     functions.push(initEntry);
   }
 
+  const wrapperEntry = generateOnPageEnteredWrapper(descriptor.name, initFuncId, userOnPageEnteredFuncId);
+  functions.push(wrapperEntry);
+
   return {
     functions,
     entryFuncId,
     initFuncId,
+    onPageEnteredWrapperId,
     numCallsiteVars: nextCallsiteVar,
     diagnostics,
+  };
+}
+
+function lowerOnPageEnteredBody(
+  descriptor: ExtractedDescriptor,
+  checker: ts.TypeChecker,
+  resolveOperator: (opId: string, argTypes: string[]) => string | undefined,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  sharedDiagnostics: CompileDiagnostic[]
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const funcNode = descriptor.onPageEnteredNode!;
+
+  const scopeStack = new ScopeStack(0);
+
+  const ctx: LowerContext = {
+    checker,
+    paramsSymbol: undefined,
+    paramLocals: new Map(),
+    scopeStack,
+    ir,
+    diagnostics: sharedDiagnostics,
+    loopStack: [],
+    nextLabelId: 0,
+    resolveOperator,
+    callsiteVars,
+    functionTable,
+  };
+
+  const body = funcNode.body;
+  if (!body || !ts.isBlock(body)) {
+    sharedDiagnostics.push({ message: "onPageEntered function has no body" });
+    return {
+      ir,
+      numParams: 0,
+      numLocals: scopeStack.nextLocal,
+      name: `${descriptor.name}.onPageEntered`,
+    };
+  }
+
+  lowerStatements(body.statements, ctx);
+
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+
+  return {
+    ir,
+    numParams: 0,
+    numLocals: scopeStack.nextLocal,
+    name: `${descriptor.name}.onPageEntered`,
+  };
+}
+
+function generateOnPageEnteredWrapper(
+  name: string,
+  initFuncId: number | undefined,
+  userOnPageEnteredFuncId: number | undefined
+): FunctionEntry {
+  const ir: IrNode[] = [];
+
+  if (initFuncId !== undefined) {
+    ir.push({ kind: "Call", funcIndex: initFuncId, argc: 0 });
+    ir.push({ kind: "Pop" });
+  }
+
+  if (userOnPageEnteredFuncId !== undefined) {
+    ir.push({ kind: "Call", funcIndex: userOnPageEnteredFuncId, argc: 0 });
+    ir.push({ kind: "Pop" });
+  }
+
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+
+  return {
+    ir,
+    numParams: 0,
+    numLocals: 0,
+    name: `${name}.<onPageEntered-wrapper>`,
   };
 }
 

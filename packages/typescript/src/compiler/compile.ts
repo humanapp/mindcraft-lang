@@ -131,7 +131,9 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
     numCallsiteVars: programResult.numCallsiteVars,
     entryFuncId: programResult.entryFuncId,
     initFuncId: programResult.initFuncId,
-    lifecycleFuncIds: {},
+    lifecycleFuncIds: {
+      onPageEntered: programResult.onPageEnteredWrapperId,
+    },
     programRevisionId: generateRevisionId(),
   };
 

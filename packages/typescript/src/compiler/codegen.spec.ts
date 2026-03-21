@@ -292,7 +292,7 @@ export default Sensor({
     assert.equal(prog.numCallsiteVars, 0);
     assert.ok(prog.outputType);
     assert.ok(prog.programRevisionId);
-    assert.equal(prog.functions.size(), 1);
+    assert.equal(prog.functions.size(), 2);
     assert.ok(prog.constants.size() > 0);
   });
 
@@ -1304,8 +1304,8 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
-    // 3 functions: onExecute + helper1 + helper2 (no init since no top-level vars)
-    assert.equal(result.program!.functions.size(), 3);
+    // 4 functions: onExecute + helper1 + helper2 + onPageEntered wrapper
+    assert.equal(result.program!.functions.size(), 4);
 
     const handles = new HandleTable(100);
     const vm = new runtime.VM(result.program!, handles);
@@ -1418,6 +1418,282 @@ export default Sensor({
       const r = vm.runFiber(fiber, mkScheduler());
       assert.equal(r.status, VmStatus.DONE);
       if (r.status === VmStatus.DONE) assert.equal((r.result as BooleanValue).v, false);
+    }
+  });
+});
+
+describe("phase 6: onPageEntered + lifecycle wrapper", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+  });
+
+  test("onPageEntered resets a callsite var; next exec call sees the reset value", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let count = 0;
+
+export default Sensor({
+  name: "resettable-counter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    count += 1;
+    return count;
+  },
+  onPageEntered(ctx: Context): void {
+    count = 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.lifecycleFuncIds.onPageEntered !== undefined, "expected onPageEntered wrapper funcId");
+    assert.ok(prog.initFuncId !== undefined, "expected initFuncId");
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    // Run init -> count = 0
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      vm.runFiber(fiber, mkScheduler());
+    }
+
+    // Call exec twice -> count = 1, then 2
+    for (let expected = 1; expected <= 2; expected++) {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, expected);
+    }
+
+    // Run onPageEntered wrapper -> resets count via init + user onPageEntered
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+    }
+
+    // Next exec call -> count should be 1 again (reset happened)
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 1);
+    }
+  });
+
+  test("source without onPageEntered still generates wrapper that runs init", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let count = 0;
+
+export default Sensor({
+  name: "no-ope",
+  output: "number",
+  onExecute(ctx: Context): number {
+    count += 1;
+    return count;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.lifecycleFuncIds.onPageEntered !== undefined, "wrapper should always be generated");
+    assert.ok(prog.initFuncId !== undefined);
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    // Init -> count = 0
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      vm.runFiber(fiber, mkScheduler());
+    }
+
+    // Call exec twice -> count = 1, 2
+    for (let expected = 1; expected <= 2; expected++) {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, expected);
+    }
+
+    // Run onPageEntered wrapper -> no user function, but runs init -> count = 0
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+    }
+
+    // Next exec -> count = 1 (re-initialized)
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 1);
+    }
+  });
+
+  test("onPageEntered wrapper calls user function after init (user can override init values)", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let startValue = 0;
+
+export default Sensor({
+  name: "override-init",
+  output: "number",
+  onExecute(ctx: Context): number {
+    startValue += 1;
+    return startValue;
+  },
+  onPageEntered(ctx: Context): void {
+    startValue = 100;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.lifecycleFuncIds.onPageEntered !== undefined);
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    // Run onPageEntered wrapper: init sets startValue=0, then user onPageEntered sets startValue=100
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+    }
+
+    // exec -> startValue was 100, now becomes 101
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 101);
+    }
+  });
+
+  test("wrapper is generated even with no callsite vars and no onPageEntered", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "minimal",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 42;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.lifecycleFuncIds.onPageEntered !== undefined, "wrapper should always exist");
+    assert.equal(prog.numCallsiteVars, 0);
+    assert.equal(prog.initFuncId, undefined);
+
+    // The wrapper should be callable and return without error
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+  });
+
+  test("onPageEntered with local variables and control flow", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let a = 0;
+let b = 0;
+
+export default Sensor({
+  name: "multi-reset",
+  output: "number",
+  onExecute(ctx: Context): number {
+    a += 1;
+    b += 10;
+    return a + b;
+  },
+  onPageEntered(ctx: Context): void {
+    a = 5;
+    b = 50;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    // Run wrapper: init sets a=0,b=0 then user onPageEntered sets a=5,b=50
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      vm.runFiber(fiber, mkScheduler());
+    }
+
+    // exec: a=5+1=6, b=50+10=60, return 66
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 66);
     }
   });
 });

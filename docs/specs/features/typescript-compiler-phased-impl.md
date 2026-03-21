@@ -33,13 +33,15 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0, 1, 2, 2.5, 3, 4, and 5 are complete. `packages/typescript`
-  has a working build, test suite, type-checking pipeline, AST validation, descriptor
-  extraction, the callDef design, end-to-end bytecode compilation and execution,
-  control flow (`if`/`else`, `while`, `for`, `break`/`continue`, block-scoped
-  `let`/`const`, variable shadowing, assignments, `++`/`--`), user-defined helper
-  functions (`CALL`), and callsite-persistent top-level variables
-  (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` with module init function).
+- (Updated 2026-03-21) Phases 0, 1, 2, 2.5, 3, 4, 5, and 6 are complete.
+  `packages/typescript` has a working build, test suite, type-checking pipeline, AST
+  validation, descriptor extraction, the callDef design, end-to-end bytecode
+  compilation and execution, control flow (`if`/`else`, `while`, `for`,
+  `break`/`continue`, block-scoped `let`/`const`, variable shadowing, assignments,
+  `++`/`--`), user-defined helper functions (`CALL`), callsite-persistent top-level
+  variables (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` with module init function),
+  and `onPageEntered` lifecycle support (user body compilation + always-generated
+  wrapper that calls module init then user function).
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientSource`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
@@ -68,12 +70,13 @@ not survive. Keep this doc current.
   `IrJump`, `IrJumpIfFalse`, `IrJumpIfTrue`, `IrDup`) and multi-function support
   (`IrCall`, `IrLoadCallsiteVar`, `IrStoreCallsiteVar`).
 - `src/compiler/lowering.ts` exports `lowerProgram()` which compiles all file-level
-  function declarations, the `onExecute` body, and a module init function (if
-  callsite-persistent vars exist) into a `ProgramLoweringResult` containing multiple
-  `FunctionEntry` records. Supports `if`/`else`, `while`, C-style `for`,
-  `break`/`continue`, block-scoped variable declarations, assignments (`=`, `+=`,
-  `-=`, `*=`, `/=`), prefix/postfix `++`/`--`, user-defined function calls, and
-  callsite-persistent variable access.
+  function declarations, the `onExecute` body, the optional user `onPageEntered` body,
+  a module init function (if callsite-persistent vars exist), and an always-generated
+  `onPageEntered` wrapper into a `ProgramLoweringResult` containing multiple
+  `FunctionEntry` records. `ProgramLoweringResult` includes `onPageEnteredWrapperId`.
+  Supports `if`/`else`, `while`, C-style `for`, `break`/`continue`, block-scoped
+  variable declarations, assignments (`=`, `+=`, `-=`, `*=`, `/=`), prefix/postfix
+  `++`/`--`, user-defined function calls, and callsite-persistent variable access.
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
   browser-compatible `ts.CompilerHost` with zero Node.js API usage.
 - `src/compiler/ambient.ts` exports `buildAmbientSource(appTypeEntries?)` which
@@ -540,6 +543,11 @@ linked program executes correctly in the VM.
   function -- all helper functions too
 - Must handle the case where user programs share no constants (trivial) and where
   they have overlapping constant values (dedup during merge, or just append)
+- (Added 2026-03-21) **`lifecycleFuncIds.onPageEntered` must be remapped.** The
+  `onPageEntered` wrapper funcId is relative to the user program's function array.
+  After linking, the linker must remap it (add the function offset) and return the
+  remapped lifecycle funcIds alongside `linkedEntryFuncId`. The wrapper is always
+  present (never undefined), so no null-check is needed.
 
 ---
 
@@ -1104,3 +1112,59 @@ buildCallDef, 5 type-checking, 7 validation, 11 extraction, 3 core imports).
    where `CALL` pushes arguments into the callee's locals.
 5. **`null` literal still unsupported.** Carried forward from Phase 4. Not needed for
    Phase 5 scope.
+
+### Phase 6 -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                        | Actual | Notes                                                                                                                             |
+| -------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `lowering.ts`: compile `onPageEnteredNode`, generate wrapper   | Done   | `lowerOnPageEnteredBody()` compiles user body; `generateOnPageEnteredWrapper()` generates CALL-init, CALL-user, NIL, RET wrapper. |
+| `compile.ts`: set `lifecycleFuncIds.onPageEntered`             | Done   | Set to `programResult.onPageEnteredWrapperId`.                                                                                    |
+| `onPageEntered` compiles as a separate `FunctionBytecode`      | Done   | User body compiled with 0 params, shared `callsiteVars`, own `ScopeStack`.                                                        |
+| Generated wrapper calls module init, then user `onPageEntered` | Done   | Both calls are optional -- wrapper emits CALL+POP only if initFuncId / userOnPageEnteredFuncId exist.                             |
+| `lifecycleFuncIds.onPageEntered` points to wrapper             | Done   | Always set (wrapper is always generated).                                                                                         |
+| If no user `onPageEntered`, wrapper still runs module init     | Done   | Tested explicitly.                                                                                                                |
+
+**Design notes:**
+
+1. **Wrapper is always generated.** Even when there are no callsite vars and no user
+   `onPageEntered`, the wrapper is emitted (pushes NIL, returns). This keeps
+   `lifecycleFuncIds.onPageEntered` unconditionally set, simplifying the registration
+   bridge -- it can always register the hook without conditional logic.
+2. **Function ID ordering.** 0=onExecute, 1..M=helpers, M+1=user onPageEntered (if
+   present), next=module init (if callsite vars exist), last=onPageEntered wrapper.
+   The wrapper is always the final function entry.
+3. **No changes to `types.ts` or `ir.ts`.** The `lifecycleFuncIds.onPageEntered` field
+   already existed on `UserAuthoredProgram` (added in Phase 5 as `onPageEntered?:
+number`). `IrCall`, `IrPushConst`, and `IrReturn` IR nodes were sufficient for both
+   the user body and the generated wrapper.
+4. **`onPageEntered` extracted from descriptor, not file-level.** As noted in the
+   Phase 6 risk section (added 2026-03-21), `onPageEntered` is a method on the
+   `Sensor()`/`Actuator()` config object, not a file-level named export. The
+   implementation uses `descriptor.onPageEnteredNode` directly.
+
+**Updated prior tests:** Two existing tests (`program metadata is correct` in Phase 3
+and `program has correct function count with helpers` in Phase 5) had their function
+count assertions incremented by 1 to account for the always-present wrapper.
+
+**Test counts:** 68 total (5 Phase 6, 11 Phase 5, 11 Phase 4 control flow, 10 Phase 3
+codegen/VM, 5 buildCallDef, 5 type-checking, 7 validation, 11 extraction, 3 core
+imports).
+
+**Discoveries:**
+
+1. **Always-generated wrapper simplifies downstream integration.** By unconditionally
+   generating the wrapper (even when it's a no-op NIL+RET), the linker and
+   registration bridge (Phases 7-8) can always read
+   `lifecycleFuncIds.onPageEntered` without null checks. The cost is one trivial
+   function entry per program.
+2. **No `LowerContext` changes needed.** The user `onPageEntered` body reuses the
+   same lowering infrastructure as helper functions (own `ScopeStack`, shared
+   `callsiteVars` and `functionTable`). No new fields on `LowerContext`.
+3. **Generated wrapper uses IR directly, not lowering.** The wrapper is so simple
+   (CALL+POP, CALL+POP, NIL, RET) that it constructs `IrNode[]` manually rather
+   than going through `lowerStatements`. This avoids needing a synthetic AST.
+4. **`null` literal still unsupported.** Carried forward from Phase 5.

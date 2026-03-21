@@ -649,6 +649,12 @@ interface UserAuthoredProgram extends Program {
 }
 ```
 
+(Updated 2026-03-21: The actual implementation stores lifecycle function IDs instead of
+booleans: `lifecycleFuncIds: { onPageEntered?: number }` holds the wrapper's function
+index. `numCallsiteVars` replaces `callsiteVarCount`. `entryFuncId` and `initFuncId`
+are also present. See `packages/typescript/src/compiler/types.ts` for the current
+shape.)
+
 #### Debug metadata emission
 
 The compiler emits a `DebugMetadata` structure as a first-class output of program
@@ -1024,14 +1030,16 @@ The module init function runs:
    initial values. This matches how built-in sensors reset their call-site state in
    `onPageEntered`.
 
-If the file also declares an authored `export function onPageEntered(ctx)`, the
-generated wrapper calls the module init first (to reset state), then calls the user's
+If the descriptor also includes an authored `onPageEntered` method, the generated
+wrapper calls the module init first (to reset state), then calls the user's
 `onPageEntered` body. The user function runs with freshly-reset `callsiteVars`. If no
 authored `onPageEntered` exists, the wrapper calls only the module init.
+(Updated 2026-03-21: `onPageEntered` is a method on the descriptor object, not a
+file-level named export. See the updated source shape at the top of this section.)
 
 This means top-level initializers always re-run on page entry. Authors who want to
 perform additional setup (clearing external state, logging, etc.) declare
-`onPageEntered` as a named export in the same file.
+`onPageEntered` as a method on the descriptor object.
 
 #### Helper function state access
 
@@ -1041,9 +1049,11 @@ resolved **lexically** -- a helper function that references a top-level variable
 to the same `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` instructions as the `exec`
 function itself. No new state instances are created when a helper is called.
 
-The same rule applies to `onPageEntered` when declared as a named export: it is compiled
-as a regular user-authored function in the same file, and its references to top-level
-variables resolve against the same callsite-persistent state instance.
+The same rule applies to `onPageEntered` when declared as a method on the descriptor
+object: it is compiled as a regular user-authored function in the same file, and its
+references to top-level variables resolve against the same callsite-persistent state
+instance.
+(Updated 2026-03-21: `onPageEntered` is a descriptor method, not a named export.)
 
 ```typescript
 let hitCount = 0; // callsite-persistent (STORE_CALLSITE_VAR index 0)
@@ -1055,16 +1065,15 @@ function incrementHits(): void {
 export default Sensor({
   name: "hit-tracker",
   output: "number",
-  exec(ctx: Context): number {
+  onExecute(ctx: Context): number {
     incrementHits(); // CALL -- shares the same callsiteVars array
     return hitCount; // LOAD_CALLSITE_VAR 0
   },
+  onPageEntered(ctx: Context): void {
+    // Module init already reset hitCount to 0 before this runs.
+    // Additional setup could go here.
+  },
 });
-
-export function onPageEntered(ctx: Context): void {
-  // Module init already reset hitCount to 0 before this runs.
-  // Additional setup could go here.
-}
 ```
 
 In the compiled bytecode, `incrementHits` and `onPageEntered` are separate
@@ -1073,9 +1082,10 @@ and the `callsiteVars` array is attached to the `Fiber`, not to the frame. All
 frames within the same fiber invocation read and write the same `callsiteVars`. This is
 the standard behavior for module-level variables in any language with module scope.
 
-The semantic rule: **`exec`, `onPageEntered`, and all helper functions in the same source
-file resolve top-level bindings against the same callsite-persistent state instance for
-that tile usage.** No function in the file gets a separate copy of `callsiteVars`.
+The semantic rule: **`onExecute`, `onPageEntered`, and all helper functions in the same
+source file resolve top-level bindings against the same callsite-persistent state
+instance for that tile usage.** No function in the file gets a separate copy of
+`callsiteVars`.
 
 Helper functions do not get their own callsite-persistent state. Only top-level
 declarations in the source file produce `callsiteVars` slots.
