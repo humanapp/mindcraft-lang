@@ -789,9 +789,12 @@ function incompleteExprExpectedType(
             let ambiguous = false;
             for (let i = 0; i < allOverloads.size(); i++) {
               const overload = allOverloads.get(i);
-              // Binary operators always have 2 argTypes; match on LHS type
+              // Binary operators always have 2 argTypes; match on LHS type.
+              // Skip Nil-typed RHS overloads -- nil is not a tile-selectable type
+              // and should not cause ambiguity in expected-type inference.
               if (overload.argTypes[0] === leftType && overload.argTypes[1] !== undefined) {
                 const rhs = overload.argTypes[1];
+                if (rhs === CoreTypeIds.Nil) continue;
                 if (rhsType === undefined) {
                   rhsType = rhs;
                 } else if (rhsType !== rhs) {

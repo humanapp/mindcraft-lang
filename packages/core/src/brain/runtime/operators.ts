@@ -25,7 +25,7 @@ import {
   type OpSpec,
   type StringValue,
   type TypeId,
-  Value,
+  type Value,
 } from "../interfaces";
 import { CoreTypeIds } from "../interfaces/core-types";
 import { getBrainServices } from "../services";
@@ -586,4 +586,85 @@ export function registerCoreOperators() {
     },
     false
   );
+
+  // -- Nil overloads ----------------------------------------------------------
+
+  operatorOverloads.binary(
+    CoreOpId.EqualTo,
+    CoreTypeIds.Nil,
+    CoreTypeIds.Nil,
+    CoreTypeIds.Boolean,
+    { exec: () => mkBooleanValue(true) },
+    false
+  );
+  operatorOverloads.binary(
+    CoreOpId.NotEqualTo,
+    CoreTypeIds.Nil,
+    CoreTypeIds.Nil,
+    CoreTypeIds.Boolean,
+    { exec: () => mkBooleanValue(false) },
+    false
+  );
+  operatorOverloads.unary(
+    CoreOpId.Not,
+    CoreTypeIds.Nil,
+    CoreTypeIds.Boolean,
+    { exec: () => mkBooleanValue(true) },
+    false
+  );
+
+  for (const typeId of [CoreTypeIds.Number, CoreTypeIds.Boolean, CoreTypeIds.String]) {
+    operatorOverloads.binary(
+      CoreOpId.EqualTo,
+      typeId,
+      CoreTypeIds.Nil,
+      CoreTypeIds.Boolean,
+      {
+        exec: (_ctx: ExecutionContext, args: MapValue) => {
+          const a = args.v.get(0) as Value;
+          return mkBooleanValue(a.t === NativeType.Nil);
+        },
+      },
+      false
+    );
+    operatorOverloads.binary(
+      CoreOpId.EqualTo,
+      CoreTypeIds.Nil,
+      typeId,
+      CoreTypeIds.Boolean,
+      {
+        exec: (_ctx: ExecutionContext, args: MapValue) => {
+          const b = args.v.get(1) as Value;
+          return mkBooleanValue(b.t === NativeType.Nil);
+        },
+      },
+      false
+    );
+    operatorOverloads.binary(
+      CoreOpId.NotEqualTo,
+      typeId,
+      CoreTypeIds.Nil,
+      CoreTypeIds.Boolean,
+      {
+        exec: (_ctx: ExecutionContext, args: MapValue) => {
+          const a = args.v.get(0) as Value;
+          return mkBooleanValue(a.t !== NativeType.Nil);
+        },
+      },
+      false
+    );
+    operatorOverloads.binary(
+      CoreOpId.NotEqualTo,
+      CoreTypeIds.Nil,
+      typeId,
+      CoreTypeIds.Boolean,
+      {
+        exec: (_ctx: ExecutionContext, args: MapValue) => {
+          const b = args.v.get(1) as Value;
+          return mkBooleanValue(b.t !== NativeType.Nil);
+        },
+      },
+      false
+    );
+  }
 }

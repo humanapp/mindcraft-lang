@@ -1697,3 +1697,190 @@ export default Sensor({
     }
   });
 });
+
+describe("phase 6.5: null literal support", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+  });
+
+  test("null assigned to a variable compiles to NIL_VALUE", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "null-var",
+  output: "number",
+  onExecute(ctx: Context): number {
+    let x: number | null = null;
+    if (x === null) {
+      x = 42;
+    }
+    return x;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 42);
+    }
+  });
+
+  test("helper function returning null produces NIL_VALUE", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function maybeNull(): number | null {
+  return null;
+}
+
+export default Sensor({
+  name: "null-return",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const val = maybeNull();
+    if (val === null) {
+      return 99;
+    }
+    return val;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 99);
+    }
+  });
+
+  test("null in callsite-persistent variable with comparison", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let cached: number | null = null;
+
+export default Sensor({
+  name: "null-callsite",
+  output: "number",
+  onExecute(ctx: Context): number {
+    if (cached === null) {
+      cached = 7;
+    }
+    return cached;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    {
+      const vm = new runtime.VM(prog, handles);
+      const initFiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      initFiber.callsiteVars = callsiteVars;
+      initFiber.instrBudget = 1000;
+      vm.runFiber(initFiber, mkScheduler());
+    }
+
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) {
+        assert.equal((r.result as NumberValue).v, 7);
+      }
+    }
+  });
+
+  test("number !== null returns true", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "not-null",
+  output: "boolean",
+  params: { x: { type: "number" } },
+  onExecute(ctx: Context, params: { x: number }): boolean {
+    const val: number | null = params.x;
+    return val !== null;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const args = mkArgsMap({ 0: mkNumberValue(5) });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as BooleanValue).v, true);
+    }
+  });
+
+  test("null === null returns true", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "nil-eq",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    const a: number | null = null;
+    const b: number | null = null;
+    return a === b;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as BooleanValue).v, true);
+    }
+  });
+});

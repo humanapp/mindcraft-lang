@@ -33,15 +33,18 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0, 1, 2, 2.5, 3, 4, 5, and 6 are complete.
+- (Updated 2026-03-21) Phases 0, 1, 2, 2.5, 3, 4, 5, 6, and 6.5 are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
   `break`/`continue`, block-scoped `let`/`const`, variable shadowing, assignments,
   `++`/`--`), user-defined helper functions (`CALL`), callsite-persistent top-level
   variables (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` with module init function),
-  and `onPageEntered` lifecycle support (user body compilation + always-generated
-  wrapper that calls module init then user function).
+  `onPageEntered` lifecycle support (user body compilation + always-generated
+  wrapper that calls module init then user function), `null` literal support
+  (`NullKeyword` -> `NIL_VALUE`), and `null` comparison support
+  (`x === null`, `x !== null`) via nil operator overloads in core and
+  `tsTypeToTypeId` handling of `TypeFlags.Null` and nullable union types.
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientSource`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
@@ -597,13 +600,19 @@ can invoke a user-authored tile end-to-end.
 
 With the vertical slice proven, subsequent phases expand language support:
 
-- **9a: Logical operators** -- `&&`, `||`, `!` with short-circuit evaluation
+- **9a: Logical operators** -- `&&`, `||`, `!` with short-circuit evaluation.
+  (Updated 2026-03-21) Null comparisons (`===`/`!==` with `null`) are already handled
+  by Phase 6.5 via nil operator overloads. `!` (NOT) applied to nil is also covered.
+  This phase only needs `&&`, `||` short-circuit emission and boolean-typed `!`.
 - **9b: String operations** -- concatenation, template literals
 - **9c: Object/struct literals** -- `{ x: 1, y: 2 }` -> `STRUCT_NEW` / `STRUCT_SET`
 - **9d: Array/list literals** -- `[1, 2, 3]` -> `LIST_NEW` / `LIST_PUSH`
 - **9e: Property access chains** -- `ctx.self.position` -> chained `GET_FIELD`
 - **9f: `for...of`** -- list iteration
-- **9g: Ternary + nullish coalescing** -- `??`, `?:` lowering
+- **9g: Ternary + nullish coalescing** -- `??`, `?:` lowering.
+  (Updated 2026-03-21) `tsTypeToTypeId` already handles nullable union types
+  (`number | null`) by stripping null and recursing. `??` emission can rely on
+  the existing nil-typed operator overloads for the null check.
 - **9h: Destructuring** -- simple object/array destructuring
 - **9i: Arrow functions** -- as helpers (same as function declarations, no closures)
 
@@ -980,8 +989,7 @@ validation, 11 extraction, 3 core imports).
    bridge (not yet built) resolves them to `TypeId`s. For now, invalid param type
    strings are caught only if the TS checker rejects the `MindcraftType` union.
 6. `null` literal is not yet supported in lowering (produces "Unsupported expression:
-   NullKeyword"). This is fine for Phase 3 scope; support should be added in Phase 4
-   or 9 alongside `undefined` and nil handling.
+   NullKeyword"). This is fine for Phase 3 scope; resolved in Phase 6.5.
 
 ### Phase 4 -- 2026-03-20
 
@@ -1035,8 +1043,8 @@ buildCallDef, 5 type-checking, 7 validation, 11 extraction, 3 core imports).
    `continueLabel` in a `for` loop points to the incrementor expression, not the
    loop-start condition check. This ensures `i++` runs before the next iteration's
    condition test, matching JavaScript semantics.
-6. **`null` literal still unsupported.** Carried forward from Phase 3. Not needed for
-   Phase 4 scope. Should be addressed in Phase 9 or as a point fix.
+6. **`null` literal still unsupported.** Carried forward from Phase 3. Resolved in
+   Phase 6.5.
 
 ### Phase 5 -- 2026-03-21
 
@@ -1110,8 +1118,8 @@ buildCallDef, 5 type-checking, 7 validation, 11 extraction, 3 core imports).
    initialized with `numParams` as the initial next-local index, and each parameter
    name is declared at indices 0 through N-1. This matches the VM's calling convention
    where `CALL` pushes arguments into the callee's locals.
-5. **`null` literal still unsupported.** Carried forward from Phase 4. Not needed for
-   Phase 5 scope.
+5. **`null` literal still unsupported.** Carried forward from Phase 4. Resolved in
+   Phase 6.5.
 
 ### Phase 6 -- 2026-03-21
 
@@ -1168,3 +1176,59 @@ imports).
    (CALL+POP, CALL+POP, NIL, RET) that it constructs `IrNode[]` manually rather
    than going through `lowerStatements`. This avoids needing a synthetic AST.
 4. **`null` literal still unsupported.** Carried forward from Phase 5.
+
+### Phase 6.5 -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Objective:** Add `null` literal support and nil operator overloads. The
+`NullKeyword` syntax kind was previously rejected with "Unsupported expression:
+NullKeyword" (noted in Phase 3, carried forward through Phase 6). This phase maps
+`null` to `NIL_VALUE`, registers nil operator overloads in core, and extends
+`tsTypeToTypeId` to handle `TypeFlags.Null` and nullable union types so that
+`x === null` comparisons compile and execute correctly.
+
+**Deliverables:**
+
+| Planned                               | Actual | Notes                                                                                                                                        |
+| ------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lowering.ts`: handle `NullKeyword`   | Done   | Two-line addition: `NullKeyword` -> `PushConst(NIL_VALUE)`, parallel to `true`/`false`.                                                      |
+| Tests for null in variable assignment | Done   | Assigns `null` to a local then uses `=== null` comparison; verifies correct execution.                                                       |
+| Tests for null as return value        | Done   | Helper function returning `null`; caller compares `=== null`.                                                                                |
+| Tests for null in callsite var init   | Done   | Top-level `let cached: number \| null = null;` initializer compiled via module init with null comparison.                                    |
+| `lowering.ts`: `tsTypeToTypeId` null  | Done   | Maps `TypeFlags.Null` -> `CoreTypeIds.Nil`. Handles union types by stripping null and recursing on the single non-null constituent.          |
+| Core nil operator overloads           | Done   | `operators.ts`: `nil == nil`, `nil != nil`, `!nil`, plus cross-type `==`/`!=` for nil with number/boolean/string (check runtime NativeType). |
+| Core nil overload tests               | Done   | `brain.spec.ts`: 11 new tests covering same-type, cross-type, and WHEN condition integration.                                                |
+| Tile suggestion regression fix        | Done   | `tile-suggestions.ts`: skip Nil-typed RHS in `incompleteExprExpectedType` to avoid false ambiguity.                                          |
+| TypeScript null comparison tests      | Done   | `codegen.spec.ts`: 2 new tests (`number !== null`, `null === null`); 3 existing tests updated to use `=== null`.                             |
+
+**No new files.** No changes to `ir.ts`, `emit.ts`, `scope.ts`, or `types.ts`.
+
+**Test counts:**
+
+- `packages/typescript`: 73 total (5 Phase 6.5, 5 Phase 6, 11 Phase 5, 11 Phase 4
+  control flow, 10 Phase 3 codegen/VM, 5 buildCallDef, 5 type-checking, 7 validation,
+  11 extraction, 3 core imports).
+- `packages/core`: 429 total (11 nil overload tests added to `brain.spec.ts`).
+
+**Discoveries:**
+
+1. **Cross-type nil overloads must check runtime NativeType.** The operator overload
+   system dispatches statically by `TypeId` at compile time. For a variable of static
+   type `number` that actually holds `NIL_VALUE` at runtime (from a `number | null`
+   union), a constant `false` result for `number == nil` would be wrong. The fix is
+   to check `args.v.get(N).t === NativeType.Nil` at runtime. This is the correct
+   pattern for any cross-type nil comparison.
+2. **Union types in `tsTypeToTypeId` are common for nullable parameters.** `number |
+null` has `TypeFlags.Union` with a `.types` array. The implementation strips null
+   constituents and recurses on the single remaining type. Multi-type unions (e.g.,
+   `number | string | null`) are not yet handled -- acceptable for now but Phase 9+
+   may need expansion.
+3. **Nil overloads cause tile-suggestion ambiguity.** Adding `NotEqualTo(String, Nil)`
+   alongside `NotEqualTo(String, String)` caused `incompleteExprExpectedType` to see
+   two RHS types and mark the expected type as ambiguous. The fix is to skip
+   `CoreTypeIds.Nil` RHS in the ambiguity check -- nil is not a tile-selectable type
+   and should never influence expected-type inference.
+4. **Null comparisons resolved.** Discovery #1 from the initial Phase 6.5 log
+   ("null comparisons not yet supported") is fully resolved. No need to defer to
+   Phase 9a.

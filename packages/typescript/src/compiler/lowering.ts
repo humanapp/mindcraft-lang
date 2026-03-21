@@ -572,6 +572,8 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     ctx.ir.push({ kind: "PushConst", value: TRUE_VALUE });
   } else if (expr.kind === ts.SyntaxKind.FalseKeyword) {
     ctx.ir.push({ kind: "PushConst", value: FALSE_VALUE });
+  } else if (expr.kind === ts.SyntaxKind.NullKeyword) {
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
   } else if (ts.isStringLiteral(expr)) {
     ctx.ir.push({ kind: "PushConst", value: mkStringValue(expr.text) });
   } else if (ts.isBinaryExpression(expr)) {
@@ -899,6 +901,15 @@ function tsTypeToTypeId(type: ts.Type): string | undefined {
   }
   if (type.flags & ts.TypeFlags.StringLike) {
     return CoreTypeIds.String;
+  }
+  if (type.flags & ts.TypeFlags.Null) {
+    return CoreTypeIds.Nil;
+  }
+  if (type.isUnion()) {
+    const nonNull = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null));
+    if (nonNull.length === 1) {
+      return tsTypeToTypeId(nonNull[0]);
+    }
   }
   return undefined;
 }

@@ -18,6 +18,7 @@ import {
   CoreSensorId,
   CoreTypeIds,
   type ExecutionContext,
+  extractBooleanValue,
   extractNumberValue,
   extractStringValue,
   getBrainServices,
@@ -98,6 +99,9 @@ function mkBoolLiteral(b: boolean) {
 }
 function mkStringLiteral(s: string) {
   return new BrainTileLiteralDef(CoreTypeIds.String, s);
+}
+function mkNilLiteral() {
+  return new BrainTileLiteralDef(CoreTypeIds.Nil, undefined);
 }
 
 const opAdd = new BrainTileOperatorDef("add");
@@ -585,5 +589,95 @@ describe("Brain behavioral -- compiled program structure", () => {
     assert.ok(program!.functions.size() > 0, "should have at least one function");
     assert.ok(program!.pages.size() > 0, "should have at least one page");
     assert.ok(program!.constants.size() > 0, "should have constants");
+  });
+});
+
+describe("Brain behavioral -- nil value overloads", () => {
+  test("nil == nil -> true", () => {
+    const v = mkVar("nil-eq", CoreTypeIds.Boolean);
+    const brainDef = buildBrain([], [v, opAssign, mkNilLiteral(), opEq, mkNilLiteral()]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractBooleanValue(brain.getVariable(v.varName)), true);
+  });
+
+  test("nil != nil -> false", () => {
+    const v = mkVar("nil-neq", CoreTypeIds.Boolean);
+    const brainDef = buildBrain([], [v, opAssign, mkNilLiteral(), opNeq, mkNilLiteral()]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractBooleanValue(brain.getVariable(v.varName)), false);
+  });
+
+  test("NOT nil -> true (nil is falsy)", () => {
+    const v = mkVar("nil-not", CoreTypeIds.Boolean);
+    const brainDef = buildBrain([], [v, opAssign, opNot, mkNilLiteral()]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractBooleanValue(brain.getVariable(v.varName)), true);
+  });
+
+  test("number == nil -> false (cross-type)", () => {
+    const v = mkVar("num-eq-nil", CoreTypeIds.Boolean);
+    const brainDef = buildBrain([], [v, opAssign, mkLiteral(42), opEq, mkNilLiteral()]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractBooleanValue(brain.getVariable(v.varName)), false);
+  });
+
+  test("nil == number -> false (cross-type)", () => {
+    const v = mkVar("nil-eq-num", CoreTypeIds.Boolean);
+    const brainDef = buildBrain([], [v, opAssign, mkNilLiteral(), opEq, mkLiteral(42)]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractBooleanValue(brain.getVariable(v.varName)), false);
+  });
+
+  test("number != nil -> true (cross-type)", () => {
+    const v = mkVar("num-neq-nil", CoreTypeIds.Boolean);
+    const brainDef = buildBrain([], [v, opAssign, mkLiteral(42), opNeq, mkNilLiteral()]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractBooleanValue(brain.getVariable(v.varName)), true);
+  });
+
+  test("nil != number -> true (cross-type)", () => {
+    const v = mkVar("nil-neq-num", CoreTypeIds.Boolean);
+    const brainDef = buildBrain([], [v, opAssign, mkNilLiteral(), opNeq, mkLiteral(42)]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractBooleanValue(brain.getVariable(v.varName)), true);
+  });
+
+  test("boolean == nil -> false (cross-type)", () => {
+    const v = mkVar("bool-eq-nil", CoreTypeIds.Boolean);
+    const brainDef = buildBrain([], [v, opAssign, mkBoolLiteral(true), opEq, mkNilLiteral()]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractBooleanValue(brain.getVariable(v.varName)), false);
+  });
+
+  test("string != nil -> true (cross-type)", () => {
+    const v = mkVar("str-neq-nil", CoreTypeIds.Boolean);
+    const brainDef = buildBrain([], [v, opAssign, mkStringLiteral("hello"), opNeq, mkNilLiteral()]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractBooleanValue(brain.getVariable(v.varName)), true);
+  });
+
+  test("nil == nil in WHEN condition gates execution", () => {
+    const v = mkVar("nil-when", CoreTypeIds.Number);
+    const brainDef = buildBrain([mkNilLiteral(), opEq, mkNilLiteral()], [v, opAssign, mkLiteral(99)]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 99);
+  });
+
+  test("number == nil in WHEN condition blocks execution", () => {
+    const v = mkVar("cross-when", CoreTypeIds.Number);
+    const brainDef = buildBrain([mkLiteral(5), opEq, mkNilLiteral()], [v, opAssign, mkLiteral(99)]);
+    const brain = runBrain(brainDef);
+
+    assert.equal(brain.getVariable(v.varName), undefined, "DO should not execute");
   });
 });
