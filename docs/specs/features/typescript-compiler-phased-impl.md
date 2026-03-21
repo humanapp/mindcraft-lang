@@ -560,147 +560,936 @@ linked program executes correctly in the VM.
 
 ---
 
-### Phase 8: VM dispatch wrapper + integration test
+### Phase 8: VM dispatch wrapper + registration bridge
 
-**Objective:** Build the `BrainFunctionEntry` exec wrapper that spawns a fiber for user
-bytecode and resolves a handle. Wire it through function registration so a brain rule
-can invoke a user-authored tile end-to-end.
+**Objective:** Build the `BrainFunctionEntry` exec wrapper that spawns a fiber for
+user bytecode, manages callsite-persistent state, and resolves handles. Wire it through
+function and tile registration so a brain rule can invoke a user-authored tile
+end-to-end. Also build `onPageEntered` dispatch.
 
 **Packages/files touched:**
 
 - `packages/typescript/src/runtime/authored-function.ts` --
-  `createUserTileEntry(program, scheduler, handles)` that returns a
-  `BrainFunctionEntry`-compatible `exec` function
-- `packages/typescript/src/runtime/authored-function.spec.ts` -- integration test
+  `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)` returning `HostFn`
+  with `exec` and `onPageEntered` methods
+- `packages/typescript/src/runtime/registration-bridge.ts` --
+  `registerUserTile(linkInfo, services)` that performs the three-step registration
+  flow: ensure param tile defs, register in `FunctionRegistry`, add to `TileCatalog`
+- `packages/typescript/src/runtime/authored-function.spec.ts` -- integration tests
+
+**Prerequisites from earlier phases:**
+
+- `UserTileLinkInfo` from Phase 7 provides `linkedEntryFuncId` and
+  `linkedOnPageEnteredFuncId` (already remapped by the linker). The wrapper uses
+  these directly -- no offset arithmetic needed.
+- The `onPageEntered` wrapper is always generated (Phase 6 decision), so
+  `linkedOnPageEnteredFuncId` is always present. The wrapper already calls
+  module init internally, so the bridge does not call `initFuncId` separately.
+- `UserAuthoredProgram.callDef` is a fully constructed `BrainActionCallDef`
+  (Phase 3). The registration bridge passes it directly to
+  `functions.register()`.
+- `UserAuthoredProgram.numCallsiteVars` gives the size for `callsiteVars`
+  allocation.
 
 **Concrete deliverables:**
 
-1. `exec` wrapper: allocates/retrieves `callsiteVars`, spawns fiber, resolves handle
-2. Integration test: compile a sensor from source -> link into a BrainProgram ->
-   register as a `BrainFunctionEntry` -> invoke from a manually-constructed brain
-   fiber -> verify return value
-3. Integration test: same for an actuator
+1. `exec` wrapper function:
+   - Retrieves or allocates `callsiteVars` via `getCallSiteState`/`setCallSiteState`
+     from `@mindcraft-lang/core/brain` (keyed by `ctx.currentCallSiteId`)
+   - On first allocation, creates `List<Value>` of size `numCallsiteVars` filled
+     with `NIL_VALUE`, then spawns a fiber for `linkedOnPageEnteredFuncId` to run
+     module init
+   - Spawns a fiber via `IFiberScheduler.spawn(linkedEntryFuncId, args, ctx)`
+   - Attaches `callsiteVars` to the spawned `Fiber`
+   - Resolves the handle via `HandleTable` when the spawned fiber completes
+2. `onPageEntered` dispatch:
+   - Spawns a fiber for `linkedOnPageEnteredFuncId` (the wrapper resets callsite
+     vars via module init, then calls user `onPageEntered` if present)
+   - Attaches the callsite's `callsiteVars` to the fiber
+3. Registration bridge:
+   - Ensures parameter tile defs exist (named -> `BrainTileParameterDef` scoped
+     to `user.<tileName>.<paramName>`; anonymous -> shared `anon.<type>` with
+     auto-creation)
+   - Registers `BrainFunctionEntry` via `functions.register(userId, true, fn,
+callDef)` -- always async per spec's unified invocation model
+   - Creates `BrainTileSensorDef` or `BrainTileActuatorDef` and adds to catalog
+4. Integration test: compile a sensor from source -> link into a `BrainProgram` ->
+   register via bridge -> invoke from a brain fiber -> verify return value
+5. Integration test: same for an actuator
 
 **Acceptance criteria:**
 
-- Test: sync sensor resolves handle within same tick
-- Test: callsite vars persist across two invocations of the same tile
-- Test: two callsites get independent callsite var state
+- Test: sync sensor resolves handle within same tick (fiber completes without AWAIT,
+  handle resolves immediately)
+- Test: callsite vars persist across two invocations of the same tile (second call
+  sees state from first call)
+- Test: two callsites get independent callsite var state (each
+  `ctx.currentCallSiteId` produces its own `callsiteVars`)
+- Test: `onPageEntered` dispatch resets callsite vars and runs user body
+- Test: registration bridge creates correct `BrainTileSensorDef` / `BrainTileActuatorDef`
+  with expected tileId (`tile.sensor->user.<name>` / `tile.actuator->user.<name>`)
+- Test: parameter tile defs are registered (named + anonymous)
 
 **Key risks:**
 
-- Fiber spawning mechanics -- need to match the `FiberScheduler.spawn()` API exactly
-- Handle resolution timing for sync case -- verify handle resolves immediately when
-  user fiber completes without AWAIT
-- (Added 2026-03-20) **App-type resolution dependency.** The registration bridge must
-  convert `ExtractedParam.type` strings to valid `TypeId` values when creating
-  `BrainTileParameterDef` entries, and the sensor's `outputType` must be a valid
-  `TypeId` on the registered tile def. The compiler now provides `resolveTypeId` in
-  `CompileOptions` for this; apps must supply a resolver that maps short names to
-  their registered `TypeId`s. If the app does not supply a resolver, it falls back to
-  core types only.
-- (Added 2026-03-21) **Use `linkedOnPageEnteredFuncId` from `UserTileLinkInfo` for
-  lifecycle registration.** The linker returns both `linkedEntryFuncId` and
-  `linkedOnPageEnteredFuncId` (remapped). The exec wrapper / registration bridge
-  should use these directly rather than computing offsets itself. The
-  `onPageEntered` wrapper already calls module init internally, so the bridge does
-  not need to call `initFuncId` separately.
+- **Fiber lifecycle and handle resolution.** The `IFiberScheduler.spawn()` API returns
+  a fiber ID. Need to subscribe to fiber completion (e.g., via `scheduler.onFiberDone`
+  or polling fiber state) to resolve the handle. The exact mechanism depends on what
+  `IFiberScheduler` exposes -- check the interface before implementing.
+- **`callsiteVars` attachment timing.** The `callsiteVars` list must be attached to
+  the `Fiber` before the fiber's first `LOAD_CALLSITE_VAR` instruction executes. Since
+  `spawn()` creates the fiber, the attachment must happen between `spawn()` and the
+  first `vmDispatch` step.
+- **Module init on first allocation.** The very first time a callsite is invoked, the
+  `callsiteVars` array is fresh (all `NIL_VALUE`). The module init function must run
+  before `onExecute` to set initial values. This can be done by spawning a fiber for
+  `linkedOnPageEnteredFuncId` (which calls init) before spawning the `onExecute` fiber,
+  or by calling init within the same fiber via a combined wrapper. Check whether
+  sequential fiber spawning within a single tick is supported.
+- **`resolveTypeId` for param tile defs.** The registration bridge must map
+  `ExtractedParam.type` strings (e.g., `"number"`) to `TypeId` values for
+  `BrainTileParameterDef` construction. The compiler already resolves `outputType` via
+  `CompileOptions.resolveTypeId`; the bridge needs the same resolver (or the resolved
+  `TypeId` values pre-computed on `UserAuthoredProgram`).
 
 ---
 
-### Phase 9+: Broader language coverage (looser)
+### Phase 9: Logical operators (`&&`, `||`, `!`)
 
-With the vertical slice proven, subsequent phases expand language support:
+**Objective:** Add short-circuit `&&` and `||` operators and unary `!` (boolean NOT)
+to the lowering pass.
 
-- **9a: Logical operators** -- `&&`, `||`, `!` with short-circuit evaluation.
-  (Updated 2026-03-21) Null comparisons (`===`/`!==` with `null`) are already handled
-  by Phase 6.5 via nil operator overloads. `!` (NOT) applied to nil is also covered.
-  This phase only needs `&&`, `||` short-circuit emission and boolean-typed `!`.
-- **9b: String operations** -- concatenation, template literals
-- **9c: Object/struct literals** -- `{ x: 1, y: 2 }` -> `STRUCT_NEW` / `STRUCT_SET`
-- **9d: Array/list literals** -- `[1, 2, 3]` -> `LIST_NEW` / `LIST_PUSH`
-- **9e: Property access chains** -- `ctx.self.position` -> chained `GET_FIELD`
-- **9f: `for...of`** -- list iteration
-- **9g: Ternary + nullish coalescing** -- `??`, `?:` lowering.
-  (Updated 2026-03-21) `tsTypeToTypeId` already handles nullable union types
-  (`number | null`) by stripping null and recursing. `??` emission can rely on
-  the existing nil-typed operator overloads for the null check.
-- **9h: Destructuring** -- simple object/array destructuring
-- **9i: Arrow functions** -- as helpers (same as function declarations, no closures)
+**Packages/files touched:**
 
-Each of these is small and independently testable.
+- `packages/typescript/src/compiler/lowering.ts` -- add cases for `&&`, `||`, `!`
 
-**Prerequisite for 9c and 9e (added 2026-03-20): App-type shape declarations.** Struct
-literal emission (9c) and property access chain lowering (9e) require the compiler to
-know the field layout of app-defined struct types. Currently `buildAmbientSource`
-accepts type entries as short strings (e.g., `"actorRef: unknown;"`) which declares
-the type name but not its shape. Before 9c/9e, the ambient generation must support
-full interface declarations so that `result.position.x` type-checks and the compiler
-can emit the correct `GET_FIELD` operand. This is tracked as a dependency in Phase 3's
-post-mortem.
+**Prerequisites:** Null comparisons (`=== null`, `!== null`) and `!nil` are already
+handled by Phase 6.5 nil operator overloads. This phase adds only the general-purpose
+logical operators.
 
-**Planned approach (added 2026-03-20): Generate ambient types from `ITypeRegistry`.**
-The type registry already stores complete structural information for every registered
-type -- struct field names and field `TypeId`s, enum symbols, list element types. Rather
-than having apps manually construct ambient type strings, the compiler should derive
-them from the registry. This requires:
+**Concrete deliverables:**
 
-1. An enumeration method on `ITypeRegistry` (e.g., `entries()` or `allTypes()`).
-   Currently only `get(id)` exists; the internal `Dict<TypeId, TypeDef>` storage is
-   private.
-2. A generator function in `@mindcraft-lang/typescript` that walks all registered types
-   and emits the `MindcraftTypeMap` entries plus full interface declarations for struct
-   types. For example, a struct registered as
-   `addStructType("actorRef", { fields: [{ name: "id", typeId: Number }, { name: "position", typeId: Vector2 }] })`
-   would produce:
-   ```typescript
-   interface ActorRef {
-     readonly id: number;
-     readonly position: Vector2;
-   }
+1. `&&` emits: evaluate LHS, `JumpIfFalse(end)` (short-circuit), `Pop`, evaluate RHS,
+   `Label(end)`. The result is the LHS value if falsy, else the RHS value (JS
+   semantics).
+2. `||` emits: evaluate LHS, `JumpIfTrue(end)` (short-circuit), `Pop`, evaluate RHS,
+   `Label(end)`. The result is the LHS value if truthy, else the RHS value.
+3. `!` emits: evaluate operand, `HostCallArgs` for the boolean NOT operator
+   (`CoreOpId.Not`). The nil-typed `!nil -> true` case is already registered
+   (Phase 6.5).
+
+**Acceptance criteria:**
+
+- Test: `true && false` -> `false`
+- Test: `false && sideEffect()` -> `false` (side effect not called)
+- Test: `false || true` -> `true`
+- Test: `true || sideEffect()` -> `true` (side effect not called)
+- Test: `!true` -> `false`, `!false` -> `true`
+- Test: `0 && 42` -> `0` (JS value-preserving semantics)
+
+**Key risks:**
+
+- **Truthiness semantics.** `JumpIfFalse`/`JumpIfTrue` depend on the VM's truthiness
+  rules. Verify that the VM treats `0`, `""`, `false`, and `NIL_VALUE` as falsy and
+  everything else as truthy, matching JavaScript semantics. If the VM only checks
+  boolean values, a truthiness coercion HOST_CALL may be needed.
+
+---
+
+### Phase 10: String operations
+
+**Objective:** Support string concatenation via `+` and template literal lowering.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- template literal lowering,
+  string `+` operator resolution
+
+**Concrete deliverables:**
+
+1. `"hello" + " world"` compiles via the existing binary expression path using the
+   string `Add` operator overload (already registered in core for
+   `String + String -> String`).
+2. Template literals (`` `hello ${name}` ``) desugar to a chain of string
+   concatenations: `"hello " + name`. The lowering walks `ts.TemplateExpression`
+   child spans and emits `PushConst(headText)` then for each span:
+   `lowerExpression(span.expression)`, `HostCallArgs(Add)`, `PushConst(tailText)`,
+   `HostCallArgs(Add)`.
+3. Tagged template literals are rejected by the validator (already excluded by the
+   subset).
+
+**Acceptance criteria:**
+
+- Test: `"a" + "b"` -> `"ab"`
+- Test: `` `count: ${n}` `` where n=42 -> `"count: 42"`
+- Test: `` `${a}-${b}` `` with multiple spans -> correct concatenation
+- Test: empty template literal ` ` ``->`""`
+
+**Key risks:**
+
+- **String + non-string coercion.** TS allows `"hello" + 42`. Need to verify whether
+  the core operator overloads handle `String + Number -> String` coercion, or whether
+  a `toString` HOST_CALL is needed for the non-string operand.
+- **Template literal AST structure.** `ts.TemplateExpression` has a `head`
+  (`TemplateHead`) and `templateSpans` array, each with an `expression` and a
+  `literal` (either `TemplateMiddle` or `TemplateTail`). The lowering must handle
+  all combinations including empty head/tail strings.
+
+---
+
+### Phase 11: Object/struct literals
+
+**Objective:** Compile object literal expressions to `STRUCT_NEW` / `STRUCT_SET`
+bytecode for user-creatable struct types, and establish the ambient type generation
+infrastructure that distinguishes user-creatable structs from native-backed structs.
+
+**Prerequisite: App-type shape declarations.** This phase requires the compiler to
+know struct field layouts so it can emit correct `STRUCT_NEW(typeId)` instructions.
+Before implementing 9c, the ambient generation must support full interface declarations
+derived from `ITypeRegistry`. See the "Type registry ambient generation" prerequisite
+below.
+
+#### Native-backed vs user-creatable struct types
+
+The core `StructTypeShape` supports two categories of struct types, distinguished by
+the presence of runtime hooks:
+
+- **User-creatable structs** (e.g., `Vector2`): No `fieldGetter`, `fieldSetter`, or
+  `snapshotNative` hooks. Fields are stored in the `StructValue.v` Dict. User code
+  can create instances via object literals (`{ x: 1, y: 2 }`), which compile to
+  `STRUCT_NEW` + `STRUCT_SET`.
+- **Native-backed structs** (e.g., `ActorRef`): Have one or more hooks registered.
+  The `StructValue.native` field wraps a host object (or lazy resolver function).
+  The VM's `GET_FIELD` delegates to `fieldGetter`, `SET_FIELD` delegates to
+  `fieldSetter`, and `deepCopyValue` (triggered by assignment) calls `snapshotNative`
+  to materialize lazy handles. User code **cannot** create instances of these types
+  via object literals -- they can only be received from host functions or sensor
+  parameters, because there is no way for user bytecode to provide the `native` handle.
+
+This distinction must be reflected in both the ambient type declarations and the
+compiler's lowering logic.
+
+**Packages/files touched:**
+
+- `packages/core/src/brain/interfaces/type-system.ts` -- add enumeration method
+  (e.g., `entries(): Iterable<[TypeId, TypeDef]>`) to `ITypeRegistry`
+- `packages/typescript/src/compiler/ambient.ts` -- `buildAmbientFromRegistry(registry)`
+  that generates interface declarations for all struct types, `MindcraftTypeMap`
+  entries, and a `resolveTypeId` function from the registry. Native-backed struct
+  interfaces must use a private brand (e.g., `readonly __brand: unique symbol`) to
+  prevent structural compatibility with object literals, while user-creatable struct
+  interfaces are plain and structurally constructable.
+- `packages/typescript/src/compiler/lowering.ts` -- handle
+  `ts.ObjectLiteralExpression`: emit `STRUCT_NEW(typeId)` then for each property
+  `PUSH_CONST(fieldName)`, evaluate value, `STRUCT_SET`. Reject object literals
+  whose contextual type resolves to a native-backed struct (the brand prevents this
+  at the TS type level; the lowering should emit a diagnostic if it reaches this path
+  anyway).
+- `packages/typescript/src/compiler/ir.ts` -- add `IrStructNew`, `IrStructSet` nodes
+- `packages/typescript/src/compiler/emit.ts` -- emit `STRUCT_NEW`, `STRUCT_SET` opcodes
+
+**Concrete deliverables:**
+
+1. `buildAmbientFromRegistry(registry)` generates ambient `.d.ts` content by iterating
+   over all registered types:
+   - For user-creatable struct types (no hooks): emit a plain interface with typed
+     fields, e.g., `interface Vector2 { x: number; y: number; }`.
+   - For native-backed struct types (any hook present): emit a branded interface with
+     readonly fields, e.g.,
+     `interface ActorRef { readonly __brand: unique symbol; readonly id: number; readonly position: Vector2; readonly "energy pct": number; }`.
+     The brand prevents object literal assignment. If a `fieldSetter` is registered,
+     the corresponding fields may omit `readonly` -- but for v1, treating all
+     native-backed fields as readonly is a safe default.
+   - For both: add `MindcraftTypeMap` entries mapping the type name to the interface.
+   - Returns both `ambientSource` and a `resolveTypeId` function. Replaces the manual
+     `buildAmbientSource(appTypeEntries?)` API.
+2. `ITypeRegistry.entries()` exposes registered types for the generator.
+3. `{ x: 1, y: 2 }` compiles to the correct struct construction bytecode when the
+   target type is a known user-creatable struct.
+4. The lowering infers the struct `TypeId` from the TS checker's contextual type
+   (e.g., return type annotation, variable type annotation, or assignment target type).
+5. Native-backed struct types are usable as variable and parameter types
+   (e.g., `let target: ActorRef = params.target;`). Assignment compiles to
+   `STORE_LOCAL` -- the VM's `deepCopyValue` handles `snapshotNative` transparently;
+   the compiler does not need to emit special code for this.
+
+**Acceptance criteria:**
+
+- Test: `const pos: Vector2 = { x: 1, y: 2 }` -> `STRUCT_NEW(vector2TypeId)` +
+  field assignments
+- Test: struct as return value -> correct bytecode
+- Test: `buildAmbientFromRegistry` generates correct plain interface for a
+  user-creatable struct with two fields
+- Test: `buildAmbientFromRegistry` generates branded interface for a native-backed
+  struct (one with `fieldGetter`)
+- Test: `const a: ActorRef = { id: 1, ... }` -> TS type error (brand prevents
+  structural match)
+- Test: `let target: ActorRef = params.target;` -> compiles successfully to
+  `LOAD_LOCAL` / `STORE_LOCAL`
+- Test: unknown struct type -> compile error
+
+**Key risks:**
+
+- **Type inference for untyped object literals.** If a user writes `const x = { a: 1 }`
+  without a type annotation, the compiler cannot determine which struct type to use.
+  May need to require explicit type annotations on object literals (consistent with
+  the spec's emphasis on typed code), or support structural matching against known
+  struct types.
+- **`ITypeRegistry` changes touch `packages/core`.** Adding `entries()` is a small
+  interface change but it affects the core package. Verify that the method can be
+  added without breaking the Luau/roblox-ts build.
+- **Nested struct literals.** `{ pos: { x: 1, y: 2 } }` requires recursive struct
+  construction. The inner struct must be constructed before the outer one sets the
+  field.
+- **Brand vs opaque type strategy.** The `__brand: unique symbol` pattern is
+  well-established in TypeScript for nominal typing, but alternatives exist (e.g.,
+  generating the interface as a class declaration, or using `declare const` with a
+  branded type alias). The brand approach is preferred because it has no runtime cost
+  and prevents accidental structural matches without requiring class machinery.
+- **fieldSetter writability.** If a native-backed struct has `fieldSetter` for some
+  fields, those fields are writable at runtime. For v1, treating all native-backed
+  fields as readonly simplifies the ambient generation. A later phase can refine
+  this with per-field writability metadata if needed.
+
+---
+
+### Phase 12: Array/list literals
+
+**Objective:** Compile array literal expressions to `LIST_NEW` / `LIST_PUSH` bytecode.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.ArrayLiteralExpression`
+- `packages/typescript/src/compiler/ir.ts` -- add `IrListNew`, `IrListPush` nodes
+- `packages/typescript/src/compiler/emit.ts` -- emit `LIST_NEW`, `LIST_PUSH` opcodes
+
+**Concrete deliverables:**
+
+1. `[1, 2, 3]` compiles to `LIST_NEW(typeId)` + three `LIST_PUSH` instructions.
+2. The lowering infers the list element `TypeId` from the TS checker's
+   contextual/inferred type.
+3. Empty array `[]` compiles to `LIST_NEW(typeId)` alone.
+
+**Acceptance criteria:**
+
+- Test: `[1, 2, 3]` -> list with 3 elements, VM reads correct values
+- Test: empty array `[]` -> empty list
+- Test: array as return value -> correct bytecode
+- Test: nested arrays `[[1], [2]]` -> correct nested list construction
+
+**Key risks:**
+
+- **Element type inference.** `[1, 2, 3]` has element type `number`, but the VM's
+  `LIST_NEW` requires a `TypeId`. The lowering needs to map the TS element type to
+  a VM `TypeId` via `tsTypeToTypeId`. For v1, only primitive-typed arrays may be
+  sufficient.
+- **Mixed-type arrays.** TypeScript allows `[1, "a", true]` with type
+  `(number | string | boolean)[]`. The VM may not support mixed-type lists.
+  Reject or handle with a union type.
+
+---
+
+### Phase 13: Property access chains + host calls
+
+**Objective:** Compile property access chains (e.g., `ctx.self.position.x`) to `GET_FIELD`
+instructions, and context method calls (e.g., `ctx.engine.queryNearby(pos, range)`)
+to `HOST_CALL_ARGS` instructions. This is the gateway to the full `Context` API.
+
+**Prerequisite:** Phase 11's ambient-from-registry work must be complete so the compiler
+knows field layouts of struct types. The `EngineContext` method resolution depends on
+a method-to-host-function-ID mapping.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- extend `lowerPropertyAccess`
+  beyond the current `params.xyz` special case; add `lowerMethodCall` for
+  `ctx.engine.*` dispatch
+- `packages/typescript/src/compiler/ir.ts` -- add `IrGetField` node (field name operand)
+- `packages/typescript/src/compiler/emit.ts` -- emit `GET_FIELD` opcode
+- `packages/typescript/src/compiler/types.ts` -- extend `CompileOptions` with a
+  method resolution table (or reuse `resolveHostFn` with dotted names like
+  `"engine.queryNearby"`)
+
+**Concrete deliverables:**
+
+1. `obj.field` compiles to `lowerExpression(obj)` + `GET_FIELD("field")` for known
+   struct-typed expressions. This works uniformly for both user-creatable and
+   native-backed struct types -- the VM dispatches to `fieldGetter` when present;
+   the compiler does not need to distinguish.
+2. `ctx.engine.methodName(args)` compiles to pushing args then
+   `HOST_CALL_ARGS(fnId, argc, callSiteId)` where `fnId` is resolved from the method
+   name via `resolveHostFn("engine.methodName")`.
+3. `ctx.self.getVariable("x")` and `ctx.self.setVariable("x", v)` compile to the
+   corresponding host calls.
+4. `ctx.time`, `ctx.dt`, `ctx.tick` compile to the appropriate host calls or
+   `LOAD_VAR` instructions.
+5. The current `lowerPropertyAccess` special case for `params.xyz` is preserved
+   (it short-circuits to `LoadLocal` without `GET_FIELD`).
+
+**Acceptance criteria:**
+
+- Test: `ctx.self.getVariable("x")` -> correct `HOST_CALL_ARGS` emission
+- Test: struct property chain `pos.x` -> `GET_FIELD("x")`
+- Test: native-backed struct field `target.position` -> `GET_FIELD("position")`
+  (same bytecode as user-creatable struct; VM handles dispatch)
+- Test: `ctx.engine.queryNearby(pos, 5)` -> `HOST_CALL_ARGS` with 2 args
+- Test: unknown method `ctx.engine.nonExistent()` -> compile error
+- Test: `params.speed` still resolves to `LoadLocal` (regression check)
+
+**Key risks:**
+
+- **`ctx` parameter identity.** The first parameter to `onExecute` is `ctx`. The
+  lowering must recognize `ctx` as the context parameter and resolve
+  `ctx.engine.X(...)` to the correct host function. The TS checker's symbol
+  resolution can identify the parameter type; the lowering should check
+  whether the receiver is of type `Context`.
+- **Property access vs method call ambiguity.** `ctx.time` is a property read;
+  `ctx.engine.queryNearby(...)` is a method call. The lowering must distinguish
+  these (check if the parent node is a `CallExpression`).
+- **Call site IDs.** `HOST_CALL_ARGS` takes a `callSiteId` operand.
+  Currently the emit pass hardcodes `callSiteId: 0`. We need to decide whether Phase
+  9e assigns real call site IDs or defers that to a later phase.
+
+---
+
+### Phase 14: `for...of` loop
+
+**Objective:** Compile `for...of` loops over list-typed values.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.ForOfStatement`,
+  emit iterator pattern using `LIST_LEN`, `LIST_GET`, loop control
+- `packages/typescript/src/compiler/ir.ts` -- add `IrListLen`, `IrListGet` nodes
+  (if not already present)
+- `packages/typescript/src/compiler/emit.ts` -- emit `LIST_LEN`, `LIST_GET` opcodes
+
+**Concrete deliverables:**
+
+1. `for (const item of items) { ... }` desugars to:
    ```
-   in the ambient, and `actorRef: ActorRef;` in `MindcraftTypeMap`.
-3. The `resolveTypeId` function can also be generated mechanically from the registry
-   (short name -> `TypeId` for every registered type).
+   StoreLocal(listLocal)        // items
+   PushConst(0)
+   StoreLocal(indexLocal)       // i = 0
+   Label(loopStart)
+   LoadLocal(indexLocal)
+   LoadLocal(listLocal)
+   LIST_LEN                     // items.length
+   HostCallArgs(LessThan)       // i < items.length
+   JumpIfFalse(loopEnd)
+   LoadLocal(listLocal)
+   LoadLocal(indexLocal)
+   LIST_GET                     // items[i]
+   StoreLocal(itemLocal)        // const item = items[i]
+   <body>
+   Label(continueTarget)
+   LoadLocal(indexLocal)
+   PushConst(1)
+   HostCallArgs(Add)            // i + 1
+   StoreLocal(indexLocal)
+   Jump(loopStart)
+   Label(loopEnd)
+   ```
+2. `break` and `continue` within `for...of` work via the existing loop stack.
 
-This makes the type registry the single source of truth. Apps register types (which they
-already do at startup), then call `buildAmbientFromRegistry(services.types)` to produce
-both `ambientSource` and `resolveTypeId` for `CompileOptions`. The current
-`buildAmbientSource(appTypeEntries?)` and manual `resolveTypeId` functions become
-unnecessary. `CompileOptions.ambientSource` remains as the injection point.
+**Acceptance criteria:**
+
+- Test: `for (const x of [1, 2, 3]) { sum += x; }` -> sum is 6
+- Test: `for...of` with `break` -> exits early
+- Test: `for...of` with `continue` -> skips iteration
+- Test: `for...of` over empty list -> body never executes
+
+**Key risks:**
+
+- **List type resolution.** The iterable expression must resolve to a list-typed
+  value. The lowering should verify access to `LIST_LEN` and `LIST_GET` is valid
+  for the inferred type.
+- **Hidden locals.** The desugaring introduces hidden local variables (index counter,
+  list reference). These must be allocated via `ScopeStack` but not visible to the
+  user as named variables.
 
 ---
 
-### Phase 10+: Async support (looser)
+### Phase 15: Ternary operator + nullish coalescing
 
-- **10a: HOST_CALL_ASYNC emission** -- detect async host function calls, emit correct
-  opcodes
-- **10b: AWAIT emission** -- emit AWAIT after async host calls
-- **10c: Async `exec`** -- compile `async exec()` with multiple await points
-- **10d: Integration** -- async actuator test end-to-end with handle
-  suspension/resumption
+**Objective:** Compile conditional expressions (`? :`) and nullish coalescing (`??`).
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- handle
+  `ts.ConditionalExpression` and nullish coalescing (`??`)
+
+**Prerequisites from earlier phases:** `tsTypeToTypeId` already handles nullable union
+types by stripping null/undefined (Phase 6.5). The nil operator overloads for `==`/`!=`
+are registered. `??` emission can test the LHS against nil using `JumpIfTrue` after a
+nil-equality check, or use the VM's truthiness semantics directly if nil is the only
+falsy nil-ish value concern.
+
+**Concrete deliverables:**
+
+1. `cond ? a : b` compiles to: evaluate cond, `JumpIfFalse(elseLabel)`, evaluate a,
+   `Jump(endLabel)`, `Label(elseLabel)`, evaluate b, `Label(endLabel)`.
+2. `x ?? fallback` compiles to: evaluate x, `Dup`, check nil (via EqualTo nil
+   operator or JumpIfTrue for non-nil), short-circuit or evaluate fallback.
+
+**Acceptance criteria:**
+
+- Test: `true ? 1 : 2` -> 1
+- Test: `false ? 1 : 2` -> 2
+- Test: `null ?? 42` -> 42
+- Test: `5 ?? 42` -> 5
+- Test: nested ternary `a ? b ? 1 : 2 : 3` -> correct evaluation
+
+**Key risks:**
+
+- **`??` vs `||` semantics.** `??` only triggers on `null`/`undefined` (nil), not on
+  `0` or `""`. If using `JumpIfFalse`, the semantics are wrong (it would trigger on
+  `0` and `""`). Must use nil-specific check, not truthiness. Consider emitting:
+  `Dup`, `PushConst(NIL_VALUE)`, `HostCallArgs(EqualTo, nil)`, `JumpIfFalse(keep)`,
+  `Pop` (discard nil), evaluate fallback, `Jump(end)`, `Label(keep)`, `Label(end)`.
 
 ---
 
-### Phase 11+: Debug metadata (looser)
+### Phase 16: Destructuring
 
-- Statement boundary emission
-- Source span tracking during lowering
-- `pcToSpanIndex` construction during emission
-- Scope and local variable metadata
-- `DebugMetadata` assembly on `UserAuthoredProgram`
+**Objective:** Support simple object and array destructuring in variable declarations.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.ObjectBindingPattern`
+  and `ts.ArrayBindingPattern` in variable declarations
+
+**Concrete deliverables:**
+
+1. `const { x, y } = pos;` desugars to: evaluate `pos`, then for each binding
+   `Dup`, `GET_FIELD("x")`, `StoreLocal(x_idx)`, etc. Final `Pop` to discard the
+   source object.
+2. `const [a, b] = arr;` desugars to: evaluate `arr`, then `Dup`,
+   `PushConst(0)`, `LIST_GET`, `StoreLocal(a_idx)`, `Dup`, `PushConst(1)`,
+   `LIST_GET`, `StoreLocal(b_idx)`, `Pop`.
+3. Nested destructuring is rejected for v1 (validation error).
+4. Rest patterns (`...rest`) are rejected for v1.
+
+**Acceptance criteria:**
+
+- Test: `const { x, y } = { x: 1, y: 2 }` -> `x === 1`, `y === 2`
+- Test: `const [a, b] = [10, 20]` -> `a === 10`, `b === 20`
+- Test: nested destructuring -> validation error
+- Test: destructuring with default value `const { x = 5 } = obj` -> uses default
+  when field is nil
+
+**Key risks:**
+
+- **Default values in destructuring.** `const { x = 5 } = obj` requires nil-checking
+  the destructured value and substituting the default. This adds complexity. Could
+  defer defaults to a later phase and implement only simple destructuring first.
+- **Destructuring patterns in parameters.** `function f({ x, y }: Point)` would
+  require handling binding patterns in function parameter positions. Scope to
+  variable declarations only for v1.
+
+---
+
+### Phase 17: Arrow functions as helpers
+
+**Objective:** Support arrow function expressions assigned to `const` or `let`
+variables, compiling them as helper functions callable via `CALL`.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- recognize arrow functions in
+  variable initializers, register in function table, compile body
+
+**Prerequisites:** The existing helper function infrastructure (Phase 5) compiles
+`FunctionDeclaration` nodes. Arrow functions are syntactically different
+(`ts.ArrowFunction`) but semantically equivalent for the non-closure case.
+
+**Concrete deliverables:**
+
+1. `const add = (a: number, b: number): number => a + b;` compiles to a
+   `FunctionBytecode` entry and the variable reference resolves to a `CALL`.
+2. Arrow functions with block bodies (`=> { ... }`) and expression bodies
+   (`=> expr`) are both supported.
+3. Arrow functions are detected during the initial function table scan
+   (alongside `FunctionDeclaration`).
+4. Closures (arrow functions that capture outer scope variables) are rejected
+   with a diagnostic for v1.
+
+**Acceptance criteria:**
+
+- Test: `const double = (x: number) => x * 2; return double(5);` -> 10
+- Test: block-body arrow `const f = (x: number): number => { return x + 1; };`
+  -> correct result
+- Test: arrow function capturing a local variable -> diagnostic error
+
+**Key risks:**
+
+- **Closure detection.** Must detect when an arrow function references variables
+  from an outer function scope (not module-level callsite vars, which are allowed).
+  Use the TS checker's symbol resolution to determine if referenced symbols are
+  from an enclosing function scope.
+- **Function table registration ordering.** Arrow functions assigned to `const` at
+  the top level must be registered in the function table during the initial scan
+  pass, before any function bodies are compiled. This is the same pattern as
+  `FunctionDeclaration` but requires recognizing the pattern in
+  `VariableDeclaration` initializers.
+
+---
+
+### Phase 18: Async host call emission
+
+**Objective:** Detect calls to async host functions and emit `HOST_CALL_ARGS_ASYNC`
+instead of `HOST_CALL_ARGS`.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- extend host call lowering to
+  check if the target function is async and emit `IrHostCallArgsAsync`
+- `packages/typescript/src/compiler/ir.ts` -- add `IrHostCallArgsAsync` node
+- `packages/typescript/src/compiler/emit.ts` -- emit `HOST_CALL_ARGS_ASYNC` opcode
+  via `emitter.hostCallArgsAsync()`
+- `packages/typescript/src/compiler/types.ts` -- extend `CompileOptions.resolveHostFn`
+  return type to include async flag (e.g., return `{ id: number, isAsync: boolean }`)
+
+**Prerequisites:** Phase 13 (property access chains + host calls) must be complete
+so that `ctx.engine.*` method calls compile. Phase 18 extends the mechanism to
+distinguish sync vs async host functions.
+
+**Concrete deliverables:**
+
+1. `CompileOptions.resolveHostFn` returns `{ id: number, isAsync: boolean } | undefined`
+   (breaking change from current `number | undefined`).
+2. When `resolveHostFn` indicates async, the lowering emits `IrHostCallArgsAsync`
+   instead of `IrHostCallArgs`.
+3. `emitFunction` emits `HOST_CALL_ARGS_ASYNC` for async IR nodes using
+   `emitter.hostCallArgsAsync(fnId, argc, callSiteId)` (already available in core's
+   `BytecodeEmitter`).
+
+**Acceptance criteria:**
+
+- Test: calling a sync host function -> `HOST_CALL_ARGS` in bytecode
+- Test: calling an async host function -> `HOST_CALL_ARGS_ASYNC` in bytecode
+- Test: `resolveHostFn` returning async info is threaded correctly through the pipeline
+
+**Key risks:**
+
+- **Breaking `resolveHostFn` signature.** Changing from `number | undefined` to a
+  richer return type is a breaking change for existing callers. Need to update all
+  test helpers and the sim app's resolver. Consider a migration path (accept both
+  shapes, or add a separate `resolveHostFnEx`).
+- **Call site ID allocation.** `HOST_CALL_ARGS_ASYNC` requires a meaningful
+  `callSiteId` (not hardcoded 0) for per-callsite state management. May need to
+  defer proper call site ID allocation to Phase 20 or handle it here.
+
+---
+
+### Phase 19: `await` emission
+
+**Objective:** Compile `await` expressions to the `AWAIT` opcode.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.AwaitExpression`:
+  lower the operand (which should be a `HOST_CALL_ARGS_ASYNC`), then emit `IrAwait`
+- `packages/typescript/src/compiler/ir.ts` -- add `IrAwait` node
+- `packages/typescript/src/compiler/emit.ts` -- emit `AWAIT` opcode via
+  `emitter.await()` (already available in core's `BytecodeEmitter`)
+
+**Prerequisites:** Phase 18 (async host call emission) must be complete so that the
+operand of `await` produces a handle on the stack.
+
+**Concrete deliverables:**
+
+1. `await ctx.engine.moveToward(target, speed)` compiles to
+   `HOST_CALL_ARGS_ASYNC(fnId, 2, callSiteId)` + `AWAIT`.
+2. The result of `await` is the resolved handle value, left on the stack.
+3. `await` on a non-async call produces a compile error.
+4. Multiple `await` expressions in a single function body each emit their own
+   `AWAIT` instruction.
+
+**Acceptance criteria:**
+
+- Test: single `await` in function body -> `HOST_CALL_ARGS_ASYNC` + `AWAIT` in bytecode
+- Test: `const result = await asyncCall()` -> result stored in local after `AWAIT`
+- Test: two consecutive `await` calls -> two `AWAIT` instructions
+- Test: `await` on sync function call -> compile error
+
+**Key risks:**
+
+- **`await` validation.** Must ensure the operand of `await` is a call expression
+  targeting an async host function. The TS checker flags `await` on non-Promise types,
+  but the lowering should also validate against the known async host function set.
+- **No state machine needed.** The VM fiber model preserves full execution state across
+  `AWAIT` (stack, frames, locals, PC). No CPS or generator transformation is required.
+  This is a significant simplification, but verify it works correctly with local
+  variables and nested scopes across suspension points.
+
+---
+
+### Phase 20: Async `onExecute` compilation
+
+**Objective:** Compile `async onExecute(ctx, params)` functions with one or more
+`await` points. Verify that the fiber correctly suspends and resumes across ticks.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- handle `async` modifier on
+  `onExecute` (the `descriptor.execIsAsync` flag is already extracted)
+- Integration tests exercising async execution
+
+**Prerequisites:** Phases 10a and 10b must be complete. Phase 8 (exec wrapper) must
+handle async fiber lifecycle (handle pending, fiber suspension, resumption, completion).
+
+**Concrete deliverables:**
+
+1. An async actuator like the following compiles and executes:
+   ```typescript
+   export default Actuator({
+     name: "patrol",
+     async onExecute(ctx: Context, params: { speed: number }): Promise<void> {
+       await ctx.engine.moveToward(target, params.speed);
+       await ctx.engine.moveToward(origin, params.speed);
+     },
+   });
+   ```
+2. The function body compiles linearly (no state machine transformation) with
+   `HOST_CALL_ARGS_ASYNC` + `AWAIT` at each suspension point.
+3. Local variables survive across `await` points (verified by test).
+4. Callsite-persistent variables are accessible before and after `await`.
+
+**Acceptance criteria:**
+
+- Test: async actuator with one `await` -> fiber suspends, handle resolves on
+  completion
+- Test: local variable assigned before `await`, read after -> correct value
+- Test: callsite var modified before `await`, read after -> correct value
+- Test: async sensor returning a value after `await` -> handle resolves with
+  return value
+
+**Key risks:**
+
+- **Fiber suspension/resumption test infrastructure.** Integration tests need a way
+  to simulate async handle resolution (mock a host function that returns a pending
+  handle, advance the scheduler, resolve the handle, verify the fiber resumes).
+  This test infrastructure may need to be built alongside the tests.
+- **Void return for async actuators.** Async actuators return `Promise<void>`. The
+  compiled bytecode must push `NIL_VALUE` before `RET` (matching the existing
+  NIL_VALUE fallthrough pattern from Phase 5).
+
+---
+
+### Phase 21: Async end-to-end integration
+
+**Objective:** Full integration test: compile an async actuator from source, link it
+into a `BrainProgram`, register it via the registration bridge (Phase 8), invoke it
+from a brain rule with a WHEN condition, and verify the full lifecycle:
+spawn -> suspend -> resume -> complete -> handle resolve.
+
+**Packages/files touched:**
+
+- Integration test file(s) in `packages/typescript/src/runtime/`
+- May require test utilities for mock async host functions
+
+**Prerequisites:** Phases 8, 10a, 10b, and 10c must be complete.
+
+**Concrete deliverables:**
+
+1. End-to-end test: brain rule with WHEN condition using a sync sensor -> DO action
+   using an async actuator -> actuator suspends at `await` -> handle resolves on next
+   tick -> rule completes
+2. Test verifies: correct fiber states (READY -> RUNNING -> WAITING -> RUNNING ->
+   COMPLETED), handle lifecycle (PENDING -> RESOLVED), callsite var persistence
+   across suspension
+
+**Acceptance criteria:**
+
+- Test: async actuator invoked from brain rule -> completes after handle resolution
+- Test: sync sensor + async actuator in same rule -> correct interleaving
+- Test: cancellation (page deactivation) during suspended async fiber -> fiber
+  transitions to CANCELLED
+
+**Key risks:**
+
+- **Brain compilation integration.** The brain compiler emits `HOST_CALL_ASYNC` for
+  tiles registered as async. Need to verify that the brain-level HOST_CALL_ASYNC
+  dispatches correctly to the user tile's exec wrapper (Phase 8), which spawns a
+  child fiber.
+- **Scheduler tick semantics.** Multiple fibers (brain rule fiber + user code fiber)
+  interleave within the scheduler. Need to verify budget accounting treats user fibers
+  the same as built-in fibers.
+
+---
+
+### Phase 22: Debug metadata types
+
+**Objective:** Define the `DebugMetadata` type hierarchy in
+`@mindcraft-lang/typescript` (mirroring the structures defined in the
+[debugger spec, section 6](vscode-authoring-debugging.md#6-debug-metadata)) and add
+the `debugMetadata` field to `UserAuthoredProgram`.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/types.ts` -- add `DebugMetadata`,
+  `DebugFileInfo`, `DebugFunctionInfo`, `Span`, `ScopeInfo`, `LocalInfo`,
+  `CallSiteInfo`, `SuspendSiteInfo` interfaces
+- `packages/typescript/src/compiler/types.ts` -- add optional `debugMetadata` field
+  to `UserAuthoredProgram`
+
+**Concrete deliverables:**
+
+1. All debug metadata interfaces defined per the debugger spec.
+2. `UserAuthoredProgram.debugMetadata?: DebugMetadata` field added.
+3. No functional changes -- metadata population is Phases 23-25.
+
+**Acceptance criteria:**
+
+- Types compile without errors
+- Existing tests continue to pass (field is optional)
+
+**Key risks:**
+
+- Low risk. Type-only changes.
+
+---
+
+### Phase 23: Source span tracking
+
+**Objective:** Track source spans during lowering and build `pcToSpanIndex` during
+emission so every bytecode instruction maps back to a source location.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- annotate IR nodes with source
+  position info (TS AST node start/end positions)
+- `packages/typescript/src/compiler/ir.ts` -- add optional `sourceSpan` field to
+  IR node base
+- `packages/typescript/src/compiler/emit.ts` -- build `pcToSpanIndex` array and
+  `spans` list as instructions are emitted; set `isStatementBoundary` per the rules
+  in the spec (expression statements, conditions, variable declarations with init,
+  return statements, break/continue, await/resume)
+
+**Concrete deliverables:**
+
+1. Every IR node carries an optional `sourceSpan` with `{ start, end, line, column }`
+   from the TS AST node.
+2. The emit pass builds `spans: Span[]` and `pcToSpanIndex: number[]` for each
+   function.
+3. Statement boundary rules are applied per the debugger spec's table.
+4. `DebugFunctionInfo.spans` and `DebugFunctionInfo.pcToSpanIndex` are populated.
+
+**Acceptance criteria:**
+
+- Test: compiled function's `pcToSpanIndex` has an entry for every PC
+- Test: statement boundaries are set for expression statements, `if` conditions,
+  loop conditions, `return`, `break`/`continue`
+- Test: sub-expression PCs have `isStatementBoundary: false`
+- Test: generated functions (init, wrapper) have `isGenerated: true`
+
+**Key risks:**
+
+- **IR node annotation overhead.** Adding source spans to every IR node increases
+  memory during compilation. Acceptable since compilation is not
+  performance-critical.
+- **Statement boundary completeness.** Missing a boundary type means the debugger
+  cannot pause at that location. Must verify against the spec's table exhaustively.
+
+---
+
+### Phase 24: Scope and variable metadata
+
+**Objective:** Emit `ScopeInfo` and `LocalInfo` metadata describing the scope tree
+and variable lifetimes for debugger inspection.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- track scope enter/exit PCs,
+  record variable declaration PCs and lifetimes
+- `packages/typescript/src/compiler/scope.ts` -- extend `ScopeStack` to record
+  scope metadata (kind, parent, start/end PC)
+
+**Concrete deliverables:**
+
+1. Each function's `DebugFunctionInfo.scopes` contains a tree of `ScopeInfo` entries
+   (function scope at root, block scopes nested).
+2. Each `LocalInfo` records name, slot index, storage kind (`"local"` or
+   `"parameter"`), scope ID, and lifetime PC range.
+3. Module-level scope for callsite-persistent variables is represented as a
+   `"module"` scope.
+
+**Acceptance criteria:**
+
+- Test: function with nested blocks -> correct scope tree
+- Test: variable declared in a block -> `lifetimeStartPc`/`lifetimeEndPc` match
+  the block's PC range
+- Test: parameters have `storageKind: "parameter"`
+- Test: callsite vars appear in a `"module"` scope
+
+**Key risks:**
+
+- **PC range tracking.** Scope start/end PCs must be precisely tracked during emission,
+  not just during lowering. The emit pass assigns final PCs; the lowering pass only
+  knows IR indices. Need a mapping from IR index to emitted PC.
+
+---
+
+### Phase 25: DebugMetadata assembly
+
+**Objective:** Assemble the complete `DebugMetadata` structure from the per-function
+metadata collected in Phases 11b-11c and attach it to `UserAuthoredProgram`.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/compile.ts` -- collect per-function debug info
+  from lowering and emission, assemble `DebugMetadata`, set on
+  `UserAuthoredProgram.debugMetadata`
+- `packages/typescript/src/compiler/emit.ts` -- return debug spans and metadata
+  alongside bytecode
+
+**Concrete deliverables:**
+
+1. `DebugMetadata` is fully populated: `files` (single file for v1), `functions`
+   (one `DebugFunctionInfo` per `FunctionBytecode`).
+2. Generated functions (module init, `onPageEntered` wrapper) have `isGenerated: true`.
+3. `callSites` and `suspendSites` are populated (suspend sites only for async
+   functions, Phase 10+).
+4. The `programRevisionId` on `UserAuthoredProgram` acts as a revision key for
+   the debug metadata.
+
+**Acceptance criteria:**
+
+- Test: compiled program's `debugMetadata` has correct file count (1) and function
+  count
+- Test: `DebugFunctionInfo.compiledFuncId` matches the index in `Program.functions`
+- Test: generated functions have `isGenerated: true`
+- Test: user-authored functions have `isGenerated: false`
+
+**Key risks:**
+
+- **Metadata correctness across recompilation.** The `debugFunctionId` (stable
+  identity) must be deterministic across recompilations of the same source. Use
+  `filePath + "/" + functionName` as the format. The `compiledFuncId` (index into
+  `Program.functions`) may change on recompilation -- that is expected.
+- **Linker remapping of debug metadata.** After linking, `compiledFuncId` values in
+  the debug metadata need to be remapped (offset by function base). This may be a
+  concern for Phase 7's linker -- either handle it in a sub-phase or as part of 11d.
 
 ---
 
 ## Immediate Next Phase
 
-**Phase 0** should be done first. The package has no test runner, no `typescript`
-production dependency, and no proven build-and-consume seam with core.
+**Phase 8** is next. Phases 0-7 are complete. The compiler produces `UserAuthoredProgram`
+bytecode, the linker merges it into a `BrainProgram` with remapped function and constant
+indices, and both `linkedEntryFuncId` and `linkedOnPageEnteredFuncId` are available for
+dispatch.
 
-Every subsequent phase depends on being able to `npm run build && npm test` and import
-from both `typescript` and `@mindcraft-lang/core/brain`. Getting this wrong blocks
-everything. Getting it right is fast (a few files) and immediately validates the
-dependency graph.
+Phase 8 builds the runtime bridge: the `exec` wrapper that spawns fibers for user
+bytecode, manages callsite-persistent state via `getCallSiteState`/`setCallSiteState`,
+and the registration bridge that makes user-authored tiles appear in the tile catalog
+alongside built-in tiles. This is the last phase before user-authored sensors/actuators
+are end-to-end functional (for the sync case).
+
+After Phase 8, Phases 9-17 expand language coverage (each independently
+testable), Phases 18-21 add async support, and Phases 22-25 add debug metadata for
+the VS Code debugger integration.
 
 ---
 
