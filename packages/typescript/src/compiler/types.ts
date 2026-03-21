@@ -24,6 +24,7 @@ export interface UserAuthoredProgram extends Program {
 export interface UserTileLinkInfo {
   program: UserAuthoredProgram;
   linkedEntryFuncId: number;
+  linkedOnPageEnteredFuncId?: number;
 }
 
 export interface CompileOptions {

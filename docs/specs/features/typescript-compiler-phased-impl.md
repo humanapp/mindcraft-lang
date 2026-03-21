@@ -33,7 +33,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0, 1, 2, 2.5, 3, 4, 5, 6, and 6.5 are complete.
+- (Updated 2026-03-21) Phases 0, 1, 2, 2.5, 3, 4, 5, 6, 6.5, and 7 are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -42,14 +42,19 @@ not survive. Keep this doc current.
   variables (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` with module init function),
   `onPageEntered` lifecycle support (user body compilation + always-generated
   wrapper that calls module init then user function), `null` and `undefined`
-  literal support (both map to `NIL_VALUE`), and nullish comparison support
+  literal support (both map to `NIL_VALUE`), nullish comparison support
   (`x === null`, `x !== undefined`) via nil operator overloads in core and
   `tsTypeToTypeId` handling of `TypeFlags.Null`, `TypeFlags.Undefined`, and
-  nullable union types.
+  nullable union types, and a linker that merges `UserAuthoredProgram` functions
+  and constants into a `BrainProgram` with `CALL`/`PUSH_CONST` operand remapping.
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientSource`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
-  interfaces.
+  interfaces, plus `linkUserPrograms` and `LinkResult` from the linker module.
+- `src/linker/linker.ts` exports `linkUserPrograms(brainProgram, userPrograms[])` which
+  appends user functions to the brain program, remaps `CALL` and `PUSH_CONST` operands,
+  merges constants, and returns `LinkResult` with `linkedEntryFuncId` and
+  `linkedOnPageEnteredFuncId` per user program.
 - `src/compiler/compile.ts` exports `compileUserTile(source, options?)` which accepts
   a TypeScript source string and optional `CompileOptions`, runs it through a fully
   in-memory virtual `ts.CompilerHost`, validates the AST, extracts descriptor metadata,
@@ -594,6 +599,12 @@ can invoke a user-authored tile end-to-end.
   `CompileOptions` for this; apps must supply a resolver that maps short names to
   their registered `TypeId`s. If the app does not supply a resolver, it falls back to
   core types only.
+- (Added 2026-03-21) **Use `linkedOnPageEnteredFuncId` from `UserTileLinkInfo` for
+  lifecycle registration.** The linker returns both `linkedEntryFuncId` and
+  `linkedOnPageEnteredFuncId` (remapped). The exec wrapper / registration bridge
+  should use these directly rather than computing offsets itself. The
+  `onPageEntered` wrapper already calls module init internally, so the bridge does
+  not need to call `initFuncId` separately.
 
 ---
 
@@ -1243,3 +1254,67 @@ null` has `TypeFlags.Union` with a `.types` array. The implementation strips nul
 6. **`null` and `undefined` are fully interchangeable at the VM level.** Both produce
    `NIL_VALUE` (`NativeType.Nil`). This matches Luau (Roblox target) which has only
    `nil`, and aligns with TypeScript's nullish semantics (`??`, `==`).
+
+### Phase 7 -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                                  | Actual | Notes                                                                                                    |
+| ------------------------------------------------------------------------ | ------ | -------------------------------------------------------------------------------------------------------- |
+| `src/linker/linker.ts`: `linkUserPrograms(brainProgram, userPrograms[])` | Done   | Appends user functions, remaps `CALL` and `PUSH_CONST` operands, merges constants, returns `LinkResult`. |
+| `src/linker/linker.spec.ts`: tests                                       | Done   | 7 tests covering all acceptance criteria plus additional scenarios.                                      |
+| Returns linked entry funcId for each user program                        | Done   | Via `UserTileLinkInfo.linkedEntryFuncId`.                                                                |
+| Test: linked program callable by funcId                                  | Done   | Compiles sensor, links into empty brain program, executes via VM.                                        |
+| Test: constant pool indices correct after merging                        | Done   | Verifies brain constants preserved at original indices, user constants appended.                         |
+| Test: `CALL` to user helper resolves correctly                           | Done   | Verifies `CALL` instructions in linked bytecode have funcIds >= brain function offset.                   |
+
+**Additional work beyond plan:**
+
+| Item                                  | Notes                                                                                                                             |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `linkedOnPageEnteredFuncId`           | Added to `UserTileLinkInfo`. Remaps `lifecycleFuncIds.onPageEntered` by the function offset. Tested explicitly.                   |
+| `LinkResult` interface                | New interface returned by `linkUserPrograms`, containing `linkedProgram` and `userLinks[]`.                                       |
+| Multiple user program test            | Links two independent user programs into one brain program, verifies both execute correctly with independent offsets.             |
+| Brain function preservation test      | Verifies the brain program's original stub function (PUSH_CONST + RET) still executes correctly after linking user programs.      |
+| Linked helper function execution test | End-to-end: compiles a sensor with a `triple()` helper, links into a brain program with a stub, executes via VM, verifies result. |
+| `src/index.ts` re-exports             | Added `linkUserPrograms` and `LinkResult` exports.                                                                                |
+
+**No changes to `packages/core`.** The linker operates entirely on the `List<FunctionBytecode>`
+and `List<Value>` data structures already exported from core. No new core APIs were needed.
+
+**No spec amendments needed.** The `user-authored-sensors-actuators.md` linking section
+accurately described the algorithm. The implementation matches the spec's steps 4-6.
+
+**Test counts:** 83 total (7 linker, 8 null/nil, 5 onPageEntered/lifecycle, 11 helper
+functions/callsite state, 11 control flow, 10 codegen/VM, 5 buildCallDef, 5
+type-checking, 7 validation, 11 extraction, 3 core imports).
+
+**Discoveries:**
+
+1. **Constants are appended, not deduplicated.** The linker appends user constants
+   to the brain's constant pool without deduplication. This is correct and simple:
+   each user program was compiled with its own `ConstantPool` which already
+   deduplicates internally. Cross-program dedup would save a few entries but adds
+   complexity (value equality checks for all `Value` types) with no meaningful
+   benefit at current scale.
+2. **Brain program instructions are not remapped.** Only user program instructions
+   need remapping. The brain program's existing functions reference function IDs and
+   constant indices that are still valid in the linked program (they occupy the same
+   positions). This is a key simplification -- the linker only touches user bytecode.
+3. **`linkedOnPageEnteredFuncId` is essential for Phase 8.** The exec wrapper / tile
+   registration bridge needs both `linkedEntryFuncId` (for `onExecute` dispatch) and
+   `linkedOnPageEnteredFuncId` (for lifecycle hook registration). Returning both from
+   the linker avoids the registration bridge needing to know about function offsets.
+4. **The linker is ~40 lines of logic.** The spec estimated ~50 lines; the actual
+   implementation is slightly smaller. The `remapInstructions` helper is clean and
+   handles only the two opcodes that reference pool/function indices (`PUSH_CONST`
+   and `CALL`). No other opcodes use indices into these arrays.
+5. **`initFuncId` remapping is deferred to the registration bridge.** The
+   `UserAuthoredProgram.initFuncId` is a program-local function index. The linker
+   remaps `lifecycleFuncIds.onPageEntered` (which wraps the init call) but does not
+   separately remap `initFuncId`. The exec wrapper in Phase 8 should use the
+   `onPageEntered` wrapper (which already calls init) rather than calling
+   `initFuncId` directly. This is consistent with the Phase 6 design where the
+   wrapper is the single entry point for lifecycle setup.

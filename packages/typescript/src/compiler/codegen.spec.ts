@@ -62,7 +62,7 @@ function operatorResolver(opId: string, argTypes: string[]): string | undefined 
   return getBrainServices().operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
 }
 
-describe("phase 3: lowering + emission", () => {
+describe("lowering + emission", () => {
   before(async () => {
     registerCoreBrainComponents();
     await initCompiler();
@@ -430,7 +430,7 @@ describe("buildCallDef", () => {
   });
 });
 
-describe("phase 4: control flow + local variables", () => {
+describe("control flow + local variables", () => {
   before(async () => {
     registerCoreBrainComponents();
     await initCompiler();
@@ -873,7 +873,7 @@ export default Sensor({
   });
 });
 
-describe("phase 5: helper functions + callsite-persistent state", () => {
+describe("helper functions + callsite-persistent state", () => {
   before(async () => {
     registerCoreBrainComponents();
     await initCompiler();
@@ -1422,7 +1422,7 @@ export default Sensor({
   });
 });
 
-describe("phase 6: onPageEntered + lifecycle wrapper", () => {
+describe("onPageEntered + lifecycle wrapper", () => {
   before(async () => {
     registerCoreBrainComponents();
     await initCompiler();
@@ -1698,7 +1698,7 @@ export default Sensor({
   });
 });
 
-describe("phase 6.5: null literal support", () => {
+describe("null literal support", () => {
   before(async () => {
     registerCoreBrainComponents();
     await initCompiler();
