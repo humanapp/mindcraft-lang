@@ -43,9 +43,10 @@
     }
   },
   "scripts": {
-    "prebuild": "node scripts/bundle-lib-dts.js",
-    "build": "tsc",
-    "clean": "rm -rf dist",
+    "bundle-lib-dts": "node scripts/bundle-lib-dts.js",
+    "build": "npm run bundle-lib-dts && tsc --build tsconfig.json",
+    "build:prod": "tsc",
+    "clean": "tsc --build tsconfig.json --clean",
     "lint:only": "biome lint ./src",
     "check:only": "biome check ./src",
     "format:only": "biome format ./src",
