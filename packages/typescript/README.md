@@ -1,0 +1,1 @@
+[![Publish @mindcraft-lang/typescript](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-typescript.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-typescript.yml)
