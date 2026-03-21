@@ -1,6 +1,6 @@
 {
   "name": "@mindcraft-lang/typescript",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "TypeScript-to-Mindcraft bytecode compiler for sensors and actuators implemented in TypeScript",
   "license": "MIT",
   "type": "module",
