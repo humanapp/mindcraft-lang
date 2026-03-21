@@ -28,6 +28,10 @@
     "kodu",
     "project-spark"
   ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "publishConfig": {
     "access": "public"
   },

@@ -355,7 +355,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "README.md"
   ],
   "scripts": {
     "build": "npm run build:docs && npm run build:rbx && npm run build:node && npm run build:esm",

@@ -31,7 +31,8 @@
     "access": "public"
   },
   "files": [
-    "src"
+    "src",
+    "README.md"
   ],
   "scripts": {
     "lint:only": "biome lint ./src",
