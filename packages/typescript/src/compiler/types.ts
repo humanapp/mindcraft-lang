@@ -1,9 +1,34 @@
+import type { BrainActionCallDef, Program, TypeId } from "@mindcraft-lang/core/brain";
 import type ts from "typescript";
 
 export interface CompileDiagnostic {
   message: string;
   line?: number;
   column?: number;
+}
+
+export interface UserAuthoredProgram extends Program {
+  kind: "sensor" | "actuator";
+  name: string;
+  callDef: BrainActionCallDef;
+  outputType?: TypeId;
+  numCallsiteVars: number;
+  entryFuncId: number;
+  lifecycleFuncIds: {
+    onPageEntered?: number;
+  };
+  programRevisionId: string;
+}
+
+export interface UserTileLinkInfo {
+  program: UserAuthoredProgram;
+  linkedEntryFuncId: number;
+}
+
+export interface CompileOptions {
+  resolveHostFn?: (name: string) => number | undefined;
+  resolveTypeId?: (shortName: string) => TypeId | undefined;
+  ambientSource?: string;
 }
 
 export interface ExtractedDescriptor {

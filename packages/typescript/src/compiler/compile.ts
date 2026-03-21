@@ -1,16 +1,20 @@
-import type { Program } from "@mindcraft-lang/core/brain";
+import { List } from "@mindcraft-lang/core";
+import { CoreTypeIds, compiler } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
-import { AMBIENT_MINDCRAFT_DTS } from "./ambient.js";
+import { AMBIENT_MINDCRAFT_DTS, buildAmbientSource } from "./ambient.js";
+import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
-import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
+import { emitFunction } from "./emit.js";
+import { lowerOnExecute } from "./lowering.js";
+import type { CompileDiagnostic, CompileOptions, ExtractedDescriptor, UserAuthoredProgram } from "./types.js";
 import { validateAst } from "./validator.js";
 import { createVirtualCompilerHost } from "./virtual-host.js";
 
-export type { CompileDiagnostic, ExtractedDescriptor, ExtractedParam } from "./types.js";
+export type { CompileDiagnostic, CompileOptions, ExtractedDescriptor, ExtractedParam } from "./types.js";
 
 export interface CompileResult {
   diagnostics: CompileDiagnostic[];
-  program?: Program;
+  program?: UserAuthoredProgram;
   descriptor?: ExtractedDescriptor;
 }
 
@@ -32,7 +36,7 @@ export async function initCompiler(): Promise<void> {
   cachedLibFiles = mod.LIB_FILES;
 }
 
-export function compileUserTile(source: string): CompileResult {
+export function compileUserTile(source: string, options?: CompileOptions): CompileResult {
   if (!cachedLibFiles) {
     throw new Error("Compiler not initialized. Call initCompiler() first.");
   }
@@ -43,7 +47,7 @@ export function compileUserTile(source: string): CompileResult {
     files.set(`${LIB_DIR}${name}`, content);
   }
 
-  files.set("/mindcraft.d.ts", AMBIENT_MINDCRAFT_DTS);
+  files.set("/mindcraft.d.ts", options?.ambientSource ?? AMBIENT_MINDCRAFT_DTS);
   files.set("/user-code.ts", source);
 
   const host = createVirtualCompilerHost(files, checkerOptions);
@@ -83,5 +87,70 @@ export function compileUserTile(source: string): CompileResult {
     return { diagnostics: extractionResult.diagnostics };
   }
 
-  return { diagnostics: [], descriptor: extractionResult.descriptor };
+  const descriptor = extractionResult.descriptor!;
+
+  if (!options?.resolveHostFn) {
+    return { diagnostics: [], descriptor };
+  }
+
+  const checker = tsProgram.getTypeChecker();
+  const lowerResult = lowerOnExecute(descriptor, checker);
+  if (lowerResult.diagnostics.length > 0) {
+    return { diagnostics: lowerResult.diagnostics };
+  }
+
+  const pool = new compiler.ConstantPool();
+  const emitResult = emitFunction(
+    lowerResult.ir,
+    lowerResult.numParams,
+    lowerResult.numLocals,
+    `${descriptor.name}.onExecute`,
+    pool,
+    options.resolveHostFn
+  );
+  if (emitResult.diagnostics.length > 0) {
+    return { diagnostics: emitResult.diagnostics };
+  }
+
+  const callDef = buildCallDef(descriptor.name, descriptor.params);
+  const resolveTypeId = options.resolveTypeId ?? coreTypeResolver;
+  const outputType = descriptor.outputType ? resolveTypeId(descriptor.outputType) : undefined;
+  if (descriptor.outputType && !outputType) {
+    return { diagnostics: [{ message: `Unknown output type: "${descriptor.outputType}"` }] };
+  }
+
+  const program: UserAuthoredProgram = {
+    version: 1,
+    functions: List.from([emitResult.bytecode]),
+    constants: pool.getConstants(),
+    variableNames: List.empty(),
+    entryPoint: 0,
+    kind: descriptor.kind,
+    name: descriptor.name,
+    callDef,
+    outputType,
+    numCallsiteVars: 0,
+    entryFuncId: 0,
+    lifecycleFuncIds: {},
+    programRevisionId: generateRevisionId(),
+  };
+
+  return { diagnostics: [], program, descriptor };
+}
+
+function coreTypeResolver(shortName: string): string | undefined {
+  switch (shortName) {
+    case "boolean":
+      return CoreTypeIds.Boolean;
+    case "number":
+      return CoreTypeIds.Number;
+    case "string":
+      return CoreTypeIds.String;
+    default:
+      return undefined;
+  }
+}
+
+function generateRevisionId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }

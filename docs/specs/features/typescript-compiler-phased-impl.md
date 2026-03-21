@@ -33,20 +33,23 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-20) Phases 0, 1, 2, and 2.5 are complete. `packages/typescript`
+- (Updated 2026-03-20) Phases 0, 1, 2, 2.5, and 3 are complete. `packages/typescript`
   has a working build, test suite, type-checking pipeline, AST validation, descriptor
-  extraction, and the callDef design back-propagated into types and ambient
-  declarations.
-- `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `CompileDiagnostic`,
-  `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from the compiler module
-  alongside `UserAuthoredProgram` and `UserTileLinkInfo` interfaces.
-- `src/compiler/compile.ts` exports `compileUserTile(source)` which accepts a
-  TypeScript source string, runs it through a fully in-memory virtual
-  `ts.CompilerHost`, validates the AST, and extracts descriptor metadata. No bytecode
-  emission yet (Phase 3+). The lib `.d.ts` content is lazy-loaded via `initCompiler()`
-  (async, dynamic `import()`) so bundlers like Vite automatically chunk the ~230KB
-  lib strings into a separate file loaded on demand.
-- Pipeline: parse -> type check -> validate AST -> extract descriptor.
+  extraction, the callDef design, and end-to-end bytecode compilation and execution.
+- `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientSource`,
+  `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
+  the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
+  interfaces.
+- `src/compiler/compile.ts` exports `compileUserTile(source, options?)` which accepts
+  a TypeScript source string and optional `CompileOptions`, runs it through a fully
+  in-memory virtual `ts.CompilerHost`, validates the AST, extracts descriptor metadata,
+  and (when `resolveHostFn` is provided) lowers and emits bytecode into a
+  `UserAuthoredProgram`. `CompileOptions` supports `resolveHostFn`, `resolveTypeId`,
+  and `ambientSource` for app-injected types. The lib `.d.ts` content is lazy-loaded
+  via `initCompiler()` (async, dynamic `import()`) so bundlers like Vite automatically
+  chunk the ~230KB lib strings into a separate file loaded on demand.
+- Pipeline: parse -> type check -> validate AST -> extract descriptor -> lower -> emit
+  -> assemble program.
 - `src/compiler/validator.ts` rejects unsupported constructs (classes, enums, `var`,
   `for...in`, `eval`, computed property names, etc.) with positioned diagnostics.
 - `src/compiler/descriptor.ts` extracts `ExtractedDescriptor` from the
@@ -56,9 +59,14 @@ not survive. Keep this doc current.
   `ExtractedParam`.
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
   browser-compatible `ts.CompilerHost` with zero Node.js API usage.
-- `src/compiler/ambient.ts` declares the `"mindcraft"` ambient module with `Context`,
-  `Sensor`, `Actuator`, `SensorConfig`, `ActuatorConfig` (with `onExecute` and
-  optional `onPageEntered`), and a minimal `Promise<T>` ambient for async support.
+- `src/compiler/ambient.ts` exports `buildAmbientSource(appTypeEntries?)` which
+  generates the `"mindcraft"` ambient module with `Context`, `Sensor`, `Actuator`,
+  `SensorConfig`, `ActuatorConfig`, `MindcraftTypeMap`, and `MindcraftType` union.
+  Core types (`boolean`, `number`, `string`) are always present; apps pass additional
+  entries to extend the union. `AMBIENT_MINDCRAFT_DTS` is the default (core-only)
+  generated output. `SensorConfig.output` and `ParamDef.type` are constrained to
+  `MindcraftType` (= `keyof MindcraftTypeMap`), giving compile-time validation of
+  type strings.
 - `scripts/bundle-lib-dts.js` generates `src/compiler/lib-dts.generated.ts` at build
   time, bundling TypeScript's `lib.es5.d.ts` + decorator libs as string constants.
 - `package.json` has an `exports` map for proper bundler resolution.
@@ -525,6 +533,13 @@ can invoke a user-authored tile end-to-end.
 - Fiber spawning mechanics -- need to match the `FiberScheduler.spawn()` API exactly
 - Handle resolution timing for sync case -- verify handle resolves immediately when
   user fiber completes without AWAIT
+- (Added 2026-03-20) **App-type resolution dependency.** The registration bridge must
+  convert `ExtractedParam.type` strings to valid `TypeId` values when creating
+  `BrainTileParameterDef` entries, and the sensor's `outputType` must be a valid
+  `TypeId` on the registered tile def. The compiler now provides `resolveTypeId` in
+  `CompileOptions` for this; apps must supply a resolver that maps short names to
+  their registered `TypeId`s. If the app does not supply a resolver, it falls back to
+  core types only.
 
 ---
 
@@ -543,6 +558,45 @@ With the vertical slice proven, subsequent phases expand language support:
 - **9i: Arrow functions** -- as helpers (same as function declarations, no closures)
 
 Each of these is small and independently testable.
+
+**Prerequisite for 9c and 9e (added 2026-03-20): App-type shape declarations.** Struct
+literal emission (9c) and property access chain lowering (9e) require the compiler to
+know the field layout of app-defined struct types. Currently `buildAmbientSource`
+accepts type entries as short strings (e.g., `"actorRef: unknown;"`) which declares
+the type name but not its shape. Before 9c/9e, the ambient generation must support
+full interface declarations so that `result.position.x` type-checks and the compiler
+can emit the correct `GET_FIELD` operand. This is tracked as a dependency in Phase 3's
+post-mortem.
+
+**Planned approach (added 2026-03-20): Generate ambient types from `ITypeRegistry`.**
+The type registry already stores complete structural information for every registered
+type -- struct field names and field `TypeId`s, enum symbols, list element types. Rather
+than having apps manually construct ambient type strings, the compiler should derive
+them from the registry. This requires:
+
+1. An enumeration method on `ITypeRegistry` (e.g., `entries()` or `allTypes()`).
+   Currently only `get(id)` exists; the internal `Dict<TypeId, TypeDef>` storage is
+   private.
+2. A generator function in `@mindcraft-lang/typescript` that walks all registered types
+   and emits the `MindcraftTypeMap` entries plus full interface declarations for struct
+   types. For example, a struct registered as
+   `addStructType("actorRef", { fields: [{ name: "id", typeId: Number }, { name: "position", typeId: Vector2 }] })`
+   would produce:
+   ```typescript
+   interface ActorRef {
+     readonly id: number;
+     readonly position: Vector2;
+   }
+   ```
+   in the ambient, and `actorRef: ActorRef;` in `MindcraftTypeMap`.
+3. The `resolveTypeId` function can also be generated mechanically from the registry
+   (short name -> `TypeId` for every registered type).
+
+This makes the type registry the single source of truth. Apps register types (which they
+already do at startup), then call `buildAmbientFromRegistry(services.types)` to produce
+both `ambientSource` and `resolveTypeId` for `CompileOptions`. The current
+`buildAmbientSource(appTypeEntries?)` and manual `resolveTypeId` functions become
+unnecessary. `CompileOptions.ambientSource` remains as the injection point.
 
 ---
 
@@ -803,3 +857,78 @@ with the design as documented in the spec.
 
 **No new discoveries.** All changes were mechanical alignment with the already-resolved
 design. No spec amendments needed.
+
+### Phase 3 -- 2026-03-20
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                          | Actual  | Notes                                                                                                                                           |
+| ---------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/compiler/ir.ts`: IR node types                              | Done    | `IrPushConst`, `IrLoadLocal`, `IrStoreLocal`, `IrReturn`, `IrPop`, `IrHostCallArgs`, `IrMapGet`.                                                |
+| `src/compiler/lowering.ts`: TS AST -> IR                         | Done    | Handles param preamble (MapValue extraction), binary expressions, literals, return, property access (`params.xyz`).                             |
+| `src/compiler/emit.ts`: IR -> FunctionBytecode                   | Done    | Uses `compiler.BytecodeEmitter` + `compiler.ConstantPool` from core (namespace import).                                                         |
+| `src/compiler/call-def-builder.ts`: params -> BrainActionCallDef | Done    | Named params -> `user.<tileName>.<paramName>`, anonymous -> `anon.<type>`, optional wrapped.                                                    |
+| `src/compiler/compile.ts`: pipeline wiring                       | Done    | `compileUserTile(source, options?)` produces `UserAuthoredProgram` when `resolveHostFn` is provided.                                            |
+| `src/compiler/types.ts`: `UserAuthoredProgram`, `CompileOptions` | Done    | `CompileOptions` gained `resolveTypeId` and `ambientSource`. `UserAuthoredProgram` has full metadata.                                           |
+| End-to-end VM execution tests                                    | Done    | 10 tests: true/false comparison, number/bool/string literals, arithmetic, metadata, type resolution error, app-defined type, ambient rejection. |
+| `buildCallDef` tests                                             | Done    | 5 tests: empty, required, optional, anonymous, mixed.                                                                                           |
+| `descriptor.ts`: extract `anonymous` flag                        | Skipped | Already done in Phase 2.5.                                                                                                                      |
+| `ambient.ts`: make params optional, add anonymous                | Skipped | Already done in Phase 2.5.                                                                                                                      |
+
+**Design changes from spec:**
+
+1. **`exec` -> `onExecute` in all test sources.** The spec's example used `exec` but
+   Phase 2 renamed it to `onExecute`. All Phase 3 tests use the updated name.
+2. **`mapOutputType` replaced by `resolveTypeId` in `CompileOptions`.** The original
+   Phase 3 plan did not mention type resolution as a configurable concern. During
+   implementation, `mapOutputType` was identified as a hardcoded bottleneck that
+   cannot handle app-defined types. It was replaced with an injected
+   `resolveTypeId(shortName) -> TypeId | undefined` function in `CompileOptions`,
+   with a built-in `coreTypeResolver` fallback for the three primitive types. Unknown
+   output types now produce a `CompileDiagnostic` instead of silently passing through.
+3. **`ambientSource` in `CompileOptions`.** The original plan used a hardcoded
+   `AMBIENT_MINDCRAFT_DTS` string. The ambient is now generated by
+   `buildAmbientSource(appTypeEntries?)` which accepts additional type map entries.
+   `SensorConfig.output` and `ParamDef.type` are constrained to
+   `MindcraftType = keyof MindcraftTypeMap` -- a string literal union that
+   TypeScript validates at authoring time. Apps extend the union by passing entries
+   to `buildAmbientSource`.
+4. **`buildAmbientSource` exported from package API.** Added to `src/index.ts` so
+   consuming apps can generate ambient sources with their custom types.
+
+**Extra files:** None.
+
+**Test counts:** 41 total (10 codegen/VM, 5 buildCallDef, 5 type-checking, 7
+validation, 11 extraction, 3 core imports).
+
+**Discoveries:**
+
+1. `BytecodeEmitter` and `ConstantPool` are under the `compiler` namespace export
+   from `@mindcraft-lang/core/brain`. Must use `import { compiler } from "..."` then
+   `compiler.BytecodeEmitter`, not direct named imports. This was documented in the
+   Phase 0 log but the import pattern was not explicit enough.
+2. The operator function naming convention is
+   `$$op_<opId>_<lhsTypeId>_<rhsTypeId>_to_<resultTypeId>` (e.g.,
+   `$$op_lt_number:<number>_number:<number>_to_boolean:<boolean>`). The lowering
+   resolves operand types via the TS checker's `ts.Type` flags, not from
+   `ExtractedParam.type`.
+3. The `onExecute` function takes 1 parameter (a `MapValue` of args keyed by slotId)
+   if the descriptor has params, else 0 parameters. The preamble unpacks each param
+   into a local: `LOAD_LOCAL 0`, `PUSH_CONST slotId`, `MAP_GET`, `STORE_LOCAL N`.
+4. **App-type shape visibility is a deferred concern.** The current
+   `buildAmbientSource` can declare type names in the `MindcraftTypeMap` but not their
+   structural shapes. For Phase 3 this is fine -- user code only returns primitives.
+   **This becomes a hard blocker for Phase 9c (struct literals) and 9e (property
+   access chains)** where the compiler must know field layouts to emit `STRUCT_NEW`,
+   `STRUCT_SET`, and `GET_FIELD` instructions. The ambient generation must be extended
+   to accept full interface declarations before those phases. See the prerequisite
+   note added to Phase 9+.
+5. `ParamDef.type` strings flow through `call-def-builder.ts` for tileId construction
+   but are not validated against the type registry at compile time. The registration
+   bridge (not yet built) resolves them to `TypeId`s. For now, invalid param type
+   strings are caught only if the TS checker rejects the `MindcraftType` union.
+6. `null` literal is not yet supported in lowering (produces "Unsupported expression:
+   NullKeyword"). This is fine for Phase 3 scope; support should be added in Phase 4
+   or 9 alongside `undefined` and nil handling.
