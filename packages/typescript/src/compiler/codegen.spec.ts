@@ -1883,4 +1883,100 @@ export default Sensor({
       assert.equal((runResult.result as BooleanValue).v, true);
     }
   });
+
+  test("undefined compiles to NIL_VALUE", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "undef-var",
+  output: "number",
+  onExecute(ctx: Context): number {
+    let x: number | undefined = undefined;
+    if (x === undefined) {
+      x = 42;
+    }
+    return x;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.equal((runResult2.result as NumberValue).v, 42);
+    }
+  });
+
+  test("undefined === null returns true (both are nil)", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "undef-null-eq",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    const a: number | undefined = undefined;
+    const b: number | null = null;
+    return a === b;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.equal((runResult2.result as BooleanValue).v, true);
+    }
+  });
+
+  test("number !== undefined returns true", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "not-undef",
+  output: "boolean",
+  params: { x: { type: "number" } },
+  onExecute(ctx: Context, params: { x: number }): boolean {
+    const val: number | undefined = params.x;
+    return val !== undefined;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const args = mkArgsMap({ 0: mkNumberValue(5) });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.equal((runResult2.result as BooleanValue).v, true);
+    }
+  });
 });

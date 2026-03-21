@@ -600,6 +600,11 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
 }
 
 function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
+  if (expr.text === "undefined") {
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
   const paramLocal = ctx.paramLocals.get(expr.text);
   if (paramLocal !== undefined) {
     ctx.ir.push({ kind: "LoadLocal", index: paramLocal });
@@ -902,13 +907,13 @@ function tsTypeToTypeId(type: ts.Type): string | undefined {
   if (type.flags & ts.TypeFlags.StringLike) {
     return CoreTypeIds.String;
   }
-  if (type.flags & ts.TypeFlags.Null) {
+  if (type.flags & ts.TypeFlags.Null || type.flags & ts.TypeFlags.Undefined) {
     return CoreTypeIds.Nil;
   }
   if (type.isUnion()) {
-    const nonNull = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null));
-    if (nonNull.length === 1) {
-      return tsTypeToTypeId(nonNull[0]);
+    const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
+    if (nonNullish.length === 1) {
+      return tsTypeToTypeId(nonNullish[0]);
     }
   }
   return undefined;
