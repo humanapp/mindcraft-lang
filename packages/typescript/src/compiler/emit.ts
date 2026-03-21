@@ -17,6 +17,16 @@ export function emitFunction(
 ): EmitResult {
   const emitter = new compiler.BytecodeEmitter();
   const diagnostics: CompileDiagnostic[] = [];
+  const labelMap = new Map<number, number>();
+
+  function getOrAllocLabel(irLabelId: number): number {
+    let emitterLabelId = labelMap.get(irLabelId);
+    if (emitterLabelId === undefined) {
+      emitterLabelId = emitter.label();
+      labelMap.set(irLabelId, emitterLabelId);
+    }
+    return emitterLabelId;
+  }
 
   for (const node of ir) {
     switch (node.kind) {
@@ -37,6 +47,9 @@ export function emitFunction(
       case "Pop":
         emitter.pop();
         break;
+      case "Dup":
+        emitter.dup();
+        break;
       case "HostCallArgs": {
         const fnId = resolveHostFn(node.fnName);
         if (fnId === undefined) {
@@ -48,6 +61,18 @@ export function emitFunction(
       }
       case "MapGet":
         emitter.mapGet();
+        break;
+      case "Label":
+        emitter.mark(getOrAllocLabel(node.labelId));
+        break;
+      case "Jump":
+        emitter.jmp(getOrAllocLabel(node.labelId));
+        break;
+      case "JumpIfFalse":
+        emitter.jmpIfFalse(getOrAllocLabel(node.labelId));
+        break;
+      case "JumpIfTrue":
+        emitter.jmpIfTrue(getOrAllocLabel(node.labelId));
         break;
     }
   }

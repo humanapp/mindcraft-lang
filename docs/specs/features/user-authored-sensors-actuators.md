@@ -470,9 +470,15 @@ Label(loop_end);
 // for (let i = 0; i < n; i++) { body }
 // ->
 <init>Label(loop_start)<cond>;
-JumpIfFalse(loop_end) < body > <update>Jump(loop_start);
+JumpIfFalse(loop_end)<body>;
+Label(continue_target)<update>;
+Jump(loop_start);
 Label(loop_end);
 ```
+
+(Updated 2026-03-20: `continue` in a for-loop targets the update expression
+(`continue_target`), not `loop_start`. This ensures the incrementor runs before
+the next condition check, matching JavaScript semantics. `break` targets `loop_end`.)
 
 **Function calls (user-defined):**
 

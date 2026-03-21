@@ -33,9 +33,11 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-20) Phases 0, 1, 2, 2.5, and 3 are complete. `packages/typescript`
+- (Updated 2026-03-20) Phases 0, 1, 2, 2.5, 3, and 4 are complete. `packages/typescript`
   has a working build, test suite, type-checking pipeline, AST validation, descriptor
-  extraction, the callDef design, and end-to-end bytecode compilation and execution.
+  extraction, the callDef design, end-to-end bytecode compilation and execution,
+  and control flow (`if`/`else`, `while`, `for`, `break`/`continue`, block-scoped
+  `let`/`const`, variable shadowing, assignments, and `++`/`--`).
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientSource`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
@@ -57,6 +59,14 @@ not survive. Keep this doc current.
   `execIsAsync`, `onExecuteNode`, `onPageEnteredNode`.
 - `src/compiler/types.ts` defines `CompileDiagnostic`, `ExtractedDescriptor`,
   `ExtractedParam`.
+- `src/compiler/scope.ts` provides `ScopeStack` -- a block-scoping variable allocator
+  with `pushScope`/`popScope`/`declareLocal`/`resolveLocal`. Used by the lowering pass
+  for `let`/`const` variable declarations and identifier resolution.
+- `src/compiler/ir.ts` defines IR node types including control flow: `IrLabel`,
+  `IrJump`, `IrJumpIfFalse`, `IrJumpIfTrue`, `IrDup` (added Phase 4).
+- `src/compiler/lowering.ts` lowers `if`/`else`, `while`, C-style `for`,
+  `break`/`continue`, block-scoped variable declarations, assignments (`=`, `+=`,
+  `-=`, `*=`, `/=`), and prefix/postfix `++`/`--`.
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
   browser-compatible `ts.CompilerHost` with zero Node.js API usage.
 - `src/compiler/ambient.ts` exports `buildAmbientSource(appTypeEntries?)` which
@@ -369,6 +379,11 @@ and `break`/`continue`.
 
 - `break`/`continue` need a label stack to track enclosing loop boundaries
 - Variable slot reuse across non-overlapping scopes (optimization, can defer)
+- (Added 2026-03-20, resolved) **Trailing RET required.** When `if`/`else` emits a
+  `Jump(endLabel)` at the end of the then-branch, the `endLabel` must target a valid
+  instruction. If the `if`/`else` is the last statement, the label points past the end
+  of the bytecode, which fails `BytecodeVerifier`. Solved by appending a trailing `RET`
+  instruction at the end of every lowered function body.
 
 ---
 
@@ -430,6 +445,15 @@ callsite-persistent variables (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`).
   `BrainCompiler` so that `CALL` operands are correct.
 - Module init function must run before the first `exec` invocation. The exec wrapper
   checks for uninitialized `callsiteVars` and runs init.
+- (Added 2026-03-20) **`ScopeStack` is function-scoped, not module-scoped.** Phase 4's
+  `ScopeStack` tracks locals within a single function body. Phase 5 must either create
+  a new `ScopeStack` per compiled function or distinguish module-level scope (callsite
+  vars) from function-level scope (locals) with a separate mechanism.
+- (Added 2026-03-20) **Assignment and `++`/`--` are already implemented.** Phase 4
+  added `=`, `+=`, `-=`, `*=`, `/=`, prefix/postfix `++`/`--`. Phase 5's helper
+  function calling will benefit from these being available. The lowering context
+  already uses `LowerContext` with a `ScopeStack` -- extending to multi-function
+  should be straightforward.
 
 ---
 
@@ -932,3 +956,58 @@ validation, 11 extraction, 3 core imports).
 6. `null` literal is not yet supported in lowering (produces "Unsupported expression:
    NullKeyword"). This is fine for Phase 3 scope; support should be added in Phase 4
    or 9 alongside `undefined` and nil handling.
+
+### Phase 4 -- 2026-03-20
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                            | Actual | Notes                                                                                                                                                        |
+| ------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/compiler/lowering.ts`: visitors for `IfStatement`, etc.       | Done   | Refactored from per-function params to unified `LowerContext`. Handles `if`/`else`, `while`, `for`, `break`, `continue`, `Block`, `VariableDeclarationList`. |
+| `src/compiler/ir.ts`: `Jump`, `JumpIfFalse`, `JumpIfTrue`, `Label` | Done   | Also added `IrDup` (needed for assignment expressions to leave value on stack).                                                                              |
+| `src/compiler/scope.ts`: scope stack                               | Done   | New file. `ScopeStack` with `pushScope`/`popScope`/`declareLocal`/`resolveLocal`.                                                                            |
+| Tests                                                              | Done   | 11 new end-to-end tests in `codegen.spec.ts`.                                                                                                                |
+
+**Additional work beyond plan:**
+
+| Item                     | Notes                                                                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Assignment expressions   | `=`, `+=`, `-=`, `*=`, `/=` lowering. Not in Phase 4 plan but required by test patterns like `count = count + 1` and `i = i + 1` in loops.                                |
+| Prefix/postfix `++`/`--` | Both `i++` and `++i` supported. Required for idiomatic `for (let i = 0; i < n; i++)` loops (acceptance criterion).                                                        |
+| Identifier resolution    | `lowerExpression` now resolves bare identifiers via `ScopeStack.resolveLocal()`, not just property-access syntax. Required for local variable reads.                      |
+| Trailing `RET`           | Every lowered function body now ends with an unconditional `RET` instruction. Prevents `BytecodeVerifier` errors when jump labels target end-of-function.                 |
+| `IrDup` IR node          | Needed for assignment expressions (the assigned value must remain on the stack as the expression result). Not in the plan but necessary for correct expression semantics. |
+| `else if` chains         | Naturally falls out of recursive `lowerStatement` on `stmt.elseStatement`. Added a dedicated test with 3 branches.                                                        |
+
+**Test counts:** 52 total (11 Phase 4 control flow, 10 Phase 3 codegen/VM, 5
+buildCallDef, 5 type-checking, 7 validation, 11 extraction, 3 core imports).
+
+**Discoveries:**
+
+1. **Trailing `RET` is required.** When an `if`/`else` is the last statement in a
+   function and both branches end with `return`, the `Jump(endLabel)` at the end of
+   the then-branch targets the instruction after the last emitted instruction. The
+   `BytecodeVerifier` rejects this as out-of-bounds. Appending a trailing `RET` at
+   the end of every function body fixes this safely (if the function already returned,
+   the trailing `RET` is unreachable but harmless).
+2. **`LowerContext` is a better architecture than parameter threading.** Phase 3 passed
+   `(scope, checker, ir, diags)` as separate function parameters. Phase 4 unified
+   these into a `LowerContext` object that also carries the loop stack and label
+   counter. This makes adding new lowering context (e.g., function table in Phase 5)
+   much cleaner.
+3. **Variable slot reuse is deferred.** `ScopeStack` allocates monotonically increasing
+   local indices. Slots from popped scopes are not recycled. This wastes a few locals
+   in deeply nested code but keeps the implementation simple. Can revisit as an
+   optimization if `numLocals` becomes a concern for the VM.
+4. **Assignment as expression.** TypeScript assignments are expressions (they have a
+   value). The lowering emits `DUP` before `STORE_LOCAL` so the assigned value
+   remains on the stack. When an assignment is used as a statement (via
+   `ExpressionStatement`), the enclosing `POP` discards this value.
+5. **`for` loop `continue` targets the incrementor, not the condition.** The
+   `continueLabel` in a `for` loop points to the incrementor expression, not the
+   loop-start condition check. This ensures `i++` runs before the next iteration's
+   condition test, matching JavaScript semantics.
+6. **`null` literal still unsupported.** Carried forward from Phase 3. Not needed for
+   Phase 4 scope. Should be addressed in Phase 9 or as a point fix.

@@ -94,7 +94,8 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
   }
 
   const checker = tsProgram.getTypeChecker();
-  const lowerResult = lowerOnExecute(descriptor, checker);
+  const resolveOperator = options.resolveOperator ?? (() => undefined);
+  const lowerResult = lowerOnExecute(descriptor, checker, resolveOperator);
   if (lowerResult.diagnostics.length > 0) {
     return { diagnostics: lowerResult.diagnostics };
   }

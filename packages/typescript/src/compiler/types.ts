@@ -28,6 +28,7 @@ export interface UserTileLinkInfo {
 export interface CompileOptions {
   resolveHostFn?: (name: string) => number | undefined;
   resolveTypeId?: (shortName: string) => TypeId | undefined;
+  resolveOperator?: (opId: string, argTypes: string[]) => string | undefined;
   ambientSource?: string;
 }
 
