@@ -10,6 +10,7 @@ import {
   mkNumberValue,
   mkStringValue,
   NativeType,
+  NIL_VALUE,
   type NumberValue,
   registerCoreBrainComponents,
   runtime,
@@ -868,6 +869,555 @@ export default Sensor({
       if (r.status === VmStatus.DONE) {
         assert.equal((r.result as NumberValue).v, 1);
       }
+    }
+  });
+});
+
+describe("phase 5: helper functions + callsite-persistent state", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+  });
+
+  test("helper function called from onExecute returns correct value", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function clamp(v: number, lo: number, hi: number): number {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+export default Sensor({
+  name: "clamped",
+  output: "number",
+  params: {
+    x: { type: "number" },
+  },
+  onExecute(ctx: Context, params: { x: number }): number {
+    return clamp(params.x, 0, 100);
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+
+    // x = 50 -> clamped to 50 (within range)
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from([mkArgsMap({ 0: mkNumberValue(50) })]), mkCtx());
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) {
+        assert.equal((r.result as NumberValue).v, 50);
+      }
+    }
+
+    // x = -10 -> clamped to 0
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from([mkArgsMap({ 0: mkNumberValue(-10) })]), mkCtx());
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) {
+        assert.equal((r.result as NumberValue).v, 0);
+      }
+    }
+
+    // x = 200 -> clamped to 100
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from([mkArgsMap({ 0: mkNumberValue(200) })]), mkCtx());
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) {
+        assert.equal((r.result as NumberValue).v, 100);
+      }
+    }
+  });
+
+  test("helper function with arithmetic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function double(n: number): number {
+  return n + n;
+}
+
+export default Sensor({
+  name: "doubled",
+  output: "number",
+  params: {
+    val: { type: "number" },
+  },
+  onExecute(ctx: Context, params: { val: number }): number {
+    return double(params.val);
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from([mkArgsMap({ 0: mkNumberValue(7) })]), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 14);
+    }
+  });
+
+  test("multiple helper functions can call each other", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function addOne(n: number): number {
+  return n + 1;
+}
+
+function addTwo(n: number): number {
+  return addOne(addOne(n));
+}
+
+export default Sensor({
+  name: "add-two",
+  output: "number",
+  params: {
+    val: { type: "number" },
+  },
+  onExecute(ctx: Context, params: { val: number }): number {
+    return addTwo(params.val);
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from([mkArgsMap({ 0: mkNumberValue(10) })]), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 12);
+    }
+  });
+
+  test("top-level let persists across invocations via callsite vars", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let count = 0;
+
+export default Sensor({
+  name: "counter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    count += 1;
+    return count;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.numCallsiteVars > 0, "expected numCallsiteVars > 0");
+    assert.ok(prog.initFuncId !== undefined, "expected initFuncId to be set");
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    // Run init function to set count = 0
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+    }
+
+    // First call: count should become 1
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) {
+        assert.equal((r.result as NumberValue).v, 1);
+      }
+    }
+
+    // Second call: count should become 2
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) {
+        assert.equal((r.result as NumberValue).v, 2);
+      }
+    }
+  });
+
+  test("multiple top-level vars have correct slot indices", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let a = 10;
+let b = 20;
+
+export default Sensor({
+  name: "multi-var",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return a + b;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.equal(prog.numCallsiteVars, 2);
+    assert.ok(prog.initFuncId !== undefined);
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    // Run init
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      vm.runFiber(fiber, mkScheduler());
+    }
+
+    // a=10, b=20 -> a+b = 30
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) {
+        assert.equal((r.result as NumberValue).v, 30);
+      }
+    }
+  });
+
+  test("module init function resets state when callsiteVars is freshly allocated", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let count = 0;
+
+export default Sensor({
+  name: "resettable",
+  output: "number",
+  onExecute(ctx: Context): number {
+    count += 1;
+    return count;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+
+    // First callsite: init + two calls -> 1, 2
+    const callsiteVars1 = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars1;
+      fiber.instrBudget = 1000;
+      vm.runFiber(fiber, mkScheduler());
+    }
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars1;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 1);
+    }
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars1;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 2);
+    }
+
+    // Fresh callsiteVars2 + init -> resets to 0, next call -> 1
+    const callsiteVars2 = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars2;
+      fiber.instrBudget = 1000;
+      vm.runFiber(fiber, mkScheduler());
+    }
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars2;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 1);
+    }
+  });
+
+  test("helper function can access top-level callsite var", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let total = 0;
+
+function addToTotal(n: number): number {
+  total = total + n;
+  return total;
+}
+
+export default Sensor({
+  name: "accum",
+  output: "number",
+  params: {
+    val: { type: "number" },
+  },
+  onExecute(ctx: Context, params: { val: number }): number {
+    return addToTotal(params.val);
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.numCallsiteVars > 0);
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    // Init
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      vm.runFiber(fiber, mkScheduler());
+    }
+
+    // Call with val=5 -> total becomes 5
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from([mkArgsMap({ 0: mkNumberValue(5) })]), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 5);
+    }
+
+    // Call with val=3 -> total becomes 8
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from([mkArgsMap({ 0: mkNumberValue(3) })]), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 8);
+    }
+  });
+
+  test("no top-level vars produces numCallsiteVars=0 and no initFuncId", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "simple",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 42;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+
+    assert.equal(result.program!.numCallsiteVars, 0);
+    assert.equal(result.program!.initFuncId, undefined);
+  });
+
+  test("program has correct function count with helpers", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function helper1(): number { return 1; }
+function helper2(): number { return 2; }
+
+export default Sensor({
+  name: "multi-fn",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return helper1() + helper2();
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    // 3 functions: onExecute + helper1 + helper2 (no init since no top-level vars)
+    assert.equal(result.program!.functions.size(), 3);
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(result.program!, handles);
+    const fiber = vm.spawnFiber(1, result.program!.entryFuncId, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 3);
+    }
+  });
+
+  test("helper with loop and local variables", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function sum(n: number): number {
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    total = total + i;
+  }
+  return total;
+}
+
+export default Sensor({
+  name: "sum-sensor",
+  output: "number",
+  params: {
+    n: { type: "number" },
+  },
+  onExecute(ctx: Context, params: { n: number }): number {
+    return sum(params.n);
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(result.program!, handles);
+    const fiber = vm.spawnFiber(
+      1,
+      result.program!.entryFuncId,
+      List.from([mkArgsMap({ 0: mkNumberValue(5) })]),
+      mkCtx()
+    );
+    fiber.instrBudget = 10000;
+
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      // 0+1+2+3+4 = 10
+      assert.equal((r.result as NumberValue).v, 10);
+    }
+  });
+
+  test("top-level const with initializer works", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+const THRESHOLD = 10;
+
+export default Sensor({
+  name: "threshold",
+  output: "boolean",
+  params: {
+    val: { type: "number" },
+  },
+  onExecute(ctx: Context, params: { val: number }): boolean {
+    return params.val > THRESHOLD;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    // Init
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      vm.runFiber(fiber, mkScheduler());
+    }
+
+    // val=15 > THRESHOLD=10 -> true
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from([mkArgsMap({ 0: mkNumberValue(15) })]), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as BooleanValue).v, true);
+    }
+
+    // val=5 > THRESHOLD=10 -> false
+    {
+      const vm = new runtime.VM(prog, handles);
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from([mkArgsMap({ 0: mkNumberValue(5) })]), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) assert.equal((r.result as BooleanValue).v, false);
     }
   });
 });

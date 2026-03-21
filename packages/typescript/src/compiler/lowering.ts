@@ -1,4 +1,4 @@
-import { CoreOpId, CoreTypeIds, mkNumberValue, mkStringValue, type Value } from "@mindcraft-lang/core/brain";
+import { CoreOpId, CoreTypeIds, mkNumberValue, mkStringValue, NIL_VALUE, type Value } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
 import type { IrNode } from "./ir.js";
 import { ScopeStack } from "./scope.js";
@@ -7,10 +7,18 @@ import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
 const TRUE_VALUE: Value = { t: 2, v: true };
 const FALSE_VALUE: Value = { t: 2, v: false };
 
-export interface LoweringResult {
+export interface FunctionEntry {
   ir: IrNode[];
   numParams: number;
   numLocals: number;
+  name: string;
+}
+
+export interface ProgramLoweringResult {
+  functions: FunctionEntry[];
+  entryFuncId: number;
+  initFuncId?: number;
+  numCallsiteVars: number;
   diagnostics: CompileDiagnostic[];
 }
 
@@ -29,18 +37,112 @@ interface LowerContext {
   loopStack: LoopContext[];
   nextLabelId: number;
   resolveOperator: (opId: string, argTypes: string[]) => string | undefined;
+  callsiteVars: Map<string, number>;
+  functionTable: Map<string, number>;
 }
 
 function allocLabel(ctx: LowerContext): number {
   return ctx.nextLabelId++;
 }
 
-export function lowerOnExecute(
+export function lowerProgram(
+  sourceFile: ts.SourceFile,
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
   resolveOperator: (opId: string, argTypes: string[]) => string | undefined
-): LoweringResult {
+): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
+  const callsiteVars = new Map<string, number>();
+  const functionTable = new Map<string, number>();
+  const helperNodes: ts.FunctionDeclaration[] = [];
+
+  let nextCallsiteVar = 0;
+  let nextFuncId = 0;
+
+  const entryFuncId = nextFuncId++;
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+      functionTable.set(stmt.name.text, nextFuncId++);
+      helperNodes.push(stmt);
+    } else if (ts.isVariableStatement(stmt) && !isInsideDescriptor(stmt)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name)) {
+          callsiteVars.set(decl.name.text, nextCallsiteVar++);
+        }
+      }
+    }
+  }
+
+  const hasInitializers = hasTopLevelInitializers(sourceFile);
+  let initFuncId: number | undefined;
+  if (hasInitializers) {
+    initFuncId = nextFuncId++;
+  }
+
+  const functions: FunctionEntry[] = [];
+
+  const onExecEntry = lowerOnExecuteBody(
+    descriptor,
+    checker,
+    resolveOperator,
+    callsiteVars,
+    functionTable,
+    diagnostics
+  );
+  functions.push(onExecEntry);
+
+  for (const helperNode of helperNodes) {
+    const entry = lowerHelperFunction(helperNode, checker, resolveOperator, callsiteVars, functionTable, diagnostics);
+    functions.push(entry);
+  }
+
+  if (hasInitializers && initFuncId !== undefined) {
+    const initEntry = generateModuleInit(
+      sourceFile,
+      checker,
+      resolveOperator,
+      callsiteVars,
+      functionTable,
+      diagnostics
+    );
+    functions.push(initEntry);
+  }
+
+  return {
+    functions,
+    entryFuncId,
+    initFuncId,
+    numCallsiteVars: nextCallsiteVar,
+    diagnostics,
+  };
+}
+
+function isInsideDescriptor(stmt: ts.VariableStatement): boolean {
+  return stmt.parent !== undefined && !ts.isSourceFile(stmt.parent);
+}
+
+function hasTopLevelInitializers(sourceFile: ts.SourceFile): boolean {
+  for (const stmt of sourceFile.statements) {
+    if (ts.isVariableStatement(stmt) && ts.isSourceFile(stmt.parent)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (decl.initializer && ts.isIdentifier(decl.name)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+function lowerOnExecuteBody(
+  descriptor: ExtractedDescriptor,
+  checker: ts.TypeChecker,
+  resolveOperator: (opId: string, argTypes: string[]) => string | undefined,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  sharedDiagnostics: CompileDiagnostic[]
+): FunctionEntry {
   const ir: IrNode[] = [];
   const hasParams = descriptor.params.length > 0;
   const funcNode = descriptor.onExecuteNode;
@@ -75,27 +177,139 @@ export function lowerOnExecute(
     paramLocals,
     scopeStack,
     ir,
-    diagnostics,
+    diagnostics: sharedDiagnostics,
     loopStack: [],
     nextLabelId: 0,
     resolveOperator,
+    callsiteVars,
+    functionTable,
   };
 
   const body = funcNode.body;
   if (!body || !ts.isBlock(body)) {
-    diagnostics.push({ message: "onExecute function has no body" });
-    return { ir, numParams: hasParams ? 1 : 0, numLocals: scopeStack.nextLocal, diagnostics };
+    sharedDiagnostics.push({ message: "onExecute function has no body" });
+    return {
+      ir,
+      numParams: hasParams ? 1 : 0,
+      numLocals: scopeStack.nextLocal,
+      name: `${descriptor.name}.onExecute`,
+    };
   }
 
   lowerStatements(body.statements, ctx);
 
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
   ir.push({ kind: "Return" });
 
   return {
     ir,
     numParams: hasParams ? 1 : 0,
     numLocals: scopeStack.nextLocal,
-    diagnostics,
+    name: `${descriptor.name}.onExecute`,
+  };
+}
+
+function lowerHelperFunction(
+  funcNode: ts.FunctionDeclaration,
+  checker: ts.TypeChecker,
+  resolveOperator: (opId: string, argTypes: string[]) => string | undefined,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  sharedDiagnostics: CompileDiagnostic[]
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const paramLocals = new Map<string, number>();
+  const numParams = funcNode.parameters.length;
+
+  for (let i = 0; i < numParams; i++) {
+    const p = funcNode.parameters[i];
+    if (ts.isIdentifier(p.name)) {
+      paramLocals.set(p.name.text, i);
+    }
+  }
+
+  const scopeStack = new ScopeStack(numParams);
+
+  const ctx: LowerContext = {
+    checker,
+    paramsSymbol: undefined,
+    paramLocals,
+    scopeStack,
+    ir,
+    diagnostics: sharedDiagnostics,
+    loopStack: [],
+    nextLabelId: 0,
+    resolveOperator,
+    callsiteVars,
+    functionTable,
+  };
+
+  const body = funcNode.body;
+  if (!body) {
+    sharedDiagnostics.push(makeDiag("Function has no body", funcNode));
+    return { ir, numParams, numLocals: scopeStack.nextLocal, name: funcNode.name?.text ?? "<anonymous>" };
+  }
+
+  lowerStatements(body.statements, ctx);
+
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+
+  return {
+    ir,
+    numParams,
+    numLocals: scopeStack.nextLocal,
+    name: funcNode.name?.text ?? "<anonymous>",
+  };
+}
+
+function generateModuleInit(
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+  resolveOperator: (opId: string, argTypes: string[]) => string | undefined,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  sharedDiagnostics: CompileDiagnostic[]
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const scopeStack = new ScopeStack(0);
+
+  const ctx: LowerContext = {
+    checker,
+    paramsSymbol: undefined,
+    paramLocals: new Map(),
+    scopeStack,
+    ir,
+    diagnostics: sharedDiagnostics,
+    loopStack: [],
+    nextLabelId: 0,
+    resolveOperator,
+    callsiteVars,
+    functionTable,
+  };
+
+  for (const stmt of sourceFile.statements) {
+    if (ts.isVariableStatement(stmt) && ts.isSourceFile(stmt.parent)) {
+      for (const decl of stmt.declarationList.declarations) {
+        if (ts.isIdentifier(decl.name) && decl.initializer) {
+          const varIdx = callsiteVars.get(decl.name.text);
+          if (varIdx !== undefined) {
+            lowerExpression(decl.initializer, ctx);
+            ir.push({ kind: "StoreCallsiteVar", index: varIdx });
+          }
+        }
+      }
+    }
+  }
+
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+
+  return {
+    ir,
+    numParams: 0,
+    numLocals: scopeStack.nextLocal,
+    name: "<module-init>",
   };
 }
 
@@ -271,16 +485,49 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     lowerPrefixUnary(expr, ctx);
   } else if (ts.isPostfixUnaryExpression(expr)) {
     lowerPostfixIncDec(expr, ctx);
+  } else if (ts.isCallExpression(expr)) {
+    lowerCallExpression(expr, ctx);
   } else if (ts.isIdentifier(expr)) {
-    const localIdx = ctx.scopeStack.resolveLocal(expr.text);
-    if (localIdx !== undefined) {
-      ctx.ir.push({ kind: "LoadLocal", index: localIdx });
-    } else {
-      ctx.diagnostics.push(makeDiag(`Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr));
-    }
+    lowerIdentifier(expr, ctx);
   } else {
     ctx.diagnostics.push(makeDiag(`Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr));
   }
+}
+
+function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
+  const paramLocal = ctx.paramLocals.get(expr.text);
+  if (paramLocal !== undefined) {
+    ctx.ir.push({ kind: "LoadLocal", index: paramLocal });
+    return;
+  }
+
+  const localIdx = ctx.scopeStack.resolveLocal(expr.text);
+  if (localIdx !== undefined) {
+    ctx.ir.push({ kind: "LoadLocal", index: localIdx });
+    return;
+  }
+
+  const csvIdx = ctx.callsiteVars.get(expr.text);
+  if (csvIdx !== undefined) {
+    ctx.ir.push({ kind: "LoadCallsiteVar", index: csvIdx });
+    return;
+  }
+
+  ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.text}`, expr));
+}
+
+function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
+  if (ts.isIdentifier(expr.expression)) {
+    const funcId = ctx.functionTable.get(expr.expression.text);
+    if (funcId !== undefined) {
+      for (const arg of expr.arguments) {
+        lowerExpression(arg, ctx);
+      }
+      ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: expr.arguments.length });
+      return;
+    }
+  }
+  ctx.diagnostics.push(makeDiag("Unsupported function call", expr));
 }
 
 function isAssignmentOperator(kind: ts.SyntaxKind): boolean {
@@ -296,14 +543,52 @@ function isAssignmentOperator(kind: ts.SyntaxKind): boolean {
   }
 }
 
+function resolveVarTarget(
+  name: string,
+  ctx: LowerContext
+): { kind: "local"; index: number } | { kind: "callsiteVar"; index: number } | undefined {
+  const paramLocal = ctx.paramLocals.get(name);
+  if (paramLocal !== undefined) return { kind: "local", index: paramLocal };
+
+  const localIdx = ctx.scopeStack.resolveLocal(name);
+  if (localIdx !== undefined) return { kind: "local", index: localIdx };
+
+  const csvIdx = ctx.callsiteVars.get(name);
+  if (csvIdx !== undefined) return { kind: "callsiteVar", index: csvIdx };
+
+  return undefined;
+}
+
+function emitLoad(
+  target: { kind: "local"; index: number } | { kind: "callsiteVar"; index: number },
+  ctx: LowerContext
+): void {
+  if (target.kind === "local") {
+    ctx.ir.push({ kind: "LoadLocal", index: target.index });
+  } else {
+    ctx.ir.push({ kind: "LoadCallsiteVar", index: target.index });
+  }
+}
+
+function emitStore(
+  target: { kind: "local"; index: number } | { kind: "callsiteVar"; index: number },
+  ctx: LowerContext
+): void {
+  if (target.kind === "local") {
+    ctx.ir.push({ kind: "StoreLocal", index: target.index });
+  } else {
+    ctx.ir.push({ kind: "StoreCallsiteVar", index: target.index });
+  }
+}
+
 function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
   if (!ts.isIdentifier(expr.left)) {
     ctx.diagnostics.push(makeDiag("Assignment target must be a variable", expr.left));
     return;
   }
 
-  const localIdx = ctx.scopeStack.resolveLocal(expr.left.text);
-  if (localIdx === undefined) {
+  const target = resolveVarTarget(expr.left.text, ctx);
+  if (!target) {
     ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.left.text}`, expr.left));
     return;
   }
@@ -311,7 +596,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
   if (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
     lowerExpression(expr.right, ctx);
   } else {
-    ctx.ir.push({ kind: "LoadLocal", index: localIdx });
+    emitLoad(target, ctx);
     lowerExpression(expr.right, ctx);
 
     const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
@@ -339,7 +624,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
   }
 
   ctx.ir.push({ kind: "Dup" });
-  ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+  emitStore(target, ctx);
 }
 
 function compoundAssignmentToOpId(kind: ts.SyntaxKind): string | undefined {
@@ -382,8 +667,8 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
     ctx.diagnostics.push(makeDiag("Increment/decrement target must be a variable", expr.operand));
     return;
   }
-  const localIdx = ctx.scopeStack.resolveLocal(expr.operand.text);
-  if (localIdx === undefined) {
+  const target = resolveVarTarget(expr.operand.text, ctx);
+  if (!target) {
     ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.operand.text}`, expr.operand));
     return;
   }
@@ -396,11 +681,11 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
     return;
   }
 
-  ctx.ir.push({ kind: "LoadLocal", index: localIdx });
+  emitLoad(target, ctx);
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
   ctx.ir.push({ kind: "Dup" });
-  ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+  emitStore(target, ctx);
 }
 
 function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext): void {
@@ -408,8 +693,8 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
     ctx.diagnostics.push(makeDiag("Increment/decrement target must be a variable", expr.operand));
     return;
   }
-  const localIdx = ctx.scopeStack.resolveLocal(expr.operand.text);
-  if (localIdx === undefined) {
+  const target = resolveVarTarget(expr.operand.text, ctx);
+  if (!target) {
     ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.operand.text}`, expr.operand));
     return;
   }
@@ -422,11 +707,11 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
     return;
   }
 
-  ctx.ir.push({ kind: "LoadLocal", index: localIdx });
+  emitLoad(target, ctx);
   ctx.ir.push({ kind: "Dup" });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
-  ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+  emitStore(target, ctx);
 }
 
 function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): void {

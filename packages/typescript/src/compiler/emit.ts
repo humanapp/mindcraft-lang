@@ -41,6 +41,12 @@ export function emitFunction(
       case "StoreLocal":
         emitter.storeLocal(node.index);
         break;
+      case "LoadCallsiteVar":
+        emitter.loadCallsiteVar(node.index);
+        break;
+      case "StoreCallsiteVar":
+        emitter.storeCallsiteVar(node.index);
+        break;
       case "Return":
         emitter.ret();
         break;
@@ -49,6 +55,9 @@ export function emitFunction(
         break;
       case "Dup":
         emitter.dup();
+        break;
+      case "Call":
+        emitter.call(node.funcIndex, node.argc);
         break;
       case "HostCallArgs": {
         const fnId = resolveHostFn(node.fnName);

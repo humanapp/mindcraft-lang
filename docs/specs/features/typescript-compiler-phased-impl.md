@@ -33,11 +33,13 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-20) Phases 0, 1, 2, 2.5, 3, and 4 are complete. `packages/typescript`
+- (Updated 2026-03-21) Phases 0, 1, 2, 2.5, 3, 4, and 5 are complete. `packages/typescript`
   has a working build, test suite, type-checking pipeline, AST validation, descriptor
   extraction, the callDef design, end-to-end bytecode compilation and execution,
-  and control flow (`if`/`else`, `while`, `for`, `break`/`continue`, block-scoped
-  `let`/`const`, variable shadowing, assignments, and `++`/`--`).
+  control flow (`if`/`else`, `while`, `for`, `break`/`continue`, block-scoped
+  `let`/`const`, variable shadowing, assignments, `++`/`--`), user-defined helper
+  functions (`CALL`), and callsite-persistent top-level variables
+  (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` with module init function).
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientSource`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
@@ -62,11 +64,16 @@ not survive. Keep this doc current.
 - `src/compiler/scope.ts` provides `ScopeStack` -- a block-scoping variable allocator
   with `pushScope`/`popScope`/`declareLocal`/`resolveLocal`. Used by the lowering pass
   for `let`/`const` variable declarations and identifier resolution.
-- `src/compiler/ir.ts` defines IR node types including control flow: `IrLabel`,
-  `IrJump`, `IrJumpIfFalse`, `IrJumpIfTrue`, `IrDup` (added Phase 4).
-- `src/compiler/lowering.ts` lowers `if`/`else`, `while`, C-style `for`,
+- `src/compiler/ir.ts` defines IR node types including control flow (`IrLabel`,
+  `IrJump`, `IrJumpIfFalse`, `IrJumpIfTrue`, `IrDup`) and multi-function support
+  (`IrCall`, `IrLoadCallsiteVar`, `IrStoreCallsiteVar`).
+- `src/compiler/lowering.ts` exports `lowerProgram()` which compiles all file-level
+  function declarations, the `onExecute` body, and a module init function (if
+  callsite-persistent vars exist) into a `ProgramLoweringResult` containing multiple
+  `FunctionEntry` records. Supports `if`/`else`, `while`, C-style `for`,
   `break`/`continue`, block-scoped variable declarations, assignments (`=`, `+=`,
-  `-=`, `*=`, `/=`), and prefix/postfix `++`/`--`.
+  `-=`, `*=`, `/=`), prefix/postfix `++`/`--`, user-defined function calls, and
+  callsite-persistent variable access.
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
   browser-compatible `ts.CompilerHost` with zero Node.js API usage.
 - `src/compiler/ambient.ts` exports `buildAmbientSource(appTypeEntries?)` which
@@ -465,8 +472,9 @@ function.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/compile.ts` -- detect and compile `onPageEntered`
-- `packages/typescript/src/compiler/lowering.ts` -- generated wrapper function emission
+- `packages/typescript/src/compiler/lowering.ts` -- compile `onPageEnteredNode` from
+  descriptor, generate `onPageEntered` wrapper function that calls module init then
+  user `onPageEntered` (leverages existing `lowerProgram` multi-function infrastructure)
 - `packages/typescript/src/compiler/compile.ts` -- set
   `lifecycleFuncIds.onPageEntered` on `UserAuthoredProgram`
 
@@ -487,6 +495,16 @@ function.
 **Key risks:**
 
 - Low risk. Straightforward extension of Phase 5.
+- (Added 2026-03-21) **NIL_VALUE fallthrough required.** All generated function bodies
+  (including the `onPageEntered` wrapper) must push `NIL_VALUE` before trailing
+  `Return` nodes. The VM's `RET` instruction unconditionally pops a return value.
+  Phase 5 established this pattern; Phase 6 must follow it for the generated wrapper
+  and any compiled `onPageEntered` user function body.
+- (Added 2026-03-21) **`onPageEntered` is now inside the descriptor object.** Phase 2
+  moved `onPageEntered` from a file-level named export into the `Sensor()`/`Actuator()`
+  config object. Phase 6's plan text still references `export function onPageEntered`
+  -- the implementation should extract and compile `descriptor.onPageEnteredNode`
+  instead.
 
 ---
 
@@ -1011,3 +1029,78 @@ buildCallDef, 5 type-checking, 7 validation, 11 extraction, 3 core imports).
    condition test, matching JavaScript semantics.
 6. **`null` literal still unsupported.** Carried forward from Phase 3. Not needed for
    Phase 4 scope. Should be addressed in Phase 9 or as a point fix.
+
+### Phase 5 -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                                | Actual  | Notes                                                                                                                                                                                           |
+| ---------------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lowering.ts`: handle `FunctionDeclaration`, function calls via `CALL` | Done    | `lowerHelperFunction()` compiles file-level function declarations. `lowerCallExpression()` emits `IrCall` for user-defined functions. `LowerContext` gained `functionTable` and `callsiteVars`. |
+| `compile.ts`: two-pass function ID assignment                          | Changed | Single-pass in `lowerProgram()` -- functions are assigned IDs as discovered. See design change below.                                                                                           |
+| `emit.ts`: emit multiple `FunctionBytecode` entries                    | Done    | `compile.ts` loops over `programResult.functions` and calls `emitFunction()` for each.                                                                                                          |
+| `scope.ts`: distinguish module-level vs function-level scope           | Changed | `scope.ts` unchanged. Module-vs-function distinction handled in `lowering.ts` via `resolveVarTarget()`: locals resolve via `ScopeStack`, callsite vars via `LowerContext.callsiteVars` map.     |
+| Module init function generation                                        | Done    | `generateModuleInit()` emits `STORE_CALLSITE_VAR` for each top-level initializer. Appended as final function entry when callsite vars exist.                                                    |
+
+**Design changes from plan:**
+
+1. **Single-pass instead of two-pass function ID assignment.** The plan called for a
+   two-pass pattern (first assign IDs, then compile). The implementation uses a
+   single-pass: `lowerProgram()` first scans all top-level `FunctionDeclaration` nodes
+   to populate the function table (name -> funcId mapping), then compiles all function
+   bodies. This achieves the same result -- all function IDs are known before any body
+   is compiled -- without a separate compilation pass.
+2. **`scope.ts` not modified.** The plan listed `scope.ts` as a touched file for
+   distinguishing module-level scope from function-level scope. Instead, the
+   distinction is handled entirely in `lowering.ts` via the `resolveVarTarget()`
+   function, which checks `ScopeStack` first (function locals), then
+   `LowerContext.callsiteVars` (module-level persistent state). Each function body
+   gets its own fresh `ScopeStack`, while `callsiteVars` is shared across all
+   functions in the `LowerContext`. This keeps `ScopeStack` as a simple
+   single-concern class.
+3. **Function ID ordering.** The implemented ordering is: 0 = `onExecute`, 1..N =
+   helper functions (in declaration order), N+1 = module init (if needed). This
+   differs from `BrainCompiler`'s pattern but is correct for user-authored programs
+   where `onExecute` is always the entry point.
+
+**Additional work beyond plan:**
+
+| Item                                | Notes                                                                                                                                                                   |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `IrCall` IR node                    | New IR node with `funcIndex` and `argc` fields. Not explicitly listed in the plan's file list but required for the `CALL` instruction emission.                         |
+| `IrLoadCallsiteVar` IR node         | New IR node with `index` field. Required for `LOAD_CALLSITE_VAR` emission.                                                                                              |
+| `IrStoreCallsiteVar` IR node        | New IR node with `index` field. Required for `STORE_CALLSITE_VAR` emission.                                                                                             |
+| `initFuncId` on UserAuthoredProgram | Added to `types.ts`. Required so the exec wrapper knows which function to call for module initialization.                                                               |
+| NIL_VALUE fallthrough safety        | All function bodies push `NIL_VALUE` before trailing `Return` nodes. The VM's `RET` pops a return value; functions without explicit `return` need a value on the stack. |
+| `resolveVarTarget` abstraction      | Returns `{ kind: "local"                                                                                                                                                | "callsiteVar", index }`for unified store/load emission. Simplifies assignment and`++`/`--` lowering for both variable kinds. |
+| `emitLoad` / `emitStore` helpers    | Abstract `IrLoadLocal` vs `IrLoadCallsiteVar` (and store equivalents) based on `resolveVarTarget` result.                                                               |
+
+**Test counts:** 63 total (11 Phase 5, 11 Phase 4 control flow, 10 Phase 3 codegen/VM,
+5 buildCallDef, 5 type-checking, 7 validation, 11 extraction, 3 core imports).
+
+**Discoveries:**
+
+1. **NIL_VALUE fallthrough is required for all generated functions.** The VM's `RET`
+   instruction unconditionally pops a return value from the stack. If a function body
+   falls through without an explicit `return` statement (common for void helpers and
+   module init), the stack is empty and `RET` causes a stack underflow. The fix is to
+   push `NIL_VALUE` before every trailing `Return` IR node. This applies to
+   `onExecute`, helper functions, and module init. Phase 6 (`onPageEntered` wrapper)
+   must also follow this pattern.
+2. **`LowerContext` extensions worked cleanly.** Phase 4's `LowerContext` design paid
+   off -- adding `functionTable` and `callsiteVars` fields was straightforward with no
+   refactoring of existing code. Future phases adding more context (e.g., lifecycle
+   function IDs) can follow the same pattern.
+3. **Module-level vs function-level scope via `resolveVarTarget()`.** Rather than
+   modifying `ScopeStack` to understand two kinds of variables, a separate resolution
+   function checks locals first, then callsite vars. This keeps `ScopeStack` focused on
+   block-scoping within a single function. Helper functions get their own `ScopeStack`
+   (with params as initial locals) but share the same `callsiteVars` map.
+4. **Function parameters are locals 0..N-1.** For helper functions, the `ScopeStack` is
+   initialized with `numParams` as the initial next-local index, and each parameter
+   name is declared at indices 0 through N-1. This matches the VM's calling convention
+   where `CALL` pushes arguments into the callee's locals.
+5. **`null` literal still unsupported.** Carried forward from Phase 4. Not needed for
+   Phase 5 scope.

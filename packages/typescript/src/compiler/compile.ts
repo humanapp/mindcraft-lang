@@ -5,7 +5,7 @@ import { AMBIENT_MINDCRAFT_DTS, buildAmbientSource } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
 import { emitFunction } from "./emit.js";
-import { lowerOnExecute } from "./lowering.js";
+import { lowerProgram } from "./lowering.js";
 import type { CompileDiagnostic, CompileOptions, ExtractedDescriptor, UserAuthoredProgram } from "./types.js";
 import { validateAst } from "./validator.js";
 import { createVirtualCompilerHost } from "./virtual-host.js";
@@ -95,22 +95,20 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
 
   const checker = tsProgram.getTypeChecker();
   const resolveOperator = options.resolveOperator ?? (() => undefined);
-  const lowerResult = lowerOnExecute(descriptor, checker, resolveOperator);
-  if (lowerResult.diagnostics.length > 0) {
-    return { diagnostics: lowerResult.diagnostics };
+  const programResult = lowerProgram(sourceFile, descriptor, checker, resolveOperator);
+  if (programResult.diagnostics.length > 0) {
+    return { diagnostics: programResult.diagnostics };
   }
 
   const pool = new compiler.ConstantPool();
-  const emitResult = emitFunction(
-    lowerResult.ir,
-    lowerResult.numParams,
-    lowerResult.numLocals,
-    `${descriptor.name}.onExecute`,
-    pool,
-    options.resolveHostFn
-  );
-  if (emitResult.diagnostics.length > 0) {
-    return { diagnostics: emitResult.diagnostics };
+  const emittedFunctions: ReturnType<typeof emitFunction>["bytecode"][] = [];
+
+  for (const func of programResult.functions) {
+    const emitResult = emitFunction(func.ir, func.numParams, func.numLocals, func.name, pool, options.resolveHostFn);
+    if (emitResult.diagnostics.length > 0) {
+      return { diagnostics: emitResult.diagnostics };
+    }
+    emittedFunctions.push(emitResult.bytecode);
   }
 
   const callDef = buildCallDef(descriptor.name, descriptor.params);
@@ -122,16 +120,17 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
 
   const program: UserAuthoredProgram = {
     version: 1,
-    functions: List.from([emitResult.bytecode]),
+    functions: List.from(emittedFunctions),
     constants: pool.getConstants(),
     variableNames: List.empty(),
-    entryPoint: 0,
+    entryPoint: programResult.entryFuncId,
     kind: descriptor.kind,
     name: descriptor.name,
     callDef,
     outputType,
-    numCallsiteVars: 0,
-    entryFuncId: 0,
+    numCallsiteVars: programResult.numCallsiteVars,
+    entryFuncId: programResult.entryFuncId,
+    initFuncId: programResult.initFuncId,
     lifecycleFuncIds: {},
     programRevisionId: generateRevisionId(),
   };

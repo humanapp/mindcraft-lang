@@ -14,6 +14,7 @@ export interface UserAuthoredProgram extends Program {
   outputType?: TypeId;
   numCallsiteVars: number;
   entryFuncId: number;
+  initFuncId?: number;
   lifecycleFuncIds: {
     onPageEntered?: number;
   };
