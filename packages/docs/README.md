@@ -1,4 +1,4 @@
-[![Publish @mindcraft-lang/docs](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-docs.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-docs.yml)
+[![Publish @mindcraft-lang/docs](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-docs.yml/badge.svg?branch=main)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-docs.yml)
 
 # @mindcraft-lang/docs
 
