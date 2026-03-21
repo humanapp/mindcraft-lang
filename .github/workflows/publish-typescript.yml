@@ -39,9 +39,10 @@ jobs:
           }
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           EOF
+          npm install --package-lock-only
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint & format check
         run: npm run check:only
