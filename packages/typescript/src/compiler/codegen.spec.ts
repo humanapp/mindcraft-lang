@@ -54,14 +54,6 @@ function mkArgsMap(entries: Record<number, Value>): MapValue {
   return { t: NativeType.Map, typeId: "map:<args>", v: dict };
 }
 
-function hostFnResolver(name: string): number | undefined {
-  return getBrainServices().functions.get(name)?.id;
-}
-
-function operatorResolver(opId: string, argTypes: string[]): string | undefined {
-  return getBrainServices().operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
-}
-
 describe("lowering + emission", () => {
   before(async () => {
     registerCoreBrainComponents();
@@ -83,7 +75,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -120,7 +112,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -154,7 +146,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -187,7 +179,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -216,7 +208,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -248,7 +240,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -282,7 +274,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.ok(result.program);
 
     const prog = result.program!;
@@ -309,8 +301,6 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, {
-      resolveHostFn: hostFnResolver,
-      resolveOperator: operatorResolver,
       resolveTypeId: () => undefined,
     });
     assert.equal(result.diagnostics.length, 1);
@@ -332,8 +322,6 @@ export default Sensor({
 `;
     const result = compileUserTile(source, {
       ambientSource: appAmbient,
-      resolveHostFn: hostFnResolver,
-      resolveOperator: operatorResolver,
       resolveTypeId: (name) => {
         if (name === "actorRef") return "struct:<actorRef>";
         if (name === "boolean") return "boolean:<boolean>";
@@ -359,7 +347,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
     assert.ok(
       result.diagnostics.some((d) => d.message.includes("actorRef")),
@@ -455,7 +443,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -493,7 +481,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -528,7 +516,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -567,7 +555,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -605,7 +593,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -641,7 +629,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -676,7 +664,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -713,7 +701,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -750,7 +738,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -789,7 +777,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -828,7 +816,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -900,7 +888,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -963,7 +951,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1003,7 +991,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1035,7 +1023,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1098,7 +1086,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1147,7 +1135,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.ok(result.program);
 
     const prog = result.program!;
@@ -1223,7 +1211,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1277,7 +1265,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -1300,7 +1288,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1342,7 +1330,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1381,7 +1369,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1446,7 +1434,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1514,7 +1502,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1585,7 +1573,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1629,7 +1617,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -1668,7 +1656,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1720,7 +1708,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1757,7 +1745,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1791,7 +1779,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1835,7 +1823,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1867,7 +1855,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1900,7 +1888,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1931,7 +1919,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1962,7 +1950,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1992,7 +1980,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2030,7 +2018,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2070,7 +2058,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2108,7 +2096,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2148,7 +2136,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2176,7 +2164,7 @@ export default Sensor({
   },
 });
 `;
-    const result2 = compileUserTile(source2, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result2 = compileUserTile(source2);
     assert.deepStrictEqual(result2.diagnostics, []);
     assert.ok(result2.program);
 
@@ -2205,7 +2193,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2221,5 +2209,169 @@ export default Sensor({
       assert.equal(runResult.result!.t, NativeType.Number);
       assert.equal((runResult.result as NumberValue).v, 0);
     }
+  });
+
+  test('"a" + "b" -> "ab" (string concatenation)', () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "str-concat",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return "a" + "b";
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "ab");
+    }
+  });
+
+  test("template literal with number interpolation -> 'count: 42'", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "template-num",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const n: number = 42;
+    return \`count: \${n}\`;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "count: 42");
+    }
+  });
+
+  test("template literal with multiple spans -> correct concatenation", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "template-multi",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const a: string = "hello";
+    const b: string = "world";
+    return \`\${a}-\${b}\`;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "hello-world");
+    }
+  });
+
+  test('empty template literal `` -> "" (no substitution template)', () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "empty-template",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return \`\`;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "");
+    }
+  });
+
+  test("template literal with undetermined type produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "template-any",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const x: any = 42;
+    return \`val: \${x}\`;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(
+      result.diagnostics.some((d) => d.message.includes("unable to determine type")),
+      `Expected diagnostic about type determination but got: ${JSON.stringify(result.diagnostics)}`
+    );
+  });
+
+  test("template literal with null interpolation produces no-conversion diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "template-null",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return \`val: \${null}\`;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(
+      result.diagnostics.some((d) => d.message.includes("No conversion from")),
+      `Expected no-conversion diagnostic but got: ${JSON.stringify(result.diagnostics)}`
+    );
   });
 });

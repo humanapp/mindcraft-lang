@@ -37,13 +37,15 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0-9 are complete.
+- (Updated 2026-03-21) Phases 0-10 are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
   `break`/`continue`, block-scoped `let`/`const`, variable shadowing, assignments,
   `++`/`--`), logical operators (`&&`, `||` with short-circuit evaluation, `!`),
-  user-defined helper functions (`CALL`), callsite-persistent top-level
+  string concatenation (`+` with `Add` overload), template literal lowering
+  (desugared to string concatenation with implicit type coercion via conversion
+  functions), user-defined helper functions (`CALL`), callsite-persistent top-level
   variables (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` with module init function),
   `onPageEntered` lifecycle support (user body compilation + always-generated
   wrapper that calls module init then user function), `null` and `undefined`
@@ -75,11 +77,12 @@ services)` performing three-step registration: param tile defs, function entry,
 - `src/compiler/compile.ts` exports `compileUserTile(source, options?)` which accepts
   a TypeScript source string and optional `CompileOptions`, runs it through a fully
   in-memory virtual `ts.CompilerHost`, validates the AST, extracts descriptor metadata,
-  and (when `resolveHostFn` is provided) lowers and emits bytecode into a
-  `UserAuthoredProgram`. `CompileOptions` supports `resolveHostFn`, `resolveTypeId`,
-  and `ambientSource` for app-injected types. The lib `.d.ts` content is lazy-loaded
-  via `initCompiler()` (async, dynamic `import()`) so bundlers like Vite automatically
-  chunk the ~230KB lib strings into a separate file loaded on demand.
+  lowers and emits bytecode into a `UserAuthoredProgram`. `CompileOptions` supports
+  `resolveTypeId` and `ambientSource` for app-injected types. Operator overloads and
+  host function IDs are resolved directly via `getBrainServices()`. The lib `.d.ts`
+  content is lazy-loaded via `initCompiler()` (async, dynamic `import()`) so bundlers
+  like Vite automatically chunk the ~230KB lib strings into a separate file loaded
+  on demand.
 - Pipeline: parse -> type check -> validate AST -> extract descriptor -> lower -> emit
   -> assemble program.
 - `src/compiler/validator.ts` rejects unsupported constructs (classes, enums, `var`,
@@ -103,8 +106,10 @@ services)` performing three-step registration: param tile defs, function entry,
   Supports `if`/`else`, `while`, C-style `for`, `break`/`continue`, block-scoped
   variable declarations, assignments (`=`, `+=`, `-=`, `*=`, `/=`), prefix/postfix
   `++`/`--`, logical operators (`&&`, `||` with short-circuit via `DUP` +
-  `JumpIfFalse`/`JumpIfTrue`, `!` via `HostCallArgs(Not)`), user-defined function
-  calls, and callsite-persistent variable access.
+  `JumpIfFalse`/`JumpIfTrue`, `!` via `HostCallArgs(Not)`), string concatenation
+  (via `Add(String, String)` operator), template literal lowering (desugared to
+  concatenation with implicit type coercion via conversion functions),
+  user-defined function calls, and callsite-persistent variable access.
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
   browser-compatible `ts.CompilerHost` with zero Node.js API usage.
 - `src/compiler/ambient.ts` exports `buildAmbientSource(appTypeEntries?)` which
@@ -764,7 +769,7 @@ infrastructure that distinguishes user-creatable structs from native-backed stru
 
 **Prerequisite: App-type shape declarations.** This phase requires the compiler to
 know struct field layouts so it can emit correct `STRUCT_NEW(typeId)` instructions.
-Before implementing 9c, the ambient generation must support full interface declarations
+Before implementing the phase, the ambient generation must support full interface declarations
 derived from `ITypeRegistry`. See the "Type registry ambient generation" prerequisite
 below.
 
@@ -925,9 +930,9 @@ a method-to-host-function-ID mapping.
   `ctx.engine.*` dispatch
 - `packages/typescript/src/compiler/ir.ts` -- add `IrGetField` node (field name operand)
 - `packages/typescript/src/compiler/emit.ts` -- emit `GET_FIELD` opcode
-- `packages/typescript/src/compiler/types.ts` -- extend `CompileOptions` with a
-  method resolution table (or reuse `resolveHostFn` with dotted names like
-  `"engine.queryNearby"`)
+- `packages/typescript/src/compiler/types.ts` -- no changes needed;
+  `resolveHostFn` was removed in Phase 10. Method-to-host-function resolution
+  should use `getBrainServices().functions.get()` directly
 
 **Concrete deliverables:**
 
@@ -937,7 +942,7 @@ a method-to-host-function-ID mapping.
    the compiler does not need to distinguish.
 2. `ctx.engine.methodName(args)` compiles to pushing args then
    `HOST_CALL_ARGS(fnId, argc, callSiteId)` where `fnId` is resolved from the method
-   name via `resolveHostFn("engine.methodName")`.
+   name via `getBrainServices().functions.get("engine.methodName")`.
 3. `ctx.self.getVariable("x")` and `ctx.self.setVariable("x", v)` compile to the
    corresponding host calls.
 4. `ctx.time`, `ctx.dt`, `ctx.tick` compile to the appropriate host calls or
@@ -1168,8 +1173,9 @@ instead of `HOST_CALL_ARGS`.
 - `packages/typescript/src/compiler/ir.ts` -- add `IrHostCallArgsAsync` node
 - `packages/typescript/src/compiler/emit.ts` -- emit `HOST_CALL_ARGS_ASYNC` opcode
   via `emitter.hostCallArgsAsync()`
-- `packages/typescript/src/compiler/types.ts` -- extend `CompileOptions.resolveHostFn`
-  return type to include async flag (e.g., return `{ id: number, isAsync: boolean }`)
+- `packages/typescript/src/compiler/types.ts` -- no changes needed;
+  `resolveHostFn` was removed in Phase 10. Async detection should use
+  `getBrainServices().functions.get()` metadata directly
 
 **Prerequisites:** Phase 13 (property access chains + host calls) must be complete
 so that `ctx.engine.*` method calls compile. Phase 18 extends the mechanism to
@@ -1177,9 +1183,10 @@ distinguish sync vs async host functions.
 
 **Concrete deliverables:**
 
-1. `CompileOptions.resolveHostFn` returns `{ id: number, isAsync: boolean } | undefined`
-   (breaking change from current `number | undefined`).
-2. When `resolveHostFn` indicates async, the lowering emits `IrHostCallArgsAsync`
+1. The lowering detects async host functions via
+   `getBrainServices().functions.get(fnName)` metadata (e.g., an `isAsync` field on
+   the function entry). `resolveHostFn` was removed in Phase 10.
+2. When the function entry indicates async, the lowering emits `IrHostCallArgsAsync`
    instead of `IrHostCallArgs`.
 3. `emitFunction` emits `HOST_CALL_ARGS_ASYNC` for async IR nodes using
    `emitter.hostCallArgsAsync(fnId, argc, callSiteId)` (already available in core's
@@ -1189,14 +1196,13 @@ distinguish sync vs async host functions.
 
 - Test: calling a sync host function -> `HOST_CALL_ARGS` in bytecode
 - Test: calling an async host function -> `HOST_CALL_ARGS_ASYNC` in bytecode
-- Test: `resolveHostFn` returning async info is threaded correctly through the pipeline
+- Test: async function entry metadata is detected correctly through the pipeline
 
 **Key risks:**
 
-- **Breaking `resolveHostFn` signature.** Changing from `number | undefined` to a
-  richer return type is a breaking change for existing callers. Need to update all
-  test helpers and the sim app's resolver. Consider a migration path (accept both
-  shapes, or add a separate `resolveHostFnEx`).
+- **Function registry metadata.** `resolveHostFn` was removed in Phase 10.
+  Async detection depends on the function registry entry having the right metadata.
+  Verify that `BrainFunctionEntry` (or equivalent) exposes an `isAsync` flag.
 - **Call site ID allocation.** `HOST_CALL_ARGS_ASYNC` requires a meaningful
   `callSiteId` (not hardcoded 0) for per-callsite state management. May need to
   defer proper call site ID allocation to Phase 20 or handle it here.
@@ -1763,7 +1769,7 @@ design. No spec amendments needed.
 | `src/compiler/lowering.ts`: TS AST -> IR                         | Done    | Handles param preamble (MapValue extraction), binary expressions, literals, return, property access (`params.xyz`).                             |
 | `src/compiler/emit.ts`: IR -> FunctionBytecode                   | Done    | Uses `compiler.BytecodeEmitter` + `compiler.ConstantPool` from core (namespace import).                                                         |
 | `src/compiler/call-def-builder.ts`: params -> BrainActionCallDef | Done    | Named params -> `user.<tileName>.<paramName>`, anonymous -> `anon.<type>`, optional wrapped.                                                    |
-| `src/compiler/compile.ts`: pipeline wiring                       | Done    | `compileUserTile(source, options?)` produces `UserAuthoredProgram` when `resolveHostFn` is provided.                                            |
+| `src/compiler/compile.ts`: pipeline wiring                       | Done    | `compileUserTile(source, options?)` produces `UserAuthoredProgram`. (Phase 10 removed resolver callbacks; compiler always runs full pipeline.)  |
 | `src/compiler/types.ts`: `UserAuthoredProgram`, `CompileOptions` | Done    | `CompileOptions` gained `resolveTypeId` and `ambientSource`. `UserAuthoredProgram` has full metadata.                                           |
 | End-to-end VM execution tests                                    | Done    | 10 tests: true/false comparison, number/bool/string literals, arithmetic, metadata, type resolution error, app-defined type, ambient rejection. |
 | `buildCallDef` tests                                             | Done    | 5 tests: empty, required, optional, anonymous, mixed.                                                                                           |
@@ -2353,3 +2359,132 @@ logical operator compilation details.
    TS checker's `getTypeAtLocation()` and `tsTypeToTypeId()`, then looks up the
    correct overload. Phase 10+ operators that have type-specific overloads should
    follow the same pattern.
+
+### Phase 10 -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                              | Actual | Notes                                                                                                                                     |
+| ---------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `lowering.ts`: `"a" + "b"` via string `Add` overload | Done   | Existing `lowerBinaryExpression` path resolves `Add(String, String)` -- no lowering changes needed for this case.                         |
+| `lowering.ts`: template literal desugaring           | Done   | `lowerTemplateLiteral()` function. Accumulator pattern: emit head, then for each span lower expression + convert-to-string + concatenate. |
+| `lowering.ts`: `NoSubstitutionTemplateLiteral`       | Done   | Treated as a string literal: `PushConst(mkStringValue(expr.text))`.                                                                       |
+| Tagged template rejection                            | N/A    | Already rejected by the validator (confirmed, no changes needed).                                                                         |
+| Test: `"a" + "b"` -> `"ab"`                          | Done   |                                                                                                                                           |
+| Test: `` `count: ${n}` `` -> `"count: 42"`           | Done   |                                                                                                                                           |
+| Test: `` `${a}-${b}` `` multiple spans               | Done   |                                                                                                                                           |
+| Test: empty template literal -> `""`                 | Done   |                                                                                                                                           |
+
+**Additional work beyond plan:**
+
+| Item                                             | Notes                                                                                                                                                       |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `emitToStringIfNeeded` with implicit coercion    | Template literal expressions of non-string type are automatically converted via `$$conv_<fromType>_to_<toType>` host functions. Number and boolean covered. |
+| `conversionFnName` moved to core                 | `packages/core/src/brain/runtime/conversion.ts` exports `conversionFnName(from, to)` -- canonical name generation for conversion host functions.            |
+| Diagnostic: unknown type in string interpolation | `emitToStringIfNeeded` emits `"Cannot convert expression to string: unable to determine type"` when `tsTypeToTypeId()` returns `undefined`.                 |
+| Diagnostic: missing conversion function          | `emitToStringIfNeeded` emits `"No conversion from ${typeId} to string"` when no conversion host function is registered for the type.                        |
+| Tests for diagnostics                            | 2 additional tests: `any`-typed expression interpolation diagnostic, `null` interpolation diagnostic.                                                       |
+| **Resolver callback elimination (refactoring)**  | Removed `resolveHostFn` and `resolveOperator` from `CompileOptions`. The compiler now uses `getBrainServices()` directly for operator and function lookup.  |
+
+**Design changes from spec:**
+
+1. **Implicit coercion via conversion functions.** The spec's key risk ("String +
+   non-string coercion") was resolved by using core's conversion registry.
+   `emitToStringIfNeeded` checks the expression's TS type, and if not String, emits a
+   `HostCallArgs` with a conversion function named `$$conv_<from>_to_<to>`. Core
+   already registers `Number -> String` and `Boolean -> String` conversions. The
+   `conversionFnName` helper was moved to core (`runtime/conversion.ts`) so both
+   the compiler and core can use the same naming convention.
+
+2. **Accumulator pattern instead of flat chain.** The spec described template literal
+   lowering as `PushConst(head), expr, Add, PushConst(tail), Add` for each span.
+   The implementation uses an accumulator pattern: the head is pushed only if
+   non-empty, each span expression is pushed and converted to string, then
+   concatenated with the accumulator only if one exists. This correctly handles edge
+   cases like empty heads, single-expression templates, and empty templates.
+
+3. **`resolveHostFn` and `resolveOperator` removed from `CompileOptions`.** During
+   review, the callback injection pattern was replaced with direct
+   `getBrainServices()` usage. `emit.ts` now calls
+   `getBrainServices().functions.get(fnName)?.id` directly in the `HostCallArgs` case.
+   `lowering.ts` has a module-level `resolveOperator()` function that calls
+   `getBrainServices().operatorOverloads.resolve()`. `CompileOptions` now only has
+   `resolveTypeId` (app-specific type mapping) and `ambientSource`. The early-return
+   guard `if (!options?.resolveHostFn)` in `compile.ts` was removed -- the compiler
+   now always runs the full pipeline (lower + emit) regardless of options.
+
+**Files changed:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- `lowerTemplateLiteral()`,
+  `emitToStringIfNeeded()`, module-level `resolveOperator()`, `NoSubstitutionTemplateLiteral`
+  handling, `resolveOperator` removed from `LowerContext` and `lowerProgram` signature
+- `packages/typescript/src/compiler/emit.ts` -- `resolveHostFn` parameter removed from
+  `emitFunction`, uses `getBrainServices().functions.get()` directly
+- `packages/typescript/src/compiler/types.ts` -- `resolveHostFn` and `resolveOperator`
+  removed from `CompileOptions`
+- `packages/typescript/src/compiler/compile.ts` -- removed early-return guard, removed
+  resolver args from `lowerProgram` and `emitFunction` calls
+- `packages/core/src/brain/runtime/conversion.ts` -- `conversionFnName(from, to)` added
+- `packages/typescript/src/compiler/codegen.spec.ts` -- 6 new tests (4 string, 2
+  diagnostics), removed all `resolveHostFn`/`resolveOperator` from test options
+- `packages/typescript/src/linker/linker.spec.ts` -- removed resolver options
+- `packages/typescript/src/runtime/authored-function.spec.ts` -- simplified
+  `compileAndLink` to `compileUserTile(source)`
+- `packages/typescript/src/compiler/compile.spec.ts` -- added
+  `registerCoreBrainComponents` calls in `before` hooks
+
+**No spec amendments needed.** `user-authored-sensors-actuators.md` does not describe
+the string operation or callback injection details.
+
+**Test counts:** 103 total (6 Phase 10, 6 Phase 9, 5 authored-function, 3
+registration-bridge, 7 linker, 8 null/nil, 5 onPageEntered/lifecycle, 11 helper
+functions/callsite state, 11 control flow, 10 codegen/VM, 5 buildCallDef, 5
+type-checking, 7 validation, 11 extraction, 3 core imports).
+
+**Discoveries:**
+
+1. **Conversion functions follow a canonical naming convention.** The name
+   `$$conv_<fromTypeId>_to_<toTypeId>` is used by both the compiler (to emit the
+   right `HostCallArgs`) and core (to register conversion functions). Moving
+   `conversionFnName` to core ensures a single source of truth. Future type
+   conversions (e.g., struct-to-string) only need to register a host function with
+   this name.
+
+2. **`getBrainServices()` is the canonical source for all runtime lookups.** The
+   resolver callback pattern (`resolveHostFn`, `resolveOperator`) was an unnecessary
+   indirection. The compiler runs in a context where `getBrainServices()` is always
+   initialized (tests call `registerCoreBrainComponents` in `before` hooks). Direct
+   calls to `getBrainServices().functions.get()` and
+   `getBrainServices().operatorOverloads.resolve()` are simpler and eliminate
+   callback threading through the lowering context.
+
+3. **`resolveTypeId` is the only remaining `CompileOptions` callback.** Unlike
+   operator/function resolution (which can use the global registry), type ID
+   resolution is genuinely app-specific -- apps define custom types (e.g., Actor,
+   Archetype) that map to `TypeId` values not known to core. This callback remains
+   the correct extension point.
+
+4. **The compiler now always runs the full pipeline.** Removing the `resolveHostFn`
+   guard means `compileUserTile` always lowers and emits bytecode. Previously,
+   calling without `resolveHostFn` would return early after descriptor extraction.
+   All callers now get a `UserAuthoredProgram` with compiled bytecode. Tests that
+   only needed descriptors still work because descriptor extraction precedes lowering.
+
+5. **Empty template head optimization.** When the template head is empty (e.g.,
+   `` `${x}` ``), the accumulator pattern skips the initial `PushConst("")` and
+   `Add`. The first span's expression becomes the accumulator directly. This avoids
+   an unnecessary concatenation with an empty string.
+
+6. **Diagnostic coverage for conversions is important.** Without explicit diagnostics,
+   a missing conversion function (e.g., nil-to-string) would only fail at emit time
+   with a generic "Cannot resolve host function" error, giving the user no indication
+   that the issue is a type conversion. The `emitToStringIfNeeded` diagnostics catch
+   this earlier with type-specific messages.
+
+7. **Future phases referencing `resolveHostFn` need updating.** Phase 13 (property
+   access chains + host calls) and Phase 18 (async host call emission) describe
+   extending `CompileOptions.resolveHostFn`. These phases should instead use
+   `getBrainServices().functions.get()` directly, with async detection via the
+   function registry entry's metadata rather than a callback return type.

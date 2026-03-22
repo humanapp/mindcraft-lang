@@ -1,4 +1,4 @@
-import { compiler, type FunctionBytecode } from "@mindcraft-lang/core/brain";
+import { compiler, type FunctionBytecode, getBrainServices } from "@mindcraft-lang/core/brain";
 import type { IrNode } from "./ir.js";
 import type { CompileDiagnostic } from "./types.js";
 
@@ -12,8 +12,7 @@ export function emitFunction(
   numParams: number,
   numLocals: number,
   name: string,
-  pool: compiler.ConstantPool,
-  resolveHostFn: (name: string) => number | undefined
+  pool: compiler.ConstantPool
 ): EmitResult {
   const emitter = new compiler.BytecodeEmitter();
   const diagnostics: CompileDiagnostic[] = [];
@@ -60,7 +59,7 @@ export function emitFunction(
         emitter.call(node.funcIndex, node.argc);
         break;
       case "HostCallArgs": {
-        const fnId = resolveHostFn(node.fnName);
+        const fnId = getBrainServices().functions.get(node.fnName)?.id;
         if (fnId === undefined) {
           diagnostics.push({ message: `Cannot resolve host function: ${node.fnName}` });
           return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };

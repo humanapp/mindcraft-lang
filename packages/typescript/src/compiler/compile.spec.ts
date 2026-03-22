@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
+import { registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
 import { compileUserTile, initCompiler } from "./compile.js";
 
 const VALID_SENSOR_SOURCE = `
@@ -19,6 +20,7 @@ export default Sensor({
 
 describe("compileUserTile", () => {
   before(async () => {
+    registerCoreBrainComponents();
     await initCompiler();
   });
   test("valid sensor source produces zero diagnostics", () => {
@@ -79,6 +81,7 @@ function doStuff(ctx: Context): void {
 
 describe("AST validation", () => {
   before(async () => {
+    registerCoreBrainComponents();
     await initCompiler();
   });
 

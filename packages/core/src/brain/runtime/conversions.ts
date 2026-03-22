@@ -20,6 +20,10 @@ import type { IFunctionRegistry } from "../interfaces/functions";
 import type { TypeId } from "../interfaces/type-system";
 import { getBrainServices } from "../services";
 
+export function conversionFnName(fromType: TypeId, toType: TypeId): string {
+  return `$$conv_${fromType}_to_${toType}`;
+}
+
 /**
  * Registry for managing type conversions in the tile system.
  * Provides methods to register conversions and find optimal conversion paths between types.
@@ -35,7 +39,7 @@ export class ConversionRegistry implements IConversionRegistry {
    */
   register(conv: Omit<Conversion, "id">): Conversion {
     const conversion = conv as unknown as Conversion;
-    const name = `$$conv_${conversion.fromType}_to_${conversion.toType}`;
+    const name = conversionFnName(conversion.fromType, conversion.toType);
     const existing = this.functions.get(name);
     if (existing) {
       throw new Error(

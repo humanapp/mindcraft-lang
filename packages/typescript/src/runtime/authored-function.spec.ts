@@ -73,16 +73,8 @@ function mkEmptyBrainProgram(): BrainProgram {
   };
 }
 
-function compileOpts() {
-  return {
-    resolveHostFn: (name: string) => getBrainServices().functions.get(name)?.id,
-    resolveOperator: (opId: string, argTypes: string[]) =>
-      getBrainServices().operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name,
-  };
-}
-
 function compileAndLink(source: string) {
-  const result = compileUserTile(source, compileOpts());
+  const result = compileUserTile(source);
   assert.deepStrictEqual(result.diagnostics, [], `Compile errors: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program);
 

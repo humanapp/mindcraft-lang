@@ -89,13 +89,8 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
 
   const descriptor = extractionResult.descriptor!;
 
-  if (!options?.resolveHostFn) {
-    return { diagnostics: [], descriptor };
-  }
-
   const checker = tsProgram.getTypeChecker();
-  const resolveOperator = options.resolveOperator ?? (() => undefined);
-  const programResult = lowerProgram(sourceFile, descriptor, checker, resolveOperator);
+  const programResult = lowerProgram(sourceFile, descriptor, checker);
   if (programResult.diagnostics.length > 0) {
     return { diagnostics: programResult.diagnostics };
   }
@@ -104,7 +99,7 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
   const emittedFunctions: ReturnType<typeof emitFunction>["bytecode"][] = [];
 
   for (const func of programResult.functions) {
-    const emitResult = emitFunction(func.ir, func.numParams, func.numLocals, func.name, pool, options.resolveHostFn);
+    const emitResult = emitFunction(func.ir, func.numParams, func.numLocals, func.name, pool);
     if (emitResult.diagnostics.length > 0) {
       return { diagnostics: emitResult.diagnostics };
     }
@@ -112,7 +107,7 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
   }
 
   const callDef = buildCallDef(descriptor.name, descriptor.params);
-  const resolveTypeId = options.resolveTypeId ?? coreTypeResolver;
+  const resolveTypeId = options?.resolveTypeId ?? coreTypeResolver;
   const outputType = descriptor.outputType ? resolveTypeId(descriptor.outputType) : undefined;
   if (descriptor.outputType && !outputType) {
     return { diagnostics: [{ message: `Unknown output type: "${descriptor.outputType}"` }] };

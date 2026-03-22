@@ -1,4 +1,13 @@
-import { CoreOpId, CoreTypeIds, mkNumberValue, mkStringValue, NIL_VALUE, type Value } from "@mindcraft-lang/core/brain";
+import {
+  CoreOpId,
+  CoreTypeIds,
+  getBrainServices,
+  mkNumberValue,
+  mkStringValue,
+  NIL_VALUE,
+  runtime,
+  type Value,
+} from "@mindcraft-lang/core/brain";
 import ts from "typescript";
 import type { IrNode } from "./ir.js";
 import { ScopeStack } from "./scope.js";
@@ -37,7 +46,6 @@ interface LowerContext {
   diagnostics: CompileDiagnostic[];
   loopStack: LoopContext[];
   nextLabelId: number;
-  resolveOperator: (opId: string, argTypes: string[]) => string | undefined;
   callsiteVars: Map<string, number>;
   functionTable: Map<string, number>;
 }
@@ -46,11 +54,14 @@ function allocLabel(ctx: LowerContext): number {
   return ctx.nextLabelId++;
 }
 
+function resolveOperator(opId: string, argTypes: string[]): string | undefined {
+  return getBrainServices().operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
+}
+
 export function lowerProgram(
   sourceFile: ts.SourceFile,
   descriptor: ExtractedDescriptor,
-  checker: ts.TypeChecker,
-  resolveOperator: (opId: string, argTypes: string[]) => string | undefined
+  checker: ts.TypeChecker
 ): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
@@ -90,42 +101,21 @@ export function lowerProgram(
 
   const functions: FunctionEntry[] = [];
 
-  const onExecEntry = lowerOnExecuteBody(
-    descriptor,
-    checker,
-    resolveOperator,
-    callsiteVars,
-    functionTable,
-    diagnostics
-  );
+  const onExecEntry = lowerOnExecuteBody(descriptor, checker, callsiteVars, functionTable, diagnostics);
   functions.push(onExecEntry);
 
   for (const helperNode of helperNodes) {
-    const entry = lowerHelperFunction(helperNode, checker, resolveOperator, callsiteVars, functionTable, diagnostics);
+    const entry = lowerHelperFunction(helperNode, checker, callsiteVars, functionTable, diagnostics);
     functions.push(entry);
   }
 
   if (descriptor.onPageEnteredNode) {
-    const entry = lowerOnPageEnteredBody(
-      descriptor,
-      checker,
-      resolveOperator,
-      callsiteVars,
-      functionTable,
-      diagnostics
-    );
+    const entry = lowerOnPageEnteredBody(descriptor, checker, callsiteVars, functionTable, diagnostics);
     functions.push(entry);
   }
 
   if (hasInitializers && initFuncId !== undefined) {
-    const initEntry = generateModuleInit(
-      sourceFile,
-      checker,
-      resolveOperator,
-      callsiteVars,
-      functionTable,
-      diagnostics
-    );
+    const initEntry = generateModuleInit(sourceFile, checker, callsiteVars, functionTable, diagnostics);
     functions.push(initEntry);
   }
 
@@ -145,7 +135,6 @@ export function lowerProgram(
 function lowerOnPageEnteredBody(
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
-  resolveOperator: (opId: string, argTypes: string[]) => string | undefined,
   callsiteVars: Map<string, number>,
   functionTable: Map<string, number>,
   sharedDiagnostics: CompileDiagnostic[]
@@ -164,7 +153,6 @@ function lowerOnPageEnteredBody(
     diagnostics: sharedDiagnostics,
     loopStack: [],
     nextLabelId: 0,
-    resolveOperator,
     callsiteVars,
     functionTable,
   };
@@ -241,7 +229,6 @@ function hasTopLevelInitializers(sourceFile: ts.SourceFile): boolean {
 function lowerOnExecuteBody(
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
-  resolveOperator: (opId: string, argTypes: string[]) => string | undefined,
   callsiteVars: Map<string, number>,
   functionTable: Map<string, number>,
   sharedDiagnostics: CompileDiagnostic[]
@@ -283,7 +270,6 @@ function lowerOnExecuteBody(
     diagnostics: sharedDiagnostics,
     loopStack: [],
     nextLabelId: 0,
-    resolveOperator,
     callsiteVars,
     functionTable,
   };
@@ -315,7 +301,6 @@ function lowerOnExecuteBody(
 function lowerHelperFunction(
   funcNode: ts.FunctionDeclaration,
   checker: ts.TypeChecker,
-  resolveOperator: (opId: string, argTypes: string[]) => string | undefined,
   callsiteVars: Map<string, number>,
   functionTable: Map<string, number>,
   sharedDiagnostics: CompileDiagnostic[]
@@ -342,7 +327,6 @@ function lowerHelperFunction(
     diagnostics: sharedDiagnostics,
     loopStack: [],
     nextLabelId: 0,
-    resolveOperator,
     callsiteVars,
     functionTable,
   };
@@ -369,7 +353,6 @@ function lowerHelperFunction(
 function generateModuleInit(
   sourceFile: ts.SourceFile,
   checker: ts.TypeChecker,
-  resolveOperator: (opId: string, argTypes: string[]) => string | undefined,
   callsiteVars: Map<string, number>,
   functionTable: Map<string, number>,
   sharedDiagnostics: CompileDiagnostic[]
@@ -386,7 +369,6 @@ function generateModuleInit(
     diagnostics: sharedDiagnostics,
     loopStack: [],
     nextLabelId: 0,
-    resolveOperator,
     callsiteVars,
     functionTable,
   };
@@ -576,6 +558,10 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
   } else if (ts.isStringLiteral(expr)) {
     ctx.ir.push({ kind: "PushConst", value: mkStringValue(expr.text) });
+  } else if (ts.isNoSubstitutionTemplateLiteral(expr)) {
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue(expr.text) });
+  } else if (ts.isTemplateExpression(expr)) {
+    lowerTemplateLiteral(expr, ctx);
   } else if (ts.isBinaryExpression(expr)) {
     if (isAssignmentOperator(expr.operatorToken.kind)) {
       lowerAssignment(expr, ctx);
@@ -725,7 +711,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
       return;
     }
 
-    const fnName = ctx.resolveOperator(opId, [lhsTypeId, rhsTypeId]);
+    const fnName = resolveOperator(opId, [lhsTypeId, rhsTypeId]);
     if (!fnName) {
       ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
       return;
@@ -758,7 +744,7 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
       ctx.ir.push({ kind: "PushConst", value: mkNumberValue(-Number(expr.operand.text)) });
     } else {
       lowerExpression(expr.operand, ctx);
-      const fnName = ctx.resolveOperator(CoreOpId.Negate, [CoreTypeIds.Number]);
+      const fnName = resolveOperator(CoreOpId.Negate, [CoreTypeIds.Number]);
       if (!fnName) {
         ctx.diagnostics.push(makeDiag("No operator overload for negation", expr));
         return;
@@ -773,7 +759,7 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
       ctx.diagnostics.push(makeDiag("Cannot determine type for `!` operand", expr));
       return;
     }
-    const fnName = ctx.resolveOperator(CoreOpId.Not, [operandTypeId]);
+    const fnName = resolveOperator(CoreOpId.Not, [operandTypeId]);
     if (!fnName) {
       ctx.diagnostics.push(makeDiag(`No operator overload for !(${operandTypeId})`, expr));
       return;
@@ -799,7 +785,7 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
 
   const opId = expr.operator === ts.SyntaxKind.PlusPlusToken ? CoreOpId.Add : CoreOpId.Subtract;
   const typeId = CoreTypeIds.Number;
-  const fnName = ctx.resolveOperator(opId, [typeId, typeId]);
+  const fnName = resolveOperator(opId, [typeId, typeId]);
   if (!fnName) {
     ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${typeId}, ${typeId})`, expr));
     return;
@@ -825,7 +811,7 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
 
   const opId = expr.operator === ts.SyntaxKind.PlusPlusToken ? CoreOpId.Add : CoreOpId.Subtract;
   const typeId = CoreTypeIds.Number;
-  const fnName = ctx.resolveOperator(opId, [typeId, typeId]);
+  const fnName = resolveOperator(opId, [typeId, typeId]);
   if (!fnName) {
     ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${typeId}, ${typeId})`, expr));
     return;
@@ -850,6 +836,59 @@ function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
   ctx.ir.push({ kind: "Pop" });
   lowerExpression(expr.right, ctx);
   ctx.ir.push({ kind: "Label", labelId: endLabel });
+}
+
+function emitToStringIfNeeded(exprNode: ts.Expression, ctx: LowerContext): void {
+  const exprType = ctx.checker.getTypeAtLocation(exprNode);
+  const typeId = tsTypeToTypeId(exprType);
+  if (!typeId) {
+    ctx.diagnostics.push(makeDiag("Cannot convert expression to string: unable to determine type", exprNode));
+    return;
+  }
+  if (typeId !== CoreTypeIds.String) {
+    const fnName = runtime.conversionFnName(typeId, CoreTypeIds.String);
+    if (!getBrainServices().functions.get(fnName)) {
+      ctx.diagnostics.push(makeDiag(`No conversion from ${typeId} to string`, exprNode));
+      return;
+    }
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+  }
+}
+
+function lowerTemplateLiteral(expr: ts.TemplateExpression, ctx: LowerContext): void {
+  const addFnName = resolveOperator(CoreOpId.Add, [CoreTypeIds.String, CoreTypeIds.String]);
+  if (!addFnName) {
+    ctx.diagnostics.push(makeDiag("No operator overload for string concatenation", expr));
+    return;
+  }
+
+  let hasAccumulator = false;
+  const headText = expr.head.text;
+
+  if (headText !== "") {
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue(headText) });
+    hasAccumulator = true;
+  }
+
+  for (const span of expr.templateSpans) {
+    lowerExpression(span.expression, ctx);
+    emitToStringIfNeeded(span.expression, ctx);
+
+    if (hasAccumulator) {
+      ctx.ir.push({ kind: "HostCallArgs", fnName: addFnName, argc: 2 });
+    }
+    hasAccumulator = true;
+
+    const literalText = span.literal.text;
+    if (literalText !== "") {
+      ctx.ir.push({ kind: "PushConst", value: mkStringValue(literalText) });
+      ctx.ir.push({ kind: "HostCallArgs", fnName: addFnName, argc: 2 });
+    }
+  }
+
+  if (!hasAccumulator) {
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue("") });
+  }
 }
 
 function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): void {
@@ -883,7 +922,7 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
     return;
   }
 
-  const fnName = ctx.resolveOperator(opId, [lhsTypeId, rhsTypeId]);
+  const fnName = resolveOperator(opId, [lhsTypeId, rhsTypeId]);
   if (!fnName) {
     ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
     return;

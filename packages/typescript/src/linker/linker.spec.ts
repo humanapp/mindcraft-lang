@@ -7,7 +7,6 @@ import {
   BYTECODE_VERSION,
   type ExecutionContext,
   type FunctionBytecode,
-  getBrainServices,
   HandleTable,
   type MapValue,
   mkNumberValue,
@@ -54,14 +53,6 @@ function mkArgsMap(entries: Record<number, Value>): MapValue {
     dict.set(Number(key), value);
   }
   return { t: NativeType.Map, typeId: "map:<args>", v: dict };
-}
-
-function hostFnResolver(name: string): number | undefined {
-  return getBrainServices().functions.get(name)?.id;
-}
-
-function operatorResolver(opId: string, argTypes: string[]): string | undefined {
-  return getBrainServices().operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
 }
 
 function mkEmptyBrainProgram(): BrainProgram {
@@ -133,7 +124,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -171,7 +162,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -200,7 +191,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -242,7 +233,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -289,9 +280,8 @@ export default Sensor({
   },
 });
 `;
-    const opts = { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver };
-    const result1 = compileUserTile(source1, opts);
-    const result2 = compileUserTile(source2, opts);
+    const result1 = compileUserTile(source1);
+    const result2 = compileUserTile(source2);
     assert.deepStrictEqual(result1.diagnostics, []);
     assert.deepStrictEqual(result2.diagnostics, []);
     assert.ok(result1.program);
@@ -337,7 +327,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -369,7 +359,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    const result = compileUserTile(source);
     assert.ok(result.program);
 
     const { linkedProgram } = linkUserPrograms(brainProg, [result.program!]);
