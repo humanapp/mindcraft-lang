@@ -37,7 +37,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0-10 and 11a are complete.
+- (Updated 2026-03-21) Phases 0-11b are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -56,8 +56,12 @@ not survive. Keep this doc current.
   and constants into a `BrainProgram` with `CALL`/`PUSH_CONST` operand remapping,
   a VM dispatch wrapper (`createUserTileExec`) that spawns fibers for user
   bytecode with inline sync execution via `vm.spawnFiber()` + `vm.runFiber()`,
-  and a registration bridge (`registerUserTile`) that wires user-authored tiles
-  into the `FunctionRegistry` and `TileCatalog`.
+  a registration bridge (`registerUserTile`) that wires user-authored tiles
+  into the `FunctionRegistry` and `TileCatalog`, ambient type declarations
+  generated from `ITypeRegistry` (user-creatable structs as plain interfaces,
+  native-backed structs as branded readonly interfaces), and object literal
+  compilation to `STRUCT_NEW` / `STRUCT_SET` bytecode (contextual type resolution,
+  nested struct support, native-backed struct rejection).
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientDeclarations`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
@@ -931,6 +935,18 @@ so the TS checker can resolve contextual types for object literals).
 - **Mixed-type arrays.** TypeScript allows `[1, "a", true]` with type
   `(number | string | boolean)[]`. The VM may not support mixed-type lists.
   Reject or handle with a union type.
+- (Added 2026-03-21, Phase 11b post-mortem) **`BytecodeEmitter.listNew` has the same
+  operand issue as `structNew` had.** The emitter puts `typeId` into `ins.a` but the
+  VM's `execListNew` ignores all operands entirely -- it creates a list with hardcoded
+  `"list:<unknown>"` typeId. The emitter and/or VM will need to be fixed to propagate
+  the typeId, following the same pattern as the `structNew` fix (constant pool index
+  in `ins.b` for the typeId string). Alternatively, accept `"list:<unknown>"` for v1
+  if typeId is not needed at runtime.
+- (Added 2026-03-21, Phase 11b post-mortem) **Contextual type resolution pattern.**
+  Phase 11b established `checker.getContextualType()` for struct literal type
+  resolution. The same approach works for array literals -- variable type annotations
+  and return type annotations provide contextual types. For untyped arrays like
+  `[1, 2, 3]`, the inferred element type from the TS checker can be used instead.
 
 ---
 
@@ -2622,3 +2638,81 @@ authored-function, 3 registration-bridge, 7 linker, 8 null/nil, 5 onPageEntered/
    approach prevents object literal assignment while allowing the type to be used in
    variable declarations, parameter types, and return types. This is the standard
    TypeScript pattern for nominal typing and requires no runtime overhead.
+
+### Phase 11b -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                            | Actual | Notes                                                                                                                                                                                                                         |
+| -------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ir.ts`: add `IrStructNew`, `IrStructSet` nodes    | Done   | `IrStructNew` carries `typeId: string`; `IrStructSet` is parameterless (field name and value are on the stack)                                                                                                                |
+| `lowering.ts`: handle `ts.ObjectLiteralExpression` | Done   | `lowerObjectLiteral()` resolves contextual type via `checker.getContextualType()`, maps to `StructTypeDef` via registry, rejects native-backed structs, emits `StructNew` + per-field `PushConst(name)` + value + `StructSet` |
+| `emit.ts`: emit `STRUCT_NEW`, `STRUCT_SET` opcodes | Done   | `StructNew` adds typeId string to constant pool, calls `emitter.structNew(constIdx)`; `StructSet` calls `emitter.structSet()`                                                                                                 |
+
+**Additional work not in the planned scope:**
+
+1. **Emitter bug fix in `packages/core`.** The `BytecodeEmitter.structNew(typeId)` method
+   was emitting `{ op: STRUCT_NEW, a: typeId }`, but the VM's `execStructNew` reads
+   `ins.a` as `numFields` and `ins.b` as the constant pool index for the typeId string.
+   Fixed `structNew()` to emit `{ op: STRUCT_NEW, a: 0, b: typeIdConstIdx }`. Updated
+   both `emitter.ts` and the `IBytecodeSink` interface in `interfaces/emitter.ts`.
+   This was a latent bug -- `structNew` had never been called before this phase.
+
+**Acceptance criteria results:**
+
+- [x] `const pos: Vector2 = { x: 10, y: 20 }` -> `STRUCT_NEW(vector2TypeId)` + field
+      assignments -- test verifies correct field values via VM execution
+- [x] Struct as return value (`return { x: 3, y: 7 }`) -> correct bytecode, contextual
+      type inferred from return type annotation
+- [x] Nested struct literal (`Entity` containing `Vector2` position) -> recursive
+      struct construction verified via VM execution
+- [x] Native-backed struct object literal -> compile error (diagnostic produced)
+- [x] Untyped object literal (`const obj = { a: 1 }`) -> compile error (no contextual
+      type)
+
+**Files changed:**
+
+- `packages/core/src/brain/compiler/emitter.ts` -- fixed `structNew()` operand mapping
+  (a: 0, b: typeIdConstIdx)
+- `packages/core/src/brain/interfaces/emitter.ts` -- updated `structNew()` param name
+  and docs
+- `packages/typescript/src/compiler/ir.ts` -- added `IrStructNew`, `IrStructSet` to
+  `IrNode` union; added interface definitions
+- `packages/typescript/src/compiler/lowering.ts` -- added `resolveStructType()`,
+  `isNativeBackedStruct()`, `lowerObjectLiteral()`; added `ObjectLiteralExpression`
+  case to `lowerExpression()`; added `NativeType` and `StructTypeDef` imports
+- `packages/typescript/src/compiler/emit.ts` -- added `StructNew` and `StructSet` cases
+  to the emit switch; added `mkStringValue` import
+- `packages/typescript/src/compiler/codegen.spec.ts` -- added `struct literal compilation`
+  describe block with 5 tests; added `isStructValue` and `StructValue` imports
+
+**Test counts:** 117 total (previous 112 + 5 new struct literal tests).
+
+**Discoveries:**
+
+1. **`BytecodeEmitter.structNew` had wrong operand mapping.** The emitter put the
+   typeId constant index into `ins.a` but the VM reads `ins.a` as `numFields` (always 0
+   for the "create empty then set fields" pattern) and `ins.b` as the constant pool
+   index for the typeId string. This was a latent bug since `structNew` was never called
+   before. The spec in `brain-runtime.md` says `structNew(typeId: number)` which is
+   ambiguous -- it does not clarify that the number is a constant pool index for a
+   string, not a numeric typeId. The runtime spec could benefit from clarification.
+
+2. **Contextual type resolution via `checker.getContextualType()` works well for typed
+   contexts.** Variable declarations with explicit type annotations and return statements
+   with return type annotations both provide contextual types that resolve to the
+   correct struct TypeDef. Untyped declarations (no annotation) return `undefined`
+   from `getContextualType()`, producing a clear diagnostic.
+
+3. **Nested struct literals work naturally.** When the inner object literal `{ x: 5, y: 15 }`
+   appears as a property value of an outer struct, `lowerExpression` recurses into
+   `lowerObjectLiteral` for the inner literal. The inner struct's contextual type is
+   resolved from the outer struct's field type definition in the `MindcraftTypeMap`.
+   No special nesting logic was needed.
+
+4. **Struct types must be imported from the `"mindcraft"` module.** Since ambient
+   declarations are inside `declare module "mindcraft"`, user code must write
+   `import { type Vector2 } from "mindcraft"` to use struct types as annotations.
+   This is consistent with how `Context`, `Sensor`, and `Actuator` are used.

@@ -411,6 +411,12 @@ IrOp =
   | SetField(fieldName: string)
 ```
 
+(Updated 2026-03-21: `StructNew(typeId)` -- the `typeId` parameter is a constant pool
+index pointing to a string value (the typeId string, e.g., `"struct:<Vector2>"`), not
+a numeric type identifier. The VM reads `ins.a` as `numFields` (0 for the "create empty
+then set fields" pattern used by the compiler) and `ins.b` as the constant pool index
+for the typeId string.)
+
 #### Lowering rules
 
 **Variable declarations:**
