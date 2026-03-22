@@ -225,6 +225,10 @@ export class TypeRegistry implements ITypeRegistry {
   resolveByName(name: string): TypeId | undefined {
     return this.nameToId.get(name);
   }
+
+  entries(): Iterable<[TypeId, TypeDef]> {
+    return this.defs.entries().toArray();
+  }
 }
 
 // ----------------------------------------------------
