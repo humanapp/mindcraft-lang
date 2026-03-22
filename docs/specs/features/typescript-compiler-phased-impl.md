@@ -952,6 +952,131 @@ so the TS checker can resolve contextual types for object literals).
 
 ---
 
+### Phase 12b: Map literals
+
+**Objective:** Compile object literal expressions to `MAP_NEW` / `MAP_SET` bytecode when
+the contextual type resolves to a Map type (`Record<string, T>`) rather than a Struct.
+
+Phase 11b handles object literals whose contextual type is a struct. This phase handles
+the other case: object literals whose contextual type is a map. They use the same TS
+syntax (`{ key: value }`) but produce different opcodes.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- extend `lowerObjectLiteral` to
+  detect map-typed contextual types and emit `IrMapNew` / `IrMapSet` instead of
+  `IrStructNew` / `IrStructSet`; add `resolveMapTypeId()` helper following the same
+  pattern as `resolveListTypeId()`
+- `packages/typescript/src/compiler/ir.ts` -- add `IrMapNew` (with `typeId`),
+  `IrMapSet` nodes
+- `packages/typescript/src/compiler/emit.ts` -- emit `MAP_NEW`, `MAP_SET` opcodes
+
+**Concrete deliverables:**
+
+1. `const m: Record<string, number> = { foo: 1, bar: 2 }` compiles to
+   `MAP_NEW(typeId)` + two `MAP_SET` instructions (key as `PushConst(string)`,
+   value as `PushConst(number)`).
+2. Empty map `const m: SomeMapType = {}` compiles to `MAP_NEW(typeId)` alone.
+3. Map as return value or function argument compiles correctly via contextual type.
+4. The lowering distinguishes map vs struct by checking whether the contextual type
+   resolves to a `MapTypeDef` (via `NativeType.Map` in the registry) before falling
+   through to the existing struct path.
+5. `resolveMapTypeId()` follows the alias-symbol-first pattern from
+   `resolveListTypeId()`: check alias symbol name against the registry first,
+   fall back to value-type matching.
+
+**Acceptance criteria:**
+
+- Test: `{ foo: 1, bar: 2 }` with map-typed annotation -> `MAP_NEW` + 2x `MAP_SET`
+- Test: empty map `{}` with map-typed annotation -> `MAP_NEW` only
+- Test: map as return value -> correct bytecode
+- Test: nested struct-in-map (map values are struct-typed) -> correct nested emission
+- Test: object literal with struct contextual type still compiles to `STRUCT_NEW`
+  (regression check)
+
+**Key risks:**
+
+- **`MAP_NEW` typeId operand.** The VM's `execMapNew` currently ignores all operands
+  and creates maps with hardcoded `"map:<unknown>"` typeId (same issue as `LIST_NEW`
+  had in Phase 12). The emitter puts `typeId` into `ins.a` but the VM does not read
+  it. Either fix the VM to read the typeId from the constant pool (following the
+  `structNew` fix pattern -- constant pool index in `ins.b`), or accept
+  `"map:<unknown>"` for v1.
+- **Ambiguity between struct and map.** An object literal `{ x: 1, y: 2 }` could be
+  either a struct or a map depending on the contextual type. The lowering must check
+  map first or struct first consistently. Since struct types have known field names and
+  map types accept arbitrary keys, checking struct first (existing code) and falling
+  through to map is the natural order.
+- **Map keys are always strings.** `MapTypeShape` has `valueTypeId` but no
+  `keyTypeId` -- keys are implicitly strings. The lowering should verify that object
+  literal keys are string-compatible (identifiers and string literals both work).
+
+---
+
+### Phase 12c: Enum value literals
+
+**Objective:** Compile string literal expressions to `EnumValue` constants when the
+contextual type resolves to a Mindcraft enum type.
+
+Mindcraft enums are surfaced in ambient declarations as string union types (e.g.,
+`type Direction = "north" | "south" | "east" | "west"`). When a user writes `"north"`
+and the contextual type is a Mindcraft enum, the compiler must produce an `EnumValue`
+constant (`{ t: NativeType.Enum, typeId, v: "north" }`) rather than a plain
+`StringValue`. The `ConstantPool` already supports `EnumValue` deduplication.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- extend string literal handling
+  to detect enum-typed contextual types and emit `PushConst(EnumValue)` instead of
+  `PushConst(StringValue)`; extend `tsTypeToTypeId` to handle enum types
+- `packages/typescript/src/compiler/ambient.ts` -- no changes needed (enum types
+  are already generated as string unions with `MindcraftTypeMap` entries)
+
+**Concrete deliverables:**
+
+1. `const d: Direction = "north"` compiles to `PushConst(EnumValue("north", directionTypeId))`.
+2. Passing an enum value as a function argument compiles correctly via contextual type
+   (e.g., `setDirection("north")` where the parameter type is `Direction`).
+3. Returning an enum value from a sensor compiles correctly.
+4. The lowering detects enum types by resolving the contextual type's symbol name
+   against the type registry and checking for `NativeType.Enum`.
+5. `tsTypeToTypeId` gains enum type support: when a TS type is a string union
+   that matches a registered enum type, it returns the enum's `TypeId`.
+6. Invalid enum values (string literals not in the enum's symbol list) are caught
+   by TypeScript's own type checking (the string union type rejects unknown values),
+   so no additional validation is needed in the lowering.
+
+**Acceptance criteria:**
+
+- Test: `"north"` with enum-typed annotation -> `PushConst` with `EnumValue`
+  (not `StringValue`)
+- Test: enum value as function argument -> correct `EnumValue` constant
+- Test: enum value as return value -> correct `EnumValue` constant
+- Test: plain string literal without enum context -> still produces `StringValue`
+  (regression check)
+- Test: `tsTypeToTypeId` returns correct `TypeId` for enum types
+
+**Key risks:**
+
+- **Contextual type detection for string literals.** A string literal like `"north"`
+  has TS type `"north"` (a string literal type). The lowering must use
+  `checker.getContextualType()` to determine if the expected type is an enum, not
+  just inspect the literal's own type. Without contextual type, the literal compiles
+  as a plain string -- this is correct for non-enum contexts.
+- **String union vs enum ambiguity.** TypeScript string unions and Mindcraft enum
+  types look identical in the ambient declarations. The lowering must resolve the
+  union type's alias symbol name against the type registry to determine if it is a
+  Mindcraft enum. If the alias symbol is not found in the registry, it is a plain
+  string union and the literal should compile as a `StringValue`.
+- **Enum comparisons.** After this phase, enum values on the stack are `EnumValue`
+  typed. Comparison operators (`===`, `!==`) between enum values may need enum-aware
+  operator overloads (comparing `typeId` + `v`). Check whether the existing `EqualTo`
+  operator handles `EnumValue` correctly, or if new overloads are needed. This may
+  need to be deferred to a follow-up if the operator infrastructure does not support
+  enum comparisons yet.
+
+---
+
 ### Phase 13: Property access chains + host calls
 
 **Objective:** Compile property access chains (e.g., `ctx.self.position.x`) to `GET_FIELD`
