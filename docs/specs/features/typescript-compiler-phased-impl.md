@@ -2,7 +2,7 @@
 
 Companion to [user-authored-sensors-actuators.md](user-authored-sensors-actuators.md).
 See also [vscode-authoring-debugging.md](vscode-authoring-debugging.md) -- section 6 (Debug Metadata)
-defines the compiler-emitted structures needed in Phase 11+. Sections 1-5/7-20 cover
+defines the compiler-emitted structures needed in Phase 11a+. Sections 1-5/7-20 cover
 VS Code extension and bridge concerns that are out of scope for this plan.
 Focused on the compiler pipeline -- no VS Code extension, no bridge, no editor-specific concerns.
 
@@ -760,17 +760,12 @@ logical operators.
 
 ---
 
-### Phase 11: Object/struct literals
+### Phase 11a: Type registry ambient generation
 
-**Objective:** Compile object literal expressions to `STRUCT_NEW` / `STRUCT_SET`
-bytecode for user-creatable struct types, and establish the ambient type generation
-infrastructure that distinguishes user-creatable structs from native-backed structs.
-
-**Prerequisite: App-type shape declarations.** This phase requires the compiler to
-know struct field layouts so it can emit correct `STRUCT_NEW(typeId)` instructions.
-Before implementing the phase, the ambient generation must support full interface declarations
-derived from `ITypeRegistry`. See the "Type registry ambient generation" prerequisite
-below.
+**Objective:** Build the ambient type generation infrastructure that derives TypeScript
+interface declarations from `ITypeRegistry`, distinguishing user-creatable structs
+from native-backed structs. This establishes the type foundation that Phase 11b's
+object literal compilation depends on.
 
 #### Native-backed vs user-creatable struct types
 
@@ -780,7 +775,7 @@ the presence of runtime hooks:
 - **User-creatable structs** (e.g., `Vector2`): No `fieldGetter`, `fieldSetter`, or
   `snapshotNative` hooks. Fields are stored in the `StructValue.v` Dict. User code
   can create instances via object literals (`{ x: 1, y: 2 }`), which compile to
-  `STRUCT_NEW` + `STRUCT_SET`.
+  `STRUCT_NEW` + `STRUCT_SET` (Phase 11b).
 - **Native-backed structs** (e.g., `ActorRef`): Have one or more hooks registered.
   The `StructValue.native` field wraps a host object (or lazy resolver function).
   The VM's `GET_FIELD` delegates to `fieldGetter`, `SET_FIELD` delegates to
@@ -789,8 +784,8 @@ the presence of runtime hooks:
   via object literals -- they can only be received from host functions or sensor
   parameters, because there is no way for user bytecode to provide the `native` handle.
 
-This distinction must be reflected in both the ambient type declarations and the
-compiler's lowering logic.
+This distinction must be reflected in the ambient type declarations (this phase)
+and the compiler's lowering logic (Phase 11b).
 
 **Packages/files touched:**
 
@@ -805,18 +800,11 @@ compiler's lowering logic.
   interfaces must use a private brand (e.g., `readonly __brand: unique symbol`) to
   prevent structural compatibility with object literals, while user-creatable struct
   interfaces are plain and structurally constructable.
-- `packages/typescript/src/compiler/lowering.ts` -- handle
-  `ts.ObjectLiteralExpression`: emit `STRUCT_NEW(typeId)` then for each property
-  `PUSH_CONST(fieldName)`, evaluate value, `STRUCT_SET`. Reject object literals
-  whose contextual type resolves to a native-backed struct (the brand prevents this
-  at the TS type level; the lowering should emit a diagnostic if it reaches this path
-  anyway).
-- `packages/typescript/src/compiler/ir.ts` -- add `IrStructNew`, `IrStructSet` nodes
-- `packages/typescript/src/compiler/emit.ts` -- emit `STRUCT_NEW`, `STRUCT_SET` opcodes
 
 **Concrete deliverables:**
 
-1. `buildAmbientFromRegistry(registry)` generates ambient `.d.ts` content by iterating
+1. `ITypeRegistry.entries()` exposes registered types for the generator.
+2. `buildAmbientFromRegistry(registry)` generates ambient `.d.ts` content by iterating
    over all registered types:
    - For user-creatable struct types (no hooks): emit a plain interface with typed
      fields, e.g., `interface Vector2 { x: number; y: number; }`.
@@ -830,21 +818,13 @@ compiler's lowering logic.
    - Returns `ambientSource`. Type resolution uses `ITypeRegistry.resolveByName()`
      which already handles all registered types. Replaces the manual
      `buildAmbientSource(appTypeEntries?)` API.
-2. `ITypeRegistry.entries()` exposes registered types for the generator.
-3. `{ x: 1, y: 2 }` compiles to the correct struct construction bytecode when the
-   target type is a known user-creatable struct.
-4. The lowering infers the struct `TypeId` from the TS checker's contextual type
-   (e.g., return type annotation, variable type annotation, or assignment target type).
-5. Native-backed struct types are usable as variable and parameter types
+3. Native-backed struct types are usable as variable and parameter types
    (e.g., `let target: ActorRef = params.target;`). Assignment compiles to
    `STORE_LOCAL` -- the VM's `deepCopyValue` handles `snapshotNative` transparently;
    the compiler does not need to emit special code for this.
 
 **Acceptance criteria:**
 
-- Test: `const pos: Vector2 = { x: 1, y: 2 }` -> `STRUCT_NEW(vector2TypeId)` +
-  field assignments
-- Test: struct as return value -> correct bytecode
 - Test: `buildAmbientFromRegistry` generates correct plain interface for a
   user-creatable struct with two fields
 - Test: `buildAmbientFromRegistry` generates branded interface for a native-backed
@@ -853,21 +833,12 @@ compiler's lowering logic.
   structural match)
 - Test: `let target: ActorRef = params.target;` -> compiles successfully to
   `LOAD_LOCAL` / `STORE_LOCAL`
-- Test: unknown struct type -> compile error
 
 **Key risks:**
 
-- **Type inference for untyped object literals.** If a user writes `const x = { a: 1 }`
-  without a type annotation, the compiler cannot determine which struct type to use.
-  May need to require explicit type annotations on object literals (consistent with
-  the spec's emphasis on typed code), or support structural matching against known
-  struct types.
 - **`ITypeRegistry` changes touch `packages/core`.** Adding `entries()` is a small
   interface change but it affects the core package. Verify that the method can be
   added without breaking the Luau/roblox-ts build.
-- **Nested struct literals.** `{ pos: { x: 1, y: 2 } }` requires recursive struct
-  construction. The inner struct must be constructed before the outer one sets the
-  field.
 - **Brand vs opaque type strategy.** The `__brand: unique symbol` pattern is
   well-established in TypeScript for nominal typing, but alternatives exist (e.g.,
   generating the interface as a class declaration, or using `declare const` with a
@@ -877,6 +848,52 @@ compiler's lowering logic.
   fields, those fields are writable at runtime. For v1, treating all native-backed
   fields as readonly simplifies the ambient generation. A later phase can refine
   this with per-field writability metadata if needed.
+
+---
+
+### Phase 11b: Object/struct literal compilation
+
+**Objective:** Compile object literal expressions to `STRUCT_NEW` / `STRUCT_SET`
+bytecode for user-creatable struct types.
+
+**Prerequisites:** Phase 11a (ambient generation provides struct type declarations
+so the TS checker can resolve contextual types for object literals).
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/ir.ts` -- add `IrStructNew`, `IrStructSet` nodes
+- `packages/typescript/src/compiler/lowering.ts` -- handle
+  `ts.ObjectLiteralExpression`: emit `STRUCT_NEW(typeId)` then for each property
+  `PUSH_CONST(fieldName)`, evaluate value, `STRUCT_SET`. Reject object literals
+  whose contextual type resolves to a native-backed struct (the brand prevents this
+  at the TS type level; the lowering should emit a diagnostic if it reaches this path
+  anyway).
+- `packages/typescript/src/compiler/emit.ts` -- emit `STRUCT_NEW`, `STRUCT_SET` opcodes
+
+**Concrete deliverables:**
+
+1. `{ x: 1, y: 2 }` compiles to the correct struct construction bytecode when the
+   target type is a known user-creatable struct.
+2. The lowering infers the struct `TypeId` from the TS checker's contextual type
+   (e.g., return type annotation, variable type annotation, or assignment target type).
+
+**Acceptance criteria:**
+
+- Test: `const pos: Vector2 = { x: 1, y: 2 }` -> `STRUCT_NEW(vector2TypeId)` +
+  field assignments
+- Test: struct as return value -> correct bytecode
+- Test: unknown struct type -> compile error
+
+**Key risks:**
+
+- **Type inference for untyped object literals.** If a user writes `const x = { a: 1 }`
+  without a type annotation, the compiler cannot determine which struct type to use.
+  May need to require explicit type annotations on object literals (consistent with
+  the spec's emphasis on typed code), or support structural matching against known
+  struct types.
+- **Nested struct literals.** `{ pos: { x: 1, y: 2 } }` requires recursive struct
+  construction. The inner struct must be constructed before the outer one sets the
+  field.
 
 ---
 
@@ -922,7 +939,7 @@ compiler's lowering logic.
 instructions, and context method calls (e.g., `ctx.engine.queryNearby(pos, range)`)
 to `HOST_CALL_ARGS` instructions. This is the gateway to the full `Context` API.
 
-**Prerequisite:** Phase 11's ambient-from-registry work must be complete so the compiler
+**Prerequisite:** Phase 11a's ambient-from-registry work must be complete so the compiler
 knows field layouts of struct types. The `EngineContext` method resolution depends on
 a method-to-host-function-ID mapping.
 
