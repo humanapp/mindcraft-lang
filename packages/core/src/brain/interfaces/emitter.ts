@@ -263,9 +263,10 @@ export interface IBytecodeEmitter {
   // ==========================================
 
   /**
-   * Create a new struct with typeId.
+   * Create a new empty struct.
+   * @param typeIdConstIdx - constant pool index holding the typeId string
    */
-  structNew(typeId: number): void;
+  structNew(typeIdConstIdx: number): void;
 
   /**
    * Get field from struct. Field name is on stack.

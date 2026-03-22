@@ -297,9 +297,9 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // Struct operations
   // ==========================================
 
-  /** Create a new struct with typeId. */
-  structNew(typeId: number): void {
-    this.emit({ op: Op.STRUCT_NEW, a: typeId });
+  /** Create a new empty struct. typeIdConstIdx is the constant pool index for the typeId string. */
+  structNew(typeIdConstIdx: number): void {
+    this.emit({ op: Op.STRUCT_NEW, a: 0, b: typeIdConstIdx });
   }
 
   /** Get field from struct. Field name is on stack. */
