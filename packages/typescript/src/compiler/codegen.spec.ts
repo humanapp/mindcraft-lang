@@ -9,6 +9,7 @@ import {
   type MapValue,
   mkNumberValue,
   mkStringValue,
+  mkTypeId,
   NativeType,
   NIL_VALUE,
   type NumberValue,
@@ -288,26 +289,34 @@ export default Sensor({
     assert.ok(prog.constants.size() > 0);
   });
 
-  test("invalid output type produces diagnostic when resolveTypeId returns undefined", () => {
+  test("invalid output type produces diagnostic for unregistered type", () => {
+    const appAmbient = buildAmbientSource(["unknownType: unknown;"]);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "bad-type",
-  output: "number",
-  onExecute(ctx: Context): number {
+  output: "unknownType",
+  onExecute(ctx: Context): unknown {
     return 1;
   },
 });
 `;
     const result = compileUserTile(source, {
-      resolveTypeId: () => undefined,
+      ambientSource: appAmbient,
     });
     assert.equal(result.diagnostics.length, 1);
     assert.ok(result.diagnostics[0].message.includes("Unknown output type"));
   });
 
-  test("app-defined output type resolves via resolveTypeId", () => {
+  test("app-defined output type resolves via registry", () => {
+    const types = getBrainServices().types;
+    const actorRefTypeId = mkTypeId(NativeType.Struct, "actorRef");
+    if (!types.get(actorRefTypeId)) {
+      types.addStructType("actorRef", {
+        fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number") }]),
+      });
+    }
     const appAmbient = buildAmbientSource(["actorRef: unknown;"]);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -322,13 +331,6 @@ export default Sensor({
 `;
     const result = compileUserTile(source, {
       ambientSource: appAmbient,
-      resolveTypeId: (name) => {
-        if (name === "actorRef") return "struct:<actorRef>";
-        if (name === "boolean") return "boolean:<boolean>";
-        if (name === "number") return "number:<number>";
-        if (name === "string") return "string:<string>";
-        return undefined;
-      },
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);

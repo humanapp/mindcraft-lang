@@ -25,12 +25,14 @@ import { getBrainServices } from "../services";
 
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
+  private nameToId = new Dict<string, TypeId>();
 
   private add(def: TypeDef) {
     if (this.defs.has(def.typeId)) {
       throw new Error(`Type with id ${def.typeId} is already registered`);
     }
     this.defs.set(def.typeId, def);
+    this.nameToId.set(def.name, def.typeId);
   }
 
   private validateTypeName(name: string) {
@@ -218,6 +220,10 @@ export class TypeRegistry implements ITypeRegistry {
 
   get(id: TypeId): TypeDef | undefined {
     return this.defs.get(id);
+  }
+
+  resolveByName(name: string): TypeId | undefined {
+    return this.nameToId.get(name);
   }
 }
 

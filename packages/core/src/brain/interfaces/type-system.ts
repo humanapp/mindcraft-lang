@@ -103,6 +103,7 @@ export type StructTypeDef = TypeDef & StructTypeShape;
 
 export interface ITypeRegistry {
   get(id: TypeId): TypeDef | undefined;
+  resolveByName(name: string): TypeId | undefined;
   addVoidType(name: string): TypeId;
   addNilType(name: string): TypeId;
   addBooleanType(name: string): TypeId;

@@ -4,7 +4,6 @@ import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainProgram,
   BYTECODE_VERSION,
-  CoreTypeIds,
   type ExecutionContext,
   getBrainServices,
   HandleState,
@@ -100,18 +99,6 @@ function mkServices(): RegistrationServices {
   return {
     functions: s.functions,
     tiles: s.tiles,
-    resolveTypeId: (shortName: string) => {
-      switch (shortName) {
-        case "number":
-          return CoreTypeIds.Number;
-        case "boolean":
-          return CoreTypeIds.Boolean;
-        case "string":
-          return CoreTypeIds.String;
-        default:
-          return undefined;
-      }
-    },
   };
 }
 

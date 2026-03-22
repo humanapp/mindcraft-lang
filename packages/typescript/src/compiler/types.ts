@@ -30,7 +30,6 @@ export interface UserTileLinkInfo {
 }
 
 export interface CompileOptions {
-  resolveTypeId?: (shortName: string) => TypeId | undefined;
   ambientSource?: string;
 }
 

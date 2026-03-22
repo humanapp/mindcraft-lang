@@ -1,9 +1,9 @@
 import {
+  getBrainServices,
   type HostAsyncFn,
   type IFunctionRegistry,
   type ITileCatalog,
   mkParameterTileId,
-  type TypeId,
   tiles as tileDefs,
 } from "@mindcraft-lang/core/brain";
 import type { UserTileLinkInfo } from "../compiler/types.js";
@@ -11,7 +11,6 @@ import type { UserTileLinkInfo } from "../compiler/types.js";
 export interface RegistrationServices {
   functions: IFunctionRegistry;
   tiles: ITileCatalog;
-  resolveTypeId: (shortName: string) => TypeId | undefined;
 }
 
 export function registerUserTile(
@@ -20,14 +19,15 @@ export function registerUserTile(
   services: RegistrationServices
 ): void {
   const { program } = linkInfo;
-  const { functions, tiles, resolveTypeId } = services;
+  const { functions, tiles } = services;
+  const types = getBrainServices().types;
 
   for (const p of program.params) {
     const parameterId = p.anonymous ? `anon.${p.type}` : `user.${program.name}.${p.name}`;
     const paramTileId = mkParameterTileId(parameterId);
 
     if (!tiles.has(paramTileId)) {
-      const typeId = resolveTypeId(p.type);
+      const typeId = types.resolveByName(p.type);
       if (typeId) {
         tiles.registerTileDef(new tileDefs.BrainTileParameterDef(parameterId, typeId));
       }

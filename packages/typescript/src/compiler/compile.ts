@@ -1,5 +1,5 @@
 import { List } from "@mindcraft-lang/core";
-import { CoreTypeIds, compiler } from "@mindcraft-lang/core/brain";
+import { compiler, getBrainServices } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
 import { AMBIENT_MINDCRAFT_DTS, buildAmbientSource } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
@@ -107,8 +107,7 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
   }
 
   const callDef = buildCallDef(descriptor.name, descriptor.params);
-  const resolveTypeId = options?.resolveTypeId ?? coreTypeResolver;
-  const outputType = descriptor.outputType ? resolveTypeId(descriptor.outputType) : undefined;
+  const outputType = descriptor.outputType ? getBrainServices().types.resolveByName(descriptor.outputType) : undefined;
   if (descriptor.outputType && !outputType) {
     return { diagnostics: [{ message: `Unknown output type: "${descriptor.outputType}"` }] };
   }
@@ -134,19 +133,6 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
   };
 
   return { diagnostics: [], program, descriptor };
-}
-
-function coreTypeResolver(shortName: string): string | undefined {
-  switch (shortName) {
-    case "boolean":
-      return CoreTypeIds.Boolean;
-    case "number":
-      return CoreTypeIds.Number;
-    case "string":
-      return CoreTypeIds.String;
-    default:
-      return undefined;
-  }
 }
 
 function generateRevisionId(): string {
