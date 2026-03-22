@@ -62,8 +62,7 @@ not survive. Keep this doc current.
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
   interfaces, `linkUserPrograms` and `LinkResult` from the linker module, and
-  `createUserTileExec`, `registerUserTile`, `RegistrationServices` from the runtime
-  module.
+  `createUserTileExec`, `registerUserTile` from the runtime module.
 - `src/linker/linker.ts` exports `linkUserPrograms(brainProgram, userPrograms[])` which
   appends user functions to the brain program, remaps `CALL` and `PUSH_CONST` operands,
   merges constants, and returns `LinkResult` with `linkedEntryFuncId`,
@@ -71,14 +70,16 @@ not survive. Keep this doc current.
 - `src/runtime/authored-function.ts` exports `createUserTileExec(linkedProgram,
 linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEntered`
   methods. Sync tiles execute inline via `vm.spawnFiber()` + `vm.runFiber()`.
-- `src/runtime/registration-bridge.ts` exports `registerUserTile(linkInfo, hostFn,
-services)` performing three-step registration: param tile defs, function entry,
+- `src/runtime/registration-bridge.ts` exports `registerUserTile(linkInfo, hostFn)`
+  performing three-step registration using `getBrainServices()`: param tile defs
+  (with type resolution via `ITypeRegistry.resolveByName`), function entry,
   sensor/actuator tile def.
 - `src/compiler/compile.ts` exports `compileUserTile(source, options?)` which accepts
   a TypeScript source string and optional `CompileOptions`, runs it through a fully
   in-memory virtual `ts.CompilerHost`, validates the AST, extracts descriptor metadata,
   lowers and emits bytecode into a `UserAuthoredProgram`. `CompileOptions` supports
-  `resolveTypeId` and `ambientSource` for app-injected types. Operator overloads and
+  `ambientSource` for app-injected ambient declarations. Type resolution uses
+  `getBrainServices().types.resolveByName()`. Operator overloads and
   host function IDs are resolved directly via `getBrainServices()`. The lib `.d.ts`
   content is lazy-loaded via `initCompiler()` (async, dynamic `import()`) so bundlers
   like Vite automatically chunk the ~230KB lib strings into a separate file loaded
@@ -670,11 +671,9 @@ callDef)` -- always async per spec's unified invocation model
   `linkedOnPageEnteredFuncId` (which calls init) before spawning the `onExecute` fiber,
   or by calling init within the same fiber via a combined wrapper. Check whether
   sequential fiber spawning within a single tick is supported.
-- **`resolveTypeId` for param tile defs.** The registration bridge must map
+- **Type resolution for param tile defs.** The registration bridge maps
   `ExtractedParam.type` strings (e.g., `"number"`) to `TypeId` values for
-  `BrainTileParameterDef` construction. The compiler already resolves `outputType` via
-  `CompileOptions.resolveTypeId`; the bridge needs the same resolver (or the resolved
-  `TypeId` values pre-computed on `UserAuthoredProgram`).
+  `BrainTileParameterDef` construction via `ITypeRegistry.resolveByName()`.
 
 ---
 
@@ -797,9 +796,12 @@ compiler's lowering logic.
 
 - `packages/core/src/brain/interfaces/type-system.ts` -- add enumeration method
   (e.g., `entries(): Iterable<[TypeId, TypeDef]>`) to `ITypeRegistry`
+  (`resolveByName(name)` already exists)
 - `packages/typescript/src/compiler/ambient.ts` -- `buildAmbientFromRegistry(registry)`
   that generates interface declarations for all struct types, `MindcraftTypeMap`
-  entries, and a `resolveTypeId` function from the registry. Native-backed struct
+  entries, and a `resolveTypeId` function from the registry (note:
+  `ITypeRegistry.resolveByName()` already provides this -- the generator can
+  use it directly or wrap it). Native-backed struct
   interfaces must use a private brand (e.g., `readonly __brand: unique symbol`) to
   prevent structural compatibility with object literals, while user-creatable struct
   interfaces are plain and structurally constructable.
@@ -825,7 +827,8 @@ compiler's lowering logic.
      the corresponding fields may omit `readonly` -- but for v1, treating all
      native-backed fields as readonly is a safe default.
    - For both: add `MindcraftTypeMap` entries mapping the type name to the interface.
-   - Returns both `ambientSource` and a `resolveTypeId` function. Replaces the manual
+   - Returns `ambientSource`. Type resolution uses `ITypeRegistry.resolveByName()`
+     which already handles all registered types. Replaces the manual
      `buildAmbientSource(appTypeEntries?)` API.
 2. `ITypeRegistry.entries()` exposes registered types for the generator.
 3. `{ x: 1, y: 2 }` compiles to the correct struct construction bytecode when the
@@ -1763,18 +1766,18 @@ design. No spec amendments needed.
 
 **Deliverables -- planned vs actual:**
 
-| Planned                                                          | Actual  | Notes                                                                                                                                           |
-| ---------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/compiler/ir.ts`: IR node types                              | Done    | `IrPushConst`, `IrLoadLocal`, `IrStoreLocal`, `IrReturn`, `IrPop`, `IrHostCallArgs`, `IrMapGet`.                                                |
-| `src/compiler/lowering.ts`: TS AST -> IR                         | Done    | Handles param preamble (MapValue extraction), binary expressions, literals, return, property access (`params.xyz`).                             |
-| `src/compiler/emit.ts`: IR -> FunctionBytecode                   | Done    | Uses `compiler.BytecodeEmitter` + `compiler.ConstantPool` from core (namespace import).                                                         |
-| `src/compiler/call-def-builder.ts`: params -> BrainActionCallDef | Done    | Named params -> `user.<tileName>.<paramName>`, anonymous -> `anon.<type>`, optional wrapped.                                                    |
-| `src/compiler/compile.ts`: pipeline wiring                       | Done    | `compileUserTile(source, options?)` produces `UserAuthoredProgram`. (Phase 10 removed resolver callbacks; compiler always runs full pipeline.)  |
-| `src/compiler/types.ts`: `UserAuthoredProgram`, `CompileOptions` | Done    | `CompileOptions` gained `resolveTypeId` and `ambientSource`. `UserAuthoredProgram` has full metadata.                                           |
-| End-to-end VM execution tests                                    | Done    | 10 tests: true/false comparison, number/bool/string literals, arithmetic, metadata, type resolution error, app-defined type, ambient rejection. |
-| `buildCallDef` tests                                             | Done    | 5 tests: empty, required, optional, anonymous, mixed.                                                                                           |
-| `descriptor.ts`: extract `anonymous` flag                        | Skipped | Already done in Phase 2.5.                                                                                                                      |
-| `ambient.ts`: make params optional, add anonymous                | Skipped | Already done in Phase 2.5.                                                                                                                      |
+| Planned                                                          | Actual  | Notes                                                                                                                                              |
+| ---------------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/compiler/ir.ts`: IR node types                              | Done    | `IrPushConst`, `IrLoadLocal`, `IrStoreLocal`, `IrReturn`, `IrPop`, `IrHostCallArgs`, `IrMapGet`.                                                   |
+| `src/compiler/lowering.ts`: TS AST -> IR                         | Done    | Handles param preamble (MapValue extraction), binary expressions, literals, return, property access (`params.xyz`).                                |
+| `src/compiler/emit.ts`: IR -> FunctionBytecode                   | Done    | Uses `compiler.BytecodeEmitter` + `compiler.ConstantPool` from core (namespace import).                                                            |
+| `src/compiler/call-def-builder.ts`: params -> BrainActionCallDef | Done    | Named params -> `user.<tileName>.<paramName>`, anonymous -> `anon.<type>`, optional wrapped.                                                       |
+| `src/compiler/compile.ts`: pipeline wiring                       | Done    | `compileUserTile(source, options?)` produces `UserAuthoredProgram`. (Phase 10 removed resolver callbacks; compiler always runs full pipeline.)     |
+| `src/compiler/types.ts`: `UserAuthoredProgram`, `CompileOptions` | Done    | `CompileOptions` has `ambientSource`. (Post-Phase 10 cleanup removed `resolveTypeId` -- type resolution now uses `ITypeRegistry.resolveByName()`.) |
+| End-to-end VM execution tests                                    | Done    | 10 tests: true/false comparison, number/bool/string literals, arithmetic, metadata, type resolution error, app-defined type, ambient rejection.    |
+| `buildCallDef` tests                                             | Done    | 5 tests: empty, required, optional, anonymous, mixed.                                                                                              |
+| `descriptor.ts`: extract `anonymous` flag                        | Skipped | Already done in Phase 2.5.                                                                                                                         |
+| `ambient.ts`: make params optional, add anonymous                | Skipped | Already done in Phase 2.5.                                                                                                                         |
 
 **Design changes from spec:**
 
@@ -1787,6 +1790,8 @@ design. No spec amendments needed.
    `resolveTypeId(shortName) -> TypeId | undefined` function in `CompileOptions`,
    with a built-in `coreTypeResolver` fallback for the three primitive types. Unknown
    output types now produce a `CompileDiagnostic` instead of silently passing through.
+   (Post-Phase 10 cleanup later removed `resolveTypeId` from `CompileOptions` --
+   type resolution now uses `ITypeRegistry.resolveByName()` via `getBrainServices()`.)
 3. **`ambientSource` in `CompileOptions`.** The original plan used a hardcoded
    `AMBIENT_MINDCRAFT_DTS` string. The ambient is now generated by
    `buildAmbientSource(appTypeEntries?)` which accepts additional type map entries.
@@ -2162,7 +2167,7 @@ type-checking, 7 validation, 11 extraction, 3 core imports).
 | `src/runtime/authored-function.ts`: `createUserTileExec()` | Done    | Returns `HostAsyncFn` with `exec` and `onPageEntered` methods. Uses `vm.spawnFiber` + `vm.runFiber` for sync dispatch.                 |
 | `src/runtime/registration-bridge.ts`: `registerUserTile()` | Done    | Three-step flow: ensure param tile defs, register function, add sensor/actuator tile def.                                              |
 | `src/runtime/authored-function.spec.ts`: integration tests | Done    | 5 authored-function tests + 3 registration-bridge tests.                                                                               |
-| `src/index.ts`: new exports                                | Done    | `createUserTileExec`, `registerUserTile`, `RegistrationServices` exported.                                                             |
+| `src/index.ts`: new exports                                | Done    | `createUserTileExec`, `registerUserTile` exported. (`RegistrationServices` removed in post-Phase 10 cleanup.)                          |
 | Handle resolution for sync sensors                         | Done    | `exec` wrapper resolves handle immediately after fiber completes.                                                                      |
 | Callsite vars allocation and module init                   | Changed | First invocation runs `linkedInitFuncId` (module init only), not the full `onPageEntered` wrapper. See design decision #7.             |
 | `onPageEntered` dispatch                                   | Done    | Spawns fiber for `linkedOnPageEnteredFuncId` wrapper, which runs module init + user body.                                              |
@@ -2202,10 +2207,12 @@ type-checking, 7 validation, 11 extraction, 3 core imports).
    is stored on `UserAuthoredProgram`. This is a `packages/typescript` type change
    only -- no core modifications.
 
-5. **`RegistrationServices` interface.** The bridge takes an injected services object
-   with `functions: IFunctionRegistry`, `tiles: ITileCatalog`, and
-   `resolveTypeId: (shortName: string) => TypeId | undefined`. This decouples the
-   bridge from the global `getBrainServices()` singleton, enabling isolated testing.
+5. **`RegistrationServices` removed (post-Phase 10 cleanup).** Originally the bridge
+   took an injected services object with `functions`, `tiles`, and `resolveTypeId`.
+   After `ITypeRegistry.resolveByName()` was added to core and `resolveTypeId` was
+   removed from `CompileOptions`, the remaining fields (`functions`, `tiles`) were
+   just `getBrainServices()` accessors. The interface was removed;
+   `registerUserTile(linkInfo, hostFn)` now calls `getBrainServices()` directly.
 
 6. **Always async registration.** Per the spec's unified invocation model, user tiles
    are registered as `isAsync: true`. The brain dispatches them via
@@ -2411,7 +2418,8 @@ logical operator compilation details.
    `getBrainServices().functions.get(fnName)?.id` directly in the `HostCallArgs` case.
    `lowering.ts` has a module-level `resolveOperator()` function that calls
    `getBrainServices().operatorOverloads.resolve()`. `CompileOptions` now only has
-   `resolveTypeId` (app-specific type mapping) and `ambientSource`. The early-return
+   `ambientSource`; `resolveTypeId` was also removed in a post-Phase 10 cleanup
+   (type resolution now uses `ITypeRegistry.resolveByName()`). The early-return
    guard `if (!options?.resolveHostFn)` in `compile.ts` was removed -- the compiler
    now always runs the full pipeline (lower + emit) regardless of options.
 
@@ -2460,11 +2468,13 @@ type-checking, 7 validation, 11 extraction, 3 core imports).
    `getBrainServices().operatorOverloads.resolve()` are simpler and eliminate
    callback threading through the lowering context.
 
-3. **`resolveTypeId` is the only remaining `CompileOptions` callback.** Unlike
-   operator/function resolution (which can use the global registry), type ID
-   resolution is genuinely app-specific -- apps define custom types (e.g., Actor,
-   Archetype) that map to `TypeId` values not known to core. This callback remains
-   the correct extension point.
+3. **`CompileOptions` has no remaining callbacks.** After Phase 10 removed
+   `resolveHostFn` and `resolveOperator`, a post-Phase 10 cleanup also removed
+   `resolveTypeId` by adding `resolveByName(name: string): TypeId | undefined` to
+   `ITypeRegistry` in core. The compiler now calls
+   `getBrainServices().types.resolveByName()` directly. `CompileOptions` retains
+   only `ambientSource?: string`. The `RegistrationServices` interface was also
+   removed -- `registerUserTile(linkInfo, hostFn)` uses `getBrainServices()` directly.
 
 4. **The compiler now always runs the full pipeline.** Removing the `resolveHostFn`
    guard means `compileUserTile` always lowers and emits bytecode. Previously,
