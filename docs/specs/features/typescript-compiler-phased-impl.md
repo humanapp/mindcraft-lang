@@ -37,7 +37,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0-10 are complete.
+- (Updated 2026-03-21) Phases 0-10 and 11a are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -58,7 +58,7 @@ not survive. Keep this doc current.
   bytecode with inline sync execution via `vm.spawnFiber()` + `vm.runFiber()`,
   and a registration bridge (`registerUserTile`) that wires user-authored tiles
   into the `FunctionRegistry` and `TileCatalog`.
-- `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientSource`,
+- `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientDeclarations`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
   interfaces, `linkUserPrograms` and `LinkResult` from the linker module, and
@@ -113,14 +113,15 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
   user-defined function calls, and callsite-persistent variable access.
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
   browser-compatible `ts.CompilerHost` with zero Node.js API usage.
-- `src/compiler/ambient.ts` exports `buildAmbientSource(appTypeEntries?)` which
-  generates the `"mindcraft"` ambient module with `Context`, `Sensor`, `Actuator`,
-  `SensorConfig`, `ActuatorConfig`, `MindcraftTypeMap`, and `MindcraftType` union.
-  Core types (`boolean`, `number`, `string`) are always present; apps pass additional
-  entries to extend the union. `AMBIENT_MINDCRAFT_DTS` is the default (core-only)
-  generated output. `SensorConfig.output` and `ParamDef.type` are constrained to
-  `MindcraftType` (= `keyof MindcraftTypeMap`), giving compile-time validation of
-  type strings.
+- `src/compiler/ambient.ts` exports `buildAmbientDeclarations()` which generates the
+  `"mindcraft"` ambient module by iterating `ITypeRegistry.entries()` via
+  `getBrainServices().types`. Generates plain interfaces for user-creatable structs,
+  branded readonly interfaces (with `__brand: unique symbol`) for native-backed structs,
+  string union types for enums, `ReadonlyArray` aliases for lists, `Record` aliases for
+  maps, and `MindcraftTypeMap` entries for strongly-typed primitives. Core types
+  (`boolean`, `number`, `string`, `void`, `nil`, `unknown`) are hardcoded in
+  `AMBIENT_MODULE_START` and skipped during registry iteration to avoid duplication.
+  Replaces the previous `buildAmbientSource(appTypeEntries?)` API.
 - `scripts/bundle-lib-dts.js` generates `src/compiler/lib-dts.generated.ts` at build
   time, bundling TypeScript's `lib.es5.d.ts` + decorator libs as string constants.
 - `package.json` has an `exports` map for proper bundler resolution.
@@ -2515,3 +2516,109 @@ type-checking, 7 validation, 11 extraction, 3 core imports).
    extending `CompileOptions.resolveHostFn`. These phases should instead use
    `getBrainServices().functions.get()` directly, with async detection via the
    function registry entry's metadata rather than a callback return type.
+
+### Phase 11a -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                        | Actual | Notes                                                                                                            |
+| -------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------- |
+| `ITypeRegistry.entries()` exposes registered types             | Done   | Returns `Iterable<[TypeId, TypeDef]>`. Implementation: `this.defs.entries().toArray()`.                          |
+| `buildAmbientFromRegistry(registry)` generates ambient `.d.ts` | Done   | Renamed to `buildAmbientDeclarations()` (no params -- uses `getBrainServices()` internally).                     |
+| Plain interface for user-creatable struct                      | Done   | `interface Vector2 { x: number; y: number; }` with `MindcraftTypeMap` entry.                                     |
+| Branded interface for native-backed struct                     | Done   | `readonly __brand: unique symbol` + all fields `readonly`. Quoted field names for identifiers with spaces.       |
+| Branded struct prevents object literal assignment (TS error)   | Done   | Test confirms TS type error when assigning `{ id: 1, ... }` to `ActorRef`.                                       |
+| Native-backed struct usable as param/variable type             | Done   | `let t: ActorRef = params.target;` compiles to `LOAD_LOCAL`/`STORE_LOCAL`.                                       |
+| Replaces manual `buildAmbientSource(appTypeEntries?)` API      | Done   | `buildAmbientSource` and `AMBIENT_MINDCRAFT_DTS` removed. `compile.ts` defaults to `buildAmbientDeclarations()`. |
+
+**Additional work beyond plan:**
+
+| Item                               | Notes                                                                                                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Strongly-typed primitive support   | `NativeType.Number`, `.Boolean`, `.String` types generate `MindcraftTypeMap` entries (e.g., `health: number;`).                                             |
+| Enum type support                  | `NativeType.Enum` generates string union types (e.g., `type Direction = "north" \| "south";`) and `MindcraftTypeMap` entries.                               |
+| List type support                  | `NativeType.List` generates `ReadonlyArray` aliases (e.g., `type NumberList = ReadonlyArray<number>;`) and `MindcraftTypeMap` entries.                      |
+| Map type support                   | `NativeType.Map` generates `Record` aliases (e.g., `type StringMap = Record<string, string>;`) and `MindcraftTypeMap` entries.                              |
+| Core type deduplication            | `CORE_TYPE_NAMES` set (`boolean`, `number`, `string`, `void`, `nil`, `unknown`) prevents duplicate `MindcraftTypeMap` entries.                              |
+| Cross-struct field type resolution | `typeDefToTs()` and `typeIdToTs()` recursively resolve field types, so `Entity.pos: Position` generates correctly.                                          |
+| `buildAmbientSource` removal       | Old manual-injection API fully removed from `ambient.ts`, `compile.ts`, `index.ts`, `codegen.spec.ts`. `CompileOptions.ambientSource` kept as escape hatch. |
+
+**Design changes from spec:**
+
+1. **No `registry` parameter.** The spec called for `buildAmbientFromRegistry(registry)`.
+   The implementation takes no parameters and calls `getBrainServices().types` internally,
+   consistent with the pattern established in Phase 10 (direct `getBrainServices()` usage
+   throughout the compiler).
+
+2. **Renamed to `buildAmbientDeclarations`.** The spec name `buildAmbientFromRegistry`
+   was an implementation detail. The final name focuses on what it produces rather than
+   how it produces it.
+
+3. **All type kinds handled, not just structs.** The spec focused on struct types. The
+   implementation also handles strongly-typed primitives, enums, lists, and maps to
+   ensure all registered types are reflected in the ambient declarations.
+
+4. **`buildAmbientSource` fully removed.** The spec described the new function as
+   "replaces the manual `buildAmbientSource(appTypeEntries?)` API" but did not
+   explicitly call for removal. The old API was removed since `buildAmbientDeclarations()`
+   supersedes it completely. `CompileOptions.ambientSource` remains as an escape hatch
+   for tests.
+
+**Files changed:**
+
+- `packages/core/src/brain/interfaces/type-system.ts` -- added `entries()` to
+  `ITypeRegistry` interface
+- `packages/core/src/brain/runtime/type-system.ts` -- implemented `entries()` as
+  `this.defs.entries().toArray()`
+- `packages/typescript/src/compiler/ambient.ts` -- added `buildAmbientDeclarations()`,
+  `typeDefToTs()`, `typeIdToTs()`, `isNativeBacked()`, `generateStructInterface()`,
+  `generateEnumType()`, `CORE_TYPE_NAMES` set, `needsQuoting()`. Removed
+  `buildAmbientSource()` and `AMBIENT_MINDCRAFT_DTS`.
+- `packages/typescript/src/compiler/ambient.spec.ts` -- new file with 9 tests:
+  plain struct, branded struct, brand prevents assignment, param compile,
+  cross-struct references, strongly-typed number, enum union, list alias,
+  core type deduplication
+- `packages/typescript/src/compiler/compile.ts` -- import changed from
+  `AMBIENT_MINDCRAFT_DTS`/`buildAmbientSource` to `buildAmbientDeclarations`;
+  default ambient source now calls `buildAmbientDeclarations()`
+- `packages/typescript/src/compiler/codegen.spec.ts` -- updated 3 tests to use
+  `buildAmbientDeclarations()` instead of `buildAmbientSource()`; "without ambient
+  injection" test repurposed to verify registry-driven resolution works automatically
+- `packages/typescript/src/index.ts` -- export changed from `buildAmbientSource` to
+  `buildAmbientDeclarations`
+
+**Test counts:** 112 total (9 ambient, 6 string/template, 6 Phase 9 registration, 5
+authored-function, 3 registration-bridge, 7 linker, 8 null/nil, 5 onPageEntered/lifecycle,
+11 helper functions/callsite state, 11 control flow, 10 codegen/VM, 5 buildCallDef,
+5 type-checking, 7 validation, 11 extraction, 3 core imports).
+
+**Discoveries:**
+
+1. **`ITypeRegistry.entries()` returns an array, not a lazy iterable.** The `Dict`
+   platform type's `entries()` returns a Luau-compatible iterator. Calling `.toArray()`
+   materializes it into a standard JS iterable. This is fine for ambient generation
+   (called once at compile time, not performance-critical) but is worth noting for
+   any future hot-path usage.
+
+2. **`CORE_TYPE_NAMES` deduplication is essential.** Without the skip set, registering
+   a type like `number:<number>` would generate a duplicate `number: number;` entry
+   in `MindcraftTypeMap`, conflicting with the hardcoded entry in `AMBIENT_MODULE_START`.
+   The implementation skips types whose `def.name` matches a core type name.
+
+3. **Field name quoting uses `needsQuoting()`.** Struct field names containing spaces
+   or special characters (e.g., `"energy pct"`) are detected via a regex test and
+   wrapped in quotes in the generated interface. This ensures valid TypeScript output
+   for human-friendly field names used in the mindcraft type system.
+
+4. **`CompileOptions.ambientSource` remains useful as a test escape hatch.** Even
+   though `buildAmbientDeclarations()` is now the default, several tests inject
+   custom ambient strings to test specific type error scenarios (e.g., adding an
+   unregistered type to `MindcraftTypeMap` to verify the "Unknown output type"
+   diagnostic). Removing the option entirely would make these tests harder to write.
+
+5. **Native-backed struct brand pattern works well.** The `readonly __brand: unique symbol`
+   approach prevents object literal assignment while allowing the type to be used in
+   variable declarations, parameter types, and return types. This is the standard
+   TypeScript pattern for nominal typing and requires no runtime overhead.
