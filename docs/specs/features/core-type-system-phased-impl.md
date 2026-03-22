@@ -16,6 +16,14 @@ Do not let backward compatibility considerations constrain design decisions.
 
 ---
 
+## Sim App Compatibility
+
+The `apps/sim` webapp must be updated as needed in every phase. At the end of each
+phase, the sim app must be fully functional -- it must build and run without errors.
+Do not leave the sim app in a broken state at phase boundaries.
+
+---
+
 ## Workflow Convention
 
 Each phase follows this loop:
