@@ -26,8 +26,6 @@ declare module "mindcraft" {
 `;
 
 const AMBIENT_MODULE_END = `
-  }
-
   type MindcraftType = keyof MindcraftTypeMap;
 
   export interface Context {
@@ -174,5 +172,5 @@ export function buildAmbientDeclarations(): string {
     }
   }
 
-  return AMBIENT_HEADER + AMBIENT_MODULE_START + typeMapEntries + typeDeclarations + AMBIENT_MODULE_END;
+  return `${AMBIENT_HEADER}${AMBIENT_MODULE_START}${typeMapEntries}  }\n\n${typeDeclarations}${AMBIENT_MODULE_END}`;
 }
