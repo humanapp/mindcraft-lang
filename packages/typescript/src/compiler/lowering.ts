@@ -7,6 +7,7 @@ import {
   mkStringValue,
   NativeType,
   NIL_VALUE,
+  type NullableTypeDef,
   runtime,
   type StructTypeDef,
   type Value,
@@ -720,10 +721,23 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
     const fnName = resolveOperator(opId, [lhsTypeId, rhsTypeId]);
     if (!fnName) {
-      ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
-      return;
+      const baseLhs = unwrapNullableTypeId(lhsTypeId);
+      const baseRhs = unwrapNullableTypeId(rhsTypeId);
+      if (baseLhs !== lhsTypeId || baseRhs !== rhsTypeId) {
+        const fallbackFn = resolveOperator(opId, [baseLhs, baseRhs]);
+        if (fallbackFn) {
+          ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 2 });
+        } else {
+          ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
+          return;
+        }
+      } else {
+        ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
+        return;
+      }
+    } else {
+      ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
     }
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
   }
 
   ctx.ir.push({ kind: "Dup" });
@@ -768,10 +782,22 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
     }
     const fnName = resolveOperator(CoreOpId.Not, [operandTypeId]);
     if (!fnName) {
-      ctx.diagnostics.push(makeDiag(`No operator overload for !(${operandTypeId})`, expr));
-      return;
+      const baseId = unwrapNullableTypeId(operandTypeId);
+      if (baseId !== operandTypeId) {
+        const fallbackFn = resolveOperator(CoreOpId.Not, [baseId]);
+        if (fallbackFn) {
+          ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 1 });
+        } else {
+          ctx.diagnostics.push(makeDiag(`No operator overload for !(${operandTypeId})`, expr));
+          return;
+        }
+      } else {
+        ctx.diagnostics.push(makeDiag(`No operator overload for !(${operandTypeId})`, expr));
+        return;
+      }
+    } else {
+      ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
     }
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
   } else if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
     lowerPrefixIncDec(expr, ctx);
   } else {
@@ -931,6 +957,15 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
 
   const fnName = resolveOperator(opId, [lhsTypeId, rhsTypeId]);
   if (!fnName) {
+    const baseLhs = unwrapNullableTypeId(lhsTypeId);
+    const baseRhs = unwrapNullableTypeId(rhsTypeId);
+    if (baseLhs !== lhsTypeId || baseRhs !== rhsTypeId) {
+      const fallbackFn = resolveOperator(opId, [baseLhs, baseRhs]);
+      if (fallbackFn) {
+        ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 2 });
+        return;
+      }
+    }
     ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
     return;
   }
@@ -1096,6 +1131,15 @@ function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {
   }
 }
 
+function unwrapNullableTypeId(typeId: string): string {
+  const registry = getBrainServices().types;
+  const def = registry.get(typeId);
+  if (def?.nullable) {
+    return (def as NullableTypeDef).baseTypeId;
+  }
+  return typeId;
+}
+
 function tsTypeToTypeId(type: ts.Type): string | undefined {
   if (type.flags & ts.TypeFlags.NumberLike) {
     return CoreTypeIds.Number;
@@ -1111,8 +1155,14 @@ function tsTypeToTypeId(type: ts.Type): string | undefined {
   }
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
+    const hasNullish = nonNullish.length < type.types.length;
     if (nonNullish.length === 1) {
-      return tsTypeToTypeId(nonNullish[0]);
+      const baseTypeId = tsTypeToTypeId(nonNullish[0]);
+      if (!baseTypeId) return undefined;
+      if (hasNullish) {
+        return getBrainServices().types.addNullableType(baseTypeId);
+      }
+      return baseTypeId;
     }
     if (nonNullish.length >= 2) {
       const resolved = new Set<string>();

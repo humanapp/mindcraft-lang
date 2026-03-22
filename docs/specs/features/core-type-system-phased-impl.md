@@ -54,15 +54,16 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Written 2026-03-22) No phases have been started.
-- Phase 12.1 from the TypeScript compiler phased impl (prerequisite `NativeType.Any`,
-  `AnyCodec`, `AnyList`) has now been implemented. Unblocking Phase 1 of this plan.
-- The core type system is as described in `core-type-system-evolution.md` -- all types
-  are concrete, all containers are homogeneous, the full set of types is known at
-  compile time. `NativeType` goes up to `Any = 9`.
-- `ITypeRegistry` has explicit `add*Type` methods with no generic/parameterized support.
-- No nullable, union, or function types exist.
-- Operator overloads and conversions use exact `TypeId` matching.
+- (Written 2026-03-22) Phase 1 (nullable type support) is complete.
+- `TypeDef` now has an optional `nullable?: boolean` field. `NullableTypeShape` and
+  `NullableTypeDef` interfaces exist. `ITypeRegistry.addNullableType(baseTypeId)`
+  is available.
+- The TS compiler resolves `T | null` / `T | undefined` to nullable TypeIds and
+  falls back to base types for operator overload resolution.
+- Nullable TypeId convention: `"<coreType>:<name?>"` (e.g., `"number:<number?>"`).
+- Operator overloads and conversions still use exact `TypeId` matching in the core
+  registry. The TS compiler's lowering pass handles nullable unwrapping as a
+  fallback when exact match fails.
 
 ---
 
@@ -346,6 +347,12 @@ nullable support -- `T | null` becomes a union of `[T, Nil]`. After this phase,
 nullable types can optionally be reimplemented as syntactic sugar over 2-member unions,
 or kept as a separate fast path (the `NullableCodec` is more efficient than a general
 `UnionCodec` for the common `T | null` case).
+
+(2026-03-22, Phase 1 discovery) The TS compiler's `lowering.ts` already has an
+`unwrapNullableTypeId()` fallback for operator resolution. Phase 3's operator
+resolution update (expand union members for overload lookup) generalizes this
+pattern. The nullable unwrap fallback may be subsumed by the union expansion
+logic, or kept as a fast path.
 
 Phase 2 (generic constructors) should also be complete so that `List<number | string>`
 can be created via `instantiate("List", [unionTypeId])`.
@@ -1027,3 +1034,35 @@ it becomes a user pain point.
 
 (Populated by post-mortem after each phase is declared complete. Do not write
 entries here during implementation.)
+
+### Phase 1: Nullable type support (completed 2026-03-22)
+
+**Planned vs actual:**
+
+All 6 concrete deliverables were delivered as specified. Two unplanned additions
+were required:
+
+1. `NullableTypeShape` interface + `NullableTypeDef` type alias added to
+   `type-system.ts`. Follows the existing `ListTypeShape`/`ListTypeDef` pattern
+   to carry `baseTypeId` on the def. This was implicit in the spec (the spec
+   mentioned "TypeDef with coreType matching the base type's coreType") but
+   needed a concrete interface to avoid ad-hoc casting.
+
+2. Operator overload fallback via `unwrapNullableTypeId()` in `lowering.ts`.
+   The spec's "Key risks" section predicted that nullable types would interact
+   with operator overloads but concluded "No changes needed" because TS would
+   reject `number? + number`. This was wrong for equality operators: `val === null`
+   where `val: number | null` is valid TS but produced `eq(number?, nil)` which
+   had no overload. The fix: binary operators, compound assignments, and unary `!`
+   now fall back to unwrapped base types for overload resolution when the nullable
+   TypeId has no direct match.
+
+**Not changed (spec mentioned but unnecessary):**
+
+- `resolveListTypeId()` -- no update needed; the existing scan handles nullable
+  element types. Phase 2 will replace the scan with `instantiate()`.
+- `core-types.ts` -- naming convention implemented entirely inside
+  `addNullableType()` using existing `mkTypeId()`.
+
+**All acceptance criteria passed.** All builds (Node, ESM, Roblox-TS) succeed.
+`apps/sim` builds. 451 core tests pass, 129 typescript tests pass.

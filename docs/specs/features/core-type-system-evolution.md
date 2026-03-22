@@ -203,6 +203,11 @@ base `TypeId`. The convention approach is simpler and avoids a new `TypeDef` var
   require explicit null-checking. The Phase 6.5 nil operator overloads already
   handle `== null` and `!= null` comparisons. Arithmetic on nullable types should
   remain a type error -- TS enforcement handles this.
+  - (2026-03-22) Phase 1 implementation discovered that equality operators
+    (`=== null`, `!== null`) on nullable types produce `eq(number?, nil)` which
+    has no direct overload. The TS compiler now falls back to unwrapping nullable
+    TypeIds to their base types for operator resolution. This applies to all binary
+    operators, compound assignments, and unary `!`.
 - The brain compiler's `InferredTypesVisitor` does not currently reason about
   nullable types. It may need to treat nullable types as compatible with their base
   types for overload resolution, with an implicit "nil check" conversion.

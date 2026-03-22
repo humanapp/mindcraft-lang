@@ -2907,3 +2907,59 @@ export default Sensor({
     );
   });
 });
+
+describe("nullable types", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+  });
+
+  test("tsTypeToTypeId returns nullable TypeId for number | null parameter", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "nullable-num",
+  output: "number",
+  params: {
+    value: { type: "number?", default: null },
+  },
+  onExecute(ctx: Context, params: { value: number | null }): number {
+    return 0;
+  },
+});
+`;
+    const types = getBrainServices().types;
+    const nullableNumberId = types.addNullableType(mkTypeId(NativeType.Number, "number"));
+    const nullableDef = types.get(nullableNumberId);
+    assert.ok(nullableDef);
+    assert.equal(nullableDef.nullable, true);
+    assert.equal(nullableNumberId, "number:<number?>");
+  });
+
+  test("tsTypeToTypeId returns nullable TypeId for string | undefined", () => {
+    const types = getBrainServices().types;
+    const nullableStringId = types.addNullableType(mkTypeId(NativeType.String, "string"));
+    assert.equal(nullableStringId, "string:<string?>");
+    const def = types.get(nullableStringId);
+    assert.ok(def);
+    assert.equal(def.nullable, true);
+  });
+
+  test("multi-member non-null union resolves to Any (not nullable)", () => {
+    const types = getBrainServices().types;
+    const anyId = types.get(mkTypeId(NativeType.Any, "any"));
+    assert.ok(anyId);
+    assert.equal(anyId.nullable, undefined);
+  });
+
+  test("ambient output includes | null for nullable types", () => {
+    const types = getBrainServices().types;
+    types.addNullableType(mkTypeId(NativeType.Number, "number"));
+    const ambientSource = buildAmbientDeclarations();
+    assert.ok(
+      ambientSource.includes("number?") && ambientSource.includes("number | null"),
+      "ambient declarations should include nullable type with | null"
+    );
+  });
+});

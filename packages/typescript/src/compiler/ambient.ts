@@ -1,4 +1,11 @@
-import type { EnumTypeDef, ListTypeDef, MapTypeDef, StructTypeDef, TypeDef } from "@mindcraft-lang/core/brain";
+import type {
+  EnumTypeDef,
+  ListTypeDef,
+  MapTypeDef,
+  NullableTypeDef,
+  StructTypeDef,
+  TypeDef,
+} from "@mindcraft-lang/core/brain";
 import { getBrainServices, NativeType } from "@mindcraft-lang/core/brain";
 
 const AMBIENT_HEADER = `
@@ -81,6 +88,11 @@ function isNativeBacked(def: StructTypeDef): boolean {
 }
 
 function typeDefToTs(def: TypeDef): string {
+  if (def.nullable) {
+    const baseDef = getBrainServices().types.get((def as NullableTypeDef).baseTypeId);
+    if (!baseDef) return "unknown";
+    return `${typeDefToTs(baseDef)} | null`;
+  }
   switch (def.coreType) {
     case NativeType.Boolean:
       return "boolean";
@@ -153,7 +165,10 @@ export function buildAmbientDeclarations(): string {
   for (const [, def] of registry.entries()) {
     if (CORE_TYPE_NAMES.has(def.name)) continue;
 
-    if (isStructTypeDef(def)) {
+    if (def.nullable) {
+      const tsType = typeDefToTs(def);
+      typeMapEntries += `    ${def.name}: ${tsType};\n`;
+    } else if (isStructTypeDef(def)) {
       typeDeclarations += generateStructInterface(def);
       typeMapEntries += `    ${def.name}: ${def.name};\n`;
     } else if (isEnumTypeDef(def)) {

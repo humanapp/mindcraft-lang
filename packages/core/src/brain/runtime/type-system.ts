@@ -16,6 +16,7 @@ import {
   type MapTypeShape,
   mkTypeId,
   NativeType,
+  type NullableTypeDef,
   type StructTypeDef,
   type StructTypeShape,
   type TypeCodec,
@@ -229,6 +230,31 @@ export class TypeRegistry implements ITypeRegistry {
       codec: new AnyCodec(),
       name,
     });
+    return typeId;
+  }
+
+  addNullableType(baseTypeId: TypeId): TypeId {
+    const baseDef = this.get(baseTypeId);
+    if (!baseDef) {
+      throw new Error(`${baseTypeId} is not a registered type`);
+    }
+    if (baseDef.nullable) {
+      return baseTypeId;
+    }
+    const nullableName = `${baseDef.name}?`;
+    const typeId = mkTypeId(baseDef.coreType, nullableName);
+    if (this.defs.has(typeId)) {
+      return typeId;
+    }
+    const nullableDef: NullableTypeDef = {
+      coreType: baseDef.coreType,
+      typeId,
+      codec: new NullableCodec(baseDef.codec),
+      name: nullableName,
+      nullable: true,
+      baseTypeId,
+    };
+    this.add(nullableDef);
     return typeId;
   }
 
@@ -500,5 +526,30 @@ class StructCodec implements TypeCodec {
       items.push(`{"${fieldName}": "${codec.stringify(v)}"}`);
     });
     return `{${items.join(", ")}}`;
+  }
+}
+
+class NullableCodec implements TypeCodec {
+  constructor(private baseCodec: TypeCodec) {}
+  encode(w: IWriteStream, value: unknown): void {
+    if (value === undefined) {
+      w.writeU8(0);
+    } else {
+      w.writeU8(1);
+      this.baseCodec.encode(w, value);
+    }
+  }
+  decode(r: IReadStream): unknown {
+    const flag = r.readU8();
+    if (flag === 0) {
+      return undefined;
+    }
+    return this.baseCodec.decode(r);
+  }
+  stringify(value: unknown): string {
+    if (value === undefined) {
+      return "nil";
+    }
+    return this.baseCodec.stringify(value);
   }
 }

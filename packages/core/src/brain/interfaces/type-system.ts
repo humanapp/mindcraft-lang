@@ -63,6 +63,7 @@ export interface TypeDef {
   typeId: TypeId;
   codec: TypeCodec;
   name: string;
+  nullable?: boolean;
 }
 
 export interface EnumTypeShape {
@@ -104,6 +105,12 @@ export interface StructTypeShape {
 
 export type StructTypeDef = TypeDef & StructTypeShape;
 
+export interface NullableTypeShape {
+  baseTypeId: TypeId;
+}
+
+export type NullableTypeDef = TypeDef & NullableTypeShape;
+
 export interface ITypeRegistry {
   get(id: TypeId): TypeDef | undefined;
   resolveByName(name: string): TypeId | undefined;
@@ -118,4 +125,5 @@ export interface ITypeRegistry {
   addMapType(name: string, shape: MapTypeShape): TypeId;
   addStructType(name: string, shape: StructTypeShape): TypeId;
   addAnyType(name: string): TypeId;
+  addNullableType(baseTypeId: TypeId): TypeId;
 }

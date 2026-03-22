@@ -8,6 +8,7 @@ import {
   getBrainServices,
   mkTypeId,
   NativeType,
+  type NullableTypeDef,
   nativeTypeToString,
   registerCoreBrainComponents,
 } from "@mindcraft-lang/core/brain";
@@ -116,5 +117,115 @@ describe("registerCoreTypes registers Any and AnyList", () => {
     assert.ok(def);
     assert.equal(def.coreType, NativeType.List);
     assert.equal(def.typeId, mkTypeId(NativeType.List, "AnyList"));
+  });
+});
+
+describe("addNullableType", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("returns a TypeId like 'number:<number?>' with nullable: true", () => {
+    const registry = getBrainServices().types;
+    const nullableId = registry.addNullableType(CoreTypeIds.Number);
+    assert.equal(nullableId, "number:<number?>");
+    const def = registry.get(nullableId);
+    assert.ok(def);
+    assert.equal(def.nullable, true);
+    assert.equal(def.coreType, NativeType.Number);
+    assert.equal((def as NullableTypeDef).baseTypeId, CoreTypeIds.Number);
+  });
+
+  test("calling addNullableType twice returns the same TypeId (idempotent)", () => {
+    const registry = getBrainServices().types;
+    const first = registry.addNullableType(CoreTypeIds.String);
+    const second = registry.addNullableType(CoreTypeIds.String);
+    assert.equal(first, second);
+  });
+
+  test("throws if the base TypeId is not registered", () => {
+    const registry = getBrainServices().types;
+    assert.throws(() => {
+      registry.addNullableType("nonexistent:<fake>");
+    });
+  });
+
+  test("addNullableType on an already-nullable type returns the input TypeId", () => {
+    const registry = getBrainServices().types;
+    const nullableNumber = registry.addNullableType(CoreTypeIds.Number);
+    const doubleNullable = registry.addNullableType(nullableNumber);
+    assert.equal(doubleNullable, nullableNumber);
+  });
+
+  test("nullable boolean produces correct TypeId", () => {
+    const registry = getBrainServices().types;
+    const nullableBool = registry.addNullableType(CoreTypeIds.Boolean);
+    assert.equal(nullableBool, "boolean:<boolean?>");
+    const def = registry.get(nullableBool);
+    assert.ok(def);
+    assert.equal(def.nullable, true);
+  });
+});
+
+describe("NullableCodec", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("round-trips a non-nil number value", () => {
+    const registry = getBrainServices().types;
+    const nullableId = registry.addNullableType(CoreTypeIds.Number);
+    const def = registry.get(nullableId)!;
+    const s = new MemoryStream();
+    def.codec.encode(s, 42.5);
+    s.resetRead();
+    const decoded = def.codec.decode(s);
+    assert.equal(decoded, 42.5);
+  });
+
+  test("round-trips a nil value (writes 0, reads back undefined)", () => {
+    const registry = getBrainServices().types;
+    const nullableId = registry.addNullableType(CoreTypeIds.Number);
+    const def = registry.get(nullableId)!;
+    const s = new MemoryStream();
+    def.codec.encode(s, undefined);
+    s.resetRead();
+    const decoded = def.codec.decode(s);
+    assert.equal(decoded, undefined);
+  });
+
+  test("stringify returns 'nil' for nil, delegates for non-nil", () => {
+    const registry = getBrainServices().types;
+    const nullableId = registry.addNullableType(CoreTypeIds.Number);
+    const def = registry.get(nullableId)!;
+    assert.equal(def.codec.stringify(undefined), "nil");
+    assert.equal(def.codec.stringify(42), "42");
+  });
+
+  test("round-trips a non-nil string value", () => {
+    const registry = getBrainServices().types;
+    const nullableId = registry.addNullableType(CoreTypeIds.String);
+    const def = registry.get(nullableId)!;
+    const s = new MemoryStream();
+    def.codec.encode(s, "hello");
+    s.resetRead();
+    const decoded = def.codec.decode(s);
+    assert.equal(decoded, "hello");
+  });
+
+  test("encode writes 1-byte flag 0 for nil and 1 for present", () => {
+    const registry = getBrainServices().types;
+    const nullableId = registry.addNullableType(CoreTypeIds.Boolean);
+    const def = registry.get(nullableId)!;
+
+    const sNil = new MemoryStream();
+    def.codec.encode(sNil, undefined);
+    sNil.resetRead();
+    assert.equal(sNil.readU8(), 0);
+
+    const sPresent = new MemoryStream();
+    def.codec.encode(sPresent, true);
+    sPresent.resetRead();
+    assert.equal(sPresent.readU8(), 1);
   });
 });
