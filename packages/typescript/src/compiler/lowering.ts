@@ -765,6 +765,20 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
       }
       ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
     }
+  } else if (expr.operator === ts.SyntaxKind.ExclamationToken) {
+    lowerExpression(expr.operand, ctx);
+    const operandType = ctx.checker.getTypeAtLocation(expr.operand);
+    const operandTypeId = tsTypeToTypeId(operandType);
+    if (!operandTypeId) {
+      ctx.diagnostics.push(makeDiag("Cannot determine type for `!` operand", expr));
+      return;
+    }
+    const fnName = ctx.resolveOperator(CoreOpId.Not, [operandTypeId]);
+    if (!fnName) {
+      ctx.diagnostics.push(makeDiag(`No operator overload for !(${operandTypeId})`, expr));
+      return;
+    }
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
   } else if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
     lowerPrefixIncDec(expr, ctx);
   } else {
@@ -824,7 +838,29 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   emitStore(target, ctx);
 }
 
+function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
+  const endLabel = allocLabel(ctx);
+  lowerExpression(expr.left, ctx);
+  ctx.ir.push({ kind: "Dup" });
+  if (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+    ctx.ir.push({ kind: "JumpIfFalse", labelId: endLabel });
+  } else {
+    ctx.ir.push({ kind: "JumpIfTrue", labelId: endLabel });
+  }
+  ctx.ir.push({ kind: "Pop" });
+  lowerExpression(expr.right, ctx);
+  ctx.ir.push({ kind: "Label", labelId: endLabel });
+}
+
 function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): void {
+  if (
+    expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+    expr.operatorToken.kind === ts.SyntaxKind.BarBarToken
+  ) {
+    lowerShortCircuit(expr, ctx);
+    return;
+  }
+
   const opId = tsOperatorToOpId(expr.operatorToken.kind);
   if (!opId) {
     ctx.diagnostics.push(

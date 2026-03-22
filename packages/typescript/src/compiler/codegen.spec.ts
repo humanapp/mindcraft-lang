@@ -1979,4 +1979,247 @@ export default Sensor({
       assert.equal((runResult2.result as BooleanValue).v, true);
     }
   });
+
+  test("true && false -> false", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "and-test",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    return true && false;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Boolean);
+      assert.equal((runResult.result as BooleanValue).v, false);
+    }
+  });
+
+  test("false && sideEffect() -> false (short-circuit, side effect not called)", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let called = false;
+
+function sideEffect(): boolean {
+  called = true;
+  return true;
+}
+
+export default Sensor({
+  name: "and-short",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    const result = false && sideEffect();
+    return called;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    {
+      const initFiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      initFiber.callsiteVars = callsiteVars;
+      initFiber.instrBudget = 1000;
+      vm.runFiber(initFiber, mkScheduler());
+    }
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Boolean);
+      assert.equal((runResult.result as BooleanValue).v, false);
+    }
+  });
+
+  test("false || true -> true", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "or-test",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    return false || true;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Boolean);
+      assert.equal((runResult.result as BooleanValue).v, true);
+    }
+  });
+
+  test("true || sideEffect() -> true (short-circuit, side effect not called)", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let called = false;
+
+function sideEffect(): boolean {
+  called = true;
+  return false;
+}
+
+export default Sensor({
+  name: "or-short",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    const result = true || sideEffect();
+    return called;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    {
+      const initFiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
+      initFiber.callsiteVars = callsiteVars;
+      initFiber.instrBudget = 1000;
+      vm.runFiber(initFiber, mkScheduler());
+    }
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Boolean);
+      assert.equal((runResult.result as BooleanValue).v, false);
+    }
+  });
+
+  test("!true -> false, !false -> true", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "not-test",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    return !true;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Boolean);
+      assert.equal((runResult.result as BooleanValue).v, false);
+    }
+
+    const source2 = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "not-test2",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    return !false;
+  },
+});
+`;
+    const result2 = compileUserTile(source2, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result2.diagnostics, []);
+    assert.ok(result2.program);
+
+    const prog2 = result2.program!;
+    const vm2 = new runtime.VM(prog2, new HandleTable(100));
+    const fiber2 = vm2.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber2.instrBudget = 1000;
+
+    const runResult2 = vm2.runFiber(fiber2, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.equal(runResult2.result!.t, NativeType.Boolean);
+      assert.equal((runResult2.result as BooleanValue).v, true);
+    }
+  });
+
+  test("0 && 42 -> 0 (JS value-preserving semantics)", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "and-val",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0 && 42;
+  },
+});
+`;
+    const result = compileUserTile(source, { resolveHostFn: hostFnResolver, resolveOperator: operatorResolver });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 0);
+    }
+  });
 });

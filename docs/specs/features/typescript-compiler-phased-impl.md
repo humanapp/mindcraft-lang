@@ -37,12 +37,13 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0-8 are complete.
+- (Updated 2026-03-21) Phases 0-9 are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
   `break`/`continue`, block-scoped `let`/`const`, variable shadowing, assignments,
-  `++`/`--`), user-defined helper functions (`CALL`), callsite-persistent top-level
+  `++`/`--`), logical operators (`&&`, `||` with short-circuit evaluation, `!`),
+  user-defined helper functions (`CALL`), callsite-persistent top-level
   variables (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` with module init function),
   `onPageEntered` lifecycle support (user body compilation + always-generated
   wrapper that calls module init then user function), `null` and `undefined`
@@ -101,7 +102,9 @@ services)` performing three-step registration: param tile defs, function entry,
   `FunctionEntry` records. `ProgramLoweringResult` includes `onPageEnteredWrapperId`.
   Supports `if`/`else`, `while`, C-style `for`, `break`/`continue`, block-scoped
   variable declarations, assignments (`=`, `+=`, `-=`, `*=`, `/=`), prefix/postfix
-  `++`/`--`, user-defined function calls, and callsite-persistent variable access.
+  `++`/`--`, logical operators (`&&`, `||` with short-circuit via `DUP` +
+  `JumpIfFalse`/`JumpIfTrue`, `!` via `HostCallArgs(Not)`), user-defined function
+  calls, and callsite-persistent variable access.
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
   browser-compatible `ts.CompilerHost` with zero Node.js API usage.
 - `src/compiler/ambient.ts` exports `buildAmbientSource(appTypeEntries?)` which
@@ -1039,7 +1042,9 @@ a method-to-host-function-ID mapping.
 types by stripping null/undefined (Phase 6.5). The nil operator overloads for `==`/`!=`
 are registered. `??` emission can test the LHS against nil using `JumpIfTrue` after a
 nil-equality check, or use the VM's truthiness semantics directly if nil is the only
-falsy nil-ish value concern.
+falsy nil-ish value concern. (Updated 2026-03-21) The DUP-before-conditional-jump
+pattern is confirmed working in Phase 9 (`&&`/`||`). The `??` pattern should follow
+the same structure but use nil-specific checks instead of truthiness.
 
 **Concrete deliverables:**
 
@@ -2275,3 +2280,76 @@ flow, 10 codegen/VM, 5 buildCallDef, 5 type-checking, 7 validation, 11 extractio
    the existing `BrainFunctionEntry.fn` closure rather than re-registering. This
    should be done in the appropriate future phase and include tests for the update
    path.
+
+### Phase 9 -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                    | Actual | Notes                                                                                                                                   |
+| ------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------- |
+| `lowering.ts`: `&&` short-circuit lowering | Done   | `lowerShortCircuit()`: LHS, DUP, JumpIfFalse(end), Pop, RHS, Label(end). Requires DUP because the VM's JmpIfFalse pops its operand.     |
+| `lowering.ts`: `                           |        | ` short-circuit lowering                                                                                                                | Done | Same `lowerShortCircuit()`: LHS, DUP, JumpIfTrue(end), Pop, RHS, Label(end). Symmetric with `&&`. |
+| `lowering.ts`: `!` unary NOT               | Done   | In `lowerPrefixUnary`: evaluates operand, resolves operand type via checker, emits `HostCallArgs(Not)` with the type-specific overload. |
+| Tests for all acceptance criteria          | Done   | 6 tests covering all 6 acceptance criteria.                                                                                             |
+
+**Design changes from spec:**
+
+1. **DUP required before conditional jump.** The spec's deliverable descriptions
+   (#1 and #2) list the pattern as "evaluate LHS, JumpIfFalse(end), Pop, evaluate
+   RHS, Label(end)" without mentioning DUP. The VM's `JmpIfFalse`/`JmpIfTrue`
+   instructions **pop** their operand from the stack. For JS value-preserving
+   semantics (the LHS value must remain on the stack when short-circuiting), a DUP
+   is required before the conditional jump: LHS, DUP, JumpIfFalse(end), Pop, RHS,
+   Label(end). The DUP creates a copy for the conditional jump to consume; the
+   original remains for the short-circuit result. When not short-circuiting, Pop
+   discards the original and RHS becomes the result.
+
+2. **`!` resolves operand type dynamically.** The spec says "HostCallArgs for the
+   boolean NOT operator (CoreOpId.Not)". The implementation resolves the operand's
+   actual type via the TS checker and looks up the matching `Not` overload for that
+   type (boolean, nil, etc.), rather than hardcoding `CoreTypeIds.Boolean`. This is
+   correct because `!nil -> true` uses a different overload than `!boolean`.
+
+**No new files.** No changes to `ir.ts`, `emit.ts`, `scope.ts`, or `types.ts`.
+Existing IR nodes (`IrDup`, `IrJumpIfFalse`, `IrJumpIfTrue`, `IrPop`, `IrLabel`,
+`IrHostCallArgs`) were sufficient.
+
+**No changes to `packages/core`.** The boolean `Not` overload and nil `Not` overload
+were already registered (Phases 0 and 6.5 respectively). The VM's `isTruthy`
+function already implements JS-compatible truthiness semantics.
+
+**No spec amendments needed.** `user-authored-sensors-actuators.md` does not cover
+logical operator compilation details.
+
+**Test counts:** 97 total (6 Phase 9, 5 authored-function, 3 registration-bridge,
+7 linker, 8 null/nil, 5 onPageEntered/lifecycle, 11 helper functions/callsite state,
+11 control flow, 10 codegen/VM, 5 buildCallDef, 5 type-checking, 7 validation,
+11 extraction, 3 core imports).
+
+**Discoveries:**
+
+1. **VM's `isTruthy` already matches JS semantics.** The key risk ("If the VM only
+   checks boolean values, a truthiness coercion HOST_CALL may be needed") did not
+   materialize. The VM's `isTruthy` function handles all value types: `0`, `""`,
+   `false`, and `NIL_VALUE` are falsy; everything else (including empty structs and
+   non-zero numbers) is truthy. No coercion HOST_CALL was needed.
+
+2. **DUP-before-conditional-jump is the standard short-circuit pattern.** The VM
+   unconditionally pops the conditional value from the stack in `JmpIfFalse` /
+   `JmpIfTrue`. Any future short-circuit emission (e.g., `??` nullish coalescing
+   if supported) must follow the same DUP + conditional-jump + Pop pattern.
+
+3. **No new IR nodes needed.** The existing IR vocabulary was sufficient for all
+   three operators. `&&`/`||` use `IrDup`, `IrJumpIfFalse`/`IrJumpIfTrue`, `IrPop`,
+   and `IrLabel`. `!` uses `IrHostCallArgs`. This confirms the IR design has good
+   coverage for expression-level control flow.
+
+4. **Operand type resolution for `!` is necessary.** The `Not` operator has
+   type-specific overloads (boolean -> boolean, nil -> boolean). Hardcoding
+   `CoreTypeIds.Boolean` would fail for `!null` / `!undefined` expressions where
+   the operand has nil type. The implementation resolves the operand type via the
+   TS checker's `getTypeAtLocation()` and `tsTypeToTypeId()`, then looks up the
+   correct overload. Phase 10+ operators that have type-specific overloads should
+   follow the same pattern.
