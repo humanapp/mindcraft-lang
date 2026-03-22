@@ -19,11 +19,13 @@ export interface UserAuthoredProgram extends Program {
     onPageEntered?: number;
   };
   programRevisionId: string;
+  params: ExtractedParam[];
 }
 
 export interface UserTileLinkInfo {
   program: UserAuthoredProgram;
   linkedEntryFuncId: number;
+  linkedInitFuncId?: number;
   linkedOnPageEnteredFuncId?: number;
 }
 

@@ -135,6 +135,7 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
       onPageEntered: programResult.onPageEnteredWrapperId,
     },
     programRevisionId: generateRevisionId(),
+    params: descriptor.params,
   };
 
   return { diagnostics: [], program, descriptor };

@@ -34,6 +34,7 @@ export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserA
     }
 
     const linkedEntryFuncId = userProg.entryFuncId + funcOffset;
+    const linkedInitFuncId = userProg.initFuncId !== undefined ? userProg.initFuncId + funcOffset : undefined;
     const linkedOnPageEntered =
       userProg.lifecycleFuncIds.onPageEntered !== undefined
         ? userProg.lifecycleFuncIds.onPageEntered + funcOffset
@@ -42,6 +43,7 @@ export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserA
     userLinks.push({
       program: userProg,
       linkedEntryFuncId,
+      linkedInitFuncId,
       linkedOnPageEnteredFuncId: linkedOnPageEntered,
     });
   }

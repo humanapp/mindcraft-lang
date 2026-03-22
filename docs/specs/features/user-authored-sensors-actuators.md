@@ -652,8 +652,9 @@ interface UserAuthoredProgram extends Program {
 (Updated 2026-03-21: The actual implementation stores lifecycle function IDs instead of
 booleans: `lifecycleFuncIds: { onPageEntered?: number }` holds the wrapper's function
 index. `numCallsiteVars` replaces `callsiteVarCount`. `entryFuncId` and `initFuncId`
-are also present. See `packages/typescript/src/compiler/types.ts` for the current
-shape.)
+are also present. `params: ExtractedParam[]` is also stored so the registration bridge
+can resolve TypeIds for parameter tile defs without parsing callDef. See
+`packages/typescript/src/compiler/types.ts` for the current shape.)
 
 #### Debug metadata emission
 
@@ -774,6 +775,15 @@ exec: (ctx, args, handleId) => {
 };
 ```
 
+(Updated 2026-03-21: The Phase 8 implementation does not use a mutable reference cell
+or `scheduler.spawn()`. Instead, `createUserTileExec()` takes the resolved
+`linkedProgram` and `linkInfo` (with `linkedEntryFuncId`, `linkedInitFuncId`,
+`linkedOnPageEnteredFuncId` already remapped by the linker) and uses
+`vm.spawnFiber()` + `vm.runFiber()` for inline execution. On first allocation, only
+the module init function (`linkedInitFuncId`) runs -- not the full `onPageEntered`
+wrapper -- matching native built-in tile behavior. See
+`packages/typescript/src/runtime/authored-function.ts`.)
+
 The linker itself is ~50 lines: iterate user programs, compute offset, copy+remap
 bytecode instructions, merge constants. It lives in `@mindcraft-lang/typescript`, not
 in core. Core provides no linking API -- the linker manipulates `List<>` contents on
@@ -825,6 +835,15 @@ see "Linking user-authored bytecode into the brain program" below):
 }
 ```
 
+(Updated 2026-03-21: The Phase 8 implementation uses `vm.spawnFiber()` +
+`vm.runFiber()` for inline synchronous execution rather than `scheduler.spawn()` +
+`scheduler.onFiberDone`. Sync tiles complete within the same HOST_CALL_ARGS_ASYNC
+dispatch and resolve the handle immediately via `handles.resolve(handleId, result ??
+NIL_VALUE)`. The `VOID_VALUE` reference above should be `NIL_VALUE`. Async tiles
+(Phase 20+) will need a different dispatch strategy that integrates with the
+scheduler. A shallow copy of `ExecutionContext` (`{ ...ctx }`) is created for each
+spawned fiber to avoid clobbering the brain fiber's context.)
+
 Every invocation of a user-authored tile:
 
 1. Spawns a fiber from the user program's entry point function
@@ -840,6 +859,10 @@ delay occurs. This means a synchronous sensor executes with no observable overhe
 compared to a hypothetical inline path, while using the same code path as an async
 actuator that suspends across multiple ticks.
 
+(Updated 2026-03-21: The statement below is inaccurate for sync tiles. Phase 8 uses
+an inline execution path via `vm.spawnFiber()` + `vm.runFiber()` -- fibers are created
+and run to completion without going through the scheduler. This is a deliberate
+optimization for sync tiles. Async tiles will go through the scheduler.)
 There is no special-case inline or reentrant execution path. All user-authored tiles
 go through the scheduler.
 
@@ -1008,6 +1031,12 @@ HOST_CALL_ASYNC (user-authored tile, callSiteId = N)
   -> attach callsiteVars to the spawned Fiber
   -> LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR index into fiber.callsiteVars
 ```
+
+(Updated 2026-03-21: On first allocation, Phase 8 runs only the module init function
+(`linkedInitFuncId`) -- not the full `onPageEntered` wrapper. This matches native
+built-in tile behavior where `onPageEntered` is a page-entry lifecycle event, not a
+construction-time concern. The linker now remaps `initFuncId` into
+`linkedInitFuncId` on `UserTileLinkInfo`.)
 
 The `callsiteVars` reference is attached to the `Fiber` before executing the user's
 bytecode. When the fiber runs `LOAD_CALLSITE_VAR(i)`, the VM reads
@@ -1186,6 +1215,12 @@ app-defined tiles:
 | Named param tileId     | `"tile.parameter->user.chase.speed"`        |
 | Anon param `target`    | `"anon.actorRef"` (shared, not tile-scoped) |
 | Anon param tileId      | `"tile.parameter->anon.actorRef"`           |
+
+(Updated 2026-03-21: Phase 8 implementation uses `user.actuator.<name>` /
+`user.sensor.<name>` for function registry and tile IDs -- e.g.,
+`user.actuator.chase` -- to avoid collisions if a sensor and actuator share the
+same user-given name. The table above uses the simpler `user.<name>` convention;
+the implementation diverges.)
 
 The `user.` prefix is applied automatically by the registration bridge. The user
 never writes it.

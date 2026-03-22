@@ -13,12 +13,16 @@ Focused on the compiler pipeline -- no VS Code extension, no bridge, no editor-s
 Each phase follows this loop:
 
 1. **Kick off** -- "Implement Phase N." The implementer reads this doc, the spec,
-   and any relevant instruction files before writing code.
+   and any relevant instruction files before writing code. After implementation,
+   STOP and present the work for review. Do not write the Phase Log entry, amend
+   the spec, update the Current State section, or perform any post-mortem activity.
 2. **Review + refine** -- Followup prompts within the same conversation.
-3. **Declare done** -- "Phase N is complete." Only the user can declare the phase complete. Do not move to the post-mortem step until the user requests it.
+3. **Declare done** -- "Phase N is complete." Only the user can declare the phase
+   complete. Do not move to the post-mortem step until the user requests it.
 4. **Post-mortem** -- "Run post-mortem for Phase N." This step:
    - Diffs planned deliverables vs what was actually built.
-   - Records the outcome in the Phase Log (bottom of this doc).
+   - Records the outcome in the Phase Log (bottom of this doc). The Phase Log is
+     a post-mortem artifact -- never write it during implementation.
    - Amends `user-authored-sensors-actuators.md` with dated notes if the spec
      was wrong or underspecified.
    - Propagates discoveries to upcoming phases in this doc (updated risks,
@@ -33,7 +37,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0, 1, 2, 2.5, 3, 4, 5, 6, 6.5, and 7 are complete.
+- (Updated 2026-03-21) Phases 0-8 are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -45,16 +49,28 @@ not survive. Keep this doc current.
   literal support (both map to `NIL_VALUE`), nullish comparison support
   (`x === null`, `x !== undefined`) via nil operator overloads in core and
   `tsTypeToTypeId` handling of `TypeFlags.Null`, `TypeFlags.Undefined`, and
-  nullable union types, and a linker that merges `UserAuthoredProgram` functions
-  and constants into a `BrainProgram` with `CALL`/`PUSH_CONST` operand remapping.
+  nullable union types, a linker that merges `UserAuthoredProgram` functions
+  and constants into a `BrainProgram` with `CALL`/`PUSH_CONST` operand remapping,
+  a VM dispatch wrapper (`createUserTileExec`) that spawns fibers for user
+  bytecode with inline sync execution via `vm.spawnFiber()` + `vm.runFiber()`,
+  and a registration bridge (`registerUserTile`) that wires user-authored tiles
+  into the `FunctionRegistry` and `TileCatalog`.
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientSource`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
-  interfaces, plus `linkUserPrograms` and `LinkResult` from the linker module.
+  interfaces, `linkUserPrograms` and `LinkResult` from the linker module, and
+  `createUserTileExec`, `registerUserTile`, `RegistrationServices` from the runtime
+  module.
 - `src/linker/linker.ts` exports `linkUserPrograms(brainProgram, userPrograms[])` which
   appends user functions to the brain program, remaps `CALL` and `PUSH_CONST` operands,
-  merges constants, and returns `LinkResult` with `linkedEntryFuncId` and
-  `linkedOnPageEnteredFuncId` per user program.
+  merges constants, and returns `LinkResult` with `linkedEntryFuncId`,
+  `linkedInitFuncId`, and `linkedOnPageEnteredFuncId` per user program.
+- `src/runtime/authored-function.ts` exports `createUserTileExec(linkedProgram,
+linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEntered`
+  methods. Sync tiles execute inline via `vm.spawnFiber()` + `vm.runFiber()`.
+- `src/runtime/registration-bridge.ts` exports `registerUserTile(linkInfo, hostFn,
+services)` performing three-step registration: param tile defs, function entry,
+  sensor/actuator tile def.
 - `src/compiler/compile.ts` exports `compileUserTile(source, options?)` which accepts
   a TypeScript source string and optional `CompileOptions`, runs it through a fully
   in-memory virtual `ts.CompilerHost`, validates the AST, extracts descriptor metadata,
@@ -1239,6 +1255,15 @@ operand of `await` produces a handle on the stack.
 **Prerequisites:** Phases 10a and 10b must be complete. Phase 8 (exec wrapper) must
 handle async fiber lifecycle (handle pending, fiber suspension, resumption, completion).
 
+(Added 2026-03-21, from Phase 8 post-mortem) **Async dispatch strategy.** Phase 8's
+exec wrapper uses `vm.spawnFiber()` + `vm.runFiber()` for inline synchronous execution.
+This will not work for async tiles -- `vm.runFiber()` returns when the fiber hits AWAIT,
+but the handle remains pending until the fiber resumes and completes in a later tick.
+Phase 20 must implement a different dispatch path: either integrate with the scheduler
+(`scheduler.spawn()` or equivalent), use a polling/callback pattern to detect fiber
+completion, or extend the exec wrapper to detect `VmStatus.WAITING` and defer handle
+resolution. The exec wrapper already receives `scheduler` as a parameter.
+
 **Concrete deliverables:**
 
 1. An async actuator like the following compiles and executes:
@@ -1306,6 +1331,15 @@ spawn -> suspend -> resume -> complete -> handle resolve.
 - Test: sync sensor + async actuator in same rule -> correct interleaving
 - Test: cancellation (page deactivation) during suspended async fiber -> fiber
   transitions to CANCELLED
+
+(Added 2026-03-21, from Phase 8 post-mortem) **Recompile-and-update pathway.** The
+registration bridge (`registerUserTile`) currently handles first-registration only.
+`FunctionRegistry.register()` and `TileCatalog.registerTileDef()` both throw on
+duplicate names. A stateless recompile-and-update pathway should be established in
+this phase (or an earlier one) so the caller does not need to track whether a prior
+registration exists. The bridge should detect whether the tile is already registered
+and update the existing `BrainFunctionEntry.fn` closure rather than re-registering.
+Include tests for the update path.
 
 **Key risks:**
 
@@ -1476,20 +1510,14 @@ metadata collected in Phases 11b-11c and attach it to `UserAuthoredProgram`.
 
 ## Immediate Next Phase
 
-**Phase 8** is next. Phases 0-7 are complete. The compiler produces `UserAuthoredProgram`
-bytecode, the linker merges it into a `BrainProgram` with remapped function and constant
-indices, and both `linkedEntryFuncId` and `linkedOnPageEnteredFuncId` are available for
-dispatch.
+**Phase 9** is next. Phases 0-8 are complete. The compiler produces `UserAuthoredProgram`
+bytecode, the linker merges it into a `BrainProgram`, the exec wrapper spawns fibers
+for user bytecode and resolves handles, and the registration bridge wires user-authored
+tiles into the tile catalog. Sync sensors and actuators are end-to-end functional.
 
-Phase 8 builds the runtime bridge: the `exec` wrapper that spawns fibers for user
-bytecode, manages callsite-persistent state via `getCallSiteState`/`setCallSiteState`,
-and the registration bridge that makes user-authored tiles appear in the tile catalog
-alongside built-in tiles. This is the last phase before user-authored sensors/actuators
-are end-to-end functional (for the sync case).
-
-After Phase 8, Phases 9-17 expand language coverage (each independently
-testable), Phases 18-21 add async support, and Phases 22-25 add debug metadata for
-the VS Code debugger integration.
+Phase 9 adds logical operators (`&&`, `||`, `!`) to expand the language coverage.
+Phases 10-17 continue expanding language features (each independently testable).
+Phases 18-21 add async support. Phases 22-25 add debug metadata.
 
 ---
 
@@ -2107,3 +2135,143 @@ type-checking, 7 validation, 11 extraction, 3 core imports).
    `onPageEntered` wrapper (which already calls init) rather than calling
    `initFuncId` directly. This is consistent with the Phase 6 design where the
    wrapper is the single entry point for lifecycle setup.
+   (Updated 2026-03-21: Superseded by Phase 8. The linker now remaps `initFuncId`
+   into `linkedInitFuncId` on `UserTileLinkInfo`. First-allocation init calls
+   `linkedInitFuncId` (module init only), not the full `onPageEntered` wrapper.
+   This matches native built-in tile behavior.)
+
+### Phase 8 -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                    | Actual  | Notes                                                                                                                                  |
+| ---------------------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/runtime/authored-function.ts`: `createUserTileExec()` | Done    | Returns `HostAsyncFn` with `exec` and `onPageEntered` methods. Uses `vm.spawnFiber` + `vm.runFiber` for sync dispatch.                 |
+| `src/runtime/registration-bridge.ts`: `registerUserTile()` | Done    | Three-step flow: ensure param tile defs, register function, add sensor/actuator tile def.                                              |
+| `src/runtime/authored-function.spec.ts`: integration tests | Done    | 5 authored-function tests + 3 registration-bridge tests.                                                                               |
+| `src/index.ts`: new exports                                | Done    | `createUserTileExec`, `registerUserTile`, `RegistrationServices` exported.                                                             |
+| Handle resolution for sync sensors                         | Done    | `exec` wrapper resolves handle immediately after fiber completes.                                                                      |
+| Callsite vars allocation and module init                   | Changed | First invocation runs `linkedInitFuncId` (module init only), not the full `onPageEntered` wrapper. See design decision #7.             |
+| `onPageEntered` dispatch                                   | Done    | Spawns fiber for `linkedOnPageEnteredFuncId` wrapper, which runs module init + user body.                                              |
+| Registration bridge: param tile defs                       | Done    | Named params -> `user.<tileName>.<paramName>`, anonymous -> `anon.<type>`. Checks `tiles.has()` before registering.                    |
+| Registration bridge: function registration                 | Done    | `functions.register(pgmId, true, hostFn, callDef)` -- always async. pgmId uses `user.sensor.<name>` / `user.actuator.<name>` (see #8). |
+| Registration bridge: tile catalog entry                    | Done    | `BrainTileSensorDef` or `BrainTileActuatorDef` with `user.sensor.<name>` / `user.actuator.<name>` ID.                                  |
+
+**Design decisions:**
+
+1. **Sync inline execution via `vm.spawnFiber` + `vm.runFiber`.** Rather than using
+   `scheduler.spawn()` (which enqueues for later tick execution), the exec wrapper
+   creates fibers directly via `vm.spawnFiber()` and runs them immediately with
+   `vm.runFiber()`. This allows sync user tiles to complete and resolve their handle
+   within the same HOST_CALL_ARGS_ASYNC instruction, avoiding scheduler queue
+   complexity. The brain fiber sees the handle already resolved when it hits AWAIT.
+   The spec says "there is no special-case inline or reentrant execution path" --
+   the implementation explicitly uses an inline path for sync tiles. Async tiles
+   (Phase 20+) will need a different dispatch strategy.
+
+2. **Shallow-copy execution context for user fibers.** `vm.spawnFiber()` mutates
+   `executionContext.fiberId`. To avoid clobbering the brain fiber's context, the
+   wrapper creates a shallow copy (`{ ...ctx }`) for each spawned fiber. The
+   `callSiteState` Dict is shared by reference (correct -- callsite state persists
+   across both contexts).
+
+3. **Negative instance-scoped fiber IDs.** Each `createUserTileExec` closure has
+   its own `nextFiberId` counter starting at -1 and decrementing. Negative IDs
+   avoid collisions with the scheduler's positive ID space (`nextFiberId = 1`,
+   incrementing). The counter is instance-scoped (not module-level) so multiple
+   exec wrappers do not share mutable state. These fibers are ephemeral -- not
+   added to the scheduler's tracking.
+
+4. **`params: ExtractedParam[]` added to `UserAuthoredProgram`.** The registration
+   bridge needs param type strings (e.g., `"number"`) to resolve TypeIds for
+   `BrainTileParameterDef` construction. Rather than parsing this from the
+   `callDef.argSlots` tile IDs (fragile), the original `ExtractedParam[]` array
+   is stored on `UserAuthoredProgram`. This is a `packages/typescript` type change
+   only -- no core modifications.
+
+5. **`RegistrationServices` interface.** The bridge takes an injected services object
+   with `functions: IFunctionRegistry`, `tiles: ITileCatalog`, and
+   `resolveTypeId: (shortName: string) => TypeId | undefined`. This decouples the
+   bridge from the global `getBrainServices()` singleton, enabling isolated testing.
+
+6. **Always async registration.** Per the spec's unified invocation model, user tiles
+   are registered as `isAsync: true`. The brain dispatches them via
+   `HOST_CALL_ARGS_ASYNC`, which creates a pending handle. The exec wrapper resolves
+   the handle synchronously for sync tiles; async tiles (Phase 18+) will resolve
+   later.
+
+7. **First-allocation init uses `linkedInitFuncId`, not `linkedOnPageEnteredFuncId`.**
+   The original plan called the full `onPageEntered` wrapper on first allocation.
+   Review identified this as incorrect: native built-in tiles initialize callsite
+   state in `exec` on first access, and `onPageEntered` runs only on actual page
+   entry. Calling the wrapper on first allocation would run the user's
+   `onPageEntered` body at construction time (wrong lifecycle event) and could
+   double-fire if the brain also calls `onPageEntered` during the same page entry.
+   Fix: `UserTileLinkInfo` gained `linkedInitFuncId?: number`, the linker now remaps
+   `initFuncId`, and `getOrCreateCallsiteVars` calls `linkedInitFuncId` (module init
+   only). Phase 7's discovery #5 ("initFuncId remapping deferred") is superseded.
+
+8. **Registration IDs use `user.sensor.<name>` / `user.actuator.<name>`.** The spec's
+   tileId naming table shows `user.<name>` (e.g., `user.chase`). The implementation
+   uses `user.sensor.<name>` / `user.actuator.<name>` to avoid name collisions if a
+   sensor and actuator share the same user-given name. The spec table should be
+   updated.
+
+**No changes to `packages/core`.** All new code is in `packages/typescript/src/runtime/`.
+The exec wrapper and registration bridge use only public APIs from
+`@mindcraft-lang/core/brain`.
+
+**Test counts:** 91 total (5 authored-function, 3 registration-bridge, 7 linker, 8
+null/nil, 5 onPageEntered/lifecycle, 11 helper functions/callsite state, 11 control
+flow, 10 codegen/VM, 5 buildCallDef, 5 type-checking, 7 validation, 11 extraction,
+3 core imports).
+
+**Discoveries:**
+
+1. **`vm.runFiber` can be called recursively.** The exec wrapper runs inside
+   `HOST_CALL_ARGS_ASYNC` dispatch (itself inside `vm.runFiber` for the brain fiber).
+   Calling `vm.runFiber` again for the user fiber is safe -- each call operates on a
+   different fiber object, and the VM's shared state (program, handles, function
+   registry) is read-only during dispatch. This recursive pattern enables sync user
+   tiles to complete within the brain fiber's dispatch loop.
+
+2. **Fiber `instrBudget` must be set before `vm.runFiber`.** The scheduler normally
+   sets `fiber.instrBudget` in `tick()`. Since the exec wrapper bypasses the
+   scheduler, it sets `instrBudget = 10000` directly. This is sufficient for sync
+   tiles; a future optimization could derive the budget from the remaining brain
+   fiber budget.
+
+3. **Module init on first allocation is separate from `onPageEntered`.** On first
+   callsite invocation, the wrapper spawns a fiber for `linkedInitFuncId` to set
+   initial callsite var values. The full `onPageEntered` wrapper (which calls init
+   then user body) runs only on actual page entry events. This matches native
+   built-in tile behavior.
+
+4. **`onPageEntered` is called per-callsite by the brain runtime.** The brain's
+   `enterPage()` iterates `pageMetadata.hostCallSites` and calls
+   `entry.fn.onPageEntered(ctx)` with `ctx.currentCallSiteId` set to the call site
+   ID. This means our wrapper's `onPageEntered` correctly retrieves the right
+   callsiteVars via `getCallSiteState()`.
+
+5. **Tile namespace import pattern.** Concrete tile def classes (`BrainTileSensorDef`,
+   `BrainTileActuatorDef`, `BrainTileParameterDef`) are under the `tiles` namespace
+   export from `@mindcraft-lang/core/brain` (not at the top level). Import as
+   `import { tiles as tileDefs } from "@mindcraft-lang/core/brain"` and reference
+   as `tileDefs.BrainTileSensorDef`.
+
+6. **Anonymous param tile defs use `anon.<type>` IDs and are shared.** The
+   `tiles.has()` check before registration prevents duplicate registration when
+   multiple tiles share the same anonymous param type (e.g., two sensors both using
+   `anon.number`). Named params use `user.<tileName>.<paramName>` which is always
+   unique.
+
+7. **Recompile-and-update pathway needed.** `FunctionRegistry.register()` and
+   `TileCatalog.registerTileDef()` both throw on duplicate names. The current bridge
+   handles first-registration only. A stateless recompile-and-update pathway should
+   be established so the caller does not need to track whether a prior registration
+   exists. The bridge should detect whether the tile is already registered and update
+   the existing `BrainFunctionEntry.fn` closure rather than re-registering. This
+   should be done in the appropriate future phase and include tests for the update
+   path.
