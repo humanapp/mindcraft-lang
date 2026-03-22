@@ -952,6 +952,186 @@ so the TS checker can resolve contextual types for object literals).
 
 ---
 
+### Phase 12.1: Mixed-type lists (core `Any` type + `AnyList`)
+
+**Objective:** Introduce a `NativeType.Any` primitive type and a self-describing
+`AnyCodec` so that the type system can represent heterogeneous containers. Register an
+`AnyList` list type in core whose `elementTypeId` is the new `Any` type. Update the
+TypeScript compiler to resolve mixed-type array literals (e.g., `[1, "a", true]`) to
+`AnyList`, and lay the groundwork for `typeof` runtime type checks on `Any`-typed
+values.
+
+#### Background
+
+Phase 12 established homogeneous list compilation. The core type system currently
+requires every `ListTypeShape` to carry a single `elementTypeId`, and the `ListCodec`
+delegates to that element type's codec for serialization. This means a list of
+`number | string` has no registered type and compilation fails. The VM itself imposes
+no element-type constraint -- `LIST_PUSH` accepts any `Value` -- so the limitation is
+entirely in the type registry and codec layers.
+
+This phase adds the missing type-system and codec infrastructure so that
+heterogeneous lists work end-to-end: registration, serialization, ambient type
+generation, and compiler lowering.
+
+#### Design decisions
+
+- **New `NativeType.Any = 9` enum member.** A fresh discriminant is used rather than
+  overloading `NativeType.Unknown` (`-1`), which is a sentinel for error/uninitialized
+  states and has different semantics.
+- **`AnyCodec`** is a tagged codec. It writes a `NativeType` discriminant (one byte)
+  before each value, then delegates to the codec for that type. On decode, it reads
+  the tag, resolves the corresponding codec, and decodes. **v1 supports only the
+  primitive value types:** `Nil`, `Boolean`, `Number`, `String`. Enum, List, Map, and
+  Struct support can be added later by extending the tag-dispatch table.
+- **`AnyList` is registered in core** (inside `registerCoreTypes()`) so it is
+  universally available without app-specific setup. Its `ListTypeShape.elementTypeId`
+  points to `CoreTypeIds.Any`.
+- **No VM opcode changes.** `LIST_PUSH`, `LIST_GET`, `LIST_SET`, `LIST_LEN` already
+  operate on `List<Value>` without element-type checks. The only layers that change
+  are the type registry, codec, ambient generation, and the TypeScript compiler.
+- **`typeof` for type narrowing** is the plan of record for user code that reads
+  elements from an `AnyList`. It is not in scope for this phase but is noted here
+  as a planned follow-up. Without it, elements retrieved from an `AnyList` will
+  have type `number | string | boolean | null` and users will need type assertions
+  or conditional checks that the TS checker understands (e.g., `if (typeof x ===
+"number")`). Phase 15 or a later phase should add `typeof` lowering to make
+  this feel natural.
+
+**Packages/files touched:**
+
+- `packages/core/src/brain/interfaces/type-system.ts` -- add `Any = 9` to `NativeType`
+  enum; update `nativeTypeToString` to return `"any"` for it
+- `packages/core/src/brain/interfaces/core-types.ts` -- add `Any` to `CoreTypeNames`
+  and `CoreTypeIds`
+- `packages/core/src/brain/runtime/type-system.ts` -- add `AnyCodec` class; add
+  `addAnyType(name)` method to `TypeRegistry`; add `AnyList` registration inside
+  `registerCoreTypes()`
+- `packages/core/src/brain/interfaces/type-system.ts` -- add `addAnyType(name): TypeId`
+  to `ITypeRegistry`
+- `packages/typescript/src/compiler/ambient.ts` -- handle `NativeType.Any` in
+  `typeDefToTs()` (emit the union `number | string | boolean | null`); generate
+  `type AnyList = ReadonlyArray<number | string | boolean | null>` for the
+  `AnyList` type def
+- `packages/typescript/src/compiler/lowering.ts` -- update `tsTypeToTypeId()` to
+  return `CoreTypeIds.Any` when the TS type is a union of multiple non-null primitive
+  types (e.g., `number | string`); update `resolveListTypeId()` fallback: when the
+  element type is a multi-member union, resolve to the `AnyList` type
+- `packages/typescript/src/compiler/codegen.spec.ts` -- tests
+
+**Concrete deliverables:**
+
+1. `NativeType.Any` exists with value `9`.
+   `CoreTypeNames.Any = "any"` and `CoreTypeIds.Any = "any:<any>"`.
+
+2. `AnyCodec` implements `TypeCodec`:
+   - `encode(w, value)`: writes the value's `NativeType` tag as a `U8`, then
+     delegates to the matching primitive codec (`NilCodec`, `BooleanCodec`,
+     `NumberCodec`, `StringCodec`). Throws for unsupported types in v1.
+   - `decode(r)`: reads a `U8` tag, dispatches to the matching codec's `decode`.
+   - `stringify(value)`: dispatches to the matching codec's `stringify`.
+     The codec must be self-contained (no registry dependency at encode/decode time)
+     because it needs to work in the Luau transpiled runtime too.
+
+3. `ITypeRegistry.addAnyType(name)` registers a `TypeDef` with
+   `coreType: NativeType.Any` and an `AnyCodec` instance.
+
+4. `registerCoreTypes()` calls `typeRegistry.addAnyType(CoreTypeNames.Any)` to
+   register the `Any` type, then calls
+   `typeRegistry.addListType("AnyList", { elementTypeId: CoreTypeIds.Any })` to
+   register the `AnyList` type.
+
+5. `buildAmbientDeclarations()` emits:
+
+   ```
+   export type AnyList = ReadonlyArray<number | string | boolean | null>;
+   ```
+
+   with a corresponding `MindcraftTypeMap` entry.
+
+6. `tsTypeToTypeId()` returns `CoreTypeIds.Any` when the TS type is a union of
+   2+ non-null/undefined types that map to different `NativeType` categories
+   (e.g., `number | string` -> `Any`).
+
+7. `resolveListTypeId()` falls back to the `AnyList` type when element-type
+   matching produces `CoreTypeIds.Any`. Specifically: after the alias-symbol-first
+   lookup fails, the function calls `tsTypeToTypeId(elementType)`. If that returns
+   `CoreTypeIds.Any`, scan the registry for a list type whose `elementTypeId` is
+   `CoreTypeIds.Any` (i.e., the `AnyList`).
+
+8. Mixed-type array literals compile and execute:
+   ```ts
+   export default Sensor({
+     name: "mixed",
+     output: "boolean" as const,
+     exec(ctx) {
+       const arr: AnyList = [1, "hello", true, null];
+       return arr.length > 0;
+     },
+   });
+   ```
+
+**Acceptance criteria:**
+
+- Test: `NativeType.Any` has value `9` and `nativeTypeToString(NativeType.Any)`
+  returns `"any"`
+- Test: `AnyCodec` round-trips `nil`, `boolean`, `number`, and `string` values
+  through encode/decode
+- Test: `AnyCodec.stringify` produces correct output for each supported type
+- Test: `AnyCodec.encode` throws for unsupported types (e.g., a `StructValue`)
+- Test: `registerCoreTypes()` registers `Any` and `AnyList` types (verify via
+  `registry.get(CoreTypeIds.Any)` and `registry.resolveByName("AnyList")`)
+- Test: `buildAmbientDeclarations()` output includes `AnyList` type alias with
+  the correct union element type
+- Test: `[1, "hello", true]` compiles to `LIST_NEW(anyListTypeId)` + 3x `LIST_PUSH`
+  and executes in the VM, producing a list with 3 elements
+- Test: `[1, 2, 3]` (homogeneous) still resolves to `NumberList`, not `AnyList`
+  (regression check)
+- Test: `tsTypeToTypeId` returns `CoreTypeIds.Any` for `number | string` union type
+- Test: empty mixed-type array `[]` with `AnyList` annotation compiles correctly
+
+**Key risks:**
+
+- **`AnyCodec` tag dispatch must be self-contained.** The codec cannot depend on
+  `ITypeRegistry` or `getBrainServices()` at encode/decode time because: (a) the
+  Luau transpiled runtime may not have the same service wiring, and (b) codecs
+  should be pure data transformers. The v1 codec hardcodes dispatchers for Nil,
+  Boolean, Number, and String. Extending to Enum/Struct/List/Map later will require
+  embedding sub-codecs or a registry reference -- cross that bridge then.
+- **Luau transpile compatibility.** The new `NativeType.Any` enum member and
+  `AnyCodec` class must transpile correctly to Luau. Verify that the Luau build
+  (`npm run build:rbx`) succeeds after changes. The codec uses only primitive
+  stream operations (`writeU8`/`readU8`, `writeBool`/`readBool`, etc.) which are
+  already supported in the Luau stream implementation.
+- **Ambient type union completeness.** The ambient `AnyList` type is emitted as
+  `ReadonlyArray<number | string | boolean | null>`. If `AnyCodec` is later
+  extended to support Enum, Struct, etc., the ambient type must be updated to
+  include those in the union. This coupling should be documented.
+- **`deepCopyValue` for `AnyList`.** The current `deepCopyValue` only deep-copies
+  `StructValue` instances; all other types (including `ListValue`) are returned
+  by reference. This means `AnyList` values share the underlying `List<Value>`
+  on assignment. This is the existing behavior for all list types and is not a
+  new concern, but worth noting since mixed-type lists may be more commonly
+  assigned across variables.
+- **Operator overloads on `Any`-typed values.** If a user retrieves an element
+  from an `AnyList` and tries to do arithmetic (`elem + 1`), the compiler needs
+  to resolve the operator. Since the TS type will be
+  `number | string | boolean | null`, the checker will flag errors for operations
+  not valid on all union members. This is correct behavior -- users must narrow
+  first. No additional work needed here.
+- **Core build order.** `packages/core` must be built before `packages/typescript`.
+  Since `registerCoreTypes()` is in core, the `AnyList` type will exist before
+  the compiler runs. The compiler's test suite creates its own type registry, so
+  tests need to register `Any` and `AnyList` manually in the test setup.
+
+**See also:** [core-type-system-evolution.md](core-type-system-evolution.md) -- a
+broader plan for core type system changes (nullable types, generic type constructors,
+union types, first-class functions, structural subtyping) that build on Phase 12.1's
+`Any` type. These are planned for implementation after the TypeScript compiler phases
+are complete.
+
+---
+
 ### Phase 12b: Map literals
 
 **Objective:** Compile object literal expressions to `MAP_NEW` / `MAP_SET` bytecode when
