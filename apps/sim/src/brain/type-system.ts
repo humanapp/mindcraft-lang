@@ -17,14 +17,14 @@ import {
 } from "@mindcraft-lang/core/brain";
 import type { Actor } from "./actor";
 
-export const MytypeNames = {
+export const MyTypeNames = {
   ActorRef: "actorRef",
   Vector2: "vector2",
 };
 
 export const MyTypeIds = {
-  ActorRef: mkTypeId(NativeType.Struct, MytypeNames.ActorRef),
-  Vector2: mkTypeId(NativeType.Struct, MytypeNames.Vector2),
+  ActorRef: mkTypeId(NativeType.Struct, MyTypeNames.ActorRef),
+  Vector2: mkTypeId(NativeType.Struct, MyTypeNames.Vector2),
 };
 
 // -------------------------------------------------------
@@ -130,8 +130,8 @@ export function registerTypes() {
   const { types } = getBrainServices();
 
   // Define vector2 struct type
-  const vector2TypeId = types.addStructType(MytypeNames.Vector2, {
-    fields: new List([
+  const vector2TypeId = types.addStructType(MyTypeNames.Vector2, {
+    fields: List.from([
       { name: "x", typeId: CoreTypeIds.Number },
       { name: "y", typeId: CoreTypeIds.Number },
     ]),
@@ -141,8 +141,8 @@ export function registerTypes() {
   }
 
   // Define actorRef "native" struct type with custom field getter to access actor properties
-  const actorRefTypeId = types.addStructType(MytypeNames.ActorRef, {
-    fields: new List([
+  const actorRefTypeId = types.addStructType(MyTypeNames.ActorRef, {
+    fields: List.from([
       { name: "id", typeId: CoreTypeIds.Number },
       { name: "position", typeId: MyTypeIds.Vector2 },
       { name: "energy pct", typeId: CoreTypeIds.Number },
