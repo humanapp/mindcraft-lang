@@ -1,26 +1,9 @@
-import {
-  getBrainServices,
-  type HostAsyncFn,
-  type IFunctionRegistry,
-  type ITileCatalog,
-  mkParameterTileId,
-  tiles as tileDefs,
-} from "@mindcraft-lang/core/brain";
+import { getBrainServices, type HostAsyncFn, mkParameterTileId, tiles as tileDefs } from "@mindcraft-lang/core/brain";
 import type { UserTileLinkInfo } from "../compiler/types.js";
 
-export interface RegistrationServices {
-  functions: IFunctionRegistry;
-  tiles: ITileCatalog;
-}
-
-export function registerUserTile(
-  linkInfo: UserTileLinkInfo,
-  hostFn: HostAsyncFn,
-  services: RegistrationServices
-): void {
+export function registerUserTile(linkInfo: UserTileLinkInfo, hostFn: HostAsyncFn): void {
   const { program } = linkInfo;
-  const { functions, tiles } = services;
-  const types = getBrainServices().types;
+  const { functions, tiles, types } = getBrainServices();
 
   for (const p of program.params) {
     const parameterId = p.anonymous ? `anon.${p.type}` : `user.${program.name}.${p.name}`;

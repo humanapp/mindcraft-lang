@@ -27,7 +27,7 @@ import { compileUserTile, initCompiler } from "../compiler/compile.js";
 import type { UserTileLinkInfo } from "../compiler/types.js";
 import { linkUserPrograms } from "../linker/linker.js";
 import { createUserTileExec } from "./authored-function.js";
-import { type RegistrationServices, registerUserTile } from "./registration-bridge.js";
+import { registerUserTile } from "./registration-bridge.js";
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
@@ -92,14 +92,6 @@ function setupExecWrapper(linkedProgram: BrainProgram, linkInfo: UserTileLinkInf
 
 function emptyArgs(): MapValue {
   return { t: NativeType.Map, typeId: "map:<args>", v: new ValueDict() };
-}
-
-function mkServices(): RegistrationServices {
-  const s = getBrainServices();
-  return {
-    functions: s.functions,
-    tiles: s.tiles,
-  };
 }
 
 describe("authored-function", () => {
@@ -300,14 +292,14 @@ export default Sensor({
     const { linkedProgram, linkInfo } = compileAndLink(source);
     const { wrapper } = setupExecWrapper(linkedProgram, linkInfo);
 
-    const services = mkServices();
-    registerUserTile(linkInfo, wrapper, services);
+    registerUserTile(linkInfo, wrapper);
 
-    const tileDef = services.tiles.get(mkSensorTileId("user.sensor.reg-sensor"));
+    const { tiles, functions } = getBrainServices();
+    const tileDef = tiles.get(mkSensorTileId("user.sensor.reg-sensor"));
     assert.ok(tileDef, "sensor tile def should exist");
     assert.equal(tileDef!.kind, "sensor");
 
-    const fnEntry = services.functions.get("user.sensor.reg-sensor");
+    const fnEntry = functions.get("user.sensor.reg-sensor");
     assert.ok(fnEntry, "function should be registered");
     assert.equal(fnEntry!.isAsync, true);
   });
@@ -325,10 +317,9 @@ export default Actuator({
     const { linkedProgram, linkInfo } = compileAndLink(source);
     const { wrapper } = setupExecWrapper(linkedProgram, linkInfo);
 
-    const services = mkServices();
-    registerUserTile(linkInfo, wrapper, services);
+    registerUserTile(linkInfo, wrapper);
 
-    const tileDef = services.tiles.get(mkActuatorTileId("user.actuator.reg-actuator"));
+    const tileDef = getBrainServices().tiles.get(mkActuatorTileId("user.actuator.reg-actuator"));
     assert.ok(tileDef, "actuator tile def should exist");
     assert.equal(tileDef!.kind, "actuator");
   });
@@ -353,14 +344,11 @@ export default Sensor({
     const { linkedProgram, linkInfo } = compileAndLink(source);
     const { wrapper } = setupExecWrapper(linkedProgram, linkInfo);
 
-    const services = mkServices();
-    registerUserTile(linkInfo, wrapper, services);
+    registerUserTile(linkInfo, wrapper);
 
-    assert.ok(
-      services.tiles.has(mkParameterTileId("user.param-reg.distance")),
-      "named distance param tile should exist"
-    );
-    assert.ok(services.tiles.has(mkParameterTileId("user.param-reg.label")), "named label param tile should exist");
-    assert.ok(services.tiles.has(mkParameterTileId("anon.number")), "anonymous number param tile should exist");
+    const { tiles } = getBrainServices();
+    assert.ok(tiles.has(mkParameterTileId("user.param-reg.distance")), "named distance param tile should exist");
+    assert.ok(tiles.has(mkParameterTileId("user.param-reg.label")), "named label param tile should exist");
+    assert.ok(tiles.has(mkParameterTileId("anon.number")), "anonymous number param tile should exist");
   });
 });

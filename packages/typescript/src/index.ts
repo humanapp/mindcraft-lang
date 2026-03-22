@@ -11,5 +11,4 @@ export type { UserAuthoredProgram, UserTileLinkInfo } from "./compiler/types.js"
 export type { LinkResult } from "./linker/linker.js";
 export { linkUserPrograms } from "./linker/linker.js";
 export { createUserTileExec } from "./runtime/authored-function.js";
-export type { RegistrationServices } from "./runtime/registration-bridge.js";
 export { registerUserTile } from "./runtime/registration-bridge.js";
