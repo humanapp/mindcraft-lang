@@ -1208,19 +1208,21 @@ app-defined tiles:
 | Concept                | Value                                       |
 | ---------------------- | ------------------------------------------- |
 | User's `name`          | `"chase"`                                   |
-| Internal actuator ID   | `"user.chase"`                              |
-| Function registry name | `"user.chase"`                              |
-| Actuator tileId        | `"tile.actuator->user.chase"`               |
+| Internal actuator ID   | `"user.actuator.chase"`                     |
+| Function registry name | `"user.actuator.chase"`                     |
+| Actuator tileId        | `"tile.actuator->user.actuator.chase"`      |
 | Named param `speed`    | `"user.chase.speed"`                        |
 | Named param tileId     | `"tile.parameter->user.chase.speed"`        |
 | Anon param `target`    | `"anon.actorRef"` (shared, not tile-scoped) |
 | Anon param tileId      | `"tile.parameter->anon.actorRef"`           |
 
-(Updated 2026-03-21: Phase 8 implementation uses `user.actuator.<name>` /
-`user.sensor.<name>` for function registry and tile IDs -- e.g.,
-`user.actuator.chase` -- to avoid collisions if a sensor and actuator share the
-same user-given name. The table above uses the simpler `user.<name>` convention;
-the implementation diverges.)
+Sensors use the `user.sensor.<name>` prefix (e.g., `user.sensor.chase`). Actuators
+use `user.actuator.<name>`. This avoids collisions if a sensor and actuator share
+the same user-given name. Named params remain scoped by the bare tile name
+(`user.<tileName>.<paramName>`) since params are unique within a tile.
+
+(Updated 2026-03-21: table updated to use `user.sensor.<name>` /
+`user.actuator.<name>` convention matching Phase 8 implementation.)
 
 The `user.` prefix is applied automatically by the registration bridge. The user
 never writes it.
