@@ -1,6 +1,7 @@
 # Core Type System Evolution Plan
 
 Companion to [typescript-compiler-phased-impl.md](typescript-compiler-phased-impl.md).
+Phased implementation plan: [core-type-system-phased-impl.md](core-type-system-phased-impl.md).
 Depends on the `@mindcraft-lang/core` type system defined in
 `packages/core/src/brain/interfaces/type-system.ts` and implemented in
 `packages/core/src/brain/runtime/type-system.ts`.
