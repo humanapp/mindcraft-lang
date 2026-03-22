@@ -12,6 +12,8 @@ export type IrNode =
   | IrCall
   | IrHostCallArgs
   | IrMapGet
+  | IrStructNew
+  | IrStructSet
   | IrLabel
   | IrJump
   | IrJumpIfFalse
@@ -88,4 +90,13 @@ export interface IrJumpIfFalse {
 export interface IrJumpIfTrue {
   kind: "JumpIfTrue";
   labelId: number;
+}
+
+export interface IrStructNew {
+  kind: "StructNew";
+  typeId: string;
+}
+
+export interface IrStructSet {
+  kind: "StructSet";
 }

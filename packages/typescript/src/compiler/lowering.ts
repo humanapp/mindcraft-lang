@@ -4,8 +4,10 @@ import {
   getBrainServices,
   mkNumberValue,
   mkStringValue,
+  NativeType,
   NIL_VALUE,
   runtime,
+  type StructTypeDef,
   type Value,
 } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
@@ -580,6 +582,8 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     lowerCallExpression(expr, ctx);
   } else if (ts.isIdentifier(expr)) {
     lowerIdentifier(expr, ctx);
+  } else if (ts.isObjectLiteralExpression(expr)) {
+    lowerObjectLiteral(expr, ctx);
   } else {
     ctx.diagnostics.push(makeDiag(`Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr));
   }
@@ -943,6 +947,69 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     }
   }
   ctx.diagnostics.push(makeDiag("Unsupported property access", expr));
+}
+
+function resolveStructType(type: ts.Type): StructTypeDef | undefined {
+  const registry = getBrainServices().types;
+  if (type.isUnion()) {
+    const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
+    if (nonNullish.length === 1) {
+      return resolveStructType(nonNullish[0]);
+    }
+    return undefined;
+  }
+  const sym = type.getSymbol() ?? type.aliasSymbol;
+  if (!sym) return undefined;
+  const name = sym.getName();
+  const typeId = registry.resolveByName(name);
+  if (!typeId) return undefined;
+  const def = registry.get(typeId);
+  if (!def || def.coreType !== NativeType.Struct) return undefined;
+  return def as StructTypeDef;
+}
+
+function isNativeBackedStruct(def: StructTypeDef): boolean {
+  return def.fieldGetter !== undefined || def.fieldSetter !== undefined || def.snapshotNative !== undefined;
+}
+
+function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext): void {
+  const contextualType = ctx.checker.getContextualType(expr);
+  if (!contextualType) {
+    ctx.diagnostics.push(makeDiag("Cannot determine struct type for object literal (add a type annotation)", expr));
+    return;
+  }
+
+  const structDef = resolveStructType(contextualType);
+  if (!structDef) {
+    ctx.diagnostics.push(makeDiag("Object literal type does not resolve to a known struct type", expr));
+    return;
+  }
+
+  if (isNativeBackedStruct(structDef)) {
+    ctx.diagnostics.push(makeDiag(`Cannot create instances of native-backed struct type '${structDef.name}'`, expr));
+    return;
+  }
+
+  ctx.ir.push({ kind: "StructNew", typeId: structDef.typeId });
+
+  for (const prop of expr.properties) {
+    if (!ts.isPropertyAssignment(prop)) {
+      ctx.diagnostics.push(makeDiag("Only simple property assignments are supported in object literals", prop));
+      return;
+    }
+    let fieldName: string;
+    if (ts.isIdentifier(prop.name)) {
+      fieldName = prop.name.text;
+    } else if (ts.isStringLiteral(prop.name)) {
+      fieldName = prop.name.text;
+    } else {
+      ctx.diagnostics.push(makeDiag("Unsupported property name in object literal", prop));
+      return;
+    }
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    lowerExpression(prop.initializer, ctx);
+    ctx.ir.push({ kind: "StructSet" });
+  }
 }
 
 function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {

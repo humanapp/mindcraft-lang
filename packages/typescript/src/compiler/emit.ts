@@ -1,4 +1,4 @@
-import { compiler, type FunctionBytecode, getBrainServices } from "@mindcraft-lang/core/brain";
+import { compiler, type FunctionBytecode, getBrainServices, mkStringValue } from "@mindcraft-lang/core/brain";
 import type { IrNode } from "./ir.js";
 import type { CompileDiagnostic } from "./types.js";
 
@@ -69,6 +69,14 @@ export function emitFunction(
       }
       case "MapGet":
         emitter.mapGet();
+        break;
+      case "StructNew": {
+        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        emitter.structNew(typeIdIdx);
+        break;
+      }
+      case "StructSet":
+        emitter.structSet();
         break;
       case "Label":
         emitter.mark(getOrAllocLabel(node.labelId));

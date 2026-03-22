@@ -6,6 +6,7 @@ import {
   type ExecutionContext,
   getBrainServices,
   HandleTable,
+  isStructValue,
   type MapValue,
   mkNumberValue,
   mkStringValue,
@@ -17,6 +18,7 @@ import {
   runtime,
   type Scheduler,
   type StringValue,
+  type StructValue,
   type Value,
   ValueDict,
   VmStatus,
@@ -2376,5 +2378,191 @@ export default Sensor({
       result.diagnostics.some((d) => d.message.includes("No conversion from")),
       `Expected no-conversion diagnostic but got: ${JSON.stringify(result.diagnostics)}`
     );
+  });
+});
+
+describe("struct literal compilation", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const strTypeId = mkTypeId(NativeType.String, "string");
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    if (!types.get(vec2TypeId)) {
+      types.addStructType("Vector2", {
+        fields: List.from([
+          { name: "x", typeId: numTypeId },
+          { name: "y", typeId: numTypeId },
+        ]),
+      });
+    }
+    const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
+    if (!types.get(entityTypeId)) {
+      types.addStructType("Entity", {
+        fields: List.from([
+          { name: "name", typeId: strTypeId },
+          { name: "position", typeId: vec2TypeId },
+        ]),
+      });
+    }
+    const nativeTypeId = mkTypeId(NativeType.Struct, "NativeObj");
+    if (!types.get(nativeTypeId)) {
+      types.addStructType("NativeObj", {
+        fields: List.from([{ name: "id", typeId: numTypeId }]),
+        fieldGetter: () => undefined,
+      });
+    }
+  });
+
+  test("struct literal with type annotation compiles and executes", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "make-vec",
+  output: "Vector2",
+  onExecute(ctx: Context): Vector2 {
+    const pos: Vector2 = { x: 10, y: 20 };
+    return pos;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isStructValue(runResult.result!), "expected struct value");
+      const struct = runResult.result as StructValue;
+      assert.equal(struct.typeId, mkTypeId(NativeType.Struct, "Vector2"));
+      assert.equal((struct.v?.get("x") as NumberValue).v, 10);
+      assert.equal((struct.v?.get("y") as NumberValue).v, 20);
+    }
+  });
+
+  test("struct literal as return value (contextual type from return annotation)", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "make-vec-direct",
+  output: "Vector2",
+  onExecute(ctx: Context): Vector2 {
+    return { x: 3, y: 7 };
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isStructValue(runResult.result!));
+      const struct = runResult.result as StructValue;
+      assert.equal((struct.v?.get("x") as NumberValue).v, 3);
+      assert.equal((struct.v?.get("y") as NumberValue).v, 7);
+    }
+  });
+
+  test("nested struct literal compiles and executes", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "make-entity",
+  output: "Entity",
+  onExecute(ctx: Context): Entity {
+    const e: Entity = { name: "hero", position: { x: 5, y: 15 } };
+    return e;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isStructValue(runResult.result!));
+      const entity = runResult.result as StructValue;
+      assert.equal((entity.v?.get("name") as StringValue).v, "hero");
+      const pos = entity.v?.get("position") as StructValue;
+      assert.ok(isStructValue(pos));
+      assert.equal((pos.v?.get("x") as NumberValue).v, 5);
+      assert.equal((pos.v?.get("y") as NumberValue).v, 15);
+    }
+  });
+
+  test("native-backed struct object literal produces compile error", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NativeObj } from "mindcraft";
+
+export default Sensor({
+  name: "bad-native",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const obj: NativeObj = { id: 1 };
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0, "expected diagnostics for native-backed struct");
+  });
+
+  test("untyped object literal produces diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "untyped-obj",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const obj = { a: 1 };
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0, "expected diagnostic for untyped object literal");
   });
 });
