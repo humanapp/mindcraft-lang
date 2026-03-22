@@ -240,8 +240,8 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // ==========================================
 
   /** Create a new list with typeId. */
-  listNew(typeId: number): void {
-    this.emit({ op: Op.LIST_NEW, a: typeId });
+  listNew(typeIdConstIdx: number): void {
+    this.emit({ op: Op.LIST_NEW, a: 0, b: typeIdConstIdx });
   }
 
   /** Push value onto list. */

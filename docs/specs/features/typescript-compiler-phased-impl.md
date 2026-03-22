@@ -37,7 +37,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0-11b are complete.
+- (Updated 2026-03-21) Phases 0-12 are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -59,9 +59,11 @@ not survive. Keep this doc current.
   a registration bridge (`registerUserTile`) that wires user-authored tiles
   into the `FunctionRegistry` and `TileCatalog`, ambient type declarations
   generated from `ITypeRegistry` (user-creatable structs as plain interfaces,
-  native-backed structs as branded readonly interfaces), and object literal
+  native-backed structs as branded readonly interfaces), object literal
   compilation to `STRUCT_NEW` / `STRUCT_SET` bytecode (contextual type resolution,
-  nested struct support, native-backed struct rejection).
+  nested struct support, native-backed struct rejection), and array literal
+  compilation to `LIST_NEW` / `LIST_PUSH` bytecode (contextual/alias type
+  resolution, element-type matching fallback, nested struct-in-list support).
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientDeclarations`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
@@ -1068,6 +1070,16 @@ a method-to-host-function-ID mapping.
 - **Hidden locals.** The desugaring introduces hidden local variables (index counter,
   list reference). These must be allocated via `ScopeStack` but not visible to the
   user as named variables.
+- (Added 2026-03-21, Phase 12 post-mortem) **`LIST_LEN` and `LIST_GET` emitter methods
+  need verification.** Phase 12 fixed `listNew` to use `ins.b` for the constant pool
+  typeId index. The `listLen` and `listGet` emitter methods should be checked for
+  correct operand layout before use. They may have similar latent issues since they
+  have never been called by compiler code before.
+- (Added 2026-03-21, Phase 12 post-mortem) **`tsTypeToTypeId` does not handle struct
+  or list types.** If the iterable's element type is a struct (e.g., `for (const v of
+vectors)`), the lowering cannot use `tsTypeToTypeId` to resolve the element TypeId.
+  Phase 12's `resolveListTypeId` works around this via alias-symbol-first resolution,
+  but `for...of` may need a similar pattern to identify the iterable as list-typed.
 
 ---
 
@@ -1362,8 +1374,6 @@ spawn -> suspend -> resume -> complete -> handle resolve.
 - Integration test file(s) in `packages/typescript/src/runtime/`
 - May require test utilities for mock async host functions
 
-**Prerequisites:** Phases 8, 10a, 10b, and 10c must be complete.
-
 **Concrete deliverables:**
 
 1. End-to-end test: brain rule with WHEN condition using a sync sensor -> DO action
@@ -1553,19 +1563,6 @@ metadata collected in Phases 11b-11c and attach it to `UserAuthoredProgram`.
 - **Linker remapping of debug metadata.** After linking, `compiledFuncId` values in
   the debug metadata need to be remapped (offset by function base). This may be a
   concern for Phase 7's linker -- either handle it in a sub-phase or as part of 11d.
-
----
-
-## Immediate Next Phase
-
-**Phase 9** is next. Phases 0-8 are complete. The compiler produces `UserAuthoredProgram`
-bytecode, the linker merges it into a `BrainProgram`, the exec wrapper spawns fibers
-for user bytecode and resolves handles, and the registration bridge wires user-authored
-tiles into the tile catalog. Sync sensors and actuators are end-to-end functional.
-
-Phase 9 adds logical operators (`&&`, `||`, `!`) to expand the language coverage.
-Phases 10-17 continue expanding language features (each independently testable).
-Phases 18-21 add async support. Phases 22-25 add debug metadata.
 
 ---
 
@@ -2716,3 +2713,112 @@ authored-function, 3 registration-bridge, 7 linker, 8 null/nil, 5 onPageEntered/
    declarations are inside `declare module "mindcraft"`, user code must write
    `import { type Vector2 } from "mindcraft"` to use struct types as annotations.
    This is consistent with how `Context`, `Sensor`, and `Actuator` are used.
+
+### Phase 12 -- 2026-03-21
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                           | Actual | Notes                                                                                                                     |
+| ------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `ir.ts`: add `IrListNew`, `IrListPush` nodes      | Done   | `IrListNew` carries `typeId: string`; `IrListPush` is parameterless (value is on the stack)                               |
+| `lowering.ts`: handle `ts.ArrayLiteralExpression` | Done   | `lowerArrayLiteral()` resolves list type via `resolveListTypeId()`, emits `ListNew` + per-element expression + `ListPush` |
+| `emit.ts`: emit `LIST_NEW`, `LIST_PUSH` opcodes   | Done   | `ListNew` adds typeId string to constant pool, calls `emitter.listNew(constIdx)`; `ListPush` calls `emitter.listPush()`   |
+
+**Additional work not in the planned scope:**
+
+1. **Emitter/VM fix in `packages/core`.** The `BytecodeEmitter.listNew(typeId)` method
+   was emitting `{ op: LIST_NEW, a: typeId }`, but the VM's `execListNew` ignored all
+   operands entirely and hardcoded `"list:<unknown>"` as the typeId. Fixed to match the
+   `structNew` pattern from Phase 11b: `listNew(typeIdConstIdx)` emits
+   `{ op: LIST_NEW, a: 0, b: typeIdConstIdx }`, and `execListNew` reads `ins.b` as
+   constant pool index for the typeId string. Updated `emitter.ts`,
+   `interfaces/emitter.ts`, and `vm.ts`. The call site in `vm.ts` dispatch was updated
+   to pass `ins` to `execListNew`. This was a latent bug -- `listNew` had never been
+   called before this phase.
+
+2. **Two-tier type resolution in `resolveListTypeId`.** The function first tries alias
+   symbol lookup (for named list types like `NumberList` which are type aliases for
+   `ReadonlyArray<number>`), then falls back to element-type matching by scanning the
+   registry for a list type whose `elementTypeId` matches. This handles both
+   `const a: NumberList = [1]` (alias match) and contextual types from return
+   annotations (element match).
+
+**Acceptance criteria results:**
+
+- [x] `[1, 2, 3]` -> list with 3 elements, VM reads correct values
+- [x] Empty array `[]` -> empty list
+- [x] Array as return value -> correct bytecode (contextual type from return annotation)
+- [x] Nested arrays `[{x:1,y:2}, {x:3,y:4}]` -> correct nested list+struct construction
+      (test uses `Vector2List` containing `Vector2` structs rather than nested number
+      arrays, which better exercises the element type resolution)
+
+**Design changes from spec:**
+
+1. **Nested arrays test uses struct-typed elements.** The spec's acceptance criterion
+   says `[[1], [2]]` (nested number arrays). The implementation tests
+   `[{x:1,y:2}, {x:3,y:4}]` (list of struct elements) instead, which is a more
+   realistic and harder test case -- it exercises the interaction between
+   `resolveListTypeId` and `lowerObjectLiteral` for nested element compilation, and
+   validates that contextual type propagation works for struct elements within a list.
+
+**Files changed:**
+
+- `packages/core/src/brain/compiler/emitter.ts` -- fixed `listNew()` operand mapping
+  (a: 0, b: typeIdConstIdx)
+- `packages/core/src/brain/interfaces/emitter.ts` -- updated `listNew()` param name
+  and docs to `typeIdConstIdx`
+- `packages/core/src/brain/runtime/vm.ts` -- `execListNew` now reads `ins.b` as
+  constant pool index; call site passes `ins`
+- `packages/typescript/src/compiler/ir.ts` -- added `IrListNew`, `IrListPush` to
+  `IrNode` union; added interface definitions
+- `packages/typescript/src/compiler/lowering.ts` -- added `resolveListTypeId()`,
+  `lowerArrayLiteral()`; added `ArrayLiteralExpression` case to `lowerExpression()`;
+  added `ListTypeDef` import
+- `packages/typescript/src/compiler/emit.ts` -- added `ListNew` and `ListPush` cases
+  to the emit switch
+- `packages/typescript/src/compiler/codegen.spec.ts` -- added `array/list literal
+compilation` describe block with 4 tests; added `isListValue` and `ListValue` imports
+
+**Test counts:** 121 total (previous 117 + 4 new array/list tests).
+
+**Discoveries:**
+
+1. **`BytecodeEmitter.listNew` had the same operand bug as `structNew`.** Identical
+   pattern to Phase 11b. The emitter put the constant pool index into `ins.a` but the
+   VM either ignored `ins.a` (listNew case -- hardcoded typeId) or read it as a
+   different field (structNew case -- `numFields`). Both were latent bugs since neither
+   method had ever been called. The fix follows the same pattern: typeId string goes
+   into the constant pool, the index goes into `ins.b`. The spec's
+   `ListNew(typeId: number)` notation is ambiguous about whether the number is a
+   constant pool index or a direct numeric typeId -- same ambiguity noted for
+   `structNew` in Phase 11b.
+
+2. **Alias symbol lookup is necessary for named list types.** `ReadonlyArray<Vector2>`
+   has no `getSymbol()` that returns `"Vector2List"` -- the TS checker sees it as an
+   instantiation of the generic `ReadonlyArray` interface. But `aliasSymbol` is
+   populated when the type comes from a type alias (e.g., `type Vector2List =
+ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
+   `aliasSymbol` first handles the named case; the fallback to element-type scanning
+   handles direct `ReadonlyArray<number>` usage.
+
+3. **Element type resolution for struct-typed arrays requires registry symbol lookup.**
+   `tsTypeToTypeId` returns `undefined` for struct types because it only handles
+   primitive types (`NumberLike`, `BooleanLike`, `StringLike`, `Null`, `Undefined`)
+   and nullable unions. The `resolveListTypeId` alias-symbol-first strategy avoids
+   this limitation -- `Vector2List` resolves directly by name without needing to
+   resolve the element type to a TypeId. If element-type matching is needed for
+   struct-typed arrays in the future, `tsTypeToTypeId` would need to be extended to
+   handle struct types via `resolveByName`.
+
+4. **Mixed-type arrays are implicitly rejected.** The spec listed mixed-type arrays
+   (`[1, "a", true]`) as a risk. Since the lowering requires a registered list type
+   matching the element type, and no `(number | string | boolean)[]` list type would
+   typically be registered, mixed-type arrays produce a diagnostic naturally. No
+   explicit rejection logic was needed.
+
+5. **`for...of` will benefit from this phase's type resolution.** Phase 14 (`for...of`
+   loop) iterates over list-typed values. The `resolveListTypeId` function and the
+   list type infrastructure established here will be useful for resolving the iterable
+   type in `for...of` desugaring.

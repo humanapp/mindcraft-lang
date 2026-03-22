@@ -205,9 +205,10 @@ export interface IBytecodeEmitter {
   // ==========================================
 
   /**
-   * Create a new list with typeId.
+   * Create a new list.
+   * @param typeIdConstIdx - constant pool index holding the typeId string
    */
-  listNew(typeId: number): void;
+  listNew(typeIdConstIdx: number): void;
 
   /**
    * Push value onto list.

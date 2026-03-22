@@ -6,7 +6,9 @@ import {
   type ExecutionContext,
   getBrainServices,
   HandleTable,
+  isListValue,
   isStructValue,
+  type ListValue,
   type MapValue,
   mkNumberValue,
   mkStringValue,
@@ -2564,5 +2566,200 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { ambientSource });
     assert.ok(result.diagnostics.length > 0, "expected diagnostic for untyped object literal");
+  });
+});
+
+describe("array/list literal compilation", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const strTypeId = mkTypeId(NativeType.String, "string");
+
+    const numListName = "NumberList";
+    const numListTypeId = mkTypeId(NativeType.List, numListName);
+    if (!types.get(numListTypeId)) {
+      types.addListType(numListName, { elementTypeId: numTypeId });
+    }
+
+    const strListName = "StringList";
+    const strListTypeId = mkTypeId(NativeType.List, strListName);
+    if (!types.get(strListTypeId)) {
+      types.addListType(strListName, { elementTypeId: strTypeId });
+    }
+
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    if (!types.get(vec2TypeId)) {
+      types.addStructType("Vector2", {
+        fields: List.from([
+          { name: "x", typeId: numTypeId },
+          { name: "y", typeId: numTypeId },
+        ]),
+      });
+    }
+
+    const vec2ListName = "Vector2List";
+    const vec2ListTypeId = mkTypeId(NativeType.List, vec2ListName);
+    if (!types.get(vec2ListTypeId)) {
+      types.addListType(vec2ListName, { elementTypeId: vec2TypeId });
+    }
+  });
+
+  test("array literal with 3 elements compiles and executes", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "make-list",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [1, 2, 3];
+    return nums;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isListValue(runResult.result!), "expected list value");
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 3);
+      assert.equal((list.v.get(0) as NumberValue).v, 1);
+      assert.equal((list.v.get(1) as NumberValue).v, 2);
+      assert.equal((list.v.get(2) as NumberValue).v, 3);
+    }
+  });
+
+  test("empty array compiles to empty list", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "empty-list",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [];
+    return nums;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isListValue(runResult.result!), "expected list value");
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 0);
+    }
+  });
+
+  test("array as return value (contextual type from return annotation)", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "return-list",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    return [10, 20];
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isListValue(runResult.result!));
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 2);
+      assert.equal((list.v.get(0) as NumberValue).v, 10);
+      assert.equal((list.v.get(1) as NumberValue).v, 20);
+    }
+  });
+
+  test("nested arrays compile to nested list construction", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2, type Vector2List } from "mindcraft";
+
+export default Sensor({
+  name: "nested-list",
+  output: "Vector2List",
+  onExecute(ctx: Context): Vector2List {
+    const points: Vector2List = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
+    return points;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isListValue(runResult.result!));
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 2);
+      const first = list.v.get(0) as StructValue;
+      assert.ok(isStructValue(first));
+      assert.equal((first.v?.get("x") as NumberValue).v, 1);
+      assert.equal((first.v?.get("y") as NumberValue).v, 2);
+      const second = list.v.get(1) as StructValue;
+      assert.ok(isStructValue(second));
+      assert.equal((second.v?.get("x") as NumberValue).v, 3);
+      assert.equal((second.v?.get("y") as NumberValue).v, 4);
+    }
   });
 });

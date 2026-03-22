@@ -78,6 +78,14 @@ export function emitFunction(
       case "StructSet":
         emitter.structSet();
         break;
+      case "ListNew": {
+        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        emitter.listNew(typeIdIdx);
+        break;
+      }
+      case "ListPush":
+        emitter.listPush();
+        break;
       case "Label":
         emitter.mark(getOrAllocLabel(node.labelId));
         break;

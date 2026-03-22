@@ -14,6 +14,8 @@ export type IrNode =
   | IrMapGet
   | IrStructNew
   | IrStructSet
+  | IrListNew
+  | IrListPush
   | IrLabel
   | IrJump
   | IrJumpIfFalse
@@ -99,4 +101,13 @@ export interface IrStructNew {
 
 export interface IrStructSet {
   kind: "StructSet";
+}
+
+export interface IrListNew {
+  kind: "ListNew";
+  typeId: string;
+}
+
+export interface IrListPush {
+  kind: "ListPush";
 }

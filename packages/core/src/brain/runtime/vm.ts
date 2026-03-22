@@ -525,7 +525,7 @@ export class VM implements IVM {
         case Op.DO_END:
           return this.execDoEnd(fiber, frame);
         case Op.LIST_NEW:
-          return this.execListNew(fiber, frame);
+          return this.execListNew(fiber, ins, frame);
         case Op.LIST_PUSH:
           return this.execListPush(fiber, frame);
         case Op.LIST_GET:
@@ -947,8 +947,15 @@ export class VM implements IVM {
   }
 
   // List operations
-  private execListNew(fiber: Fiber, frame: Frame): undefined {
-    this.push(fiber, V.list(List.empty<Value>(), "list:<unknown>"));
+  private execListNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    let typeId: TypeId = "list:<unknown>";
+    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constants.size()) {
+      const typeIdVal = this.prog.constants.get(ins.b);
+      if (typeIdVal && isStringValue(typeIdVal)) {
+        typeId = typeIdVal.v;
+      }
+    }
+    this.push(fiber, V.list(List.empty<Value>(), typeId));
     frame.pc++;
     return undefined;
   }

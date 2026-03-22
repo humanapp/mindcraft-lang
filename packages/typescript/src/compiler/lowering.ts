@@ -2,6 +2,7 @@ import {
   CoreOpId,
   CoreTypeIds,
   getBrainServices,
+  type ListTypeDef,
   mkNumberValue,
   mkStringValue,
   NativeType,
@@ -584,6 +585,8 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     lowerIdentifier(expr, ctx);
   } else if (ts.isObjectLiteralExpression(expr)) {
     lowerObjectLiteral(expr, ctx);
+  } else if (ts.isArrayLiteralExpression(expr)) {
+    lowerArrayLiteral(expr, ctx);
   } else {
     ctx.diagnostics.push(makeDiag(`Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr));
   }
@@ -1009,6 +1012,60 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
     lowerExpression(prop.initializer, ctx);
     ctx.ir.push({ kind: "StructSet" });
+  }
+}
+
+function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | undefined {
+  const registry = getBrainServices().types;
+
+  const sym = arrayType.aliasSymbol ?? arrayType.getSymbol();
+  if (sym) {
+    const name = sym.getName();
+    const typeId = registry.resolveByName(name);
+    if (typeId) {
+      const def = registry.get(typeId);
+      if (def && def.coreType === NativeType.List) return def.typeId;
+    }
+  }
+
+  const checker = ctx.checker;
+  const typeArgs =
+    (arrayType as ts.TypeReference).typeArguments ?? checker.getTypeArguments(arrayType as ts.TypeReference);
+  if (!typeArgs || typeArgs.length === 0) return undefined;
+
+  const elementType = typeArgs[0];
+  const elementTypeId = tsTypeToTypeId(elementType);
+  if (!elementTypeId) return undefined;
+
+  for (const [, def] of registry.entries()) {
+    if (def.coreType === NativeType.List && (def as ListTypeDef).elementTypeId === elementTypeId) {
+      return def.typeId;
+    }
+  }
+
+  return undefined;
+}
+
+function lowerArrayLiteral(expr: ts.ArrayLiteralExpression, ctx: LowerContext): void {
+  const contextualType = ctx.checker.getContextualType(expr);
+  const resolvedType = contextualType ?? ctx.checker.getTypeAtLocation(expr);
+
+  const listTypeId = resolveListTypeId(resolvedType, ctx);
+  if (!listTypeId) {
+    ctx.diagnostics.push(
+      makeDiag(
+        "Cannot determine list type for array literal (add a type annotation or ensure the list type is registered)",
+        expr
+      )
+    );
+    return;
+  }
+
+  ctx.ir.push({ kind: "ListNew", typeId: listTypeId });
+
+  for (const element of expr.elements) {
+    lowerExpression(element, ctx);
+    ctx.ir.push({ kind: "ListPush" });
   }
 }
 
