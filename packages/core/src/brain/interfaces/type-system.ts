@@ -20,6 +20,7 @@ export enum NativeType {
   List = 6,
   Map = 7,
   Struct = 8,
+  Any = 9,
 }
 
 export function nativeTypeToString(coreType: NativeType): string {
@@ -44,6 +45,8 @@ export function nativeTypeToString(coreType: NativeType): string {
       return "map";
     case NativeType.Struct:
       return "struct";
+    case NativeType.Any:
+      return "any";
     default:
       return "invalid";
   }
@@ -114,4 +117,5 @@ export interface ITypeRegistry {
   addListType(name: string, shape: ListTypeShape): TypeId;
   addMapType(name: string, shape: MapTypeShape): TypeId;
   addStructType(name: string, shape: StructTypeShape): TypeId;
+  addAnyType(name: string): TypeId;
 }

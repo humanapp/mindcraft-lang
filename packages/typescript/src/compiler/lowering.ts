@@ -1114,6 +1114,17 @@ function tsTypeToTypeId(type: ts.Type): string | undefined {
     if (nonNullish.length === 1) {
       return tsTypeToTypeId(nonNullish[0]);
     }
+    if (nonNullish.length >= 2) {
+      const resolved = new Set<string>();
+      for (const t of nonNullish) {
+        const id = tsTypeToTypeId(t);
+        if (!id) return undefined;
+        resolved.add(id);
+      }
+      if (resolved.size >= 2) {
+        return CoreTypeIds.Any;
+      }
+    }
   }
   return undefined;
 }

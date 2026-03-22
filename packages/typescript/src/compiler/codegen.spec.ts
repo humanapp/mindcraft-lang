@@ -2763,3 +2763,147 @@ export default Sensor({
     }
   });
 });
+
+describe("mixed-type list compilation (AnyList)", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+
+    const types = getBrainServices().types;
+    const anyTypeId = mkTypeId(NativeType.Any, "any");
+    if (!types.get(anyTypeId)) {
+      types.addAnyType("any");
+    }
+
+    const anyListTypeId = mkTypeId(NativeType.List, "AnyList");
+    if (!types.get(anyListTypeId)) {
+      types.addListType("AnyList", { elementTypeId: anyTypeId });
+    }
+
+    const numListTypeId = mkTypeId(NativeType.List, "NumberList");
+    if (!types.get(numListTypeId)) {
+      const numTypeId = mkTypeId(NativeType.Number, "number");
+      types.addListType("NumberList", { elementTypeId: numTypeId });
+    }
+  });
+
+  test("mixed-type array literal compiles and executes", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type AnyList } from "mindcraft";
+
+export default Sensor({
+  name: "mixed-list",
+  output: "AnyList",
+  onExecute(ctx: Context): AnyList {
+    const arr: AnyList = [1, "hello", true];
+    return arr;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isListValue(runResult.result!), "expected list value");
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 3);
+      assert.equal((list.v.get(0) as NumberValue).v, 1);
+      assert.equal((list.v.get(1) as StringValue).v, "hello");
+      assert.equal((list.v.get(2) as BooleanValue).v, true);
+    }
+  });
+
+  test("homogeneous array still resolves to NumberList, not AnyList", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "num-list",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [1, 2, 3];
+    return nums;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isListValue(runResult.result!));
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 3);
+      assert.equal(list.typeId, mkTypeId(NativeType.List, "NumberList"));
+    }
+  });
+
+  test("empty array with AnyList annotation compiles correctly", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type AnyList } from "mindcraft";
+
+export default Sensor({
+  name: "empty-any",
+  output: "AnyList",
+  onExecute(ctx: Context): AnyList {
+    const arr: AnyList = [];
+    return arr;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isListValue(runResult.result!), "expected list value");
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 0);
+    }
+  });
+
+  test("buildAmbientDeclarations includes AnyList type alias", () => {
+    const ambientSource = buildAmbientDeclarations();
+    assert.ok(
+      ambientSource.includes("export type AnyList = ReadonlyArray<number | string | boolean | null>;"),
+      "AnyList type alias should be in ambient declarations"
+    );
+  });
+});

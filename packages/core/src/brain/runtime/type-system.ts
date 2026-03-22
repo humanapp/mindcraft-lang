@@ -3,6 +3,7 @@ import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
 import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
+import { TypeUtils } from "../../platform/types";
 import { UniqueSet } from "../../platform/uniqueset";
 import {
   CoreTypeNames,
@@ -218,6 +219,19 @@ export class TypeRegistry implements ITypeRegistry {
     return typeId;
   }
 
+  addAnyType(name: string): TypeId {
+    this.validateTypeName(name);
+    const typeId = mkTypeId(NativeType.Any, name);
+    this.validateTypeNotRegistered(typeId);
+    this.add({
+      coreType: NativeType.Any,
+      typeId,
+      codec: new AnyCodec(),
+      name,
+    });
+    return typeId;
+  }
+
   get(id: TypeId): TypeDef | undefined {
     return this.defs.get(id);
   }
@@ -241,6 +255,8 @@ export function registerCoreTypes() {
   typeRegistry.addBooleanType(CoreTypeNames.Boolean);
   typeRegistry.addNumberType(CoreTypeNames.Number);
   typeRegistry.addStringType(CoreTypeNames.String);
+  typeRegistry.addAnyType(CoreTypeNames.Any);
+  typeRegistry.addListType("AnyList", { elementTypeId: mkTypeId(NativeType.Any, CoreTypeNames.Any) });
 }
 
 // ----------------------------------------------------
@@ -303,6 +319,61 @@ class StringCodec implements TypeCodec {
   }
   stringify(value: string): string {
     return value;
+  }
+}
+
+class AnyCodec implements TypeCodec {
+  encode(w: IWriteStream, value: unknown): void {
+    if (value === undefined) {
+      w.writeU8(NativeType.Nil);
+      return;
+    }
+    if (TypeUtils.isBoolean(value)) {
+      w.writeU8(NativeType.Boolean);
+      w.writeBool(value);
+      return;
+    }
+    if (TypeUtils.isNumber(value)) {
+      w.writeU8(NativeType.Number);
+      w.writeF64(value);
+      return;
+    }
+    if (TypeUtils.isString(value)) {
+      w.writeU8(NativeType.String);
+      w.writeString(value);
+      return;
+    }
+    throw new Error("AnyCodec: unsupported value type");
+  }
+  decode(r: IReadStream): unknown {
+    const tag = r.readU8();
+    switch (tag) {
+      case NativeType.Nil:
+        return undefined;
+      case NativeType.Boolean:
+        return r.readBool();
+      case NativeType.Number:
+        return r.readF64();
+      case NativeType.String:
+        return r.readString();
+      default:
+        throw new Error(`AnyCodec: unsupported type tag ${SU.toString(tag)}`);
+    }
+  }
+  stringify(value: unknown): string {
+    if (value === undefined) {
+      return "nil";
+    }
+    if (TypeUtils.isBoolean(value)) {
+      return SU.toString(value);
+    }
+    if (TypeUtils.isNumber(value)) {
+      return SU.toString(value);
+    }
+    if (TypeUtils.isString(value)) {
+      return value;
+    }
+    return "unknown";
   }
 }
 

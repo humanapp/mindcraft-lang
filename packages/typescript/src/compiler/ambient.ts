@@ -90,6 +90,8 @@ function typeDefToTs(def: TypeDef): string {
       return "number";
     case NativeType.String:
       return "string";
+    case NativeType.Any:
+      return "number | string | boolean | null";
     case NativeType.Struct:
     case NativeType.Enum:
       return def.name;
@@ -131,7 +133,7 @@ function generateStructInterface(def: StructTypeDef): string {
   return result;
 }
 
-const CORE_TYPE_NAMES = new Set(["boolean", "number", "string", "void", "nil", "unknown"]);
+const CORE_TYPE_NAMES = new Set(["boolean", "number", "string", "void", "nil", "unknown", "any"]);
 
 function isEnumTypeDef(def: TypeDef): def is EnumTypeDef {
   return def.coreType === NativeType.Enum;

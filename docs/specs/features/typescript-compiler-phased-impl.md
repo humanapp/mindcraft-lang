@@ -37,7 +37,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-21) Phases 0-12 are complete.
+- (Updated 2026-03-22) Phases 0-12.1 are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -63,7 +63,12 @@ not survive. Keep this doc current.
   compilation to `STRUCT_NEW` / `STRUCT_SET` bytecode (contextual type resolution,
   nested struct support, native-backed struct rejection), and array literal
   compilation to `LIST_NEW` / `LIST_PUSH` bytecode (contextual/alias type
-  resolution, element-type matching fallback, nested struct-in-list support).
+  resolution, element-type matching fallback, nested struct-in-list support),
+  `NativeType.Any` with tagged `AnyCodec` (self-contained encode/decode for
+  nil/boolean/number/string via `TypeUtils` discrimination), `AnyList`
+  registration in `registerCoreTypes()`, `tsTypeToTypeId` union-to-Any
+  resolution (multi-member unions map to `CoreTypeIds.Any`), and mixed-type
+  array literal compilation (`[1, "hello", true]` resolves to `AnyList`).
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientDeclarations`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
@@ -3127,3 +3132,80 @@ ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
    loop) iterates over list-typed values. The `resolveListTypeId` function and the
    list type infrastructure established here will be useful for resolving the iterable
    type in `for...of` desugaring.
+
+### Phase 12.1 -- 2026-03-22
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned | Actual | Notes |
+| --- | --- | --- |
+| `NativeType.Any = 9` enum member | Done | -- |
+| `CoreTypeNames.Any`, `CoreTypeIds.Any` | Done | `CoreTypeIds.Any = "any:<any>"` |
+| `AnyCodec` (tagged encode/decode, self-contained) | Done | Uses `TypeUtils.isBoolean/isNumber/isString` for type discrimination (Roblox-safe, no `typeof`). `null` check removed -- Roblox doesn't support `null`, only `undefined` maps to nil. |
+| `ITypeRegistry.addAnyType(name)` | Done | -- |
+| `TypeRegistry.addAnyType(name)` implementation | Done | -- |
+| `registerCoreTypes()` registers `Any` + `AnyList` | Done | -- |
+| `typeDefToTs()` handles `NativeType.Any` | Done | Emits `"number \| string \| boolean \| null"` |
+| `CORE_TYPE_NAMES` skip set updated | Done | Added `"any"` so the `Any` type itself is skipped (no ambient declaration emitted for it) |
+| `AnyList` ambient type generation | Done | Handled by existing List branch: `export type AnyList = ReadonlyArray<number \| string \| boolean \| null>` |
+| `tsTypeToTypeId()` union -> `Any` | Done | Filters nullish members, resolves remaining; if 2+ distinct TypeIds, returns `CoreTypeIds.Any` |
+| `resolveListTypeId()` fallback to `AnyList` | Not needed | Existing element-type matching loop already finds `AnyList` when `tsTypeToTypeId` returns `CoreTypeIds.Any` -- no code change required |
+| Mixed-type array compiles and executes | Done | -- |
+| `codegen.spec.ts` tests | Done | 4 new tests |
+| `type-system.spec.ts` tests (core) | Done | 12 new tests (new file created) |
+
+**Acceptance criteria results:**
+
+| Criterion | Result |
+| --- | --- |
+| `NativeType.Any` has value `9`, `nativeTypeToString` returns `"any"` | Pass |
+| `AnyCodec` round-trips nil, boolean, number, string | Pass |
+| `AnyCodec.stringify` correct for each type | Pass |
+| `AnyCodec.encode` throws for unsupported types | Pass |
+| `registerCoreTypes()` registers `Any` and `AnyList` | Pass |
+| `buildAmbientDeclarations()` includes `AnyList` type alias | Pass |
+| `[1, "hello", true]` compiles + executes, produces 3-element list | Pass |
+| `[1, 2, 3]` still resolves to `NumberList` (regression) | Pass |
+| `tsTypeToTypeId` returns `CoreTypeIds.Any` for multi-type union | Pass (tested indirectly via mixed-type array compilation) |
+| Empty `AnyList`-annotated array compiles | Pass |
+
+**Extra work:**
+
+- Created `packages/core/src/brain/runtime/type-system.spec.ts` (new file, not in
+  planned file list) with 12 tests covering `NativeType.Any` enum, `AnyCodec`
+  encode/decode/stringify, unsupported-type rejection, and `registerCoreTypes`
+  registration verification.
+
+**Discoveries:**
+
+1. **`resolveListTypeId()` required no changes.** The spec planned an explicit fallback
+   for `CoreTypeIds.Any` in `resolveListTypeId()`, but the existing element-type
+   matching loop (`scan registry for list type whose elementTypeId matches`) already
+   finds the `AnyList` type when `tsTypeToTypeId` returns `CoreTypeIds.Any`. The
+   difference vs Phase 12 is that `tsTypeToTypeId` now returns a value for union types
+   instead of `undefined`.
+
+2. **Roblox `null` constraint.** The `AnyCodec` originally had `value === null` checks,
+   but `rbxtsc` rejects `null` (`"null is not supported! Use undefined instead.`).
+   Only `value === undefined` is used for nil detection. This is consistent with other
+   codecs in the file (none use `null`).
+
+3. **`TypeUtils` required for type discrimination.** The codebase rules prohibit
+   `typeof x === "string"` in shared code. `AnyCodec` uses `TypeUtils.isBoolean()`,
+   `TypeUtils.isNumber()`, `TypeUtils.isString()` from `platform/types.ts` for
+   self-contained type dispatch. This import was added to `type-system.ts`.
+
+4. **`MemoryStream.resetRead()` not `resetReadPosition()`.** The method name for
+   resetting the stream read cursor is `resetRead()`, per the platform stream API.
+
+5. **Pre-existing test failure.** The `"actuator with async exec extracts async flag"`
+   test in `compile.spec.ts` was already failing (120/121) before Phase 12.1 due to a
+   `Promise<void>` type mismatch between the ambient `AMBIENT_HEADER`'s custom
+   `Promise` interface and the lib's built-in Promise. Not caused by this phase.
+
+**Test counts:**
+
+- packages/core: 441 total (429 prev + 12 new), 0 failures
+- packages/typescript: 125 total (121 prev + 4 new), 1 pre-existing failure

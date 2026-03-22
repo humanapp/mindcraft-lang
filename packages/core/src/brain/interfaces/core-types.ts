@@ -11,6 +11,7 @@ export const CoreTypeNames = {
   Boolean: "boolean",
   Number: "number",
   String: "string",
+  Any: "any",
 };
 
 export const CoreTypeIds = {
@@ -20,4 +21,5 @@ export const CoreTypeIds = {
   Boolean: mkTypeId(NativeType.Boolean, CoreTypeNames.Boolean),
   Number: mkTypeId(NativeType.Number, CoreTypeNames.Number),
   String: mkTypeId(NativeType.String, CoreTypeNames.String),
+  Any: mkTypeId(NativeType.Any, CoreTypeNames.Any),
 };
