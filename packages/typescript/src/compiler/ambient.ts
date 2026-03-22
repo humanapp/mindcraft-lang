@@ -1,3 +1,6 @@
+import type { EnumTypeDef, ListTypeDef, MapTypeDef, StructTypeDef, TypeDef } from "@mindcraft-lang/core/brain";
+import { getBrainServices, NativeType } from "@mindcraft-lang/core/brain";
+
 const AMBIENT_HEADER = `
 interface Promise<T> {
   then<TResult1 = T, TResult2 = never>(
@@ -71,14 +74,103 @@ const AMBIENT_MODULE_END = `
 }
 `;
 
-export function buildAmbientSource(appTypeEntries?: string[]): string {
-  let typeMapExtras = "";
-  if (appTypeEntries) {
-    for (const entry of appTypeEntries) {
-      typeMapExtras += `    ${entry}\n`;
-    }
-  }
-  return AMBIENT_HEADER + AMBIENT_MODULE_START + typeMapExtras + AMBIENT_MODULE_END;
+function isStructTypeDef(def: TypeDef): def is StructTypeDef {
+  return def.coreType === NativeType.Struct;
 }
 
-export const AMBIENT_MINDCRAFT_DTS = buildAmbientSource();
+function isNativeBacked(def: StructTypeDef): boolean {
+  return def.fieldGetter !== undefined || def.fieldSetter !== undefined || def.snapshotNative !== undefined;
+}
+
+function typeDefToTs(def: TypeDef): string {
+  switch (def.coreType) {
+    case NativeType.Boolean:
+      return "boolean";
+    case NativeType.Number:
+      return "number";
+    case NativeType.String:
+      return "string";
+    case NativeType.Struct:
+    case NativeType.Enum:
+      return def.name;
+    case NativeType.List:
+      return `ReadonlyArray<${typeIdToTs((def as ListTypeDef).elementTypeId)}>`;
+    case NativeType.Map:
+      return `Record<string, ${typeIdToTs((def as MapTypeDef).valueTypeId)}>`;
+    default:
+      return "unknown";
+  }
+}
+
+function typeIdToTs(typeId: string): string {
+  const def = getBrainServices().types.get(typeId);
+  if (!def) return "unknown";
+  return typeDefToTs(def);
+}
+
+function needsQuoting(name: string): boolean {
+  return !/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
+}
+
+function generateStructInterface(def: StructTypeDef): string {
+  const nativeBacked = isNativeBacked(def);
+  let result = `  export interface ${def.name} {\n`;
+  if (nativeBacked) {
+    result += "    readonly __brand: unique symbol;\n";
+  }
+  def.fields.forEach((field) => {
+    const tsType = typeIdToTs(field.typeId);
+    const fieldName = needsQuoting(field.name) ? `"${field.name}"` : field.name;
+    if (nativeBacked) {
+      result += `    readonly ${fieldName}: ${tsType};\n`;
+    } else {
+      result += `    ${fieldName}: ${tsType};\n`;
+    }
+  });
+  result += "  }\n";
+  return result;
+}
+
+const CORE_TYPE_NAMES = new Set(["boolean", "number", "string", "void", "nil", "unknown"]);
+
+function isEnumTypeDef(def: TypeDef): def is EnumTypeDef {
+  return def.coreType === NativeType.Enum;
+}
+
+function generateEnumType(def: EnumTypeDef): string {
+  const members: string[] = [];
+  def.symbols.forEach((sym) => {
+    members.push(`"${sym.key}"`);
+  });
+  return `  export type ${def.name} = ${members.join(" | ") || "never"};\n`;
+}
+
+export function buildAmbientDeclarations(): string {
+  const registry = getBrainServices().types;
+  let typeDeclarations = "";
+  let typeMapEntries = "";
+
+  for (const [, def] of registry.entries()) {
+    if (CORE_TYPE_NAMES.has(def.name)) continue;
+
+    if (isStructTypeDef(def)) {
+      typeDeclarations += generateStructInterface(def);
+      typeMapEntries += `    ${def.name}: ${def.name};\n`;
+    } else if (isEnumTypeDef(def)) {
+      typeDeclarations += generateEnumType(def);
+      typeMapEntries += `    ${def.name}: ${def.name};\n`;
+    } else if (
+      def.coreType === NativeType.Boolean ||
+      def.coreType === NativeType.Number ||
+      def.coreType === NativeType.String
+    ) {
+      typeMapEntries += `    ${def.name}: ${typeDefToTs(def)};\n`;
+    } else if (def.coreType === NativeType.List || def.coreType === NativeType.Map) {
+      const tsType = typeDefToTs(def);
+      typeDeclarations += `  export type ${def.name} = ${tsType};\n`;
+      typeMapEntries += `    ${def.name}: ${def.name};\n`;
+    }
+  }
+
+  return AMBIENT_HEADER + AMBIENT_MODULE_START + typeMapEntries + typeDeclarations + AMBIENT_MODULE_END;
+}

@@ -21,7 +21,7 @@ import {
   ValueDict,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
-import { buildAmbientSource } from "./ambient.js";
+import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile, initCompiler } from "./compile.js";
 
@@ -290,7 +290,10 @@ export default Sensor({
   });
 
   test("invalid output type produces diagnostic for unregistered type", () => {
-    const appAmbient = buildAmbientSource(["unknownType: unknown;"]);
+    const appAmbient = buildAmbientDeclarations().replace(
+      "string: string;",
+      "string: string;\n    unknownType: unknown;"
+    );
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -317,7 +320,7 @@ export default Sensor({
         fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number") }]),
       });
     }
-    const appAmbient = buildAmbientSource(["actorRef: unknown;"]);
+    const appAmbient = buildAmbientDeclarations();
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -337,7 +340,7 @@ export default Sensor({
     assert.equal(result.program!.outputType, "struct:<actorRef>");
   });
 
-  test("app-defined output type without ambient injection produces TS error", () => {
+  test("app-defined output type resolves without explicit ambientSource", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -350,11 +353,9 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source);
-    assert.ok(result.diagnostics.length > 0);
-    assert.ok(
-      result.diagnostics.some((d) => d.message.includes("actorRef")),
-      `Expected diagnostic mentioning actorRef but got: ${JSON.stringify(result.diagnostics)}`
-    );
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+    assert.equal(result.program!.outputType, "struct:<actorRef>");
   });
 });
 

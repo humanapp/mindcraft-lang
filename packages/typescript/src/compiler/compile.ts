@@ -1,7 +1,7 @@
 import { List } from "@mindcraft-lang/core";
 import { compiler, getBrainServices } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
-import { AMBIENT_MINDCRAFT_DTS, buildAmbientSource } from "./ambient.js";
+import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
 import { emitFunction } from "./emit.js";
@@ -47,7 +47,7 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
     files.set(`${LIB_DIR}${name}`, content);
   }
 
-  files.set("/mindcraft.d.ts", options?.ambientSource ?? AMBIENT_MINDCRAFT_DTS);
+  files.set("/mindcraft.d.ts", options?.ambientSource ?? buildAmbientDeclarations());
   files.set("/user-code.ts", source);
 
   const host = createVirtualCompilerHost(files, checkerOptions);

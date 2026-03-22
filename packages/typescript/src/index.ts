@@ -1,4 +1,4 @@
-export { buildAmbientSource } from "./compiler/ambient.js";
+export { buildAmbientDeclarations } from "./compiler/ambient.js";
 export type {
   CompileDiagnostic,
   CompileOptions,
