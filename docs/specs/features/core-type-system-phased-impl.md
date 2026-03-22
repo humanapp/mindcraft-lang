@@ -8,6 +8,14 @@ Focused on `packages/core` type system infrastructure, with compiler integration
 
 ---
 
+## Backward Compatibility
+
+Backward compatibility is not a concern for this work. These changes will likely break
+serialization (e.g., codec formats, type IDs, brain save data), and that is acceptable.
+Do not let backward compatibility considerations constrain design decisions.
+
+---
+
 ## Workflow Convention
 
 Each phase follows this loop:
@@ -40,8 +48,7 @@ not survive. Keep this doc current.
 
 - (Written 2026-03-22) No phases have been started.
 - Phase 12.1 from the TypeScript compiler phased impl (prerequisite `NativeType.Any`,
-  `AnyCodec`, `AnyList`) has not yet been implemented. It must be completed before
-  Phase 1 of this plan.
+  `AnyCodec`, `AnyList`) has now been implemented. Unblocking Phase 1 of this plan.
 - The core type system is as described in `core-type-system-evolution.md` -- all types
   are concrete, all containers are homogeneous, the full set of types is known at
   compile time. `NativeType` goes up to `Any = 9`.
