@@ -10,6 +10,8 @@ import {
   CoreTypeNames,
   type EnumTypeDef,
   type EnumTypeShape,
+  type FunctionTypeDef,
+  type FunctionTypeShape,
   type ITypeRegistry,
   type ListTypeDef,
   type ListTypeShape,
@@ -307,6 +309,30 @@ export class TypeRegistry implements ITypeRegistry {
     def.name = constructedName;
     def.autoInstantiated = true;
     this.add(def);
+    return typeId;
+  }
+
+  getOrCreateFunctionType(shape: FunctionTypeShape): TypeId {
+    const parts: string[] = [];
+    shape.paramTypeIds.forEach((pid) => {
+      parts.push(pid);
+    });
+    const paramsStr = parts.join(",");
+    const canonicalName = `Function<(${paramsStr})=>${shape.returnTypeId}>`;
+    const typeId = mkTypeId(NativeType.Function, canonicalName);
+    if (this.defs.has(typeId)) {
+      return typeId;
+    }
+    const fnDef: FunctionTypeDef = {
+      coreType: NativeType.Function,
+      typeId,
+      codec: new FunctionCodec(),
+      name: canonicalName,
+      autoInstantiated: true,
+      paramTypeIds: shape.paramTypeIds,
+      returnTypeId: shape.returnTypeId,
+    };
+    this.add(fnDef);
     return typeId;
   }
 

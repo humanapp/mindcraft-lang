@@ -98,6 +98,16 @@ not survive. Keep this doc current.
   `"<coreType>:<Constructor<arg1,arg2>>"` (e.g., `"list:<List<number:<number>>>"`).
 - Union TypeId convention:
   `"union:<member1,member2,...>"` (e.g., `"union:<boolean:<boolean>,number:<number>>"`).
+- (Written 2026-03-23) Phase 7 (type-level function signatures) is complete.
+  `FunctionTypeShape` (`paramTypeIds`, `returnTypeId`) and `FunctionTypeDef`
+  interfaces added. `ITypeRegistry.getOrCreateFunctionType(shape)` creates
+  memoized function types with canonical key
+  `Function<(param1,param2,...)=>returnTypeId>`. `tsTypeToTypeId()` now accepts
+  an optional `checker` parameter and resolves call signatures to specific
+  `FunctionTypeDef` TypeIds (falls back to generic `CoreTypeIds.Function`
+  without checker). Ambient generation emits `(arg0: T) => R` arrow syntax.
+  `ts.TypeFlags.Void` now maps to `CoreTypeIds.Void` (not `Nil`), enabling
+  correct `void` rendering in function return types.
 - Operator overloads and conversions still use exact `TypeId` matching in the core
   registry. The TS compiler's lowering pass handles nullable unwrapping and union
   expansion as fallbacks when exact match fails.
@@ -1087,7 +1097,7 @@ it (extra fields are harmless, `GET_FIELD` returns `NIL_VALUE` for missing field
 | 4     | `typeof` lowering              | Phase 12.1         | Small-medium | Not started |
 | 5     | First-class function refs      | Phase 3            | Medium       | Complete    |
 | 6     | Closures                       | Phase 5            | High         | Complete    |
-| 7     | Type-level function signatures | Phase 5            | Small-medium | Not started |
+| 7     | Type-level function signatures | Phase 5            | Small-medium | Complete    |
 | 8     | Structural subtyping           | None (independent) | Low-medium   | Not started |
 
 Phase 12.1 is tracked in the TypeScript compiler phased impl doc and is
@@ -1558,3 +1568,53 @@ signatures). Added element access and five list methods to the TypeScript compil
 
 **All acceptance criteria passed.** All builds (Node, ESM, Roblox-TS) succeed.
 501 core tests pass (498 prev + 3 new), 160 typescript tests pass (149 prev + 11 new).
+
+### Phase 7: Type-level function signatures (completed 2026-03-23)
+
+**Planned vs actual:**
+
+All 4 concrete deliverables were delivered as specified. Two unplanned additions
+were required:
+
+1. `tsTypeToTypeId()` signature changed to accept optional `checker?: ts.TypeChecker`
+   parameter. The spec said "call `registry.getOrCreateFunctionType(shape)`" but
+   did not address how the lowering function obtains parameter types from a
+   `ts.Signature`. Resolving parameter types requires `checker.getTypeOfSymbol(param)`.
+   The function was previously standalone with no checker access. All 8 external
+   call sites updated to pass `ctx.checker`.
+
+2. `ts.TypeFlags.Void` handling added to `tsTypeToTypeId()`. Previously, `void`
+   return types fell through to `undefined` (unresolvable). Now returns
+   `CoreTypeIds.Void`, enabling function types with `void` return to render
+   correctly as `(arg0: number) => void` in ambient output instead of falling
+   back to the generic `Function` type. Also added `NativeType.Void` and
+   `NativeType.Nil` cases to `typeDefToTs()` in ambient.ts for completeness.
+
+**API decisions:**
+
+- Spec suggested overloading `addFunctionType(name, shape)` or using generic
+  constructors. Chose dedicated `getOrCreateFunctionType(shape)` as spec
+  recommended. The existing `addFunctionType(name)` from Phase 5 remains
+  unchanged (creates the generic `Function` type).
+- Memoization key format: `Function<(paramTypeId1,paramTypeId2,...)=>returnTypeId>`.
+  Deterministic because TypeIds are already canonical strings.
+- Auto-instantiated function types have `autoInstantiated: true`, so
+  `buildAmbientDeclarations` skips them (no named type aliases generated).
+
+**Closure function naming (risk from Phase 6 post-mortem):**
+
+Closure functions with synthetic names like `<closure#N>` are not involved in
+function type resolution. `tsTypeToTypeId` resolves the TS type (call signature)
+of the expression, not the function entry name. The closure's TS type has
+call signatures with typed parameters, so resolution works correctly via
+`type.getCallSignatures()`. No special handling needed.
+
+**Not changed (spec mentioned but unnecessary):**
+
+- No changes to `addFunctionType(name)` -- the Phase 5 method remains for
+  registering the generic `Function` type.
+- No changes to the brain compiler -- function types are a TS-compiler-only
+  feature.
+
+**All acceptance criteria passed.** All builds (Node, ESM, Roblox-TS) succeed.
+507 core tests pass (501 prev + 6 new), 164 typescript tests pass (160 prev + 4 new).

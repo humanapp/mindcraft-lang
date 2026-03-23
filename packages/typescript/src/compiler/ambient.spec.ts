@@ -170,4 +170,17 @@ export default Sensor({
     const matches = ambient.match(/boolean: boolean;/g);
     assert.equal(matches?.length, 1, "boolean should appear exactly once in MindcraftTypeMap");
   });
+
+  test("function type emits arrow syntax in typeDefToTs", () => {
+    const types = getBrainServices().types;
+    const fnId = types.getOrCreateFunctionType({
+      paramTypeIds: List.from([mkTypeId(NativeType.Number, "number")]),
+      returnTypeId: mkTypeId(NativeType.Number, "number"),
+    });
+    const def = types.get(fnId)!;
+    assert.ok(def);
+    assert.equal(def.autoInstantiated, true);
+    const ambient = buildAmbientDeclarations();
+    assert.ok(!ambient.includes(def.name), "auto-instantiated function types should not appear in ambient output");
+  });
 });

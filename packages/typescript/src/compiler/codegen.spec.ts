@@ -4045,3 +4045,108 @@ export default Sensor({
     }
   });
 });
+
+// ---- Function type signatures ----
+
+describe("function type signatures", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+  });
+
+  test("callback parameter gets typed FunctionTypeDef TypeId", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function apply(fn: (n: number) => number, x: number): number {
+  return fn(x);
+}
+
+function double(n: number): number {
+  return n * 2;
+}
+
+export default Sensor({
+  name: "test-fn-sig",
+  output: "number",
+  params: {
+    val: { type: "number", default: 5 },
+  },
+  onExecute(ctx: Context, params: { val: number }): number {
+    return apply(double, params.val);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const args = mkArgsMap({ 0: mkNumberValue(5) });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 10);
+    }
+  });
+
+  test("different callback signatures resolve to different function TypeIds", () => {
+    const registry = getBrainServices().types;
+    const id1 = registry.getOrCreateFunctionType({
+      paramTypeIds: List.from([CoreTypeIds.Number]),
+      returnTypeId: CoreTypeIds.Number,
+    });
+    const id2 = registry.getOrCreateFunctionType({
+      paramTypeIds: List.from([CoreTypeIds.String]),
+      returnTypeId: CoreTypeIds.Boolean,
+    });
+    assert.notEqual(id1, id2);
+    const def1 = registry.get(id1)!;
+    const def2 = registry.get(id2)!;
+    assert.equal(def1.coreType, NativeType.Function);
+    assert.equal(def2.coreType, NativeType.Function);
+  });
+
+  test("closure with typed callback compiles and runs correctly", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function makeTransformer(factor: number): (x: number) => number {
+  return (x: number): number => x * factor;
+}
+
+export default Sensor({
+  name: "test-closure-sig",
+  output: "number",
+  params: {
+    val: { type: "number", default: 3 },
+  },
+  onExecute(ctx: Context, params: { val: number }): number {
+    const t = makeTransformer(10);
+    return t(params.val);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const args = mkArgsMap({ 0: mkNumberValue(3) });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 30);
+    }
+  });
+});

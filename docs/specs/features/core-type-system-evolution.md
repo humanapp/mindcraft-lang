@@ -626,6 +626,15 @@ interface FunctionTypeShape {
 This enables type-checking of function arguments, return values, and callback
 types at compile time.
 
+> **Amendment (2025-06-26):** Implementation used `paramTypeIds: List<TypeId>`
+> and `returnTypeId: TypeId` (naming consistent with `elementTypeId` in
+> `ListTypeShape`). `tsTypeToTypeId` in `lowering.ts` needed an optional
+> `checker?: ts.TypeChecker` parameter threaded from `LowerContext` to resolve
+> call-signature parameter/return types. `ts.TypeFlags.Void` -> `CoreTypeIds.Void`
+> mapping was also required for void-returning callbacks. Ambient generation
+> (`typeDefToTs`) added Void -> `"void"`, Nil -> `"null"`, and Function arrow
+> syntax cases.
+
 **Files touched:**
 
 Phase A:

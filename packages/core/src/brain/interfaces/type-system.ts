@@ -124,6 +124,13 @@ export interface UnionTypeShape {
 
 export type UnionTypeDef = TypeDef & UnionTypeShape;
 
+export interface FunctionTypeShape {
+  paramTypeIds: List<TypeId>;
+  returnTypeId: TypeId;
+}
+
+export type FunctionTypeDef = TypeDef & FunctionTypeShape;
+
 export interface TypeConstructor {
   name: string;
   arity: number;
@@ -150,4 +157,5 @@ export interface ITypeRegistry {
   registerConstructor(ctor: TypeConstructor): void;
   instantiate(constructorName: string, args: List<TypeId>): TypeId;
   getOrCreateUnionType(memberTypeIds: List<TypeId>): TypeId;
+  getOrCreateFunctionType(shape: FunctionTypeShape): TypeId;
 }

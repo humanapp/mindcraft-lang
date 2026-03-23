@@ -5,6 +5,7 @@ import { List, stream } from "@mindcraft-lang/core";
 import {
   CoreTypeIds,
   CoreTypeNames,
+  type FunctionTypeDef,
   getBrainServices,
   type ListTypeDef,
   type MapTypeDef,
@@ -522,5 +523,80 @@ describe("UnionCodec", () => {
     const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     const def = registry.get(unionId)!;
     assert.equal(def.autoInstantiated, true);
+  });
+});
+
+describe("getOrCreateFunctionType", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("returns a stable TypeId for the same signature", () => {
+    const registry = getBrainServices().types;
+    const shape = { paramTypeIds: List.from([CoreTypeIds.Number]), returnTypeId: CoreTypeIds.Number };
+    const id1 = registry.getOrCreateFunctionType(shape);
+    const id2 = registry.getOrCreateFunctionType(shape);
+    assert.equal(id1, id2);
+  });
+
+  test("different signatures produce different TypeIds", () => {
+    const registry = getBrainServices().types;
+    const id1 = registry.getOrCreateFunctionType({
+      paramTypeIds: List.from([CoreTypeIds.Number]),
+      returnTypeId: CoreTypeIds.Number,
+    });
+    const id2 = registry.getOrCreateFunctionType({
+      paramTypeIds: List.from([CoreTypeIds.String]),
+      returnTypeId: CoreTypeIds.Boolean,
+    });
+    assert.notEqual(id1, id2);
+  });
+
+  test("def has coreType Function and autoInstantiated flag", () => {
+    const registry = getBrainServices().types;
+    const id = registry.getOrCreateFunctionType({
+      paramTypeIds: List.from([CoreTypeIds.Number, CoreTypeIds.String]),
+      returnTypeId: CoreTypeIds.Boolean,
+    });
+    const def = registry.get(id)!;
+    assert.ok(def);
+    assert.equal(def.coreType, NativeType.Function);
+    assert.equal(def.autoInstantiated, true);
+  });
+
+  test("def carries paramTypeIds and returnTypeId", () => {
+    const registry = getBrainServices().types;
+    const id = registry.getOrCreateFunctionType({
+      paramTypeIds: List.from([CoreTypeIds.Number]),
+      returnTypeId: CoreTypeIds.String,
+    });
+    const def = registry.get(id) as FunctionTypeDef;
+    assert.ok(def);
+    assert.equal(def.paramTypeIds.size(), 1);
+    assert.equal(def.paramTypeIds.get(0), CoreTypeIds.Number);
+    assert.equal(def.returnTypeId, CoreTypeIds.String);
+  });
+
+  test("zero-parameter function type works", () => {
+    const registry = getBrainServices().types;
+    const id = registry.getOrCreateFunctionType({
+      paramTypeIds: List.from([]),
+      returnTypeId: CoreTypeIds.Number,
+    });
+    const def = registry.get(id) as FunctionTypeDef;
+    assert.ok(def);
+    assert.equal(def.paramTypeIds.size(), 0);
+    assert.equal(def.returnTypeId, CoreTypeIds.Number);
+  });
+
+  test("codec is non-serializable (throws on encode)", () => {
+    const registry = getBrainServices().types;
+    const id = registry.getOrCreateFunctionType({
+      paramTypeIds: List.from([CoreTypeIds.Number]),
+      returnTypeId: CoreTypeIds.Number,
+    });
+    const def = registry.get(id)!;
+    const s = new MemoryStream();
+    assert.throws(() => def.codec.encode(s, {}));
   });
 });

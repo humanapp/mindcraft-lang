@@ -1,5 +1,6 @@
 import type {
   EnumTypeDef,
+  FunctionTypeDef,
   ListTypeDef,
   MapTypeDef,
   NullableTypeDef,
@@ -112,6 +113,10 @@ function typeDefToTs(def: TypeDef): string {
     return parts.join(" | ");
   }
   switch (def.coreType) {
+    case NativeType.Void:
+      return "void";
+    case NativeType.Nil:
+      return "null";
     case NativeType.Boolean:
       return "boolean";
     case NativeType.Number:
@@ -129,6 +134,19 @@ function typeDefToTs(def: TypeDef): string {
     }
     case NativeType.Map:
       return `Record<string, ${typeIdToTs((def as MapTypeDef).valueTypeId)}>`;
+    case NativeType.Function: {
+      const fnDef = def as FunctionTypeDef;
+      if (fnDef.paramTypeIds) {
+        const params: string[] = [];
+        let i = 0;
+        fnDef.paramTypeIds.forEach((pid) => {
+          params.push(`arg${i}: ${typeIdToTs(pid)}`);
+          i++;
+        });
+        return `(${params.join(", ")}) => ${typeIdToTs(fnDef.returnTypeId)}`;
+      }
+      return "Function";
+    }
     default:
       return "unknown";
   }

@@ -1023,8 +1023,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
     const lhsType = ctx.checker.getTypeAtLocation(expr.left);
     const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-    const lhsTypeId = tsTypeToTypeId(lhsType);
-    const rhsTypeId = tsTypeToTypeId(rhsType);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
 
     if (!lhsTypeId || !rhsTypeId) {
       ctx.diagnostics.push(makeDiag("Cannot determine types for compound assignment", expr));
@@ -1074,7 +1074,7 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
   } else if (expr.operator === ts.SyntaxKind.ExclamationToken) {
     lowerExpression(expr.operand, ctx);
     const operandType = ctx.checker.getTypeAtLocation(expr.operand);
-    const operandTypeId = tsTypeToTypeId(operandType);
+    const operandTypeId = tsTypeToTypeId(operandType, ctx.checker);
     if (!operandTypeId) {
       ctx.diagnostics.push(makeDiag("Cannot determine type for `!` operand", expr));
       return;
@@ -1160,7 +1160,7 @@ function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
 function emitToStringIfNeeded(exprNode: ts.Expression, ctx: LowerContext): void {
   const exprType = ctx.checker.getTypeAtLocation(exprNode);
-  const typeId = tsTypeToTypeId(exprType);
+  const typeId = tsTypeToTypeId(exprType, ctx.checker);
   if (!typeId) {
     ctx.diagnostics.push(makeDiag("Cannot convert expression to string: unable to determine type", exprNode));
     return;
@@ -1394,7 +1394,7 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType);
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker);
   const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId]) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(makeDiag("Cannot resolve === operator for .indexOf()", expr));
@@ -1677,8 +1677,8 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
   const lhsType = ctx.checker.getTypeAtLocation(expr.left);
   const rhsType = ctx.checker.getTypeAtLocation(expr.right);
 
-  const lhsTypeId = tsTypeToTypeId(lhsType);
-  const rhsTypeId = tsTypeToTypeId(rhsType);
+  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
+  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
 
   if (!lhsTypeId || !rhsTypeId) {
     ctx.diagnostics.push(makeDiag("Cannot determine types for binary operator", expr));
@@ -1804,7 +1804,7 @@ function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | unde
   if (!typeArgs || typeArgs.length === 0) return undefined;
 
   const elementType = typeArgs[0];
-  const elementTypeId = tsTypeToTypeId(elementType);
+  const elementTypeId = tsTypeToTypeId(elementType, ctx.checker);
   if (!elementTypeId) return undefined;
 
   return registry.instantiate("List", List.from([elementTypeId]));
@@ -1877,7 +1877,7 @@ function expandTypeIdMembers(typeId: string): string[] {
   return [typeId];
 }
 
-function tsTypeToTypeId(type: ts.Type): string | undefined {
+function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undefined {
   if (type.flags & ts.TypeFlags.NumberLike) {
     return CoreTypeIds.Number;
   }
@@ -1890,14 +1890,43 @@ function tsTypeToTypeId(type: ts.Type): string | undefined {
   if (type.flags & ts.TypeFlags.Null || type.flags & ts.TypeFlags.Undefined) {
     return CoreTypeIds.Nil;
   }
-  if (type.getCallSignatures().length > 0) {
+  if (type.flags & ts.TypeFlags.Void) {
+    return CoreTypeIds.Void;
+  }
+  const callSigs = type.getCallSignatures();
+  if (callSigs.length > 0 && checker) {
+    const sig = callSigs[0];
+    const paramTypeIds = new List<string>();
+    let allResolved = true;
+    for (const param of sig.parameters) {
+      const paramType = checker.getTypeOfSymbol(param);
+      const paramTid = tsTypeToTypeId(paramType, checker);
+      if (!paramTid) {
+        allResolved = false;
+        break;
+      }
+      paramTypeIds.push(paramTid);
+    }
+    if (allResolved) {
+      const retType = sig.getReturnType();
+      const retTid = tsTypeToTypeId(retType, checker);
+      if (retTid) {
+        return getBrainServices().types.getOrCreateFunctionType({
+          paramTypeIds,
+          returnTypeId: retTid,
+        });
+      }
+    }
+    return CoreTypeIds.Function;
+  }
+  if (callSigs.length > 0) {
     return CoreTypeIds.Function;
   }
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     const hasNullish = nonNullish.length < type.types.length;
     if (nonNullish.length === 1) {
-      const baseTypeId = tsTypeToTypeId(nonNullish[0]);
+      const baseTypeId = tsTypeToTypeId(nonNullish[0], checker);
       if (!baseTypeId) return undefined;
       if (hasNullish) {
         return getBrainServices().types.addNullableType(baseTypeId);
@@ -1907,7 +1936,7 @@ function tsTypeToTypeId(type: ts.Type): string | undefined {
     if (nonNullish.length >= 2) {
       const memberIds = new List<string>();
       for (const t of nonNullish) {
-        const id = tsTypeToTypeId(t);
+        const id = tsTypeToTypeId(t, checker);
         if (!id) return CoreTypeIds.Any;
         memberIds.push(id);
       }
