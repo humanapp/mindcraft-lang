@@ -77,9 +77,11 @@ function copyPlatformFiles(dir, mappings, transformer) {
 
       console.log(chalk.gray(`Deleting ${platformFile}`));
       fs.unlinkSync(platformPath);
-    } else {
+    } else if (!fs.existsSync(genericPath)) {
+      // Platform file missing and generic output also absent -- true error.
       missing.push(platformFile);
     }
+    // else: platform file already processed by a prior incremental build run.
   }
 
   if (missing.length > 0) {
