@@ -97,6 +97,8 @@ export interface StructTypeShape {
     name: string;
     typeId: TypeId;
   }>;
+  /** If true, the struct requires exact TypeId match (no structural subtyping). */
+  nominal?: boolean;
   /** If provided, GET_FIELD delegates to this instead of Dict lookup. */
   fieldGetter?: StructFieldGetterFn;
   /** If provided, SET_FIELD delegates to this instead of Dict mutation. */
@@ -158,4 +160,5 @@ export interface ITypeRegistry {
   instantiate(constructorName: string, args: List<TypeId>): TypeId;
   getOrCreateUnionType(memberTypeIds: List<TypeId>): TypeId;
   getOrCreateFunctionType(shape: FunctionTypeShape): TypeId;
+  isStructurallyCompatible(sourceTypeId: TypeId, targetTypeId: TypeId): boolean;
 }

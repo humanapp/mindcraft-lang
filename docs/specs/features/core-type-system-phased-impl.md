@@ -98,6 +98,13 @@ not survive. Keep this doc current.
   `"<coreType>:<Constructor<arg1,arg2>>"` (e.g., `"list:<List<number:<number>>>"`).
 - Union TypeId convention:
   `"union:<member1,member2,...>"` (e.g., `"union:<boolean:<boolean>,number:<number>>"`).
+- (Written 2026-03-23) Phase 8 (structural subtyping) is complete.
+  `ITypeRegistry.isStructurallyCompatible(source, target)` checks struct field
+  superset + recursive type compatibility. `StructTypeShape.nominal?: boolean`
+  opts out of structural matching. Memoization cache on `TypeRegistry` avoids
+  redundant recursive checks. TS compiler validates struct compatibility on
+  simple assignments and variable declarations via `checkStructAssignmentCompat()`
+  in `lowering.ts`.
 - (Written 2026-03-23) Phase 7 (type-level function signatures) is complete.
   `FunctionTypeShape` (`paramTypeIds`, `returnTypeId`) and `FunctionTypeDef`
   interfaces added. `ITypeRegistry.getOrCreateFunctionType(shape)` creates
@@ -1098,7 +1105,7 @@ it (extra fields are harmless, `GET_FIELD` returns `NIL_VALUE` for missing field
 | 5     | First-class function refs      | Phase 3            | Medium       | Complete    |
 | 6     | Closures                       | Phase 5            | High         | Complete    |
 | 7     | Type-level function signatures | Phase 5            | Small-medium | Complete    |
-| 8     | Structural subtyping           | None (independent) | Low-medium   | Not started |
+| 8     | Structural subtyping           | None (independent) | Low-medium   | Complete    |
 
 Phase 12.1 is tracked in the TypeScript compiler phased impl doc and is
 the prerequisite for all work here.
@@ -1618,3 +1625,63 @@ call signatures with typed parameters, so resolution works correctly via
 
 **All acceptance criteria passed.** All builds (Node, ESM, Roblox-TS) succeed.
 507 core tests pass (501 prev + 6 new), 164 typescript tests pass (160 prev + 4 new).
+
+### Phase 8: Structural subtyping (completed 2026-03-23)
+
+**Planned vs actual:**
+
+All 3 concrete deliverables were delivered as specified. No unplanned additions
+were required -- the implementation matched the spec and design doc closely.
+
+| Planned                                                             | Actual | Notes                                                                                                         |
+| ------------------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------- |
+| `isStructurallyCompatible` method on `ITypeRegistry`                | Done   | Public method with memoization cache (`compatCache` Dict); delegates to private `checkStructurallyCompatible` |
+| `nominal?: boolean` flag on `StructTypeShape`                       | Done   | If either source or target has `nominal: true`, returns `false` (exact TypeId match required)                 |
+| TS compiler uses structural compatibility for assignment validation | Done   | `checkStructAssignmentCompat()` wired into `lowerAssignment` (`=`) and `lowerVariableDeclarationList`         |
+
+**Design decisions matching spec/design doc recommendations:**
+
+- Memoization cache added as spec's "Key risks" section recommended. Uses
+  `Dict<string, boolean>` keyed by `sourceTypeId|targetTypeId`.
+- Recursive field type check uses `isStructurallyCompatible` (the public
+  method), so nested struct compatibility benefits from the cache.
+- Same-TypeId fast path returns `true` before cache lookup.
+- Non-struct types return `false` (no cross-type structural compatibility).
+
+**Not changed (spec mentioned but unnecessary):**
+
+- `packages/typescript/src/compiler/ambient.ts` -- no changes needed. The
+  spec correctly noted that TS interfaces are already structural by default,
+  and nominal types already use the `__brand` pattern.
+- Function call argument validation -- the spec mentioned using structural
+  compatibility for function call arguments, but the compiler does not
+  currently validate argument types for any calls (not just struct calls).
+  Adding struct-specific argument validation would be inconsistent with
+  the existing pattern. This can be addressed when general argument type
+  validation is added.
+- No VM changes -- as spec predicted, `GET_FIELD` already handles extra/
+  missing fields correctly.
+- No brain compiler changes -- structural subtyping is a TS-compiler-only
+  concern.
+
+**Acceptance criteria results:**
+
+| Criterion                                                          | Result |
+| ------------------------------------------------------------------ | ------ |
+| Two struct types with identical fields are structurally compatible | Pass   |
+| Struct with extra fields is compatible (superset check)            | Pass   |
+| Struct missing a required field is NOT compatible                  | Pass   |
+| `nominal: true` is NOT compatible (even with identical fields)     | Pass   |
+| Recursive compatibility for nested struct fields                   | Pass   |
+| `npm run check` passes                                             | Pass   |
+| `npm run build` (Node + ESM + Roblox-TS) passes                    | Pass   |
+
+**Test counts:**
+
+- packages/core: 516 total (507 prev + 9 new), 0 failures
+- packages/typescript: 164 total (unchanged -- no new codegen tests), 0 failures
+
+**Pre-existing issues (not caused by this phase):**
+
+- `apps/sim` has a pre-existing `tsc --noEmit` error in `brain-persistence.ts`
+  and a pre-existing Vite build error, both present on `main` before this phase.

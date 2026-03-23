@@ -558,6 +558,7 @@ function lowerVariableDeclarationList(declList: ts.VariableDeclarationList, ctx:
     const localIdx = ctx.scopeStack.declareLocal(decl.name.text);
     if (decl.initializer) {
       lowerExpression(decl.initializer, ctx);
+      checkStructAssignmentCompat(decl.name, decl.initializer, decl, ctx);
       ctx.ir.push({ kind: "StoreLocal", index: localIdx });
     }
   }
@@ -992,6 +993,26 @@ function emitStore(
   }
 }
 
+function checkStructAssignmentCompat(lhsNode: ts.Node, rhsNode: ts.Node, diagNode: ts.Node, ctx: LowerContext): void {
+  const registry = getBrainServices().types;
+  const lhsType = ctx.checker.getTypeAtLocation(lhsNode);
+  const rhsType = ctx.checker.getTypeAtLocation(rhsNode);
+  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
+  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
+  if (!lhsTypeId || !rhsTypeId || lhsTypeId === rhsTypeId) return;
+
+  const lhsDef = registry.get(lhsTypeId);
+  const rhsDef = registry.get(rhsTypeId);
+  if (!lhsDef || !rhsDef) return;
+  if (lhsDef.coreType !== NativeType.Struct || rhsDef.coreType !== NativeType.Struct) return;
+
+  if (!registry.isStructurallyCompatible(rhsTypeId, lhsTypeId)) {
+    ctx.diagnostics.push(
+      makeDiag(`Type '${rhsDef.name}' is not structurally compatible with '${lhsDef.name}'`, diagNode)
+    );
+  }
+}
+
 function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
   if (ts.isElementAccessExpression(expr.left)) {
     lowerElementAccessAssignment(expr, ctx);
@@ -1011,6 +1032,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
   if (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
     lowerExpression(expr.right, ctx);
+    checkStructAssignmentCompat(expr.left, expr.right, expr, ctx);
   } else {
     emitLoad(target, ctx);
     lowerExpression(expr.right, ctx);

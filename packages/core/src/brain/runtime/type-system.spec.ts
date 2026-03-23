@@ -14,6 +14,7 @@ import {
   type NullableTypeDef,
   nativeTypeToString,
   registerCoreBrainComponents,
+  type StructTypeDef,
   type UnionTypeDef,
 } from "@mindcraft-lang/core/brain";
 
@@ -598,5 +599,149 @@ describe("getOrCreateFunctionType", () => {
     const def = registry.get(id)!;
     const s = new MemoryStream();
     assert.throws(() => def.codec.encode(s, {}));
+  });
+});
+
+describe("isStructurallyCompatible", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("same TypeId is always compatible", () => {
+    const registry = getBrainServices().types;
+    const typeId = registry.addStructType("SameTest", {
+      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
+    });
+    assert.equal(registry.isStructurallyCompatible(typeId, typeId), true);
+  });
+
+  test("two structs with identical fields are compatible", () => {
+    const registry = getBrainServices().types;
+    const typeA = registry.addStructType("IdenticalA", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number },
+        { name: "y", typeId: CoreTypeIds.Number },
+      ]),
+    });
+    const typeB = registry.addStructType("IdenticalB", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number },
+        { name: "y", typeId: CoreTypeIds.Number },
+      ]),
+    });
+    assert.equal(registry.isStructurallyCompatible(typeA, typeB), true);
+    assert.equal(registry.isStructurallyCompatible(typeB, typeA), true);
+  });
+
+  test("struct with extra fields is compatible with struct with fewer fields", () => {
+    const registry = getBrainServices().types;
+    const point2D = registry.addStructType("Point2D", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number },
+        { name: "y", typeId: CoreTypeIds.Number },
+      ]),
+    });
+    const point3D = registry.addStructType("Point3D", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number },
+        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "z", typeId: CoreTypeIds.Number },
+      ]),
+    });
+    assert.equal(registry.isStructurallyCompatible(point3D, point2D), true);
+    assert.equal(registry.isStructurallyCompatible(point2D, point3D), false);
+  });
+
+  test("struct missing a required field is NOT compatible", () => {
+    const registry = getBrainServices().types;
+    const withName = registry.addStructType("WithName", {
+      fields: List.from([
+        { name: "name", typeId: CoreTypeIds.String },
+        { name: "age", typeId: CoreTypeIds.Number },
+      ]),
+    });
+    const withoutName = registry.addStructType("WithoutName", {
+      fields: List.from([{ name: "age", typeId: CoreTypeIds.Number }]),
+    });
+    assert.equal(registry.isStructurallyCompatible(withoutName, withName), false);
+  });
+
+  test("nominal struct is NOT compatible with any other struct", () => {
+    const registry = getBrainServices().types;
+    const screenCoord = registry.addStructType("ScreenCoord", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number },
+        { name: "y", typeId: CoreTypeIds.Number },
+      ]),
+      nominal: true,
+    });
+    const worldCoord = registry.addStructType("WorldCoord", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number },
+        { name: "y", typeId: CoreTypeIds.Number },
+      ]),
+      nominal: true,
+    });
+    const plainCoord = registry.addStructType("PlainCoord", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number },
+        { name: "y", typeId: CoreTypeIds.Number },
+      ]),
+    });
+    assert.equal(registry.isStructurallyCompatible(screenCoord, worldCoord), false);
+    assert.equal(registry.isStructurallyCompatible(worldCoord, screenCoord), false);
+    assert.equal(registry.isStructurallyCompatible(plainCoord, screenCoord), false);
+    assert.equal(registry.isStructurallyCompatible(screenCoord, plainCoord), false);
+  });
+
+  test("recursive compatibility for nested struct fields", () => {
+    const registry = getBrainServices().types;
+    const innerA = registry.addStructType("InnerA", {
+      fields: List.from([
+        { name: "val", typeId: CoreTypeIds.Number },
+        { name: "label", typeId: CoreTypeIds.String },
+      ]),
+    });
+    const innerB = registry.addStructType("InnerB", {
+      fields: List.from([
+        { name: "val", typeId: CoreTypeIds.Number },
+        { name: "label", typeId: CoreTypeIds.String },
+      ]),
+    });
+    const outerA = registry.addStructType("OuterA", {
+      fields: List.from([{ name: "inner", typeId: innerA }]),
+    });
+    const outerB = registry.addStructType("OuterB", {
+      fields: List.from([{ name: "inner", typeId: innerB }]),
+    });
+    assert.equal(registry.isStructurallyCompatible(outerA, outerB), true);
+  });
+
+  test("recursive incompatibility for nested struct fields with different types", () => {
+    const registry = getBrainServices().types;
+    const innerC = registry.addStructType("InnerC", {
+      fields: List.from([{ name: "val", typeId: CoreTypeIds.Number }]),
+    });
+    const innerD = registry.addStructType("InnerD", {
+      fields: List.from([{ name: "val", typeId: CoreTypeIds.String }]),
+    });
+    const outerC = registry.addStructType("OuterC", {
+      fields: List.from([{ name: "inner", typeId: innerC }]),
+    });
+    const outerD = registry.addStructType("OuterD", {
+      fields: List.from([{ name: "inner", typeId: innerD }]),
+    });
+    assert.equal(registry.isStructurallyCompatible(outerC, outerD), false);
+  });
+
+  test("non-struct types return false", () => {
+    const registry = getBrainServices().types;
+    assert.equal(registry.isStructurallyCompatible(CoreTypeIds.Number, CoreTypeIds.String), false);
+    assert.equal(registry.isStructurallyCompatible(CoreTypeIds.Number, CoreTypeIds.Number), true);
+  });
+
+  test("unknown type IDs return false", () => {
+    const registry = getBrainServices().types;
+    assert.equal(registry.isStructurallyCompatible("nonexistent:a", "nonexistent:b"), false);
   });
 });

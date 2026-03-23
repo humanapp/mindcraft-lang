@@ -34,6 +34,7 @@ export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
   private nameToId = new Dict<string, TypeId>();
   private constructors = new Dict<string, TypeConstructor>();
+  private compatCache = new Dict<string, boolean>();
 
   private add(def: TypeDef) {
     if (this.defs.has(def.typeId)) {
@@ -426,6 +427,51 @@ export class TypeRegistry implements ITypeRegistry {
 
   entries(): Iterable<[TypeId, TypeDef]> {
     return this.defs.entries().toArray();
+  }
+
+  isStructurallyCompatible(sourceTypeId: TypeId, targetTypeId: TypeId): boolean {
+    if (sourceTypeId === targetTypeId) return true;
+
+    const cacheKey = `${sourceTypeId}|${targetTypeId}`;
+    const cached = this.compatCache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const result = this.checkStructurallyCompatible(sourceTypeId, targetTypeId);
+    this.compatCache.set(cacheKey, result);
+    return result;
+  }
+
+  private checkStructurallyCompatible(sourceTypeId: TypeId, targetTypeId: TypeId): boolean {
+    const sourceDef = this.get(sourceTypeId);
+    const targetDef = this.get(targetTypeId);
+    if (!sourceDef || !targetDef) return false;
+    if (sourceDef.coreType !== NativeType.Struct || targetDef.coreType !== NativeType.Struct) return false;
+
+    const sourceStruct = sourceDef as StructTypeDef;
+    const targetStruct = targetDef as StructTypeDef;
+
+    if (sourceStruct.nominal || targetStruct.nominal) return false;
+
+    let compatible = true;
+    targetStruct.fields.forEach((targetField) => {
+      if (!compatible) return;
+      let found = false;
+      sourceStruct.fields.forEach((sourceField) => {
+        if (sourceField.name === targetField.name) {
+          found = true;
+          if (sourceField.typeId !== targetField.typeId) {
+            if (!this.isStructurallyCompatible(sourceField.typeId, targetField.typeId)) {
+              compatible = false;
+            }
+          }
+        }
+      });
+      if (!found) {
+        compatible = false;
+      }
+    });
+
+    return compatible;
   }
 }
 
