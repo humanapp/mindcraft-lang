@@ -101,6 +101,12 @@ not survive. Keep this doc current.
   `Op.CALL_INDIRECT = 160`, `FunctionCodec` (non-serializable),
   `IrPushFunctionRef`/`IrCallIndirect` IR nodes, compiler + linker support.
   `typeof x === "function"` now compiles to `TYPE_CHECK(NativeType.Function)`.
+- (Written 2026-03-22) Phase 6 (closures) is complete.
+  `Op.MAKE_CLOSURE = 170`, `Op.LOAD_CAPTURE = 171` (no `STORE_CAPTURE` --
+  capture-by-value). `FunctionValue` extended with optional `captures`.
+  `Frame` extended with optional `captures`. Capture analysis via TS checker
+  symbol resolution + `isDescendantOf`. Arrow functions and function expressions
+  compile as separate closure function entries. Linker remaps `MAKE_CLOSURE` funcId.
 
 ---
 
@@ -993,6 +999,10 @@ use the generic `Function` type with no signature checking.
 - **Interaction with closures.** A closure's type should match the declared function
   type. The compiler must check that the closure's inferred parameter/return types
   match the expected `FunctionTypeDef`.
+- (Added 2026-03-22, Phase 6 post-mortem) **Closure function naming.** Closure
+  functions use synthetic names like `<closure#N>` in the function table. Phase 7's
+  type resolution must handle these entries or ignore them gracefully when building
+  function type signatures.
 
 ---
 
@@ -1067,7 +1077,7 @@ it (extra fields are harmless, `GET_FIELD` returns `NIL_VALUE` for missing field
 | 3     | Union types                    | Phase 1, Phase 2   | Medium       | Not started |
 | 4     | `typeof` lowering              | Phase 12.1         | Small-medium | Not started |
 | 5     | First-class function refs      | Phase 3            | Medium       | Complete    |
-| 6     | Closures                       | Phase 5            | High         | Not started |
+| 6     | Closures                       | Phase 5            | High         | Complete    |
 | 7     | Type-level function signatures | Phase 5            | Small-medium | Not started |
 | 8     | Structural subtyping           | None (independent) | Low-medium   | Not started |
 
@@ -1355,3 +1365,118 @@ work.
 
 - No changes to `ambient.ts` -- function types in ambient declarations are Phase 7.
 - No changes to the brain compiler -- function references are a TS-compiler-only feature.
+
+### Phase 6: Closures (completed 2026-03-22)
+
+**Planned vs actual:**
+
+| Planned                                                        | Actual  | Notes                                                                                                                         |
+| -------------------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `MAKE_CLOSURE` opcode                                          | Done    | `Op.MAKE_CLOSURE = 170`, operand `a` = funcId, operand `b` = captureCount                                                     |
+| `LOAD_CAPTURE` opcode                                          | Done    | `Op.LOAD_CAPTURE = 171`, operand `a` = capture slot index                                                                     |
+| `STORE_CAPTURE` opcode                                         | Skipped | Capture-by-value semantics -- captures are immutable snapshots, no mutation needed                                            |
+| `FunctionValue` extended with optional `captures`              | Done    | `captures?: List<Value>` on `FunctionValue`; `mkFunctionValue` accepts optional captures                                      |
+| `Frame` extended with optional `captures`                      | Done    | `captures?: List<Value>` on `Frame`                                                                                           |
+| Capture analysis in the lowering pass                          | Done    | `findCapturedVariables()` uses TS checker `getSymbolAtLocation` + `isDescendantOf` for declaration scope checking             |
+| Arrow functions and inner function expressions compile/execute | Done    | Both `ts.isArrowFunction` and `ts.isFunctionExpression` handled via `lowerClosureExpression`                                  |
+| `ScopeStack` capture tracking                                  | Skipped | Capture analysis done externally; `ScopeStack` not modified. Capture slots tracked in `LowerContext.capturedVars` Map instead |
+| `IrMakeClosure` IR node                                        | Done    | `{ kind: "MakeClosure"; funcName: string; captureCount: number }`                                                             |
+| `IrLoadCapture` IR node                                        | Done    | `{ kind: "LoadCapture"; index: number }`                                                                                      |
+| `IrStoreCapture` IR node                                       | Skipped | Not needed -- no mutable captures                                                                                             |
+| Emit new IR nodes as opcodes                                   | Done    | `MakeClosure` resolves funcName via functionTable; `LoadCapture` emits directly                                               |
+| Linker remaps `MAKE_CLOSURE` funcId                            | Done    | Added alongside `Op.CALL` in `remapInstructions`                                                                              |
+| End-to-end: `items.filter(x => x > threshold)`                 | Partial | Direct closure tests pass; `.filter` method not yet available on lists                                                        |
+
+**Deviations from spec:**
+
+1. **No `STORE_CAPTURE` opcode.** The spec listed `STORE_CAPTURE` as a deliverable
+   but also noted in the Key Risks section that it could be omitted for
+   capture-by-value semantics. Capture-by-value was chosen: closures snapshot
+   variables at creation time; mutations to the original variable do not affect
+   the closure's copy. This simplifies the implementation and avoids shared
+   mutable state.
+
+2. **No `ScopeStack` modification.** The spec suggested extending `ScopeStack` with
+   capture tracking. Instead, capture analysis is done externally by
+   `findCapturedVariables()` which walks the closure body and checks each identifier
+   against the enclosing context's `paramLocals`, `scopeStack`, and `capturedVars`.
+   The captured variable map is stored on `LowerContext.capturedVars` and consulted
+   by `lowerIdentifier` when resolving names.
+
+3. **Extended `FunctionValue` rather than separate `ClosureValue`.** The spec offered
+   this as an option ("prefer extending `FunctionValue`"). `FunctionValue` gained an
+   optional `captures?: List<Value>` field. A closure with zero captures emits
+   `PushFunctionRef` (no `MAKE_CLOSURE` overhead).
+
+4. **`LowerContext` extended with shared mutable state.** `funcIdCounter` is a
+   `{ value: number }` object shared across all lowering calls so that closure
+   funcIds don't collide with static function IDs. `closureFunctions` is a
+   `Map<number, FunctionEntry>` that accumulates closure function entries, sorted
+   by funcId and appended after static functions at the end of `lowerProgram`.
+
+5. **Closure functions use TS checker for scope analysis.** Rather than tracking
+   free/bound variables manually, `findCapturedVariables` uses
+   `checker.getSymbolAtLocation()` to get the symbol for each identifier, then
+   `isDescendantOf(decl, closureNode)` to determine whether the declaration is
+   inside the closure (skip) or in an enclosing scope (capture). This leverages
+   the TS compiler's existing symbol resolution.
+
+**Dead code removed (post-review):**
+
+- `CaptureInfo.source` had a `"callsiteVar"` variant that was never produced by
+  `findCapturedVariables`. Callsite variables don't need capturing -- they're
+  module-level state accessed directly via `LoadCallsiteVar` through the shared
+  `callsiteVars` map on `LowerContext`. The dead variant and its switch case were
+  removed.
+
+**Acceptance criteria results:**
+
+| Criterion                                                        | Result |
+| ---------------------------------------------------------------- | ------ |
+| `MAKE_CLOSURE` creates FunctionValue with correct captures       | Pass   |
+| `LOAD_CAPTURE` reads the correct captured value                  | Pass   |
+| `CALL_INDIRECT` on closure attaches captures to new frame        | Pass   |
+| Simple closure: `makeAdder(5)(3)` -> 8                           | Pass   |
+| Closure over multiple variables                                  | Pass   |
+| Capture-by-value: mutation after creation doesn't affect closure | Pass   |
+| `LOAD_CAPTURE` out of bounds faults                              | Pass   |
+| Arrow with no captures emits `PushFunctionRef` (no overhead)     | Pass   |
+| Concise arrow body (expression, not block)                       | Pass   |
+| `npm run check` passes (core + typescript)                       | Pass   |
+| `npm run build` (Node + ESM + Roblox-TS) passes                  | Pass   |
+| Sim app builds                                                   | Pass   |
+
+**Test counts:**
+
+- packages/core: 498 total (493 prev + 5 new VM tests), 0 failures
+- packages/typescript: 149 total (144 prev + 5 new codegen tests), 0 failures
+
+**Discoveries:**
+
+1. **Callsite variables don't need capturing.** They are module-level state shared
+   via the `callsiteVars` map on `LowerContext`. The closure's `LowerContext` inherits
+   the same `callsiteVars` map, so `lowerIdentifier` resolves them directly via
+   `LoadCallsiteVar`. No snapshot/capture semantics needed.
+
+2. **Nested closure transitive captures work.** A closure inside a closure captures
+   from the outer closure's `capturedVars` map (source: `"capture"`, emitting
+   `LoadCapture` to push the value before `MAKE_CLOSURE`). The inner closure gets
+   its own `capturedVars` map. This is tested implicitly via the shared `funcIdCounter`
+   and `closureFunctions` map.
+
+3. **Closure funcId ordering matters.** Closure functions are assigned funcIds
+   during lowering (when encountered in expression position), which may interleave
+   with other funcIds. The `closureFunctions` map is sorted by funcId before
+   appending to ensure correct array indexing in the final function list.
+
+4. **`PushFunctionRef` vs `MAKE_CLOSURE` optimization.** Arrows with no captured
+   variables emit `PushFunctionRef` instead of `MAKE_CLOSURE(funcId, 0)`. This
+   avoids creating an unnecessary captures list. The closure body is still compiled
+   as a separate function entry either way.
+
+5. **`findCapturedVariables` silent drop for unknown identifiers.** If an identifier
+   inside a closure body has no symbol (checker returns `undefined`) and does not
+   appear in any of the lookup maps (`paramLocals`, `scopeStack`, `capturedVars`),
+   it is silently skipped in capture analysis. This is benign: `lowerIdentifier` will
+   later emit a diagnostic ("Undefined variable") when compiling the closure body.
+   But the capture analysis itself produces no warning for unresolvable names.

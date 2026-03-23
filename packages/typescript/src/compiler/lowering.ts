@@ -54,6 +54,9 @@ interface LowerContext {
   nextLabelId: number;
   callsiteVars: Map<string, number>;
   functionTable: Map<string, number>;
+  capturedVars?: Map<string, number>;
+  funcIdCounter: { value: number };
+  closureFunctions: Map<number, FunctionEntry>;
 }
 
 function allocLabel(ctx: LowerContext): number {
@@ -122,15 +125,16 @@ export function lowerProgram(
   const callsiteVars = new Map<string, number>();
   const functionTable = new Map<string, number>();
   const helperNodes: ts.FunctionDeclaration[] = [];
+  const funcIdCounter = { value: 0 };
+  const closureFunctions = new Map<number, FunctionEntry>();
 
   let nextCallsiteVar = 0;
-  let nextFuncId = 0;
 
-  const entryFuncId = nextFuncId++;
+  const entryFuncId = funcIdCounter.value++;
 
   for (const stmt of sourceFile.statements) {
     if (ts.isFunctionDeclaration(stmt) && stmt.name) {
-      functionTable.set(stmt.name.text, nextFuncId++);
+      functionTable.set(stmt.name.text, funcIdCounter.value++);
       helperNodes.push(stmt);
     } else if (ts.isVariableStatement(stmt) && !isInsideDescriptor(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
@@ -143,39 +147,76 @@ export function lowerProgram(
 
   let userOnPageEnteredFuncId: number | undefined;
   if (descriptor.onPageEnteredNode) {
-    userOnPageEnteredFuncId = nextFuncId++;
+    userOnPageEnteredFuncId = funcIdCounter.value++;
   }
 
   const hasInitializers = hasTopLevelInitializers(sourceFile);
   let initFuncId: number | undefined;
   if (hasInitializers) {
-    initFuncId = nextFuncId++;
+    initFuncId = funcIdCounter.value++;
   }
 
-  const onPageEnteredWrapperId = nextFuncId++;
+  const onPageEnteredWrapperId = funcIdCounter.value++;
 
   const functions: FunctionEntry[] = [];
 
-  const onExecEntry = lowerOnExecuteBody(descriptor, checker, callsiteVars, functionTable, diagnostics);
+  const onExecEntry = lowerOnExecuteBody(
+    descriptor,
+    checker,
+    callsiteVars,
+    functionTable,
+    diagnostics,
+    funcIdCounter,
+    closureFunctions
+  );
   functions.push(onExecEntry);
 
   for (const helperNode of helperNodes) {
-    const entry = lowerHelperFunction(helperNode, checker, callsiteVars, functionTable, diagnostics);
+    const entry = lowerHelperFunction(
+      helperNode,
+      checker,
+      callsiteVars,
+      functionTable,
+      diagnostics,
+      funcIdCounter,
+      closureFunctions
+    );
     functions.push(entry);
   }
 
   if (descriptor.onPageEnteredNode) {
-    const entry = lowerOnPageEnteredBody(descriptor, checker, callsiteVars, functionTable, diagnostics);
+    const entry = lowerOnPageEnteredBody(
+      descriptor,
+      checker,
+      callsiteVars,
+      functionTable,
+      diagnostics,
+      funcIdCounter,
+      closureFunctions
+    );
     functions.push(entry);
   }
 
   if (hasInitializers && initFuncId !== undefined) {
-    const initEntry = generateModuleInit(sourceFile, checker, callsiteVars, functionTable, diagnostics);
+    const initEntry = generateModuleInit(
+      sourceFile,
+      checker,
+      callsiteVars,
+      functionTable,
+      diagnostics,
+      funcIdCounter,
+      closureFunctions
+    );
     functions.push(initEntry);
   }
 
   const wrapperEntry = generateOnPageEnteredWrapper(descriptor.name, initFuncId, userOnPageEnteredFuncId);
   functions.push(wrapperEntry);
+
+  const closureEntries = Array.from(closureFunctions.entries())
+    .sort(([a], [b]) => a - b)
+    .map(([, entry]) => entry);
+  functions.push(...closureEntries);
 
   return {
     functions,
@@ -193,7 +234,9 @@ function lowerOnPageEnteredBody(
   checker: ts.TypeChecker,
   callsiteVars: Map<string, number>,
   functionTable: Map<string, number>,
-  sharedDiagnostics: CompileDiagnostic[]
+  sharedDiagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const funcNode = descriptor.onPageEnteredNode!;
@@ -211,6 +254,8 @@ function lowerOnPageEnteredBody(
     nextLabelId: 0,
     callsiteVars,
     functionTable,
+    funcIdCounter,
+    closureFunctions,
   };
 
   const body = funcNode.body;
@@ -287,7 +332,9 @@ function lowerOnExecuteBody(
   checker: ts.TypeChecker,
   callsiteVars: Map<string, number>,
   functionTable: Map<string, number>,
-  sharedDiagnostics: CompileDiagnostic[]
+  sharedDiagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const hasParams = descriptor.params.length > 0;
@@ -328,6 +375,8 @@ function lowerOnExecuteBody(
     nextLabelId: 0,
     callsiteVars,
     functionTable,
+    funcIdCounter,
+    closureFunctions,
   };
 
   const body = funcNode.body;
@@ -359,7 +408,9 @@ function lowerHelperFunction(
   checker: ts.TypeChecker,
   callsiteVars: Map<string, number>,
   functionTable: Map<string, number>,
-  sharedDiagnostics: CompileDiagnostic[]
+  sharedDiagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const paramLocals = new Map<string, number>();
@@ -385,6 +436,8 @@ function lowerHelperFunction(
     nextLabelId: 0,
     callsiteVars,
     functionTable,
+    funcIdCounter,
+    closureFunctions,
   };
 
   const body = funcNode.body;
@@ -411,7 +464,9 @@ function generateModuleInit(
   checker: ts.TypeChecker,
   callsiteVars: Map<string, number>,
   functionTable: Map<string, number>,
-  sharedDiagnostics: CompileDiagnostic[]
+  sharedDiagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const scopeStack = new ScopeStack(0);
@@ -427,6 +482,8 @@ function generateModuleInit(
     nextLabelId: 0,
     callsiteVars,
     functionTable,
+    funcIdCounter,
+    closureFunctions,
   };
 
   for (const stmt of sourceFile.statements) {
@@ -640,6 +697,10 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     lowerObjectLiteral(expr, ctx);
   } else if (ts.isArrayLiteralExpression(expr)) {
     lowerArrayLiteral(expr, ctx);
+  } else if (ts.isArrowFunction(expr)) {
+    lowerClosureExpression(expr, ctx);
+  } else if (ts.isFunctionExpression(expr)) {
+    lowerClosureExpression(expr, ctx);
   } else {
     ctx.diagnostics.push(makeDiag(`Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr));
   }
@@ -661,6 +722,14 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
   if (localIdx !== undefined) {
     ctx.ir.push({ kind: "LoadLocal", index: localIdx });
     return;
+  }
+
+  if (ctx.capturedVars) {
+    const captureIdx = ctx.capturedVars.get(expr.text);
+    if (captureIdx !== undefined) {
+      ctx.ir.push({ kind: "LoadCapture", index: captureIdx });
+      return;
+    }
   }
 
   const csvIdx = ctx.callsiteVars.get(expr.text);
@@ -705,6 +774,163 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
   }
 
   ctx.diagnostics.push(makeDiag("Unsupported function call", expr));
+}
+
+interface CaptureInfo {
+  name: string;
+  source: "paramLocal" | "local" | "capture";
+  index: number;
+}
+
+function isIdentifierReference(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (!parent) return false;
+  if (ts.isPropertyAccessExpression(parent) && parent.name === node) return false;
+  if (ts.isPropertyAssignment(parent) && parent.name === node) return false;
+  if (ts.isParameter(parent) && parent.name === node) return false;
+  if (ts.isVariableDeclaration(parent) && parent.name === node) return false;
+  if (ts.isFunctionDeclaration(parent) && parent.name === node) return false;
+  if (ts.isFunctionExpression(parent) && parent.name === node) return false;
+  return true;
+}
+
+function isDescendantOf(node: ts.Node, ancestor: ts.Node): boolean {
+  let current: ts.Node | undefined = node;
+  while (current) {
+    if (current === ancestor) return true;
+    current = current.parent;
+  }
+  return false;
+}
+
+function findCapturedVariables(
+  closureNode: ts.ArrowFunction | ts.FunctionExpression,
+  closureParamNames: Set<string>,
+  ctx: LowerContext
+): CaptureInfo[] {
+  const captures: CaptureInfo[] = [];
+  const seen = new Set<string>();
+
+  function visit(node: ts.Node): void {
+    if (ts.isIdentifier(node) && isIdentifierReference(node)) {
+      const name = node.text;
+      if (seen.has(name) || closureParamNames.has(name) || name === "undefined") return;
+
+      const sym = ctx.checker.getSymbolAtLocation(node);
+      if (sym) {
+        const decls = sym.getDeclarations();
+        if (decls && decls.length > 0) {
+          if (isDescendantOf(decls[0], closureNode)) return;
+        }
+      }
+
+      const paramIdx = ctx.paramLocals.get(name);
+      if (paramIdx !== undefined) {
+        seen.add(name);
+        captures.push({ name, source: "paramLocal", index: paramIdx });
+        return;
+      }
+
+      const localIdx = ctx.scopeStack.resolveLocal(name);
+      if (localIdx !== undefined) {
+        seen.add(name);
+        captures.push({ name, source: "local", index: localIdx });
+        return;
+      }
+
+      if (ctx.capturedVars) {
+        const captureIdx = ctx.capturedVars.get(name);
+        if (captureIdx !== undefined) {
+          seen.add(name);
+          captures.push({ name, source: "capture", index: captureIdx });
+          return;
+        }
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(closureNode.body);
+  return captures;
+}
+
+function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, ctx: LowerContext): void {
+  const numParams = expr.parameters.length;
+  const closureParamNames = new Set<string>();
+  const closureParamLocals = new Map<string, number>();
+
+  for (let i = 0; i < numParams; i++) {
+    const p = expr.parameters[i];
+    if (ts.isIdentifier(p.name)) {
+      closureParamNames.add(p.name.text);
+      closureParamLocals.set(p.name.text, i);
+    }
+  }
+
+  const captureInfos = findCapturedVariables(expr, closureParamNames, ctx);
+
+  const capturedVars = new Map<string, number>();
+  for (let i = 0; i < captureInfos.length; i++) {
+    capturedVars.set(captureInfos[i].name, i);
+  }
+
+  for (const info of captureInfos) {
+    switch (info.source) {
+      case "paramLocal":
+      case "local":
+        ctx.ir.push({ kind: "LoadLocal", index: info.index });
+        break;
+      case "capture":
+        ctx.ir.push({ kind: "LoadCapture", index: info.index });
+        break;
+    }
+  }
+
+  const closureFuncId = ctx.funcIdCounter.value++;
+  const closureName = `<closure#${closureFuncId}>`;
+  ctx.functionTable.set(closureName, closureFuncId);
+
+  if (captureInfos.length > 0) {
+    ctx.ir.push({ kind: "MakeClosure", funcName: closureName, captureCount: captureInfos.length });
+  } else {
+    ctx.ir.push({ kind: "PushFunctionRef", funcName: closureName });
+  }
+
+  const closureIr: IrNode[] = [];
+  const closureScopeStack = new ScopeStack(numParams);
+
+  const closureCtx: LowerContext = {
+    checker: ctx.checker,
+    paramsSymbol: undefined,
+    paramLocals: closureParamLocals,
+    scopeStack: closureScopeStack,
+    ir: closureIr,
+    diagnostics: ctx.diagnostics,
+    loopStack: [],
+    nextLabelId: 0,
+    callsiteVars: ctx.callsiteVars,
+    functionTable: ctx.functionTable,
+    capturedVars: capturedVars.size > 0 ? capturedVars : undefined,
+    funcIdCounter: ctx.funcIdCounter,
+    closureFunctions: ctx.closureFunctions,
+  };
+
+  if (ts.isBlock(expr.body)) {
+    lowerStatements(expr.body.statements, closureCtx);
+    closureIr.push({ kind: "PushConst", value: NIL_VALUE });
+    closureIr.push({ kind: "Return" });
+  } else {
+    lowerExpression(expr.body, closureCtx);
+    closureIr.push({ kind: "Return" });
+  }
+
+  ctx.closureFunctions.set(closureFuncId, {
+    ir: closureIr,
+    numParams,
+    numLocals: closureScopeStack.nextLocal,
+    name: closureName,
+  });
 }
 
 function isAssignmentOperator(kind: ts.SyntaxKind): boolean {

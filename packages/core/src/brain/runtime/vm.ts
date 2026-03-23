@@ -138,7 +138,10 @@ const V = {
   struct(fields: Dict<string, Value>, typeId: TypeId): Value {
     return { t: NativeType.Struct, typeId, v: fields };
   },
-  func(funcId: number): Value {
+  func(funcId: number, captures?: List<Value>): Value {
+    if (captures !== undefined) {
+      return { t: NativeType.Function, funcId, captures };
+    }
     return { t: NativeType.Function, funcId };
   },
   handle(id: HandleId): Value {
@@ -572,6 +575,10 @@ export class VM implements IVM {
           return this.execTypeCheck(fiber, ins, frame);
         case Op.CALL_INDIRECT:
           return this.execCallIndirect(fiber, ins, frame);
+        case Op.MAKE_CLOSURE:
+          return this.execMakeClosure(fiber, ins, frame);
+        case Op.LOAD_CAPTURE:
+          return this.execLoadCapture(fiber, ins, frame);
         default: {
           const err: ErrorValue = {
             tag: "ScriptError",
@@ -690,6 +697,35 @@ export class VM implements IVM {
     return undefined;
   }
 
+  private execMakeClosure(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const funcId = ins.a ?? 0;
+    const captureCount = ins.b ?? 0;
+
+    const captures = List.empty<Value>();
+    for (let i = 0; i < captureCount; i++) {
+      captures.push(V.nil());
+    }
+    for (let i = captureCount - 1; i >= 0; i--) {
+      captures.set(i, this.pop(fiber));
+    }
+
+    this.push(fiber, V.func(funcId, captures));
+    frame.pc++;
+    return undefined;
+  }
+
+  private execLoadCapture(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const captureIdx = ins.a ?? 0;
+    if (!frame.captures || captureIdx < 0 || captureIdx >= frame.captures.size()) {
+      throw new Error(
+        `LOAD_CAPTURE: index ${SU.toString(captureIdx)} out of bounds [0, ${SU.toString(frame.captures?.size() ?? 0)})`
+      );
+    }
+    this.push(fiber, frame.captures.get(captureIdx)!);
+    frame.pc++;
+    return undefined;
+  }
+
   private execTypeCheck(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const value = this.pop(fiber);
     this.push(fiber, V.bool(value.t === (ins.a ?? 0)));
@@ -733,7 +769,11 @@ export class VM implements IVM {
     const base = fiber.vstack.size();
     const locals = this.allocLocals(callee, args);
 
-    fiber.frames.push({ funcId: calleeId, pc: 0, base, locals });
+    const newFrame: Frame = { funcId: calleeId, pc: 0, base, locals };
+    if (funcRef.captures) {
+      newFrame.captures = funcRef.captures;
+    }
+    fiber.frames.push(newFrame);
     return undefined;
   }
 

@@ -112,6 +112,18 @@ export function emitFunction(
         emitter.pushConst(idx);
         break;
       }
+      case "MakeClosure": {
+        const closureFuncId = functionTable?.get(node.funcName);
+        if (closureFuncId === undefined) {
+          diagnostics.push({ message: `Cannot resolve closure function: ${node.funcName}` });
+          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
+        }
+        emitter.makeClosure(closureFuncId, node.captureCount);
+        break;
+      }
+      case "LoadCapture":
+        emitter.loadCapture(node.index);
+        break;
       case "Label":
         emitter.mark(getOrAllocLabel(node.labelId));
         break;

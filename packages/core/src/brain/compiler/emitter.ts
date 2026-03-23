@@ -149,6 +149,16 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.CALL_INDIRECT, a: argc });
   }
 
+  /** Create a closure: pops captureCount values from the stack, creates a FunctionValue with captures. */
+  makeClosure(funcId: number, captureCount: number): void {
+    this.emit({ op: Op.MAKE_CLOSURE, a: funcId, b: captureCount });
+  }
+
+  /** Load a captured variable from the current frame's captures. */
+  loadCapture(slotIdx: number): void {
+    this.emit({ op: Op.LOAD_CAPTURE, a: slotIdx });
+  }
+
   ret(): void {
     this.emit({ op: Op.RET });
   }

@@ -72,6 +72,8 @@ function remapInstructions(code: List<Instr>, funcOffset: number, constOffset: n
     const instr = code.get(i);
     if (instr.op === Op.CALL && instr.a !== undefined) {
       remapped.push({ ...instr, a: instr.a + funcOffset });
+    } else if (instr.op === Op.MAKE_CLOSURE && instr.a !== undefined) {
+      remapped.push({ ...instr, a: instr.a + funcOffset });
     } else if (instr.op === Op.PUSH_CONST && instr.a !== undefined) {
       remapped.push({ ...instr, a: instr.a + constOffset });
     } else {

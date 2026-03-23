@@ -21,6 +21,7 @@ import {
   type Fiber,
   FiberState,
   type FunctionBytecode,
+  type FunctionValue,
   HandleState,
   HandleTable,
   type Instr,
@@ -32,6 +33,7 @@ import {
   mkStructValue,
   NativeType,
   NIL_VALUE,
+  type NumberValue,
   Op,
   type Program,
   registerCoreBrainComponents,
@@ -1356,6 +1358,155 @@ describe("VM -- CALL_INDIRECT", () => {
       assert.ok(isFunctionValue(result.result!));
       assert.equal((result.result as { funcId: number }).funcId, 0);
     }
+  });
+});
+
+// ---- MAKE_CLOSURE / LOAD_CAPTURE ----
+
+describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
+  test("MAKE_CLOSURE creates a FunctionValue with captures", () => {
+    // func 0: push 42, MAKE_CLOSURE(funcId=1, captureCount=1), RET
+    // The result should be a FunctionValue with captures
+    const prog = mkProgram(
+      [
+        mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.MAKE_CLOSURE, a: 1, b: 1 }, { op: Op.RET }]),
+        mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }]),
+      ],
+      [mkNumberValue(42)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.ok(isFunctionValue(result.result!));
+      const fv = result.result as FunctionValue;
+      assert.equal(fv.funcId, 1);
+      assert.ok(fv.captures);
+      assert.equal(fv.captures!.size(), 1);
+      assert.equal((fv.captures!.get(0) as NumberValue).v, 42);
+    }
+  });
+
+  test("LOAD_CAPTURE reads captured value inside closure", () => {
+    // func 0: push 99, MAKE_CLOSURE(funcId=1, captureCount=1), CALL_INDIRECT(0), RET
+    // func 1: LOAD_CAPTURE(0), RET
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.MAKE_CLOSURE, a: 1, b: 1 },
+          { op: Op.CALL_INDIRECT, a: 0 },
+          { op: Op.RET },
+        ]),
+        mkFunc([{ op: Op.LOAD_CAPTURE, a: 0 }, { op: Op.RET }]),
+      ],
+      [mkNumberValue(99)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 99);
+    }
+  });
+
+  test("CALL_INDIRECT on closure attaches captures to frame", () => {
+    // func 0: push 10, push 20, MAKE_CLOSURE(funcId=1, captureCount=2), push 5, CALL_INDIRECT(1), RET
+    // func 1(1 param): LOAD_LOCAL(0) + LOAD_CAPTURE(0) + LOAD_CAPTURE(1) -- return capture 1
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.MAKE_CLOSURE, a: 1, b: 2 },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.CALL_INDIRECT, a: 1 },
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([{ op: Op.LOAD_CAPTURE, a: 1 }, { op: Op.RET }]),
+          numParams: 1,
+          numLocals: 1,
+          name: "closure",
+        },
+      ],
+      [mkNumberValue(10), mkNumberValue(20), mkNumberValue(5)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 20);
+    }
+  });
+
+  test("capture-by-value: modifying variable after closure creation does not affect closure", () => {
+    // func 0: push 100, STORE_LOCAL(0), LOAD_LOCAL(0), MAKE_CLOSURE(funcId=1, 1),
+    //         push 200, STORE_LOCAL(0),  -- modify the variable
+    //         CALL_INDIRECT(0), RET
+    // func 1: LOAD_CAPTURE(0), RET  -- should return 100, not 200
+    const prog = mkProgram(
+      [
+        {
+          code: List.from([
+            { op: Op.PUSH_CONST, a: 0 },
+            { op: Op.STORE_LOCAL, a: 0 },
+            { op: Op.LOAD_LOCAL, a: 0 },
+            { op: Op.MAKE_CLOSURE, a: 1, b: 1 },
+            { op: Op.PUSH_CONST, a: 1 },
+            { op: Op.STORE_LOCAL, a: 0 },
+            { op: Op.CALL_INDIRECT, a: 0 },
+            { op: Op.RET },
+          ]),
+          numParams: 0,
+          numLocals: 1,
+          name: "outer",
+        },
+        mkFunc([{ op: Op.LOAD_CAPTURE, a: 0 }, { op: Op.RET }]),
+      ],
+      [mkNumberValue(100), mkNumberValue(200)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 100);
+    }
+  });
+
+  test("LOAD_CAPTURE out of bounds faults", () => {
+    // func 0: MAKE_CLOSURE with 0 captures, call it
+    // func 1: try LOAD_CAPTURE(0) when no captures
+    const prog = mkProgram(
+      [
+        mkFunc([{ op: Op.MAKE_CLOSURE, a: 1, b: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }]),
+        mkFunc([{ op: Op.LOAD_CAPTURE, a: 0 }, { op: Op.RET }]),
+      ],
+      []
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT);
   });
 });
 

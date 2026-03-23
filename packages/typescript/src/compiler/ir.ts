@@ -12,6 +12,8 @@ export type IrNode =
   | IrCall
   | IrCallIndirect
   | IrPushFunctionRef
+  | IrMakeClosure
+  | IrLoadCapture
   | IrHostCallArgs
   | IrMapGet
   | IrStructNew
@@ -133,4 +135,15 @@ export interface IrCallIndirect {
 export interface IrPushFunctionRef {
   kind: "PushFunctionRef";
   funcName: string;
+}
+
+export interface IrMakeClosure {
+  kind: "MakeClosure";
+  funcName: string;
+  captureCount: number;
+}
+
+export interface IrLoadCapture {
+  kind: "LoadCapture";
+  index: number;
 }

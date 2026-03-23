@@ -603,6 +603,15 @@ fiber alongside locals when the closure is called.
 Closure creation (`MAKE_CLOSURE`) copies the specified local variables from the
 enclosing scope into a new `ClosureValue`.
 
+(Amended 2026-03-22) Phase B implemented. Key deviations from the above sketch:
+(1) No separate `ClosureValue` type -- `FunctionValue` extended with optional
+`captures?: List<Value>`. (2) No `STORE_CAPTURE` -- capture-by-value semantics
+means captures are immutable snapshots. Only `MAKE_CLOSURE` (170) and
+`LOAD_CAPTURE` (171) opcodes added. (3) Capture analysis uses TS checker's
+`getSymbolAtLocation` + `isDescendantOf` rather than manual free-variable
+tracking. (4) Callsite variables (module-level) are accessed directly via
+`LoadCallsiteVar` and do not need capturing.
+
 **Phase C: Type-level function types**
 
 Add `FunctionTypeShape` with parameter types and return type:

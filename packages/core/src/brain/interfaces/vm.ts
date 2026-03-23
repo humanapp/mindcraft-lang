@@ -110,7 +110,7 @@ export type EnumValue = { t: NativeType.Enum; typeId: TypeId; v: string }; // en
 export type ListValue = { t: NativeType.List; typeId: TypeId; v: List<Value> };
 export type MapValue = { t: NativeType.Map; typeId: TypeId; v: ValueDict };
 export type StructValue = { t: NativeType.Struct; typeId: TypeId; v?: Dict<string, Value>; native?: unknown }; // field name -> value
-export type FunctionValue = { t: NativeType.Function; funcId: number };
+export type FunctionValue = { t: NativeType.Function; funcId: number; captures?: List<Value> };
 
 export type Value =
   | UnknownValue
@@ -153,7 +153,10 @@ export function mkNativeStructValue(typeId: TypeId, native: unknown): StructValu
 export function mkListValue(typeId: TypeId, items: List<Value>): ListValue {
   return { t: NativeType.List, typeId, v: items };
 }
-export function mkFunctionValue(funcId: number): FunctionValue {
+export function mkFunctionValue(funcId: number, captures?: List<Value>): FunctionValue {
+  if (captures !== undefined) {
+    return { t: NativeType.Function, funcId, captures };
+  }
   return { t: NativeType.Function, funcId };
 }
 //export function mkMapValue(typeId: TypeId, entries: Dict<string | number, Value>): MapValue {
@@ -309,6 +312,10 @@ export enum Op {
 
   // Indirect function calls
   CALL_INDIRECT = 160,
+
+  // Closure operations
+  MAKE_CLOSURE = 170,
+  LOAD_CAPTURE,
 }
 
 export const BYTECODE_VERSION = 1;
@@ -433,6 +440,7 @@ export interface Frame {
   pc: number;
   base: number;
   locals: List<Value>;
+  captures?: List<Value>;
 }
 
 export interface Handler {
