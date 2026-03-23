@@ -949,12 +949,84 @@ function lowerTemplateLiteral(expr: ts.TemplateExpression, ctx: LowerContext): v
   }
 }
 
+function typeofStringToNativeType(s: string): number | undefined {
+  switch (s) {
+    case "number":
+      return NativeType.Number;
+    case "string":
+      return NativeType.String;
+    case "boolean":
+      return NativeType.Boolean;
+    case "undefined":
+      return NativeType.Nil;
+    default:
+      return undefined;
+  }
+}
+
+function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): boolean {
+  const op = expr.operatorToken.kind;
+  if (
+    op !== ts.SyntaxKind.EqualsEqualsEqualsToken &&
+    op !== ts.SyntaxKind.ExclamationEqualsEqualsToken &&
+    op !== ts.SyntaxKind.EqualsEqualsToken &&
+    op !== ts.SyntaxKind.ExclamationEqualsToken
+  ) {
+    return false;
+  }
+
+  let typeofExpr: ts.TypeOfExpression | undefined;
+  let literalValue: string | undefined;
+
+  if (ts.isTypeOfExpression(expr.left) && ts.isStringLiteral(expr.right)) {
+    typeofExpr = expr.left;
+    literalValue = expr.right.text;
+  } else if (ts.isStringLiteral(expr.left) && ts.isTypeOfExpression(expr.right)) {
+    typeofExpr = expr.right;
+    literalValue = expr.left.text;
+  }
+
+  if (!typeofExpr || literalValue === undefined) {
+    return false;
+  }
+
+  const nativeType = typeofStringToNativeType(literalValue);
+  if (nativeType === undefined) {
+    ctx.diagnostics.push(
+      makeDiag(
+        `Unsupported typeof comparison: "${literalValue}" (supported: "number", "string", "boolean", "undefined")`,
+        expr
+      )
+    );
+    return true;
+  }
+
+  lowerExpression(typeofExpr.expression, ctx);
+  ctx.ir.push({ kind: "TypeCheck", nativeType });
+
+  if (op === ts.SyntaxKind.ExclamationEqualsEqualsToken || op === ts.SyntaxKind.ExclamationEqualsToken) {
+    const operandTypeId = CoreTypeIds.Boolean;
+    const fnName = resolveOperator(CoreOpId.Not, [operandTypeId]);
+    if (!fnName) {
+      ctx.diagnostics.push(makeDiag("No operator overload for !(boolean)", expr));
+      return true;
+    }
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+  }
+
+  return true;
+}
+
 function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): void {
   if (
     expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
     expr.operatorToken.kind === ts.SyntaxKind.BarBarToken
   ) {
     lowerShortCircuit(expr, ctx);
+    return;
+  }
+
+  if (lowerTypeofComparison(expr, ctx)) {
     return;
   }
 

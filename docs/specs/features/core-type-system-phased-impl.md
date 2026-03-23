@@ -57,6 +57,7 @@ not survive. Keep this doc current.
 - (Written 2026-03-22) Phase 1 (nullable type support) is complete.
 - (Written 2026-03-22) Phase 2 (generic type constructors) is complete.
 - (Written 2026-03-22) Phase 3 (union types) is complete.
+- (Written 2026-03-22) Phase 4 (`typeof` lowering) is complete.
 - `TypeDef` now has optional `nullable?: boolean` and `autoInstantiated?: boolean`
   fields. `NullableTypeShape`/`NullableTypeDef` and `TypeConstructor` interfaces
   exist.
@@ -91,6 +92,10 @@ not survive. Keep this doc current.
 - Operator overloads and conversions still use exact `TypeId` matching in the core
   registry. The TS compiler's lowering pass handles nullable unwrapping and union
   expansion as fallbacks when exact match fails.
+- `Op.TYPE_CHECK = 150` added. `IrTypeCheck` IR node and `lowerTypeofComparison()`
+  lower `typeof x === "string"` patterns to a single `TYPE_CHECK` opcode.
+  Supported typeof strings: `"number"`, `"string"`, `"boolean"`, `"undefined"`.
+  `"object"` and `"function"` are rejected with a compile diagnostic.
 
 ---
 
@@ -1206,3 +1211,49 @@ members requires the codec to inspect the value's type identity (e.g., a `typeId
 field on struct values or a registry lookup). A future phase must extend
 `findMemberIndex` to handle `NativeType.Struct` (and potentially `List`, `Map`,
 and other composite types) for full union support.
+
+### Phase 4: `typeof` lowering (completed 2026-03-22)
+
+**Planned vs actual:**
+
+All 5 concrete deliverables were delivered as specified. No unplanned additions
+were required -- the implementation matched the spec closely.
+
+1. `Op.TYPE_CHECK = 150` added to the `Op` enum.
+2. `execTypeCheck` in the VM: pops value, compares `value.t === instr.a`, pushes
+   `TRUE_VALUE` or `FALSE_VALUE`.
+3. `IrTypeCheck` IR node with `nativeType: number` field.
+4. `lowerTypeofComparison()` detects `typeof x === "string"` and reversed
+   `"string" === typeof x` patterns. Supports `===`, `!==`, `==`, `!=`.
+   Negation for `!==`/`!=` reuses `CoreOpId.Not` on boolean.
+5. End-to-end tests: `typeof` checks compile, run, and produce correct booleans.
+
+**Design decisions matching spec recommendations:**
+
+- `"object"` rejected with a diagnostic per the spec's "safest initial approach"
+  recommendation. Only `"number"`, `"string"`, `"boolean"`, `"undefined"` are
+  supported.
+- `TYPE_CHECK` opcode chosen over alternatives (TYPEOF string push + equality,
+  inline host call sequence) per the design doc's recommendation for efficiency
+  (single instruction, integer compare, no allocation).
+- TypeScript AST models `typeof x` as `TypeOfExpression`, not
+  `PrefixUnaryExpression`. The spec described it as a "typeof unary expression"
+  which was slightly imprecise but did not cause issues -- `ts.isTypeOfExpression`
+  was the correct API.
+
+**Not changed (spec mentioned but unnecessary):**
+
+- No changes to the brain compiler -- `typeof` is a TS-compiler-only feature.
+- No updates to `core-type-system-evolution.md` -- the design doc already listed
+  `TYPE_CHECK` as the preferred approach and the implementation matched exactly.
+
+**All acceptance criteria passed.** All builds (Node, ESM, Roblox-TS) succeed.
+Sim app builds. 487 core tests pass (6 new), 141 typescript tests pass (6 new).
+
+**End-to-end AnyList narrowing test not included.** The spec's acceptance criteria
+included an `AnyList` narrowing test (`const arr: AnyList = [1, "hello"]`). This
+was not tested because `AnyList` indexing (producing an `any`-typed element from a
+list access) requires additional lowering support beyond `typeof`. The simpler
+test using `typeof params.val` on a known-typed parameter exercises the same
+codepath. AnyList narrowing will be testable after further list-access lowering
+work.

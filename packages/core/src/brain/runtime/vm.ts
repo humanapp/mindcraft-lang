@@ -562,6 +562,8 @@ export class VM implements IVM {
           return this.execLoadCallsiteVar(fiber, ins, frame);
         case Op.STORE_CALLSITE_VAR:
           return this.execStoreCallsiteVar(fiber, ins, frame);
+        case Op.TYPE_CHECK:
+          return this.execTypeCheck(fiber, ins, frame);
         default: {
           const err: ErrorValue = {
             tag: "ScriptError",
@@ -676,6 +678,13 @@ export class VM implements IVM {
       throw new Error(`STORE_CALLSITE_VAR: index ${idx} out of bounds [0, ${fiber.callsiteVars?.size() ?? 0})`);
     }
     fiber.callsiteVars.set(idx, this.pop(fiber));
+    frame.pc++;
+    return undefined;
+  }
+
+  private execTypeCheck(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const value = this.pop(fiber);
+    this.push(fiber, V.bool(value.t === (ins.a ?? 0)));
     frame.pc++;
     return undefined;
   }

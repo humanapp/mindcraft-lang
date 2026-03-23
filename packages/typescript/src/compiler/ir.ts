@@ -17,6 +17,7 @@ export type IrNode =
   | IrListNew
   | IrListPush
   | IrListLen
+  | IrTypeCheck
   | IrLabel
   | IrJump
   | IrJumpIfFalse
@@ -115,4 +116,9 @@ export interface IrListPush {
 
 export interface IrListLen {
   kind: "ListLen";
+}
+
+export interface IrTypeCheck {
+  kind: "TypeCheck";
+  nativeType: number;
 }

@@ -3123,3 +3123,206 @@ export default Sensor({
     }
   });
 });
+
+describe("typeof lowering", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+  });
+
+  test("typeof x === 'number' compiles and returns true for number", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "typeof-number",
+  output: "boolean",
+  params: { val: { type: "number", default: 42 } },
+  onExecute(ctx: Context, params: { val: number }): boolean {
+    return typeof params.val === "number";
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const args = mkArgsMap({ 0: mkNumberValue(42) });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.deepStrictEqual(runResult.result, { t: NativeType.Boolean, v: true });
+    }
+  });
+
+  test("typeof x !== 'string' produces negated result", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "typeof-not-string",
+  output: "boolean",
+  params: { val: { type: "number", default: 42 } },
+  onExecute(ctx: Context, params: { val: number }): boolean {
+    return typeof params.val !== "string";
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const args = mkArgsMap({ 0: mkNumberValue(42) });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.deepStrictEqual(runResult.result, { t: NativeType.Boolean, v: true });
+    }
+  });
+
+  test("reversed form: 'boolean' === typeof x", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "typeof-reversed",
+  output: "boolean",
+  params: { val: { type: "boolean", default: true } },
+  onExecute(ctx: Context, params: { val: boolean }): boolean {
+    return "boolean" === typeof params.val;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const args = mkArgsMap({ 0: { t: NativeType.Boolean, v: true } });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.deepStrictEqual(runResult.result, { t: NativeType.Boolean, v: true });
+    }
+  });
+
+  test("typeof x === 'undefined' for nil value", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "typeof-undefined",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    const x: number | null = null;
+    return typeof x === "undefined";
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.deepStrictEqual(runResult.result, { t: NativeType.Boolean, v: true });
+    }
+  });
+
+  test("typeof x === 'object' produces a diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "typeof-object",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    const x = 5;
+    return typeof x === "object";
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0, "expected a diagnostic for unsupported typeof comparison");
+    assert.ok(
+      result.diagnostics.some((d) => d.message.includes("Unsupported typeof comparison")),
+      `expected diagnostic about unsupported typeof, got: ${JSON.stringify(result.diagnostics)}`
+    );
+  });
+
+  test("typeof in if-statement for runtime narrowing", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "typeof-narrowing",
+  output: "number",
+  params: { val: { type: "number", default: 10 } },
+  onExecute(ctx: Context, params: { val: number }): number {
+    if (typeof params.val === "number") {
+      return params.val + 1;
+    }
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const args = mkArgsMap({ 0: mkNumberValue(10) });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 11);
+    }
+  });
+});

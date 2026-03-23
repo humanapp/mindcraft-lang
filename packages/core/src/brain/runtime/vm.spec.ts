@@ -1136,6 +1136,112 @@ describe("VM -- WHEN/DO boundaries", () => {
   });
 });
 
+// ---- Type check ----
+
+describe("VM -- type check", () => {
+  test("TYPE_CHECK with NativeType.Number on NumberValue pushes TRUE_VALUE", () => {
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Number }, { op: Op.RET }])],
+      [mkNumberValue(42)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.deepStrictEqual(result.result, TRUE_VALUE);
+    }
+  });
+
+  test("TYPE_CHECK with NativeType.Number on StringValue pushes FALSE_VALUE", () => {
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Number }, { op: Op.RET }])],
+      [mkStringValue("hello")]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.deepStrictEqual(result.result, FALSE_VALUE);
+    }
+  });
+
+  test("TYPE_CHECK with NativeType.Nil on NIL_VALUE pushes TRUE_VALUE", () => {
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Nil }, { op: Op.RET }])],
+      [NIL_VALUE]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.deepStrictEqual(result.result, TRUE_VALUE);
+    }
+  });
+
+  test("TYPE_CHECK with NativeType.String on StringValue pushes TRUE_VALUE", () => {
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.String }, { op: Op.RET }])],
+      [mkStringValue("hello")]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.deepStrictEqual(result.result, TRUE_VALUE);
+    }
+  });
+
+  test("TYPE_CHECK with NativeType.Boolean on BooleanValue pushes TRUE_VALUE", () => {
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Boolean }, { op: Op.RET }])],
+      [TRUE_VALUE]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.deepStrictEqual(result.result, TRUE_VALUE);
+    }
+  });
+
+  test("TYPE_CHECK with NativeType.Boolean on NumberValue pushes FALSE_VALUE", () => {
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Boolean }, { op: Op.RET }])],
+      [mkNumberValue(1)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.deepStrictEqual(result.result, FALSE_VALUE);
+    }
+  });
+});
+
 // ---- FiberScheduler ----
 
 describe("FiberScheduler", () => {

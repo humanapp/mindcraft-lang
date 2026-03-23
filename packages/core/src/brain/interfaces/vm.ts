@@ -295,6 +295,9 @@ export enum Op {
   // Callsite-persistent variables (per-callsite state that survives across ticks)
   LOAD_CALLSITE_VAR = 140,
   STORE_CALLSITE_VAR,
+
+  // Type introspection
+  TYPE_CHECK = 150,
 }
 
 export const BYTECODE_VERSION = 1;

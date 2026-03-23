@@ -351,6 +351,14 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   }
 
   // ==========================================
+  // Type introspection
+  // ==========================================
+
+  typeCheck(nativeType: number): void {
+    this.emit({ op: Op.TYPE_CHECK, a: nativeType });
+  }
+
+  // ==========================================
   // Finalization
   // ==========================================
 

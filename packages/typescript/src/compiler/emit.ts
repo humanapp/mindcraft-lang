@@ -89,6 +89,9 @@ export function emitFunction(
       case "ListLen":
         emitter.listLen();
         break;
+      case "TypeCheck":
+        emitter.typeCheck(node.nativeType);
+        break;
       case "Label":
         emitter.mark(getOrAllocLabel(node.labelId));
         break;
