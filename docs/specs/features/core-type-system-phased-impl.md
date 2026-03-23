@@ -1194,3 +1194,15 @@ were required:
 **All acceptance criteria passed.** All builds (Node, Roblox-TS) succeed.
 Sim app builds (`vite build` + `tsc --noEmit`). 481 core tests pass (18 new),
 135 typescript tests pass (4 new).
+
+**Known limitation -- struct unions:**
+
+`UnionCodec.findMemberIndex()` identifies members by primitive type checks only
+(`TypeUtils.isBoolean`, `isNumber`, `isString`, nil check). Unions of struct types
+(e.g., `Vector2 | Color3`) compile correctly (TypeIds resolve, union TypeId is
+created) but fail at runtime because `findMemberIndex` cannot identify struct
+values -- they fall through to `return -1` and `encode()` throws. Supporting struct
+members requires the codec to inspect the value's type identity (e.g., a `typeId`
+field on struct values or a registry lookup). A future phase must extend
+`findMemberIndex` to handle `NativeType.Struct` (and potentially `List`, `Map`,
+and other composite types) for full union support.
