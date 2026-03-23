@@ -372,7 +372,7 @@
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
     "format": "biome format ./src --write",
-    "pretest": "npm run build:node",
+    "pretest": "npm run build",
     "test": "tsx --tsconfig tsconfig.node.json --test $(find src -name '*.spec.ts')",
     "release:patch": "npm run build && npm run check:only && node ../../scripts/release.js patch",
     "release:minor": "npm run build && npm run check:only && node ../../scripts/release.js minor",
