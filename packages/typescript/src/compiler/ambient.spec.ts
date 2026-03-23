@@ -151,7 +151,7 @@ export default Sensor({
     assert.ok(ambient.includes("Direction: Direction;"), "should have MindcraftTypeMap entry");
   });
 
-  test("list type generates ReadonlyArray alias", () => {
+  test("list type generates Array alias", () => {
     const types = getBrainServices().types;
     const listId = mkTypeId(NativeType.List, "NumberList");
     if (!types.get(listId)) {
@@ -161,10 +161,7 @@ export default Sensor({
     }
 
     const ambient = buildAmbientDeclarations();
-    assert.ok(
-      ambient.includes("export type NumberList = ReadonlyArray<number>;"),
-      "should generate ReadonlyArray type alias"
-    );
+    assert.ok(ambient.includes("export type NumberList = Array<number>;"), "should generate Array type alias");
     assert.ok(ambient.includes("NumberList: NumberList;"), "should have MindcraftTypeMap entry");
   });
 

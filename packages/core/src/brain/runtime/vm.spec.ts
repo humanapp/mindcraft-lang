@@ -1014,6 +1014,93 @@ describe("VM -- list operations", () => {
       assert.equal((result.result as { v: number }).v, 2);
     }
   });
+
+  test("LIST_GET returns element at index", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.LIST_NEW },
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.LIST_GET },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30), mkNumberValue(1)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 20);
+    }
+  });
+
+  test("LIST_GET returns nil for out-of-bounds index", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.LIST_NEW },
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.LIST_GET },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(10), mkNumberValue(99)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal(result.result!.t, NativeType.Nil);
+    }
+  });
+
+  test("LIST_SET mutates element at index", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.LIST_NEW },
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.LIST_SET },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.LIST_GET },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(10), mkNumberValue(20), mkNumberValue(0), mkNumberValue(99)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 99);
+    }
+  });
 });
 
 // ---- Map operations ----

@@ -697,6 +697,8 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     lowerObjectLiteral(expr, ctx);
   } else if (ts.isArrayLiteralExpression(expr)) {
     lowerArrayLiteral(expr, ctx);
+  } else if (ts.isElementAccessExpression(expr)) {
+    lowerElementAccess(expr, ctx);
   } else if (ts.isArrowFunction(expr)) {
     lowerClosureExpression(expr, ctx);
   } else if (ts.isFunctionExpression(expr)) {
@@ -754,6 +756,12 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
         lowerExpression(arg, ctx);
       }
       ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: expr.arguments.length });
+      return;
+    }
+  }
+
+  if (ts.isPropertyAccessExpression(expr.expression)) {
+    if (lowerListMethodCall(expr, expr.expression, ctx)) {
       return;
     }
   }
@@ -985,6 +993,11 @@ function emitStore(
 }
 
 function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
+  if (ts.isElementAccessExpression(expr.left)) {
+    lowerElementAccessAssignment(expr, ctx);
+    return;
+  }
+
   if (!ts.isIdentifier(expr.left)) {
     ctx.diagnostics.push(makeDiag("Assignment target must be a variable", expr.left));
     return;
@@ -1266,6 +1279,375 @@ function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): bo
   }
 
   return true;
+}
+
+function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext): void {
+  const objType = ctx.checker.getTypeAtLocation(expr.expression);
+  const listTypeId = resolveListTypeId(objType, ctx);
+  if (!listTypeId) {
+    ctx.diagnostics.push(makeDiag("Element access is only supported on list types", expr));
+    return;
+  }
+  lowerExpression(expr.expression, ctx);
+  lowerExpression(expr.argumentExpression, ctx);
+  ctx.ir.push({ kind: "ListGet" });
+}
+
+function lowerElementAccessAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
+  const elemAccess = expr.left as ts.ElementAccessExpression;
+  const objType = ctx.checker.getTypeAtLocation(elemAccess.expression);
+  const listTypeId = resolveListTypeId(objType, ctx);
+  if (!listTypeId) {
+    ctx.diagnostics.push(makeDiag("Element access assignment is only supported on list types", expr.left));
+    return;
+  }
+  lowerExpression(elemAccess.expression, ctx);
+  lowerExpression(elemAccess.argumentExpression, ctx);
+  lowerExpression(expr.right, ctx);
+  ctx.ir.push({ kind: "ListSet" });
+}
+
+function lowerListMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const objType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  const listTypeId = resolveListTypeId(objType, ctx);
+  if (!listTypeId) return false;
+
+  const methodName = propAccess.name.text;
+
+  switch (methodName) {
+    case "push":
+      lowerListPush(expr, propAccess, ctx);
+      return true;
+    case "indexOf":
+      lowerListIndexOf(expr, propAccess, ctx);
+      return true;
+    case "filter":
+      lowerListFilter(expr, propAccess, listTypeId, ctx);
+      return true;
+    case "map":
+      lowerListMap(expr, propAccess, ctx);
+      return true;
+    case "forEach":
+      lowerListForEach(expr, propAccess, ctx);
+      return true;
+    default:
+      return false;
+  }
+}
+
+function lowerListPush(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  if (expr.arguments.length !== 1) {
+    ctx.diagnostics.push(makeDiag(".push() requires exactly 1 argument", expr));
+    return;
+  }
+  lowerExpression(propAccess.expression, ctx);
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "ListPush" });
+}
+
+function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  if (expr.arguments.length !== 1) {
+    ctx.diagnostics.push(makeDiag(".indexOf() requires exactly 1 argument", expr));
+    return;
+  }
+
+  const loopStart = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+  const foundLabel = allocLabel(ctx);
+
+  const listLocal = ctx.scopeStack.allocLocal();
+  const searchLocal = ctx.scopeStack.allocLocal();
+  const idxLocal = ctx.scopeStack.allocLocal();
+  const lenLocal = ctx.scopeStack.allocLocal();
+
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: listLocal });
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: searchLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: listLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  ctx.ir.push({ kind: "StoreLocal", index: lenLocal });
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .indexOf()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: listLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "ListGet" });
+  ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
+
+  const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
+  const searchTypeId = tsTypeToTypeId(searchType);
+  const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId]) : undefined;
+  if (!eqFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve === operator for .indexOf()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: eqFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfTrue", labelId: foundLabel });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .indexOf()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+
+  ctx.ir.push({ kind: "Label", labelId: foundLabel });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "Jump", labelId: allocLabel(ctx) });
+  const doneLabel = ctx.nextLabelId - 1;
+
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(-1) });
+
+  ctx.ir.push({ kind: "Label", labelId: doneLabel });
+}
+
+function lowerListFilter(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  listTypeId: string,
+  ctx: LowerContext
+): void {
+  if (expr.arguments.length !== 1) {
+    ctx.diagnostics.push(makeDiag(".filter() requires exactly 1 argument", expr));
+    return;
+  }
+
+  const loopStart = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+  const skipLabel = allocLabel(ctx);
+
+  const srcListLocal = ctx.scopeStack.allocLocal();
+  const resultListLocal = ctx.scopeStack.allocLocal();
+  const idxLocal = ctx.scopeStack.allocLocal();
+  const lenLocal = ctx.scopeStack.allocLocal();
+  const callbackLocal = ctx.scopeStack.allocLocal();
+
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: srcListLocal });
+
+  ctx.ir.push({ kind: "ListNew", typeId: listTypeId });
+  ctx.ir.push({ kind: "StoreLocal", index: resultListLocal });
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: callbackLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  ctx.ir.push({ kind: "StoreLocal", index: lenLocal });
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .filter()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "ListGet" });
+
+  ctx.ir.push({ kind: "Dup" });
+
+  ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
+  ctx.ir.push({ kind: "Swap" });
+  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: skipLabel });
+
+  ctx.ir.push({ kind: "LoadLocal", index: resultListLocal });
+  ctx.ir.push({ kind: "Swap" });
+  ctx.ir.push({ kind: "ListPush" });
+  ctx.ir.push({ kind: "StoreLocal", index: resultListLocal });
+  const afterPushLabel = allocLabel(ctx);
+  ctx.ir.push({ kind: "Jump", labelId: afterPushLabel });
+
+  ctx.ir.push({ kind: "Label", labelId: skipLabel });
+  ctx.ir.push({ kind: "Pop" });
+
+  ctx.ir.push({ kind: "Label", labelId: afterPushLabel });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .filter()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+  ctx.ir.push({ kind: "LoadLocal", index: resultListLocal });
+}
+
+function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  if (expr.arguments.length !== 1) {
+    ctx.diagnostics.push(makeDiag(".map() requires exactly 1 argument", expr));
+    return;
+  }
+
+  const returnType = ctx.checker.getTypeAtLocation(expr);
+  const resultListTypeId = resolveListTypeId(returnType, ctx);
+  if (!resultListTypeId) {
+    ctx.diagnostics.push(makeDiag("Cannot determine result list type for .map() (add a type annotation)", expr));
+    return;
+  }
+
+  const loopStart = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  const srcListLocal = ctx.scopeStack.allocLocal();
+  const resultListLocal = ctx.scopeStack.allocLocal();
+  const idxLocal = ctx.scopeStack.allocLocal();
+  const lenLocal = ctx.scopeStack.allocLocal();
+  const callbackLocal = ctx.scopeStack.allocLocal();
+
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: srcListLocal });
+
+  ctx.ir.push({ kind: "ListNew", typeId: resultListTypeId });
+  ctx.ir.push({ kind: "StoreLocal", index: resultListLocal });
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: callbackLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  ctx.ir.push({ kind: "StoreLocal", index: lenLocal });
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .map()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "ListGet" });
+  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+
+  ctx.ir.push({ kind: "LoadLocal", index: resultListLocal });
+  ctx.ir.push({ kind: "Swap" });
+  ctx.ir.push({ kind: "ListPush" });
+  ctx.ir.push({ kind: "StoreLocal", index: resultListLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .map()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+  ctx.ir.push({ kind: "LoadLocal", index: resultListLocal });
+}
+
+function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  if (expr.arguments.length !== 1) {
+    ctx.diagnostics.push(makeDiag(".forEach() requires exactly 1 argument", expr));
+    return;
+  }
+
+  const loopStart = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  const srcListLocal = ctx.scopeStack.allocLocal();
+  const idxLocal = ctx.scopeStack.allocLocal();
+  const lenLocal = ctx.scopeStack.allocLocal();
+  const callbackLocal = ctx.scopeStack.allocLocal();
+
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: srcListLocal });
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: callbackLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  ctx.ir.push({ kind: "StoreLocal", index: lenLocal });
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .forEach()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "ListGet" });
+  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+  ctx.ir.push({ kind: "Pop" });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .forEach()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+  ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
 }
 
 function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): void {

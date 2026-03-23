@@ -62,6 +62,9 @@ export function emitFunction(
       case "Dup":
         emitter.dup();
         break;
+      case "Swap":
+        emitter.swap();
+        break;
       case "Call":
         emitter.call(node.funcIndex, node.argc);
         break;
@@ -92,6 +95,12 @@ export function emitFunction(
       }
       case "ListPush":
         emitter.listPush();
+        break;
+      case "ListGet":
+        emitter.listGet();
+        break;
+      case "ListSet":
+        emitter.listSet();
         break;
       case "ListLen":
         emitter.listLen();

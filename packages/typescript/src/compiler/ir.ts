@@ -9,6 +9,7 @@ export type IrNode =
   | IrReturn
   | IrPop
   | IrDup
+  | IrSwap
   | IrCall
   | IrCallIndirect
   | IrPushFunctionRef
@@ -20,6 +21,8 @@ export type IrNode =
   | IrStructSet
   | IrListNew
   | IrListPush
+  | IrListGet
+  | IrListSet
   | IrListLen
   | IrTypeCheck
   | IrLabel
@@ -62,6 +65,10 @@ export interface IrPop {
 
 export interface IrDup {
   kind: "Dup";
+}
+
+export interface IrSwap {
+  kind: "Swap";
 }
 
 export interface IrCall {
@@ -116,6 +123,14 @@ export interface IrListNew {
 
 export interface IrListPush {
   kind: "ListPush";
+}
+
+export interface IrListGet {
+  kind: "ListGet";
+}
+
+export interface IrListSet {
+  kind: "ListSet";
 }
 
 export interface IrListLen {

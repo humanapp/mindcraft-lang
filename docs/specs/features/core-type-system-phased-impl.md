@@ -58,6 +58,15 @@ not survive. Keep this doc current.
 - (Written 2026-03-22) Phase 2 (generic type constructors) is complete.
 - (Written 2026-03-22) Phase 3 (union types) is complete.
 - (Written 2026-03-22) Phase 4 (`typeof` lowering) is complete.
+- (Written 2026-03-23) Detour: list/array method support is complete (between
+  Phase 6 and Phase 7). `LIST_GET`/`LIST_SET` opcodes wired through IR + emitter.
+  Element access (`arr[i]`, `arr[i] = val`) lowers through `IrListGet`/`IrListSet`.
+  Five list methods (`.push`, `.indexOf`, `.filter`, `.map`, `.forEach`) compile
+  to inline loops -- no new opcodes. Ambient declarations changed from
+  `ReadonlyArray<T>` to custom `Array<T>` interface with method signatures.
+  Phase-out: once all standard `Array` methods are supported in the compiler,
+  remove the mindcraft-scoped `Array<T>` interface from `ambient.ts` and rely
+  on TypeScript's built-in `Array` type instead.
 - `TypeDef` now has optional `nullable?: boolean` and `autoInstantiated?: boolean`
   fields. `NullableTypeShape`/`NullableTypeDef` and `TypeConstructor` interfaces
   exist.
@@ -1480,3 +1489,72 @@ work.
    it is silently skipped in capture analysis. This is benign: `lowerIdentifier` will
    later emit a diagnostic ("Undefined variable") when compiling the closure body.
    But the capture analysis itself produces no warning for unresolvable names.
+
+### Detour: List/array method support (completed 2026-03-23)
+
+Focused detour between Phase 6 (closures) and Phase 7 (type-level function
+signatures). Added element access and five list methods to the TypeScript compiler.
+
+**Planned vs actual:**
+
+| Planned                                                  | Actual | Notes                                                                                                     |
+| -------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------- |
+| Wire `LIST_GET`/`LIST_SET` opcodes through IR + emitter  | Done   | `IrListGet`, `IrListSet` IR nodes; emit cases for `ListGet`, `ListSet`                                    |
+| `IrSwap` IR node for element assignment                  | Done   | Swaps top two stack values so list ref is above index+value for `LIST_SET`                                |
+| `allocLocal()` on `ScopeStack` for anonymous temporaries | Done   | Used by inline loops for iterator variables, length caching, callback results                             |
+| Element access lowering (`arr[i]` read)                  | Done   | `lowerElementAccess()` handles `ElementAccessExpression`                                                  |
+| Element assignment lowering (`arr[i] = val`)             | Done   | `lowerElementAccessAssignment()` in `lowerAssignment` for `ElementAccessExpression` targets               |
+| `.push()` method                                         | Done   | `lowerListPush()` emits `IrListPush`; returns new length (not tested return value)                        |
+| `.indexOf()` method                                      | Done   | `lowerListIndexOf()` compiles to inline loop with equality check, returns index or -1                     |
+| `.filter()` method                                       | Done   | `lowerListFilter()` compiles to inline loop with `CALL_INDIRECT` for callback, pushes to new list         |
+| `.map()` method                                          | Done   | `lowerListMap()` compiles to inline loop with `CALL_INDIRECT` for callback, pushes results to new list    |
+| `.forEach()` method                                      | Done   | `lowerListForEach()` compiles to inline loop with `CALL_INDIRECT` for callback, discards results          |
+| Ambient declarations updated                             | Done   | `ReadonlyArray<T>` replaced with custom `Array<T>` interface; initially `MindcraftList<T>`, renamed later |
+| VM-level tests for LIST_GET/LIST_SET                     | Done   | 3 tests: get element, out-of-bounds returns nil, set mutates element                                      |
+| End-to-end codegen tests                                 | Done   | 11 new tests + 1 updated assertion                                                                        |
+
+**Unplanned additions:**
+
+1. `IrSwap` IR node. Element assignment needs the list reference on top of the
+   stack after pushing the index and value. Rather than restructuring the lowering
+   order, a `Swap` instruction reorders the top two stack values. This is a
+   general-purpose utility that could be useful elsewhere.
+
+2. Method call dispatch infrastructure. `lowerCallExpression` now checks for
+   `PropertyAccessExpression` callees and dispatches to `lowerListMethodCall` when
+   the object's type resolves to a list TypeId. This is the first method call
+   lowering in the compiler and establishes the pattern for future method support
+   (e.g., string methods, map methods).
+
+3. `MindcraftList<T>` -> `Array<T>` rename. Initially created a custom
+   `MindcraftList<T>` interface to avoid conflicts with TypeScript's built-in
+   `Array` type. User requested rename to `Array<T>` for developer familiarity.
+   The custom interface shadows the built-in, which works because the ambient
+   module is the only compilation context.
+
+**Design decisions:**
+
+- **Inline loops, not new opcodes.** `.indexOf`, `.filter`, `.map`, `.forEach` all
+  compile to inline loop patterns using existing opcodes (`LIST_LEN`, `LIST_GET`,
+  `CALL_INDIRECT`, `LIST_NEW`, `LIST_PUSH`, comparison/jump). This avoids VM
+  changes and keeps the opcode set minimal.
+
+- **`allocLocal()` for temporaries.** Inline loops need scratch locals (iterator,
+  length, callback result). `allocLocal()` on `ScopeStack` allocates anonymous
+  local slots that don't appear in the scope's name map. These are reclaimed when
+  the scope exits.
+
+- **Capture-by-value implications for `.forEach`.** Closures capture primitives by
+  value, so `forEach((x) => sum += x)` cannot mutate `sum` in the outer scope.
+  However, closures capture list references (not deep copies), so mutating a
+  captured list (e.g., `results.push(x)`) works correctly. Tests were designed
+  around this constraint.
+
+**Not changed:**
+
+- No new VM opcodes. All list methods compile to sequences of existing opcodes.
+- No changes to the linker. No new value types or instruction formats.
+- No changes to the brain compiler. List methods are a TS-compiler-only feature.
+
+**All acceptance criteria passed.** All builds (Node, ESM, Roblox-TS) succeed.
+501 core tests pass (498 prev + 3 new), 160 typescript tests pass (149 prev + 11 new).

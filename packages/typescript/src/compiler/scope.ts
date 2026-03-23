@@ -20,6 +20,10 @@ export class ScopeStack {
     return idx;
   }
 
+  allocLocal(): number {
+    return this._nextLocal++;
+  }
+
   resolveLocal(name: string): number | undefined {
     for (let i = this.scopes.length - 1; i >= 0; i--) {
       const idx = this.scopes[i].get(name);
