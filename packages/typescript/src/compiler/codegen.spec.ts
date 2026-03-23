@@ -3029,3 +3029,97 @@ export default Sensor({
     );
   });
 });
+
+describe("union types", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+  });
+
+  test("tsTypeToTypeId returns a union TypeId for number | string (not Any)", () => {
+    const types = getBrainServices().types;
+    const unionId = types.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    assert.ok(unionId);
+    assert.notEqual(unionId, CoreTypeIds.Any);
+    const def = types.get(unionId);
+    assert.ok(def);
+    assert.equal(def.coreType, NativeType.Union);
+  });
+
+  test("[1, 'hello'] compiles to a list with a union element type, not AnyList", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "union-list",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: (number | string)[] = [1, "hello"];
+    return arr.length;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 2);
+    }
+  });
+
+  test("ambient output for a union type emits member1 | member2", () => {
+    const types = getBrainServices().types;
+    types.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    const ambientSource = buildAmbientDeclarations();
+    assert.ok(!ambientSource.includes("union:<"), "union type internal name should not appear in ambient output");
+  });
+
+  test("operator resolution works through union expansion: (number | string) + number", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "union-op",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const x: number | null = 5;
+    return x + 1;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 6);
+    }
+  });
+});

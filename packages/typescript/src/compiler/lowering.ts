@@ -10,6 +10,7 @@ import {
   type NullableTypeDef,
   runtime,
   type StructTypeDef,
+  type UnionTypeDef,
   type Value,
 } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
@@ -60,6 +61,55 @@ function allocLabel(ctx: LowerContext): number {
 
 function resolveOperator(opId: string, argTypes: string[]): string | undefined {
   return getBrainServices().operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
+}
+
+function resolveOperatorWithExpansion(opId: string, argTypes: string[]): string | undefined {
+  const direct = resolveOperator(opId, argTypes);
+  if (direct) return direct;
+
+  if (argTypes.length === 1) {
+    const members = expandTypeIdMembers(argTypes[0]);
+    if (members.length === 1 && members[0] === argTypes[0]) return undefined;
+    let resolved: string | undefined;
+    for (const m of members) {
+      const fn = resolveOperator(opId, [m]);
+      if (!fn) return undefined;
+      if (resolved === undefined) {
+        resolved = fn;
+      } else if (resolved !== fn) {
+        return undefined;
+      }
+    }
+    return resolved;
+  }
+
+  if (argTypes.length === 2) {
+    const lhsMembers = expandTypeIdMembers(argTypes[0]);
+    const rhsMembers = expandTypeIdMembers(argTypes[1]);
+    if (
+      lhsMembers.length === 1 &&
+      lhsMembers[0] === argTypes[0] &&
+      rhsMembers.length === 1 &&
+      rhsMembers[0] === argTypes[1]
+    ) {
+      return undefined;
+    }
+    let resolved: string | undefined;
+    for (const l of lhsMembers) {
+      for (const r of rhsMembers) {
+        const fn = resolveOperator(opId, [l, r]);
+        if (!fn) return undefined;
+        if (resolved === undefined) {
+          resolved = fn;
+        } else if (resolved !== fn) {
+          return undefined;
+        }
+      }
+    }
+    return resolved;
+  }
+
+  return undefined;
 }
 
 export function lowerProgram(
@@ -719,25 +769,12 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
       return;
     }
 
-    const fnName = resolveOperator(opId, [lhsTypeId, rhsTypeId]);
+    const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
     if (!fnName) {
-      const baseLhs = unwrapNullableTypeId(lhsTypeId);
-      const baseRhs = unwrapNullableTypeId(rhsTypeId);
-      if (baseLhs !== lhsTypeId || baseRhs !== rhsTypeId) {
-        const fallbackFn = resolveOperator(opId, [baseLhs, baseRhs]);
-        if (fallbackFn) {
-          ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 2 });
-        } else {
-          ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
-          return;
-        }
-      } else {
-        ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
-        return;
-      }
-    } else {
-      ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+      ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
+      return;
     }
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
   }
 
   ctx.ir.push({ kind: "Dup" });
@@ -780,24 +817,12 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
       ctx.diagnostics.push(makeDiag("Cannot determine type for `!` operand", expr));
       return;
     }
-    const fnName = resolveOperator(CoreOpId.Not, [operandTypeId]);
+    const fnName = resolveOperatorWithExpansion(CoreOpId.Not, [operandTypeId]);
     if (!fnName) {
-      const baseId = unwrapNullableTypeId(operandTypeId);
-      if (baseId !== operandTypeId) {
-        const fallbackFn = resolveOperator(CoreOpId.Not, [baseId]);
-        if (fallbackFn) {
-          ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 1 });
-        } else {
-          ctx.diagnostics.push(makeDiag(`No operator overload for !(${operandTypeId})`, expr));
-          return;
-        }
-      } else {
-        ctx.diagnostics.push(makeDiag(`No operator overload for !(${operandTypeId})`, expr));
-        return;
-      }
-    } else {
-      ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+      ctx.diagnostics.push(makeDiag(`No operator overload for !(${operandTypeId})`, expr));
+      return;
     }
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
   } else if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
     lowerPrefixIncDec(expr, ctx);
   } else {
@@ -957,14 +982,10 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
 
   const fnName = resolveOperator(opId, [lhsTypeId, rhsTypeId]);
   if (!fnName) {
-    const baseLhs = unwrapNullableTypeId(lhsTypeId);
-    const baseRhs = unwrapNullableTypeId(rhsTypeId);
-    if (baseLhs !== lhsTypeId || baseRhs !== rhsTypeId) {
-      const fallbackFn = resolveOperator(opId, [baseLhs, baseRhs]);
-      if (fallbackFn) {
-        ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 2 });
-        return;
-      }
+    const fallbackFn = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
+    if (fallbackFn) {
+      ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 2 });
+      return;
     }
     ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
     return;
@@ -1134,13 +1155,21 @@ function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {
   }
 }
 
-function unwrapNullableTypeId(typeId: string): string {
+function expandTypeIdMembers(typeId: string): string[] {
   const registry = getBrainServices().types;
   const def = registry.get(typeId);
-  if (def?.nullable) {
-    return (def as NullableTypeDef).baseTypeId;
+  if (!def) return [typeId];
+  if (def.coreType === NativeType.Union) {
+    const members: string[] = [];
+    (def as UnionTypeDef).memberTypeIds.forEach((mid: string) => {
+      members.push(mid);
+    });
+    return members;
   }
-  return typeId;
+  if (def.nullable) {
+    return [(def as NullableTypeDef).baseTypeId];
+  }
+  return [typeId];
 }
 
 function tsTypeToTypeId(type: ts.Type): string | undefined {
@@ -1168,14 +1197,24 @@ function tsTypeToTypeId(type: ts.Type): string | undefined {
       return baseTypeId;
     }
     if (nonNullish.length >= 2) {
-      const resolved = new Set<string>();
+      const memberIds = new List<string>();
       for (const t of nonNullish) {
         const id = tsTypeToTypeId(t);
-        if (!id) return undefined;
-        resolved.add(id);
+        if (!id) return CoreTypeIds.Any;
+        memberIds.push(id);
       }
-      if (resolved.size >= 2) {
-        return CoreTypeIds.Any;
+      if (hasNullish) {
+        memberIds.push(CoreTypeIds.Nil);
+      }
+      const deduped = new Set<string>();
+      memberIds.forEach((id) => {
+        deduped.add(id);
+      });
+      if (deduped.size >= 2) {
+        return getBrainServices().types.getOrCreateUnionType(List.from([...deduped]));
+      }
+      if (deduped.size === 1) {
+        return [...deduped][0];
       }
     }
   }

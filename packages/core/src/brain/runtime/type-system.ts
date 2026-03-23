@@ -6,6 +6,7 @@ import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import { UniqueSet } from "../../platform/uniqueset";
 import {
+  CoreTypeIds,
   CoreTypeNames,
   type EnumTypeDef,
   type EnumTypeShape,
@@ -23,6 +24,7 @@ import {
   type TypeConstructor,
   type TypeDef,
   type TypeId,
+  type UnionTypeDef,
 } from "../interfaces";
 import { getBrainServices } from "../services";
 
@@ -292,6 +294,86 @@ export class TypeRegistry implements ITypeRegistry {
     def.name = constructedName;
     def.autoInstantiated = true;
     this.add(def);
+    return typeId;
+  }
+
+  getOrCreateUnionType(memberTypeIds: List<TypeId>): TypeId {
+    const expanded = new List<string>();
+    memberTypeIds.forEach((mid) => {
+      const def = this.get(mid);
+      if (!def) {
+        throw new Error(`${mid} is not a registered type`);
+      }
+      if (def.coreType === NativeType.Union) {
+        (def as UnionTypeDef).memberTypeIds.forEach((inner) => {
+          expanded.push(inner);
+        });
+      } else if (def.nullable) {
+        expanded.push((def as NullableTypeDef).baseTypeId);
+        expanded.push(CoreTypeIds.Nil);
+      } else {
+        expanded.push(mid);
+      }
+    });
+
+    const deduped = new UniqueSet<string>();
+    expanded.forEach((id) => {
+      deduped.add(id);
+    });
+    const sorted = List.from(deduped.toArray().sort());
+
+    if (sorted.size() === 0) {
+      throw new Error("Cannot create union type with zero members");
+    }
+    if (sorted.size() === 1) {
+      return sorted.get(0)! as TypeId;
+    }
+
+    let hasNil = false;
+    sorted.forEach((id) => {
+      if (id === CoreTypeIds.Nil) {
+        hasNil = true;
+      }
+    });
+    if (sorted.size() === 2 && hasNil) {
+      const first = sorted.get(0)!;
+      const second = sorted.get(1)!;
+      const otherTypeId = first === CoreTypeIds.Nil ? second : first;
+      return this.addNullableType(otherTypeId as TypeId);
+    }
+
+    const nameParts: string[] = [];
+    sorted.forEach((id) => {
+      nameParts.push(id);
+    });
+    const name = nameParts.join(",");
+    const typeId = mkTypeId(NativeType.Union, name);
+    if (this.defs.has(typeId)) {
+      return typeId;
+    }
+
+    const memberDefsList = new List<TypeDef>();
+    const memberCodecsList = new List<TypeCodec>();
+    const sortedTypeIds = new List<TypeId>();
+    sorted.forEach((id) => {
+      const def = this.get(id as TypeId);
+      if (!def) {
+        throw new Error(`${id} is not a registered type`);
+      }
+      memberDefsList.push(def);
+      memberCodecsList.push(def.codec);
+      sortedTypeIds.push(id as TypeId);
+    });
+
+    const unionDef: UnionTypeDef = {
+      coreType: NativeType.Union,
+      typeId,
+      codec: new UnionCodec(sortedTypeIds, memberDefsList, memberCodecsList),
+      name,
+      autoInstantiated: true,
+      memberTypeIds: sortedTypeIds,
+    };
+    this.add(unionDef);
     return typeId;
   }
 
@@ -590,6 +672,77 @@ class NullableCodec implements TypeCodec {
       return "nil";
     }
     return this.baseCodec.stringify(value);
+  }
+}
+
+class UnionCodec implements TypeCodec {
+  private memberDefs: List<TypeDef>;
+  private memberCodecs: List<TypeCodec>;
+
+  constructor(_memberTypeIds: List<TypeId>, memberDefs: List<TypeDef>, memberCodecs: List<TypeCodec>) {
+    this.memberDefs = memberDefs;
+    this.memberCodecs = memberCodecs;
+  }
+
+  private findMemberIndex(value: unknown): number {
+    if (value === undefined) {
+      for (let i = 0; i < this.memberDefs.size(); i++) {
+        if (this.memberDefs.get(i)!.coreType === NativeType.Nil) {
+          return i;
+        }
+      }
+      return -1;
+    }
+    if (TypeUtils.isBoolean(value)) {
+      for (let i = 0; i < this.memberDefs.size(); i++) {
+        if (this.memberDefs.get(i)!.coreType === NativeType.Boolean) {
+          return i;
+        }
+      }
+      return -1;
+    }
+    if (TypeUtils.isNumber(value)) {
+      for (let i = 0; i < this.memberDefs.size(); i++) {
+        if (this.memberDefs.get(i)!.coreType === NativeType.Number) {
+          return i;
+        }
+      }
+      return -1;
+    }
+    if (TypeUtils.isString(value)) {
+      for (let i = 0; i < this.memberDefs.size(); i++) {
+        if (this.memberDefs.get(i)!.coreType === NativeType.String) {
+          return i;
+        }
+      }
+      return -1;
+    }
+    return -1;
+  }
+
+  encode(w: IWriteStream, value: unknown): void {
+    const idx = this.findMemberIndex(value);
+    if (idx < 0) {
+      throw new Error("UnionCodec: value does not match any union member");
+    }
+    w.writeU8(idx);
+    this.memberCodecs.get(idx)!.encode(w, value);
+  }
+
+  decode(r: IReadStream): unknown {
+    const idx = r.readU8();
+    if (idx >= this.memberCodecs.size()) {
+      throw new Error(`UnionCodec: invalid discriminant ${SU.toString(idx)}`);
+    }
+    return this.memberCodecs.get(idx)!.decode(r);
+  }
+
+  stringify(value: unknown): string {
+    const idx = this.findMemberIndex(value);
+    if (idx < 0) {
+      return "unknown";
+    }
+    return this.memberCodecs.get(idx)!.stringify(value);
   }
 }
 

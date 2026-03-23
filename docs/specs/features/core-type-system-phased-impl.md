@@ -56,14 +56,25 @@ not survive. Keep this doc current.
 
 - (Written 2026-03-22) Phase 1 (nullable type support) is complete.
 - (Written 2026-03-22) Phase 2 (generic type constructors) is complete.
+- (Written 2026-03-22) Phase 3 (union types) is complete.
 - `TypeDef` now has optional `nullable?: boolean` and `autoInstantiated?: boolean`
   fields. `NullableTypeShape`/`NullableTypeDef` and `TypeConstructor` interfaces
   exist.
 - `ITypeRegistry` exposes `addNullableType(baseTypeId)`,
-  `registerConstructor(ctor)`, and `instantiate(name, args)`. `ListConstructor`
-  and `MapConstructor` are registered in `registerCoreTypes()`.
+  `registerConstructor(ctor)`, `instantiate(name, args)`, and
+  `getOrCreateUnionType(memberTypeIds)`. `ListConstructor` and `MapConstructor`
+  are registered in `registerCoreTypes()`.
+- `NativeType.Union = 10` added. `UnionTypeShape`/`UnionTypeDef` interfaces and
+  `UnionCodec` (tagged discriminant encode/decode) exist in the runtime.
+- `getOrCreateUnionType()` normalizes unions: flatten nested, expand nullable to
+  `[base, Nil]`, dedup, sort, collapse single-member, delegate `[T, Nil]` to
+  `addNullableType`.
 - The TS compiler resolves `T | null` / `T | undefined` to nullable TypeIds and
-  falls back to base types for operator overload resolution.
+  multi-member unions to union TypeIds (falls back to `Any` only when a member
+  is unresolvable).
+- `expandTypeIdMembers()` replaces `unwrapNullableTypeId()` in `lowering.ts`.
+  `resolveOperatorWithExpansion()` does cross-product operator lookup for union
+  operands at all three operator lowering sites.
 - The TS compiler uses `registry.instantiate("List", [elementTypeId])` in
   `resolveListTypeId()` instead of scanning all registered list types.
 - `tsTypeToTypeId()` resolves named types (structs, enums) via symbol name
@@ -71,13 +82,15 @@ not survive. Keep this doc current.
 - `lowerPropertyAccess()` supports `.length` on list-typed expressions via
   `IrListLen` -> `Op.LIST_LEN`.
 - Ambient generation (`buildAmbientDeclarations`) skips types with
-  `autoInstantiated: true`.
+  `autoInstantiated: true`. Union types emit `member1 | member2 | ...` syntax.
 - Nullable TypeId convention: `"<coreType>:<name?>"` (e.g., `"number:<number?>"`).
 - Auto-instantiated TypeId convention:
   `"<coreType>:<Constructor<arg1,arg2>>"` (e.g., `"list:<List<number:<number>>>"`).
+- Union TypeId convention:
+  `"union:<member1,member2,...>"` (e.g., `"union:<boolean:<boolean>,number:<number>>"`).
 - Operator overloads and conversions still use exact `TypeId` matching in the core
-  registry. The TS compiler's lowering pass handles nullable unwrapping as a
-  fallback when exact match fails.
+  registry. The TS compiler's lowering pass handles nullable unwrapping and union
+  expansion as fallbacks when exact match fails.
 
 ---
 
@@ -1137,3 +1150,47 @@ were required:
 
 **All acceptance criteria passed.** All builds (Node, Roblox-TS) succeed.
 463 core tests pass, 131 typescript tests pass.
+
+### Phase 3: Union types (completed 2026-03-22)
+
+**Planned vs actual:**
+
+All 8 concrete deliverables were delivered as specified. Two unplanned additions
+were required:
+
+1. `expandTypeIdMembers()` does not expand nullable types to `[base, Nil]` for
+   operator resolution. The spec said to generalize `unwrapNullableTypeId()`, but
+   nullable expansion for operators was already handled by the Phase 1 fallback.
+   `expandTypeIdMembers()` returns the base type only (not `[base, Nil]`) for
+   nullable, matching the Phase 1 behavior. Unions are fully expanded.
+
+2. `resolveOperatorWithExpansion()` added as a cross-product fallback. The spec's
+   risk section noted that ambiguous overloads (different return types per member)
+   should fall back to `Any`. The implementation is stricter: if any member pair
+   resolves to a different overload function name than the others, the expansion
+   returns `undefined` and the caller emits a diagnostic. All three operator
+   lowering sites (binary, compound assignment, unary `!`) use this function.
+
+**Silent failure fix (post-review):**
+
+- `tsTypeToTypeId()` union branch: when all union members deduplicated to a single
+  TypeId (e.g., `string | string`), the `deduped.size >= 2` guard failed and the
+  function fell through to symbol resolution instead of returning the collapsed
+  type. Added a `deduped.size === 1` branch to return the single member directly.
+
+**Design doc alignment:**
+
+- The design doc's `UnionTypeShape`, `UnionTypeDef`, and `UnionCodec` descriptions
+  matched the implementation exactly. No amendments needed.
+- Nullable subsumption (delegate `[T, Nil]` to `addNullableType`) implemented as
+  specified in both the spec and design doc.
+
+**Not changed (spec mentioned but unnecessary):**
+
+- Core `operators.ts` and `conversions.ts` -- operator resolution for unions
+  handled entirely in the TS compiler's lowering pass, as spec intended.
+- Brain compiler (`InferredTypesVisitor`) -- not touched, as spec intended.
+
+**All acceptance criteria passed.** All builds (Node, Roblox-TS) succeed.
+Sim app builds (`vite build` + `tsc --noEmit`). 481 core tests pass (18 new),
+135 typescript tests pass (4 new).

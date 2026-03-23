@@ -21,6 +21,7 @@ export enum NativeType {
   Map = 7,
   Struct = 8,
   Any = 9,
+  Union = 10,
 }
 
 export function nativeTypeToString(coreType: NativeType): string {
@@ -47,6 +48,8 @@ export function nativeTypeToString(coreType: NativeType): string {
       return "struct";
     case NativeType.Any:
       return "any";
+    case NativeType.Union:
+      return "union";
     default:
       return "invalid";
   }
@@ -112,6 +115,12 @@ export interface NullableTypeShape {
 
 export type NullableTypeDef = TypeDef & NullableTypeShape;
 
+export interface UnionTypeShape {
+  memberTypeIds: List<TypeId>;
+}
+
+export type UnionTypeDef = TypeDef & UnionTypeShape;
+
 export interface TypeConstructor {
   name: string;
   arity: number;
@@ -136,4 +145,5 @@ export interface ITypeRegistry {
   addNullableType(baseTypeId: TypeId): TypeId;
   registerConstructor(ctor: TypeConstructor): void;
   instantiate(constructorName: string, args: List<TypeId>): TypeId;
+  getOrCreateUnionType(memberTypeIds: List<TypeId>): TypeId;
 }

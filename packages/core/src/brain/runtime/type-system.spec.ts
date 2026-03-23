@@ -13,6 +13,7 @@ import {
   type NullableTypeDef,
   nativeTypeToString,
   registerCoreBrainComponents,
+  type UnionTypeDef,
 } from "@mindcraft-lang/core/brain";
 
 const { MemoryStream } = stream;
@@ -351,5 +352,175 @@ describe("instantiate", () => {
     assert.ok(def);
     assert.equal(def.coreType, NativeType.List);
     assert.equal((def as ListTypeDef).elementTypeId, innerTypeId);
+  });
+});
+
+describe("NativeType.Union", () => {
+  test("NativeType.Union has value 10", () => {
+    assert.equal(NativeType.Union, 10);
+  });
+
+  test("nativeTypeToString returns 'union' for NativeType.Union", () => {
+    assert.equal(nativeTypeToString(NativeType.Union), "union");
+  });
+});
+
+describe("getOrCreateUnionType", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("returns a stable TypeId with coreType Union", () => {
+    const registry = getBrainServices().types;
+    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    assert.ok(unionId);
+    const def = registry.get(unionId);
+    assert.ok(def);
+    assert.equal(def.coreType, NativeType.Union);
+  });
+
+  test("reversed order returns the same TypeId (order-independent)", () => {
+    const registry = getBrainServices().types;
+    const id1 = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    const id2 = registry.getOrCreateUnionType(List.from([CoreTypeIds.String, CoreTypeIds.Number]));
+    assert.equal(id1, id2);
+  });
+
+  test("nested union flattening works", () => {
+    const registry = getBrainServices().types;
+    const innerUnion = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    const outerUnion = registry.getOrCreateUnionType(List.from([innerUnion, CoreTypeIds.Boolean]));
+    const def = registry.get(outerUnion) as UnionTypeDef;
+    assert.ok(def);
+    assert.equal(def.memberTypeIds.size(), 3);
+  });
+
+  test("single-member collapse returns the member TypeId directly", () => {
+    const registry = getBrainServices().types;
+    const result = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number]));
+    assert.equal(result, CoreTypeIds.Number);
+  });
+
+  test("nullable subsumption: [Number, Nil] returns addNullableType result", () => {
+    const registry = getBrainServices().types;
+    const unionResult = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.Nil]));
+    const nullableResult = registry.addNullableType(CoreTypeIds.Number);
+    assert.equal(unionResult, nullableResult);
+  });
+
+  test("throws for zero members", () => {
+    const registry = getBrainServices().types;
+    assert.throws(() => {
+      registry.getOrCreateUnionType(List.from([]));
+    });
+  });
+
+  test("throws for unregistered member TypeId", () => {
+    const registry = getBrainServices().types;
+    assert.throws(() => {
+      registry.getOrCreateUnionType(List.from(["fake:<fake>"]));
+    });
+  });
+
+  test("deduplicates identical members", () => {
+    const registry = getBrainServices().types;
+    const result = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.Number]));
+    assert.equal(result, CoreTypeIds.Number);
+  });
+
+  test("memberTypeIds on def are sorted and deduplicated", () => {
+    const registry = getBrainServices().types;
+    const unionId = registry.getOrCreateUnionType(
+      List.from([CoreTypeIds.String, CoreTypeIds.Boolean, CoreTypeIds.Number])
+    );
+    const def = registry.get(unionId) as UnionTypeDef;
+    assert.ok(def);
+    const ids: string[] = [];
+    def.memberTypeIds.forEach((id) => {
+      ids.push(id);
+    });
+    const sorted = [...ids].sort();
+    assert.deepEqual(ids, sorted);
+  });
+
+  test("flattens nullable members into [base, Nil]", () => {
+    const registry = getBrainServices().types;
+    const nullableNum = registry.addNullableType(CoreTypeIds.Number);
+    const unionId = registry.getOrCreateUnionType(List.from([nullableNum, CoreTypeIds.String]));
+    const def = registry.get(unionId) as UnionTypeDef;
+    assert.ok(def);
+    const ids: string[] = [];
+    def.memberTypeIds.forEach((id) => {
+      ids.push(id);
+    });
+    assert.ok(ids.includes(CoreTypeIds.Number));
+    assert.ok(ids.includes(CoreTypeIds.String));
+    assert.ok(ids.includes(CoreTypeIds.Nil));
+  });
+});
+
+describe("UnionCodec", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("round-trips a number value through number | string union", () => {
+    const registry = getBrainServices().types;
+    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    const def = registry.get(unionId)!;
+    const s = new MemoryStream();
+    def.codec.encode(s, 42.5);
+    s.resetRead();
+    const decoded = def.codec.decode(s);
+    assert.equal(decoded, 42.5);
+  });
+
+  test("round-trips a string value through number | string union", () => {
+    const registry = getBrainServices().types;
+    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    const def = registry.get(unionId)!;
+    const s = new MemoryStream();
+    def.codec.encode(s, "hello");
+    s.resetRead();
+    const decoded = def.codec.decode(s);
+    assert.equal(decoded, "hello");
+  });
+
+  test("encode throws for a value type not in the union", () => {
+    const registry = getBrainServices().types;
+    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    const def = registry.get(unionId)!;
+    const s = new MemoryStream();
+    assert.throws(() => {
+      def.codec.encode(s, true);
+    });
+  });
+
+  test("stringify delegates to the correct member codec", () => {
+    const registry = getBrainServices().types;
+    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    const def = registry.get(unionId)!;
+    assert.equal(def.codec.stringify(42), "42");
+    assert.equal(def.codec.stringify("hello"), "hello");
+  });
+
+  test("encode writes discriminant byte followed by value", () => {
+    const registry = getBrainServices().types;
+    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Boolean, CoreTypeIds.Number]));
+    const def = registry.get(unionId)!;
+    const s = new MemoryStream();
+    def.codec.encode(s, true);
+    s.resetRead();
+    const discriminant = s.readU8();
+    assert.ok(discriminant >= 0);
+    const decoded = s.readBool();
+    assert.equal(decoded, true);
+  });
+
+  test("autoInstantiated flag is set on union types", () => {
+    const registry = getBrainServices().types;
+    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    const def = registry.get(unionId)!;
+    assert.equal(def.autoInstantiated, true);
   });
 });

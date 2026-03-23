@@ -5,6 +5,7 @@ import type {
   NullableTypeDef,
   StructTypeDef,
   TypeDef,
+  UnionTypeDef,
 } from "@mindcraft-lang/core/brain";
 import { getBrainServices, NativeType } from "@mindcraft-lang/core/brain";
 
@@ -92,6 +93,13 @@ function typeDefToTs(def: TypeDef): string {
     const baseDef = getBrainServices().types.get((def as NullableTypeDef).baseTypeId);
     if (!baseDef) return "unknown";
     return `${typeDefToTs(baseDef)} | null`;
+  }
+  if (def.coreType === NativeType.Union) {
+    const parts: string[] = [];
+    (def as UnionTypeDef).memberTypeIds.forEach((mid) => {
+      parts.push(typeIdToTs(mid));
+    });
+    return parts.join(" | ");
   }
   switch (def.coreType) {
     case NativeType.Boolean:
