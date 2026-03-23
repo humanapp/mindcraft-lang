@@ -64,6 +64,7 @@ export interface TypeDef {
   codec: TypeCodec;
   name: string;
   nullable?: boolean;
+  autoInstantiated?: boolean;
 }
 
 export interface EnumTypeShape {
@@ -111,6 +112,13 @@ export interface NullableTypeShape {
 
 export type NullableTypeDef = TypeDef & NullableTypeShape;
 
+export interface TypeConstructor {
+  name: string;
+  arity: number;
+  coreType: NativeType;
+  construct(registry: ITypeRegistry, args: List<TypeId>): TypeDef;
+}
+
 export interface ITypeRegistry {
   get(id: TypeId): TypeDef | undefined;
   resolveByName(name: string): TypeId | undefined;
@@ -126,4 +134,6 @@ export interface ITypeRegistry {
   addStructType(name: string, shape: StructTypeShape): TypeId;
   addAnyType(name: string): TypeId;
   addNullableType(baseTypeId: TypeId): TypeId;
+  registerConstructor(ctor: TypeConstructor): void;
+  instantiate(constructorName: string, args: List<TypeId>): TypeId;
 }

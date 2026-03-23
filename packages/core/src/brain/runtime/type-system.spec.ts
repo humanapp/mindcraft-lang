@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { stream } from "@mindcraft-lang/core";
+import { List, stream } from "@mindcraft-lang/core";
 import {
   CoreTypeIds,
   CoreTypeNames,
   getBrainServices,
+  type ListTypeDef,
+  type MapTypeDef,
   mkTypeId,
   NativeType,
   type NullableTypeDef,
@@ -227,5 +229,127 @@ describe("NullableCodec", () => {
     def.codec.encode(sPresent, true);
     sPresent.resetRead();
     assert.equal(sPresent.readU8(), 1);
+  });
+});
+
+describe("registerConstructor", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("List and Map constructors are registered after registerCoreTypes", () => {
+    const registry = getBrainServices().types;
+    const listTypeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
+    assert.ok(listTypeId);
+    const mapTypeId = registry.instantiate("Map", List.from([CoreTypeIds.Number]));
+    assert.ok(mapTypeId);
+  });
+
+  test("duplicate constructor registration throws", () => {
+    const registry = getBrainServices().types;
+    assert.throws(() => {
+      registry.registerConstructor({
+        name: "List",
+        arity: 1,
+        coreType: NativeType.List,
+        construct: () => ({}) as never,
+      });
+    });
+  });
+});
+
+describe("instantiate", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("instantiate('List', [CoreTypeIds.Number]) returns a valid TypeId", () => {
+    const registry = getBrainServices().types;
+    const typeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
+    assert.ok(typeId);
+    const def = registry.get(typeId);
+    assert.ok(def);
+    assert.equal(def.coreType, NativeType.List);
+    assert.equal((def as ListTypeDef).elementTypeId, CoreTypeIds.Number);
+  });
+
+  test("calling instantiate twice returns the same TypeId (memoized)", () => {
+    const registry = getBrainServices().types;
+    const first = registry.instantiate("List", List.from([CoreTypeIds.Number]));
+    const second = registry.instantiate("List", List.from([CoreTypeIds.Number]));
+    assert.equal(first, second);
+  });
+
+  test("instantiate('List', [CoreTypeIds.String]) returns a different TypeId from number", () => {
+    const registry = getBrainServices().types;
+    const numList = registry.instantiate("List", List.from([CoreTypeIds.Number]));
+    const strList = registry.instantiate("List", List.from([CoreTypeIds.String]));
+    assert.notEqual(numList, strList);
+  });
+
+  test("instantiate('Map', [CoreTypeIds.Number]) works", () => {
+    const registry = getBrainServices().types;
+    const typeId = registry.instantiate("Map", List.from([CoreTypeIds.Number]));
+    assert.ok(typeId);
+    const def = registry.get(typeId);
+    assert.ok(def);
+    assert.equal(def.coreType, NativeType.Map);
+    assert.equal((def as MapTypeDef).valueTypeId, CoreTypeIds.Number);
+  });
+
+  test("instantiate with unknown constructor name throws", () => {
+    const registry = getBrainServices().types;
+    assert.throws(() => {
+      registry.instantiate("Unknown", List.from([CoreTypeIds.Number]));
+    });
+  });
+
+  test("instantiate with wrong arity throws", () => {
+    const registry = getBrainServices().types;
+    assert.throws(() => {
+      registry.instantiate("List", List.from([CoreTypeIds.Number, CoreTypeIds.String]));
+    });
+  });
+
+  test("existing addListType still works alongside constructors", () => {
+    const registry = getBrainServices().types;
+    const explicitId = registry.resolveByName("AnyList");
+    assert.ok(explicitId);
+    const instantiatedId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
+    assert.notEqual(explicitId, instantiatedId);
+  });
+
+  test("TypeDef from instantiated type has autoInstantiated flag", () => {
+    const registry = getBrainServices().types;
+    const typeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
+    const def = registry.get(typeId);
+    assert.ok(def);
+    assert.equal(def.autoInstantiated, true);
+  });
+
+  test("ListCodec from instantiated type round-trips values", () => {
+    const registry = getBrainServices().types;
+    const typeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
+    const def = registry.get(typeId)!;
+    const s = new MemoryStream();
+    const values = List.from([42, 7, 13]);
+    def.codec.encode(s, values);
+    s.resetRead();
+    const decoded = def.codec.decode(s) as List<number>;
+    assert.equal(decoded.size(), 3);
+    assert.equal(decoded.get(0), 42);
+    assert.equal(decoded.get(1), 7);
+    assert.equal(decoded.get(2), 13);
+  });
+
+  test("nested instantiation works (List<List<number>>)", () => {
+    const registry = getBrainServices().types;
+    const innerTypeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
+    const outerTypeId = registry.instantiate("List", List.from([innerTypeId]));
+    assert.ok(outerTypeId);
+    const def = registry.get(outerTypeId);
+    assert.ok(def);
+    assert.equal(def.coreType, NativeType.List);
+    assert.equal((def as ListTypeDef).elementTypeId, innerTypeId);
   });
 });

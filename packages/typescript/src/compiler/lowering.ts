@@ -1,8 +1,8 @@
+import { List } from "@mindcraft-lang/core";
 import {
   CoreOpId,
   CoreTypeIds,
   getBrainServices,
-  type ListTypeDef,
   mkNumberValue,
   mkStringValue,
   NativeType,
@@ -984,6 +984,15 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
       }
     }
   }
+  if (expr.name.text === "length") {
+    const objType = ctx.checker.getTypeAtLocation(expr.expression);
+    const listTypeId = resolveListTypeId(objType, ctx);
+    if (listTypeId) {
+      lowerExpression(expr.expression, ctx);
+      ctx.ir.push({ kind: "ListLen" });
+      return;
+    }
+  }
   ctx.diagnostics.push(makeDiag("Unsupported property access", expr));
 }
 
@@ -1072,13 +1081,7 @@ function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | unde
   const elementTypeId = tsTypeToTypeId(elementType);
   if (!elementTypeId) return undefined;
 
-  for (const [, def] of registry.entries()) {
-    if (def.coreType === NativeType.List && (def as ListTypeDef).elementTypeId === elementTypeId) {
-      return def.typeId;
-    }
-  }
-
-  return undefined;
+  return registry.instantiate("List", List.from([elementTypeId]));
 }
 
 function lowerArrayLiteral(expr: ts.ArrayLiteralExpression, ctx: LowerContext): void {
@@ -1175,6 +1178,12 @@ function tsTypeToTypeId(type: ts.Type): string | undefined {
         return CoreTypeIds.Any;
       }
     }
+  }
+  const sym = type.getSymbol() ?? type.aliasSymbol;
+  if (sym) {
+    const registry = getBrainServices().types;
+    const typeId = registry.resolveByName(sym.getName());
+    if (typeId) return typeId;
   }
   return undefined;
 }

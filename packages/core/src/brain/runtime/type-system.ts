@@ -20,6 +20,7 @@ import {
   type StructTypeDef,
   type StructTypeShape,
   type TypeCodec,
+  type TypeConstructor,
   type TypeDef,
   type TypeId,
 } from "../interfaces";
@@ -28,6 +29,7 @@ import { getBrainServices } from "../services";
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
   private nameToId = new Dict<string, TypeId>();
+  private constructors = new Dict<string, TypeConstructor>();
 
   private add(def: TypeDef) {
     if (this.defs.has(def.typeId)) {
@@ -258,6 +260,41 @@ export class TypeRegistry implements ITypeRegistry {
     return typeId;
   }
 
+  registerConstructor(ctor: TypeConstructor): void {
+    if (this.constructors.has(ctor.name)) {
+      throw new Error(`Type constructor '${ctor.name}' is already registered`);
+    }
+    this.constructors.set(ctor.name, ctor);
+  }
+
+  instantiate(constructorName: string, args: List<TypeId>): TypeId {
+    const ctor = this.constructors.get(constructorName);
+    if (!ctor) {
+      throw new Error(`Unknown type constructor: ${constructorName}`);
+    }
+    if (args.size() !== ctor.arity) {
+      throw new Error(
+        `Type constructor '${constructorName}' expects ${SU.toString(ctor.arity)} argument(s), got ${SU.toString(args.size())}`
+      );
+    }
+    const parts: string[] = [];
+    args.forEach((a) => {
+      parts.push(a);
+    });
+    const argsStr = parts.join(",");
+    const constructedName = `${constructorName}<${argsStr}>`;
+    const typeId = mkTypeId(ctor.coreType, constructedName);
+    if (this.defs.has(typeId)) {
+      return typeId;
+    }
+    const def = ctor.construct(this, args);
+    def.typeId = typeId;
+    def.name = constructedName;
+    def.autoInstantiated = true;
+    this.add(def);
+    return typeId;
+  }
+
   get(id: TypeId): TypeDef | undefined {
     return this.defs.get(id);
   }
@@ -283,6 +320,8 @@ export function registerCoreTypes() {
   typeRegistry.addStringType(CoreTypeNames.String);
   typeRegistry.addAnyType(CoreTypeNames.Any);
   typeRegistry.addListType("AnyList", { elementTypeId: mkTypeId(NativeType.Any, CoreTypeNames.Any) });
+  typeRegistry.registerConstructor(new ListConstructor());
+  typeRegistry.registerConstructor(new MapConstructor());
 }
 
 // ----------------------------------------------------
@@ -551,5 +590,50 @@ class NullableCodec implements TypeCodec {
       return "nil";
     }
     return this.baseCodec.stringify(value);
+  }
+}
+
+// ----------------------------------------------------
+// Type constructors
+
+class ListConstructor implements TypeConstructor {
+  name = "List";
+  arity = 1;
+  coreType = NativeType.List;
+  construct(registry: ITypeRegistry, args: List<TypeId>): TypeDef {
+    const elementTypeId = args.get(0)!;
+    const elementDef = registry.get(elementTypeId);
+    if (!elementDef) {
+      throw new Error(`${elementTypeId} is not a registered type`);
+    }
+    const def: ListTypeDef = {
+      coreType: NativeType.List,
+      typeId: "" as TypeId,
+      codec: new ListCodec(elementDef.codec),
+      name: "",
+      elementTypeId,
+    };
+    return def;
+  }
+}
+
+class MapConstructor implements TypeConstructor {
+  name = "Map";
+  arity = 1;
+  coreType = NativeType.Map;
+  construct(registry: ITypeRegistry, args: List<TypeId>): TypeDef {
+    const valueTypeId = args.get(0)!;
+    const valueDef = registry.get(valueTypeId);
+    if (!valueDef) {
+      throw new Error(`${valueTypeId} is not a registered type`);
+    }
+    const def: MapTypeDef = {
+      coreType: NativeType.Map,
+      typeId: "" as TypeId,
+      codec: new MapCodec(valueDef.codec),
+      name: "",
+      valueTypeId,
+    };
+    return def;
   }
 }

@@ -55,12 +55,26 @@ not survive. Keep this doc current.
 ## Current State
 
 - (Written 2026-03-22) Phase 1 (nullable type support) is complete.
-- `TypeDef` now has an optional `nullable?: boolean` field. `NullableTypeShape` and
-  `NullableTypeDef` interfaces exist. `ITypeRegistry.addNullableType(baseTypeId)`
-  is available.
+- (Written 2026-03-22) Phase 2 (generic type constructors) is complete.
+- `TypeDef` now has optional `nullable?: boolean` and `autoInstantiated?: boolean`
+  fields. `NullableTypeShape`/`NullableTypeDef` and `TypeConstructor` interfaces
+  exist.
+- `ITypeRegistry` exposes `addNullableType(baseTypeId)`,
+  `registerConstructor(ctor)`, and `instantiate(name, args)`. `ListConstructor`
+  and `MapConstructor` are registered in `registerCoreTypes()`.
 - The TS compiler resolves `T | null` / `T | undefined` to nullable TypeIds and
   falls back to base types for operator overload resolution.
+- The TS compiler uses `registry.instantiate("List", [elementTypeId])` in
+  `resolveListTypeId()` instead of scanning all registered list types.
+- `tsTypeToTypeId()` resolves named types (structs, enums) via symbol name
+  lookup on the registry, not just primitives.
+- `lowerPropertyAccess()` supports `.length` on list-typed expressions via
+  `IrListLen` -> `Op.LIST_LEN`.
+- Ambient generation (`buildAmbientDeclarations`) skips types with
+  `autoInstantiated: true`.
 - Nullable TypeId convention: `"<coreType>:<name?>"` (e.g., `"number:<number?>"`).
+- Auto-instantiated TypeId convention:
+  `"<coreType>:<Constructor<arg1,arg2>>"` (e.g., `"list:<List<number:<number>>>"`).
 - Operator overloads and conversions still use exact `TypeId` matching in the core
   registry. The TS compiler's lowering pass handles nullable unwrapping as a
   fallback when exact match fails.
@@ -503,6 +517,14 @@ blunt `Any` fallback for multi-member unions: `number | string` becomes a precis
 - **Luau `UnionCodec` transpile.** The codec uses standard stream operations and
   `NativeType` comparisons. The `getOrCreateUnionType` method uses `Dict` for
   memoization. Both transpile to Luau. Verify with `npm run build:rbx`.
+
+(2026-03-22, Phase 2 discovery) `tsTypeToTypeId()` now resolves named types
+(structs, enums) via `registry.resolveByName(symbol.getName())`, not just
+primitives. Phase 3's `getOrCreateUnionType` member resolution benefits from
+this -- members like `Vector2 | number` will resolve both sides without extra
+work. Also: the core API uses `List<TypeId>` (not `TypeId[]`) for Roblox
+compatibility. `getOrCreateUnionType(memberTypeIds)` should follow this
+convention.
 
 ---
 
@@ -1066,3 +1088,43 @@ were required:
 
 **All acceptance criteria passed.** All builds (Node, ESM, Roblox-TS) succeed.
 `apps/sim` builds. 451 core tests pass, 129 typescript tests pass.
+
+### Phase 2: Generic type constructors (completed 2026-03-22)
+
+**Planned vs actual:**
+
+All 7 concrete deliverables were delivered as specified. Three unplanned additions
+were required:
+
+1. `coreType` field added to `TypeConstructor` interface. The spec's interface
+   definition omitted this, but `instantiate()` needs it to compute the
+   deterministic TypeId (`mkTypeId(ctor.coreType, ...)`) before calling
+   `construct()`. Without it, the TypeId format cannot include the correct
+   NativeType prefix.
+
+2. `tsTypeToTypeId()` enhanced to resolve named types (structs, enums) via
+   symbol name lookup on the registry. The spec only described updating
+   `resolveListTypeId()` to use `instantiate`, but `instantiate("List",
+[elementTypeId])` requires `elementTypeId` to be resolved first. The
+   existing `tsTypeToTypeId()` only handled primitives (number, boolean,
+   string, null, undefined). Named types like `Vector2` needed a registry
+   lookup via `registry.resolveByName(symbol.getName())`. This was a
+   foundational gap that prevented `Vector2[]` from auto-instantiating.
+
+3. `.length` property accessor on list-typed expressions. After Phase 2
+   was functionally complete, the end-to-end test used `return 2` instead
+   of `return vecs.length` because `lowerPropertyAccess()` only handled
+   `params.foo` access. Added `IrListLen` IR node, wired it in `emit.ts`,
+   and extended `lowerPropertyAccess()` to detect `.length` on list-typed
+   expressions and emit the `IrListLen` -> `Op.LIST_LEN` pipeline.
+
+**API deviation from spec:**
+
+- `TypeId[]` changed to `List<TypeId>` throughout the `TypeConstructor` /
+  `ITypeRegistry` API for Roblox (Luau) compatibility. The spec used JS
+  arrays in its interface snippets.
+- `autoInstantiated?: boolean` flag chosen for detection (spec listed this
+  as one of two options; the other was pattern-matching on type names).
+
+**All acceptance criteria passed.** All builds (Node, Roblox-TS) succeed.
+463 core tests pass, 131 typescript tests pass.

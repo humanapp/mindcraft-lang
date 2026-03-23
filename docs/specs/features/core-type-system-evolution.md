@@ -251,6 +251,12 @@ interface TypeConstructor {
 }
 ```
 
+(2026-03-22, Phase 2 implementation note) The actual interface adds a `coreType:
+NativeType` field so that `instantiate()` can compute a deterministic TypeId via
+`mkTypeId(ctor.coreType, ...)` before calling `construct()`. The `construct` method
+also receives the registry as its first argument so it can look up argument type
+codecs. The args use `List<TypeId>` (not `TypeId[]`) for Roblox compatibility.
+
 The registry gains:
 
 - `registerConstructor(ctor: TypeConstructor): void` -- registers `List`, `Map`, etc.

@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import {
   type BooleanValue,
+  CoreTypeIds,
   type ExecutionContext,
   getBrainServices,
   HandleTable,
@@ -2960,6 +2961,71 @@ export default Sensor({
     assert.ok(
       ambientSource.includes("number?") && ambientSource.includes("number | null"),
       "ambient declarations should include nullable type with | null"
+    );
+  });
+});
+
+describe("auto-instantiated list types", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    if (!types.get(vec2TypeId)) {
+      types.addStructType("Vector2", {
+        fields: List.from([
+          { name: "x", typeId: numTypeId },
+          { name: "y", typeId: numTypeId },
+        ]),
+      });
+    }
+  });
+
+  test("Vector2[] compiles via auto-instantiation without pre-registered Vector2List", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "vec-list",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const vecs: ReadonlyArray<Vector2> = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
+    return vecs.length;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 2);
+    }
+  });
+
+  test("ambient generation skips auto-instantiated types", () => {
+    const types = getBrainServices().types;
+    types.instantiate("List", List.from([CoreTypeIds.Number]));
+    const ambientSource = buildAmbientDeclarations();
+    assert.ok(
+      !ambientSource.includes("List<number:<number>>"),
+      "auto-instantiated type name should not appear in ambient"
     );
   });
 });

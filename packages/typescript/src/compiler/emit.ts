@@ -86,6 +86,9 @@ export function emitFunction(
       case "ListPush":
         emitter.listPush();
         break;
+      case "ListLen":
+        emitter.listLen();
+        break;
       case "Label":
         emitter.mark(getOrAllocLabel(node.labelId));
         break;

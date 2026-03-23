@@ -164,6 +164,7 @@ export function buildAmbientDeclarations(): string {
 
   for (const [, def] of registry.entries()) {
     if (CORE_TYPE_NAMES.has(def.name)) continue;
+    if (def.autoInstantiated) continue;
 
     if (def.nullable) {
       const tsType = typeDefToTs(def);

@@ -16,6 +16,7 @@ export type IrNode =
   | IrStructSet
   | IrListNew
   | IrListPush
+  | IrListLen
   | IrLabel
   | IrJump
   | IrJumpIfFalse
@@ -110,4 +111,8 @@ export interface IrListNew {
 
 export interface IrListPush {
   kind: "ListPush";
+}
+
+export interface IrListLen {
+  kind: "ListLen";
 }
