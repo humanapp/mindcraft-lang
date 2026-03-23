@@ -40,6 +40,7 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
+    "typecheck": "tsc --noEmit",
     "format": "biome format ./src --write",
     "release:patch": "npm run check:only && node ../../scripts/release.js patch",
     "release:minor": "npm run check:only && node ../../scripts/release.js minor",

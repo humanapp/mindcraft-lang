@@ -36,6 +36,7 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
+    "typecheck": "tsc --noEmit",
     "format": "biome format ./src --write"
   },
   "dependencies": {
