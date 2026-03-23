@@ -34,6 +34,7 @@ export interface ProgramLoweringResult {
   initFuncId?: number;
   onPageEnteredWrapperId: number;
   numCallsiteVars: number;
+  functionTable: Map<string, number>;
   diagnostics: CompileDiagnostic[];
 }
 
@@ -182,6 +183,7 @@ export function lowerProgram(
     initFuncId,
     onPageEnteredWrapperId,
     numCallsiteVars: nextCallsiteVar,
+    functionTable,
     diagnostics,
   };
 }
@@ -667,6 +669,11 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
     return;
   }
 
+  if (ctx.functionTable.has(expr.text)) {
+    ctx.ir.push({ kind: "PushFunctionRef", funcName: expr.text });
+    return;
+  }
+
   ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.text}`, expr));
 }
 
@@ -681,6 +688,22 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
       return;
     }
   }
+
+  const calleeSym = ctx.checker.getSymbolAtLocation(expr.expression);
+  const calleeType = ctx.checker.getTypeAtLocation(expr.expression);
+  if (calleeType.getCallSignatures().length > 0 || (calleeSym && calleeSym.flags & ts.SymbolFlags.Function)) {
+    const irLenBefore = ctx.ir.length;
+    lowerExpression(expr.expression, ctx);
+    if (ctx.ir.length === irLenBefore) {
+      return;
+    }
+    for (const arg of expr.arguments) {
+      lowerExpression(arg, ctx);
+    }
+    ctx.ir.push({ kind: "CallIndirect", argc: expr.arguments.length });
+    return;
+  }
+
   ctx.diagnostics.push(makeDiag("Unsupported function call", expr));
 }
 
@@ -959,6 +982,8 @@ function typeofStringToNativeType(s: string): number | undefined {
       return NativeType.Boolean;
     case "undefined":
       return NativeType.Nil;
+    case "function":
+      return NativeType.Function;
     default:
       return undefined;
   }
@@ -1256,6 +1281,9 @@ function tsTypeToTypeId(type: ts.Type): string | undefined {
   }
   if (type.flags & ts.TypeFlags.Null || type.flags & ts.TypeFlags.Undefined) {
     return CoreTypeIds.Nil;
+  }
+  if (type.getCallSignatures().length > 0) {
+    return CoreTypeIds.Function;
   }
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));

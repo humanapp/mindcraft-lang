@@ -35,6 +35,7 @@ import {
   isBooleanValue,
   isEnumValue,
   isErrValue,
+  isFunctionValue,
   isHandleValue,
   isListValue,
   isMapValue,
@@ -137,6 +138,9 @@ const V = {
   struct(fields: Dict<string, Value>, typeId: TypeId): Value {
     return { t: NativeType.Struct, typeId, v: fields };
   },
+  func(funcId: number): Value {
+    return { t: NativeType.Function, funcId };
+  },
   handle(id: HandleId): Value {
     return { t: "handle", id };
   },
@@ -158,7 +162,7 @@ const V = {
  */
 function deepCopyValue(v: Value, types: ITypeRegistry, ctx: ExecutionContext, visited?: List<Value>): Value {
   if (!isStructValue(v)) {
-    // Primitives, enums, nil, void, unknown, handles, errors -- all immutable or VM-internal
+    // Primitives, enums, nil, void, unknown, handles, errors, functions -- all immutable or VM-internal
     return v;
   }
 
@@ -220,6 +224,8 @@ function isTruthy(v: Value): boolean {
     case NativeType.Map:
       return v.v.size() > 0;
     case NativeType.Struct:
+      return true;
+    case NativeType.Function:
       return true;
     case "handle":
       return true;
@@ -564,6 +570,8 @@ export class VM implements IVM {
           return this.execStoreCallsiteVar(fiber, ins, frame);
         case Op.TYPE_CHECK:
           return this.execTypeCheck(fiber, ins, frame);
+        case Op.CALL_INDIRECT:
+          return this.execCallIndirect(fiber, ins, frame);
         default: {
           const err: ErrorValue = {
             tag: "ScriptError",
@@ -686,6 +694,46 @@ export class VM implements IVM {
     const value = this.pop(fiber);
     this.push(fiber, V.bool(value.t === (ins.a ?? 0)));
     frame.pc++;
+    return undefined;
+  }
+
+  private execCallIndirect(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const argc = ins.a ?? 0;
+
+    const args = List.empty<Value>();
+    for (let i = 0; i < argc; i++) {
+      args.push(V.nil());
+    }
+    for (let i = argc - 1; i >= 0; i--) {
+      args.set(i, this.pop(fiber));
+    }
+
+    const funcRef = this.pop(fiber);
+    if (!isFunctionValue(funcRef)) {
+      throw new Error(`CALL_INDIRECT: expected FunctionValue on stack, got ${SU.toString(funcRef.t)}`);
+    }
+
+    const calleeId = funcRef.funcId;
+    if (calleeId < 0 || calleeId >= this.prog.functions.size()) {
+      throw new Error(`CALL_INDIRECT: function ${SU.toString(calleeId)} out of bounds`);
+    }
+
+    if (fiber.frames.size() >= this.config.maxFrameDepth) {
+      throw new Error(`Stack overflow: frame depth limit ${SU.toString(this.config.maxFrameDepth)} exceeded`);
+    }
+
+    const callee = this.prog.functions.get(calleeId)!;
+    if (argc !== callee.numParams) {
+      throw new Error(`CALL_INDIRECT: argc ${SU.toString(argc)} != numParams ${SU.toString(callee.numParams)}`);
+    }
+
+    const caller = this.topFrame(fiber);
+    if (caller) caller.pc++;
+
+    const base = fiber.vstack.size();
+    const locals = this.allocLocals(callee, args);
+
+    fiber.frames.push({ funcId: calleeId, pc: 0, base, locals });
     return undefined;
   }
 

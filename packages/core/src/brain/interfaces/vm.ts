@@ -110,6 +110,7 @@ export type EnumValue = { t: NativeType.Enum; typeId: TypeId; v: string }; // en
 export type ListValue = { t: NativeType.List; typeId: TypeId; v: List<Value> };
 export type MapValue = { t: NativeType.Map; typeId: TypeId; v: ValueDict };
 export type StructValue = { t: NativeType.Struct; typeId: TypeId; v?: Dict<string, Value>; native?: unknown }; // field name -> value
+export type FunctionValue = { t: NativeType.Function; funcId: number };
 
 export type Value =
   | UnknownValue
@@ -122,6 +123,7 @@ export type Value =
   | ListValue
   | MapValue
   | StructValue
+  | FunctionValue
   | { t: "handle"; id: HandleId } // VM-internal type
   | { t: "err"; e: ErrorValue }; // VM-internal type
 
@@ -150,6 +152,9 @@ export function mkNativeStructValue(typeId: TypeId, native: unknown): StructValu
 }
 export function mkListValue(typeId: TypeId, items: List<Value>): ListValue {
   return { t: NativeType.List, typeId, v: items };
+}
+export function mkFunctionValue(funcId: number): FunctionValue {
+  return { t: NativeType.Function, funcId };
 }
 //export function mkMapValue(typeId: TypeId, entries: Dict<string | number, Value>): MapValue {
 //  return { t: NativeType.Map, typeId, v: new ValueDict(entries) };
@@ -214,6 +219,9 @@ export function isMapValue(v: Value): v is MapValue {
 }
 export function isStructValue(v: Value): v is StructValue {
   return v.t === NativeType.Struct;
+}
+export function isFunctionValue(v: Value): v is FunctionValue {
+  return v.t === NativeType.Function;
 }
 export function isErrValue(v: Value): v is { t: "err"; e: ErrorValue } {
   return v.t === "err";
@@ -298,6 +306,9 @@ export enum Op {
 
   // Type introspection
   TYPE_CHECK = 150,
+
+  // Indirect function calls
+  CALL_INDIRECT = 160,
 }
 
 export const BYTECODE_VERSION = 1;

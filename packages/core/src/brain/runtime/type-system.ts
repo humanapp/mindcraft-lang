@@ -237,6 +237,19 @@ export class TypeRegistry implements ITypeRegistry {
     return typeId;
   }
 
+  addFunctionType(name: string): TypeId {
+    this.validateTypeName(name);
+    const typeId = mkTypeId(NativeType.Function, name);
+    this.validateTypeNotRegistered(typeId);
+    this.add({
+      coreType: NativeType.Function,
+      typeId,
+      codec: new FunctionCodec(),
+      name,
+    });
+    return typeId;
+  }
+
   addNullableType(baseTypeId: TypeId): TypeId {
     const baseDef = this.get(baseTypeId);
     if (!baseDef) {
@@ -401,6 +414,7 @@ export function registerCoreTypes() {
   typeRegistry.addNumberType(CoreTypeNames.Number);
   typeRegistry.addStringType(CoreTypeNames.String);
   typeRegistry.addAnyType(CoreTypeNames.Any);
+  typeRegistry.addFunctionType(CoreTypeNames.Function);
   typeRegistry.addListType("AnyList", { elementTypeId: mkTypeId(NativeType.Any, CoreTypeNames.Any) });
   typeRegistry.registerConstructor(new ListConstructor());
   typeRegistry.registerConstructor(new MapConstructor());
@@ -521,6 +535,24 @@ class AnyCodec implements TypeCodec {
       return value;
     }
     return "unknown";
+  }
+}
+
+class FunctionCodec implements TypeCodec {
+  encode(_w: IWriteStream, _value: unknown): void {
+    throw new Error("Function values cannot be serialized");
+  }
+  decode(_r: IReadStream): unknown {
+    throw new Error("Function values cannot be deserialized");
+  }
+  stringify(value: unknown): string {
+    if (value !== undefined) {
+      const v = value as { funcId?: number };
+      if (v.funcId !== undefined) {
+        return `<function:${SU.toString(v.funcId)}>`;
+      }
+    }
+    return "<function>";
   }
 }
 

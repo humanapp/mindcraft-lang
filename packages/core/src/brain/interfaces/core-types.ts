@@ -12,6 +12,7 @@ export const CoreTypeNames = {
   Number: "number",
   String: "string",
   Any: "any",
+  Function: "function",
 };
 
 export const CoreTypeIds = {
@@ -22,4 +23,5 @@ export const CoreTypeIds = {
   Number: mkTypeId(NativeType.Number, CoreTypeNames.Number),
   String: mkTypeId(NativeType.String, CoreTypeNames.String),
   Any: mkTypeId(NativeType.Any, CoreTypeNames.Any),
+  Function: mkTypeId(NativeType.Function, CoreTypeNames.Function),
 };

@@ -3326,3 +3326,99 @@ export default Sensor({
     }
   });
 });
+
+// ---- Function references ----
+
+describe("function references and CALL_INDIRECT", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+  });
+
+  test("passing a named function as argument and calling via indirect call", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function double(n: number): number {
+  return n * 2;
+}
+
+function apply(fn: (n: number) => number, x: number): number {
+  return fn(x);
+}
+
+export default Sensor({
+  name: "test-fn-ref",
+  output: "number",
+  params: {
+    val: { type: "number", default: 5 },
+  },
+  onExecute(ctx: Context, params: { val: number }): number {
+    return apply(double, params.val);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const args = mkArgsMap({ 0: mkNumberValue(5) });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 10);
+    }
+  });
+
+  test("function reference stored in local variable and called indirectly", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function triple(n: number): number {
+  return n * 3;
+}
+
+export default Sensor({
+  name: "test-fn-local",
+  output: "number",
+  params: {
+    val: { type: "number", default: 4 },
+  },
+  onExecute(ctx: Context, params: { val: number }): number {
+    const fn = triple;
+    return fn(params.val);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const args = mkArgsMap({ 0: mkNumberValue(4) });
+    const fiber = vm.spawnFiber(1, 0, List.from([args]), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 12);
+    }
+  });
+});

@@ -22,6 +22,7 @@ export enum NativeType {
   Struct = 8,
   Any = 9,
   Union = 10,
+  Function = 11,
 }
 
 export function nativeTypeToString(coreType: NativeType): string {
@@ -50,6 +51,8 @@ export function nativeTypeToString(coreType: NativeType): string {
       return "any";
     case NativeType.Union:
       return "union";
+    case NativeType.Function:
+      return "function";
     default:
       return "invalid";
   }
@@ -142,6 +145,7 @@ export interface ITypeRegistry {
   addMapType(name: string, shape: MapTypeShape): TypeId;
   addStructType(name: string, shape: StructTypeShape): TypeId;
   addAnyType(name: string): TypeId;
+  addFunctionType(name: string): TypeId;
   addNullableType(baseTypeId: TypeId): TypeId;
   registerConstructor(ctor: TypeConstructor): void;
   instantiate(constructorName: string, args: List<TypeId>): TypeId;

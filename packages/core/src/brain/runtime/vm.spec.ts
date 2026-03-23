@@ -24,7 +24,9 @@ import {
   HandleState,
   HandleTable,
   type Instr,
+  isFunctionValue,
   mkBooleanValue,
+  mkFunctionValue,
   mkNumberValue,
   mkStringValue,
   mkStructValue,
@@ -1238,6 +1240,121 @@ describe("VM -- type check", () => {
     assert.equal(result.status, VmStatus.DONE);
     if (result.status === VmStatus.DONE) {
       assert.deepStrictEqual(result.result, FALSE_VALUE);
+    }
+  });
+});
+
+// ---- CALL_INDIRECT ----
+
+describe("VM -- CALL_INDIRECT", () => {
+  test("CALL_INDIRECT calls function by FunctionValue on stack", () => {
+    // func 0: push FunctionValue(1), CALL_INDIRECT 0 args, RET
+    // func 1: push 42, RET
+    const prog = mkProgram(
+      [
+        mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }]),
+        mkFunc([{ op: Op.PUSH_CONST, a: 1 }, { op: Op.RET }]),
+      ],
+      [mkFunctionValue(1), mkNumberValue(42)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 42);
+    }
+  });
+
+  test("CALL_INDIRECT with arguments", () => {
+    // func 0: push FunctionValue(1), push 10, push 20, CALL_INDIRECT argc=2, RET
+    // func 1 (2 params): LOAD_LOCAL 0, LOAD_LOCAL 1, add via return of local 1
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.CALL_INDIRECT, a: 2 },
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([{ op: Op.LOAD_LOCAL, a: 1 }, { op: Op.RET }]),
+          numParams: 2,
+          numLocals: 2,
+          name: "callee",
+        },
+      ],
+      [mkFunctionValue(1), mkNumberValue(10), mkNumberValue(20)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 20);
+    }
+  });
+
+  test("CALL_INDIRECT with non-FunctionValue throws", () => {
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }])],
+      [mkNumberValue(42)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT);
+  });
+
+  test("FunctionValue can be created with mkFunctionValue", () => {
+    const fv = mkFunctionValue(42);
+    assert.equal(fv.t, NativeType.Function);
+    assert.equal(fv.funcId, 42);
+  });
+
+  test("isFunctionValue type guard works", () => {
+    const fv = mkFunctionValue(7);
+    assert.ok(isFunctionValue(fv));
+    assert.ok(!isFunctionValue(mkNumberValue(7)));
+  });
+
+  test("deepCopyValue returns FunctionValue as-is", () => {
+    // FunctionValues are immutable; STORE_VAR deep-copies, so test that
+    // storing a FunctionValue via STORE_VAR and loading it back works
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.STORE_VAR, a: 0 }, { op: Op.LOAD_VAR, a: 0 }, { op: Op.RET }])],
+      [mkFunctionValue(0)],
+      ["myFunc"]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const vars = new Map<string, Value>();
+    const fiber = vm.spawnFiber(
+      1,
+      0,
+      List.empty(),
+      mkCtx({
+        setVariable: (k, v) => vars.set(k, v),
+        getVariable: <T extends Value>(k: string) => vars.get(k) as T | undefined,
+      })
+    );
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.ok(isFunctionValue(result.result!));
+      assert.equal((result.result as { funcId: number }).funcId, 0);
     }
   });
 });

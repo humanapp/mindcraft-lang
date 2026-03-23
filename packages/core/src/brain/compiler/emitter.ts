@@ -144,6 +144,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.CALL, a: funcId, b: argc });
   }
 
+  /** Call function indirectly via FunctionValue on the stack. */
+  callIndirect(argc: number): void {
+    this.emit({ op: Op.CALL_INDIRECT, a: argc });
+  }
+
   ret(): void {
     this.emit({ op: Op.RET });
   }

@@ -99,7 +99,14 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
   const emittedFunctions: ReturnType<typeof emitFunction>["bytecode"][] = [];
 
   for (const func of programResult.functions) {
-    const emitResult = emitFunction(func.ir, func.numParams, func.numLocals, func.name, pool);
+    const emitResult = emitFunction(
+      func.ir,
+      func.numParams,
+      func.numLocals,
+      func.name,
+      pool,
+      programResult.functionTable
+    );
     if (emitResult.diagnostics.length > 0) {
       return { diagnostics: emitResult.diagnostics };
     }

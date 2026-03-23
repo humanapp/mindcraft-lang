@@ -1,6 +1,6 @@
 import { List } from "@mindcraft-lang/core";
 import type { BrainProgram, FunctionBytecode, Instr, Value } from "@mindcraft-lang/core/brain";
-import { Op } from "@mindcraft-lang/core/brain";
+import { isFunctionValue, NativeType, Op } from "@mindcraft-lang/core/brain";
 import type { UserAuthoredProgram, UserTileLinkInfo } from "../compiler/types.js";
 
 export interface LinkResult {
@@ -18,7 +18,12 @@ export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserA
     const constOffset = linkedConstants.length;
 
     for (let i = 0; i < userProg.constants.size(); i++) {
-      linkedConstants.push(userProg.constants.get(i));
+      const c = userProg.constants.get(i);
+      if (isFunctionValue(c)) {
+        linkedConstants.push({ t: NativeType.Function, funcId: c.funcId + funcOffset });
+      } else {
+        linkedConstants.push(c);
+      }
     }
 
     for (let i = 0; i < userProg.functions.size(); i++) {

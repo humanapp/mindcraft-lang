@@ -95,7 +95,12 @@ not survive. Keep this doc current.
 - `Op.TYPE_CHECK = 150` added. `IrTypeCheck` IR node and `lowerTypeofComparison()`
   lower `typeof x === "string"` patterns to a single `TYPE_CHECK` opcode.
   Supported typeof strings: `"number"`, `"string"`, `"boolean"`, `"undefined"`.
-  `"object"` and `"function"` are rejected with a compile diagnostic.
+  `"object"` is rejected with a compile diagnostic.
+- (Written 2026-03-22) Phase 5 (first-class function references) is complete.
+  `NativeType.Function = 11`, `FunctionValue` in `Value` union,
+  `Op.CALL_INDIRECT = 160`, `FunctionCodec` (non-serializable),
+  `IrPushFunctionRef`/`IrCallIndirect` IR nodes, compiler + linker support.
+  `typeof x === "function"` now compiles to `TYPE_CHECK(NativeType.Function)`.
 
 ---
 
@@ -914,6 +919,14 @@ from the enclosing scope.
   semantics and not a new concern.
 - **Linker impact.** `MAKE_CLOSURE` stores a `funcId`. The linker must remap this
   operand, same as `CALL`. Add `MAKE_CLOSURE` to the linker's operand remapping.
+- (Added 2026-03-22, Phase 5 post-mortem) **Async closures not supported.**
+  `FunctionValue` has no async flag, and no `CALL_INDIRECT_ASYNC` opcode exists.
+  Closures calling async host functions via `await` would not work correctly through
+  indirect calls. This is an inherited limitation from Phase 5.
+- (Added 2026-03-22, Phase 5 post-mortem) **`CallIndirect` bail-out pattern.**
+  Phase 5 added an `ir.length` guard in `lowerCallExpression` to skip `CallIndirect`
+  emission when the callee fails to lower. `MAKE_CLOSURE` emission should follow the
+  same pattern if it depends on sub-expression lowering.
 
 ---
 
@@ -1053,7 +1066,7 @@ it (extra fields are harmless, `GET_FIELD` returns `NIL_VALUE` for missing field
 | 2     | Generic type constructors      | None (independent) | Medium       | Complete    |
 | 3     | Union types                    | Phase 1, Phase 2   | Medium       | Not started |
 | 4     | `typeof` lowering              | Phase 12.1         | Small-medium | Not started |
-| 5     | First-class function refs      | Phase 3            | Medium       | Not started |
+| 5     | First-class function refs      | Phase 3            | Medium       | Complete    |
 | 6     | Closures                       | Phase 5            | High         | Not started |
 | 7     | Type-level function signatures | Phase 5            | Small-medium | Not started |
 | 8     | Structural subtyping           | None (independent) | Low-medium   | Not started |
@@ -1257,3 +1270,88 @@ list access) requires additional lowering support beyond `typeof`. The simpler
 test using `typeof params.val` on a known-typed parameter exercises the same
 codepath. AnyList narrowing will be testable after further list-access lowering
 work.
+
+### Phase 5 -- 2026-03-22
+
+**Status:** Complete. All acceptance criteria met.
+
+**Deliverables -- planned vs actual:**
+
+| Planned                                                            | Actual | Notes                                                                                                               |
+| ------------------------------------------------------------------ | ------ | ------------------------------------------------------------------------------------------------------------------- |
+| `NativeType.Function = 11` in enum                                 | Done   | Follows `Union = 10` from Phase 3                                                                                   |
+| `FunctionValue` type in `Value` union                              | Done   | `{ t: NativeType.Function; funcId: number }`                                                                        |
+| `mkFunctionValue(funcId)` factory + `isFunctionValue` guard        | Done   | --                                                                                                                  |
+| `Op.CALL_INDIRECT = 160` with `execCallIndirect`                   | Done   | Pops argc args (reverse order), pops FunctionValue, validates type and bounds, pushes new frame                     |
+| `FunctionCodec` (non-serializable)                                 | Done   | `encode`/`decode` throw; `stringify` returns `<function:N>`. Uses `undefined` (not `null`) for Roblox compatibility |
+| `V.func(funcId)` factory                                           | Done   | --                                                                                                                  |
+| `addFunctionType(name)` on `ITypeRegistry`/`TypeRegistry`          | Done   | Registered in `registerCoreTypes()`                                                                                 |
+| `IrPushFunctionRef` + `IrCallIndirect` IR nodes                    | Done   | --                                                                                                                  |
+| `PushFunctionRef` emit: resolves name -> funcId via function table | Done   | `emitFunction` takes optional `functionTable` parameter                                                             |
+| `CallIndirect` emit: emits `Op.CALL_INDIRECT`                      | Done   | --                                                                                                                  |
+| `lowerIdentifier` function ref detection                           | Done   | After param/local/callsiteVar checks, falls through to function table lookup                                        |
+| `lowerCallExpression` indirect call detection                      | Done   | Uses `getCallSignatures().length > 0` to detect callable callee; early bail-out if callee lowering produces no IR   |
+| `tsTypeToTypeId` for function types                                | Done   | `getCallSignatures().length > 0` -> `CoreTypeIds.Function`                                                          |
+| `typeofStringToNativeType` for `"function"`                        | Done   | --                                                                                                                  |
+| Linker `FunctionValue` constant remapping                          | Done   | `funcId + funcOffset` for all `isFunctionValue` constants                                                           |
+| `deepCopyValue` for `FunctionValue`                                | Done   | Immutable, returned as-is                                                                                           |
+| `isTruthy` for `FunctionValue`                                     | Done   | Returns `true`                                                                                                      |
+| End-to-end: passing named function as argument + `CALL_INDIRECT`   | Done   | Two codegen tests, one linker test                                                                                  |
+
+**Acceptance criteria results:**
+
+| Criterion                                                   | Result              |
+| ----------------------------------------------------------- | ------------------- |
+| `mkFunctionValue(42)` creates FunctionValue                 | Pass                |
+| `isFunctionValue` type guard works                          | Pass                |
+| `CALL_INDIRECT` with argc=2 pops 2 args + 1 function ref    | Pass                |
+| `CALL_INDIRECT` with non-FunctionValue throws runtime error | Pass (FAULT status) |
+| `FunctionCodec.encode` throws with clear error              | Pass                |
+| `FunctionCodec.stringify` returns descriptive string        | Pass                |
+| End-to-end `apply(double, 5)` -> 10                         | Pass                |
+| `deepCopyValue` for FunctionValue returns same value        | Pass                |
+| `npm run check` passes in core and typescript               | Pass                |
+| `npm run build` (including Roblox) passes                   | Pass                |
+
+**Test counts:**
+
+- packages/core: 493 total (487 prev + 6 new), 0 failures
+- packages/typescript: 144 total (141 prev + 2 codegen + 1 linker), 0 failures
+
+**Discoveries and deviations:**
+
+1. **`typeof x === "function"` now supported.** Phase 4 rejected `"function"` as an
+   unsupported typeof string. Phase 5 added `NativeType.Function` to
+   `typeofStringToNativeType`, so `typeof x === "function"` now compiles to
+   `TYPE_CHECK(NativeType.Function)`. Only `"object"` remains rejected.
+
+2. **Async function references not supported.** `FunctionValue` carries only `funcId`
+   with no async flag. No `CALL_INDIRECT_ASYNC` opcode exists. Async semantics only
+   apply to host functions (`HOST_CALL_ARGS_ASYNC` / `HostAsyncFn`). Storing an async
+   user-defined function in a variable and calling it indirectly would execute it
+   synchronously with no suspension. This is a known gap for future work.
+
+3. **CallIndirect bail-out on failed callee lowering.** Added an `ir.length` check
+   before/after lowering the callee expression. If the callee produces no IR (e.g.,
+   undefined variable -- diagnostic already pushed by `lowerIdentifier`), the
+   `CallIndirect` emission is skipped to prevent stack corruption. This is a localized
+   fix; the broader pattern of `lowerExpression` not signaling failure to callers
+   exists elsewhere in the compiler.
+
+4. **FunctionCodec uses `undefined` only (no `null`).** Roblox Luau does not support
+   `null`, only `nil` (mapped to `undefined`). The `FunctionCodec.stringify` check
+   uses `value !== undefined` rather than `value !== null`.
+
+5. **`tsconfig.node.json` excludes `*.spec.ts` from type-checking.** A type error in
+   `vm.spec.ts` (generic `getVariable` signature mismatch) was not caught by
+   `npm run typecheck`. Fixed manually during review. Spec files are only
+   type-checked by the IDE, not by the CI pipeline.
+
+6. **Design doc NativeType numbering.** `core-type-system-evolution.md` says
+   `NativeType.Function = 10`. Actual value is `11` because `Union = 10` was added
+   in Phase 3. Noted with dated amendment in the design doc.
+
+**Not changed (spec mentioned but unnecessary):**
+
+- No changes to `ambient.ts` -- function types in ambient declarations are Phase 7.
+- No changes to the brain compiler -- function references are a TS-compiler-only feature.

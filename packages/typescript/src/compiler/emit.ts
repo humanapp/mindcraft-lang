@@ -1,4 +1,10 @@
-import { compiler, type FunctionBytecode, getBrainServices, mkStringValue } from "@mindcraft-lang/core/brain";
+import {
+  compiler,
+  type FunctionBytecode,
+  getBrainServices,
+  mkFunctionValue,
+  mkStringValue,
+} from "@mindcraft-lang/core/brain";
 import type { IrNode } from "./ir.js";
 import type { CompileDiagnostic } from "./types.js";
 
@@ -12,7 +18,8 @@ export function emitFunction(
   numParams: number,
   numLocals: number,
   name: string,
-  pool: compiler.ConstantPool
+  pool: compiler.ConstantPool,
+  functionTable?: Map<string, number>
 ): EmitResult {
   const emitter = new compiler.BytecodeEmitter();
   const diagnostics: CompileDiagnostic[] = [];
@@ -92,6 +99,19 @@ export function emitFunction(
       case "TypeCheck":
         emitter.typeCheck(node.nativeType);
         break;
+      case "CallIndirect":
+        emitter.callIndirect(node.argc);
+        break;
+      case "PushFunctionRef": {
+        const funcId = functionTable?.get(node.funcName);
+        if (funcId === undefined) {
+          diagnostics.push({ message: `Cannot resolve function: ${node.funcName}` });
+          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
+        }
+        const idx = pool.add(mkFunctionValue(funcId));
+        emitter.pushConst(idx);
+        break;
+      }
       case "Label":
         emitter.mark(getOrAllocLabel(node.labelId));
         break;

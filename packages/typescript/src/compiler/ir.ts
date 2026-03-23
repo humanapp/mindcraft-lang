@@ -10,6 +10,8 @@ export type IrNode =
   | IrPop
   | IrDup
   | IrCall
+  | IrCallIndirect
+  | IrPushFunctionRef
   | IrHostCallArgs
   | IrMapGet
   | IrStructNew
@@ -121,4 +123,14 @@ export interface IrListLen {
 export interface IrTypeCheck {
   kind: "TypeCheck";
   nativeType: number;
+}
+
+export interface IrCallIndirect {
+  kind: "CallIndirect";
+  argc: number;
+}
+
+export interface IrPushFunctionRef {
+  kind: "PushFunctionRef";
+  funcName: string;
 }

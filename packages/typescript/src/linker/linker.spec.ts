@@ -380,4 +380,68 @@ export default Sensor({
       assert.equal((runResult.result as NumberValue).v, 99);
     }
   });
+
+  test("FunctionValue constants have funcId remapped after linking", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function double(x: number): number {
+  return x + x;
+}
+
+function apply(f: (n: number) => number, v: number): number {
+  return f(v);
+}
+
+export default Sensor({
+  name: "fn-ref-linker",
+  output: "number",
+  params: {
+    val: { type: "number" },
+  },
+  onExecute(ctx: Context, params: { val: number }): number {
+    return apply(double, params.val);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const userProg = result.program!;
+    const brainProg = mkBrainProgramWithStubFunction();
+    const funcOffset = brainProg.functions.size();
+
+    const originalFuncConsts = userProg.constants
+      .toArray()
+      .filter((c): c is { t: NativeType.Function; funcId: number } => c.t === NativeType.Function);
+    assert.ok(originalFuncConsts.length > 0, "user program should have at least one FunctionValue constant");
+
+    const { linkedProgram, userLinks } = linkUserPrograms(brainProg, [userProg]);
+
+    const constOffset = brainProg.constants.size();
+    for (const origFc of originalFuncConsts) {
+      const origIndex = userProg.constants.toArray().indexOf(origFc);
+      const linkedConst = linkedProgram.constants.get(constOffset + origIndex);
+      assert.equal(linkedConst.t, NativeType.Function);
+      assert.equal(
+        (linkedConst as { funcId: number }).funcId,
+        origFc.funcId + funcOffset,
+        `FunctionValue at const index ${origIndex} should have funcId remapped by funcOffset ${funcOffset}`
+      );
+    }
+
+    const linkedEntryFuncId = userLinks[0].linkedEntryFuncId;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(linkedProgram, handles);
+    const args = mkArgsMap({ 0: mkNumberValue(5) });
+    const fiber = vm.spawnFiber(1, linkedEntryFuncId, List.from([args]), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 10);
+    }
+  });
 });

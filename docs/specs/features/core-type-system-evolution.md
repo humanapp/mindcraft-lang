@@ -568,7 +568,7 @@ Add a new `Value` variant:
 type FunctionValue = { t: NativeType.Function; funcId: number };
 ```
 
-Add `NativeType.Function = 10` (or next available value after `Any = 9`).
+Add `NativeType.Function = 10` (or next available value after `Any = 9`).\n(Updated 2026-03-22) Actual value is `NativeType.Function = 11` because\n`NativeType.Union = 10` was added in Phase 3.
 
 Add a `CALL_INDIRECT` opcode:
 
