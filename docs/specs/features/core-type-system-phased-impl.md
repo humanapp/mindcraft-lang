@@ -356,25 +356,41 @@ list types by element type.
 
 ### Phase 3: Union types
 
-**Prerequisite:** Phase 1 (nullable types) should be complete. Union types generalize
-nullable support -- `T | null` becomes a union of `[T, Nil]`. After this phase,
-nullable types can optionally be reimplemented as syntactic sugar over 2-member unions,
-or kept as a separate fast path (the `NullableCodec` is more efficient than a general
-`UnionCodec` for the common `T | null` case).
+(Revised 2026-03-22 after Phase 1 and Phase 2 completion.)
 
-(2026-03-22, Phase 1 discovery) The TS compiler's `lowering.ts` already has an
-`unwrapNullableTypeId()` fallback for operator resolution. Phase 3's operator
-resolution update (expand union members for overload lookup) generalizes this
-pattern. The nullable unwrap fallback may be subsumed by the union expansion
-logic, or kept as a fast path.
-
-Phase 2 (generic constructors) should also be complete so that `List<number | string>`
-can be created via `instantiate("List", [unionTypeId])`.
+**Prerequisite:** Phase 1 (nullable types) and Phase 2 (generic constructors) must
+be complete. Nullable types established the pattern for derived types and the
+`unwrapNullableTypeId()` fallback for operator resolution. Generic constructors
+enable `List<number | string>` via `instantiate("List", [unionTypeId])`.
 
 **Objective:** Introduce union types to the core type system. A union type represents
 "one of these specific types" with a tagged codec for serialization. This replaces the
 blunt `Any` fallback for multi-member unions: `number | string` becomes a precise
 2-member union rather than collapsing to `Any`.
+
+**Scope decisions (revised post-Phase-1/2):**
+
+- **Nullable subsumption:** When the union is exactly `[T, Nil]` (after normalization),
+  produce the Phase 1 nullable type (`addNullableType(baseTypeId)`) rather than a
+  union type. `NullableCodec` is more efficient than `UnionCodec` for this common
+  case, and the existing `tsTypeToTypeId()` already handles `T | null` -> nullable.
+  The `getOrCreateUnionType` normalization step should detect this case and delegate
+  to `addNullableType`.
+- **Core operator/conversion changes: deferred.** The core `operators.ts` `resolve()`
+  and `conversions.ts` `findBestPath()` operate on exact TypeIds. Modifying them for
+  union expansion is complex and primarily serves the brain compiler, which does not
+  currently produce union types. Instead, the TS compiler's lowering pass handles
+  union operands: generalize `unwrapNullableTypeId()` to an `expandTypeIdMembers()`
+  helper that returns the member TypeIds of a union (or a single-element list for
+  non-unions), and use it for operator overload lookup in `lowering.ts`. The core
+  runtime stays union-unaware for now.
+- **Brain compiler: deferred.** Union types are a TS-compiler feature. The brain tile
+  system has no concept of union types. `InferredTypesVisitor` is not touched in this
+  phase. If brain tiles later need union support, a follow-up phase will address it.
+- **`Any` fallback: kept.** `Any` remains for cases where a member type cannot be
+  resolved to a TypeId (e.g., unsupported TS type, complex generics). The change is:
+  `tsTypeToTypeId()` returns a union TypeId when all members resolve, falls back to
+  `Any` only when a member is unresolvable.
 
 **Packages/files touched:**
 
@@ -387,10 +403,11 @@ blunt `Any` fallback for multi-member unions: `number | string` becomes a precis
     }
     ```
   - Add `UnionTypeDef = TypeDef & UnionTypeShape`.
-  - Add `getOrCreateUnionType(memberTypeIds: TypeId[]): TypeId` to `ITypeRegistry`.
-    This normalizes, deduplicates, flattens nested unions, sorts member TypeIds
-    lexicographically, and returns a deterministic TypeId. If a single member remains
-    after dedup, return that member's TypeId directly (no wrapping).
+  - Add `getOrCreateUnionType(memberTypeIds: List<TypeId>): TypeId` to
+    `ITypeRegistry`. This normalizes, deduplicates, flattens nested unions, sorts
+    member TypeIds lexicographically, and returns a deterministic TypeId. If a single
+    member remains after dedup, return that member's TypeId directly (no wrapping).
+    If the result is exactly `[T, Nil]`, delegate to `addNullableType(T)`.
 - `packages/core/src/brain/interfaces/core-types.ts`
   - Add `nativeTypeToString` case for `NativeType.Union` returning `"union"`.
 - `packages/core/src/brain/interfaces/vm.ts`
@@ -404,67 +421,63 @@ blunt `Any` fallback for multi-member unions: `number | string` becomes a precis
       value is (index into the sorted `memberTypeIds` list), then delegate to that
       member's codec. Determine the member by checking `value.t` (the `NativeType`
       discriminant on the `Value`) against the member TypeDefs' `coreType` values.
-      For members sharing the same `NativeType` (e.g., two different enum types),
-      additionally check `value.typeId` if present.
+      For members sharing the same `NativeType` (e.g., two different struct types or
+      two different enum types), additionally check `value.typeId`. Throw if no
+      matching member is found.
     - `decode(r)`: read the `U8` discriminant, delegate to the indexed member codec,
       return the decoded value.
     - `stringify(value)`: delegate to the matching member codec's `stringify`.
   - Implement `TypeRegistry.getOrCreateUnionType(memberTypeIds)`:
     1. Flatten: if any member is itself a union, replace it with its members.
+       If any member is nullable, replace it with `[baseType, Nil]`.
     2. Deduplicate by TypeId.
     3. Sort lexicographically.
     4. If 0 members, throw (invalid).
     5. If 1 member, return that member's TypeId (collapse).
-    6. Compute TypeId: `"union:<boolean:<boolean>,number:<number>>"` (sorted member
+    6. If exactly 2 members and one is `CoreTypeIds.Nil`, call
+       `addNullableType(otherMemberId)` and return the nullable TypeId.
+    7. Compute TypeId: `"union:<boolean:<boolean>,number:<number>>"` (sorted member
        TypeIds joined by `,`).
-    7. If already registered, return existing TypeId.
-    8. Look up each member's def and codec.
-    9. Create `UnionTypeDef` with `UnionCodec(memberCodecs, memberDefs)`.
-    10. Register and return.
-- `packages/core/src/brain/runtime/operators.ts`
-  - Update `resolve(op, lhsTypeId, rhsTypeId)` (or equivalent lookup logic):
-    - If either operand's TypeDef is a `UnionTypeDef`, expand: for each member of
-      the union, look up the overload `(op, memberTypeId, otherTypeId)`.
-    - All members must have valid overloads (otherwise return no match -- type error).
-    - The result type is `getOrCreateUnionType(resultTypeIds)` -- the union of all
-      result types. If all results are the same TypeId, the result is that TypeId
-      (no union wrapping).
-    - If both operands are unions, try the cross product. Limit to small unions
-      (cap at e.g. 16 combinations) to avoid combinatorial explosion.
-- `packages/core/src/brain/runtime/conversions.ts`
-  - Update `findBestPath(fromTypeId, toTypeId)`:
-    - If `fromTypeId` is a union, find the best path for each member, pick the
-      cheapest common path. If members have no common path, return no path.
-    - If `toTypeId` is a union, find the cheapest path to any member.
-- `packages/core/src/brain/compiler/inferred-types.ts`
-  - Update the brain compiler's type inference to handle union-typed operands:
-    when resolving an operator for a union-typed expression, try each member type.
-    This mirrors the operator overload change above but in the brain compiler context.
+    8. If already registered, return existing TypeId.
+    9. Look up each member's def and codec.
+    10. Create `UnionTypeDef` with `UnionCodec(memberCodecs, memberDefs)`.
+    11. Register and return.
 - `packages/typescript/src/compiler/lowering.ts`
   - Update `tsTypeToTypeId()`: for multi-member non-null unions, instead of returning
     `CoreTypeIds.Any`, map each member via `tsTypeToTypeId`, then call
     `registry.getOrCreateUnionType(memberTypeIds)`. Return the union TypeId.
-    The `Any` fallback is removed (or kept only for cases where a member type
-    cannot be resolved to a TypeId at all).
+    If any member cannot be resolved, fall back to `CoreTypeIds.Any`.
+  - Generalize `unwrapNullableTypeId()` to `expandTypeIdMembers(typeId)`: returns
+    the member TypeIds of a union or nullable type as a `List<TypeId>`, or a
+    single-element list containing `typeId` for non-union types. Use this in
+    operator overload resolution: try each member type, and if all members resolve
+    to the same overload, use it. This subsumes the Phase 1 nullable unwrap
+    fallback.
   - Update `resolveListTypeId()`: if element type is a union, use `instantiate("List",
-[unionTypeId])` (from Phase 2) to create a `List<union>` type.
+[unionTypeId])` (from Phase 2) to create a `List<union>` type. This already
+    works with the existing `instantiate` code path -- no special handling needed
+    beyond ensuring `tsTypeToTypeId` returns the union TypeId.
 - `packages/typescript/src/compiler/ambient.ts`
   - Update `typeDefToTs()` for `UnionTypeDef`: emit `MemberType1 | MemberType2 | ...`
     using recursive `typeDefToTs` for each member.
-  - Update `MindcraftTypeMap` for union types.
+  - Update `MindcraftTypeMap` for union types: auto-instantiated union types (like
+    auto-instantiated list types) should be inlined rather than generating named
+    aliases.
 
 **Concrete deliverables:**
 
 1. `NativeType.Union = 10` in the enum.
 2. `UnionTypeShape` and `UnionTypeDef` interfaces.
 3. `UnionCodec` with tagged encode/decode and member-dispatch `stringify`.
-4. `ITypeRegistry.getOrCreateUnionType(memberTypeIds)` with normalization (flatten,
-   dedup, sort, collapse single-member).
-5. Operator overload resolution expanded for union operands.
-6. Conversion pathfinding expanded for union types.
-7. `tsTypeToTypeId()` returns union TypeIds instead of `Any` for multi-member unions.
-8. Ambient generation emits TS union syntax for `UnionTypeDef`.
-9. End-to-end: `[1, "hello"]` compiles to `List<number | string>` (a list with a
+4. `ITypeRegistry.getOrCreateUnionType(memberTypeIds: List<TypeId>)` with
+   normalization (flatten, dedup, sort, collapse single-member, delegate `[T, Nil]`
+   to nullable).
+5. `tsTypeToTypeId()` returns union TypeIds instead of `Any` for resolvable
+   multi-member unions.
+6. `expandTypeIdMembers()` generalizes `unwrapNullableTypeId()` for operator
+   resolution fallback in `lowering.ts`.
+7. Ambient generation emits TS union syntax for `UnionTypeDef`.
+8. End-to-end: `[1, "hello"]` compiles to `List<number | string>` (a list with a
    union element type) rather than `AnyList`.
 
 **Acceptance criteria:**
@@ -473,18 +486,20 @@ blunt `Any` fallback for multi-member unions: `number | string` becomes a precis
   stable TypeId and the def has `coreType: NativeType.Union`.
 - Test: calling `getOrCreateUnionType` with reversed order returns the same TypeId
   (order-independent).
-- Test: nested union flattening works: `getOrCreateUnionType([unionTypeId, CoreTypeIds.Boolean])` flattens
-  the inner union's members.
+- Test: nested union flattening works:
+  `getOrCreateUnionType([unionTypeId, CoreTypeIds.Boolean])` flattens the inner
+  union's members.
 - Test: single-member collapse: `getOrCreateUnionType([CoreTypeIds.Number])` returns
   `CoreTypeIds.Number`.
+- Test: nullable subsumption: `getOrCreateUnionType([CoreTypeIds.Number, CoreTypeIds.Nil])`
+  returns the same TypeId as `addNullableType(CoreTypeIds.Number)`.
 - Test: `UnionCodec` round-trips a `NumberValue` through a `number | string` union.
 - Test: `UnionCodec` round-trips a `StringValue` through a `number | string` union.
 - Test: `UnionCodec.encode` throws for a value type not in the union.
-- Test: operator resolution: `(number | string) + number` returns the union of
-  result types.
-- Test: operator resolution: `(number | string) + boolean` fails if no overload exists
-  for `string + boolean`.
 - Test: `tsTypeToTypeId` returns a union TypeId for `number | string` (not `Any`).
+- Test: `tsTypeToTypeId` returns `CoreTypeIds.Any` for `number | UnresolvableType`.
+- Test: operator resolution in `lowering.ts`: `(number | string) + number` resolves
+  via `expandTypeIdMembers` fallback.
 - Test: ambient output for a union type emits `number | string`.
 - Test: `[1, "hello"]` compiles to a list with a union element type, not `AnyList`.
 - `npm run check` passes in `packages/core` and `packages/typescript`.
@@ -492,39 +507,28 @@ blunt `Any` fallback for multi-member unions: `number | string` becomes a precis
 
 **Key risks:**
 
-- **Performance of union operator resolution.** Cross-product expansion for two union
-  operands could be expensive. Cap the expansion (e.g., max 16 combinations) and
-  reject as a type error if exceeded. In practice, TypeScript unions in Mindcraft
-  code will be small (2-4 members).
-- **`Any` type relationship.** After this phase, `Any` is still needed as a top type
-  for cases where the union is open-ended or where the type is truly unknown. The
-  TypeScript compiler should prefer union types when possible and fall back to `Any`
-  only when a member type cannot be resolved. Document when `Any` is still used.
-- **Nullable subsumption.** A 2-member union `[T, Nil]` overlaps with the nullable
-  type from Phase 1. Decision: if the union is exactly `[T, Nil]`, produce the
-  nullable type (Phase 1's TypeId with `nullable: true`) rather than a union type.
-  This preserves the more efficient `NullableCodec`. If this is too complex, defer
-  the subsumption and keep both representations.
 - **`UnionCodec` member identification.** When encoding, the codec must determine
   which union member a given `Value` belongs to. For primitive types this is
   straightforward (check `value.t`). For two members with the same `NativeType`
-  (e.g., two different struct types), the codec must also check `value.typeId`.
-  Ensure the codec handles this correctly.
-- **Brain compiler impact.** The brain compiler's `InferredTypesVisitor` will need
-  union-aware operator resolution. This is a non-trivial change. If the brain compiler
-  changes are too invasive, consider making union types a TypeScript-only feature
-  first and deferring brain compiler integration.
+  (e.g., two different struct types), the codec must also check `value.typeId` on the
+  value. If neither `value.t` nor `value.typeId` uniquely identifies a member, the
+  codec should throw. In practice, most unions will have members with distinct
+  `NativeType` values. Ensure the codec handles the multi-struct case correctly.
+- **`Any` type relationship.** `Any` remains the top type for truly unknown or
+  open-ended types. After this phase, `Any` is used only when a TS union member
+  cannot be resolved to a TypeId at all. The TS compiler should prefer union types
+  over `Any` whenever possible.
+- **Operator resolution approach.** Rather than modifying the core `operators.ts`
+  resolve function, the TS compiler's `expandTypeIdMembers()` tries each union
+  member for overload lookup. If members resolve to different overloads (e.g.,
+  `number + number -> number` vs `string + number -> string`), the result becomes
+  ambiguous. The TS checker already validates these operations, so the lowering pass
+  can trust the checker's result type and map it via `tsTypeToTypeId`. If the
+  checker's result type maps cleanly, no cross-product expansion is needed. If
+  ambiguity arises, fall back to `Any`.
 - **Luau `UnionCodec` transpile.** The codec uses standard stream operations and
   `NativeType` comparisons. The `getOrCreateUnionType` method uses `Dict` for
   memoization. Both transpile to Luau. Verify with `npm run build:rbx`.
-
-(2026-03-22, Phase 2 discovery) `tsTypeToTypeId()` now resolves named types
-(structs, enums) via `registry.resolveByName(symbol.getName())`, not just
-primitives. Phase 3's `getOrCreateUnionType` member resolution benefits from
-this -- members like `Vector2 | number` will resolve both sides without extra
-work. Also: the core API uses `List<TypeId>` (not `TypeId[]`) for Roblox
-compatibility. `getOrCreateUnionType(memberTypeIds)` should follow this
-convention.
 
 ---
 
@@ -635,8 +639,9 @@ runtime type narrowing for values retrieved from `AnyList` or union-typed contai
 
 ### Phase 5: First-class function references (Phase A)
 
-**Prerequisite:** None technically, but Phase 12.1 should be complete so that
-`NativeType` numbering is settled.
+**Prerequisite:** Phase 3 (union types) should be complete so that
+`NativeType.Union = 10` is assigned and `NativeType.Function = 11` follows
+naturally. Phase 5 is otherwise independent.
 
 **Objective:** Enable passing named functions as values. Add a `FunctionValue` to the
 `Value` union, a `CALL_INDIRECT` opcode that calls a function by runtime-determined ID,
@@ -665,10 +670,9 @@ named functions can be passed as references. Arrow functions and closures are Ph
   - Add `FunctionValue` to the `Value` union.
   - Add `isFunctionValue` type guard.
   - Add `mkFunctionValue(funcId: number): FunctionValue` factory.
-  - Add `Op.CALL_INDIRECT = 150` (or assign to an available opcode number, avoiding
-    collision with `TYPE_CHECK` from Phase 4). Operand `a` = argument count.
+  - Add `Op.CALL_INDIRECT = 160` to `Op` enum. Operand `a` = argument count.
     Pops `argc` arguments, then pops a `FunctionValue`, calls the function by
-    `funcId`.
+    `funcId`. (150 is taken by `TYPE_CHECK` from Phase 4.)
 - `packages/core/src/brain/runtime/vm.ts`
   - Implement `execCallIndirect(instr)`:
     1. Pop `instr.a` arguments from `vstack` into a temporary array.
@@ -1022,30 +1026,35 @@ it (extra fields are harmless, `GET_FIELD` returns `NIL_VALUE` for missing field
 
 ## Implementation Order Summary
 
-| Phase | Name                           | Depends on         | Scope        |
-| ----- | ------------------------------ | ------------------ | ------------ |
-| (0)   | Phase 12.1: `Any` + `AnyList`  | None               | Small        |
-| 1     | Nullable type support          | Phase 12.1         | Small-medium |
-| 2     | Generic type constructors      | None (independent) | Medium       |
-| 3     | Union types                    | Phase 1, Phase 2   | Medium-high  |
-| 4     | `typeof` lowering              | Phase 12.1         | Small-medium |
-| 5     | First-class function refs      | None               | Medium       |
-| 6     | Closures                       | Phase 5            | High         |
-| 7     | Type-level function signatures | Phase 5            | Small-medium |
-| 8     | Structural subtyping           | None (independent) | Low-medium   |
+(Revised 2026-03-22 after Phase 1 and Phase 2 completion.)
+
+| Phase | Name                           | Depends on         | Scope        | Status      |
+| ----- | ------------------------------ | ------------------ | ------------ | ----------- |
+| (0)   | Phase 12.1: `Any` + `AnyList`  | None               | Small        | Complete    |
+| 1     | Nullable type support          | Phase 12.1         | Small-medium | Complete    |
+| 2     | Generic type constructors      | None (independent) | Medium       | Complete    |
+| 3     | Union types                    | Phase 1, Phase 2   | Medium       | Not started |
+| 4     | `typeof` lowering              | Phase 12.1         | Small-medium | Not started |
+| 5     | First-class function refs      | Phase 3            | Medium       | Not started |
+| 6     | Closures                       | Phase 5            | High         | Not started |
+| 7     | Type-level function signatures | Phase 5            | Small-medium | Not started |
+| 8     | Structural subtyping           | None (independent) | Low-medium   | Not started |
 
 Phase 12.1 is tracked in the TypeScript compiler phased impl doc and is
 the prerequisite for all work here.
 
 Phases 1-3 form the type expressiveness chain: nullable -> generic constructors ->
-unions. Each works standalone but they compose best together.
+unions. Each works standalone but they compose best together. Phase 3's scope was
+reduced post-Phase-1/2: core operator/conversion/brain-compiler changes are deferred;
+the TS compiler handles union operands via `expandTypeIdMembers()` in `lowering.ts`.
 
 Phase 4 (`typeof`) is independently useful after Phase 12.1 and becomes essential
 after Phase 3 (union types). It can be implemented in any order relative to Phases 1-3.
 
 Phases 5-7 form the first-class functions chain: references -> closures -> type
-signatures. Phase 5 is independently useful. Phase 6 (closures) is the highest-
-complexity phase. Phase 7 adds compile-time checking.
+signatures. Phase 5 depends on Phase 3 for NativeType numbering (Union = 10,
+Function = 11). Phase 6 (closures) is the highest-complexity phase. Phase 7 adds
+compile-time checking.
 
 Phase 8 (structural subtyping) is independent and low priority. Implement when
 it becomes a user pain point.
