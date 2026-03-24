@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.spec.ts"],
+  "exclude": ["node_modules", "dist"],
+  "references": [{ "path": "../core/tsconfig.esm.json" }]
+}
