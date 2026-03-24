@@ -48,7 +48,7 @@
   },
   "scripts": {
     "bundle-lib-dts": "node scripts/bundle-lib-dts.js",
-    "build": "npm run bundle-lib-dts && tsc --build tsconfig.json",
+    "build": "npm run bundle-lib-dts && tsc -p tsconfig.json",
     "build:prod": "tsc",
     "clean": "tsc --build tsconfig.json --clean",
     "lint:only": "biome lint ./src",
