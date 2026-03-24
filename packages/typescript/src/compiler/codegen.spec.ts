@@ -64,10 +64,6 @@ function mkArgsMap(entries: Record<number, Value>): MapValue {
   return { t: NativeType.Map, typeId: "map:<args>", v: dict };
 }
 
-function mkCtxStruct(ctx?: ExecutionContext): StructValue {
-  return mkNativeStructValue(ContextTypeIds.Context, ctx ?? mkCtx());
-}
-
 describe("lowering + emission", () => {
   before(async () => {
     registerCoreBrainComponents();
@@ -99,7 +95,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(3) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -136,7 +132,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(15) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -169,7 +165,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -200,7 +196,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -229,7 +225,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -263,7 +259,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
 
     const args = mkArgsMap({ 0: mkNumberValue(5) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -468,7 +464,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
 
     const args = mkArgsMap({ 0: mkNumberValue(10) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -506,7 +502,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
 
     const args = mkArgsMap({ 0: mkNumberValue(3) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -540,7 +536,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -580,7 +576,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
 
     const args = mkArgsMap({ 0: mkNumberValue(5) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 10000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -618,7 +614,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
 
     const args = mkArgsMap({ 0: mkNumberValue(4) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 10000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -653,7 +649,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -688,7 +684,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -725,7 +721,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -762,7 +758,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 50000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -801,7 +797,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -842,12 +838,7 @@ export default Sensor({
     // x = 15 -> return 3
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(
-        1,
-        0,
-        List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(15) })]),
-        mkCtx()
-      );
+      const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkArgsMap({ 0: mkNumberValue(15) })]), mkCtx());
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
       assert.equal(r.status, VmStatus.DONE);
@@ -859,7 +850,7 @@ export default Sensor({
     // x = 7 -> return 2
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(7) })]), mkCtx());
+      const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkArgsMap({ 0: mkNumberValue(7) })]), mkCtx());
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
       assert.equal(r.status, VmStatus.DONE);
@@ -871,7 +862,7 @@ export default Sensor({
     // x = 2 -> return 1
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(2) })]), mkCtx());
+      const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkArgsMap({ 0: mkNumberValue(2) })]), mkCtx());
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
       assert.equal(r.status, VmStatus.DONE);
@@ -922,7 +913,7 @@ export default Sensor({
       const fiber = vm.spawnFiber(
         1,
         prog.entryFuncId,
-        List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(50) })]),
+        List.from<Value>([mkArgsMap({ 0: mkNumberValue(50) })]),
         mkCtx()
       );
       fiber.instrBudget = 1000;
@@ -939,7 +930,7 @@ export default Sensor({
       const fiber = vm.spawnFiber(
         1,
         prog.entryFuncId,
-        List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(-10) })]),
+        List.from<Value>([mkArgsMap({ 0: mkNumberValue(-10) })]),
         mkCtx()
       );
       fiber.instrBudget = 1000;
@@ -956,7 +947,7 @@ export default Sensor({
       const fiber = vm.spawnFiber(
         1,
         prog.entryFuncId,
-        List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(200) })]),
+        List.from<Value>([mkArgsMap({ 0: mkNumberValue(200) })]),
         mkCtx()
       );
       fiber.instrBudget = 1000;
@@ -994,12 +985,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(
-      1,
-      prog.entryFuncId,
-      List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(7) })]),
-      mkCtx()
-    );
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkArgsMap({ 0: mkNumberValue(7) })]), mkCtx());
     fiber.instrBudget = 1000;
 
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1039,12 +1025,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(
-      1,
-      prog.entryFuncId,
-      List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(10) })]),
-      mkCtx()
-    );
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkArgsMap({ 0: mkNumberValue(10) })]), mkCtx());
     fiber.instrBudget = 1000;
 
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1093,7 +1074,7 @@ export default Sensor({
     // First call: count should become 1
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1106,7 +1087,7 @@ export default Sensor({
     // Second call: count should become 2
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1155,7 +1136,7 @@ export default Sensor({
     // a=10, b=20 -> a+b = 30
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1198,7 +1179,7 @@ export default Sensor({
     }
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars1;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1207,7 +1188,7 @@ export default Sensor({
     }
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars1;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1226,7 +1207,7 @@ export default Sensor({
     }
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars2;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1279,12 +1260,7 @@ export default Sensor({
     // Call with val=5 -> total becomes 5
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(
-        1,
-        prog.entryFuncId,
-        List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(5) })]),
-        mkCtx()
-      );
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkArgsMap({ 0: mkNumberValue(5) })]), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1295,12 +1271,7 @@ export default Sensor({
     // Call with val=3 -> total becomes 8
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(
-        1,
-        prog.entryFuncId,
-        List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(3) })]),
-        mkCtx()
-      );
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkArgsMap({ 0: mkNumberValue(3) })]), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1353,7 +1324,7 @@ export default Sensor({
 
     const handles = new HandleTable(100);
     const vm = new runtime.VM(result.program!, handles);
-    const fiber = vm.spawnFiber(1, result.program!.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, result.program!.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1395,7 +1366,7 @@ export default Sensor({
     const fiber = vm.spawnFiber(
       1,
       result.program!.entryFuncId,
-      List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(5) })]),
+      List.from<Value>([mkArgsMap({ 0: mkNumberValue(5) })]),
       mkCtx()
     );
     fiber.instrBudget = 10000;
@@ -1448,7 +1419,7 @@ export default Sensor({
       const fiber = vm.spawnFiber(
         1,
         prog.entryFuncId,
-        List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(15) })]),
+        List.from<Value>([mkArgsMap({ 0: mkNumberValue(15) })]),
         mkCtx()
       );
       fiber.callsiteVars = callsiteVars;
@@ -1461,12 +1432,7 @@ export default Sensor({
     // val=5 > THRESHOLD=10 -> false
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(
-        1,
-        prog.entryFuncId,
-        List.from<Value>([mkCtxStruct(), mkArgsMap({ 0: mkNumberValue(5) })]),
-        mkCtx()
-      );
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkArgsMap({ 0: mkNumberValue(5) })]), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1523,7 +1489,7 @@ export default Sensor({
     // Call exec twice -> count = 1, then 2
     for (let expected = 1; expected <= 2; expected++) {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1534,7 +1500,7 @@ export default Sensor({
     // Run onPageEntered wrapper -> resets count via init + user onPageEntered
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1544,7 +1510,7 @@ export default Sensor({
     // Next exec call -> count should be 1 again (reset happened)
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1591,7 +1557,7 @@ export default Sensor({
     // Call exec twice -> count = 1, 2
     for (let expected = 1; expected <= 2; expected++) {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1602,7 +1568,7 @@ export default Sensor({
     // Run onPageEntered wrapper -> no user function, but runs init -> count = 0
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1612,7 +1578,7 @@ export default Sensor({
     // Next exec -> count = 1 (re-initialized)
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1652,7 +1618,7 @@ export default Sensor({
     // Run onPageEntered wrapper: init sets startValue=0, then user onPageEntered sets startValue=100
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1662,7 +1628,7 @@ export default Sensor({
     // exec -> startValue was 100, now becomes 101
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1695,7 +1661,7 @@ export default Sensor({
     // The wrapper should be callable and return without error
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
     const r = vm.runFiber(fiber, mkScheduler());
     assert.equal(r.status, VmStatus.DONE);
@@ -1733,7 +1699,7 @@ export default Sensor({
     // Run wrapper: init sets a=0,b=0 then user onPageEntered sets a=5,b=50
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.lifecycleFuncIds.onPageEntered!, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       vm.runFiber(fiber, mkScheduler());
@@ -1742,7 +1708,7 @@ export default Sensor({
     // exec: a=5+1=6, b=50+10=60, return 66
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -1781,7 +1747,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1818,7 +1784,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1863,7 +1829,7 @@ export default Sensor({
 
     {
       const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.from<Value>([mkCtxStruct()]), mkCtx());
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
 
@@ -1897,7 +1863,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
     const args = mkArgsMap({ 0: mkNumberValue(5) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1928,7 +1894,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1961,7 +1927,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult2 = vm.runFiber(fiber, mkScheduler());
@@ -1992,7 +1958,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult2 = vm.runFiber(fiber, mkScheduler());
@@ -2024,7 +1990,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
     const args = mkArgsMap({ 0: mkNumberValue(5) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult2 = vm.runFiber(fiber, mkScheduler());
@@ -2053,7 +2019,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2100,7 +2066,7 @@ export default Sensor({
       vm.runFiber(initFiber, mkScheduler());
     }
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
 
@@ -2131,7 +2097,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2178,7 +2144,7 @@ export default Sensor({
       vm.runFiber(initFiber, mkScheduler());
     }
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
 
@@ -2209,7 +2175,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2236,7 +2202,7 @@ export default Sensor({
 
     const prog2 = result2.program!;
     const vm2 = new runtime.VM(prog2, new HandleTable(100));
-    const fiber2 = vm2.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber2 = vm2.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber2.instrBudget = 1000;
 
     const runResult2 = vm2.runFiber(fiber2, mkScheduler());
@@ -2266,7 +2232,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2296,7 +2262,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2327,7 +2293,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2359,7 +2325,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2389,7 +2355,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2500,7 +2466,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2537,7 +2503,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2574,7 +2540,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2689,7 +2655,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2728,7 +2694,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2763,7 +2729,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2801,7 +2767,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2869,7 +2835,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2908,7 +2874,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -2945,7 +2911,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3065,7 +3031,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3127,7 +3093,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3169,7 +3135,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3212,7 +3178,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(42) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3246,7 +3212,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(42) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3280,7 +3246,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: { t: NativeType.Boolean, v: true } });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3313,7 +3279,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3372,7 +3338,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(10) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3426,7 +3392,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(5) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3468,7 +3434,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(4) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3519,7 +3485,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(3) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3561,7 +3527,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(4) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3602,7 +3568,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(7) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3641,7 +3607,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(10) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3683,7 +3649,7 @@ export default Sensor({
     const ctx = mkCtx();
 
     const args = mkArgsMap({ 0: mkNumberValue(6) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx), args]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3737,7 +3703,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3772,7 +3738,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
     const args = mkArgsMap({ 0: mkNumberValue(2) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3804,7 +3770,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3841,7 +3807,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3875,7 +3841,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 2000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3906,7 +3872,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 2000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3937,7 +3903,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 5000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -3977,7 +3943,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
     const args = mkArgsMap({ 0: mkNumberValue(3) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 5000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4012,7 +3978,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 5000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4053,7 +4019,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
     const args = mkArgsMap({ 0: mkNumberValue(10) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 5000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4093,7 +4059,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct()]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 5000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4143,7 +4109,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
     const args = mkArgsMap({ 0: mkNumberValue(5) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4198,7 +4164,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
     const args = mkArgsMap({ 0: mkNumberValue(3) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(), args]), mkCtx());
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4264,7 +4230,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4302,7 +4268,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4338,7 +4304,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4385,7 +4351,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4428,7 +4394,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4486,7 +4452,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4526,7 +4492,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4562,7 +4528,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4598,7 +4564,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4634,7 +4600,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4672,7 +4638,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4710,7 +4676,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const ctx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(ctx)]), ctx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4806,7 +4772,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const execCtx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx)]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4840,7 +4806,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const execCtx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx)]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4873,7 +4839,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const execCtx = mkCtx({ time: 12345 });
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx)]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4906,7 +4872,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const execCtx = mkCtx({ dt: 16 });
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx)]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -4944,7 +4910,7 @@ export default Sensor({
       getVariable: <T extends Value>(name: string) => variables.get(name) as T | undefined,
     });
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx)]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -5034,7 +5000,7 @@ export default Sensor({
     const execCtx = mkCtx();
 
     const argsMap = mkArgsMap({ 0: mkNumberValue(25) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx), argsMap]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([argsMap]), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -5068,7 +5034,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const execCtx = mkCtx();
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx)]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -5158,7 +5124,7 @@ export default Sensor({
     const vm = new runtime.VM(prog, handles);
     const execCtx = mkCtx({ time: 777 });
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx)]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -5396,7 +5362,7 @@ export default Sensor({
     const widgetValue = mkNativeStructValue(widgetTypeId, { id: 7 });
     const argsMap = mkArgsMap({ 0: widgetValue });
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx), argsMap as Value]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([argsMap as Value]), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -5436,7 +5402,7 @@ export default Sensor({
     const widgetValue = mkNativeStructValue(widgetTypeId, { id: 1 });
     const argsMap = mkArgsMap({ 0: widgetValue });
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([mkCtxStruct(execCtx), argsMap as Value]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([argsMap as Value]), execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());

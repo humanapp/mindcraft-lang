@@ -105,7 +105,8 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
       func.numLocals,
       func.name,
       pool,
-      programResult.functionTable
+      programResult.functionTable,
+      func.injectCtxTypeId
     );
     if (emitResult.diagnostics.length > 0) {
       return { diagnostics: emitResult.diagnostics };

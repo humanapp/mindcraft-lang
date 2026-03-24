@@ -1,5 +1,6 @@
 import { List } from "@mindcraft-lang/core";
 import {
+  ContextTypeIds,
   CoreOpId,
   CoreTypeIds,
   getBrainServices,
@@ -10,6 +11,7 @@ import {
   type NullableTypeDef,
   runtime,
   type StructTypeDef,
+  type TypeId,
   type UnionTypeDef,
   type Value,
 } from "@mindcraft-lang/core/brain";
@@ -26,6 +28,7 @@ export interface FunctionEntry {
   numParams: number;
   numLocals: number;
   name: string;
+  injectCtxTypeId?: TypeId;
 }
 
 export interface ProgramLoweringResult {
@@ -314,6 +317,7 @@ function generateOnPageEnteredWrapper(
     numParams: 1,
     numLocals: 1,
     name: `${name}.<onPageEntered-wrapper>`,
+    injectCtxTypeId: ContextTypeIds.Context,
   };
 }
 
@@ -399,6 +403,7 @@ function lowerOnExecuteBody(
       numParams: hasParams ? 2 : 1,
       numLocals: scopeStack.nextLocal,
       name: `${descriptor.name}.onExecute`,
+      injectCtxTypeId: ContextTypeIds.Context,
     };
   }
 
@@ -412,6 +417,7 @@ function lowerOnExecuteBody(
     numParams: hasParams ? 2 : 1,
     numLocals: scopeStack.nextLocal,
     name: `${descriptor.name}.onExecute`,
+    injectCtxTypeId: ContextTypeIds.Context,
   };
 }
 

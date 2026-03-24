@@ -42,6 +42,7 @@ import {
   isNumberValue,
   isStringValue,
   isStructValue,
+  mkNativeStructValue,
   NIL_VALUE,
   Op,
   type Scheduler,
@@ -388,7 +389,22 @@ export class VM implements IVM {
     }
 
     const fn = this.prog.functions.get(funcId)!;
-    if (args.size() !== fn.numParams) {
+
+    let effectiveArgs = args;
+    if (fn.injectCtxTypeId !== undefined) {
+      const expectedArgs = fn.numParams - 1;
+      if (args.size() !== expectedArgs) {
+        throw new Error(
+          `Argument count mismatch for ${fn.name ?? `func[${funcId}]`}: expected ${expectedArgs} (ctx injected), got ${args.size()}`
+        );
+      }
+      const ctxStruct = mkNativeStructValue(fn.injectCtxTypeId, executionContext);
+      effectiveArgs = List.empty<Value>();
+      effectiveArgs.push(ctxStruct);
+      for (let i = 0; i < args.size(); i++) {
+        effectiveArgs.push(args.get(i)!);
+      }
+    } else if (args.size() !== fn.numParams) {
       throw new Error(
         `Argument count mismatch for ${fn.name ?? `func[${funcId}]`}: expected ${fn.numParams}, got ${args.size()}`
       );
@@ -397,7 +413,7 @@ export class VM implements IVM {
     const vstack = List.empty<Value>();
     const base = 0;
 
-    const locals = this.allocLocals(fn, args);
+    const locals = this.allocLocals(fn, effectiveArgs);
 
     const now = Time.nowMs();
     const fiber: Fiber = {

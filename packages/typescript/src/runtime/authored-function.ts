@@ -1,13 +1,11 @@
 import { List } from "@mindcraft-lang/core";
 import {
   type BrainProgram,
-  ContextTypeIds,
   type ExecutionContext,
   getCallSiteState,
   type HandleId,
   type HostAsyncFn,
   type MapValue,
-  mkNativeStructValue,
   NIL_VALUE,
   type runtime,
   type Scheduler,
@@ -66,8 +64,7 @@ export function createUserTileExec(
   return {
     exec(ctx: ExecutionContext, args: MapValue, handleId: HandleId): void {
       const callsiteVars = getOrCreateCallsiteVars(ctx);
-      const ctxStruct = mkNativeStructValue(ContextTypeIds.Context, ctx);
-      const fiberArgs = hasParams ? List.from<Value>([ctxStruct, args]) : List.from<Value>([ctxStruct]);
+      const fiberArgs = hasParams ? List.from<Value>([args]) : List.empty<Value>();
       const result = runFiberToCompletion(linkedEntryFuncId, fiberArgs, ctx, callsiteVars);
       vm.handles.resolve(handleId, result ?? NIL_VALUE);
     },
@@ -76,8 +73,7 @@ export function createUserTileExec(
       if (linkedOnPageEnteredFuncId === undefined) return;
       const callsiteVars = getCallSiteState<List<Value>>(ctx);
       if (!callsiteVars) return;
-      const ctxStruct = mkNativeStructValue(ContextTypeIds.Context, ctx);
-      runFiberToCompletion(linkedOnPageEnteredFuncId, List.from<Value>([ctxStruct]), ctx, callsiteVars);
+      runFiberToCompletion(linkedOnPageEnteredFuncId, List.empty<Value>(), ctx, callsiteVars);
     },
   };
 }

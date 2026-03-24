@@ -35,6 +35,7 @@ export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserA
         numLocals: fn.numLocals,
         name: fn.name,
         maxStackDepth: fn.maxStackDepth,
+        injectCtxTypeId: fn.injectCtxTypeId,
       });
     }
 

@@ -4,6 +4,7 @@ import {
   getBrainServices,
   mkFunctionValue,
   mkStringValue,
+  type TypeId,
 } from "@mindcraft-lang/core/brain";
 import type { IrNode } from "./ir.js";
 import type { CompileDiagnostic } from "./types.js";
@@ -19,7 +20,8 @@ export function emitFunction(
   numLocals: number,
   name: string,
   pool: compiler.ConstantPool,
-  functionTable?: Map<string, number>
+  functionTable?: Map<string, number>,
+  injectCtxTypeId?: TypeId
 ): EmitResult {
   const emitter = new compiler.BytecodeEmitter();
   const diagnostics: CompileDiagnostic[] = [];
@@ -164,7 +166,7 @@ export function emitFunction(
 
   const code = emitter.finalize();
   return {
-    bytecode: { code, numParams, numLocals, name },
+    bytecode: { code, numParams, numLocals, name, injectCtxTypeId },
     diagnostics,
   };
 }

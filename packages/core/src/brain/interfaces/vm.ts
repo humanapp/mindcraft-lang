@@ -338,6 +338,7 @@ export interface FunctionBytecode {
   numLocals?: number;
   name?: string;
   maxStackDepth?: number;
+  injectCtxTypeId?: TypeId;
 }
 
 export interface Program {
