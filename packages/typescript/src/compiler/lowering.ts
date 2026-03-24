@@ -1624,6 +1624,19 @@ function lowerListSplice(
   listTypeId: string,
   ctx: LowerContext
 ): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   const removed: T[] = [];
+   *   for (let i = 0; i < deleteCount; i++) {
+   *     removed.push(arr.splice(start, 1)[0]);
+   *   }
+   *   for (const item of insertItems) {
+   *     arr.splice(start, 0, item); start++;
+   *   }
+   *   return removed;
+   */
+
   if (expr.arguments.length < 1) {
     ctx.diagnostics.push(makeDiag(".splice() requires at least 1 argument (start)", expr));
     return;
@@ -1710,6 +1723,19 @@ function lowerListSplice(
 }
 
 function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   for (let i = 1; i < arr.length; i++) {
+   *     let j = i;
+   *     while (j > 0 && compareFn(arr[j - 1], arr[j]) > 0) {
+   *       [arr[j - 1], arr[j]] = [arr[j], arr[j - 1]];
+   *       j--;
+   *     }
+   *   }
+   *   return arr;
+   */
+
   if (expr.arguments.length !== 1) {
     ctx.diagnostics.push(makeDiag(".sort() requires a comparator function", expr));
     return;
@@ -1841,6 +1867,15 @@ function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 }
 
 function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   let idx = 0;
+   *   while (idx < arr.length) {
+   *     if (arr[idx] === search) return idx; idx++;
+   *   }
+   *   return -1;
+   */
   if (expr.arguments.length !== 1) {
     ctx.diagnostics.push(makeDiag(".indexOf() requires exactly 1 argument", expr));
     return;
@@ -1922,6 +1957,15 @@ function lowerListFilter(
   listTypeId: string,
   ctx: LowerContext
 ): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   const result: T[] = [];
+   *   for (let i = 0; i < arr.length; i++) {
+   *     const elem = arr[i]; if (callback(elem)) result.push(elem);
+   *   }
+   *   return result;
+   */
   if (expr.arguments.length !== 1) {
     ctx.diagnostics.push(makeDiag(".filter() requires exactly 1 argument", expr));
     return;
@@ -2005,6 +2049,13 @@ function lowerListFilter(
 }
 
 function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   const result: U[] = [];
+   *   for (let i = 0; i < arr.length; i++) result.push(callback(arr[i]));
+   *   return result;
+   */
   if (expr.arguments.length !== 1) {
     ctx.diagnostics.push(makeDiag(".map() requires exactly 1 argument", expr));
     return;
@@ -2081,6 +2132,11 @@ function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
 }
 
 function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   for (let i = 0; i < arr.length; i++) callback(arr[i]);
+   */
   if (expr.arguments.length !== 1) {
     ctx.diagnostics.push(makeDiag(".forEach() requires exactly 1 argument", expr));
     return;
@@ -2142,6 +2198,12 @@ function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccess
 }
 
 function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   for (let i = 0; i < arr.length; i++) { if (arr[i] === search) return true; }
+   *   return false;
+   */
   if (expr.arguments.length !== 1) {
     ctx.diagnostics.push(makeDiag(".includes() requires exactly 1 argument", expr));
     return;
@@ -2218,6 +2280,12 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
 }
 
 function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   for (let i = 0; i < arr.length; i++) { if (callback(arr[i])) return true; }
+   *   return false;
+   */
   if (expr.arguments.length !== 1) {
     ctx.diagnostics.push(makeDiag(".some() requires exactly 1 argument", expr));
     return;
@@ -2287,6 +2355,12 @@ function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 }
 
 function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   for (let i = 0; i < arr.length; i++) { if (!callback(arr[i])) return false; }
+   *   return true;
+   */
   if (expr.arguments.length !== 1) {
     ctx.diagnostics.push(makeDiag(".every() requires exactly 1 argument", expr));
     return;
@@ -2356,6 +2430,14 @@ function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
 }
 
 function lowerListFind(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   for (let i = 0; i < arr.length; i++) {
+   *     const elem = arr[i]; if (callback(elem)) return elem;
+   *   }
+   *   return undefined;
+   */
   if (expr.arguments.length !== 1) {
     ctx.diagnostics.push(makeDiag(".find() requires exactly 1 argument", expr));
     return;
@@ -2434,6 +2516,12 @@ function lowerListConcat(
   listTypeId: string,
   ctx: LowerContext
 ): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   const result: T[] = [...arr, ...args[0], ...args[1], ...];
+   *   return result;
+   */
   const resultLocal = ctx.scopeStack.allocLocal();
 
   ctx.ir.push({ kind: "ListNew", typeId: listTypeId });
@@ -2500,6 +2588,16 @@ function emitPushAllFromList(srcExpr: ts.Expression, resultLocal: number, ctx: L
 }
 
 function lowerListJoin(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   let result = "";
+   *   for (let i = 0; i < arr.length; i++) {
+   *     if (i !== 0) result += sep;
+   *     result += String(arr[i]);
+   *   }
+   *   return result;
+   */
   if (expr.arguments.length > 1) {
     ctx.diagnostics.push(makeDiag(".join() takes at most 1 argument", expr));
     return;
@@ -2614,6 +2712,13 @@ function lowerListReverse(
   listTypeId: string,
   ctx: LowerContext
 ): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   const result: T[] = [];
+   *   for (let i = arr.length - 1; i >= 0; i--) result.push(arr[i]);
+   *   return result;
+   */
   if (expr.arguments.length !== 0) {
     ctx.diagnostics.push(makeDiag(".reverse() takes no arguments", expr));
     return;
@@ -2679,6 +2784,13 @@ function lowerListSlice(
   listTypeId: string,
   ctx: LowerContext
 ): void {
+  /**
+   * Equivalent TS:
+   * @example
+   *   const result: T[] = [];
+   *   for (let i = start ?? 0; i < (end ?? arr.length); i++) result.push(arr[i]);
+   *   return result;
+   */
   if (expr.arguments.length > 2) {
     ctx.diagnostics.push(makeDiag(".slice() takes at most 2 arguments", expr));
     return;
