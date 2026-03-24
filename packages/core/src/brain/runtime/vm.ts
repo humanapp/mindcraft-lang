@@ -397,9 +397,6 @@ export class VM implements IVM {
     const vstack = List.empty<Value>();
     const base = 0;
 
-    // Set the fiber ID in the execution context
-    executionContext.fiberId = fiberId;
-
     const locals = this.allocLocals(fn, args);
 
     const now = Time.nowMs();

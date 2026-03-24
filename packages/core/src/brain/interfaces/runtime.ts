@@ -198,13 +198,6 @@ export interface ExecutionContext {
   setResolvedVariable?(name: string, value: Value): boolean;
 
   /**
-   * Fiber ID for the currently executing fiber.
-   * Useful for debugging and logging.
-   * This is set by the VM when the fiber is created.
-   */
-  fiberId: number;
-
-  /**
    * Optional application-specific data that can be attached to the execution context.
    * This allows host functions (sensors, actuators) to access environment-specific state
    * without coupling the core VM to application-specific types.

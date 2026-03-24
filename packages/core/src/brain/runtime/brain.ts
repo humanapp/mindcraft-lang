@@ -165,7 +165,6 @@ export class Brain implements IBrain {
       clearVariable(varId: string): void {
         brain.clearVariable(varId);
       },
-      fiberId: -1,
       time: 0,
       dt: 0,
       currentTick: 0,
