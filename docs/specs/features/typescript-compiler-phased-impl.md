@@ -37,12 +37,16 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-24) Phases 0-14 are complete. Phase 14 added `for...of` loop
-  desugaring over list-typed values (`lowerForOfStatement()` in `lowering.ts`),
-  using existing `IrListLen`/`IrListGet` IR nodes and `allocLocal()` for hidden
-  temporaries. The custom module-scoped `Array<T>` interface was removed from
-  ambient declarations -- the global `Array<T>` from `lib.es5.d.ts` is used
-  directly, which TypeScript recognizes as iterable. `break`/`continue` work via
+- (Updated 2026-03-24) Phases 0-14 are complete, plus the Array method lowering
+  detour. Phase 14 added `for...of` loop desugaring and removed the custom
+  module-scoped `Array<T>` from ambient declarations. The Array method detour
+  added lowering for `includes`, `some`, `every`, `find`, `concat`, `join`,
+  `reverse`, and `slice`. Methods requiring VM-level mutation ops (`pop`, `shift`,
+  `splice`) produce compile-time diagnostics. All other unrecognized array methods
+  also produce diagnostics. The ambient header augments the global `Array<T>` with
+  `find`, `findIndex`, and `includes` signatures (ES2015/ES2016 methods not in
+  `lib.es5.d.ts`). `NonNullExpression` and `AsExpression` are now handled in
+  `lowerExpression`. `break`/`continue` work via
   the existing loop stack with a separate `continueTarget` label. Phase 13's
   GET_FIELD for struct
   has been replaced by ctx-as-native-struct (implemented out of band). Context,
@@ -3728,3 +3732,66 @@ required in type 'Array<number>'`). The cleanest fix was removing the custom
 
 - packages/core: 516 total, 0 failures (unchanged)
 - packages/typescript: 202 total (198 prev + 4 new), 0 failures
+
+### Array Method Lowering Detour (2026-03-24)
+
+**Status:** Complete. All planned methods implemented; unsupported methods produce diagnostics.
+
+**Context:** In Phase 14 the custom module-scoped `Array<T>` was removed, exposing
+the full `lib.es5.d.ts` `Array<T>` interface. Users could call methods the compiler
+didn't lower. This detour adds lowering for the most commonly used methods and
+surfaces compile-time diagnostics for the rest.
+
+**Planned vs actual deliverables:**
+
+| Deliverable                   | Status   | Notes                                                              |
+| ----------------------------- | -------- | ------------------------------------------------------------------ |
+| `includes(item)`              | Done     | Loop-based equality search, returns true/false                     |
+| `some(fn)`                    | Done     | Loop with early true return on first match, default false          |
+| `every(fn)`                   | Done     | Loop with early false return on first mismatch, default true       |
+| `find(fn)`                    | Done     | Loop with early return of matching element, default nil            |
+| `concat(...args)`             | Done     | New list + push all from source + each arg via emitPushAllFromList |
+| `join(sep?)`                  | Done     | Loop with number-to-string conversion + string concatenation       |
+| `reverse()`                   | Done     | New list, iterate source backwards and push                        |
+| `slice(start?, end?)`         | Done     | New list, push elements in [start, end) range                      |
+| `pop`, `shift`, `splice`      | Deferred | Diagnostic: "requires VM-level list mutation ops"                  |
+| Unsupported method diagnostic | Done     | All unrecognized array methods produce compile-time error          |
+
+**Additional work (not in spec):**
+
+- **`NonNullExpression` and `AsExpression` unwrapping in `lowerExpression`.** The
+  `nums.pop()!` pattern wraps the call in `NonNullExpression`, which was falling
+  through to the "Unsupported expression" catch-all. Both type-assertion expression
+  kinds now unwrap to their inner expression.
+
+- **Array interface augmentation in ambient.ts.** `find`, `findIndex`, and `includes`
+  are ES2015/ES2016 methods not in `lib.es5.d.ts`. Added an `interface Array<T>`
+  augmentation in the ambient header to expose these signatures to the type checker.
+
+- **Silent failure fix in `emitPushAllFromList` and `emitToStringForJoinElement`.**
+  Both had early-return paths that swallowed errors without pushing diagnostics.
+  Fixed to report proper compile-time errors.
+
+**Discoveries:**
+
+1. **`lib.es5.d.ts` is incomplete for modern Array methods.** `find` (ES2015) and
+   `includes` (ES2016) are defined in separate lib files (`lib.es2015.core.d.ts`,
+   `lib.es2016.array.include.d.ts`). Rather than bundling additional lib files, the
+   ambient header augments the global `Array<T>` interface with these signatures.
+
+2. **Type-assertion expressions need explicit handling.** `NonNullExpression` (`x!`)
+   and `AsExpression` (`x as T`) have no runtime effect but weren't recognized by
+   `lowerExpression`, causing spurious "Unsupported expression" diagnostics. Both
+   now unwrap transparently.
+
+3. **The `join()` implementation assumes number elements.** `emitToStringForJoinElement`
+   hardcodes `CoreTypeIds.Number -> CoreTypeIds.String` conversion. For string lists
+   the conversion is a no-op (the function is not registered), which previously
+   silently skipped conversion. Now it produces a diagnostic, but string lists would
+   also trigger it incorrectly. A future improvement would resolve the element type
+   from the list's `TypeDef` and select the appropriate conversion.
+
+**Test counts:**
+
+- packages/core: 516 total, 0 failures (unchanged)
+- packages/typescript: 216 total (202 prev + 14 new), 0 failures
