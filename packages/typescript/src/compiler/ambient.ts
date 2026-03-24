@@ -47,24 +47,6 @@ declare module "mindcraft" {
 const AMBIENT_MODULE_END = `
   type MindcraftType = keyof MindcraftTypeMap;
 
-  export interface Context {
-    time: number;
-    dt: number;
-    self: {
-      position: { x: number; y: number };
-      getVariable(name: string): unknown;
-      setVariable(name: string, value: unknown): void;
-    };
-    engine: {
-      queryNearby(position: { x: number; y: number }, range: number): unknown[];
-      moveAwayFrom(
-        actor: unknown,
-        position: { x: number; y: number },
-        speed: number,
-      ): Promise<void>;
-    };
-  }
-
   export interface ParamDef {
     type: MindcraftType;
     default?: unknown;
@@ -176,6 +158,15 @@ function generateStructInterface(def: StructTypeDef): string {
     } else {
       result += `    ${fieldName}: ${tsType};\n`;
     }
+  });
+  def.methods?.forEach((method) => {
+    const params: string[] = [];
+    method.params.forEach((p) => {
+      params.push(`${p.name}: ${typeIdToTs(p.typeId)}`);
+    });
+    const returnType = typeIdToTs(method.returnTypeId);
+    const fullReturn = method.isAsync ? `Promise<${returnType}>` : returnType;
+    result += `    ${method.name}(${params.join(", ")}): ${fullReturn};\n`;
   });
   result += "  }\n";
   return result;

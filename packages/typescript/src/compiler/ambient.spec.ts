@@ -27,7 +27,10 @@ describe("buildAmbientDeclarations", () => {
     assert.ok(ambient.includes("export interface Vector2 {"), "should contain Vector2 interface");
     assert.ok(ambient.includes("x: number;"), "should contain x field");
     assert.ok(ambient.includes("y: number;"), "should contain y field");
-    assert.ok(!ambient.includes("readonly __brand"), "user-creatable struct should not have brand");
+    const vec2Start = ambient.indexOf("export interface Vector2 {");
+    const vec2End = ambient.indexOf("}", vec2Start);
+    const vec2Block = ambient.slice(vec2Start, vec2End + 1);
+    assert.ok(!vec2Block.includes("readonly __brand"), "user-creatable struct should not have brand");
     assert.ok(ambient.includes("Vector2: Vector2;"), "should have MindcraftTypeMap entry");
   });
 

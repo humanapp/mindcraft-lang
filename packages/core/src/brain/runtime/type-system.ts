@@ -25,6 +25,7 @@ import {
   mkTypeId,
   NativeType,
   type NullableTypeDef,
+  type StructMethodDecl,
   type StructTypeDef,
   type StructTypeShape,
   type TypeCodec,
@@ -264,6 +265,19 @@ export class TypeRegistry implements ITypeRegistry {
     };
     this.add(structTypeDef);
     return typeId;
+  }
+
+  addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void {
+    const typeDef = this.get(typeId);
+    if (!typeDef) {
+      throw new Error(`Type ${typeId} not found`);
+    }
+    if (typeDef.coreType !== NativeType.Struct) {
+      throw new Error(`Type ${typeId} is not a struct type`);
+    }
+    const structDef = typeDef as StructTypeDef;
+    const existing = structDef.methods ?? List.empty<StructMethodDecl>();
+    structDef.methods = existing.concat(methods);
   }
 
   addAnyType(name: string): TypeId {

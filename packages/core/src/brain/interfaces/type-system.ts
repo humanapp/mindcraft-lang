@@ -92,6 +92,13 @@ export interface MapTypeShape {
 
 export type MapTypeDef = TypeDef & MapTypeShape;
 
+export interface StructMethodDecl {
+  name: string;
+  params: List<{ name: string; typeId: TypeId }>;
+  returnTypeId: TypeId;
+  isAsync?: boolean;
+}
+
 export interface StructTypeShape {
   fields: List<{
     name: string;
@@ -110,6 +117,7 @@ export interface StructTypeShape {
    * Returns the resolved native value to store in the copy.
    */
   snapshotNative?: StructSnapshotNativeFn;
+  methods?: List<StructMethodDecl>;
 }
 
 export type StructTypeDef = TypeDef & StructTypeShape;
@@ -153,6 +161,7 @@ export interface ITypeRegistry {
   addListType(name: string, shape: ListTypeShape): TypeId;
   addMapType(name: string, shape: MapTypeShape): TypeId;
   addStructType(name: string, shape: StructTypeShape): TypeId;
+  addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void;
   addAnyType(name: string): TypeId;
   addFunctionType(name: string): TypeId;
   addNullableType(baseTypeId: TypeId): TypeId;

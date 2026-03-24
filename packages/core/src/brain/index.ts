@@ -6,6 +6,7 @@ export * from "./interfaces";
 export * as languageService from "./language-service";
 export * as model from "./model";
 export * as runtime from "./runtime";
+export { ContextTypeIds, ContextTypeNames } from "./runtime/context-types";
 export * from "./services";
 export * from "./services-factory";
 export * as tiles from "./tiles";
