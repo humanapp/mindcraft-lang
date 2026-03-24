@@ -37,7 +37,11 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-23) Phases 0-12c are complete.
+- (Updated 2026-03-23) Phases 0-12c are complete; Phase 13 partially accepted.
+  GET_FIELD for struct property access is implemented and accepted.
+  The ctx compile-time phantom approach (HOST_CALL_ARGS rewriting for ctx.time,
+  ctx.self._, ctx.engine._) is implemented but not accepted -- will be replaced
+  by ctx-as-native-struct. See [ctx-as-native-struct.md](ctx-as-native-struct.md).
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -1358,6 +1362,12 @@ constant (`{ t: NativeType.Enum, typeId, v: "north" }`) rather than a plain
 
 ### Phase 13: Property access chains + host calls
 
+(Updated 2026-03-23: Phase 13 complete with caveats. GET_FIELD for struct property
+access accepted. ctx compile-time phantom approach not accepted; to be replaced
+by ctx-as-native-struct. See [ctx-as-native-struct.md](ctx-as-native-struct.md)
+and Phase Log entry below. The ctx refactor requires general-purpose struct method
+dispatch as a prerequisite.)
+
 (Updated 2026-03-23: `lowerPropertyAccess()` already handles `.length` on list-typed
 expressions (core type system detour). `tsTypeToTypeId()` now resolves struct types
 via symbol name lookup (core type system Phase 2). `IrListLen` IR node exists.
@@ -1643,7 +1653,10 @@ instead of `HOST_CALL_ARGS`.
 
 **Prerequisites:** Phase 13 (property access chains + host calls) must be complete
 so that `ctx.engine.*` method calls compile. Phase 18 extends the mechanism to
-distinguish sync vs async host functions.
+distinguish sync vs async host functions. Note: Phase 13's ctx approach is being
+refactored to native-backed structs (see [ctx-as-native-struct.md](ctx-as-native-struct.md)).
+The async detection mechanism applies equally to both approaches -- the refactor
+changes how method calls are lowered, not how sync/async distinction works.
 
 **Concrete deliverables:**
 
@@ -3487,3 +3500,103 @@ ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
 
 - packages/core: 516 total, 0 failures (unchanged)
 - packages/typescript: 176 total (169 prev + 7 new), 0 failures
+
+---
+
+### Phase 13 -- Property access chains + host calls (2026-03-23)
+
+**Status:** Complete with caveats. GET_FIELD implementation accepted. The ctx
+compile-time phantom approach is not accepted; will be replaced by ctx-as-native-struct
+in a follow-up. See [ctx-as-native-struct.md](ctx-as-native-struct.md).
+
+**Planned vs actual deliverables:**
+
+| Deliverable                                             | Status | Notes                                                                                                      |
+| ------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------- |
+| `IrGetField` IR node                                    | Done   | Added to `IrNode` union in `ir.ts` with `fieldName: string`                                                |
+| `GetField` emission                                     | Done   | `emit.ts` -- push field name string constant, call `emitter.getField()`                                    |
+| `obj.field` -> `GET_FIELD` for struct-typed expressions | Done   | `lowerPropertyAccess` resolves struct type via `resolveStructType()`, validates field name, emits GetField |
+| `ctx.time` / `ctx.dt` / `ctx.tick` -> HOST_CALL_ARGS    | Done   | Compile-time phantom approach (not accepted; to be replaced)                                               |
+| `ctx.self.*()` method dispatch                          | Done   | Compile-time phantom approach (not accepted; to be replaced)                                               |
+| `ctx.engine.*()` method dispatch                        | Done   | Compile-time phantom approach (not accepted; to be replaced)                                               |
+| `params.xyz` regression preserved                       | Done   | Existing LoadLocal path unchanged                                                                          |
+| `list.length` regression preserved                      | Done   | Existing IrListLen path unchanged                                                                          |
+
+**Acceptance criteria results:**
+
+| Criterion                                                        | Result |
+| ---------------------------------------------------------------- | ------ |
+| `ctx.self.getVariable("x")` -> `HOST_CALL_ARGS`                  | Pass   |
+| struct property chain `pos.x` -> `GET_FIELD("x")`                | Pass   |
+| chained struct `entity.position.x` -> two `GET_FIELD`s           | Pass   |
+| native-backed struct field -> `GET_FIELD` (same bytecode)        | Pass   |
+| `ctx.engine.queryNearby(pos, 5)` -> `HOST_CALL_ARGS` with 2 args | Pass   |
+| `ctx.engine.nonExistent()` -> compile error                      | Pass   |
+| `params.speed` -> `LoadLocal` (regression)                       | Pass   |
+| `items.length` -> `IrListLen` (regression)                       | Pass   |
+
+**Additional work (not in spec):**
+
+- `tsconfig.spec.json` -- created to type-check test files. The base `tsconfig.json`
+  excludes `**/*.spec.ts`, so `tsc --noEmit` never covered tests. Added
+  `tsconfig.spec.json` extending the base with `noEmit: true` and
+  `include: ["src/**/*.spec.ts"]`. Updated `typecheck` script to run both configs.
+  Updated `test` script to use `tsconfig.spec.json`.
+
+- Struct field name validation -- after `resolveStructType()` succeeds, the field
+  name is validated against the struct's `fields` list before emitting GetField.
+  Defense-in-depth; the TS checker catches unknown fields first via ambient
+  declarations.
+
+- ctx alias tracking -- `isCtxExpression()` recursively follows variable initializers
+  (`const c = ctx; c.time` works). `lowerVariableDeclarationList` skips declarations
+  that alias ctx (compile-time alias, no local slot). This was part of the phantom
+  approach and will be removed when ctx becomes a native struct.
+
+**Rejected approach -- ctx as compile-time phantom:**
+
+The Phase 13 implementation used a compile-time phantom approach: `ctx` has no runtime
+representation; the compiler tracks its TS symbol, intercepts property accesses, and
+rewrites them to HOST_CALL_ARGS. This was rejected because:
+
+- ctx cannot behave like a regular value (no storage, no aliasing without compiler tricks)
+- ~80 lines of special-case code (ctxSymbol tracking, isCtxExpression, isCtxSelfAccess,
+  isCtxEngineAccess, lowerCtxMethodCall, variable declaration skip)
+- The ambient `Context` interface is hardcoded rather than generated from the type registry
+- The original spec (user-authored-sensors-actuators.md section E, "Property access")
+  describes `LoadLocal(ctx_index)` + `GetField("self")` -- i.e., ctx as a real value
+
+**Accepted approach for follow-up:** ctx-as-native-struct. Register Context, SelfContext,
+EngineContext as native-backed structs with fieldGetters. The Context struct value is
+passed as a real argument to onExecute. Remove all compiler special-casing. See
+[ctx-as-native-struct.md](ctx-as-native-struct.md) for full design.
+
+**Discoveries:**
+
+1. **The spec describes ctx as `LoadLocal` + `GetField`.** Section E of
+   user-authored-sensors-actuators.md shows `LoadLocal(ctx_index)` then
+   `GetField("self")` then `GetField("position")`. The phantom approach diverged
+   from this spec. The refactor to native-backed struct will restore alignment.
+
+2. **Struct method calls are a missing general-purpose feature.** fieldGetter handles
+   property reads but not method calls (`getVariable("x")`, `queryNearby(pos, range)`).
+   A new type-based method dispatch mechanism is needed. This is generally useful
+   beyond ctx (any native struct could have methods). See ctx-as-native-struct.md
+   "Gating Feature: Struct Method Calls".
+
+3. **TS checker catches struct field errors before lowering.** The ambient declarations
+   mirror the type registry, so unknown fields produce TS diagnostics before lowering
+   runs. The lowering field validation is defense-in-depth only.
+
+4. **GET_FIELD dispatch is uniform.** The VM's `execGetField` already dispatches to
+   `typeDef.fieldGetter` when present, falling back to Dict lookup. The compiler
+   emits identical bytecode for user-creatable and native-backed structs. This was
+   validated by the NativeActor test.
+
+5. **Tests were not type-checked.** `tsconfig.json` excludes `**/*.spec.ts`. Added
+   `tsconfig.spec.json` and updated `typecheck` script to cover both configs.
+
+**Test counts:**
+
+- packages/core: 516 total, 0 failures (unchanged)
+- packages/typescript: 190 total (176 prev + 14 new), 0 failures

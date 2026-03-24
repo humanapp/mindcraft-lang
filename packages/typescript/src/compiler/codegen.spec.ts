@@ -4667,3 +4667,492 @@ export default Sensor({
     }
   });
 });
+
+describe("property access chains + host calls", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+
+    const types = getBrainServices().types;
+    const fns = getBrainServices().functions;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const strTypeId = mkTypeId(NativeType.String, "string");
+
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    if (!types.get(vec2TypeId)) {
+      types.addStructType("Vector2", {
+        fields: List.from([
+          { name: "x", typeId: numTypeId },
+          { name: "y", typeId: numTypeId },
+        ]),
+      });
+    }
+
+    const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
+    if (!types.get(entityTypeId)) {
+      types.addStructType("Entity", {
+        fields: List.from([
+          { name: "name", typeId: strTypeId },
+          { name: "position", typeId: vec2TypeId },
+        ]),
+      });
+    }
+
+    const emptyCallDef = {
+      callSpec: { type: "bag" as const, items: [] },
+      argSlots: List.empty<never>(),
+    };
+
+    if (!fns.get("ctx.time")) {
+      fns.register("ctx.time", false, { exec: (ctx: ExecutionContext) => mkNumberValue(ctx.time) }, emptyCallDef);
+    }
+    if (!fns.get("ctx.dt")) {
+      fns.register("ctx.dt", false, { exec: (ctx: ExecutionContext) => mkNumberValue(ctx.dt) }, emptyCallDef);
+    }
+    if (!fns.get("ctx.tick")) {
+      fns.register(
+        "ctx.tick",
+        false,
+        { exec: (ctx: ExecutionContext) => mkNumberValue(ctx.currentTick) },
+        emptyCallDef
+      );
+    }
+    if (!fns.get("self.getVariable")) {
+      fns.register(
+        "self.getVariable",
+        false,
+        {
+          exec: (ctx: ExecutionContext, args: MapValue) => {
+            const name = (args.v.get(0) as StringValue).v;
+            return ctx.getVariable(name) ?? NIL_VALUE;
+          },
+        },
+        emptyCallDef
+      );
+    }
+    if (!fns.get("self.setVariable")) {
+      fns.register(
+        "self.setVariable",
+        false,
+        {
+          exec: (ctx: ExecutionContext, args: MapValue) => {
+            const name = (args.v.get(0) as StringValue).v;
+            const value = args.v.get(1)!;
+            ctx.setVariable(name, value);
+            return NIL_VALUE;
+          },
+        },
+        emptyCallDef
+      );
+    }
+    if (!fns.get("engine.queryNearby")) {
+      fns.register("engine.queryNearby", false, { exec: () => NIL_VALUE }, emptyCallDef);
+    }
+  });
+
+  test("struct property access compiles to GET_FIELD", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "get-x",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const pos: Vector2 = { x: 42, y: 7 };
+    return pos.x;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const execCtx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), execCtx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 42);
+    }
+  });
+
+  test("chained struct property access (entity.position.x)", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "get-entity-x",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const e: Entity = { name: "hero", position: { x: 99, y: 50 } };
+    return e.position.x;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const execCtx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), execCtx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 99);
+    }
+  });
+
+  test("ctx.time compiles to HOST_CALL_ARGS", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "get-time",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return ctx.time;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const execCtx = mkCtx({ time: 12345 });
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), execCtx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 12345);
+    }
+  });
+
+  test("ctx.dt compiles to HOST_CALL_ARGS", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "get-dt",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return ctx.dt;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const execCtx = mkCtx({ dt: 16 });
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), execCtx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 16);
+    }
+  });
+
+  test("ctx.self.getVariable compiles to HOST_CALL_ARGS", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "get-var",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const val = ctx.self.getVariable("myVar");
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const variables = new Map<string, Value>();
+    variables.set("myVar", mkNumberValue(999));
+    const execCtx = mkCtx({
+      getVariable: <T extends Value>(name: string) => variables.get(name) as T | undefined,
+    });
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), execCtx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+  });
+
+  test("ctx.self.setVariable compiles to HOST_CALL_ARGS", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "set-var",
+  output: "number",
+  onExecute(ctx: Context): number {
+    ctx.self.setVariable("myVar", 42);
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+  });
+
+  test("ctx.engine.queryNearby compiles to HOST_CALL_ARGS", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "query",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    const pos: Vector2 = { x: 0, y: 0 };
+    const result = ctx.engine.queryNearby(pos, 5);
+    return true;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+  });
+
+  test("unknown engine method produces compile error", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "bad-method",
+  output: "number",
+  onExecute(ctx: Context): number {
+    ctx.engine.nonExistent();
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0, "Expected compile error for unknown engine method");
+  });
+
+  test("params.speed still resolves to LoadLocal (regression)", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "speed-check",
+  output: "number",
+  params: {
+    speed: { type: "number", default: 10 },
+  },
+  onExecute(ctx: Context, params: { speed: number }): number {
+    return params.speed;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const execCtx = mkCtx();
+
+    const argsMap = mkArgsMap({ 0: mkNumberValue(25) });
+    const fiber = vm.spawnFiber(1, 0, List.from([argsMap]), execCtx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 25);
+    }
+  });
+
+  test("list.length still resolves to ListLen (regression)", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "list-len",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const items: Array<number> = [1, 2, 3];
+    return items.length;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const execCtx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), execCtx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 3);
+    }
+  });
+
+  test("native-backed struct field access uses GET_FIELD (same bytecode)", () => {
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const nativeActorId = mkTypeId(NativeType.Struct, "NativeActor");
+    if (!types.get(nativeActorId)) {
+      types.addStructType("NativeActor", {
+        fields: List.from([{ name: "health", typeId: numTypeId }]),
+        fieldGetter: (source, fieldName) => {
+          if (fieldName === "health") return mkNumberValue(100);
+          return undefined;
+        },
+      });
+    }
+
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NativeActor } from "mindcraft";
+
+export default Sensor({
+  name: "actor-health",
+  output: "number",
+  params: {
+    actor: { type: "NativeActor" },
+  },
+  onExecute(ctx: Context, params: { actor: NativeActor }): number {
+    return params.actor.health;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+  });
+
+  test("unknown struct field produces compile error (caught by TS checker)", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "bad-field",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const pos: Vector2 = { x: 1, y: 2 };
+    return pos.z;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0, "Expected compile error for unknown struct field");
+    assert.ok(
+      result.diagnostics.some((d) => d.message.includes("z")),
+      `Expected diagnostic mentioning 'z', got: ${JSON.stringify(result.diagnostics)}`
+    );
+  });
+
+  test("ctx alias resolves ctx.time correctly", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "ctx-alias",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const c = ctx;
+    return c.time;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const execCtx = mkCtx({ time: 777 });
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), execCtx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 777);
+    }
+  });
+
+  test("ctx alias resolves ctx.self.getVariable correctly", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "ctx-alias-self",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const c = ctx;
+    const val = c.self.getVariable("myVar");
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+  });
+});

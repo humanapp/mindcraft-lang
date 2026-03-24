@@ -16,6 +16,7 @@ export type IrNode =
   | IrMakeClosure
   | IrLoadCapture
   | IrHostCallArgs
+  | IrGetField
   | IrMapGet
   | IrMapNew
   | IrMapSet
@@ -172,4 +173,9 @@ export interface IrMakeClosure {
 export interface IrLoadCapture {
   kind: "LoadCapture";
   index: number;
+}
+
+export interface IrGetField {
+  kind: "GetField";
+  fieldName: string;
 }

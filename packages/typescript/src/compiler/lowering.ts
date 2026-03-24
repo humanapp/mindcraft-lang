@@ -46,6 +46,7 @@ interface LoopContext {
 interface LowerContext {
   checker: ts.TypeChecker;
   paramsSymbol: ts.Symbol | undefined;
+  ctxSymbol: ts.Symbol | undefined;
   paramLocals: Map<string, number>;
   scopeStack: ScopeStack;
   ir: IrNode[];
@@ -241,11 +242,18 @@ function lowerOnPageEnteredBody(
   const ir: IrNode[] = [];
   const funcNode = descriptor.onPageEnteredNode!;
 
+  let ctxSymbol: ts.Symbol | undefined;
+  const ctxParam = funcNode.parameters.length >= 1 ? funcNode.parameters[0] : undefined;
+  if (ctxParam) {
+    ctxSymbol = checker.getSymbolAtLocation(ctxParam.name);
+  }
+
   const scopeStack = new ScopeStack(0);
 
   const ctx: LowerContext = {
     checker,
     paramsSymbol: undefined,
+    ctxSymbol,
     paramLocals: new Map(),
     scopeStack,
     ir,
@@ -362,11 +370,18 @@ function lowerOnExecuteBody(
     }
   }
 
+  let ctxSymbol: ts.Symbol | undefined;
+  const ctxParam = funcNode.parameters.length >= 1 ? funcNode.parameters[0] : undefined;
+  if (ctxParam) {
+    ctxSymbol = checker.getSymbolAtLocation(ctxParam.name);
+  }
+
   const scopeStack = new ScopeStack(nextLocal);
 
   const ctx: LowerContext = {
     checker,
     paramsSymbol,
+    ctxSymbol,
     paramLocals,
     scopeStack,
     ir,
@@ -428,6 +443,7 @@ function lowerHelperFunction(
   const ctx: LowerContext = {
     checker,
     paramsSymbol: undefined,
+    ctxSymbol: undefined,
     paramLocals,
     scopeStack,
     ir,
@@ -474,6 +490,7 @@ function generateModuleInit(
   const ctx: LowerContext = {
     checker,
     paramsSymbol: undefined,
+    ctxSymbol: undefined,
     paramLocals: new Map(),
     scopeStack,
     ir,
@@ -553,6 +570,9 @@ function lowerVariableDeclarationList(declList: ts.VariableDeclarationList, ctx:
   for (const decl of declList.declarations) {
     if (!ts.isIdentifier(decl.name)) {
       ctx.diagnostics.push(makeDiag("Destructuring is not supported", decl));
+      continue;
+    }
+    if (decl.initializer && isCtxExpression(decl.initializer, ctx)) {
       continue;
     }
     const localIdx = ctx.scopeStack.declareLocal(decl.name.text);
@@ -763,6 +783,9 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
   }
 
   if (ts.isPropertyAccessExpression(expr.expression)) {
+    if (lowerCtxMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerListMethodCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -784,6 +807,43 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
   }
 
   ctx.diagnostics.push(makeDiag("Unsupported function call", expr));
+}
+
+function lowerCtxMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const methodName = propAccess.name.text;
+  const receiver = propAccess.expression;
+
+  if (isCtxSelfAccess(receiver, ctx)) {
+    const fnName = `self.${methodName}`;
+    if (!getBrainServices().functions.get(fnName)) {
+      ctx.diagnostics.push(makeDiag(`Unknown context method: 'ctx.self.${methodName}'`, propAccess));
+      return true;
+    }
+    for (const arg of expr.arguments) {
+      lowerExpression(arg, ctx);
+    }
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: expr.arguments.length });
+    return true;
+  }
+
+  if (isCtxEngineAccess(receiver, ctx)) {
+    const fnName = `engine.${methodName}`;
+    if (!getBrainServices().functions.get(fnName)) {
+      ctx.diagnostics.push(makeDiag(`Unknown engine method: 'ctx.engine.${methodName}'`, propAccess));
+      return true;
+    }
+    for (const arg of expr.arguments) {
+      lowerExpression(arg, ctx);
+    }
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: expr.arguments.length });
+    return true;
+  }
+
+  return false;
 }
 
 interface CaptureInfo {
@@ -913,6 +973,7 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
   const closureCtx: LowerContext = {
     checker: ctx.checker,
     paramsSymbol: undefined,
+    ctxSymbol: undefined,
     paramLocals: closureParamLocals,
     scopeStack: closureScopeStack,
     ir: closureIr,
@@ -1733,6 +1794,21 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
       }
     }
   }
+
+  if (isCtxExpression(expr.expression, ctx)) {
+    const prop = expr.name.text;
+    if (prop === "time" || prop === "dt" || prop === "tick") {
+      ctx.ir.push({ kind: "HostCallArgs", fnName: `ctx.${prop}`, argc: 0 });
+      return;
+    }
+    if (prop === "self" || prop === "engine") {
+      ctx.diagnostics.push(makeDiag(`Cannot use 'ctx.${prop}' as a standalone value`, expr));
+      return;
+    }
+    ctx.diagnostics.push(makeDiag(`Unknown context property: '${prop}'`, expr));
+    return;
+  }
+
   if (expr.name.text === "length") {
     const objType = ctx.checker.getTypeAtLocation(expr.expression);
     const listTypeId = resolveListTypeId(objType, ctx);
@@ -1742,7 +1818,43 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
       return;
     }
   }
+
+  const objType = ctx.checker.getTypeAtLocation(expr.expression);
+  const structDef = resolveStructType(objType);
+  if (structDef) {
+    const fieldName = expr.name.text;
+    const hasField = structDef.fields.toArray().some((f) => f.name === fieldName);
+    if (!hasField) {
+      ctx.diagnostics.push(makeDiag(`Property '${fieldName}' does not exist on struct '${structDef.name}'`, expr));
+      return;
+    }
+    lowerExpression(expr.expression, ctx);
+    ctx.ir.push({ kind: "GetField", fieldName });
+    return;
+  }
+
   ctx.diagnostics.push(makeDiag("Unsupported property access", expr));
+}
+
+function isCtxExpression(expr: ts.Expression, ctx: LowerContext): boolean {
+  if (!ctx.ctxSymbol) return false;
+  if (ts.isIdentifier(expr)) {
+    const sym = ctx.checker.getSymbolAtLocation(expr);
+    if (sym === ctx.ctxSymbol) return true;
+    if (sym?.valueDeclaration && ts.isVariableDeclaration(sym.valueDeclaration)) {
+      const init = sym.valueDeclaration.initializer;
+      if (init) return isCtxExpression(init, ctx);
+    }
+  }
+  return false;
+}
+
+function isCtxSelfAccess(expr: ts.Expression, ctx: LowerContext): boolean {
+  return ts.isPropertyAccessExpression(expr) && isCtxExpression(expr.expression, ctx) && expr.name.text === "self";
+}
+
+function isCtxEngineAccess(expr: ts.Expression, ctx: LowerContext): boolean {
+  return ts.isPropertyAccessExpression(expr) && isCtxExpression(expr.expression, ctx) && expr.name.text === "engine";
 }
 
 function resolveStructType(type: ts.Type): StructTypeDef | undefined {

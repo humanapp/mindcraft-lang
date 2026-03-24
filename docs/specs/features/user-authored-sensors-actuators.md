@@ -2124,3 +2124,21 @@ For additional safety, a future phase could add:
 - **Termination analysis:** Detect obviously infinite loops at compile time
 - **Resource budgets:** Per-function instruction count limits in addition to per-fiber
   budget
+
+---
+
+## Amendments
+
+### 2026-03-23 -- ctx must be a real value, not a compile-time phantom
+
+Phase 13 of the compiler implementation initially treated `ctx` as a compile-time
+phantom (no runtime representation; the compiler intercepted property accesses and
+rewrote them to HOST_CALL_ARGS). This was rejected because ctx cannot behave like a
+regular TypeScript value under that approach (no aliasing, no storage, no passing to
+functions). The spec's own section E ("Property access") describes `LoadLocal(ctx_index)`
+followed by `GetField("self")` -- i.e., ctx as a real stack value.
+
+The accepted direction is to make ctx a native-backed struct (same pattern as ActorRef
+in apps/sim). See [ctx-as-native-struct.md](ctx-as-native-struct.md) for the full
+design. This also requires a new general-purpose struct method dispatch feature in the
+compiler for `ctx.self.getVariable(...)` etc.

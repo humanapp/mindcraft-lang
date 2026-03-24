@@ -113,6 +113,12 @@ export function emitFunction(
       case "ListLen":
         emitter.listLen();
         break;
+      case "GetField": {
+        const fieldIdx = pool.add(mkStringValue(node.fieldName));
+        emitter.pushConst(fieldIdx);
+        emitter.getField();
+        break;
+      }
       case "TypeCheck":
         emitter.typeCheck(node.nativeType);
         break;
