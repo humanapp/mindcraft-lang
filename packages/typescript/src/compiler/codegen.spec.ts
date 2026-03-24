@@ -4,9 +4,11 @@ import { List } from "@mindcraft-lang/core";
 import {
   type BooleanValue,
   CoreTypeIds,
+  type EnumValue,
   type ExecutionContext,
   getBrainServices,
   HandleTable,
+  isEnumValue,
   isListValue,
   isMapValue,
   isStructValue,
@@ -4383,6 +4385,285 @@ export default Sensor({
       assert.equal(struct.typeId, mkTypeId(NativeType.Struct, "Vector2"));
       assert.equal((struct.v?.get("x") as NumberValue).v, 5);
       assert.equal((struct.v?.get("y") as NumberValue).v, 10);
+    }
+  });
+});
+
+describe("enum value literals", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+    const types = getBrainServices().types;
+    const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
+    if (!types.get(dirTypeId)) {
+      types.addEnumType("Direction", {
+        symbols: List.from([
+          { key: "north", label: "North" },
+          { key: "south", label: "South" },
+          { key: "east", label: "East" },
+          { key: "west", label: "West" },
+        ]),
+        defaultKey: "north",
+      });
+    }
+  });
+
+  test("string literal with enum type annotation produces EnumValue", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Direction } from "mindcraft";
+
+export default Sensor({
+  name: "enum-literal",
+  output: "Direction",
+  onExecute(ctx: Context): Direction {
+    const d: Direction = "north";
+    return d;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isEnumValue(runResult.result!), "expected EnumValue");
+      const ev = runResult.result as EnumValue;
+      assert.equal(ev.typeId, mkTypeId(NativeType.Enum, "Direction"));
+      assert.equal(ev.v, "north");
+    }
+  });
+
+  test("enum value as function argument", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Direction } from "mindcraft";
+
+function identity(d: Direction): Direction {
+  return d;
+}
+
+export default Sensor({
+  name: "enum-arg",
+  output: "Direction",
+  onExecute(ctx: Context): Direction {
+    return identity("south");
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isEnumValue(runResult.result!), "expected EnumValue");
+      const ev = runResult.result as EnumValue;
+      assert.equal(ev.typeId, mkTypeId(NativeType.Enum, "Direction"));
+      assert.equal(ev.v, "south");
+    }
+  });
+
+  test("enum value as return value", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Direction } from "mindcraft";
+
+export default Sensor({
+  name: "enum-return",
+  output: "Direction",
+  onExecute(ctx: Context): Direction {
+    return "east";
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isEnumValue(runResult.result!), "expected EnumValue");
+      const ev = runResult.result as EnumValue;
+      assert.equal(ev.typeId, mkTypeId(NativeType.Enum, "Direction"));
+      assert.equal(ev.v, "east");
+    }
+  });
+
+  test("plain string literal without enum context produces StringValue", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "plain-string",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return "hello";
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "hello");
+    }
+  });
+
+  test("enum equality (===) returns true for matching values", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Direction } from "mindcraft";
+
+export default Sensor({
+  name: "enum-eq-true",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    const a: Direction = "north";
+    const b: Direction = "north";
+    return a === b;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.Boolean);
+      assert.equal((runResult.result as BooleanValue).v, true);
+    }
+  });
+
+  test("enum equality (===) returns false for different values", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Direction } from "mindcraft";
+
+function checkEqual(a: Direction, b: Direction): boolean {
+  return a === b;
+}
+
+export default Sensor({
+  name: "enum-eq-false",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    return checkEqual("north", "south");
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.Boolean);
+      assert.equal((runResult.result as BooleanValue).v, false);
+    }
+  });
+
+  test("enum inequality (!==) returns true for different values", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Direction } from "mindcraft";
+
+function checkNotEqual(a: Direction, b: Direction): boolean {
+  return a !== b;
+}
+
+export default Sensor({
+  name: "enum-neq",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    return checkNotEqual("north", "east");
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal(runResult.result!.t, NativeType.Boolean);
+      assert.equal((runResult.result as BooleanValue).v, true);
     }
   });
 });

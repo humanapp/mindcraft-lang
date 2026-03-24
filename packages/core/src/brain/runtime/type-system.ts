@@ -6,10 +6,13 @@ import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import { UniqueSet } from "../../platform/uniqueset";
 import {
+  CoreOpId,
   CoreTypeIds,
   CoreTypeNames,
   type EnumTypeDef,
   type EnumTypeShape,
+  type EnumValue,
+  type ExecutionContext,
   type FunctionTypeDef,
   type FunctionTypeShape,
   type ITypeRegistry,
@@ -17,6 +20,8 @@ import {
   type ListTypeShape,
   type MapTypeDef,
   type MapTypeShape,
+  type MapValue,
+  mkBooleanValue,
   mkTypeId,
   NativeType,
   type NullableTypeDef,
@@ -28,7 +33,7 @@ import {
   type TypeId,
   type UnionTypeDef,
 } from "../interfaces";
-import { getBrainServices } from "../services";
+import { getBrainServices, hasBrainServices } from "../services";
 
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
@@ -146,7 +151,41 @@ export class TypeRegistry implements ITypeRegistry {
       ...shape,
     };
     this.add(enumTypeDef);
+    this.registerEnumOperators(typeId);
     return typeId;
+  }
+
+  private registerEnumOperators(typeId: TypeId): void {
+    if (!hasBrainServices()) return;
+    const overloads = getBrainServices().operatorOverloads;
+    overloads.binary(
+      CoreOpId.EqualTo,
+      typeId,
+      typeId,
+      CoreTypeIds.Boolean,
+      {
+        exec: (_ctx: ExecutionContext, args: MapValue) => {
+          const a = args.v.get(0) as EnumValue;
+          const b = args.v.get(1) as EnumValue;
+          return mkBooleanValue(a.v === b.v);
+        },
+      },
+      false
+    );
+    overloads.binary(
+      CoreOpId.NotEqualTo,
+      typeId,
+      typeId,
+      CoreTypeIds.Boolean,
+      {
+        exec: (_ctx: ExecutionContext, args: MapValue) => {
+          const a = args.v.get(0) as EnumValue;
+          const b = args.v.get(1) as EnumValue;
+          return mkBooleanValue(a.v !== b.v);
+        },
+      },
+      false
+    );
   }
 
   addListType(name: string, shape: ListTypeShape): TypeId {

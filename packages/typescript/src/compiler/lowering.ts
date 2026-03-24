@@ -671,7 +671,8 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
   } else if (expr.kind === ts.SyntaxKind.NullKeyword) {
     ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
   } else if (ts.isStringLiteral(expr)) {
-    ctx.ir.push({ kind: "PushConst", value: mkStringValue(expr.text) });
+    const enumValue = tryResolveEnumValue(expr, ctx);
+    ctx.ir.push({ kind: "PushConst", value: enumValue ?? mkStringValue(expr.text) });
   } else if (ts.isNoSubstitutionTemplateLiteral(expr)) {
     ctx.ir.push({ kind: "PushConst", value: mkStringValue(expr.text) });
   } else if (ts.isTemplateExpression(expr)) {
@@ -1965,6 +1966,19 @@ function expandTypeIdMembers(typeId: string): string[] {
     return [(def as NullableTypeDef).baseTypeId];
   }
   return [typeId];
+}
+
+function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value | undefined {
+  const contextualType = ctx.checker.getContextualType(expr);
+  if (!contextualType) return undefined;
+  const sym = contextualType.getSymbol() ?? contextualType.aliasSymbol;
+  if (!sym) return undefined;
+  const registry = getBrainServices().types;
+  const typeId = registry.resolveByName(sym.getName());
+  if (!typeId) return undefined;
+  const typeDef = registry.get(typeId);
+  if (!typeDef || typeDef.coreType !== NativeType.Enum) return undefined;
+  return { t: NativeType.Enum, typeId, v: expr.text };
 }
 
 function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undefined {

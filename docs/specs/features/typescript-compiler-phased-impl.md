@@ -37,7 +37,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-23) Phases 0-12b are complete.
+- (Updated 2026-03-23) Phases 0-12c are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -69,11 +69,16 @@ not survive. Keep this doc current.
   registration in `registerCoreTypes()`, `tsTypeToTypeId` union-to-Any
   resolution (multi-member unions map to `CoreTypeIds.Any`), mixed-type
   array literal compilation (`[1, "hello", true]` resolves to `AnyList`),
-  and map/Record literal compilation to `MAP_NEW` / `MAP_SET` bytecode
+  map/Record literal compilation to `MAP_NEW` / `MAP_SET` bytecode
   (contextual type resolution via named alias or string index type,
   `resolveMapTypeId()` with `MapConstructor` instantiation fallback,
   struct-first disambiguation for object literals, VM `execMapNew` fix
-  to read typeId from constant pool).
+  to read typeId from constant pool), and enum value literal compilation
+  (string literals with enum-typed contextual type produce `EnumValue`
+  constants via `tryResolveEnumValue()` using `checker.getContextualType()`
+  - registry `resolveByName()` + `coreType === NativeType.Enum` check).
+    Enum types also get `EqualTo`/`NotEqualTo` operator overloads auto-registered
+    in `addEnumType()`, so `===`/`!==` comparisons between enum values work.
 - (Updated 2026-03-23) Core type system foundational rework complete (all 8 phases
   plus list/array method detour). See `core-type-system-phased-impl.md` for details.
   Key additions affecting remaining compiler phases:
@@ -3419,3 +3424,66 @@ ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
 
 - packages/core: 516 total, 0 failures
 - packages/typescript: 169 total (164 prev + 5 new), 0 failures
+
+### Phase 12c -- 2026-03-23
+
+**Status:** Complete. All acceptance criteria met.
+
+**Planned vs actual deliverables:**
+
+| Deliverable                                        | Status | Notes                                                                                     |
+| -------------------------------------------------- | ------ | ----------------------------------------------------------------------------------------- |
+| `tryResolveEnumValue()` helper in lowering.ts      | Done   | Uses `getContextualType()` + registry `resolveByName()` + `coreType === NativeType.Enum`  |
+| String literal enum detection in `lowerExpression` | Done   | `isStringLiteral` branch calls `tryResolveEnumValue`; falls back to `mkStringValue`       |
+| Variable with enum annotation -> `EnumValue`       | Done   | `const d: Direction = "north"` -> `PushConst(EnumValue)`                                  |
+| Function argument -> `EnumValue`                   | Done   | `identity("south")` with `Direction` param -> `PushConst(EnumValue)`                      |
+| Return value -> `EnumValue`                        | Done   | `return "east"` with `Direction` return type -> `PushConst(EnumValue)`                    |
+| Plain string regression check                      | Done   | `return "hello"` with `string` return type -> `StringValue` (unchanged)                   |
+| ambient.ts changes                                 | None   | Not needed -- enum types already emitted as string unions with `MindcraftTypeMap` entries |
+
+**Acceptance criteria results:**
+
+| Criterion                                                            | Result |
+| -------------------------------------------------------------------- | ------ |
+| `"north"` with enum-typed annotation -> `PushConst` with `EnumValue` | Pass   |
+| enum value as function argument -> correct `EnumValue` constant      | Pass   |
+| enum value as return value -> correct `EnumValue` constant           | Pass   |
+| plain string literal without enum context -> `StringValue`           | Pass   |
+
+**Extra work (not in spec):**
+
+- Registered `EqualTo` and `NotEqualTo` operator overloads for enum types in
+  `TypeRegistry.addEnumType()` via a `registerEnumOperators()` private method.
+  Each enum type automatically gets equality/inequality support when registered.
+  Uses `hasBrainServices()` guard to avoid failures in standalone registry scenarios.
+  File: `packages/core/src/brain/runtime/type-system.ts`.
+
+**Discoveries:**
+
+1. **No `mkEnumValue` factory in core.** Unlike `mkStringValue`/`mkNumberValue`,
+   there is no factory function for `EnumValue`. The value is constructed inline
+   as `{ t: NativeType.Enum, typeId, v: expr.text }`. This is fine -- the shape is
+   simple and only used in one place.
+
+2. **Enum operator overloads must be per-TypeId.** The operator resolution system
+   uses exact TypeId matching (e.g., `"enum:Direction"` not `NativeType.Enum`).
+   Overloads cannot be registered generically for "all enums" -- each enum type
+   needs its own registration. `addEnumType()` is the right place for this since
+   it runs once per enum type and ensures coverage for both core and app-registered
+   enums.
+
+3. **Contextual type via `aliasSymbol` is key.** Mindcraft enums are ambient
+   `type Direction = "north" | "south"` -- a type alias. The contextual type's
+   `getSymbol()` returns `undefined` for type aliases; `aliasSymbol` is the
+   correct property. The `??` chain (`getSymbol() ?? aliasSymbol`) handles both
+   cases.
+
+4. **TS literal type narrowing affects enum comparison tests.** Comparing two
+   different string literal constants (`"north" === "south"`) triggers a TS
+   diagnostic ("types have no overlap") because TS narrows string literal types.
+   Tests must use function parameters typed as the enum to avoid this.
+
+**Test counts:**
+
+- packages/core: 516 total, 0 failures (unchanged)
+- packages/typescript: 176 total (169 prev + 7 new), 0 failures
