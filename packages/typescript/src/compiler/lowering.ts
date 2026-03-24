@@ -808,6 +808,8 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     lowerClosureExpression(expr, ctx);
   } else if (ts.isFunctionExpression(expr)) {
     lowerClosureExpression(expr, ctx);
+  } else if (ts.isConditionalExpression(expr)) {
+    lowerConditionalExpression(expr, ctx);
   } else if (ts.isNonNullExpression(expr)) {
     lowerExpression(expr.expression, ctx);
   } else if (ts.isAsExpression(expr)) {
@@ -1318,6 +1320,33 @@ function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
   }
   ctx.ir.push({ kind: "Pop" });
   lowerExpression(expr.right, ctx);
+  ctx.ir.push({ kind: "Label", labelId: endLabel });
+}
+
+function lowerConditionalExpression(expr: ts.ConditionalExpression, ctx: LowerContext): void {
+  const elseLabel = allocLabel(ctx);
+  const endLabel = allocLabel(ctx);
+  lowerExpression(expr.condition, ctx);
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: elseLabel });
+  lowerExpression(expr.whenTrue, ctx);
+  ctx.ir.push({ kind: "Jump", labelId: endLabel });
+  ctx.ir.push({ kind: "Label", labelId: elseLabel });
+  lowerExpression(expr.whenFalse, ctx);
+  ctx.ir.push({ kind: "Label", labelId: endLabel });
+}
+
+function lowerNullishCoalescing(expr: ts.BinaryExpression, ctx: LowerContext): void {
+  const keepLabel = allocLabel(ctx);
+  const endLabel = allocLabel(ctx);
+
+  lowerExpression(expr.left, ctx);
+  ctx.ir.push({ kind: "Dup" });
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: keepLabel });
+  ctx.ir.push({ kind: "Pop" });
+  lowerExpression(expr.right, ctx);
+  ctx.ir.push({ kind: "Jump", labelId: endLabel });
+  ctx.ir.push({ kind: "Label", labelId: keepLabel });
   ctx.ir.push({ kind: "Label", labelId: endLabel });
 }
 
@@ -2726,6 +2755,11 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
     expr.operatorToken.kind === ts.SyntaxKind.BarBarToken
   ) {
     lowerShortCircuit(expr, ctx);
+    return;
+  }
+
+  if (expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
+    lowerNullishCoalescing(expr, ctx);
     return;
   }
 

@@ -37,8 +37,12 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-24) Phases 0-14 are complete, plus the Array method lowering
-  detour, the VM list mutation ops detour, and the Array.sort detour. Phase 14 added `for...of` loop
+- (Updated 2026-03-24) Phases 0-15 are complete, plus the Array method lowering
+  detour, the VM list mutation ops detour, and the Array.sort detour. Phase 15 added
+  ternary operator (`? :`) and nullish coalescing (`??`) compilation. Ternary uses
+  the same JumpIfFalse/Jump/Label pattern as `if`/`else`. `??` uses
+  `TypeCheck(NativeType.Nil)` for runtime nil detection rather than operator
+  overloads. Phase 14 added `for...of` loop
   desugaring and removed the custom module-scoped `Array<T>` from ambient
   declarations. The Array method detour added lowering for `includes`, `some`,
   `every`, `find`, `concat`, `join`, `reverse`, and `slice`. The list mutation
@@ -1570,6 +1574,11 @@ types including list types via `resolveListTypeId()`. The remaining work is the
 
 ### Phase 15: Ternary operator + nullish coalescing
 
+(Updated 2026-03-24: implemented. The spec's suggested `??` pattern using
+`PushConst(NIL_VALUE)` + `HostCallArgs(EqualTo, nil)` was incorrect -- the nil-nil
+EqualTo overload always returns true regardless of runtime value. The correct
+approach uses `TypeCheck(NativeType.Nil)` for runtime nil detection. See Phase Log.)
+
 (Updated 2026-03-23: nullable type support is now fully implemented in core type
 system Phase 1. `expandTypeIdMembers()` replaces the old `unwrapNullableTypeId()`.
 The `??` operator can leverage the existing nil-equality operator overloads and the
@@ -1658,6 +1667,9 @@ type system Phase 1 is available for default value nil-checks.)
 - **Default values in destructuring.** `const { x = 5 } = obj` requires nil-checking
   the destructured value and substituting the default. This adds complexity. Could
   defer defaults to a later phase and implement only simple destructuring first.
+  (Updated 2026-03-24) Phase 15 showed that `TypeCheck(NativeType.Nil)` is the
+  correct runtime nil-detection primitive -- use it for default value nil-checks
+  rather than EqualTo operator overloads.
 - **Destructuring patterns in parameters.** `function f({ x, y }: Point)` would
   require handling binding patterns in function parameter positions. Scope to
   variable declarations only for v1.
@@ -3858,3 +3870,61 @@ IR nodes, emission, and lowering. `sort` was implemented in a subsequent detour;
 
 - packages/core: 522 total (516 prev + 6 new), 0 failures
 - packages/typescript: 221 total (216 prev + 5 new), 0 failures
+
+### Phase 15 -- Ternary operator + nullish coalescing (2026-03-24)
+
+**Status:** Complete. All acceptance criteria met.
+
+**Planned vs actual deliverables:**
+
+| Deliverable                                            | Status | Notes                                                                              |
+| ------------------------------------------------------ | ------ | ---------------------------------------------------------------------------------- |
+| `lowerConditionalExpression()` in `lowering.ts`        | Done   | ~10 lines; straightforward JumpIfFalse/Jump/Label pattern                          |
+| `ts.isConditionalExpression` dispatch in lowerExpr     | Done   | Single branch addition to the if-else chain                                        |
+| `lowerNullishCoalescing()` in `lowering.ts`            | Done   | ~15 lines; Dup + TypeCheck(Nil) + JumpIfFalse pattern                              |
+| `QuestionQuestionToken` dispatch in lowerBinaryExpr    | Done   | Added alongside existing `&&`/`||` checks                                          |
+
+**Acceptance criteria results:**
+
+| Criterion                                    | Result |
+| -------------------------------------------- | ------ |
+| `true ? 1 : 2` -> 1                         | Pass   |
+| `false ? 1 : 2` -> 2                        | Pass   |
+| `null ?? 42` -> 42                           | Pass   |
+| `5 ?? 42` -> 5                               | Pass   |
+| nested ternary `a ? (b ? 1 : 2) : 3` -> 2  | Pass   |
+
+**Design decisions:**
+
+1. **`IrTypeCheck(NativeType.Nil)` for `??` instead of EqualTo operator overloads.**
+   The spec suggested using `PushConst(NIL_VALUE)` + `HostCallArgs(EqualTo, nil)`.
+   This approach was tried first but failed: `EqualTo(Nil, Nil)` always returns
+   `true` because it is designed for statically-known nil-nil comparison. When the
+   LHS is a non-nil value at runtime (e.g., `5`), the operator lookup still resolves
+   the `Nil,Nil` overload (since the static type is `number | null`) and returns
+   `true`, incorrectly treating a non-nil value as nil. Using `TypeCheck` directly
+   inspects the runtime native type tag, giving correct `??` semantics regardless
+   of static type. This is the same mechanism used for `typeof` comparisons.
+
+2. **Ternary uses the same pattern as `if`/`else` statements.** The conditional
+   expression emits the exact same JumpIfFalse/Jump/Label structure already used
+   by `if`/`else` in `lowerStatement`, just in expression position.
+
+**Discoveries:**
+
+1. **The spec's suggested `??` implementation pattern is incorrect.** The spec
+   recommended nil-equality operator overloads, but these resolve based on static
+   types. For nullable types (`T | null`), `resolveOperatorWithExpansion` would need
+   to find a `Number,Nil` overload for `EqualTo`, and even having one would compare
+   the runtime number value against nil conceptually wrong. `TypeCheck` is the
+   correct primitive -- it does a runtime tag check without needing operator
+   overloads.
+
+2. **Tests beyond the acceptance criteria.** Added 3 additional tests: ternary with
+   variable condition (params), `undefined ?? 42` -> 42, and `0 ?? 42` -> 0 (verifying
+   `??` does not trigger on falsy values unlike `||`).
+
+**Test counts:**
+
+- packages/core: 522 total, 0 failures (unchanged)
+- packages/typescript: 236 total (221 prev + 8 new + 7 from sort detour), 0 failures
