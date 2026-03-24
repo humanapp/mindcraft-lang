@@ -9,7 +9,7 @@ export function createVirtualCompilerHost(files: Map<string, string>, options: t
       if (content === undefined) return undefined;
       return ts.createSourceFile(fileName, content, languageVersion);
     },
-    getDefaultLibFileName: () => `${LIB_DIR}lib.es5.d.ts`,
+    getDefaultLibFileName: () => `${LIB_DIR}lib.mindcraft.d.ts`,
     writeFile: () => {},
     getCurrentDirectory: () => "/",
     getCanonicalFileName: (fileName) => fileName,

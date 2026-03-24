@@ -11,25 +11,6 @@ import type {
 import { getBrainServices, NativeType } from "@mindcraft-lang/core/brain";
 
 const AMBIENT_HEADER = `
-interface Promise<T> {
-  then<TResult1 = T, TResult2 = never>(
-    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null,
-    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | undefined | null
-  ): Promise<TResult1 | TResult2>;
-  catch<TResult = never>(
-    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | undefined | null
-  ): Promise<TResult>;
-}
-
-declare var Promise: {
-  new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: unknown) => void) => void): Promise<T>;
-};
-
-interface Array<T> {
-  find(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: unknown): T | undefined;
-  findIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: unknown): number;
-  includes(searchElement: T, fromIndex?: number): boolean;
-}
 `;
 
 const AMBIENT_MODULE_START = `
