@@ -1,4 +1,9 @@
-# `@mindcraft-lang/typescript` -- Phased Implementation Plan
+# `@mindcraft-lang/typescript` -- Phased Implementation Plan (Phases 0-15, ARCHIVED)
+
+> **Archived.** Phases 0-15 are complete. For active implementation work on Phases 16-25,
+> use [typescript-compiler-phased-impl-p2.md](typescript-compiler-phased-impl-p2.md).
+> This file is the historical record: phase specs, post-mortems, and the design rationale
+> that shaped the implementation through Phase 15.
 
 Companion to [user-authored-sensors-actuators.md](user-authored-sensors-actuators.md).
 See also [vscode-authoring-debugging.md](vscode-authoring-debugging.md) -- section 6 (Debug Metadata)
