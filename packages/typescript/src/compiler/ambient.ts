@@ -28,16 +28,6 @@ declare var Promise: {
 
 const AMBIENT_MODULE_START = `
 declare module "mindcraft" {
-  interface Array<T> {
-    readonly length: number;
-    [index: number]: T;
-    push(...items: T[]): number;
-    indexOf(item: T): number;
-    filter(fn: (item: T) => boolean): Array<T>;
-    map<U>(fn: (item: T) => U): Array<U>;
-    forEach(fn: (item: T) => void): void;
-  }
-
   interface MindcraftTypeMap {
     boolean: boolean;
     number: number;

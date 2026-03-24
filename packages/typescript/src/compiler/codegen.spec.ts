@@ -4068,6 +4068,153 @@ export default Sensor({
       assert.equal((runResult.result as NumberValue).v, 4);
     }
   });
+
+  test("for...of iterates over list elements", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-for-of",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const nums: NumberList = [1, 2, 3];
+    let sum = 0;
+    for (const x of nums) {
+      sum = sum + x;
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.equal((runResult2.result as NumberValue).v, 6);
+    }
+  });
+
+  test("for...of with break exits early", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-for-of-break",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const nums: NumberList = [10, 20, 30, 40, 50];
+    let sum = 0;
+    for (const x of nums) {
+      if (x === 30) {
+        break;
+      }
+      sum = sum + x;
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.equal((runResult2.result as NumberValue).v, 30);
+    }
+  });
+
+  test("for...of with continue skips iteration", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-for-of-continue",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const nums: NumberList = [1, 2, 3, 4, 5];
+    let sum = 0;
+    for (const x of nums) {
+      if (x === 3) {
+        continue;
+      }
+      sum = sum + x;
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      // 1 + 2 + 4 + 5 = 12
+      assert.equal((runResult2.result as NumberValue).v, 12);
+    }
+  });
+
+  test("for...of over empty list executes no body", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-for-of-empty",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const nums: NumberList = [];
+    let sum = 99;
+    for (const x of nums) {
+      sum = sum + x;
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.equal((runResult2.result as NumberValue).v, 99);
+    }
+  });
 });
 
 // ---- Function type signatures ----

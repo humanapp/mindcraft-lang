@@ -552,6 +552,8 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     lowerWhileStatement(stmt, ctx);
   } else if (ts.isForStatement(stmt)) {
     lowerForStatement(stmt, ctx);
+  } else if (ts.isForOfStatement(stmt)) {
+    lowerForOfStatement(stmt, ctx);
   } else if (ts.isBlock(stmt)) {
     ctx.scopeStack.pushScope();
     lowerStatements(stmt.statements, ctx);
@@ -653,6 +655,89 @@ function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
     lowerExpression(stmt.incrementor, ctx);
     ctx.ir.push({ kind: "Pop" });
   }
+
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+
+  ctx.loopStack.pop();
+  ctx.scopeStack.popScope();
+}
+
+function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
+  ctx.scopeStack.pushScope();
+
+  const iterableType = ctx.checker.getTypeAtLocation(stmt.expression);
+  const listTypeId = resolveListTypeId(iterableType, ctx);
+  if (!listTypeId) {
+    ctx.diagnostics.push(makeDiag("`for...of` is only supported on list-typed values", stmt.expression));
+    ctx.scopeStack.popScope();
+    return;
+  }
+
+  if (!ts.isVariableDeclarationList(stmt.initializer)) {
+    ctx.diagnostics.push(makeDiag("`for...of` requires a variable declaration (e.g. `const x of list`)", stmt));
+    ctx.scopeStack.popScope();
+    return;
+  }
+
+  const decls = stmt.initializer.declarations;
+  if (decls.length !== 1 || !ts.isIdentifier(decls[0].name)) {
+    ctx.diagnostics.push(makeDiag("`for...of` requires a single identifier binding", stmt));
+    ctx.scopeStack.popScope();
+    return;
+  }
+
+  const listLocal = ctx.scopeStack.allocLocal();
+  const indexLocal = ctx.scopeStack.allocLocal();
+
+  lowerExpression(stmt.expression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: listLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: indexLocal });
+
+  const loopStart = allocLabel(ctx);
+  const continueTarget = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  ctx.loopStack.push({ continueLabel: continueTarget, breakLabel: loopEnd });
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: listLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for `for...of`", stmt));
+    ctx.loopStack.pop();
+    ctx.scopeStack.popScope();
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: listLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
+  ctx.ir.push({ kind: "ListGet" });
+  const itemLocal = ctx.scopeStack.declareLocal(decls[0].name.text);
+  ctx.ir.push({ kind: "StoreLocal", index: itemLocal });
+
+  lowerStatement(stmt.statement, ctx);
+
+  ctx.ir.push({ kind: "Label", labelId: continueTarget });
+
+  ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for `for...of`", stmt));
+    ctx.loopStack.pop();
+    ctx.scopeStack.popScope();
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: indexLocal });
 
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
   ctx.ir.push({ kind: "Label", labelId: loopEnd });

@@ -37,8 +37,14 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-24) Phases 0-13 are complete. Phase 13's GET_FIELD for struct
-  property access is implemented. The ctx compile-time phantom approach from Phase 13
+- (Updated 2026-03-24) Phases 0-14 are complete. Phase 14 added `for...of` loop
+  desugaring over list-typed values (`lowerForOfStatement()` in `lowering.ts`),
+  using existing `IrListLen`/`IrListGet` IR nodes and `allocLocal()` for hidden
+  temporaries. The custom module-scoped `Array<T>` interface was removed from
+  ambient declarations -- the global `Array<T>` from `lib.es5.d.ts` is used
+  directly, which TypeScript recognizes as iterable. `break`/`continue` work via
+  the existing loop stack with a separate `continueTarget` label. Phase 13's
+  GET_FIELD for struct
   has been replaced by ctx-as-native-struct (implemented out of band). Context,
   SelfContext, and EngineContext are now native-backed structs with fieldGetters,
   registered in `packages/core/src/brain/runtime/context-types.ts`. Struct method
@@ -133,8 +139,11 @@ not survive. Keep this doc current.
     `lowerElementAccessAssignment()`. Five list methods (`.push`, `.indexOf`,
     `.filter`, `.map`, `.forEach`) compiled to inline loops -- no new opcodes.
     `allocLocal()` on `ScopeStack` for anonymous temporaries. Method call dispatch
-    infrastructure via `lowerListMethodCall`. Ambient declarations use custom
-    `Array<T>` interface with method signatures.
+    infrastructure via `lowerListMethodCall`. Ambient declarations now use the
+    global `Array<T>` from `lib.es5.d.ts` directly (custom module-scoped `Array<T>`
+    removed in Phase 14); list type aliases (`NumberList`, etc.) are emitted as
+    `type NumberList = Array<number>`. `for...of` loops desugar to index-based
+    iteration via `lowerForOfStatement()`.
   - **`tsTypeToTypeId()` enhanced:** Now resolves named types (structs, enums)
     via symbol name lookup on the registry, not just primitives. Accepts optional
     `checker?: ts.TypeChecker` parameter for resolving call signatures.
@@ -3662,3 +3671,60 @@ phantom code has been removed. See [ctx-as-native-struct.md](ctx-as-native-struc
 
 - packages/core: 516 total, 0 failures (unchanged)
 - packages/typescript: 190 total (176 prev + 14 new), 0 failures
+
+### Phase 14 -- `for...of` loop (2026-03-24)
+
+**Status:** Complete. All acceptance criteria met.
+
+**Planned vs actual deliverables:**
+
+| Deliverable                                           | Status | Notes                                                                           |
+| ----------------------------------------------------- | ------ | ------------------------------------------------------------------------------- |
+| `lowerForOfStatement()` in `lowering.ts`              | Done   | ~80 lines; desugars to index-based loop using existing IR infrastructure        |
+| `ts.isForOfStatement` dispatch in `lowerStatement`    | Done   | Single branch addition                                                          |
+| `break`/`continue` via existing loop stack            | Done   | Separate `continueTarget` label so `continue` jumps to increment, not condition |
+| List type validation before emitting iterator pattern | Done   | `resolveListTypeId()` check; non-list types produce compile error               |
+| Hidden temporaries via `allocLocal()`                 | Done   | `listLocal` and `indexLocal` allocated as hidden locals                         |
+
+**Additional work (not in spec):**
+
+- **Removed custom module-scoped `Array<T>` from ambient declarations** -- the
+  custom `Array<T>` interface inside `declare module "mindcraft"` shadowed the
+  global `Array<T>` from `lib.es5.d.ts`. TypeScript only recognizes the built-in
+  `Array` as iterable at the ES5 target level, so `for...of` on our custom
+  `Array<T>` produced TS error 2495 ("not an array type or string type"). Removing
+  the custom interface lets TypeScript use its own `Array<T>`, which supports
+  `for...of` natively. The tradeoff: the global `Array<T>` exposes methods the
+  compiler doesn't yet lower (`splice`, `slice`, `reduce`, etc.), but the lowering
+  validates method calls and produces clear diagnostics for unsupported methods.
+
+**Acceptance criteria results:**
+
+| Criterion                                             | Result |
+| ----------------------------------------------------- | ------ |
+| `for (const x of [1, 2, 3]) { sum += x; }` -> sum = 6 | Pass   |
+| `for...of` with `break` -> exits early                | Pass   |
+| `for...of` with `continue` -> skips iteration         | Pass   |
+| `for...of` over empty list -> body never executes     | Pass   |
+| Non-list types produce compile error                  | Pass   |
+
+**Discoveries:**
+
+1. **The custom module-scoped `Array<T>` must be removed.** TypeScript's ES5 target
+   only recognizes the built-in global `Array` and `string` as valid `for...of`
+   targets (diagnostic 2495). An alternative approach of adding `Symbol.iterator`
+   declarations and `downlevelIteration: true` was tried but rejected because it
+   caused the module-scoped `Array<T>` to conflict with global `Array<T>` for array
+   literals (`Property '[Symbol.iterator]' is missing in type 'number[]' but
+required in type 'Array<number>'`). The cleanest fix was removing the custom
+   interface entirely and relying on the global one.
+
+2. **Unsupported Array methods are now a separate concern.** With the global
+   `Array<T>`, users can call methods like `splice()`, `reduce()`, `sort()` that
+   the compiler doesn't lower. These should produce clear compile-time diagnostics.
+   This is a follow-up task separate from `for...of` support.
+
+**Test counts:**
+
+- packages/core: 516 total, 0 failures (unchanged)
+- packages/typescript: 202 total (198 prev + 4 new), 0 failures
