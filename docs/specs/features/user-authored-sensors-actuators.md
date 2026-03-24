@@ -384,6 +384,7 @@ IrOp =
   | PushConst(value: Value)
   | Pop
   | Dup
+  | Swap                               // swap top two stack values
   | LoadLocal(index: number)          // function-local variable
   | StoreLocal(index: number)
   | LoadVar(varIndex: number)         // brain-level variable
@@ -393,6 +394,7 @@ IrOp =
   | JumpIfTrue(label: Label)
   | Label(label: Label)
   | Call(funcIndex: number, argc: number)
+  | CallIndirect(argc: number)        // pop FunctionValue, call by funcId
   | Return
   | HostCall(fnId: number, argc: number, callSiteId: number)
   | HostCallAsync(fnId: number, argc: number, callSiteId: number)
@@ -400,6 +402,7 @@ IrOp =
   | Yield
   | LoadCallsiteVar(index: number)  // callsite-persistent top-level variable
   | StoreCallsiteVar(index: number)
+  | LoadCapture(index: number)      // load captured variable in closure
   | MapNew(typeId: number)
   | MapSet | MapGet | MapHas | MapDelete
   | ListNew(typeId: number)
@@ -407,9 +410,18 @@ IrOp =
   | StructNew(typeId: number)
   | StructGet(fieldName: string)
   | StructSet(fieldName: string)
+  | StructAssignCheck               // runtime type check for struct assignment
   | GetField(fieldName: string)
   | SetField(fieldName: string)
+  | PushFunctionRef(funcName: string) // push FunctionValue for named function
+  | MakeClosure(funcId: number, captureCount: number) // create closure
+  | TypeCheck                        // typeof lowering (Op.TYPE_CHECK)
 ```
+
+(Updated 2026-03-23: IR node list expanded to reflect core type system additions.
+`CallIndirect`, `LoadCapture`, `PushFunctionRef`, `MakeClosure`, `TypeCheck`,
+`StructAssignCheck`, and `Swap` were added across core type system Phases 3-8 and
+the list method detour. These nodes are already implemented in ir.ts and emit.ts.)
 
 (Updated 2026-03-21: `StructNew(typeId)` -- the `typeId` parameter is a constant pool
 index pointing to a string value (the typeId string, e.g., `"struct:<Vector2>"`), not
@@ -562,6 +574,66 @@ ListPush;
 StoreLocal(items_index);
 ```
 
+**Element access (index read/write):**
+
+(Added 2026-03-23: implemented in core type system detour.)
+
+```typescript
+// const x = items[i];
+// ->
+LoadLocal(items_index);
+LoadLocal(i_index);
+ListGet;
+StoreLocal(x_index);
+
+// items[i] = 42;
+// ->
+LoadLocal(items_index);
+LoadLocal(i_index);
+PushConst(42);
+Swap; // reorder for LIST_SET operand layout
+ListSet;
+```
+
+**Arrow functions and closures:**
+
+(Added 2026-03-23: implemented in core type system Phases 5-6.)
+
+```typescript
+// const double = (x: number): number => x * 2;
+// double(5)
+// ->
+PushFunctionRef("double"); // FunctionValue with funcId
+StoreLocal(double_index);
+// ...
+PushConst(5);
+LoadLocal(double_index);
+CallIndirect(1); // pops FunctionValue, calls by funcId
+
+// Closures with captures:
+// const offset = 10;
+// const addOffset = (x: number): number => x + offset;
+// ->
+LoadLocal(offset_index); // push captured value
+MakeClosure(funcId, 1); // create FunctionValue with 1 capture
+StoreLocal(addOffset_index);
+// Inside the closure body:
+LoadCapture(0); // load the captured 'offset' value
+```
+
+**typeof:**
+
+(Added 2026-03-23: implemented as Op.TYPE_CHECK in core type system Phase 4.)
+
+```typescript
+// typeof x === "number"
+// ->
+LoadLocal(x_index);
+TypeCheck; // pushes type string onto stack
+PushConst("number");
+HostCallArgs(EqualTo, 2);
+```
+
 **Async/await:** See section F.
 
 ### Stage 5: IR Optimization (optional)
@@ -580,6 +652,11 @@ for all existing opcodes (`pushConst`, `call`, `hostCall`, `loadVar`, `storeVar`
 New opcodes (`LOAD_LOCAL`, `STORE_LOCAL`, `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR`)
 will need corresponding new emitter methods (`loadLocal`, `storeLocal`,
 `loadCallsiteVar`, `storeCallsiteVar`).
+
+(Updated 2026-03-23: Additional emitter methods now exist from core type system work:
+`callIndirect`, `makeClosure`, `loadCapture`, `typeCheck`, and emitter cases for
+`ListGet`, `ListSet`, `Swap`, `StructAssignCheck`. The `emitFunction` call now receives
+a `functionTable` parameter for resolving `PushFunctionRef` IR nodes to funcIds.)
 
 ```typescript
 for (const op of irOps) {
@@ -739,6 +816,15 @@ packages/typescript/src/
     mindcraft-ambient.d.ts  -- ambient type declarations for user code
 ```
 
+(Updated 2026-03-23: The actual file layout after implementation differs from the plan
+above. Key differences: `ts-compiler.ts` -> `compile.ts`, `ts-validator.ts` ->
+`validate.ts`, `ts-descriptor.ts` -> `extract.ts`, `ts-lowering.ts` -> `lowering.ts`.
+Additional files exist: `emit.ts` (bytecode emission), `scope.ts` (scope stack and
+local allocation), `ambient.ts` (generates ambient declarations from type registry),
+`types.ts` (shared compiler types including `UserAuthoredProgram`). The ambient
+declarations are generated dynamically from the type registry rather than maintained
+as a static `.d.ts` file.)
+
 ### Linking user-authored bytecode into the brain program
 
 The VM has one `Program` with a flat `functions: List<FunctionBytecode>`. The `CALL`
@@ -756,9 +842,15 @@ produces the `BrainProgram` and before `new VM(program, handles)`:
 3. Append its `FunctionBytecode` entries to `BrainProgram.functions` -- the first entry
    gets funcId `N`, the next `N+1`, etc.
 4. Merge its constants into `BrainProgram.constants`, recording old-to-new index mapping.
-5. Rewrite the copied user bytecode: remap `CALL` funcId operands (+offset) and
-   `PUSH_CONST` index operands (per constant mapping).
+5. Rewrite the copied user bytecode: remap `CALL` funcId operands (+offset),
+   `MAKE_CLOSURE` funcId operands (+offset), `PUSH_CONST` index operands (per constant
+   mapping), and `FunctionValue` constants in the constant pool (+funcId offset).
 6. Record the remapped entry point funcId for each user tile.
+
+(Updated 2026-03-23: step 5 now includes `MAKE_CLOSURE` funcId remapping and
+`FunctionValue` constant pool remapping, both added in core type system Phase 5-6.
+The linker already implements these via the `funcOffset` applied to both instruction
+operands and constant pool entries.)
 
 The HOST_CALL exec wrapper for user tiles captures a mutable reference cell that the
 linker populates:
@@ -1534,8 +1626,8 @@ host function implementations unwrap `ctx.data` internally.
 | `for...of`                | Over arrays/lists                                                     |
 | `break`, `continue`       | In loops only                                                         |
 | `return`                  | With or without value                                                 |
-| Function declarations     | Named functions, arrow functions                                      |
-| Function calls            | Direct calls only (no `.call`, `.bind`, `.apply`)                     |
+| Function declarations     | Named functions, arrow functions (including closures)                 |
+| Function calls            | Direct calls and indirect calls via function references               |
 | Object literals           | `{ x: 1, y: 2 }` -- compile to StructValue                            |
 | Array literals            | `[1, 2, 3]` -- compile to ListValue                                   |
 | Property access           | `obj.field` -- compile to GET_FIELD                                   |
@@ -1550,7 +1642,7 @@ host function implementations unwrap `ctx.data` internally.
 | Template literals         | `` `hello ${name}` `` -- desugars to string concatenation             |
 | Destructuring (simple)    | `const { x, y } = pos;` for objects; `const [a, b] = arr;` for arrays |
 | Spread in arrays          | `[...items, newItem]`                                                 |
-| `typeof`                  | Returns string, implemented as HOST_CALL                              |
+| `typeof`                  | Returns string, implemented via `TYPE_CHECK` opcode                   |
 
 ### Excluded in v1 (feasible later)
 
@@ -1568,7 +1660,12 @@ host function implementations unwrap `ctx.data` internally.
 | Default parameters   | `function f(x = 5)` -- simple desugaring. Phase 2.                                    |
 | Optional parameters  | `function f(x?: number)` -- Phase 2. Default to nil.                                  |
 | `try` / `catch`      | Maps to existing TRY/THROW opcodes but adds complexity. Phase 2.                      |
-| Closures (capturing) | Requires captured variable hoisting or closure objects. Phase 2.                      |
+
+(Updated 2026-03-23: "Closures (capturing)" removed from this table. Closures with
+capture-by-value semantics are now fully implemented via `MAKE_CLOSURE` / `LOAD_CAPTURE`
+opcodes (core type system Phase 6). Arrow functions and function expressions that capture
+outer scope variables compile correctly. Capture is by value -- mutations to captured
+primitives inside the closure are not visible outside, and vice versa.)
 
 ### Excluded permanently
 
@@ -1778,7 +1875,7 @@ use it as a tile in their brain.
 
 **Not in scope for Phase 1:**
 
-- Classes, closures, generics, switch, finally, try/catch
+- Classes, generics, switch, finally, try/catch
 - Multi-file authoring
 - Importing between user files
 - Debugger / step-through
@@ -1805,6 +1902,11 @@ use it as a tile in their brain.
 
 **Goal:** Richer language features that make authoring more productive.
 
+(Updated 2026-03-23: closures and source maps for debugging have been removed from this
+phase's scope. Closures (capture-by-value) were implemented in core type system Phase 6
+and are now available in Phase 1. Source span tracking and debug metadata are tracked in
+the typescript-compiler-phased-impl.md Phases 22-25.)
+
 **Scope:**
 
 - Classes (single, no inheritance) -- compile to struct types + function tables
@@ -1814,10 +1916,8 @@ use it as a tile in their brain.
 - Rest parameters
 - `try` / `catch` -- maps to existing TRY/THROW opcodes
 - `finally` blocks
-- Simple closures (capture by value, not reference)
 - Type narrowing in if/else branches (compiler uses TS checker info)
 - Better error messages with source location mapping
-- Source maps for debugging (map bytecode PC -> TS source line)
 
 **Not in scope for Phase 2:**
 
@@ -1949,9 +2049,15 @@ runtime errors will occur. Ambient declarations must use precise types.
 **No classes (Phase 1).** Eliminates vtable dispatch, `this` binding, constructor
 chaining, and prototype resolution. Saves weeks of compiler/VM work.
 
-**No closures (Phase 1).** Eliminates captured variable analysis, upvalue resolution, and
-closure object allocation. Closures require either a closure-conversion pass or runtime
-upvalue cells. Both add significant complexity.
+**Closures are capture-by-value only.** (Updated 2026-03-23: closures are now
+implemented via `MAKE_CLOSURE` / `LOAD_CAPTURE` opcodes from core type system Phase 6,
+but with capture-by-value semantics only. Captured variables are snapshot at closure
+creation time -- mutations inside the closure are not visible outside, and vice versa.
+This avoids the complexity of mutable upvalue cells, heap-allocated variable boxes, or
+closure-conversion passes that would be needed for capture-by-reference semantics.
+The constraint is acceptable because most closure use cases in user-authored code are
+callbacks to array methods like `.filter()`, `.map()`, `.forEach()` where captured
+values are read-only.)
 
 **No generics.** Types are erased after checking. The compiler does not need to
 monomorphize or specialize. Type parameters in ambient declarations work fine because

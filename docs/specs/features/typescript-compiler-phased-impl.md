@@ -69,13 +69,62 @@ not survive. Keep this doc current.
   registration in `registerCoreTypes()`, `tsTypeToTypeId` union-to-Any
   resolution (multi-member unions map to `CoreTypeIds.Any`), and mixed-type
   array literal compilation (`[1, "hello", true]` resolves to `AnyList`).
+- (Updated 2026-03-23) Core type system foundational rework complete (all 8 phases
+  plus list/array method detour). See `core-type-system-phased-impl.md` for details.
+  Key additions affecting remaining compiler phases:
+  - **Nullable types:** `addNullableType(baseTypeId)` creates nullable variants via
+    `NullableCodec`. `tsTypeToTypeId()` returns nullable TypeIds for `T | null`/
+    `T | undefined`. Ambient emits `T | null`.
+  - **Generic type constructors:** `TypeConstructor` interface, `ListConstructor`,
+    `MapConstructor` registered in `registerCoreTypes()`. `instantiate(name, args)`
+    creates types on demand. `resolveListTypeId()` now uses
+    `registry.instantiate("List", [elementTypeId])` instead of scanning.
+    `autoInstantiated?: boolean` flag on TypeDef.
+  - **Union types:** `NativeType.Union = 10`, `UnionTypeShape`, `UnionCodec`.
+    `getOrCreateUnionType()` with normalization (flatten, dedup, sort, nullable
+    subsumption). `tsTypeToTypeId()` returns union TypeIds for resolvable
+    multi-member unions (falls back to `Any` only for unresolvable members).
+    `expandTypeIdMembers()` replaced `unwrapNullableTypeId()`.
+    `resolveOperatorWithExpansion()` handles cross-product operator lookup.
+  - **`typeof` lowering:** `Op.TYPE_CHECK = 150`, `IrTypeCheck`. `typeof x ===
+"string"` patterns lower to a single `TYPE_CHECK` opcode. Supports `"number"`,
+    `"string"`, `"boolean"`, `"undefined"`, `"function"`. `"object"` rejected.
+  - **First-class function references:** `NativeType.Function = 11`,
+    `FunctionValue` in `Value` union, `Op.CALL_INDIRECT = 160`, `FunctionCodec`,
+    `IrPushFunctionRef`/`IrCallIndirect` IR nodes, linker remaps `FunctionValue`
+    constants.
+  - **Closures:** `Op.MAKE_CLOSURE = 170`, `Op.LOAD_CAPTURE = 171` (no
+    `STORE_CAPTURE` -- capture-by-value). Arrow functions and function expressions
+    compile as separate closure function entries. Capture analysis via TS checker
+    symbol resolution.
+  - **Type-level function signatures:** `FunctionTypeShape`, `FunctionTypeDef`,
+    `getOrCreateFunctionType()` with memoization. `tsTypeToTypeId()` resolves call
+    signatures to specific function type TypeIds. `ts.TypeFlags.Void` maps to
+    `CoreTypeIds.Void`. Ambient emits arrow syntax for function types.
+  - **Structural subtyping:** `isStructurallyCompatible(source, target)` on
+    `ITypeRegistry`. `nominal?: boolean` on `StructTypeShape`. Memoized.
+    `checkStructAssignmentCompat()` wired into `lowerAssignment` and variable
+    declaration lowering.
+  - **List/array methods (detour):** `IrListGet`/`IrListSet`/`IrSwap` IR nodes.
+    Element access (`arr[i]`, `arr[i] = val`) via `lowerElementAccess()` /
+    `lowerElementAccessAssignment()`. Five list methods (`.push`, `.indexOf`,
+    `.filter`, `.map`, `.forEach`) compiled to inline loops -- no new opcodes.
+    `allocLocal()` on `ScopeStack` for anonymous temporaries. Method call dispatch
+    infrastructure via `lowerListMethodCall`. Ambient declarations use custom
+    `Array<T>` interface with method signatures.
+  - **`tsTypeToTypeId()` enhanced:** Now resolves named types (structs, enums)
+    via symbol name lookup on the registry, not just primitives. Accepts optional
+    `checker?: ts.TypeChecker` parameter for resolving call signatures.
+  - **`.length` on lists:** `lowerPropertyAccess()` detects `.length` on
+    list-typed expressions and emits `IrListLen` -> `Op.LIST_LEN`.
 - `src/index.ts` re-exports `compileUserTile`, `initCompiler`, `buildAmbientDeclarations`,
   `CompileDiagnostic`, `CompileResult`, `ExtractedDescriptor`, `ExtractedParam` from
   the compiler module alongside `UserAuthoredProgram` and `UserTileLinkInfo`
   interfaces, `linkUserPrograms` and `LinkResult` from the linker module, and
   `createUserTileExec`, `registerUserTile` from the runtime module.
 - `src/linker/linker.ts` exports `linkUserPrograms(brainProgram, userPrograms[])` which
-  appends user functions to the brain program, remaps `CALL` and `PUSH_CONST` operands,
+  appends user functions to the brain program, remaps `CALL`, `PUSH_CONST`, and
+  `MAKE_CLOSURE` operands, remaps `FunctionValue` constants (funcId + offset),
   merges constants, and returns `LinkResult` with `linkedEntryFuncId`,
   `linkedInitFuncId`, and `linkedOnPageEnteredFuncId` per user program.
 - `src/runtime/authored-function.ts` exports `createUserTileExec(linkedProgram,
@@ -108,8 +157,12 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
   with `pushScope`/`popScope`/`declareLocal`/`resolveLocal`. Used by the lowering pass
   for `let`/`const` variable declarations and identifier resolution.
 - `src/compiler/ir.ts` defines IR node types including control flow (`IrLabel`,
-  `IrJump`, `IrJumpIfFalse`, `IrJumpIfTrue`, `IrDup`) and multi-function support
-  (`IrCall`, `IrLoadCallsiteVar`, `IrStoreCallsiteVar`).
+  `IrJump`, `IrJumpIfFalse`, `IrJumpIfTrue`, `IrDup`), multi-function support
+  (`IrCall`, `IrLoadCallsiteVar`, `IrStoreCallsiteVar`), struct/list construction
+  (`IrStructNew`, `IrStructSet`, `IrListNew`, `IrListPush`), list operations
+  (`IrListLen`, `IrListGet`, `IrListSet`, `IrSwap`), function references
+  (`IrPushFunctionRef`, `IrCallIndirect`, `IrMakeClosure`, `IrLoadCapture`),
+  and type checking (`IrTypeCheck`).
 - `src/compiler/lowering.ts` exports `lowerProgram()` which compiles all file-level
   function declarations, the `onExecute` body, the optional user `onPageEntered` body,
   a module init function (if callsite-persistent vars exist), and an always-generated
@@ -121,18 +174,31 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
   `JumpIfFalse`/`JumpIfTrue`, `!` via `HostCallArgs(Not)`), string concatenation
   (via `Add(String, String)` operator), template literal lowering (desugared to
   concatenation with implicit type coercion via conversion functions),
-  user-defined function calls, and callsite-persistent variable access.
+  user-defined function calls, callsite-persistent variable access, struct/list/map
+  literal compilation, `typeof` lowering to `TYPE_CHECK`, function references
+  (`IrPushFunctionRef`), closures (`IrMakeClosure`/`IrLoadCapture` via
+  `lowerClosureExpression` + `findCapturedVariables`), indirect calls
+  (`IrCallIndirect`), element access (`arr[i]` via `lowerElementAccess()`),
+  element assignment (`arr[i] = val` via `lowerElementAccessAssignment()`), list
+  methods (`.push`, `.indexOf`, `.filter`, `.map`, `.forEach` via
+  `lowerListMethodCall`), `.length` on list-typed expressions (via `IrListLen`),
+  operator resolution with union type expansion (`resolveOperatorWithExpansion()`),
+  and structural subtyping checks on assignments (`checkStructAssignmentCompat()`).
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
   browser-compatible `ts.CompilerHost` with zero Node.js API usage.
 - `src/compiler/ambient.ts` exports `buildAmbientDeclarations()` which generates the
   `"mindcraft"` ambient module by iterating `ITypeRegistry.entries()` via
   `getBrainServices().types`. Generates plain interfaces for user-creatable structs,
   branded readonly interfaces (with `__brand: unique symbol`) for native-backed structs,
-  string union types for enums, `ReadonlyArray` aliases for lists, `Record` aliases for
-  maps, and `MindcraftTypeMap` entries for strongly-typed primitives. Core types
-  (`boolean`, `number`, `string`, `void`, `nil`, `unknown`) are hardcoded in
-  `AMBIENT_MODULE_START` and skipped during registry iteration to avoid duplication.
-  Replaces the previous `buildAmbientSource(appTypeEntries?)` API.
+  string union types for enums, `Array<T>` interfaces (with method signatures for
+  `.push`, `.indexOf`, `.filter`, `.map`, `.forEach`) for lists, `Record` aliases for
+  maps, `T | null` for nullable types, `member1 | member2 | ...` for union types,
+  `(arg0: T) => R` arrow syntax for function types, and `MindcraftTypeMap` entries
+  for strongly-typed primitives. Auto-instantiated types (from generic constructors)
+  are skipped (no named aliases generated). Core types (`boolean`, `number`, `string`,
+  `void`, `nil`, `unknown`) are hardcoded in `AMBIENT_MODULE_START` and skipped during
+  registry iteration to avoid duplication. Replaces the previous
+  `buildAmbientSource(appTypeEntries?)` API.
 - `scripts/bundle-lib-dts.js` generates `src/compiler/lib-dts.generated.ts` at build
   time, bundling TypeScript's `lib.es5.d.ts` + decorator libs as string constants.
 - `package.json` has an `exports` map for proper bundler resolution.
@@ -1139,6 +1205,9 @@ are complete.
 
 ### Phase 12b: Map literals
 
+(Updated 2026-03-23: revised to use generic type constructors from core type system
+revision (Phase 2))
+
 **Objective:** Compile object literal expressions to `MAP_NEW` / `MAP_SET` bytecode when
 the contextual type resolves to a Map type (`Record<string, T>`) rather than a Struct.
 
@@ -1151,7 +1220,9 @@ syntax (`{ key: value }`) but produce different opcodes.
 - `packages/typescript/src/compiler/lowering.ts` -- extend `lowerObjectLiteral` to
   detect map-typed contextual types and emit `IrMapNew` / `IrMapSet` instead of
   `IrStructNew` / `IrStructSet`; add `resolveMapTypeId()` helper following the same
-  pattern as `resolveListTypeId()`
+  pattern as `resolveListTypeId()` -- alias-symbol-first lookup, then fall back to
+  `registry.instantiate("Map", [valueTypeId])` using the generic `MapConstructor`
+  from core type system revision (Phase 2)
 - `packages/typescript/src/compiler/ir.ts` -- add `IrMapNew` (with `typeId`),
   `IrMapSet` nodes
 - `packages/typescript/src/compiler/emit.ts` -- emit `MAP_NEW`, `MAP_SET` opcodes
@@ -1168,7 +1239,8 @@ syntax (`{ key: value }`) but produce different opcodes.
    through to the existing struct path.
 5. `resolveMapTypeId()` follows the alias-symbol-first pattern from
    `resolveListTypeId()`: check alias symbol name against the registry first,
-   fall back to value-type matching.
+   fall back to `registry.instantiate("Map", [valueTypeId])` using `MapConstructor`
+   (no scanning needed -- the generic constructor creates the type on demand).
 
 **Acceptance criteria:**
 
@@ -1195,10 +1267,18 @@ syntax (`{ key: value }`) but produce different opcodes.
 - **Map keys are always strings.** `MapTypeShape` has `valueTypeId` but no
   `keyTypeId` -- keys are implicitly strings. The lowering should verify that object
   literal keys are string-compatible (identifiers and string literals both work).
+- (Added 2026-03-23) **`MapConstructor` available.** `registry.instantiate("Map",
+[valueTypeId])` creates map types on demand. Unlike the pre-Phase-2 approach for
+  lists (scanning all registered types), maps can be auto-instantiated. The
+  `resolveMapTypeId()` helper should use this after alias-symbol lookup fails.
 
 ---
 
 ### Phase 12c: Enum value literals
+
+(Updated 2026-03-23: simplified since `tsTypeToTypeId()` now resolves named types
+including enums via symbol name lookup on the registry -- done in core type system
+Phase 2.)
 
 **Objective:** Compile string literal expressions to `EnumValue` constants when the
 contextual type resolves to a Mindcraft enum type.
@@ -1213,7 +1293,11 @@ constant (`{ t: NativeType.Enum, typeId, v: "north" }`) rather than a plain
 
 - `packages/typescript/src/compiler/lowering.ts` -- extend string literal handling
   to detect enum-typed contextual types and emit `PushConst(EnumValue)` instead of
-  `PushConst(StringValue)`; extend `tsTypeToTypeId` to handle enum types
+  `PushConst(StringValue)`. `tsTypeToTypeId()` already resolves named types
+  (including enums) via symbol name lookup on the registry, so enum type resolution
+  is available. The remaining work is detecting the contextual type via
+  `checker.getContextualType()` and checking whether the resolved TypeDef has
+  `coreType: NativeType.Enum`.
 - `packages/typescript/src/compiler/ambient.ts` -- no changes needed (enum types
   are already generated as string unions with `MindcraftTypeMap` entries)
 
@@ -1224,10 +1308,9 @@ constant (`{ t: NativeType.Enum, typeId, v: "north" }`) rather than a plain
    (e.g., `setDirection("north")` where the parameter type is `Direction`).
 3. Returning an enum value from a sensor compiles correctly.
 4. The lowering detects enum types by resolving the contextual type's symbol name
-   against the type registry and checking for `NativeType.Enum`.
-5. `tsTypeToTypeId` gains enum type support: when a TS type is a string union
-   that matches a registered enum type, it returns the enum's `TypeId`.
-6. Invalid enum values (string literals not in the enum's symbol list) are caught
+   against the type registry via the existing `tsTypeToTypeId()` path and checking
+   for `NativeType.Enum` on the resulting TypeDef.
+5. Invalid enum values (string literals not in the enum's symbol list) are caught
    by TypeScript's own type checking (the string union type rejects unknown values),
    so no additional validation is needed in the lowering.
 
@@ -1239,7 +1322,8 @@ constant (`{ t: NativeType.Enum, typeId, v: "north" }`) rather than a plain
 - Test: enum value as return value -> correct `EnumValue` constant
 - Test: plain string literal without enum context -> still produces `StringValue`
   (regression check)
-- Test: `tsTypeToTypeId` returns correct `TypeId` for enum types
+- Test: `tsTypeToTypeId` returns correct `TypeId` for enum types (already works for
+  named types -- this test verifies it for enum-typed expressions specifically)
 
 **Key risks:**
 
@@ -1264,6 +1348,11 @@ constant (`{ t: NativeType.Enum, typeId, v: "north" }`) rather than a plain
 
 ### Phase 13: Property access chains + host calls
 
+(Updated 2026-03-23: `lowerPropertyAccess()` already handles `.length` on list-typed
+expressions (core type system detour). `tsTypeToTypeId()` now resolves struct types
+via symbol name lookup (core type system Phase 2). `IrListLen` IR node exists.
+The remaining work is `GET_FIELD` for struct fields and `ctx.engine.*` method dispatch.)
+
 **Objective:** Compile property access chains (e.g., `ctx.self.position.x`) to `GET_FIELD`
 instructions, and context method calls (e.g., `ctx.engine.queryNearby(pos, range)`)
 to `HOST_CALL_ARGS` instructions. This is the gateway to the full `Context` API.
@@ -1275,9 +1364,14 @@ a method-to-host-function-ID mapping.
 **Packages/files touched:**
 
 - `packages/typescript/src/compiler/lowering.ts` -- extend `lowerPropertyAccess`
-  beyond the current `params.xyz` special case; add `lowerMethodCall` for
-  `ctx.engine.*` dispatch
-- `packages/typescript/src/compiler/ir.ts` -- add `IrGetField` node (field name operand)
+  beyond the current `params.xyz` and `.length` special cases; add `lowerMethodCall`
+  for `ctx.engine.*` dispatch. The `.length` case already emits `IrListLen` (done in
+  core type system detour). The `params.xyz` case already short-circuits to
+  `LoadLocal`. The new work is: (a) `GET_FIELD` for struct-typed property access,
+  (b) `ctx.engine.*()` method call dispatch
+- `packages/typescript/src/compiler/ir.ts` -- add `IrGetField` node (field name
+  operand). Note: `IrListLen`, `IrListGet`, `IrListSet` already exist from the
+  core type system detour
 - `packages/typescript/src/compiler/emit.ts` -- emit `GET_FIELD` opcode
 - `packages/typescript/src/compiler/types.ts` -- no changes needed;
   `resolveHostFn` was removed in Phase 10. Method-to-host-function resolution
@@ -1288,7 +1382,9 @@ a method-to-host-function-ID mapping.
 1. `obj.field` compiles to `lowerExpression(obj)` + `GET_FIELD("field")` for known
    struct-typed expressions. This works uniformly for both user-creatable and
    native-backed struct types -- the VM dispatches to `fieldGetter` when present;
-   the compiler does not need to distinguish.
+   the compiler does not need to distinguish. `tsTypeToTypeId()` already resolves
+   struct types via symbol name lookup (core type system Phase 2), so the lowering
+   can identify struct-typed expressions to emit `GET_FIELD`.
 2. `ctx.engine.methodName(args)` compiles to pushing args then
    `HOST_CALL_ARGS(fnId, argc, callSiteId)` where `fnId` is resolved from the method
    name via `getBrainServices().functions.get("engine.methodName")`.
@@ -1296,8 +1392,8 @@ a method-to-host-function-ID mapping.
    corresponding host calls.
 4. `ctx.time`, `ctx.dt`, `ctx.tick` compile to the appropriate host calls or
    `LOAD_VAR` instructions.
-5. The current `lowerPropertyAccess` special case for `params.xyz` is preserved
-   (it short-circuits to `LoadLocal` without `GET_FIELD`).
+5. The current `lowerPropertyAccess` special cases for `params.xyz` (-> `LoadLocal`)
+   and `.length` on list-typed expressions (-> `IrListLen`) are preserved.
 
 **Acceptance criteria:**
 
@@ -1308,6 +1404,7 @@ a method-to-host-function-ID mapping.
 - Test: `ctx.engine.queryNearby(pos, 5)` -> `HOST_CALL_ARGS` with 2 args
 - Test: unknown method `ctx.engine.nonExistent()` -> compile error
 - Test: `params.speed` still resolves to `LoadLocal` (regression check)
+- Test: `items.length` still resolves to `IrListLen` (regression check)
 
 **Key risks:**
 
@@ -1327,32 +1424,38 @@ a method-to-host-function-ID mapping.
 
 ### Phase 14: `for...of` loop
 
+(Updated 2026-03-23: significantly simplified. `IrListLen`, `IrListGet` IR nodes
+already exist and are emitter-verified from the core type system detour (list/array
+method support). Element access lowering (`arr[i]`) is already working. `allocLocal()`
+for hidden temporaries is available on `ScopeStack`. `tsTypeToTypeId()` resolves named
+types including list types via `resolveListTypeId()`. The remaining work is the
+`for...of` desugaring itself -- all underlying infrastructure is in place.)
+
 **Objective:** Compile `for...of` loops over list-typed values.
 
 **Packages/files touched:**
 
 - `packages/typescript/src/compiler/lowering.ts` -- handle `ts.ForOfStatement`,
-  emit iterator pattern using `LIST_LEN`, `LIST_GET`, loop control
-- `packages/typescript/src/compiler/ir.ts` -- add `IrListLen`, `IrListGet` nodes
-  (if not already present)
-- `packages/typescript/src/compiler/emit.ts` -- emit `LIST_LEN`, `LIST_GET` opcodes
+  emit iterator pattern using the existing `IrListLen`, `IrListGet` IR nodes and
+  `allocLocal()` for hidden temporaries. The desugaring below uses only
+  infrastructure that is already built and verified.
 
 **Concrete deliverables:**
 
 1. `for (const item of items) { ... }` desugars to:
    ```
-   StoreLocal(listLocal)        // items
+   StoreLocal(listLocal)        // items (via allocLocal)
    PushConst(0)
-   StoreLocal(indexLocal)       // i = 0
+   StoreLocal(indexLocal)       // i = 0 (via allocLocal)
    Label(loopStart)
    LoadLocal(indexLocal)
    LoadLocal(listLocal)
-   LIST_LEN                     // items.length
+   IrListLen                    // items.length (already exists)
    HostCallArgs(LessThan)       // i < items.length
    JumpIfFalse(loopEnd)
    LoadLocal(listLocal)
    LoadLocal(indexLocal)
-   LIST_GET                     // items[i]
+   IrListGet                    // items[i] (already exists)
    StoreLocal(itemLocal)        // const item = items[i]
    <body>
    Label(continueTarget)
@@ -1374,26 +1477,23 @@ a method-to-host-function-ID mapping.
 
 **Key risks:**
 
-- **List type resolution.** The iterable expression must resolve to a list-typed
-  value. The lowering should verify access to `LIST_LEN` and `LIST_GET` is valid
-  for the inferred type.
+- **List type detection.** The iterable expression must resolve to a list-typed
+  value. `resolveListTypeId()` already handles this via `instantiate("List", [elemTypeId])`.
+  The lowering must verify the expression type is list-typed before emitting the
+  iterator pattern; non-list types should produce a compile error.
 - **Hidden locals.** The desugaring introduces hidden local variables (index counter,
-  list reference). These must be allocated via `ScopeStack` but not visible to the
-  user as named variables.
-- (Added 2026-03-21, Phase 12 post-mortem) **`LIST_LEN` and `LIST_GET` emitter methods
-  need verification.** Phase 12 fixed `listNew` to use `ins.b` for the constant pool
-  typeId index. The `listLen` and `listGet` emitter methods should be checked for
-  correct operand layout before use. They may have similar latent issues since they
-  have never been called by compiler code before.
-- (Added 2026-03-21, Phase 12 post-mortem) **`tsTypeToTypeId` does not handle struct
-  or list types.** If the iterable's element type is a struct (e.g., `for (const v of
-vectors)`), the lowering cannot use `tsTypeToTypeId` to resolve the element TypeId.
-  Phase 12's `resolveListTypeId` works around this via alias-symbol-first resolution,
-  but `for...of` may need a similar pattern to identify the iterable as list-typed.
+  list reference). These are allocated via `allocLocal()` on `ScopeStack` (available
+  since the core type system detour) and are not visible to the user as named
+  variables.
 
 ---
 
 ### Phase 15: Ternary operator + nullish coalescing
+
+(Updated 2026-03-23: nullable type support is now fully implemented in core type
+system Phase 1. `expandTypeIdMembers()` replaces the old `unwrapNullableTypeId()`.
+The `??` operator can leverage the existing nil-equality operator overloads and the
+DUP-before-conditional-jump pattern from Phase 9.)
 
 **Objective:** Compile conditional expressions (`? :`) and nullish coalescing (`??`).
 
@@ -1402,13 +1502,13 @@ vectors)`), the lowering cannot use `tsTypeToTypeId` to resolve the element Type
 - `packages/typescript/src/compiler/lowering.ts` -- handle
   `ts.ConditionalExpression` and nullish coalescing (`??`)
 
-**Prerequisites from earlier phases:** `tsTypeToTypeId` already handles nullable union
-types by stripping null/undefined (Phase 6.5). The nil operator overloads for `==`/`!=`
-are registered. `??` emission can test the LHS against nil using `JumpIfTrue` after a
-nil-equality check, or use the VM's truthiness semantics directly if nil is the only
-falsy nil-ish value concern. (Updated 2026-03-21) The DUP-before-conditional-jump
-pattern is confirmed working in Phase 9 (`&&`/`||`). The `??` pattern should follow
-the same structure but use nil-specific checks instead of truthiness.
+**Prerequisites from earlier phases:** Nullable type support is fully implemented
+(core type system Phase 1: `NullableCodec`, `addNullableType()`, `TypeDef.nullable`,
+`expandTypeIdMembers()`). The nil operator overloads for `==`/`!=` are registered.
+`??` emission can test the LHS against nil using the nil-equality check pattern.
+(Updated 2026-03-21) The DUP-before-conditional-jump pattern is confirmed working
+in Phase 9 (`&&`/`||`). The `??` pattern should follow the same structure but use
+nil-specific checks instead of truthiness.
 
 **Concrete deliverables:**
 
@@ -1432,26 +1532,36 @@ the same structure but use nil-specific checks instead of truthiness.
   `0` and `""`). Must use nil-specific check, not truthiness. Consider emitting:
   `Dup`, `PushConst(NIL_VALUE)`, `HostCallArgs(EqualTo, nil)`, `JumpIfFalse(keep)`,
   `Pop` (discard nil), evaluate fallback, `Jump(end)`, `Label(keep)`, `Label(end)`.
+  The nullable type infrastructure (core type system Phase 1) ensures the type system
+  correctly tracks nullable types through the `??` expression -- the LHS type is
+  `T | null` and the result type is `T`.
 
 ---
 
 ### Phase 16: Destructuring
+
+(Updated 2026-03-23: `IrListGet` already exists and is emitter-verified from the
+core type system detour. Array destructuring can use it directly. Object destructuring
+depends on Phase 13's `IrGetField` / `GET_FIELD`. Nullable type support from core
+type system Phase 1 is available for default value nil-checks.)
 
 **Objective:** Support simple object and array destructuring in variable declarations.
 
 **Packages/files touched:**
 
 - `packages/typescript/src/compiler/lowering.ts` -- handle `ts.ObjectBindingPattern`
-  and `ts.ArrayBindingPattern` in variable declarations
+  and `ts.ArrayBindingPattern` in variable declarations. Array destructuring uses
+  the existing `IrListGet` node. Object destructuring uses `IrGetField` from Phase 13.
 
 **Concrete deliverables:**
 
 1. `const { x, y } = pos;` desugars to: evaluate `pos`, then for each binding
    `Dup`, `GET_FIELD("x")`, `StoreLocal(x_idx)`, etc. Final `Pop` to discard the
-   source object.
+   source object. (Depends on Phase 13's `IrGetField`.)
 2. `const [a, b] = arr;` desugars to: evaluate `arr`, then `Dup`,
-   `PushConst(0)`, `LIST_GET`, `StoreLocal(a_idx)`, `Dup`, `PushConst(1)`,
-   `LIST_GET`, `StoreLocal(b_idx)`, `Pop`.
+   `PushConst(0)`, `IrListGet`, `StoreLocal(a_idx)`, `Dup`, `PushConst(1)`,
+   `IrListGet`, `StoreLocal(b_idx)`, `Pop`. (`IrListGet` already exists from the
+   core type system detour.)
 3. Nested destructuring is rejected for v1 (validation error).
 4. Rest patterns (`...rest`) are rejected for v1.
 
@@ -1474,53 +1584,38 @@ the same structure but use nil-specific checks instead of truthiness.
 
 ---
 
-### Phase 17: Arrow functions as helpers
+### Phase 17: ~~Arrow functions as helpers~~ SUPERSEDED
 
-**Objective:** Support arrow function expressions assigned to `const` or `let`
-variables, compiling them as helper functions callable via `CALL`.
+(Updated 2026-03-23: this phase is entirely superseded by core type system Phases 5
+and 6 (function references + closures). Arrow functions and function expressions --
+including those that capture outer scope variables -- are fully compiled as closure
+function entries with `MAKE_CLOSURE` / `LOAD_CAPTURE` opcodes. The original Phase 17
+plan only handled the non-closure case and rejected closures with a diagnostic. The
+core type system work went further and implemented full closure support with
+capture-by-value semantics.
 
-**Packages/files touched:**
+What was delivered by the core type system work:
 
-- `packages/typescript/src/compiler/lowering.ts` -- recognize arrow functions in
-  variable initializers, register in function table, compile body
+- Arrow functions with expression and block bodies compile to `FunctionBytecode` entries
+- Capture analysis identifies free variables and threads them as captures
+- `MAKE_CLOSURE(funcId, captureCount)` creates a `FunctionValue` with bound captures
+- `LOAD_CAPTURE(captureIndex)` loads captured values inside the closure body
+- `CALL_INDIRECT` dispatches calls through `FunctionValue` references
+- Function table registration handles arrow functions in variable initializers
+- The linker remaps `FunctionValue` constants and `MAKE_CLOSURE` function IDs
 
-**Prerequisites:** The existing helper function infrastructure (Phase 5) compiles
-`FunctionDeclaration` nodes. Arrow functions are syntactically different
-(`ts.ArrowFunction`) but semantically equivalent for the non-closure case.
-
-**Concrete deliverables:**
-
-1. `const add = (a: number, b: number): number => a + b;` compiles to a
-   `FunctionBytecode` entry and the variable reference resolves to a `CALL`.
-2. Arrow functions with block bodies (`=> { ... }`) and expression bodies
-   (`=> expr`) are both supported.
-3. Arrow functions are detected during the initial function table scan
-   (alongside `FunctionDeclaration`).
-4. Closures (arrow functions that capture outer scope variables) are rejected
-   with a diagnostic for v1.
-
-**Acceptance criteria:**
-
-- Test: `const double = (x: number) => x * 2; return double(5);` -> 10
-- Test: block-body arrow `const f = (x: number): number => { return x + 1; };`
-  -> correct result
-- Test: arrow function capturing a local variable -> diagnostic error
-
-**Key risks:**
-
-- **Closure detection.** Must detect when an arrow function references variables
-  from an outer function scope (not module-level callsite vars, which are allowed).
-  Use the TS checker's symbol resolution to determine if referenced symbols are
-  from an enclosing function scope.
-- **Function table registration ordering.** Arrow functions assigned to `const` at
-  the top level must be registered in the function table during the initial scan
-  pass, before any function bodies are compiled. This is the same pattern as
-  `FunctionDeclaration` but requires recognizing the pattern in
-  `VariableDeclaration` initializers.
+No implementation work remains for this phase. All acceptance criteria from the
+original plan are satisfied or exceeded by the closure implementation.)
 
 ---
 
 ### Phase 18: Async host call emission
+
+(Updated 2026-03-23: no structural changes needed. The core type system added
+`FunctionTypeShape` and `getOrCreateFunctionType()` (Phase 7) which can express
+async function signatures at the type level, but async host call detection should
+still use `getBrainServices().functions.get()` metadata rather than type-level
+function signatures. `resolveHostFn` was already noted as removed in Phase 10.)
 
 **Objective:** Detect calls to async host functions and emit `HOST_CALL_ARGS_ASYNC`
 instead of `HOST_CALL_ARGS`.
@@ -1570,6 +1665,12 @@ distinguish sync vs async host functions.
 
 ### Phase 19: `await` emission
 
+(Updated 2026-03-23: no structural changes needed from the core type system work.
+The `AWAIT` opcode and fiber suspension model are unchanged. Note that `await` on
+a user-defined async function (not just host calls) is now theoretically possible
+since closures and `CALL_INDIRECT` exist, but this is out of scope -- user-authored
+async functions are not supported in v1. Only `await` on async host calls is planned.)
+
 **Objective:** Compile `await` expressions to the `AWAIT` opcode.
 
 **Packages/files touched:**
@@ -1612,6 +1713,11 @@ operand of `await` produces a handle on the stack.
 ---
 
 ### Phase 20: Async `onExecute` compilation
+
+(Updated 2026-03-23: no structural changes needed from the core type system work.
+The fiber suspension/resumption model and exec wrapper are independent of the type
+system additions. Local variables across `await` points work via the existing
+frame/locals model, which is unaffected by the type system changes.)
 
 **Objective:** Compile `async onExecute(ctx, params)` functions with one or more
 `await` points. Verify that the fiber correctly suspends and resumes across ticks.
@@ -1674,6 +1780,12 @@ resolution. The exec wrapper already receives `scheduler` as a parameter.
 
 ### Phase 21: Async end-to-end integration
 
+(Updated 2026-03-23: no structural changes needed. The core type system work does not
+affect the async integration test strategy. Note: the recompile-and-update pathway
+mentioned below may benefit from the expanded type system -- if a tile is updated and
+its function signatures change, the linker must re-resolve function type IDs. This is
+a minor concern for this phase.)
+
 **Objective:** Full integration test: compile an async actuator from source, link it
 into a `BrainProgram`, register it via the registration bridge (Phase 8), invoke it
 from a brain rule with a WHEN condition, and verify the full lifecycle:
@@ -1723,6 +1835,14 @@ Include tests for the update path.
 
 ### Phase 22: Debug metadata types
 
+(Updated 2026-03-23: the expanded IR node set from the core type system work
+(IrListGet, IrListSet, IrListLen, IrSwap, IrTypeCheck, IrPushFunctionRef,
+IrCallIndirect, IrMakeClosure, IrLoadCapture, IrStructAssignCheck) does not affect
+the debug metadata type definitions -- these are bytecode-level concerns, and the
+debug metadata operates at the source-span and scope level. However, closure functions
+generate synthetic names like `<closure#N>` which should be reflected in
+`DebugFunctionInfo.name` when populating metadata in Phase 25.)
+
 **Objective:** Define the `DebugMetadata` type hierarchy in
 `@mindcraft-lang/typescript` (mirroring the structures defined in the
 [debugger spec, section 6](vscode-authoring-debugging.md#6-debug-metadata)) and add
@@ -1754,6 +1874,13 @@ the `debugMetadata` field to `UserAuthoredProgram`.
 ---
 
 ### Phase 23: Source span tracking
+
+(Updated 2026-03-23: the expanded IR node set from the core type system work adds
+new nodes that need source span annotations: `IrListGet`, `IrListSet`, `IrListLen`,
+`IrSwap`, `IrTypeCheck`, `IrPushFunctionRef`, `IrCallIndirect`, `IrMakeClosure`,
+`IrLoadCapture`, `IrStructAssignCheck`. All of these follow the same IR node base
+pattern and will naturally carry `sourceSpan` when the optional field is added.
+No structural changes to the span tracking approach are needed.)
 
 **Objective:** Track source spans during lowering and build `pcToSpanIndex` during
 emission so every bytecode instruction maps back to a source location.
@@ -1798,6 +1925,13 @@ emission so every bytecode instruction maps back to a source location.
 
 ### Phase 24: Scope and variable metadata
 
+(Updated 2026-03-23: closure functions introduce a new scope consideration. Captured
+variables (`LOAD_CAPTURE`) have a different storage kind than locals or parameters --
+the debug metadata's `LocalInfo.storageKind` should include a `"capture"` option for
+variables loaded from a closure's capture list. Additionally, hidden temporaries
+allocated via `allocLocal()` (used by list method inlining and for...of desugaring)
+should be excluded from debug metadata or marked as compiler-generated.)
+
 **Objective:** Emit `ScopeInfo` and `LocalInfo` metadata describing the scope tree
 and variable lifetimes for debugger inspection.
 
@@ -1834,6 +1968,14 @@ and variable lifetimes for debugger inspection.
 ---
 
 ### Phase 25: DebugMetadata assembly
+
+(Updated 2026-03-23: closure functions (from core type system Phase 6) generate
+additional `FunctionBytecode` entries with synthetic names. The debug metadata assembly
+must account for these: (a) closure functions should have `isGenerated: false` since
+they correspond to user-written arrow function expressions, (b) `debugFunctionId`
+for closures should use a deterministic key like `filePath + "/" + parentFuncName +
+"/<closure#N>"`, (c) the linker remaps `MAKE_CLOSURE` function IDs, so
+`compiledFuncId` values in debug metadata must be remapped in the same pass.)
 
 **Objective:** Assemble the complete `DebugMetadata` structure from the per-function
 metadata collected in Phases 11b-11c and attach it to `UserAuthoredProgram`.
@@ -2839,6 +2981,9 @@ type-checking, 7 validation, 11 extraction, 3 core imports).
    extending `CompileOptions.resolveHostFn`. These phases should instead use
    `getBrainServices().functions.get()` directly, with async detection via the
    function registry entry's metadata rather than a callback return type.
+   (Updated 2026-03-23: Phase 13 and Phase 18 have been updated to use
+   `getBrainServices().functions.get()` directly. No remaining phases reference
+   `resolveHostFn` as something to extend.)
 
 ### Phase 11a -- 2026-03-21
 
@@ -3139,37 +3284,37 @@ ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
 
 **Deliverables -- planned vs actual:**
 
-| Planned | Actual | Notes |
-| --- | --- | --- |
-| `NativeType.Any = 9` enum member | Done | -- |
-| `CoreTypeNames.Any`, `CoreTypeIds.Any` | Done | `CoreTypeIds.Any = "any:<any>"` |
-| `AnyCodec` (tagged encode/decode, self-contained) | Done | Uses `TypeUtils.isBoolean/isNumber/isString` for type discrimination (Roblox-safe, no `typeof`). `null` check removed -- Roblox doesn't support `null`, only `undefined` maps to nil. |
-| `ITypeRegistry.addAnyType(name)` | Done | -- |
-| `TypeRegistry.addAnyType(name)` implementation | Done | -- |
-| `registerCoreTypes()` registers `Any` + `AnyList` | Done | -- |
-| `typeDefToTs()` handles `NativeType.Any` | Done | Emits `"number \| string \| boolean \| null"` |
-| `CORE_TYPE_NAMES` skip set updated | Done | Added `"any"` so the `Any` type itself is skipped (no ambient declaration emitted for it) |
-| `AnyList` ambient type generation | Done | Handled by existing List branch: `export type AnyList = ReadonlyArray<number \| string \| boolean \| null>` |
-| `tsTypeToTypeId()` union -> `Any` | Done | Filters nullish members, resolves remaining; if 2+ distinct TypeIds, returns `CoreTypeIds.Any` |
-| `resolveListTypeId()` fallback to `AnyList` | Not needed | Existing element-type matching loop already finds `AnyList` when `tsTypeToTypeId` returns `CoreTypeIds.Any` -- no code change required |
-| Mixed-type array compiles and executes | Done | -- |
-| `codegen.spec.ts` tests | Done | 4 new tests |
-| `type-system.spec.ts` tests (core) | Done | 12 new tests (new file created) |
+| Planned                                           | Actual     | Notes                                                                                                                                                                                 |
+| ------------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NativeType.Any = 9` enum member                  | Done       | --                                                                                                                                                                                    |
+| `CoreTypeNames.Any`, `CoreTypeIds.Any`            | Done       | `CoreTypeIds.Any = "any:<any>"`                                                                                                                                                       |
+| `AnyCodec` (tagged encode/decode, self-contained) | Done       | Uses `TypeUtils.isBoolean/isNumber/isString` for type discrimination (Roblox-safe, no `typeof`). `null` check removed -- Roblox doesn't support `null`, only `undefined` maps to nil. |
+| `ITypeRegistry.addAnyType(name)`                  | Done       | --                                                                                                                                                                                    |
+| `TypeRegistry.addAnyType(name)` implementation    | Done       | --                                                                                                                                                                                    |
+| `registerCoreTypes()` registers `Any` + `AnyList` | Done       | --                                                                                                                                                                                    |
+| `typeDefToTs()` handles `NativeType.Any`          | Done       | Emits `"number \| string \| boolean \| null"`                                                                                                                                         |
+| `CORE_TYPE_NAMES` skip set updated                | Done       | Added `"any"` so the `Any` type itself is skipped (no ambient declaration emitted for it)                                                                                             |
+| `AnyList` ambient type generation                 | Done       | Handled by existing List branch: `export type AnyList = ReadonlyArray<number \| string \| boolean \| null>`                                                                           |
+| `tsTypeToTypeId()` union -> `Any`                 | Done       | Filters nullish members, resolves remaining; if 2+ distinct TypeIds, returns `CoreTypeIds.Any`                                                                                        |
+| `resolveListTypeId()` fallback to `AnyList`       | Not needed | Existing element-type matching loop already finds `AnyList` when `tsTypeToTypeId` returns `CoreTypeIds.Any` -- no code change required                                                |
+| Mixed-type array compiles and executes            | Done       | --                                                                                                                                                                                    |
+| `codegen.spec.ts` tests                           | Done       | 4 new tests                                                                                                                                                                           |
+| `type-system.spec.ts` tests (core)                | Done       | 12 new tests (new file created)                                                                                                                                                       |
 
 **Acceptance criteria results:**
 
-| Criterion | Result |
-| --- | --- |
-| `NativeType.Any` has value `9`, `nativeTypeToString` returns `"any"` | Pass |
-| `AnyCodec` round-trips nil, boolean, number, string | Pass |
-| `AnyCodec.stringify` correct for each type | Pass |
-| `AnyCodec.encode` throws for unsupported types | Pass |
-| `registerCoreTypes()` registers `Any` and `AnyList` | Pass |
-| `buildAmbientDeclarations()` includes `AnyList` type alias | Pass |
-| `[1, "hello", true]` compiles + executes, produces 3-element list | Pass |
-| `[1, 2, 3]` still resolves to `NumberList` (regression) | Pass |
-| `tsTypeToTypeId` returns `CoreTypeIds.Any` for multi-type union | Pass (tested indirectly via mixed-type array compilation) |
-| Empty `AnyList`-annotated array compiles | Pass |
+| Criterion                                                            | Result                                                    |
+| -------------------------------------------------------------------- | --------------------------------------------------------- |
+| `NativeType.Any` has value `9`, `nativeTypeToString` returns `"any"` | Pass                                                      |
+| `AnyCodec` round-trips nil, boolean, number, string                  | Pass                                                      |
+| `AnyCodec.stringify` correct for each type                           | Pass                                                      |
+| `AnyCodec.encode` throws for unsupported types                       | Pass                                                      |
+| `registerCoreTypes()` registers `Any` and `AnyList`                  | Pass                                                      |
+| `buildAmbientDeclarations()` includes `AnyList` type alias           | Pass                                                      |
+| `[1, "hello", true]` compiles + executes, produces 3-element list    | Pass                                                      |
+| `[1, 2, 3]` still resolves to `NumberList` (regression)              | Pass                                                      |
+| `tsTypeToTypeId` returns `CoreTypeIds.Any` for multi-type union      | Pass (tested indirectly via mixed-type array compilation) |
+| Empty `AnyList`-annotated array compiles                             | Pass                                                      |
 
 **Extra work:**
 
