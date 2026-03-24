@@ -571,16 +571,108 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
 
 function lowerVariableDeclarationList(declList: ts.VariableDeclarationList, ctx: LowerContext): void {
   for (const decl of declList.declarations) {
-    if (!ts.isIdentifier(decl.name)) {
-      ctx.diagnostics.push(makeDiag("Destructuring is not supported", decl));
+    if (ts.isIdentifier(decl.name)) {
+      const localIdx = ctx.scopeStack.declareLocal(decl.name.text);
+      if (decl.initializer) {
+        lowerExpression(decl.initializer, ctx);
+        checkStructAssignmentCompat(decl.name, decl.initializer, decl, ctx);
+        ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+      }
+    } else if (ts.isObjectBindingPattern(decl.name)) {
+      lowerObjectDestructuring(decl.name, decl, ctx);
+    } else if (ts.isArrayBindingPattern(decl.name)) {
+      lowerArrayDestructuring(decl.name, decl, ctx);
+    } else {
+      ctx.diagnostics.push(makeDiag("Unsupported binding pattern", decl));
+    }
+  }
+}
+
+function lowerDestructuringDefault(element: ts.BindingElement, localIdx: number, ctx: LowerContext): void {
+  if (!element.initializer) return;
+  const keepLabel = allocLabel(ctx);
+  const endLabel = allocLabel(ctx);
+  ctx.ir.push({ kind: "LoadLocal", index: localIdx });
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: keepLabel });
+  lowerExpression(element.initializer, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+  ctx.ir.push({ kind: "Jump", labelId: endLabel });
+  ctx.ir.push({ kind: "Label", labelId: keepLabel });
+  ctx.ir.push({ kind: "Label", labelId: endLabel });
+}
+
+function lowerObjectDestructuring(
+  pattern: ts.ObjectBindingPattern,
+  decl: ts.VariableDeclaration,
+  ctx: LowerContext
+): void {
+  if (!decl.initializer) {
+    ctx.diagnostics.push(makeDiag("Destructuring declaration must have an initializer", decl));
+    return;
+  }
+  const srcLocal = ctx.scopeStack.allocLocal();
+  lowerExpression(decl.initializer, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: srcLocal });
+
+  for (const element of pattern.elements) {
+    if (element.dotDotDotToken) {
+      ctx.diagnostics.push(makeDiag("Rest patterns in destructuring are not supported", element));
       continue;
     }
-    const localIdx = ctx.scopeStack.declareLocal(decl.name.text);
-    if (decl.initializer) {
-      lowerExpression(decl.initializer, ctx);
-      checkStructAssignmentCompat(decl.name, decl.initializer, decl, ctx);
-      ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+    if (!ts.isIdentifier(element.name)) {
+      ctx.diagnostics.push(makeDiag("Nested destructuring is not supported", element));
+      continue;
     }
+    let propertyName: string;
+    if (element.propertyName) {
+      if (!ts.isIdentifier(element.propertyName)) {
+        ctx.diagnostics.push(makeDiag("Computed property names in destructuring are not supported", element));
+        continue;
+      }
+      propertyName = element.propertyName.text;
+    } else {
+      propertyName = element.name.text;
+    }
+
+    const localIdx = ctx.scopeStack.declareLocal(element.name.text);
+    ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+    ctx.ir.push({ kind: "GetField", fieldName: propertyName });
+    ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+    lowerDestructuringDefault(element, localIdx, ctx);
+  }
+}
+
+function lowerArrayDestructuring(
+  pattern: ts.ArrayBindingPattern,
+  decl: ts.VariableDeclaration,
+  ctx: LowerContext
+): void {
+  if (!decl.initializer) {
+    ctx.diagnostics.push(makeDiag("Destructuring declaration must have an initializer", decl));
+    return;
+  }
+  const srcLocal = ctx.scopeStack.allocLocal();
+  lowerExpression(decl.initializer, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: srcLocal });
+
+  for (let i = 0; i < pattern.elements.length; i++) {
+    const element = pattern.elements[i];
+    if (ts.isOmittedExpression(element)) continue;
+    if (element.dotDotDotToken) {
+      ctx.diagnostics.push(makeDiag("Rest patterns in destructuring are not supported", element));
+      continue;
+    }
+    if (!ts.isIdentifier(element.name)) {
+      ctx.diagnostics.push(makeDiag("Nested destructuring is not supported", element));
+      continue;
+    }
+    const localIdx = ctx.scopeStack.declareLocal(element.name.text);
+    ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+    ctx.ir.push({ kind: "PushConst", value: mkNumberValue(i) });
+    ctx.ir.push({ kind: "ListGet" });
+    ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+    lowerDestructuringDefault(element, localIdx, ctx);
   }
 }
 

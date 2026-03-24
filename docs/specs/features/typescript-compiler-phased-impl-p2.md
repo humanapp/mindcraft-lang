@@ -40,7 +40,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-03-24) Phases 0-15 complete, plus Array method lowering detour, VM list
+(Updated 2026-03-24) Phases 0-16 complete, plus Array method lowering detour, VM list
 mutation ops detour, and Array.sort detour. See the original doc's Current State and
 Phase Log for full history.
 
@@ -96,6 +96,13 @@ string concatenation via `Add` overload, `typeof` -> `TYPE_CHECK` opcode,
 Functions: user-defined helpers (`CALL`), closures/arrow functions with capture-by-value
 (`MAKE_CLOSURE`, `LOAD_CAPTURE`, `CALL_INDIRECT`), function references
 (`IrPushFunctionRef`), `onPageEntered` lifecycle wrapper.
+
+Destructuring: object destructuring (`const { x, y } = pos`) via `GetField`, array
+destructuring (`const [a, b] = arr`) via `ListGet`, property rename
+(`{ x: posX }`), omitted elements (`[, b]`), default values with nil-check
+(`{ x = 5 }`). Nested destructuring, rest patterns, computed property names,
+and parameter-position destructuring are rejected. Source evaluated once into
+a temp local (`allocLocal()`).
 
 Literals: object -> `STRUCT_NEW`/`STRUCT_SET`, array -> `LIST_NEW`/`LIST_PUSH`,
 map -> `MAP_NEW`/`MAP_SET`, enum values via `tryResolveEnumValue()`.
@@ -637,3 +644,38 @@ metadata collected in Phases 22-24 and attach it to `UserAuthoredProgram`.
 
 Completed phases are recorded here with dates, actual outcomes, and deviations.
 (Phases 0-15 are logged in [typescript-compiler-phased-impl.md](typescript-compiler-phased-impl.md).)
+
+### Phase 16 -- Destructuring (2026-03-24)
+
+**Planned:** Object and array destructuring in variable declarations.
+
+**Actual:** All four deliverables implemented as spec'd. Additionally:
+- Property rename (`{ x: posX }`) and omitted array elements (`[, b]`) supported.
+- Default values implemented with `TypeCheck(NativeType.Nil)` nil-check pattern
+  (same as nullish coalescing).
+- Source expression evaluated once into a temp local via `allocLocal()` rather than
+  using `Dup`/`Pop` as originally sketched. This avoids re-evaluating the initializer
+  per binding and is simpler to reason about.
+- Computed property names in destructuring rejected with diagnostic.
+
+**Deviations from spec:**
+- Spec described `Dup`/`Pop` pattern for source value management. Implementation
+  uses `allocLocal()` + `LoadLocal` instead. Functionally equivalent, avoids
+  stack depth tracking complexity for multi-element patterns.
+- Default value test uses a struct with all fields present (verifying defaults don't
+  interfere) rather than `Partial<T>`, since `Partial<T>` doesn't resolve to a
+  known struct type in the compiler's type resolution.
+
+**Risks resolved:**
+- Default values: successfully implemented using `TypeCheck(NativeType.Nil)` as
+  predicted by Phase 15 risk update.
+- Parameter destructuring: correctly out of scope -- lowering only dispatches
+  from `lowerVariableDeclarationList`.
+
+**Observation:** `GetField` on a non-struct and `ListGet` on a non-list will crash
+the VM at runtime without a compile-time diagnostic. This is consistent with existing
+property-access and element-access code paths, which rely on TypeScript's type checker
+to prevent mismatches. Not a Phase 16 regression.
+
+**Tests added:** 7 (object destructuring, array destructuring, nested rejection,
+rest rejection, defaults, rename, omitted elements). All 243 tests pass.

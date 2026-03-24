@@ -6692,3 +6692,234 @@ export default Sensor({
     }
   });
 });
+
+describe("destructuring", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    if (!types.get(vec2TypeId)) {
+      types.addStructType("Vector2", {
+        fields: List.from([
+          { name: "x", typeId: numTypeId },
+          { name: "y", typeId: numTypeId },
+        ]),
+      });
+    }
+  });
+
+  test("object destructuring: const { x, y } = { x: 1, y: 2 }", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "obj-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const pos: Vector2 = { x: 1, y: 2 };
+    const { x, y } = pos;
+    return x + y;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 3);
+    }
+  });
+
+  test("array destructuring: const [a, b] = [10, 20]", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "arr-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [10, 20];
+    const [a, b] = arr;
+    return a + b;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 30);
+    }
+  });
+
+  test("nested destructuring produces validation error", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "nested-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const obj = { inner: { x: 1, y: 2 } };
+    const { inner: { x } } = obj;
+    return x;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0, "expected diagnostics for nested destructuring");
+    assert.ok(
+      result.diagnostics.some((d) => d.message.includes("Nested destructuring")),
+      `expected nested destructuring error, got: ${JSON.stringify(result.diagnostics)}`
+    );
+  });
+
+  test("rest pattern in destructuring produces validation error", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "rest-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [1, 2, 3];
+    const [first, ...rest] = arr;
+    return first;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0, "expected diagnostics for rest pattern");
+    assert.ok(
+      result.diagnostics.some((d) => d.message.includes("Rest patterns")),
+      `expected rest pattern error, got: ${JSON.stringify(result.diagnostics)}`
+    );
+  });
+
+  test("object destructuring with default value uses default when field is present", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "default-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const obj: Vector2 = { x: 3, y: 10 };
+    const { x = 5, y = 0 } = obj;
+    return x + y;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 13);
+    }
+  });
+
+  test("object destructuring with rename: const { x: posX } = pos", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "rename-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const pos: Vector2 = { x: 42, y: 7 };
+    const { x: posX, y: posY } = pos;
+    return posX + posY;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 49);
+    }
+  });
+
+  test("array destructuring with omitted elements: const [, b] = arr", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "omitted-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [10, 20, 30];
+    const [, b, c] = arr;
+    return b + c;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 50);
+    }
+  });
+});
