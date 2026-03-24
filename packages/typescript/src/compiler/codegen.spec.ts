@@ -22,6 +22,7 @@ import {
   NativeType,
   NIL_VALUE,
   type NumberValue,
+  Op,
   registerCoreBrainComponents,
   runtime,
   type Scheduler,
@@ -5845,6 +5846,15 @@ describe("struct method calls", () => {
         emptyCallDef
       );
     }
+
+    if (!fns.get("Widget.fetchData")) {
+      fns.register(
+        "Widget.fetchData",
+        true,
+        { exec: (_ctx: ExecutionContext, _args: MapValue, _handleId: number) => {} },
+        emptyCallDef
+      );
+    }
   });
 
   test("struct method with one arg compiles to HostCallArgs with argc 2", () => {
@@ -6028,6 +6038,63 @@ export default Sensor({
       ambientSource.includes("fetchData(url: string): Promise<string>;"),
       "Expected async method with Promise return type"
     );
+  });
+
+  test("calling async host function emits HOST_CALL_ARGS_ASYNC", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Widget } from "mindcraft";
+
+export default Sensor({
+  name: "widget-fetch",
+  output: "number",
+  params: {
+    w: { type: "Widget" },
+  },
+  onExecute(ctx: Context, params: { w: Widget }): number {
+    params.w.fetchData("http://example.com");
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const hasAsyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ARGS_ASYNC));
+    assert.ok(hasAsyncCall, "Expected HOST_CALL_ARGS_ASYNC opcode in bytecode");
+
+    const hasSyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ARGS));
+    assert.ok(!hasSyncCall, "Expected no HOST_CALL_ARGS opcode for async method");
+  });
+
+  test("calling sync host function emits HOST_CALL_ARGS (not HOST_CALL_ARGS_ASYNC)", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Widget } from "mindcraft";
+
+export default Sensor({
+  name: "widget-get-sync",
+  output: "number",
+  params: {
+    w: { type: "Widget" },
+  },
+  onExecute(ctx: Context, params: { w: Widget }): number {
+    return params.w.getValue("score");
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const hasSyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ARGS));
+    assert.ok(hasSyncCall, "Expected HOST_CALL_ARGS opcode for sync method");
+
+    const hasAsyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ARGS_ASYNC));
+    assert.ok(!hasAsyncCall, "Expected no HOST_CALL_ARGS_ASYNC opcode for sync method");
   });
 
   test(".pop() removes and returns last element", () => {

@@ -16,6 +16,7 @@ export type IrNode =
   | IrMakeClosure
   | IrLoadCapture
   | IrHostCallArgs
+  | IrHostCallArgsAsync
   | IrGetField
   | IrMapGet
   | IrMapNew
@@ -87,6 +88,12 @@ export interface IrCall {
 
 export interface IrHostCallArgs {
   kind: "HostCallArgs";
+  fnName: string;
+  argc: number;
+}
+
+export interface IrHostCallArgsAsync {
+  kind: "HostCallArgsAsync";
   fnName: string;
   argc: number;
 }

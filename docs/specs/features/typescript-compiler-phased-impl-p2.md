@@ -331,6 +331,11 @@ operand of `await` produces a handle on the stack.
   `AWAIT` (stack, frames, locals, PC). No CPS or generator transformation is required.
   This is a significant simplification, but verify it works correctly with local
   variables and nested scopes across suspension points.
+- (Added 2026-03-24, from Phase 18 post-mortem) **Bytecode inspection pattern.**
+  Phase 18 tests verify opcode presence via `prog.functions.some(fn => fn.code.some(
+  instr => instr.op === Op.HOST_CALL_ARGS_ASYNC))`. Phase 19 tests can use the same
+  pattern to verify `Op.AWAIT` instructions in the output. The `Widget.fetchData`
+  async method is already registered in the test fixture.
 
 ---
 
@@ -679,3 +684,34 @@ to prevent mismatches. Not a Phase 16 regression.
 
 **Tests added:** 7 (object destructuring, array destructuring, nested rejection,
 rest rejection, defaults, rename, omitted elements). All 243 tests pass.
+
+### Phase 18 -- Async host call emission (2026-03-24)
+
+**Planned:** Detect calls to async host functions and emit `HOST_CALL_ARGS_ASYNC`
+instead of `HOST_CALL_ARGS`.
+
+**Actual:** All three deliverables implemented exactly as spec'd:
+- `IrHostCallArgsAsync` IR node added to `ir.ts` (union type + interface).
+- `lowerStructMethodCall` in `lowering.ts` stores the `fnEntry` from
+  `getBrainServices().functions.get(fnName)` and checks `fnEntry.isAsync` to
+  choose between `IrHostCallArgsAsync` and `IrHostCallArgs`.
+- `emitFunction` in `emit.ts` handles `HostCallArgsAsync` case, resolves `fnId`,
+  calls `emitter.hostCallArgsAsync(fnId, argc, 0)`.
+- `Widget.fetchData` registered as async in test fixture's `before()` block.
+
+**Deviations from spec:**
+- None. Implementation matched spec exactly.
+
+**Risks resolved:**
+- Function registry metadata: `BrainFunctionEntry.isAsync` is a discriminated
+  union field (`true` | `false`). Works cleanly with a simple boolean check.
+- Call site ID: hardcoded to 0 for now, matching the existing sync pattern.
+  Deferred to Phase 20 as spec suggested.
+
+**Observation:** Only `lowerStructMethodCall` needed async detection. All other
+`IrHostCallArgs` emission sites in lowering.ts are arithmetic/comparison operators,
+which are inherently sync. Phase 19 (`await` emission) can build directly on this
+-- the `IrHostCallArgsAsync` node marks exactly where `AWAIT` should follow.
+
+**Tests added:** 2 (async method -> HOST_CALL_ARGS_ASYNC in bytecode, sync method
+-> HOST_CALL_ARGS only). All 245 tests pass.

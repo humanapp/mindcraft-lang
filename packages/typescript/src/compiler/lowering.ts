@@ -1007,7 +1007,8 @@ function lowerStructMethodCall(
   if (!found) return false;
 
   const fnName = `${structDef.name}.${methodName}`;
-  if (!getBrainServices().functions.get(fnName)) {
+  const fnEntry = getBrainServices().functions.get(fnName);
+  if (!fnEntry) {
     ctx.diagnostics.push(makeDiag(`Unknown struct method: '${structDef.name}.${methodName}'`, propAccess));
     return true;
   }
@@ -1016,7 +1017,12 @@ function lowerStructMethodCall(
   for (const arg of expr.arguments) {
     lowerExpression(arg, ctx);
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: expr.arguments.length + 1 });
+  const argc = expr.arguments.length + 1;
+  if (fnEntry.isAsync) {
+    ctx.ir.push({ kind: "HostCallArgsAsync", fnName, argc });
+  } else {
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc });
+  }
   return true;
 }
 

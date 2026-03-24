@@ -79,6 +79,15 @@ export function emitFunction(
         emitter.hostCallArgs(fnId, node.argc, 0);
         break;
       }
+      case "HostCallArgsAsync": {
+        const fnId = getBrainServices().functions.get(node.fnName)?.id;
+        if (fnId === undefined) {
+          diagnostics.push({ message: `Cannot resolve host function: ${node.fnName}` });
+          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
+        }
+        emitter.hostCallArgsAsync(fnId, node.argc, 0);
+        break;
+      }
       case "MapGet":
         emitter.mapGet();
         break;
