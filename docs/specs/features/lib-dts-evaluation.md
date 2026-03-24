@@ -1,7 +1,7 @@
 # lib.d.ts Evaluation for Mindcraft TypeScript Compiler
 
-The `packages/typescript` project bundles three TypeScript lib files into `lib-dts.generated.ts`
-for injection into the authoring environment:
+The `packages/typescript` project currently bundles three TypeScript lib files into
+`lib-dts.generated.ts` for injection into the authoring environment:
 
 - `lib.es5.d.ts` (4585 lines)
 - `lib.decorators.d.ts` (384 lines)
@@ -9,6 +9,28 @@ for injection into the authoring environment:
 
 Since the TypeScript-to-mindcraft-bytecode pipeline requires every runtime-visible declaration
 to be backed by a VM implementation, this document categorizes all functionality in these files.
+
+## Recommendation: Curated Declarations File
+
+Rather than importing TypeScript's full `lib.es5.d.ts` and stripping out the unwanted parts,
+the recommended approach is to **author a curated declarations file** containing only the
+subset mindcraft actually supports. Rationale:
+
+- **No stripping step** -- the build pipeline stays simple (no filter script to maintain).
+- **No false affordances** -- users never see `eval`, `Symbol`, `ArrayBuffer`,
+  `Object.defineProperty`, etc. in autocomplete.
+- **Simpler overloads** -- TypeScript's lib files have complex overloads for edge cases that
+  don't apply (e.g., multiple `freeze` overloads, `CallableFunction` vs `NewableFunction`).
+- **Controlled updates** -- new TypeScript versions won't silently introduce unsupported
+  declarations.
+- **Tailored to the VM** -- declarations can match mindcraft's actual semantics (e.g.,
+  `Array<T>` methods reflecting what the compiler actually inlines).
+
+The actual needed surface area is roughly 200-400 lines of hand-written declarations vs.
+5000+ lines of imported lib files. The existing `bundle-lib-dts.js` script and generated
+file can be replaced by a single handwritten `.d.ts` file checked into the repo.
+
+The rest of this document catalogs what to include and what to omit.
 
 ---
 
@@ -235,35 +257,36 @@ Pure compile-time constructs needing no runtime backing:
 
 ## Recommended V1 Strategy
 
-### Strip from lib.d.ts (omit entirely)
+Author a curated `mindcraft-lib.d.ts` (or equivalent) checked into the repo, containing only
+the declarations listed below. Replace the current `bundle-lib-dts.js` pipeline.
 
-- `eval`, `Function` constructor
-- URI functions (`decodeURI`, `encodeURI`, `decodeURIComponent`, `encodeURIComponent`)
-- `escape` / `unescape`
-- `Symbol`, `PropertyKey` (redefine as `string | number` if needed)
-- Entire `Object`/prototype reflection API
-- `Function.prototype.apply/call/bind`, `CallableFunction`, `NewableFunction`, `IArguments`
-- `PropertyDescriptor`, `TypedPropertyDescriptor`
-- `ThisParameterType`, `OmitThisParameter`, `ThisType`
-- All TypedArrays + `ArrayBuffer` + `DataView`
-- `WeakKeyTypes`, `WeakKey`
-- `Intl` namespace
-- `ImportMeta`, `ImportCallOptions`, `ImportAssertions`, `ImportAttributes`
-- All decorator context types (both decorator lib files)
-- Error subtypes (`EvalError`, `RangeError`, `ReferenceError`, `SyntaxError`, `TypeError`, `URIError`)
+### Include in the curated file
 
-### Implement for V1 (mandatory for a useful language)
+1. **Global constants** -- `NaN`, `Infinity`.
+2. **Global functions** -- `parseInt`, `parseFloat`, `isNaN`, `isFinite`.
+3. **Math object** -- low difficulty, high value. ~20 host functions + 8 constants.
+4. **String interface** -- `length`, `charAt`, `charCodeAt`, `indexOf`, `lastIndexOf`,
+   `slice`, `substring`, `toLowerCase`, `toUpperCase`, `trim`, `split`, `concat`,
+   `toString`, `valueOf`, index access. `String.fromCharCode`. ~12 host functions.
+5. **Number interface** -- `toString(radix?)`, `toFixed(digits?)`, `valueOf()`.
+   `NumberConstructor` constants (`MAX_VALUE`, `MIN_VALUE`, `NaN`, etc.).
+6. **Boolean interface** -- `valueOf()`.
+7. **Array<T> interface** -- `length`, `push`, `pop`, `shift`, `unshift`, `reverse`,
+   `sort`, `indexOf`, `lastIndexOf`, `slice`, `concat`, `join`, `splice`,
+   `forEach`, `map`, `filter`, `some`, `every`, `reduce`, `reduceRight`,
+   `toString`, index access. `Array.isArray`. `ReadonlyArray<T>` for type-checking.
+8. **Promise<T> / PromiseLike<T>** -- already in the ambient "mindcraft" module.
+9. **Utility types** -- `Partial`, `Required`, `Readonly`, `Pick`, `Record`, `Omit`,
+   `Exclude`, `Extract`, `NonNullable`, `Parameters`, `ReturnType`, `Awaited`,
+   `ConstructorParameters`, `InstanceType`, `NoInfer`.
+10. **Intrinsic string types** -- `Uppercase`, `Lowercase`, `Capitalize`, `Uncapitalize`.
 
-1. **Math object** -- low difficulty, high value. ~20 host functions + 8 constants.
-2. **Core String methods** -- low difficulty. `charAt`, `charCodeAt`, `indexOf`, `lastIndexOf`,
-   `slice`, `substring`, `toLowerCase`, `toUpperCase`, `trim`, `split`, `concat`. ~12 host functions.
-3. **Core Array methods** -- low-to-medium difficulty. `pop`, `shift`, `unshift`, `reverse`,
-   `sort`, `slice`, `concat`, `join`, `splice`, `some`, `every`, `reduce`, `lastIndexOf`.
-   Many can be compiler-inlined like existing `map`/`filter`/`forEach`.
-4. **Global parsing** -- `parseInt`, `parseFloat`, `isNaN`, `isFinite`. Trivial.
-5. **Number formatting** -- `toFixed()`, `toString(radix)`. Low difficulty.
+### Do not include (omit from curated file)
 
-### Implement for V1 if feasible (nice-to-have)
+Everything in Category 1 above. Nothing from `lib.es5.d.ts` should be imported wholesale;
+only the specific declarations above are written into the curated file.
+
+### Include for V1 if feasible (nice-to-have)
 
 - `Error` type + constructor (medium; gated on compiler supporting `try/catch/throw`)
 - `JSON.parse` / `JSON.stringify` (medium; useful for data persistence)
@@ -275,3 +298,4 @@ Pure compile-time constructs needing no runtime backing:
 - `RegExp` + regex-dependent string methods (`match`, `replace` with regex, `search`)
 - User-constructable Promises
 - Locale-aware functionality (`localeCompare`, `toLocaleString`, etc.)
+- Decorator context types (evaluate alongside class support)
