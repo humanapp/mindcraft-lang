@@ -1522,12 +1522,20 @@ function lowerListMethodCall(
       lowerListSlice(expr, propAccess, listTypeId, ctx);
       return true;
     case "pop":
+      lowerListPop(expr, propAccess, ctx);
+      return true;
     case "shift":
+      lowerListShift(expr, propAccess, ctx);
+      return true;
+    case "unshift":
+      lowerListUnshift(expr, propAccess, ctx);
+      return true;
     case "splice":
+      lowerListSplice(expr, propAccess, listTypeId, ctx);
+      return true;
     case "sort":
     case "fill":
     case "copyWithin":
-    case "unshift":
       ctx.diagnostics.push(
         makeDiag(`Array.${methodName}() is not supported (requires VM-level list mutation ops)`, expr)
       );
@@ -1546,6 +1554,128 @@ function lowerListPush(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   lowerExpression(propAccess.expression, ctx);
   lowerExpression(expr.arguments[0], ctx);
   ctx.ir.push({ kind: "ListPush" });
+}
+
+function lowerListPop(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  if (expr.arguments.length !== 0) {
+    ctx.diagnostics.push(makeDiag(".pop() takes no arguments", expr));
+    return;
+  }
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "ListPop" });
+}
+
+function lowerListShift(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  if (expr.arguments.length !== 0) {
+    ctx.diagnostics.push(makeDiag(".shift() takes no arguments", expr));
+    return;
+  }
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "ListShift" });
+}
+
+function lowerListUnshift(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  if (expr.arguments.length !== 1) {
+    ctx.diagnostics.push(makeDiag(".unshift() requires exactly 1 argument", expr));
+    return;
+  }
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "ListInsert" });
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "ListLen" });
+}
+
+function lowerListSplice(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  listTypeId: string,
+  ctx: LowerContext
+): void {
+  if (expr.arguments.length < 1) {
+    ctx.diagnostics.push(makeDiag(".splice() requires at least 1 argument (start)", expr));
+    return;
+  }
+
+  const loopStart = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  const startLocal = ctx.scopeStack.allocLocal();
+  const countLocal = ctx.scopeStack.allocLocal();
+  const resultLocal = ctx.scopeStack.allocLocal();
+  const iLocal = ctx.scopeStack.allocLocal();
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: startLocal });
+
+  if (expr.arguments.length >= 2) {
+    lowerExpression(expr.arguments[1], ctx);
+  } else {
+    lowerExpression(propAccess.expression, ctx);
+    ctx.ir.push({ kind: "ListLen" });
+    ctx.ir.push({ kind: "LoadLocal", index: startLocal });
+    const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number]);
+    if (!subFn) {
+      ctx.diagnostics.push(makeDiag("Cannot resolve - operator for .splice()", expr));
+      return;
+    }
+    ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
+  }
+  ctx.ir.push({ kind: "StoreLocal", index: countLocal });
+
+  ctx.ir.push({ kind: "ListNew", typeId: listTypeId });
+  ctx.ir.push({ kind: "StoreLocal", index: resultLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: iLocal });
+
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .splice()", expr));
+    return;
+  }
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: iLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: countLocal });
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "LoadLocal", index: startLocal });
+  ctx.ir.push({ kind: "ListRemove" });
+  ctx.ir.push({ kind: "ListPush" });
+  ctx.ir.push({ kind: "StoreLocal", index: resultLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: iLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .splice()", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: iLocal });
+
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+
+  for (let argIdx = 2; argIdx < expr.arguments.length; argIdx++) {
+    lowerExpression(propAccess.expression, ctx);
+    ctx.ir.push({ kind: "LoadLocal", index: startLocal });
+    lowerExpression(expr.arguments[argIdx], ctx);
+    ctx.ir.push({ kind: "ListInsert" });
+
+    ctx.ir.push({ kind: "LoadLocal", index: startLocal });
+    ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+    ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+    ctx.ir.push({ kind: "StoreLocal", index: startLocal });
+  }
+
+  ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
 }
 
 function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {

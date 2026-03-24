@@ -27,6 +27,10 @@ export type IrNode =
   | IrListGet
   | IrListSet
   | IrListLen
+  | IrListPop
+  | IrListShift
+  | IrListRemove
+  | IrListInsert
   | IrTypeCheck
   | IrLabel
   | IrJump
@@ -147,6 +151,22 @@ export interface IrListSet {
 
 export interface IrListLen {
   kind: "ListLen";
+}
+
+export interface IrListPop {
+  kind: "ListPop";
+}
+
+export interface IrListShift {
+  kind: "ListShift";
+}
+
+export interface IrListRemove {
+  kind: "ListRemove";
+}
+
+export interface IrListInsert {
+  kind: "ListInsert";
 }
 
 export interface IrTypeCheck {

@@ -282,6 +282,10 @@ export enum Op {
   LIST_GET,
   LIST_SET,
   LIST_LEN,
+  LIST_POP,
+  LIST_SHIFT,
+  LIST_REMOVE,
+  LIST_INSERT,
 
   // Map operations
   MAP_NEW = 100,

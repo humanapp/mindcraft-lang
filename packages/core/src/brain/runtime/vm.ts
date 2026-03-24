@@ -556,6 +556,14 @@ export class VM implements IVM {
           return this.execListSet(fiber, frame);
         case Op.LIST_LEN:
           return this.execListLen(fiber, frame);
+        case Op.LIST_POP:
+          return this.execListPop(fiber, frame);
+        case Op.LIST_SHIFT:
+          return this.execListShift(fiber, frame);
+        case Op.LIST_REMOVE:
+          return this.execListRemove(fiber, frame);
+        case Op.LIST_INSERT:
+          return this.execListInsert(fiber, frame);
         case Op.MAP_NEW:
           return this.execMapNew(fiber, ins, frame);
         case Op.MAP_SET:
@@ -1123,6 +1131,60 @@ export class VM implements IVM {
       throw new Error("LIST_LEN: requires list");
     }
     this.push(fiber, V.num(list.v.size()));
+    frame.pc++;
+    return undefined;
+  }
+
+  private execListPop(fiber: Fiber, frame: Frame): undefined {
+    const list = this.pop(fiber);
+    if (!isListValue(list)) {
+      throw new Error("LIST_POP: requires list");
+    }
+    const val = list.v.pop();
+    this.push(fiber, val ?? V.nil());
+    frame.pc++;
+    return undefined;
+  }
+
+  private execListShift(fiber: Fiber, frame: Frame): undefined {
+    const list = this.pop(fiber);
+    if (!isListValue(list)) {
+      throw new Error("LIST_SHIFT: requires list");
+    }
+    const val = list.v.shift();
+    this.push(fiber, val ?? V.nil());
+    frame.pc++;
+    return undefined;
+  }
+
+  private execListRemove(fiber: Fiber, frame: Frame): undefined {
+    const index = this.pop(fiber);
+    const list = this.pop(fiber);
+    if (!isListValue(list)) {
+      throw new Error("LIST_REMOVE: requires list");
+    }
+    if (!isNumberValue(index)) {
+      throw new Error("LIST_REMOVE: index must be number");
+    }
+    const idx = MathOps.floor(index.v);
+    const val = list.v.remove(idx);
+    this.push(fiber, val ?? V.nil());
+    frame.pc++;
+    return undefined;
+  }
+
+  private execListInsert(fiber: Fiber, frame: Frame): undefined {
+    const value = this.pop(fiber);
+    const index = this.pop(fiber);
+    const list = this.pop(fiber);
+    if (!isListValue(list)) {
+      throw new Error("LIST_INSERT: requires list");
+    }
+    if (!isNumberValue(index)) {
+      throw new Error("LIST_INSERT: index must be number");
+    }
+    const idx = MathOps.floor(index.v);
+    list.v.insert(idx, value);
     frame.pc++;
     return undefined;
   }

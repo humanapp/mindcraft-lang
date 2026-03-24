@@ -279,6 +279,26 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.LIST_LEN });
   }
 
+  /** Pop last element from list. */
+  listPop(): void {
+    this.emit({ op: Op.LIST_POP });
+  }
+
+  /** Shift first element from list. */
+  listShift(): void {
+    this.emit({ op: Op.LIST_SHIFT });
+  }
+
+  /** Remove element at index from list. */
+  listRemove(): void {
+    this.emit({ op: Op.LIST_REMOVE });
+  }
+
+  /** Insert value at index in list. */
+  listInsert(): void {
+    this.emit({ op: Op.LIST_INSERT });
+  }
+
   // ==========================================
   // Map operations
   // ==========================================

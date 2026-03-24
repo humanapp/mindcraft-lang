@@ -1100,6 +1100,155 @@ describe("VM -- list operations", () => {
       assert.equal((result.result as NumberValue).v, 99);
     }
   });
+
+  test("LIST_POP removes and returns last element", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.LIST_NEW },
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.LIST_PUSH },
+          { op: Op.LIST_POP },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 30);
+    }
+  });
+
+  test("LIST_POP on empty list returns nil", () => {
+    const prog = mkProgram([mkFunc([{ op: Op.LIST_NEW }, { op: Op.LIST_POP }, { op: Op.RET }])], []);
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal(result.result!.t, NativeType.Nil);
+    }
+  });
+
+  test("LIST_SHIFT removes and returns first element", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.LIST_NEW },
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.LIST_PUSH },
+          { op: Op.LIST_SHIFT },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 10);
+    }
+  });
+
+  test("LIST_SHIFT on empty list returns nil", () => {
+    const prog = mkProgram([mkFunc([{ op: Op.LIST_NEW }, { op: Op.LIST_SHIFT }, { op: Op.RET }])], []);
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal(result.result!.t, NativeType.Nil);
+    }
+  });
+
+  test("LIST_REMOVE removes element at index and returns it", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.LIST_NEW },
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.LIST_PUSH },
+          { op: Op.DUP },
+          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.LIST_REMOVE },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30), mkNumberValue(1)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 20);
+    }
+  });
+
+  test("LIST_INSERT inserts element at index", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.LIST_NEW },
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.LIST_PUSH },
+          { op: Op.DUP },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.LIST_INSERT },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.LIST_GET },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(10), mkNumberValue(30), mkNumberValue(1), mkNumberValue(20)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 20);
+    }
+  });
 });
 
 // ---- Map operations ----

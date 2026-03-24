@@ -115,6 +115,18 @@ export function emitFunction(
       case "ListLen":
         emitter.listLen();
         break;
+      case "ListPop":
+        emitter.listPop();
+        break;
+      case "ListShift":
+        emitter.listShift();
+        break;
+      case "ListRemove":
+        emitter.listRemove();
+        break;
+      case "ListInsert":
+        emitter.listInsert();
+        break;
       case "GetField": {
         const fieldIdx = pool.add(mkStringValue(node.fieldName));
         emitter.pushConst(fieldIdx);
