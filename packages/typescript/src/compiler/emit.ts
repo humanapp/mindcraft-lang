@@ -88,6 +88,9 @@ export function emitFunction(
         emitter.hostCallArgsAsync(fnId, node.argc, 0);
         break;
       }
+      case "Await":
+        emitter.await();
+        break;
       case "MapGet":
         emitter.mapGet();
         break;

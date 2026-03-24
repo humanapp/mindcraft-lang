@@ -40,9 +40,9 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-03-24) Phases 0-16 complete, plus Array method lowering detour, VM list
-mutation ops detour, and Array.sort detour. See the original doc's Current State and
-Phase Log for full history.
+(Updated 2026-03-24) Phases 0-16 and 18-19 complete, plus Array method lowering
+detour, VM list mutation ops detour, and Array.sort detour. See the original doc's
+Current State and Phase Log for full history.
 
 ### Compiler pipeline (`packages/typescript/src/compiler/`)
 
@@ -54,7 +54,7 @@ Phase Log for full history.
 - `descriptor.ts` -- extracts `ExtractedDescriptor` from `Sensor()`/`Actuator()`.
 - `scope.ts` -- `ScopeStack` block-scoping allocator; `allocLocal()` for temporaries.
 - `ir.ts` -- all IR node types (control flow, struct/list/map construction, list ops,
-  function refs/closures/indirect calls, type checking).
+  function refs/closures/indirect calls, type checking, async host calls, await).
 - `lowering.ts` -- `lowerProgram()` produces `ProgramLoweringResult` with multiple
   `FunctionEntry` records (onExecute, onPageEntered wrapper, module init, helpers).
 - `emit.ts` -- `emitFunction()` produces `FunctionBytecode`. Assigns PCs.
@@ -399,6 +399,12 @@ resolution. The exec wrapper already receives `scheduler` as a parameter.
   to simulate async handle resolution (mock a host function that returns a pending
   handle, advance the scheduler, resolve the handle, verify the fiber resumes).
   This test infrastructure may need to be built alongside the tests.
+- (Added 2026-03-24, from Phase 19 post-mortem) **Test pattern established.** Phase 19
+  tests already exercise the full suspend/resume cycle: register async host fn with
+  no-op `exec`, run fiber until `VmStatus.WAITING`, externally `handles.resolve()`,
+  call `vm.resumeFiberFromHandle()`, run fiber again. This pattern can be reused
+  directly for Phase 20 integration tests. Local variables across await points are
+  confirmed to survive (tested in Phase 19).
 - **Void return for async actuators.** Async actuators return `Promise<void>`. The
   compiled bytecode must push `NIL_VALUE` before `RET` (matching the existing
   NIL_VALUE fallthrough pattern from Phase 5).
@@ -715,3 +721,44 @@ which are inherently sync. Phase 19 (`await` emission) can build directly on thi
 
 **Tests added:** 2 (async method -> HOST_CALL_ARGS_ASYNC in bytecode, sync method
 -> HOST_CALL_ARGS only). All 245 tests pass.
+
+### Phase 19 -- `await` emission (2026-03-24)
+
+**Planned:** Compile `await` expressions to the `AWAIT` opcode. Validate that
+`await` is only used on async host function calls.
+
+**Actual:** All four deliverables implemented as spec'd:
+- `IrAwait` IR node added to `ir.ts` (union type + interface).
+- `lowerAwaitExpression` in `lowering.ts` handles `ts.isAwaitExpression`: lowers
+  the operand, validates the last emitted IR node is `HostCallArgsAsync`, emits
+  `IrAwait`. Non-async operands produce a compile diagnostic.
+- `emitFunction` in `emit.ts` handles `Await` case, calls `emitter.await()`.
+- `lowerExpression` dispatch extended with `ts.isAwaitExpression` branch.
+
+**Deviations from spec:**
+- Tests go beyond the spec's bytecode-inspection-only criteria. All three passing
+  tests execute the compiled code end-to-end: compile -> spawnFiber -> runFiber ->
+  assert VmStatus.WAITING -> handles.resolve() -> resumeFiberFromHandle -> runFiber
+  again -> assert VmStatus.DONE with correct return value. This validates the full
+  suspend/resume cycle, not just opcode presence.
+- Added a "local variable survives across await point" test (spec mentioned this
+  as a risk to verify but did not list it as a formal acceptance criterion).
+
+**Risks resolved:**
+- `await` validation: implemented by checking that the last IR node before `IrAwait`
+  is `HostCallArgsAsync`. Simple and effective -- avoids needing to walk the TS AST
+  to determine the call target's async-ness separately.
+- No state machine: confirmed. The VM fiber model preserves locals, stack, and PC
+  across AWAIT. The "local variable survives across await point" test proves this
+  with `const before = "prefix-"` assigned before await, concatenated with the
+  resolved value after resume.
+
+**Observation:** The `Widget` struct type and `Widget.fetchData` async method are
+registered in the "struct method calls" describe block's `before()` and persist
+across describe blocks (shared `getBrainServices()` singleton). The await tests'
+`before()` guards (`if (!types.get(...))`) are effectively no-ops since the type
+is already registered. This is fine but means the await tests depend on the struct
+method calls block running first.
+
+**Tests added:** 4 (single await suspend/resume, two consecutive awaits, local
+variable across await, await on sync call -> error). All 197 tests pass.

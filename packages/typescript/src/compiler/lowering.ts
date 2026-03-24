@@ -906,6 +906,8 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     lowerExpression(expr.expression, ctx);
   } else if (ts.isAsExpression(expr)) {
     lowerExpression(expr.expression, ctx);
+  } else if (ts.isAwaitExpression(expr)) {
+    lowerAwaitExpression(expr, ctx);
   } else {
     ctx.diagnostics.push(makeDiag(`Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr));
   }
@@ -949,6 +951,17 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
   }
 
   ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.text}`, expr));
+}
+
+function lowerAwaitExpression(expr: ts.AwaitExpression, ctx: LowerContext): void {
+  const irLenBefore = ctx.ir.length;
+  lowerExpression(expr.expression, ctx);
+  const lastNode = ctx.ir.length > irLenBefore ? ctx.ir[ctx.ir.length - 1] : undefined;
+  if (!lastNode || lastNode.kind !== "HostCallArgsAsync") {
+    ctx.diagnostics.push(makeDiag("`await` is only supported on async host function calls", expr));
+    return;
+  }
+  ctx.ir.push({ kind: "Await" });
 }
 
 function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {

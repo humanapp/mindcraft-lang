@@ -17,6 +17,7 @@ export type IrNode =
   | IrLoadCapture
   | IrHostCallArgs
   | IrHostCallArgsAsync
+  | IrAwait
   | IrGetField
   | IrMapGet
   | IrMapNew
@@ -96,6 +97,10 @@ export interface IrHostCallArgsAsync {
   kind: "HostCallArgsAsync";
   fnName: string;
   argc: number;
+}
+
+export interface IrAwait {
+  kind: "Await";
 }
 
 export interface IrMapGet {
