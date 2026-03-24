@@ -80,6 +80,14 @@ export function emitFunction(
       case "MapGet":
         emitter.mapGet();
         break;
+      case "MapNew": {
+        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        emitter.mapNew(typeIdIdx);
+        break;
+      }
+      case "MapSet":
+        emitter.mapSet();
+        break;
       case "StructNew": {
         const typeIdIdx = pool.add(mkStringValue(node.typeId));
         emitter.structNew(typeIdIdx);

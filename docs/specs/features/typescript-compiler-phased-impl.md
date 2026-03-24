@@ -37,7 +37,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-22) Phases 0-12.1 are complete.
+- (Updated 2026-03-23) Phases 0-12b are complete.
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -67,8 +67,13 @@ not survive. Keep this doc current.
   `NativeType.Any` with tagged `AnyCodec` (self-contained encode/decode for
   nil/boolean/number/string via `TypeUtils` discrimination), `AnyList`
   registration in `registerCoreTypes()`, `tsTypeToTypeId` union-to-Any
-  resolution (multi-member unions map to `CoreTypeIds.Any`), and mixed-type
-  array literal compilation (`[1, "hello", true]` resolves to `AnyList`).
+  resolution (multi-member unions map to `CoreTypeIds.Any`), mixed-type
+  array literal compilation (`[1, "hello", true]` resolves to `AnyList`),
+  and map/Record literal compilation to `MAP_NEW` / `MAP_SET` bytecode
+  (contextual type resolution via named alias or string index type,
+  `resolveMapTypeId()` with `MapConstructor` instantiation fallback,
+  struct-first disambiguation for object literals, VM `execMapNew` fix
+  to read typeId from constant pool).
 - (Updated 2026-03-23) Core type system foundational rework complete (all 8 phases
   plus list/array method detour). See `core-type-system-phased-impl.md` for details.
   Key additions affecting remaining compiler phases:
@@ -3354,3 +3359,63 @@ ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
 
 - packages/core: 441 total (429 prev + 12 new), 0 failures
 - packages/typescript: 125 total (121 prev + 4 new), 1 pre-existing failure
+
+### Phase 12b -- 2026-03-23
+
+**Status:** Complete. All acceptance criteria met.
+
+**Planned vs actual deliverables:**
+
+| Deliverable                        | Status | Notes                                                                                                               |
+| ---------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------- |
+| `IrMapNew`, `IrMapSet` IR nodes    | Done   | Added to `IrNode` union in `ir.ts`                                                                                  |
+| `MapNew`, `MapSet` emit cases      | Done   | `emit.ts` -- `emitter.mapNew(typeIdIdx)` and `emitter.mapSet()`                                                     |
+| `resolveMapTypeId()` helper        | Done   | Alias-symbol-first, then `getStringIndexType()` fallback to `registry.instantiate("Map", [valueTypeId])`            |
+| `lowerObjectLiteral` map detection | Done   | Struct-first, then map, then diagnostic. Refactored into `lowerObjectLiteralAsStruct` and `lowerObjectLiteralAsMap` |
+| VM `execMapNew` fix                | Done   | Reads typeId from constant pool via `ins.b` (matching `listNew`/`structNew` pattern)                                |
+| Emitter `mapNew` fix               | Done   | Changed from `{ op: MAP_NEW, a: typeId }` to `{ op: MAP_NEW, a: 0, b: typeIdConstIdx }`                             |
+| `codegen.spec.ts` tests            | Done   | 5 new tests                                                                                                         |
+
+**Acceptance criteria results:**
+
+| Criterion                                                            | Result |
+| -------------------------------------------------------------------- | ------ |
+| `{ foo: 1, bar: 2 }` with map annotation -> `MAP_NEW` + 2x `MAP_SET` | Pass   |
+| Empty `{}` with map annotation -> `MAP_NEW` only                     | Pass   |
+| Map as return value -> correct bytecode                              | Pass   |
+| Nested struct-in-map -> correct nested emission                      | Pass   |
+| Struct contextual type still -> `STRUCT_NEW` (regression)            | Pass   |
+
+**Extra work (not in spec):**
+
+- Fixed `BytecodeEmitter.mapNew()` operand encoding: was `{ a: typeId }` (raw number,
+  ignored by VM), now `{ a: 0, b: typeIdConstIdx }` (constant pool index, matching
+  `structNew`/`listNew`). This was listed as a risk in the spec.
+- Fixed `execMapNew` in VM to read `ins.b` as constant pool index for typeId string
+  (was hardcoding `"map:<unknown>"`).
+- Refactored `lowerObjectLiteral` from a monolithic function into a dispatcher +
+  two helper functions (`lowerObjectLiteralAsStruct`, `lowerObjectLiteralAsMap`).
+
+**Discoveries:**
+
+1. **`getStringIndexType()` for Record resolution.** When the contextual type is
+   `Record<string, T>` (a TS mapped type), `type.getStringIndexType()` returns the
+   value type `T`. This is the reliable way to extract the value type from a
+   `Record`-like type without inspecting the mapped type structure directly.
+
+2. **No ambient `Map` interface needed.** Unlike `Array<T>` (which needs a constrained
+   ambient interface to hide unsupported JS methods), map types as `Record<string, T>`
+   use TypeScript's built-in utility type. Property access syntax (`m.foo` /
+   `m["foo"]`) works naturally. A dedicated `Map` interface would only be needed if
+   we wanted to expose `.get()`/`.set()`/`.has()` method calls.
+
+3. **Struct-first ordering is correct.** The spec noted ambiguity between struct and
+   map for object literals. Struct-first works because struct types have specific
+   known field names in the registry (resolved via `resolveStructType` symbol name
+   lookup), while map types are generic containers. A named type registered as a
+   struct will never accidentally resolve as a map.
+
+**Test counts:**
+
+- packages/core: 516 total, 0 failures
+- packages/typescript: 169 total (164 prev + 5 new), 0 failures

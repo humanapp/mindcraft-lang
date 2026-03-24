@@ -283,9 +283,9 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // Map operations
   // ==========================================
 
-  /** Create a new map with typeId. */
-  mapNew(typeId: number): void {
-    this.emit({ op: Op.MAP_NEW, a: typeId });
+  /** Create a new map with typeId from constant pool. */
+  mapNew(typeIdConstIdx: number): void {
+    this.emit({ op: Op.MAP_NEW, a: 0, b: typeIdConstIdx });
   }
 
   /** Set key-value pair in map. */

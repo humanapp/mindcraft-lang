@@ -17,6 +17,8 @@ export type IrNode =
   | IrLoadCapture
   | IrHostCallArgs
   | IrMapGet
+  | IrMapNew
+  | IrMapSet
   | IrStructNew
   | IrStructSet
   | IrListNew
@@ -85,6 +87,15 @@ export interface IrHostCallArgs {
 
 export interface IrMapGet {
   kind: "MapGet";
+}
+
+export interface IrMapNew {
+  kind: "MapNew";
+  typeId: string;
+}
+
+export interface IrMapSet {
+  kind: "MapSet";
 }
 
 export interface IrLabel {

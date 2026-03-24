@@ -8,6 +8,7 @@ import {
   getBrainServices,
   HandleTable,
   isListValue,
+  isMapValue,
   isStructValue,
   type ListValue,
   type MapValue,
@@ -4147,6 +4148,241 @@ export default Sensor({
     assert.equal(runResult.status, VmStatus.DONE);
     if (runResult.status === VmStatus.DONE) {
       assert.equal((runResult.result as NumberValue).v, 30);
+    }
+  });
+});
+
+describe("map literal compilation", () => {
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const strTypeId = mkTypeId(NativeType.String, "string");
+
+    const numMapName = "NumberMap";
+    const numMapTypeId = mkTypeId(NativeType.Map, numMapName);
+    if (!types.get(numMapTypeId)) {
+      types.addMapType(numMapName, { valueTypeId: numTypeId });
+    }
+
+    const strMapName = "StringMap";
+    const strMapTypeId = mkTypeId(NativeType.Map, strMapName);
+    if (!types.get(strMapTypeId)) {
+      types.addMapType(strMapName, { valueTypeId: strTypeId });
+    }
+
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    if (!types.get(vec2TypeId)) {
+      types.addStructType("Vector2", {
+        fields: List.from([
+          { name: "x", typeId: numTypeId },
+          { name: "y", typeId: numTypeId },
+        ]),
+      });
+    }
+  });
+
+  test("map literal with 2 entries compiles and executes", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberMap } from "mindcraft";
+
+export default Sensor({
+  name: "make-map",
+  output: "NumberMap",
+  onExecute(ctx: Context): NumberMap {
+    const m: NumberMap = { foo: 1, bar: 2 };
+    return m;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isMapValue(runResult.result!), "expected map value");
+      const map = runResult.result as MapValue;
+      assert.equal(map.typeId, mkTypeId(NativeType.Map, "NumberMap"));
+      assert.equal((map.v.get("foo") as NumberValue).v, 1);
+      assert.equal((map.v.get("bar") as NumberValue).v, 2);
+    }
+  });
+
+  test("empty map compiles to MAP_NEW only", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberMap } from "mindcraft";
+
+export default Sensor({
+  name: "empty-map",
+  output: "NumberMap",
+  onExecute(ctx: Context): NumberMap {
+    const m: NumberMap = {};
+    return m;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isMapValue(runResult.result!), "expected map value");
+      const map = runResult.result as MapValue;
+      assert.equal(map.typeId, mkTypeId(NativeType.Map, "NumberMap"));
+      assert.equal(map.v.size(), 0);
+    }
+  });
+
+  test("map as return value compiles correctly via contextual type", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type StringMap } from "mindcraft";
+
+export default Sensor({
+  name: "return-map",
+  output: "StringMap",
+  onExecute(ctx: Context): StringMap {
+    return { greeting: "hello", farewell: "bye" };
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isMapValue(runResult.result!), "expected map value");
+      const map = runResult.result as MapValue;
+      assert.equal((map.v.get("greeting") as StringValue).v, "hello");
+      assert.equal((map.v.get("farewell") as StringValue).v, "bye");
+    }
+  });
+
+  test("nested struct-in-map compiles and executes", () => {
+    const ambientSource = buildAmbientDeclarations();
+
+    const types = getBrainServices().types;
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    const vec2MapName = "Vector2Map";
+    const vec2MapTypeId = mkTypeId(NativeType.Map, vec2MapName);
+    if (!types.get(vec2MapTypeId)) {
+      types.addMapType(vec2MapName, { valueTypeId: vec2TypeId });
+    }
+    const ambientWithVec2Map = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context, type Vector2Map, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "vec-map",
+  output: "Vector2Map",
+  onExecute(ctx: Context): Vector2Map {
+    const m: Vector2Map = { origin: { x: 0, y: 0 }, target: { x: 10, y: 20 } };
+    return m;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource: ambientWithVec2Map });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isMapValue(runResult.result!), "expected map value");
+      const map = runResult.result as MapValue;
+      const origin = map.v.get("origin") as StructValue;
+      assert.ok(isStructValue(origin), "expected struct value for origin");
+      assert.equal((origin.v?.get("x") as NumberValue).v, 0);
+      assert.equal((origin.v?.get("y") as NumberValue).v, 0);
+      const target = map.v.get("target") as StructValue;
+      assert.ok(isStructValue(target), "expected struct value for target");
+      assert.equal((target.v?.get("x") as NumberValue).v, 10);
+      assert.equal((target.v?.get("y") as NumberValue).v, 20);
+    }
+  });
+
+  test("struct-typed object literal still compiles to STRUCT_NEW (regression)", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "struct-regression",
+  output: "Vector2",
+  onExecute(ctx: Context): Vector2 {
+    const v: Vector2 = { x: 5, y: 10 };
+    return v;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const ctx = mkCtx();
+
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isStructValue(runResult.result!), "expected struct value, not map");
+      const struct = runResult.result as StructValue;
+      assert.equal(struct.typeId, mkTypeId(NativeType.Struct, "Vector2"));
+      assert.equal((struct.v?.get("x") as NumberValue).v, 5);
+      assert.equal((struct.v?.get("y") as NumberValue).v, 10);
     }
   });
 });

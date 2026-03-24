@@ -1770,21 +1770,34 @@ function isNativeBackedStruct(def: StructTypeDef): boolean {
 function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext): void {
   const contextualType = ctx.checker.getContextualType(expr);
   if (!contextualType) {
-    ctx.diagnostics.push(makeDiag("Cannot determine struct type for object literal (add a type annotation)", expr));
+    ctx.diagnostics.push(makeDiag("Cannot determine type for object literal (add a type annotation)", expr));
     return;
   }
 
   const structDef = resolveStructType(contextualType);
-  if (!structDef) {
-    ctx.diagnostics.push(makeDiag("Object literal type does not resolve to a known struct type", expr));
+  if (structDef) {
+    if (isNativeBackedStruct(structDef)) {
+      ctx.diagnostics.push(makeDiag(`Cannot create instances of native-backed struct type '${structDef.name}'`, expr));
+      return;
+    }
+    lowerObjectLiteralAsStruct(expr, structDef, ctx);
     return;
   }
 
-  if (isNativeBackedStruct(structDef)) {
-    ctx.diagnostics.push(makeDiag(`Cannot create instances of native-backed struct type '${structDef.name}'`, expr));
+  const mapTypeId = resolveMapTypeId(contextualType, ctx);
+  if (mapTypeId) {
+    lowerObjectLiteralAsMap(expr, mapTypeId, ctx);
     return;
   }
 
+  ctx.diagnostics.push(makeDiag("Object literal type does not resolve to a known struct or map type", expr));
+}
+
+function lowerObjectLiteralAsStruct(
+  expr: ts.ObjectLiteralExpression,
+  structDef: StructTypeDef,
+  ctx: LowerContext
+): void {
   ctx.ir.push({ kind: "StructNew", typeId: structDef.typeId });
 
   for (const prop of expr.properties) {
@@ -1805,6 +1818,61 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     lowerExpression(prop.initializer, ctx);
     ctx.ir.push({ kind: "StructSet" });
   }
+}
+
+function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: string, ctx: LowerContext): void {
+  ctx.ir.push({ kind: "MapNew", typeId: mapTypeId });
+
+  for (const prop of expr.properties) {
+    if (!ts.isPropertyAssignment(prop)) {
+      ctx.diagnostics.push(makeDiag("Only simple property assignments are supported in map literals", prop));
+      return;
+    }
+    let keyName: string;
+    if (ts.isIdentifier(prop.name)) {
+      keyName = prop.name.text;
+    } else if (ts.isStringLiteral(prop.name)) {
+      keyName = prop.name.text;
+    } else {
+      ctx.diagnostics.push(makeDiag("Unsupported property name in map literal", prop));
+      return;
+    }
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue(keyName) });
+    lowerExpression(prop.initializer, ctx);
+    ctx.ir.push({ kind: "MapSet" });
+  }
+}
+
+function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined {
+  const registry = getBrainServices().types;
+
+  if (type.isUnion()) {
+    const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
+    if (nonNullish.length === 1) {
+      return resolveMapTypeId(nonNullish[0], ctx);
+    }
+    return undefined;
+  }
+
+  const sym = type.aliasSymbol ?? type.getSymbol();
+  if (sym) {
+    const name = sym.getName();
+    const typeId = registry.resolveByName(name);
+    if (typeId) {
+      const def = registry.get(typeId);
+      if (def && def.coreType === NativeType.Map) return def.typeId;
+    }
+  }
+
+  const indexType = type.getStringIndexType();
+  if (indexType) {
+    const valueTypeId = tsTypeToTypeId(indexType, ctx.checker);
+    if (valueTypeId) {
+      return registry.instantiate("Map", List.from([valueTypeId]));
+    }
+  }
+
+  return undefined;
 }
 
 function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | undefined {

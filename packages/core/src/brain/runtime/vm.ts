@@ -544,7 +544,7 @@ export class VM implements IVM {
         case Op.LIST_LEN:
           return this.execListLen(fiber, frame);
         case Op.MAP_NEW:
-          return this.execMapNew(fiber, frame);
+          return this.execMapNew(fiber, ins, frame);
         case Op.MAP_SET:
           return this.execMapSet(fiber, frame);
         case Op.MAP_GET:
@@ -1115,8 +1115,15 @@ export class VM implements IVM {
   }
 
   // Map operations
-  private execMapNew(fiber: Fiber, frame: Frame): undefined {
-    this.push(fiber, V.map(new ValueDict(), "map:<unknown>"));
+  private execMapNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    let typeId: TypeId = "map:<unknown>";
+    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constants.size()) {
+      const typeIdVal = this.prog.constants.get(ins.b);
+      if (typeIdVal && isStringValue(typeIdVal)) {
+        typeId = typeIdVal.v;
+      }
+    }
+    this.push(fiber, V.map(new ValueDict(), typeId));
     frame.pc++;
     return undefined;
   }
