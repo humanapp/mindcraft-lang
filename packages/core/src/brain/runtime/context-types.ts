@@ -88,11 +88,9 @@ export function registerContextTypes() {
     "SelfContext.getVariable",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const selfStruct = args.v.get(0) as StructValue;
-        const execCtx = selfStruct.native as ExecutionContext;
+      exec: (ctx: ExecutionContext, args: MapValue) => {
         const name = (args.v.get(1) as StringValue).v;
-        return execCtx.getVariable(name) ?? NIL_VALUE;
+        return ctx.getVariable(name) ?? NIL_VALUE;
       },
     },
     emptyCallDef
@@ -102,12 +100,10 @@ export function registerContextTypes() {
     "SelfContext.setVariable",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const selfStruct = args.v.get(0) as StructValue;
-        const execCtx = selfStruct.native as ExecutionContext;
+      exec: (ctx: ExecutionContext, args: MapValue) => {
         const name = (args.v.get(1) as StringValue).v;
         const value = args.v.get(2) as Value;
-        execCtx.setVariable(name, value);
+        ctx.setVariable(name, value);
         return NIL_VALUE;
       },
     },
