@@ -40,7 +40,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-03-24) Phases 0-16 and 18-19 complete, plus Array method lowering
+(Updated 2026-03-24) Phases 0-16 and 18-20 complete, plus Array method lowering
 detour, VM list mutation ops detour, and Array.sort detour. See the original doc's
 Current State and Phase Log for full history.
 
@@ -73,7 +73,10 @@ constants, merges constants, copies `injectCtxTypeId`. Returns `LinkResult` with
 
 - `authored-function.ts` -- `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)`
   returns a `HostAsyncFn`. Sync tiles use `vm.spawnFiber()` + `vm.runFiber()` inline.
-  Async dispatch is NOT yet implemented (Phase 20).
+  Async tiles use event-driven dispatch: `execAsync` detects `VmStatus.WAITING`,
+  subscribes to handle completion events, resumes the fiber, and chains for
+  subsequent awaits. `execIsAsync` flag on `UserAuthoredProgram` selects the
+  dispatch path at wrapper creation time.
 - `registration-bridge.ts` -- `registerUserTile(linkInfo, hostFn)` three-step
   registration via `getBrainServices()`. Currently handles first-registration only;
   recompile-and-update path is planned for Phase 21.
@@ -463,6 +466,12 @@ Include tests for the update path.
 - **Scheduler tick semantics.** Multiple fibers (brain rule fiber + user code fiber)
   interleave within the scheduler. Need to verify budget accounting treats user fibers
   the same as built-in fibers.
+- (Added 2026-03-24, from Phase 20 post-mortem) **Async dispatch uses event
+  listeners, not scheduler integration.** The Phase 20 exec wrapper subscribes to
+  `vm.handles.events.on("completed")` and resumes the fiber inline when the
+  inner handle resolves. This means user tile fibers are not tracked by the
+  scheduler's fiber dict -- they are private to the exec wrapper. Phase 21 should
+  verify this works correctly when the brain scheduler drives the outer rule fiber.
 
 ---
 
@@ -762,3 +771,57 @@ method calls block running first.
 
 **Tests added:** 4 (single await suspend/resume, two consecutive awaits, local
 variable across await, await on sync call -> error). All 197 tests pass.
+
+### Phase 20 -- Async `onExecute` compilation (2026-03-24)
+
+**Planned:** Compile `async onExecute(ctx, params)` functions with one or more
+`await` points. Verify fiber suspension/resumption via the exec wrapper.
+
+**Actual:** All four acceptance criteria met. Three files changed, one new test
+suite added:
+- `types.ts` -- added `execIsAsync: boolean` to `UserAuthoredProgram`. This
+  propagates the already-extracted `descriptor.execIsAsync` flag through
+  compilation and linking to the runtime.
+- `compile.ts` -- populates `execIsAsync` from `descriptor.execIsAsync`.
+- `authored-function.ts` -- exec wrapper now branches on `execIsAsync`:
+  - Sync path (`execSync`): unchanged -- spawns fiber, runs to completion,
+    resolves outer handle immediately.
+  - Async path (`execAsync`): spawns fiber, runs it. If fiber completes inline
+    (no await hit), resolves immediately. If fiber suspends (`VmStatus.WAITING`),
+    calls `waitForHandle` which subscribes to `vm.handles.events.on("completed")`
+    for the inner handle. On completion, resumes fiber via
+    `vm.resumeFiberFromHandle()`, re-runs, and either resolves or chains again
+    for subsequent awaits.
+  - Refactored `runFiberToCompletion` into `spawnAndRun` (returns fiber + result)
+    with `runFiberToCompletion` as a wrapper for sync-only uses.
+
+**Deviations from spec:**
+- Spec listed `lowering.ts` as a touched file. No lowering changes were needed --
+  the async compilation pipeline (HOST_CALL_ARGS_ASYNC + AWAIT emission) was
+  already fully implemented in Phases 18-19. Phase 20 was purely a runtime
+  dispatch concern.
+- Spec's example used `ctx.engine.moveToward()` but tests used the already-
+  registered `Widget.fetchData` async method. Functionally equivalent -- both
+  exercise HOST_CALL_ARGS_ASYNC + AWAIT suspension/resumption.
+
+**Risks resolved:**
+- Async dispatch strategy: chose event listener approach
+  (`vm.handles.events.on("completed")`) rather than scheduler integration or
+  polling. This is non-blocking and chains naturally for multiple awaits via
+  recursive `waitForHandle()`.
+- Test infrastructure: reused the Phase 19 suspend/resume pattern directly.
+  The `Widget` struct type with async `fetchData` method was already registered
+  from earlier test suites. Tests register their own `before()` fixtures with
+  guards to avoid duplicates.
+- Void return: async actuators return `Promise<void>`, and the existing
+  `NIL_VALUE` fallthrough in the compiled bytecode produces the correct result.
+  The exec wrapper uses `result.result ?? NIL_VALUE` to normalize.
+
+**Observation:** The `execIsAsync` flag drives a static branch at wrapper
+creation time (`exec: execIsAsync ? execAsync : execSync`), not a per-call
+check. This avoids any overhead for sync tiles and makes the intent clear.
+The `waitForHandle` function is non-blocking -- it registers a listener and
+returns. The callback fires when the handle completes externally.
+
+**Tests added:** 4 (async actuator suspend/resolve, local var across await,
+callsite var across await, async sensor with return value). All 253 tests pass.

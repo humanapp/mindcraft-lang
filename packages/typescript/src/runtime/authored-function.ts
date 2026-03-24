@@ -2,6 +2,7 @@ import { List } from "@mindcraft-lang/core";
 import {
   type BrainProgram,
   type ExecutionContext,
+  type Fiber,
   getCallSiteState,
   type HandleId,
   type HostAsyncFn,
@@ -11,6 +12,7 @@ import {
   type Scheduler,
   setCallSiteState,
   type Value,
+  type VmRunResult,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import type { UserTileLinkInfo } from "../compiler/types.js";
@@ -22,9 +24,24 @@ export function createUserTileExec(
   scheduler: Scheduler
 ): HostAsyncFn {
   const { linkedEntryFuncId, linkedInitFuncId, linkedOnPageEnteredFuncId, program } = linkInfo;
-  const { numCallsiteVars } = program;
+  const { numCallsiteVars, execIsAsync } = program;
   const hasParams = linkedProgram.functions.get(linkedEntryFuncId).numParams > 1;
   let nextFiberId = -1;
+
+  function spawnAndRun(
+    funcId: number,
+    args: List<Value>,
+    ctx: ExecutionContext,
+    callsiteVars: List<Value>
+  ): { fiber: Fiber; result: VmRunResult } {
+    const fiberId = nextFiberId--;
+    const fiberCtx: ExecutionContext = { ...ctx };
+    const fiber = vm.spawnFiber(fiberId, funcId, args, fiberCtx);
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 10000;
+    const result = vm.runFiber(fiber, scheduler);
+    return { fiber, result };
+  }
 
   function runFiberToCompletion(
     funcId: number,
@@ -32,12 +49,7 @@ export function createUserTileExec(
     ctx: ExecutionContext,
     callsiteVars: List<Value>
   ): Value | undefined {
-    const fiberId = nextFiberId--;
-    const fiberCtx: ExecutionContext = { ...ctx };
-    const fiber = vm.spawnFiber(fiberId, funcId, args, fiberCtx);
-    fiber.callsiteVars = callsiteVars;
-    fiber.instrBudget = 10000;
-    const result = vm.runFiber(fiber, scheduler);
+    const { result } = spawnAndRun(funcId, args, ctx, callsiteVars);
     if (result.status === VmStatus.DONE) {
       return result.result;
     }
@@ -61,13 +73,47 @@ export function createUserTileExec(
     return vars;
   }
 
+  function execSync(ctx: ExecutionContext, args: MapValue, handleId: HandleId): void {
+    const callsiteVars = getOrCreateCallsiteVars(ctx);
+    const fiberArgs = hasParams ? List.from<Value>([args]) : List.empty<Value>();
+    const result = runFiberToCompletion(linkedEntryFuncId, fiberArgs, ctx, callsiteVars);
+    vm.handles.resolve(handleId, result ?? NIL_VALUE);
+  }
+
+  function execAsync(ctx: ExecutionContext, args: MapValue, outerHandleId: HandleId): void {
+    const callsiteVars = getOrCreateCallsiteVars(ctx);
+    const fiberArgs = hasParams ? List.from<Value>([args]) : List.empty<Value>();
+    const { fiber, result } = spawnAndRun(linkedEntryFuncId, fiberArgs, ctx, callsiteVars);
+
+    if (result.status === VmStatus.DONE) {
+      vm.handles.resolve(outerHandleId, result.result ?? NIL_VALUE);
+      return;
+    }
+
+    if (result.status === VmStatus.WAITING) {
+      waitForHandle(fiber, result.handleId!, outerHandleId);
+    }
+  }
+
+  function waitForHandle(fiber: Fiber, innerHandleId: HandleId, outerHandleId: HandleId): void {
+    const unsub = vm.handles.events.on("completed", (completedId: HandleId) => {
+      if (completedId !== innerHandleId) return;
+      unsub();
+
+      vm.resumeFiberFromHandle(fiber, innerHandleId, scheduler);
+      fiber.instrBudget = 10000;
+      const result = vm.runFiber(fiber, scheduler);
+
+      if (result.status === VmStatus.DONE) {
+        vm.handles.resolve(outerHandleId, result.result ?? NIL_VALUE);
+      } else if (result.status === VmStatus.WAITING) {
+        waitForHandle(fiber, result.handleId!, outerHandleId);
+      }
+    });
+  }
+
   return {
-    exec(ctx: ExecutionContext, args: MapValue, handleId: HandleId): void {
-      const callsiteVars = getOrCreateCallsiteVars(ctx);
-      const fiberArgs = hasParams ? List.from<Value>([args]) : List.empty<Value>();
-      const result = runFiberToCompletion(linkedEntryFuncId, fiberArgs, ctx, callsiteVars);
-      vm.handles.resolve(handleId, result ?? NIL_VALUE);
-    },
+    exec: execIsAsync ? execAsync : execSync,
 
     onPageEntered(ctx: ExecutionContext): void {
       if (linkedOnPageEnteredFuncId === undefined) return;

@@ -10,9 +10,12 @@ import {
   HandleTable,
   type MapValue,
   mkActuatorTileId,
+  mkNativeStructValue,
   mkNumberValue,
   mkParameterTileId,
   mkSensorTileId,
+  mkStringValue,
+  mkTypeId,
   NativeType,
   NIL_VALUE,
   type NumberValue,
@@ -20,9 +23,13 @@ import {
   registerCoreBrainComponents,
   runtime,
   type Scheduler,
+  type StringValue,
+  type StructValue,
   type Value,
   ValueDict,
+  VmStatus,
 } from "@mindcraft-lang/core/brain";
+import { buildAmbientDeclarations } from "../compiler/ambient.js";
 import { compileUserTile, initCompiler } from "../compiler/compile.js";
 import type { UserTileLinkInfo } from "../compiler/types.js";
 import { linkUserPrograms } from "../linker/linker.js";
@@ -349,5 +356,260 @@ export default Sensor({
     assert.ok(tiles.has(mkParameterTileId("user.param-reg.distance")), "named distance param tile should exist");
     assert.ok(tiles.has(mkParameterTileId("user.param-reg.label")), "named label param tile should exist");
     assert.ok(tiles.has(mkParameterTileId("anon.number")), "anonymous number param tile should exist");
+  });
+});
+
+describe("async exec", () => {
+  let ambientSource: string;
+
+  before(async () => {
+    registerCoreBrainComponents();
+    await initCompiler();
+
+    const types = getBrainServices().types;
+    const fns = getBrainServices().functions;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const strTypeId = mkTypeId(NativeType.String, "string");
+    const voidTypeId = mkTypeId(NativeType.Void, "void");
+
+    const widgetTypeId = mkTypeId(NativeType.Struct, "Widget");
+    if (!types.get(widgetTypeId)) {
+      types.addStructType("Widget", {
+        fields: List.from([{ name: "id", typeId: numTypeId }]),
+        fieldGetter: (source, fieldName) => {
+          if (fieldName === "id") return mkNumberValue((source.native as { id: number }).id);
+          return undefined;
+        },
+        methods: List.from([
+          {
+            name: "fetchData",
+            params: List.from([{ name: "url", typeId: strTypeId }]),
+            returnTypeId: strTypeId,
+            isAsync: true,
+          },
+          {
+            name: "getValue",
+            params: List.from([{ name: "key", typeId: strTypeId }]),
+            returnTypeId: numTypeId,
+          },
+        ]),
+      });
+    }
+
+    const emptyCallDef = {
+      callSpec: { type: "bag" as const, items: [] },
+      argSlots: List.empty<never>(),
+    };
+
+    if (!fns.get("Widget.fetchData")) {
+      fns.register(
+        "Widget.fetchData",
+        true,
+        { exec: (_ctx: ExecutionContext, _args: MapValue, _handleId: number) => {} },
+        emptyCallDef
+      );
+    }
+
+    if (!fns.get("Widget.getValue")) {
+      fns.register(
+        "Widget.getValue",
+        false,
+        {
+          exec: (_ctx: ExecutionContext, args: MapValue) => {
+            const key = (args.v.get(1) as StringValue).v;
+            if (key === "score") return mkNumberValue(99);
+            return mkNumberValue(0);
+          },
+        },
+        emptyCallDef
+      );
+    }
+
+    ambientSource = buildAmbientDeclarations();
+  });
+
+  function compileAndLinkAsync(source: string) {
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Compile errors: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const brainProg = mkEmptyBrainProgram();
+    const { linkedProgram, userLinks } = linkUserPrograms(brainProg, [result.program!]);
+    return { linkedProgram, linkInfo: userLinks[0], program: result.program! };
+  }
+
+  test("async actuator with one await -> fiber suspends, handle resolves on completion", () => {
+    const source = `
+import { Actuator, type Context, type Widget } from "mindcraft";
+
+export default Actuator({
+  name: "patrol-async",
+  params: {
+    w: { type: "Widget" },
+  },
+  async onExecute(ctx: Context, params: { w: Widget }): Promise<void> {
+    await params.w.fetchData("target");
+  },
+});
+`;
+    const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(linkedProgram, handles);
+    const scheduler = mkScheduler();
+    const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
+
+    const outerHandleId = handles.createPending();
+    const args = new ValueDict();
+    args.set(0, mkNativeStructValue("Widget", { id: 1 }));
+    const argsMap: MapValue = { t: NativeType.Map, typeId: "map:<args>", v: args };
+
+    const ctx = mkCtx({
+      currentCallSiteId: 1,
+      callSiteState: new Dict<number, unknown>(),
+    });
+
+    wrapper.exec(ctx, argsMap, outerHandleId);
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.PENDING, "outer handle should still be pending");
+
+    const innerHandleId = outerHandleId + 1;
+    handles.resolve(innerHandleId, mkStringValue("done"));
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.RESOLVED, "outer handle should be resolved");
+    assert.equal(handles.get(outerHandleId)!.result!.t, NativeType.Nil);
+  });
+
+  test("local variable assigned before await, read after -> correct value", () => {
+    const source = `
+import { Sensor, type Context, type Widget } from "mindcraft";
+
+export default Sensor({
+  name: "local-across-await",
+  output: "string",
+  params: {
+    w: { type: "Widget" },
+  },
+  async onExecute(ctx: Context, params: { w: Widget }): Promise<string> {
+    const prefix = "hello-";
+    const fetched = await params.w.fetchData("url");
+    return prefix + fetched;
+  },
+});
+`;
+    const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(linkedProgram, handles);
+    const scheduler = mkScheduler();
+    const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
+
+    const outerHandleId = handles.createPending();
+    const args = new ValueDict();
+    args.set(0, mkNativeStructValue("Widget", { id: 1 }));
+    const argsMap: MapValue = { t: NativeType.Map, typeId: "map:<args>", v: args };
+
+    const ctx = mkCtx({
+      currentCallSiteId: 1,
+      callSiteState: new Dict<number, unknown>(),
+    });
+
+    wrapper.exec(ctx, argsMap, outerHandleId);
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.PENDING);
+
+    const innerHandleId = outerHandleId + 1;
+    handles.resolve(innerHandleId, mkStringValue("world"));
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.RESOLVED);
+    const result = handles.get(outerHandleId)!.result as StringValue;
+    assert.equal(result.v, "hello-world");
+  });
+
+  test("callsite var modified before await, read after -> correct value", () => {
+    const source = `
+import { Sensor, type Context, type Widget } from "mindcraft";
+
+let counter = 0;
+
+export default Sensor({
+  name: "callsite-across-await",
+  output: "number",
+  params: {
+    w: { type: "Widget" },
+  },
+  async onExecute(ctx: Context, params: { w: Widget }): Promise<number> {
+    counter = counter + 10;
+    await params.w.fetchData("url");
+    return counter;
+  },
+});
+`;
+    const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(linkedProgram, handles);
+    const scheduler = mkScheduler();
+    const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
+
+    const callSiteState = new Dict<number, unknown>();
+    const ctx = mkCtx({ currentCallSiteId: 1, callSiteState });
+
+    const outerHandleId = handles.createPending();
+    const args = new ValueDict();
+    args.set(0, mkNativeStructValue("Widget", { id: 1 }));
+    const argsMap: MapValue = { t: NativeType.Map, typeId: "map:<args>", v: args };
+
+    wrapper.exec(ctx, argsMap, outerHandleId);
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.PENDING);
+
+    const innerHandleId = outerHandleId + 1;
+    handles.resolve(innerHandleId, mkStringValue("done"));
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.RESOLVED);
+    const result = handles.get(outerHandleId)!.result as NumberValue;
+    assert.equal(result.v, 10);
+  });
+
+  test("async sensor returning a value after await -> handle resolves with return value", () => {
+    const source = `
+import { Sensor, type Context, type Widget } from "mindcraft";
+
+export default Sensor({
+  name: "fetch-return",
+  output: "string",
+  params: {
+    w: { type: "Widget" },
+  },
+  async onExecute(ctx: Context, params: { w: Widget }): Promise<string> {
+    const result = await params.w.fetchData("data-url");
+    return result;
+  },
+});
+`;
+    const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(linkedProgram, handles);
+    const scheduler = mkScheduler();
+    const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
+
+    const outerHandleId = handles.createPending();
+    const args = new ValueDict();
+    args.set(0, mkNativeStructValue("Widget", { id: 1 }));
+    const argsMap: MapValue = { t: NativeType.Map, typeId: "map:<args>", v: args };
+
+    const ctx = mkCtx({
+      currentCallSiteId: 1,
+      callSiteState: new Dict<number, unknown>(),
+    });
+
+    wrapper.exec(ctx, argsMap, outerHandleId);
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.PENDING);
+
+    const innerHandleId = outerHandleId + 1;
+    handles.resolve(innerHandleId, mkStringValue("fetched-value"));
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.RESOLVED);
+    const result = handles.get(outerHandleId)!.result as StringValue;
+    assert.equal(result.v, "fetched-value");
   });
 });

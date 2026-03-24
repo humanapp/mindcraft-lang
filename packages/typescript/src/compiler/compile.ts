@@ -133,6 +133,7 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
     numCallsiteVars: programResult.numCallsiteVars,
     entryFuncId: programResult.entryFuncId,
     initFuncId: programResult.initFuncId,
+    execIsAsync: descriptor.execIsAsync,
     lifecycleFuncIds: {
       onPageEntered: programResult.onPageEnteredWrapperId,
     },

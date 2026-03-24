@@ -943,8 +943,12 @@ actuator that suspends across multiple ticks.
 
 For sync tiles, the spawned fiber runs to completion within the current tick via
 `vm.spawnFiber()` + `vm.runFiber()` and the handle resolves immediately. The calling
-fiber resumes in the same tick -- no scheduling delay occurs. Async tiles (Phase 20+)
-will need a different dispatch strategy that integrates with the scheduler.
+fiber resumes in the same tick -- no scheduling delay occurs. Async tiles use a
+separate dispatch path (`execAsync`) that detects `VmStatus.WAITING` from `runFiber()`
+and subscribes to `vm.handles.events.on("completed")` to resume the fiber when the
+inner handle resolves. Multiple await points chain via recursive listener
+registration. See `authored-function.ts` for the implementation.
+(Updated 2026-03-24: async dispatch implemented in Phase 20.)
 
 ### Entry functions, callsites, and fibers
 
