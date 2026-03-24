@@ -165,6 +165,11 @@ export class List<T extends defined> implements ReadonlyList<T> {
     }
     return out;
   }
+  swap(i: number, j: number): void {
+    const tmp = this.xs[i];
+    this.xs[i] = this.xs[j];
+    this.xs[j] = tmp;
+  }
   sort(compareFn?: (a: T, b: T) => number): this {
     type CompareFn<T> = (a: T, b: T) => number;
     type Item<T> = { v: T | undefined; i: number };

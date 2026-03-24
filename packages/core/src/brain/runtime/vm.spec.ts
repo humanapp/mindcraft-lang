@@ -1249,6 +1249,71 @@ describe("VM -- list operations", () => {
       assert.equal((result.result as NumberValue).v, 20);
     }
   });
+
+  test("LIST_SWAP swaps elements at two indices", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.LIST_NEW },
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.LIST_PUSH },
+          { op: Op.DUP },
+          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.PUSH_CONST, a: 4 },
+          { op: Op.LIST_SWAP },
+          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.LIST_GET },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30), mkNumberValue(0), mkNumberValue(2)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 30);
+    }
+  });
+
+  test("LIST_SWAP is void (does not push a result)", () => {
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.LIST_NEW },
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.LIST_PUSH },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.LIST_PUSH },
+          { op: Op.DUP },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.LIST_SWAP },
+          { op: Op.LIST_LEN },
+          { op: Op.RET },
+        ]),
+      ],
+      [mkNumberValue(10), mkNumberValue(20), mkNumberValue(0), mkNumberValue(1)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 2);
+    }
+  });
 });
 
 // ---- Map operations ----

@@ -127,6 +127,9 @@ export function emitFunction(
       case "ListInsert":
         emitter.listInsert();
         break;
+      case "ListSwap":
+        emitter.listSwap();
+        break;
       case "GetField": {
         const fieldIdx = pool.add(mkStringValue(node.fieldName));
         emitter.pushConst(fieldIdx);

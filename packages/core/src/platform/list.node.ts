@@ -98,6 +98,11 @@ export class List<T> implements ReadonlyList<T> {
   slice(start?: number, end?: number): List<T> {
     return new List(this.xs.slice(start, end));
   }
+  swap(i: number, j: number): void {
+    const tmp = this.xs[i]!;
+    this.xs[i] = this.xs[j]!;
+    this.xs[j] = tmp;
+  }
   sort(fn?: (a: T, b: T) => number): this {
     this.xs.sort(fn);
     return this;

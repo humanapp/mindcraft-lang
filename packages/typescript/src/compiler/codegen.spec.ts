@@ -6199,4 +6199,235 @@ export default Sensor({
       assert.equal((removed.v.get(1) as NumberValue).v, 30);
     }
   });
+
+  test(".sort((a, b) => a - b) sorts ascending", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-sort-asc",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [3, 1, 2];
+    return nums.sort((a: number, b: number): number => a - b);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(isListValue(runResult.result!));
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 3);
+      assert.equal((list.v.get(0) as NumberValue).v, 1);
+      assert.equal((list.v.get(1) as NumberValue).v, 2);
+      assert.equal((list.v.get(2) as NumberValue).v, 3);
+    }
+  });
+
+  test(".sort((a, b) => b - a) sorts descending", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-sort-desc",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [3, 1, 2];
+    return nums.sort((a: number, b: number): number => b - a);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(isListValue(runResult.result!));
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 3);
+      assert.equal((list.v.get(0) as NumberValue).v, 3);
+      assert.equal((list.v.get(1) as NumberValue).v, 2);
+      assert.equal((list.v.get(2) as NumberValue).v, 1);
+    }
+  });
+
+  test(".sort() on already-sorted list is unchanged", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-sort-sorted",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [1, 2, 3];
+    return nums.sort((a: number, b: number): number => a - b);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(isListValue(runResult.result!));
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 3);
+      assert.equal((list.v.get(0) as NumberValue).v, 1);
+      assert.equal((list.v.get(1) as NumberValue).v, 2);
+      assert.equal((list.v.get(2) as NumberValue).v, 3);
+    }
+  });
+
+  test(".sort() on single-element list is unchanged", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-sort-single",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [42];
+    return nums.sort((a: number, b: number): number => a - b);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(isListValue(runResult.result!));
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 1);
+      assert.equal((list.v.get(0) as NumberValue).v, 42);
+    }
+  });
+
+  test(".sort() on empty list is unchanged", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-sort-empty",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [];
+    return nums.sort((a: number, b: number): number => a - b);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(isListValue(runResult.result!));
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 0);
+    }
+  });
+
+  test(".sort() without comparator emits diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-sort-no-cmp",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [3, 1, 2];
+    return nums.sort();
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.message.includes(".sort() requires a comparator function")));
+  });
+
+  test(".sort() mutates the original array", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-sort-mutates",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const nums: NumberList = [3, 1, 2];
+    nums.sort((a: number, b: number): number => a - b);
+    return nums;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(isListValue(runResult.result!));
+      const list = runResult.result as ListValue;
+      assert.equal(list.v.size(), 3);
+      assert.equal((list.v.get(0) as NumberValue).v, 1);
+      assert.equal((list.v.get(1) as NumberValue).v, 2);
+      assert.equal((list.v.get(2) as NumberValue).v, 3);
+    }
+  });
 });

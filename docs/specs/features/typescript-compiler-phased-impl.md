@@ -38,14 +38,17 @@ not survive. Keep this doc current.
 ## Current State
 
 - (Updated 2026-03-24) Phases 0-14 are complete, plus the Array method lowering
-  detour and the VM list mutation ops detour. Phase 14 added `for...of` loop
+  detour, the VM list mutation ops detour, and the Array.sort detour. Phase 14 added `for...of` loop
   desugaring and removed the custom module-scoped `Array<T>` from ambient
   declarations. The Array method detour added lowering for `includes`, `some`,
   `every`, `find`, `concat`, `join`, `reverse`, and `slice`. The list mutation
   ops detour added 4 new VM opcodes (`LIST_POP`, `LIST_SHIFT`, `LIST_REMOVE`,
   `LIST_INSERT`) and compiler lowering for `pop`, `shift`, `unshift`, and
-  `splice`. Only `sort`, `fill`, and `copyWithin` still produce compile-time
-  diagnostics. All other unrecognized array methods also produce diagnostics. The ambient header augments the global `Array<T>` with
+  `splice`. The sort detour added the `LIST_SWAP` opcode (Op 99) and
+  `lowerListSort` which emits an insertion sort as bytecode using
+  `CALL_INDIRECT` for the comparator callback. Only `fill` and `copyWithin`
+  still produce compile-time diagnostics. All other unrecognized array methods
+  also produce diagnostics. The ambient header augments the global `Array<T>` with
   `find`, `findIndex`, and `includes` signatures (ES2015/ES2016 methods not in
   `lib.es5.d.ts`). `NonNullExpression` and `AsExpression` are now handled in
   `lowerExpression`. `break`/`continue` work via
@@ -201,7 +204,7 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
   `IrJump`, `IrJumpIfFalse`, `IrJumpIfTrue`, `IrDup`), multi-function support
   (`IrCall`, `IrLoadCallsiteVar`, `IrStoreCallsiteVar`), struct/list construction
   (`IrStructNew`, `IrStructSet`, `IrListNew`, `IrListPush`), list operations
-  (`IrListLen`, `IrListGet`, `IrListSet`, `IrSwap`), function references
+  (`IrListLen`, `IrListGet`, `IrListSet`, `IrSwap`, `IrListSwap`), function references
   (`IrPushFunctionRef`, `IrCallIndirect`, `IrMakeClosure`, `IrLoadCapture`),
   and type checking (`IrTypeCheck`).
 - `src/compiler/lowering.ts` exports `lowerProgram()` which compiles all file-level
@@ -225,7 +228,7 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
   `lowerClosureExpression` + `findCapturedVariables`), indirect calls
   (`IrCallIndirect`), element access (`arr[i]` via `lowerElementAccess()`),
   element assignment (`arr[i] = val` via `lowerElementAccessAssignment()`), list
-  methods (`.push`, `.indexOf`, `.filter`, `.map`, `.forEach` via
+  methods (`.push`, `.indexOf`, `.filter`, `.map`, `.forEach`, `.sort` via
   `lowerListMethodCall`), struct method dispatch (`lowerStructMethodCall` for
   methods declared via `StructMethodDecl`, e.g., `ctx.self.getVariable()`),
   `.length` on list-typed expressions (via `IrListLen`),
@@ -3805,7 +3808,8 @@ surfaces compile-time diagnostics for the rest.
 **Context:** The Array method lowering detour (above) deferred `pop`, `shift`,
 `unshift`, and `splice` because they require in-place list mutation, which the VM
 did not support. This detour adds 4 new VM opcodes and the corresponding compiler
-IR nodes, emission, and lowering. `sort`, `fill`, and `copyWithin` remain deferred.
+IR nodes, emission, and lowering. `sort` was implemented in a subsequent detour;
+`fill` and `copyWithin` remain deferred.
 
 **Planned vs actual deliverables:**
 
@@ -3822,7 +3826,7 @@ IR nodes, emission, and lowering. `sort`, `fill`, and `copyWithin` remain deferr
 | `lowerListShift`                         | Done     | Emits list + `ListShift`                                   |
 | `lowerListUnshift`                       | Done     | Emits list + push 0 + arg + `ListInsert`, then len         |
 | `lowerListSplice`                        | Done     | Loop-based removal + optional insertion items              |
-| `sort`, `fill`, `copyWithin`            | Deferred | Still produce compile-time diagnostics                     |
+| `fill`, `copyWithin`                     | Deferred | Still produce compile-time diagnostics                     |
 | VM unit tests (vm.spec.ts)               | Done     | 6 tests for the 4 new opcodes                              |
 | End-to-end tests (codegen.spec.ts)       | Done     | 5 tests: pop, pop-empty, shift, unshift, splice            |
 
@@ -3848,8 +3852,6 @@ IR nodes, emission, and lowering. `sort`, `fill`, and `copyWithin` remain deferr
 
 **Still deferred:**
 
-- `sort()` -- needs callback-based execution (the VM has no mechanism to invoke a
-  user-provided comparison function from within an opcode)
 - `fill()`, `copyWithin()` -- low priority, can be added as needed
 
 **Test counts:**

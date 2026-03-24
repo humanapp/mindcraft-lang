@@ -299,6 +299,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.LIST_INSERT });
   }
 
+  /** Swap elements at indices i and j in list (void). */
+  listSwap(): void {
+    this.emit({ op: Op.LIST_SWAP });
+  }
+
   // ==========================================
   // Map operations
   // ==========================================

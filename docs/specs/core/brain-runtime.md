@@ -281,10 +281,15 @@ Opcodes are grouped by category:
 | 50-51   | Async         |
 | 60-62   | Exceptions    |
 | 70-73   | Boundaries    |
-| 90-94   | Lists         |
+| 90-99   | Lists         |
 | 100-104 | Maps          |
 | 110-112 | Structs       |
 | 120-121 | Fields        |
+| 130-131 | Locals        |
+| 140-141 | Callsite vars |
+| 150     | Type check    |
+| 160     | Indirect call |
+| 170-171 | Closures      |
 
 ```typescript
 enum Op {
@@ -317,6 +322,11 @@ enum Op {
   LIST_GET = 92,
   LIST_SET = 93,
   LIST_LEN = 94,
+  LIST_POP = 95,
+  LIST_SHIFT = 96,
+  LIST_REMOVE = 97,
+  LIST_INSERT = 98,
+  LIST_SWAP = 99,
   MAP_NEW = 100,
   MAP_SET = 101,
   MAP_GET = 102,
@@ -327,6 +337,14 @@ enum Op {
   STRUCT_SET = 112,
   GET_FIELD = 120,
   SET_FIELD = 121,
+  LOAD_LOCAL = 130,
+  STORE_LOCAL = 131,
+  LOAD_CALLSITE_VAR = 140,
+  STORE_CALLSITE_VAR = 141,
+  TYPE_CHECK = 150,
+  CALL_INDIRECT = 160,
+  MAKE_CLOSURE = 170,
+  LOAD_CAPTURE = 171,
 }
 ```
 
@@ -1287,6 +1305,16 @@ else:
 
 **LIST_LEN:** `list = pop(); push(mkNumberValue(list.v.size()))`
 
+**LIST_POP:** `list = pop(); val = list.v.pop(); push(val ?? NIL)`
+
+**LIST_SHIFT:** `list = pop(); val = list.v.shift(); push(val ?? NIL)`
+
+**LIST_REMOVE:** `idx = pop(); list = pop(); val = list.v.remove(floor(idx)); push(val ?? NIL)`
+
+**LIST_INSERT:** `val = pop(); idx = pop(); list = pop(); list.v.insert(floor(idx), val)` (void)
+
+**LIST_SWAP:** `j = pop(); i = pop(); list = pop(); list.v.swap(floor(i), floor(j))` (void)
+
 **MAP_NEW:** `push(fiber, { t: NativeType.Map, typeId, v: new ValueDict() })`
 
 **MAP_SET:** `val = pop(); key = pop(); map = pop(); map.v.set(extractKey(key), val); push(map)`
@@ -1377,7 +1405,7 @@ interface VmConfig {
 - Stack underflow detection.
 - Variable persistence across multiple runFiber calls (budget yields).
 - Deep copy on STORE_VAR: mutating original struct does not affect stored variable.
-- List operations: NEW, PUSH, GET, SET, LEN.
+- List operations: NEW, PUSH, GET, SET, LEN, POP, SHIFT, REMOVE, INSERT, SWAP.
 - Map operations: NEW, SET, GET, HAS, DELETE.
 - Struct operations: NEW, GET, SET with fieldGetter/fieldSetter hooks.
 - GET_FIELD / SET_FIELD: polymorphic dispatch.
@@ -2131,6 +2159,11 @@ and conversions).
 | 92  | LIST_GET  | -      | -   | -   | `[list, idx] -> [val]`       | Get by index; NIL if OOB |
 | 93  | LIST_SET  | -      | -   | -   | `[list, idx, val] -> [list]` | Set by index (mutates)   |
 | 94  | LIST_LEN  | -      | -   | -   | `[list] -> [num]`            | Push list length         |
+| 95  | LIST_POP  | -      | -   | -   | `[list] -> [val]`            | Pop last item; NIL if empty |
+| 96  | LIST_SHIFT| -      | -   | -   | `[list] -> [val]`            | Shift first item; NIL if empty |
+| 97  | LIST_REMOVE| -     | -   | -   | `[list, idx] -> [val]`       | Remove at index; NIL if OOB |
+| 98  | LIST_INSERT| -     | -   | -   | `[list, idx, val] -> []`     | Insert at index (void)   |
+| 99  | LIST_SWAP | -      | -   | -   | `[list, i, j] -> []`        | Swap elements (void)     |
 
 ### Map Operations
 
@@ -2156,6 +2189,39 @@ and conversions).
 | --- | --------- | --- | --- | --- | -------------------------------------- | ----------------------- |
 | 120 | GET_FIELD | -   | -   | -   | `[source, fieldName] -> [val]`         | Polymorphic field read  |
 | 121 | SET_FIELD | -   | -   | -   | `[source, fieldName, val] -> [source]` | Polymorphic field write |
+
+### Local Variables
+
+| Op  | Name        | a     | b   | c   | Stack Effect      | Behavior                   |
+| --- | ----------- | ----- | --- | --- | ----------------- | -------------------------- |
+| 130 | LOAD_LOCAL  | index | -   | -   | `[] -> [val]`     | Push local from frame slot |
+| 131 | STORE_LOCAL | index | -   | -   | `[val] -> []`     | Pop into frame slot        |
+
+### Callsite Variables
+
+| Op  | Name               | a     | b   | c   | Stack Effect  | Behavior                            |
+| --- | ------------------ | ----- | --- | --- | ------------- | ----------------------------------- |
+| 140 | LOAD_CALLSITE_VAR  | index | -   | -   | `[] -> [val]` | Push callsite-persistent variable   |
+| 141 | STORE_CALLSITE_VAR | index | -   | -   | `[val] -> []` | Pop into callsite-persistent slot   |
+
+### Type Introspection
+
+| Op  | Name       | a      | b   | c   | Stack Effect       | Behavior                          |
+| --- | ---------- | ------ | --- | --- | ------------------ | --------------------------------- |
+| 150 | TYPE_CHECK | typeId | -   | -   | `[val] -> [bool]`  | Push true if value.t === typeId   |
+
+### Indirect Calls
+
+| Op  | Name          | a    | b   | c   | Stack Effect                       | Behavior                         |
+| --- | ------------- | ---- | --- | --- | ---------------------------------- | -------------------------------- |
+| 160 | CALL_INDIRECT | argc | -   | -   | `[func, arg1, ..., argN] -> [val]` | Call function value on stack     |
+
+### Closures
+
+| Op  | Name         | a      | b            | c   | Stack Effect                        | Behavior                          |
+| --- | ------------ | ------ | ------------ | --- | ----------------------------------- | --------------------------------- |
+| 170 | MAKE_CLOSURE | funcId | captureCount | -   | `[cap1, ..., capN] -> [func]`      | Create closure with captured vals |
+| 171 | LOAD_CAPTURE | index  | -            | -   | `[] -> [val]`                       | Push captured value from closure  |
 
 ---
 

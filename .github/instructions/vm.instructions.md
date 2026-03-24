@@ -26,10 +26,15 @@ The brain VM (`packages/core/src/brain/runtime/`) is a stack-based bytecode virt
 | 50-51   | Async      | `AWAIT`, `YIELD`                                            |
 | 60-62   | Exceptions | `TRY`, `END_TRY`, `THROW`                                   |
 | 70-73   | Boundaries | `WHEN_START`, `WHEN_END`, `DO_START`, `DO_END`              |
-| 90-98   | Lists      | `LIST_NEW`, `LIST_PUSH`, `LIST_GET`, `LIST_SET`, `LIST_LEN`, `LIST_POP`, `LIST_SHIFT`, `LIST_REMOVE`, `LIST_INSERT` |
+| 90-99   | Lists      | `LIST_NEW`, `LIST_PUSH`, `LIST_GET`, `LIST_SET`, `LIST_LEN`, `LIST_POP`, `LIST_SHIFT`, `LIST_REMOVE`, `LIST_INSERT`, `LIST_SWAP` |
 | 100-104 | Maps       | `MAP_NEW`, `MAP_SET`, `MAP_GET`, `MAP_HAS`, `MAP_DELETE`    |
 | 110-112 | Structs    | `STRUCT_NEW`, `STRUCT_GET`, `STRUCT_SET`                    |
 | 120-121 | Fields     | `GET_FIELD`, `SET_FIELD`                                    |
+| 130-131 | Locals     | `LOAD_LOCAL`, `STORE_LOCAL`                                 |
+| 140-141 | Callsite   | `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR`                   |
+| 150     | Types      | `TYPE_CHECK`                                                |
+| 160     | Indirect   | `CALL_INDIRECT`                                             |
+| 170-171 | Closures   | `MAKE_CLOSURE`, `LOAD_CAPTURE`                              |
 
 ## HOST_CALL Execution
 

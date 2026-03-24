@@ -564,6 +564,8 @@ export class VM implements IVM {
           return this.execListRemove(fiber, frame);
         case Op.LIST_INSERT:
           return this.execListInsert(fiber, frame);
+        case Op.LIST_SWAP:
+          return this.execListSwap(fiber, frame);
         case Op.MAP_NEW:
           return this.execMapNew(fiber, ins, frame);
         case Op.MAP_SET:
@@ -1185,6 +1187,24 @@ export class VM implements IVM {
     }
     const idx = MathOps.floor(index.v);
     list.v.insert(idx, value);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execListSwap(fiber: Fiber, frame: Frame): undefined {
+    const j = this.pop(fiber);
+    const i = this.pop(fiber);
+    const list = this.pop(fiber);
+    if (!isListValue(list)) {
+      throw new Error("LIST_SWAP: requires list");
+    }
+    if (!isNumberValue(i)) {
+      throw new Error("LIST_SWAP: index i must be number");
+    }
+    if (!isNumberValue(j)) {
+      throw new Error("LIST_SWAP: index j must be number");
+    }
+    list.v.swap(MathOps.floor(i.v), MathOps.floor(j.v));
     frame.pc++;
     return undefined;
   }

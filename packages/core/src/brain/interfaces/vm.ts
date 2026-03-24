@@ -286,6 +286,7 @@ export enum Op {
   LIST_SHIFT,
   LIST_REMOVE,
   LIST_INSERT,
+  LIST_SWAP,
 
   // Map operations
   MAP_NEW = 100,

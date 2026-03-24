@@ -31,6 +31,7 @@ export type IrNode =
   | IrListShift
   | IrListRemove
   | IrListInsert
+  | IrListSwap
   | IrTypeCheck
   | IrLabel
   | IrJump
@@ -167,6 +168,10 @@ export interface IrListRemove {
 
 export interface IrListInsert {
   kind: "ListInsert";
+}
+
+export interface IrListSwap {
+  kind: "ListSwap";
 }
 
 export interface IrTypeCheck {

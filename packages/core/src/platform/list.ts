@@ -41,6 +41,7 @@ export declare class List<T> implements ReadonlyList<T> {
   reduce(fn: (acc: T, v: T, i: number) => T): T;
   reduce<U>(fn: (acc: U, v: T, i: number) => U, initial: U): U;
   slice(start?: number, end?: number): List<T>;
+  swap(i: number, j: number): void;
   sort(fn?: (a: T, b: T) => number): this;
   concat(other: List<T>): List<T>;
   some(fn: (v: T, i: number) => boolean): boolean;
