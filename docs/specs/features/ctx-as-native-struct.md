@@ -1,6 +1,6 @@
 # Context as Native-Backed Struct
 
-**Status:** Proposed
+**Status:** Implemented
 **Created:** 2026-03-23
 **Related:** [user-authored-sensors-actuators.md](user-authored-sensors-actuators.md), [typescript-compiler-phased-impl.md](typescript-compiler-phased-impl.md) (Phase 13)
 

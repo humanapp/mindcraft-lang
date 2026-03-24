@@ -145,7 +145,9 @@ Key properties of this shape:
   are derived from the `params` descriptor.
   (Updated 2026-03-20: renamed from `exec` to `onExecute` for consistency with `onPageEntered`.)
 - **`ctx` is the injected context.** Not a global. Not an import. It is a function
-  parameter whose type is known at compile time.
+  parameter whose type is known at compile time. At runtime, ctx is a native-backed
+  `StructValue` wrapping the `ExecutionContext`, occupying local slot 0.
+  (Updated 2026-03-24: ctx is now a real runtime value, not a compile-time phantom.)
 - **`async onExecute` compiles to HOST_CALL_ASYNC + AWAIT.** The compiler detects `async` on
   `onExecute` and emits async bytecode. Both sensors and actuators may be sync or async.
   The runtime uses one unified invocation model regardless (see section C).
@@ -512,24 +514,26 @@ StoreLocal(result_index)
 User-defined helper functions compile to separate `FunctionBytecode` entries. Calls use
 the `CALL` instruction with the function index and argument count.
 
-**Context method calls (host calls):**
+**Context method calls (struct method dispatch):**
+
+(Updated 2026-03-24: revised to reflect the ctx-as-native-struct and struct method
+dispatch implementation. Context methods are now dispatched via the general-purpose
+`lowerStructMethodCall()` mechanism. The struct value is passed as the first argument.)
 
 ```typescript
 // ctx.engine.queryNearby(pos, range)
 // ->
+LoadLocal(0);              // ctx (local slot 0)
+GetField("engine");        // EngineContext struct
 <push pos>
 <push range>
-HostCall(queryNearby_fnId, 2, callSiteId)
+HostCallArgs("EngineContext.queryNearby", 3)  // struct + 2 args
 ```
 
-Calls to methods on `ctx`, `ctx.engine`, or `ctx.self` are resolved at compile time to
-host function IDs. The compiler maintains a mapping from known API method names to
-`BrainFunctionEntry` IDs. Unknown method calls produce a compile error.
-
-Note: At bytecode level, `HOST_CALL` pops a single `MapValue` from the stack (arguments
-pre-packed by the compiler), while `HOST_CALL_ARGS` pops `argc` individual values. The
-IR `HostCall(fnId, argc, callSiteId)` will lower to `HOST_CALL_ARGS` for user-authored
-code since that avoids constructing a MapValue wrapper for each call.
+Calls to methods on context structs are resolved at compile time. The compiler checks
+the receiver's struct type definition for a matching method, then looks up the
+`"TypeName.methodName"` host function in the FunctionRegistry. The struct value is
+pushed as the first argument. Unknown method calls produce a compile error.
 
 **Property access:**
 
@@ -852,30 +856,12 @@ produces the `BrainProgram` and before `new VM(program, handles)`:
 The linker already implements these via the `funcOffset` applied to both instruction
 operands and constant pool entries.)
 
-The HOST_CALL exec wrapper for user tiles captures a mutable reference cell that the
-linker populates:
+The HOST_CALL exec wrapper for user tiles is created by `createUserTileExec()`:
 
-```typescript
-const entryRef = { funcId: -1 };
-// linker sets entryRef.funcId = N + userProgram.entryPoint
-
-exec: (ctx, args, handleId) => {
-  const callSiteId = ctx.currentCallSiteId!;
-  let vars = getCallSiteState<List<Value>>(ctx);
-  if (!vars) {
-    vars = allocateCallsiteVars(userProgram.callsiteVarCount);
-    setCallSiteState(ctx, vars);
-    // run module init function to set initial values
-  }
-  const fiberId = scheduler.spawn(entryRef.funcId, mapArgsToList(args), ctx);
-  const fiber = scheduler.getFiber(fiberId)!;
-  fiber.callsiteVars = vars;
-};
-```
-
-(Updated 2026-03-21: The Phase 8 implementation does not use a mutable reference cell
-or `scheduler.spawn()`. Instead, `createUserTileExec()` takes the resolved
-`linkedProgram` and `linkInfo` (with `linkedEntryFuncId`, `linkedInitFuncId`,
+(Updated 2026-03-24: revised to reflect the ctx-as-native-struct implementation.
+The exec wrapper creates a `StructValue` from the `ExecutionContext` and passes it
+as the first fiber argument. `createUserTileExec()` takes the resolved `linkedProgram`
+and `linkInfo` (with `linkedEntryFuncId`, `linkedInitFuncId`,
 `linkedOnPageEnteredFuncId` already remapped by the linker) and uses
 `vm.spawnFiber()` + `vm.runFiber()` for inline execution. On first allocation, only
 the module init function (`linkedInitFuncId`) runs -- not the full `onPageEntered`
@@ -908,39 +894,37 @@ Built-in tiles have native TypeScript `exec` functions:
 }
 ```
 
-User-authored tiles have a **VM-dispatch exec** that follows one unified invocation model
-regardless of whether the tile is a sensor or an actuator. The entry function ID used
-here is the **linked** ID (remapped after merging user bytecode into the brain program --
-see "Linking user-authored bytecode into the brain program" below):
+User-authored tiles have a **VM-dispatch exec** that creates a `StructValue` wrapping
+the `ExecutionContext` and passes it as the first argument to the user's bytecode.
+The entry function ID used here is the **linked** ID (remapped after merging user
+bytecode into the brain program -- see "Linking user-authored bytecode into the brain
+program" below):
+
+(Updated 2026-03-24: revised to reflect the ctx-as-native-struct implementation.
+The ctx `StructValue` is created via `mkNativeStructValue(ContextTypeIds.Context, ctx)`
+and passed as the first fiber argument. See
+`packages/typescript/src/runtime/authored-function.ts` for the current implementation.)
 
 ```typescript
 {
   exec: (ctx, args, handleId) => {
     let vars = getCallSiteState<List<Value>>(ctx);
     if (!vars) {
-      vars = allocateCallsiteVars(userProgram.callsiteVarCount);
+      vars = allocateCallsiteVars(userProgram.numCallsiteVars);
       setCallSiteState(ctx, vars);
+      // run module init function to set initial values
     }
-    const fiberId = scheduler.spawn(linkedEntryFuncId, mapArgsToList(args, userProgram.callDef), ctx);
-    const fiber = scheduler.getFiber(fiberId)!;
+    const ctxStruct = mkNativeStructValue(ContextTypeIds.Context, ctx);
+    const fiberArgs = hasParams ? List.from<Value>([ctxStruct, mapArgsToSlots(args)]) : List.from<Value>([ctxStruct]);
+    const childCtx = { ...ctx };
+    const fiberId = vm.spawnFiber(linkedEntryFuncId, fiberArgs, childCtx);
+    const fiber = vm.getFiber(fiberId);
     fiber.callsiteVars = vars;
-    scheduler.onFiberDone = (fid, result) => {
-      if (fid === fiberId) {
-        handles.resolve(handleId, result ?? VOID_VALUE);
-      }
-    };
+    vm.runFiber(fiberId);
+    handles.resolve(handleId, fiber.result ?? NIL_VALUE);
   };
 }
 ```
-
-(Updated 2026-03-21: The Phase 8 implementation uses `vm.spawnFiber()` +
-`vm.runFiber()` for inline synchronous execution rather than `scheduler.spawn()` +
-`scheduler.onFiberDone`. Sync tiles complete within the same HOST_CALL_ARGS_ASYNC
-dispatch and resolve the handle immediately via `handles.resolve(handleId, result ??
-NIL_VALUE)`. The `VOID_VALUE` reference above should be `NIL_VALUE`. Async tiles
-(Phase 20+) will need a different dispatch strategy that integrates with the
-scheduler. A shallow copy of `ExecutionContext` (`{ ...ctx }`) is created for each
-spawned fiber to avoid clobbering the brain fiber's context.)
 
 Every invocation of a user-authored tile:
 
@@ -957,12 +941,10 @@ delay occurs. This means a synchronous sensor executes with no observable overhe
 compared to a hypothetical inline path, while using the same code path as an async
 actuator that suspends across multiple ticks.
 
-(Updated 2026-03-21: The statement below is inaccurate for sync tiles. Phase 8 uses
-an inline execution path via `vm.spawnFiber()` + `vm.runFiber()` -- fibers are created
-and run to completion without going through the scheduler. This is a deliberate
-optimization for sync tiles. Async tiles will go through the scheduler.)
-There is no special-case inline or reentrant execution path. All user-authored tiles
-go through the scheduler.
+For sync tiles, the spawned fiber runs to completion within the current tick via
+`vm.spawnFiber()` + `vm.runFiber()` and the handle resolves immediately. The calling
+fiber resumes in the same tick -- no scheduling delay occurs. Async tiles (Phase 20+)
+will need a different dispatch strategy that integrates with the scheduler.
 
 ### Entry functions, callsites, and fibers
 
@@ -1465,8 +1447,16 @@ always refers to the currently compiled bytecode and metadata.
 
 Available to all user code regardless of host:
 
+(Updated 2026-03-24: The ambient declarations below show the full design-intent
+interface. The current implementation generates these interfaces dynamically from
+the type registry via `buildAmbientDeclarations()`. As of now, SelfContext has
+`getVariable` and `setVariable` registered as struct methods; `switchPage`,
+`restartPage`, `currentPageId`, and `previousPageId` are planned but not yet
+registered. Context fields (`time`, `dt`, `tick`, `self`, `engine`) are registered
+as struct fields with a fieldGetter.)
+
 ```typescript
-// In mindcraft-ambient.d.ts
+// Generated dynamically by buildAmbientDeclarations() from the type registry
 declare module "mindcraft" {
   interface Context {
     /** Current simulation time in milliseconds */
@@ -1505,12 +1495,34 @@ declare module "mindcraft" {
 
 ### Engine-specific context
 
-Each host app provides its own ambient declaration file that extends `EngineContext`:
+(Updated 2026-03-24: Host apps no longer provide a separate ambient declaration file.
+Instead, they register methods on EngineContext via `addStructMethods()` and register
+corresponding host functions via `functions.register()`. The ambient declarations are
+generated dynamically from the type registry. The example below shows the design-intent
+API surface for the sim app, which would be generated from registered struct methods.)
+
+Each host app declares its engine-specific capabilities by registering struct methods
+and host functions. For example, the sim app would register:
 
 ```typescript
-// sim-engine-ambient.d.ts (provided by the sim app)
-import "mindcraft";
+// In the sim app's brain initialization
+types.addStructMethods(ContextTypeIds.EngineContext, List.from([
+  { name: "queryNearby", params: List.from([...]), returnTypeId: entityListTypeId },
+  { name: "moveToward", params: List.from([...]), returnTypeId: CoreTypeIds.Void, isAsync: true },
+  { name: "getPosition", params: List.empty(), returnTypeId: positionTypeId },
+  { name: "queryEntities", params: List.from([...]), returnTypeId: entityListTypeId },
+]));
 
+// Each method also needs a corresponding host function registration:
+functions.register("EngineContext.queryNearby", false, { exec: ... }, callDef);
+functions.register("EngineContext.moveToward", true, { exec: ... }, callDef);
+// etc.
+```
+
+This produces the following generated ambient declarations:
+
+```typescript
+// Generated by buildAmbientDeclarations() -- not a static file
 declare module "mindcraft" {
   interface EngineContext {
     /** Query entities near a position */
@@ -1543,39 +1555,88 @@ declare module "mindcraft" {
 
 ### How this works at compile time
 
-The TypeScript program is created with both `mindcraft-ambient.d.ts` and the host-specific
-ambient file. The TypeScript checker validates user code against the combined API surface.
-If user code calls `ctx.engine.queryNearby(...)`, the checker verifies that `queryNearby`
-exists on `EngineContext` and that the arguments match.
+(Updated 2026-03-24: Ambient declarations are now generated dynamically from the type
+registry, not maintained as static `.d.ts` files. `buildAmbientDeclarations()` in
+`packages/typescript/src/compiler/ambient.ts` iterates over all registered types --
+including Context, SelfContext, EngineContext -- and generates TypeScript interfaces
+with fields and method signatures. Native-backed structs get branded readonly
+interfaces. Host apps register their EngineContext methods via `addStructMethods()`
+before calling `buildAmbientDeclarations()`, so the generated ambient automatically
+includes all engine-specific methods.)
+
+The TypeScript program is created with the generated ambient declarations as a virtual
+file. The TypeScript checker validates user code against the combined API surface. If
+user code calls `ctx.engine.queryNearby(...)`, the checker verifies that `queryNearby`
+exists on `EngineContext` and that the arguments match. Host apps can also pass
+additional `ambientSource` via `CompileOptions` for app-specific type augmentations.
 
 ### How this works at runtime
 
-Each method on `Context`, `SelfContext`, and `EngineContext` maps to a host function
-registered in the `FunctionRegistry`. The compiler knows these mappings:
+(Updated 2026-03-24: revised to reflect the ctx-as-native-struct implementation.
+Context, SelfContext, and EngineContext are native-backed structs registered in
+`packages/core/src/brain/runtime/context-types.ts`. The compile-time phantom approach
+described in earlier drafts has been removed.)
+
+Context, SelfContext, and EngineContext are **native-backed structs** registered in the
+core type system via `registerContextTypes()`. Each has a `fieldGetter` that extracts
+values from the underlying `ExecutionContext` at runtime. The ctx parameter is passed to
+`onExecute` as a real `StructValue` argument (local slot 0).
+
+**Property access** on Context uses `GET_FIELD`, the same opcode used for any struct:
 
 ```
-ctx.time          -> LOAD_VAR(time_var_index)  (or a known built-in)
-ctx.self.getVariable("x")  -> HOST_CALL(getVariable_fnId, ...)
-ctx.engine.queryNearby(p, r) -> HOST_CALL(queryNearby_fnId, ...)
+ctx.time          -> LoadLocal(0); GetField("time")    // fieldGetter returns mkNumberValue(execCtx.time)
+ctx.self          -> LoadLocal(0); GetField("self")    // fieldGetter returns mkNativeStructValue(SelfContext, execCtx)
+ctx.self.position -> LoadLocal(0); GetField("self"); GetField("position")
 ```
 
-The compiler maintains a **method resolution table** that maps `EngineContext` method names
-to host function IDs. Host apps register their engine methods as host functions during
-initialization:
+**Method calls** on context structs use the general-purpose struct method dispatch.
+Methods are declared via `StructMethodDecl` on the struct type and registered as host
+functions using the `"TypeName.methodName"` naming convention. The compiler's
+`lowerStructMethodCall()` resolves the receiver's struct type, looks up the method in
+the type definition's `methods` list, then emits `HOST_CALL_ARGS` with the struct
+value as the first argument:
+
+```
+ctx.self.getVariable("x")    -> LoadLocal(0); GetField("self"); PushConst("x");
+                                 HOST_CALL_ARGS("SelfContext.getVariable", argc=2)
+ctx.engine.queryNearby(p, r) -> LoadLocal(0); GetField("engine"); <push p>; <push r>;
+                                 HOST_CALL_ARGS("EngineContext.queryNearby", argc=3)
+```
+
+Host apps register their engine methods as struct methods via `addStructMethods()` and
+as host functions using the `"TypeName.methodName"` convention:
 
 ```typescript
 // In the sim app's brain initialization
+const { types, functions } = getBrainServices();
+
+types.addStructMethods(
+  ContextTypeIds.EngineContext,
+  List.from([
+    {
+      name: "queryNearby",
+      params: List.from([
+        { name: "position", typeId: positionTypeId },
+        { name: "range", typeId: CoreTypeIds.Number },
+      ]),
+      returnTypeId: entityListTypeId,
+    },
+  ]),
+);
+
 functions.register(
-  "engine.queryNearby",
+  "EngineContext.queryNearby",
   false,
   {
-    exec: (ctx, args) => {
-      const self = getSelf(ctx);
-      const pos = args.v.getStruct(0);
-      const range = args.v.getNumber(1);
+    exec: (_ctx, args) => {
+      const engineStruct = args.v.get(0) as StructValue;
+      const execCtx = engineStruct.native as ExecutionContext;
+      const pos = args.v.get(1) as StructValue;
+      const range = (args.v.get(2) as NumberValue).v;
       return mkListValue(
         entityListTypeId,
-        self.engine.queryNearby(toWorldPos(pos), range.v).map((e) => mkEntityStruct(e)),
+        execCtx.data.engine.queryNearby(toWorldPos(pos), range).map((e) => mkEntityStruct(e)),
       );
     },
   },
@@ -1585,14 +1646,22 @@ functions.register(
 
 ### Boundary between common and engine-specific
 
-| Layer            | Scope        | Examples                                     | Registration |
-| ---------------- | ------------ | -------------------------------------------- | ------------ |
-| Common Mindcraft | All hosts    | time, dt, tick, self.getVariable, switchPage | Core package |
-| Engine context   | Per host app | queryNearby, moveToward, getPosition         | Host app     |
+| Layer            | Scope        | Examples                                     | Registration                                     |
+| ---------------- | ------------ | -------------------------------------------- | ------------------------------------------------ |
+| Common Mindcraft | All hosts    | time, dt, tick, self.getVariable, switchPage | Core package via `registerContextTypes()`        |
+| Engine context   | Per host app | queryNearby, moveToward, getPosition         | Host app via `addStructMethods()` + `register()` |
 
-The common layer is registered by `registerCoreRuntimeComponents()`. Engine methods are
-registered by the host app during its brain initialization, exactly as the sim app
-currently registers its custom sensors/actuators.
+The common layer is registered by `registerContextTypes()` in
+`packages/core/src/brain/runtime/context-types.ts`. This registers Context, SelfContext,
+and EngineContext as native-backed structs with fieldGetters. SelfContext methods
+(`getVariable`, `setVariable`) are registered as host functions using the
+`"SelfContext.methodName"` naming convention.
+
+Engine methods are registered by the host app via two steps: (1) call
+`types.addStructMethods()` to declare the method signatures on EngineContext (so the
+compiler generates ambient type declarations), and (2) call `functions.register()` to
+register the host function implementation using the `"EngineContext.methodName"` naming
+convention.
 
 ### Sandboxing
 
@@ -1603,8 +1672,9 @@ function IDs. There is no mechanism for user bytecode to access arbitrary native
 call arbitrary functions, or escape the VM sandbox.
 
 The `ctx.data` pattern (where `ExecutionContext.data` holds the native engine entity) is
-invisible to user code. User code sees typed `Context` / `EngineContext` methods. The
-host function implementations unwrap `ctx.data` internally.
+invisible to user code. User code sees typed `Context` / `SelfContext` / `EngineContext`
+methods and fields. The fieldGetters and host function implementations unwrap the
+`ExecutionContext` from the struct's `native` backing internally.
 
 ---
 

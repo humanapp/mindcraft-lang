@@ -37,11 +37,20 @@ not survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-03-23) Phases 0-12c are complete; Phase 13 partially accepted.
-  GET_FIELD for struct property access is implemented and accepted.
-  The ctx compile-time phantom approach (HOST_CALL_ARGS rewriting for ctx.time,
-  ctx.self._, ctx.engine._) is implemented but not accepted -- will be replaced
-  by ctx-as-native-struct. See [ctx-as-native-struct.md](ctx-as-native-struct.md).
+- (Updated 2026-03-24) Phases 0-13 are complete. Phase 13's GET_FIELD for struct
+  property access is implemented. The ctx compile-time phantom approach from Phase 13
+  has been replaced by ctx-as-native-struct (implemented out of band). Context,
+  SelfContext, and EngineContext are now native-backed structs with fieldGetters,
+  registered in `packages/core/src/brain/runtime/context-types.ts`. Struct method
+  dispatch is implemented as a general-purpose feature via `lowerStructMethodCall()`.
+  The ctx `StructValue` occupies local slot 0 in `onExecute` and lifecycle functions.
+  The VM auto-injects it via `FunctionBytecode.injectCtxTypeId`: when set, `spawnFiber`
+  creates the ctx struct from `fiber.executionContext` and prepends it to the caller's
+  args, so the caller passes one fewer argument than `numParams`. This replaced the
+  previous manual wrapping in `authored-function.ts` (removed).
+  All compile-time phantom code (ctxSymbol tracking, isCtxExpression, isCtxSelfAccess,
+  isCtxEngineAccess, lowerCtxMethodCall, variable declaration skip) has been removed.
+  See [ctx-as-native-struct.md](ctx-as-native-struct.md).
   `packages/typescript` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
@@ -139,11 +148,14 @@ not survive. Keep this doc current.
 - `src/linker/linker.ts` exports `linkUserPrograms(brainProgram, userPrograms[])` which
   appends user functions to the brain program, remaps `CALL`, `PUSH_CONST`, and
   `MAKE_CLOSURE` operands, remaps `FunctionValue` constants (funcId + offset),
-  merges constants, and returns `LinkResult` with `linkedEntryFuncId`,
-  `linkedInitFuncId`, and `linkedOnPageEnteredFuncId` per user program.
+  merges constants, copies `injectCtxTypeId` through to linked functions, and
+  returns `LinkResult` with `linkedEntryFuncId`, `linkedInitFuncId`, and
+  `linkedOnPageEnteredFuncId` per user program.
 - `src/runtime/authored-function.ts` exports `createUserTileExec(linkedProgram,
 linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEntered`
   methods. Sync tiles execute inline via `vm.spawnFiber()` + `vm.runFiber()`.
+  The ctx `StructValue` is no longer created here -- the VM auto-injects it via
+  `FunctionBytecode.injectCtxTypeId` on the entry/lifecycle functions.
 - `src/runtime/registration-bridge.ts` exports `registerUserTile(linkInfo, hostFn)`
   performing three-step registration using `getBrainServices()`: param tile defs
   (with type resolution via `ITypeRegistry.resolveByName`), function entry,
@@ -181,7 +193,11 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
   function declarations, the `onExecute` body, the optional user `onPageEntered` body,
   a module init function (if callsite-persistent vars exist), and an always-generated
   `onPageEntered` wrapper into a `ProgramLoweringResult` containing multiple
-  `FunctionEntry` records. `ProgramLoweringResult` includes `onPageEnteredWrapperId`.
+  `FunctionEntry` records. `FunctionEntry` includes an optional `injectCtxTypeId`
+  field (set to `ContextTypeIds.Context` on `onExecute` and `onPageEntered-wrapper`
+  entries) that propagates through `emitFunction` to `FunctionBytecode`, enabling
+  the VM to auto-inject the ctx struct at slot 0.
+  `ProgramLoweringResult` includes `onPageEnteredWrapperId`.
   Supports `if`/`else`, `while`, C-style `for`, `break`/`continue`, block-scoped
   variable declarations, assignments (`=`, `+=`, `-=`, `*=`, `/=`), prefix/postfix
   `++`/`--`, logical operators (`&&`, `||` with short-circuit via `DUP` +
@@ -195,7 +211,9 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
   (`IrCallIndirect`), element access (`arr[i]` via `lowerElementAccess()`),
   element assignment (`arr[i] = val` via `lowerElementAccessAssignment()`), list
   methods (`.push`, `.indexOf`, `.filter`, `.map`, `.forEach` via
-  `lowerListMethodCall`), `.length` on list-typed expressions (via `IrListLen`),
+  `lowerListMethodCall`), struct method dispatch (`lowerStructMethodCall` for
+  methods declared via `StructMethodDecl`, e.g., `ctx.self.getVariable()`),
+  `.length` on list-typed expressions (via `IrListLen`),
   operator resolution with union type expansion (`resolveOperatorWithExpansion()`),
   and structural subtyping checks on assignments (`checkStructAssignmentCompat()`).
 - `src/compiler/virtual-host.ts` provides `createVirtualCompilerHost()` -- a
@@ -203,7 +221,9 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
 - `src/compiler/ambient.ts` exports `buildAmbientDeclarations()` which generates the
   `"mindcraft"` ambient module by iterating `ITypeRegistry.entries()` via
   `getBrainServices().types`. Generates plain interfaces for user-creatable structs,
-  branded readonly interfaces (with `__brand: unique symbol`) for native-backed structs,
+  branded readonly interfaces (with `__brand: unique symbol`) for native-backed structs
+  (including Context, SelfContext, EngineContext with their fields and method
+  signatures via `StructMethodDecl`),
   string union types for enums, `Array<T>` interfaces (with method signatures for
   `.push`, `.indexOf`, `.filter`, `.map`, `.forEach`) for lists, `Record` aliases for
   maps, `T | null` for nullable types, `member1 | member2 | ...` for union types,
@@ -1362,40 +1382,49 @@ constant (`{ t: NativeType.Enum, typeId, v: "north" }`) rather than a plain
 
 ### Phase 13: Property access chains + host calls
 
-(Updated 2026-03-23: Phase 13 complete with caveats. GET_FIELD for struct property
-access accepted. ctx compile-time phantom approach not accepted; to be replaced
-by ctx-as-native-struct. See [ctx-as-native-struct.md](ctx-as-native-struct.md)
-and Phase Log entry below. The ctx refactor requires general-purpose struct method
-dispatch as a prerequisite.)
+(Updated 2026-03-24: Phase 13 complete. GET_FIELD for struct property access
+accepted. The ctx compile-time phantom approach was replaced by ctx-as-native-struct
+(implemented out of band). Context, SelfContext, and EngineContext are now
+native-backed structs. Struct method dispatch (`lowerStructMethodCall()`) handles
+`ctx.self.getVariable()`, `ctx.engine.*()`, and any other struct with declared
+methods. All phantom code has been removed. See
+[ctx-as-native-struct.md](ctx-as-native-struct.md) and Phase Log entry below.)
 
-(Updated 2026-03-23: `lowerPropertyAccess()` already handles `.length` on list-typed
-expressions (core type system detour). `tsTypeToTypeId()` now resolves struct types
+(Updated 2026-03-24: `lowerPropertyAccess()` handles `.length` on list-typed
+expressions (core type system detour). `tsTypeToTypeId()` resolves struct types
 via symbol name lookup (core type system Phase 2). `IrListLen` IR node exists.
-The remaining work is `GET_FIELD` for struct fields and `ctx.engine.*` method dispatch.)
+GET_FIELD for struct fields is implemented. Struct method dispatch via
+`lowerStructMethodCall()` handles `ctx.engine.*` and `ctx.self.*` method calls.
+ctx is now a real parameter at local slot 0 via ctx-as-native-struct.)
 
 **Objective:** Compile property access chains (e.g., `ctx.self.position.x`) to `GET_FIELD`
 instructions, and context method calls (e.g., `ctx.engine.queryNearby(pos, range)`)
 to `HOST_CALL_ARGS` instructions. This is the gateway to the full `Context` API.
 
 **Prerequisite:** Phase 11a's ambient-from-registry work must be complete so the compiler
-knows field layouts of struct types. The `EngineContext` method resolution depends on
-a method-to-host-function-ID mapping.
+knows field layouts of struct types. Method resolution uses `StructMethodDecl` on type
+definitions and the `"TypeName.methodName"` convention in the FunctionRegistry.
+(Updated 2026-03-24: method resolution via struct method dispatch is implemented.)
 
 **Packages/files touched:**
 
 - `packages/typescript/src/compiler/lowering.ts` -- extend `lowerPropertyAccess`
-  beyond the current `params.xyz` and `.length` special cases; add `lowerMethodCall`
-  for `ctx.engine.*` dispatch. The `.length` case already emits `IrListLen` (done in
-  core type system detour). The `params.xyz` case already short-circuits to
-  `LoadLocal`. The new work is: (a) `GET_FIELD` for struct-typed property access,
-  (b) `ctx.engine.*()` method call dispatch
+  beyond the current `params.xyz` and `.length` special cases; add
+  `lowerStructMethodCall` for struct method dispatch (handles `ctx.self.*()`,
+  `ctx.engine.*()`, and any struct with declared methods). The `.length` case
+  already emits `IrListLen` (done in core type system detour). The `params.xyz`
+  case already short-circuits to `LoadLocal`. The new work is: (a) `GET_FIELD` for
+  struct-typed property access, (b) struct method call dispatch via
+  `lowerStructMethodCall()`
+  (Updated 2026-03-24: method dispatch uses the general-purpose
+  `lowerStructMethodCall()` mechanism, not a ctx-specific path.)
 - `packages/typescript/src/compiler/ir.ts` -- add `IrGetField` node (field name
   operand). Note: `IrListLen`, `IrListGet`, `IrListSet` already exist from the
   core type system detour
 - `packages/typescript/src/compiler/emit.ts` -- emit `GET_FIELD` opcode
 - `packages/typescript/src/compiler/types.ts` -- no changes needed;
   `resolveHostFn` was removed in Phase 10. Method-to-host-function resolution
-  should use `getBrainServices().functions.get()` directly
+  uses the `"TypeName.methodName"` convention in FunctionRegistry
 
 **Concrete deliverables:**
 
@@ -1405,13 +1434,20 @@ a method-to-host-function-ID mapping.
    the compiler does not need to distinguish. `tsTypeToTypeId()` already resolves
    struct types via symbol name lookup (core type system Phase 2), so the lowering
    can identify struct-typed expressions to emit `GET_FIELD`.
-2. `ctx.engine.methodName(args)` compiles to pushing args then
-   `HOST_CALL_ARGS(fnId, argc, callSiteId)` where `fnId` is resolved from the method
-   name via `getBrainServices().functions.get("engine.methodName")`.
-3. `ctx.self.getVariable("x")` and `ctx.self.setVariable("x", v)` compile to the
-   corresponding host calls.
-4. `ctx.time`, `ctx.dt`, `ctx.tick` compile to the appropriate host calls or
-   `LOAD_VAR` instructions.
+2. `ctx.engine.methodName(args)` compiles to pushing the struct, then args, then
+   `HOST_CALL_ARGS("EngineContext.methodName", argc+1)` via `lowerStructMethodCall()`.
+   The struct value is the first argument. The function is resolved via
+   `getBrainServices().functions.get("EngineContext.methodName")`.
+   (Updated 2026-03-24: method dispatch uses the general-purpose struct method call
+   mechanism, not a ctx-specific path.)
+3. `ctx.self.getVariable("x")` and `ctx.self.setVariable("x", v)` compile to
+   `HOST_CALL_ARGS("SelfContext.getVariable", 2)` and
+   `HOST_CALL_ARGS("SelfContext.setVariable", 3)` respectively, with the SelfContext
+   struct as the first argument.
+   (Updated 2026-03-24: uses struct method dispatch, same as EngineContext methods.)
+4. `ctx.time`, `ctx.dt`, `ctx.tick` compile to `LoadLocal(0); GetField("time")` etc.
+   The ctx parameter occupies local slot 0 as a real `StructValue`.
+   (Updated 2026-03-24: ctx is a real value, not a compile-time phantom.)
 5. The current `lowerPropertyAccess` special cases for `params.xyz` (-> `LoadLocal`)
    and `.length` on list-typed expressions (-> `IrListLen`) are preserved.
 
@@ -1421,24 +1457,30 @@ a method-to-host-function-ID mapping.
 - Test: struct property chain `pos.x` -> `GET_FIELD("x")`
 - Test: native-backed struct field `target.position` -> `GET_FIELD("position")`
   (same bytecode as user-creatable struct; VM handles dispatch)
-- Test: `ctx.engine.queryNearby(pos, 5)` -> `HOST_CALL_ARGS` with 2 args
+- Test: `ctx.engine.queryNearby(pos, 5)` -> `HOST_CALL_ARGS` with 3 args (struct + 2)
+  (Updated 2026-03-24: argc includes the struct value as the first argument.)
 - Test: unknown method `ctx.engine.nonExistent()` -> compile error
 - Test: `params.speed` still resolves to `LoadLocal` (regression check)
 - Test: `items.length` still resolves to `IrListLen` (regression check)
 
 **Key risks:**
 
-- **`ctx` parameter identity.** The first parameter to `onExecute` is `ctx`. The
-  lowering must recognize `ctx` as the context parameter and resolve
-  `ctx.engine.X(...)` to the correct host function. The TS checker's symbol
-  resolution can identify the parameter type; the lowering should check
-  whether the receiver is of type `Context`.
-- **Property access vs method call ambiguity.** `ctx.time` is a property read;
-  `ctx.engine.queryNearby(...)` is a method call. The lowering must distinguish
-  these (check if the parent node is a `CallExpression`).
-- **Call site IDs.** `HOST_CALL_ARGS` takes a `callSiteId` operand.
-  Currently the emit pass hardcodes `callSiteId: 0`. We need to decide whether Phase
-  9e assigns real call site IDs or defers that to a later phase.
+(Updated 2026-03-24: All three risks below are resolved. ctx is now a real parameter
+at local slot 0; struct method dispatch uses `lowerStructMethodCall()` which checks
+the receiver's struct type for matching methods; property access vs method call is
+handled by the call expression check in `lowerCallExpression()` before
+`lowerPropertyAccess()` runs.)
+
+- **`ctx` parameter identity.** RESOLVED. ctx occupies local slot 0. The lowering
+  does not need special ctx tracking -- it is a regular struct-typed parameter.
+  `lowerPropertyAccess()` resolves the struct type via `resolveStructType()` and
+  emits `GET_FIELD`. `lowerStructMethodCall()` checks the `methods` list on the
+  struct type definition.
+- **Property access vs method call ambiguity.** RESOLVED. `lowerCallExpression()`
+  checks for `PropertyAccessExpression` callees and dispatches to
+  `lowerStructMethodCall()` before falling through to `lowerPropertyAccess()`.
+- **Call site IDs.** `HOST_CALL_ARGS` hardcodes `callSiteId: 0`. Real call site ID
+  allocation is deferred to a later async-related phase.
 
 ---
 
@@ -1653,10 +1695,12 @@ instead of `HOST_CALL_ARGS`.
 
 **Prerequisites:** Phase 13 (property access chains + host calls) must be complete
 so that `ctx.engine.*` method calls compile. Phase 18 extends the mechanism to
-distinguish sync vs async host functions. Note: Phase 13's ctx approach is being
-refactored to native-backed structs (see [ctx-as-native-struct.md](ctx-as-native-struct.md)).
-The async detection mechanism applies equally to both approaches -- the refactor
-changes how method calls are lowered, not how sync/async distinction works.
+distinguish sync vs async host functions. The ctx-as-native-struct refactor is
+complete -- struct method dispatch via `lowerStructMethodCall()` is the mechanism
+that emits `HOST_CALL_ARGS`. The async detection should extend this to emit
+`HOST_CALL_ARGS_ASYNC` when the registered function is async.
+(Updated 2026-03-24: ctx-as-native-struct is now implemented. Struct method
+dispatch is the current mechanism for context method calls.)
 
 **Concrete deliverables:**
 
@@ -3505,9 +3549,13 @@ ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
 
 ### Phase 13 -- Property access chains + host calls (2026-03-23)
 
-**Status:** Complete with caveats. GET_FIELD implementation accepted. The ctx
-compile-time phantom approach is not accepted; will be replaced by ctx-as-native-struct
-in a follow-up. See [ctx-as-native-struct.md](ctx-as-native-struct.md).
+**Status:** Complete. GET_FIELD implementation accepted. The ctx compile-time phantom
+approach was initially implemented but subsequently replaced by ctx-as-native-struct
+(implemented out of band). All phantom code has been removed. See
+[ctx-as-native-struct.md](ctx-as-native-struct.md).
+(Updated 2026-03-24: ctx-as-native-struct is now fully implemented. The phase
+log below records the original outcomes; the phantom approach described in
+"Rejected approach" has since been replaced.)
 
 **Planned vs actual deliverables:**
 
@@ -3516,9 +3564,9 @@ in a follow-up. See [ctx-as-native-struct.md](ctx-as-native-struct.md).
 | `IrGetField` IR node                                    | Done   | Added to `IrNode` union in `ir.ts` with `fieldName: string`                                                |
 | `GetField` emission                                     | Done   | `emit.ts` -- push field name string constant, call `emitter.getField()`                                    |
 | `obj.field` -> `GET_FIELD` for struct-typed expressions | Done   | `lowerPropertyAccess` resolves struct type via `resolveStructType()`, validates field name, emits GetField |
-| `ctx.time` / `ctx.dt` / `ctx.tick` -> HOST_CALL_ARGS    | Done   | Compile-time phantom approach (not accepted; to be replaced)                                               |
-| `ctx.self.*()` method dispatch                          | Done   | Compile-time phantom approach (not accepted; to be replaced)                                               |
-| `ctx.engine.*()` method dispatch                        | Done   | Compile-time phantom approach (not accepted; to be replaced)                                               |
+| `ctx.time` / `ctx.dt` / `ctx.tick` -> HOST_CALL_ARGS    | Done   | Initially phantom approach; replaced by ctx-as-native-struct (LoadLocal(0) + GetField)                     |
+| `ctx.self.*()` method dispatch                          | Done   | Initially phantom approach; replaced by struct method dispatch via lowerStructMethodCall                   |
+| `ctx.engine.*()` method dispatch                        | Done   | Initially phantom approach; replaced by struct method dispatch via lowerStructMethodCall                   |
 | `params.xyz` regression preserved                       | Done   | Existing LoadLocal path unchanged                                                                          |
 | `list.length` regression preserved                      | Done   | Existing IrListLen path unchanged                                                                          |
 
@@ -3551,13 +3599,14 @@ in a follow-up. See [ctx-as-native-struct.md](ctx-as-native-struct.md).
 - ctx alias tracking -- `isCtxExpression()` recursively follows variable initializers
   (`const c = ctx; c.time` works). `lowerVariableDeclarationList` skips declarations
   that alias ctx (compile-time alias, no local slot). This was part of the phantom
-  approach and will be removed when ctx becomes a native struct.
+  approach and has been removed in the ctx-as-native-struct refactor.
+  (Updated 2026-03-24: all phantom code including ctx alias tracking has been removed.)
 
-**Rejected approach -- ctx as compile-time phantom:**
+**Rejected approach -- ctx as compile-time phantom (subsequently replaced):**
 
-The Phase 13 implementation used a compile-time phantom approach: `ctx` has no runtime
-representation; the compiler tracks its TS symbol, intercepts property accesses, and
-rewrites them to HOST_CALL_ARGS. This was rejected because:
+The Phase 13 implementation initially used a compile-time phantom approach: `ctx` had no
+runtime representation; the compiler tracked its TS symbol, intercepted property accesses,
+and rewrote them to HOST_CALL_ARGS. This was rejected because:
 
 - ctx cannot behave like a regular value (no storage, no aliasing without compiler tricks)
 - ~80 lines of special-case code (ctxSymbol tracking, isCtxExpression, isCtxSelfAccess,
@@ -3566,23 +3615,36 @@ rewrites them to HOST_CALL_ARGS. This was rejected because:
 - The original spec (user-authored-sensors-actuators.md section E, "Property access")
   describes `LoadLocal(ctx_index)` + `GetField("self")` -- i.e., ctx as a real value
 
-**Accepted approach for follow-up:** ctx-as-native-struct. Register Context, SelfContext,
-EngineContext as native-backed structs with fieldGetters. The Context struct value is
-passed as a real argument to onExecute. Remove all compiler special-casing. See
-[ctx-as-native-struct.md](ctx-as-native-struct.md) for full design.
+**Replacement implemented: ctx-as-native-struct.**
+
+(Updated 2026-03-24: The replacement is now fully implemented.) Context, SelfContext,
+and EngineContext are registered as native-backed structs with fieldGetters in
+`packages/core/src/brain/runtime/context-types.ts`. Struct method dispatch was added as
+a general-purpose feature (`StructMethodDecl` on type definitions, `addStructMethods()`
+on `ITypeRegistry`, `lowerStructMethodCall()` in the compiler). The ctx `StructValue`
+is auto-injected by the VM via `FunctionBytecode.injectCtxTypeId` -- `spawnFiber`
+creates the struct from `fiber.executionContext` and prepends it to the caller's args.
+The previous manual wrapping via `mkNativeStructValue` in `authored-function.ts` has
+been removed. The compiler sets `injectCtxTypeId: ContextTypeIds.Context` on the
+`onExecute` and `onPageEntered-wrapper` `FunctionEntry` records; `emitFunction` and
+the linker propagate the field to the emitted `FunctionBytecode`. All compile-time
+phantom code has been removed. See [ctx-as-native-struct.md](ctx-as-native-struct.md).
 
 **Discoveries:**
 
 1. **The spec describes ctx as `LoadLocal` + `GetField`.** Section E of
    user-authored-sensors-actuators.md shows `LoadLocal(ctx_index)` then
    `GetField("self")` then `GetField("position")`. The phantom approach diverged
-   from this spec. The refactor to native-backed struct will restore alignment.
+   from this spec. The refactor to native-backed struct has restored alignment.
+   (Updated 2026-03-24: alignment restored.)
 
-2. **Struct method calls are a missing general-purpose feature.** fieldGetter handles
-   property reads but not method calls (`getVariable("x")`, `queryNearby(pos, range)`).
-   A new type-based method dispatch mechanism is needed. This is generally useful
-   beyond ctx (any native struct could have methods). See ctx-as-native-struct.md
-   "Gating Feature: Struct Method Calls".
+2. **Struct method calls are now a general-purpose feature.** `StructMethodDecl` on
+   type definitions, `addStructMethods()` on `ITypeRegistry`, and
+   `lowerStructMethodCall()` in the compiler handle method dispatch for any struct
+   type with declared methods. The `"TypeName.methodName"` naming convention in the
+   FunctionRegistry provides the resolution mechanism. This was identified as a
+   gating feature in ctx-as-native-struct.md and has been implemented.
+   (Updated 2026-03-24: struct method dispatch is implemented.)
 
 3. **TS checker catches struct field errors before lowering.** The ambient declarations
    mirror the type registry, so unknown fields produce TS diagnostics before lowering
