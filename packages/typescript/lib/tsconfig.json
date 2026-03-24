@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "noLib": true,
+    "strict": true,
+    "noEmit": true,
+    "target": "ES5",
+    "types": []
+  },
+  "files": ["mindcraft-lib.d.ts"]
+}
