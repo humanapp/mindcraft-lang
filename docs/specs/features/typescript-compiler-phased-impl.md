@@ -38,12 +38,14 @@ not survive. Keep this doc current.
 ## Current State
 
 - (Updated 2026-03-24) Phases 0-14 are complete, plus the Array method lowering
-  detour. Phase 14 added `for...of` loop desugaring and removed the custom
-  module-scoped `Array<T>` from ambient declarations. The Array method detour
-  added lowering for `includes`, `some`, `every`, `find`, `concat`, `join`,
-  `reverse`, and `slice`. Methods requiring VM-level mutation ops (`pop`, `shift`,
-  `splice`) produce compile-time diagnostics. All other unrecognized array methods
-  also produce diagnostics. The ambient header augments the global `Array<T>` with
+  detour and the VM list mutation ops detour. Phase 14 added `for...of` loop
+  desugaring and removed the custom module-scoped `Array<T>` from ambient
+  declarations. The Array method detour added lowering for `includes`, `some`,
+  `every`, `find`, `concat`, `join`, `reverse`, and `slice`. The list mutation
+  ops detour added 4 new VM opcodes (`LIST_POP`, `LIST_SHIFT`, `LIST_REMOVE`,
+  `LIST_INSERT`) and compiler lowering for `pop`, `shift`, `unshift`, and
+  `splice`. Only `sort`, `fill`, and `copyWithin` still produce compile-time
+  diagnostics. All other unrecognized array methods also produce diagnostics. The ambient header augments the global `Array<T>` with
   `find`, `findIndex`, and `includes` signatures (ES2015/ES2016 methods not in
   `lib.es5.d.ts`). `NonNullExpression` and `AsExpression` are now handled in
   `lowerExpression`. `break`/`continue` work via
@@ -3795,3 +3797,62 @@ surfaces compile-time diagnostics for the rest.
 
 - packages/core: 516 total, 0 failures (unchanged)
 - packages/typescript: 216 total (202 prev + 14 new), 0 failures
+
+### VM List Mutation Ops Detour (2026-03-24)
+
+**Status:** Complete. All priority methods implemented with VM opcodes and compiler lowering.
+
+**Context:** The Array method lowering detour (above) deferred `pop`, `shift`,
+`unshift`, and `splice` because they require in-place list mutation, which the VM
+did not support. This detour adds 4 new VM opcodes and the corresponding compiler
+IR nodes, emission, and lowering. `sort`, `fill`, and `copyWithin` remain deferred.
+
+**Planned vs actual deliverables:**
+
+| Deliverable                              | Status   | Notes                                                      |
+| ---------------------------------------- | -------- | ---------------------------------------------------------- |
+| `LIST_POP` opcode (Op 95)               | Done     | Pops last element, pushes removed value (or nil if empty)  |
+| `LIST_SHIFT` opcode (Op 96)             | Done     | Shifts first element, pushes removed value (or nil)        |
+| `LIST_REMOVE` opcode (Op 97)            | Done     | Removes at index, pushes removed value (or nil)            |
+| `LIST_INSERT` opcode (Op 98)            | Done     | Inserts value at index, void (nothing pushed)              |
+| Core emitter methods                     | Done     | `listPop()`, `listShift()`, `listRemove()`, `listInsert()` |
+| IR nodes (`IrListPop`, etc.)            | Done     | 4 new IR node types added to union                         |
+| TypeScript emit cases                    | Done     | Maps IR nodes to emitter methods                           |
+| `lowerListPop`                           | Done     | Emits list + `ListPop`                                     |
+| `lowerListShift`                         | Done     | Emits list + `ListShift`                                   |
+| `lowerListUnshift`                       | Done     | Emits list + push 0 + arg + `ListInsert`, then len         |
+| `lowerListSplice`                        | Done     | Loop-based removal + optional insertion items              |
+| `sort`, `fill`, `copyWithin`            | Deferred | Still produce compile-time diagnostics                     |
+| VM unit tests (vm.spec.ts)               | Done     | 6 tests for the 4 new opcodes                              |
+| End-to-end tests (codegen.spec.ts)       | Done     | 5 tests: pop, pop-empty, shift, unshift, splice            |
+
+**Design decisions:**
+
+1. **Dedicated `LIST_POP` and `LIST_SHIFT` opcodes** rather than lowering everything
+   to `LIST_REMOVE` with index 0 or len-1. This avoids pushing constant index values
+   for the most common use cases.
+
+2. **`LIST_INSERT` is void.** Unlike `LIST_PUSH` (which pushes the list back), insert
+   pushes nothing. `unshift()` returns new length in JS, so the lowering emits a
+   separate `ListLen` after the insert when the return value is needed. When used as
+   an expression statement, the `Pop` after the expression discards the length.
+
+3. **`splice()` uses loop-based `LIST_REMOVE`.** Rather than a single complex opcode,
+   `splice(start, deleteCount)` emits a loop that calls `LIST_REMOVE` at the start
+   index `deleteCount` times, collecting removed elements into a new result list.
+   After removal, any insertion arguments emit `LIST_INSERT` at successive indices.
+
+4. **Stack conventions.** `LIST_REMOVE` pops `[index, list]` (index on top).
+   `LIST_INSERT` pops `[value, index, list]` (value on top). This matches the
+   existing `LIST_GET` and `LIST_SET` operand ordering.
+
+**Still deferred:**
+
+- `sort()` -- needs callback-based execution (the VM has no mechanism to invoke a
+  user-provided comparison function from within an opcode)
+- `fill()`, `copyWithin()` -- low priority, can be added as needed
+
+**Test counts:**
+
+- packages/core: 522 total (516 prev + 6 new), 0 failures
+- packages/typescript: 221 total (216 prev + 5 new), 0 failures

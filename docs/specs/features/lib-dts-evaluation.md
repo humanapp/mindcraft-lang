@@ -299,3 +299,180 @@ only the specific declarations above are written into the curated file.
 - User-constructable Promises
 - Locale-aware functionality (`localeCompare`, `toLocaleString`, etc.)
 - Decorator context types (evaluate alongside class support)
+
+Prompt for this work:
+````markdown
+
+# Task: Replace lib.d.ts Bundle with Curated Mindcraft Standard Library Declarations
+
+## Context
+
+The `packages/typescript` project compiles TypeScript to mindcraft bytecode. It currently bundles
+TypeScript's `lib.es5.d.ts`, `lib.decorators.d.ts`, and `lib.decorators.legacy.d.ts` (5000+ lines)
+via `scripts/bundle-lib-dts.js` into `src/compiler/lib-dts.generated.ts`. This generated file is
+dynamically imported by `src/compiler/compile.ts` and injected into a virtual filesystem for the
+TypeScript compiler host.
+
+The problem: the vast majority of `lib.es5.d.ts` declares APIs the mindcraft VM will never support
+(e.g., `eval`, `Symbol`, `ArrayBuffer`, typed arrays, `Object.defineProperty`, `Function.prototype.apply`,
+`Intl`, etc.). Per the evaluation in `docs/specs/features/lib-dts-evaluation.md`, only a small subset
+(~200-400 lines) is actually needed.
+
+## What to Do
+
+Replace the generated lib bundle with a single handwritten declarations file that contains only the
+subset of standard library types mindcraft supports. Specifically:
+
+### 1. Create `packages/typescript/src/compiler/lib/mindcraft-lib.d.ts`
+
+Write a curated `.d.ts` file containing **only** these declarations. Copy the type signatures from
+TypeScript's `lib.es5.d.ts` where applicable, but simplify overloads where mindcraft's simpler
+type system doesn't need them.
+
+**Global constants:**
+```typescript
+declare var NaN: number;
+declare var Infinity: number;
+```
+
+**Global functions:**
+```typescript
+declare function parseInt(string: string, radix?: number): number;
+declare function parseFloat(string: string): number;
+declare function isNaN(number: number): boolean;
+declare function isFinite(number: number): boolean;
+```
+
+**Math object** -- all constants (`E`, `LN10`, `LN2`, `LOG2E`, `LOG10E`, `PI`, `SQRT1_2`, `SQRT2`)
+and methods (`abs`, `acos`, `asin`, `atan`, `atan2`, `ceil`, `cos`, `exp`, `floor`, `log`, `max`,
+`min`, `pow`, `random`, `round`, `sin`, `sqrt`, `tan`). Copy the `interface Math` and
+`declare var Math: Math` pattern from `lib.es5.d.ts`.
+
+**String interface** -- instance methods: `toString`, `charAt`, `charCodeAt`, `concat`, `indexOf`,
+`lastIndexOf`, `slice`, `substring`, `toLowerCase`, `toUpperCase`, `trim`, `split`, `valueOf`,
+`length` (readonly property), index access (`readonly [index: number]: string`).
+**StringConstructor**: `fromCharCode(...codes: number[]): string`, callable as `(value?: any): string`.
+`declare var String: StringConstructor`.
+
+**Boolean interface** -- `valueOf(): boolean`.
+**BooleanConstructor**: callable as `<T>(value?: T): boolean`.
+`declare var Boolean: BooleanConstructor`.
+
+**Number interface** -- `toString(radix?: number): string`, `toFixed(fractionDigits?: number): string`,
+`valueOf(): number`.
+**NumberConstructor**: static constants `MAX_VALUE`, `MIN_VALUE`, `NaN`, `NEGATIVE_INFINITY`,
+`POSITIVE_INFINITY`. Callable as `(value?: any): number`.
+`declare var Number: NumberConstructor`.
+
+**Array<T> interface** -- properties: `length: number`, index access (`[n: number]: T`).
+Methods: `toString`, `push`, `pop`, `shift`, `unshift`, `concat`, `join`, `reverse`, `slice`,
+`sort`, `splice`, `indexOf`, `lastIndexOf`, `every`, `some`, `forEach`, `map`, `filter`,
+`reduce`, `reduceRight`, `find`, `findIndex`, `includes`.
+**ArrayConstructor**: `isArray(arg: any): arg is any[]`.
+`declare var Array: ArrayConstructor`.
+
+**ReadonlyArray<T>** -- same read-only methods (no `push`, `pop`, `shift`, `unshift`, `reverse`,
+`sort`, `splice`). Include `readonly [n: number]: T`.
+
+**ConcatArray<T>** and **ArrayLike<T>** interfaces (needed for Array overloads).
+
+**Utility types** (type-only, no runtime cost):
+```typescript
+type Partial<T> = { [P in keyof T]?: T[P] };
+type Required<T> = { [P in keyof T]-?: T[P] };
+type Readonly<T> = { readonly [P in keyof T]: T[P] };
+type Pick<T, K extends keyof T> = { [P in K]: T[P] };
+type Record<K extends keyof any, T> = { [P in K]: T };
+type Exclude<T, U> = T extends U ? never : T;
+type Extract<T, U> = T extends U ? T : never;
+type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+type NonNullable<T> = T & {};
+type Parameters<T extends (...args: any) => any> = T extends (...args: infer P) => any ? P : never;
+type ConstructorParameters<T extends abstract new (...args: any) => any> = T extends abstract new (...args: infer P) => any ? P : never;
+type ReturnType<T extends (...args: any) => any> = T extends (...args: any) => infer R ? R : any;
+type InstanceType<T extends abstract new (...args: any) => any> = T extends abstract new (...args: any) => infer R ? R : any;
+type Awaited<T> = T extends null | undefined ? T : T extends object & { then(onfulfilled: infer F, ...args: infer _): any } ? F extends ((value: infer V, ...args: infer _) => any) ? Awaited<V> : never : T;
+type Uppercase<S extends string> = intrinsic;
+type Lowercase<S extends string> = intrinsic;
+type Capitalize<S extends string> = intrinsic;
+type Uncapitalize<S extends string> = intrinsic;
+type NoInfer<T> = intrinsic;
+```
+
+**TemplateStringsArray** (needed for tagged template literals):
+```typescript
+interface TemplateStringsArray extends ReadonlyArray<string> {
+  readonly raw: readonly string[];
+}
+```
+
+**Do NOT include** any of the following:
+- `eval`, `Function` constructor or `Function` interface methods (apply/call/bind)
+- `CallableFunction`, `NewableFunction`, `IArguments`
+- `Symbol`, `PropertyKey` (use `string | number` where needed)
+- `Object` interface or `ObjectConstructor`
+- `PropertyDescriptor`, `PropertyDescriptorMap`, `TypedPropertyDescriptor`
+- `ThisParameterType`, `OmitThisParameter`, `ThisType`
+- URI functions (`decodeURI`, `encodeURI`, `decodeURIComponent`, `encodeURIComponent`)
+- `escape`, `unescape`
+- `ArrayBuffer`, `DataView`, typed arrays (`Int8Array`, `Uint8Array`, etc.)
+- `WeakKeyTypes`, `WeakKey`
+- `RegExp`, `RegExpMatchArray`, `RegExpExecArray` (deferred past V1)
+- `Date`, `DateConstructor` (deferred past V1)
+- `Error` or any error subtypes (deferred until `try/catch/throw` compiler support)
+- `JSON` (deferred)
+- `Intl` namespace
+- `ImportMeta`, `ImportCallOptions`, `ImportAssertions`, `ImportAttributes`
+- `Promise`, `PromiseLike`, `PromiseConstructorLike` (these are already declared in `ambient.ts`)
+- Decorator types from `lib.decorators.d.ts` and `lib.decorators.legacy.d.ts`
+
+Start the file with `/// <reference no-default-lib="true"/>` to prevent TypeScript from
+auto-including any other lib files.
+
+### 2. Create a new bundler script `scripts/bundle-lib-dts.js`
+
+Replace the existing script. Instead of reading from `node_modules/typescript/lib/`, it should
+read the single `src/compiler/lib/mindcraft-lib.d.ts` file and write it into
+`src/compiler/lib-dts.generated.ts` in the same `LIB_FILES` format:
+
+```typescript
+export const LIB_FILES: Record<string, string> = {
+  "lib.es5.d.ts": `<escaped content of mindcraft-lib.d.ts>`,
+};
+```
+
+The key must remain `"lib.es5.d.ts"` because `virtual-host.ts` returns
+`/lib/lib.es5.d.ts` as the default lib file name.
+
+### 3. Update `src/compiler/ambient.ts`
+
+The `AMBIENT_HEADER` in `ambient.ts` currently declares polyfill interfaces for `Promise<T>`
+and `Array<T>` methods (`find`, `findIndex`, `includes`). After this change:
+
+- `Promise<T>` and `Promise` constructor should remain in `AMBIENT_HEADER` (they are
+  mindcraft-specific async semantics, separate from the standard lib).
+- The `Array<T>` augmentation for `find`, `findIndex`, `includes` should be **removed** from
+  `AMBIENT_HEADER` because these methods will now be declared directly in `mindcraft-lib.d.ts`.
+
+### 4. Regenerate and verify
+
+After making the changes:
+1. Run the bundle script: `node scripts/bundle-lib-dts.js` (from `packages/typescript/`)
+2. Run `npm run typecheck` in `packages/typescript/` to verify no type errors
+3. Run `npm run check` in `packages/typescript/` for linting
+4. Run `npm run test` in `packages/typescript/` to verify all existing tests still pass
+
+### Important Notes
+
+- **Do not modify `virtual-host.ts` or `compile.ts`** -- the existing plumbing that loads
+  `LIB_FILES` and injects them into the virtual filesystem should continue working unchanged.
+- **Do not add JSDoc comments** to the declarations unless they are genuinely useful for
+  autocomplete tooltips (e.g., Math method parameter names). Avoid copying verbose JSDoc from
+  TypeScript's lib files.
+- Follow the project's code conventions: read `.github/instructions/global.instructions.md`
+  before writing any code. ASCII-only in comments, no rationale comments, no placeholder code.
+- The `lib-dts.generated.ts` file is machine-generated and should not be read during
+  exploration (per `global.instructions.md`).
+- After all code changes, run `npm run typecheck` and `npm run check` in `packages/typescript/`.
+
+````
