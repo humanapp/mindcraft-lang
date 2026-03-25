@@ -36,10 +36,12 @@ jobs:
             if (val.startsWith('file:')) {
               const localPath = val.slice(5);
               const sibling = JSON.parse(fs.readFileSync(`${localPath}/package.json`, 'utf8'));
-              pkg.dependencies[name] = `^${sibling.version}`;
-              // Remove the file:-based lockfile entries so npm re-resolves from registry
-              delete lock.packages[localPath];
-              delete lock.packages[`node_modules/${name}`];
+              if (!sibling.private) {
+                pkg.dependencies[name] = `^${sibling.version}`;
+                // Remove the file:-based lockfile entries so npm re-resolves from registry
+                delete lock.packages[localPath];
+                delete lock.packages[`node_modules/${name}`];
+              }
             }
           }
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
@@ -59,7 +61,7 @@ jobs:
       - name: Run tests
         run: npm test
 
-      - name: "Rewrite local file: deps to version ranges"
+      - name: "Strip private local file: deps before publish"
         run: |
           node - <<'EOF'
           const fs = require('fs');
@@ -67,7 +69,7 @@ jobs:
           for (const [name, val] of Object.entries(pkg.dependencies || {})) {
             if (val.startsWith('file:')) {
               const sibling = JSON.parse(fs.readFileSync(`${val.slice(5)}/package.json`, 'utf8'));
-              pkg.dependencies[name] = `^${sibling.version}`;
+              if (sibling.private) delete pkg.dependencies[name];
             }
           }
           fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
