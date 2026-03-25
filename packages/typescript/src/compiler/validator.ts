@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { ValidatorDiagCode } from "./diag-codes.js";
 import type { CompileDiagnostic } from "./types.js";
 
 const FORBIDDEN_GLOBALS = new Set([
@@ -23,9 +24,10 @@ const FORBIDDEN_GLOBALS = new Set([
 export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
   const diagnostics: CompileDiagnostic[] = [];
 
-  function addDiag(node: ts.Node, message: string): void {
+  function addDiag(code: ValidatorDiagCode, node: ts.Node, message: string): void {
     const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
     diagnostics.push({
+      code,
       message,
       line: pos.line + 1,
       column: pos.character + 1,
@@ -36,74 +38,78 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
     switch (node.kind) {
       case ts.SyntaxKind.ClassDeclaration:
       case ts.SyntaxKind.ClassExpression:
-        addDiag(node, "Classes are not supported");
+        addDiag(ValidatorDiagCode.ClassesNotSupported, node, "Classes are not supported");
         return;
 
       case ts.SyntaxKind.EnumDeclaration:
-        addDiag(node, "Enums are not supported");
+        addDiag(ValidatorDiagCode.EnumsNotSupported, node, "Enums are not supported");
         return;
 
       case ts.SyntaxKind.ForInStatement:
-        addDiag(node, "`for...in` is not supported, use `for...of` instead");
+        addDiag(ValidatorDiagCode.ForInNotSupported, node, "`for...in` is not supported, use `for...of` instead");
         break;
 
       case ts.SyntaxKind.WithStatement:
-        addDiag(node, "`with` is not supported");
+        addDiag(ValidatorDiagCode.WithNotSupported, node, "`with` is not supported");
         return;
 
       case ts.SyntaxKind.SwitchStatement:
-        addDiag(node, "`switch` is not supported");
+        addDiag(ValidatorDiagCode.SwitchNotSupported, node, "`switch` is not supported");
         break;
 
       case ts.SyntaxKind.YieldExpression:
-        addDiag(node, "Generators are not supported");
+        addDiag(ValidatorDiagCode.GeneratorsNotSupported, node, "Generators are not supported");
         break;
 
       case ts.SyntaxKind.ComputedPropertyName: {
         const expr = (node as ts.ComputedPropertyName).expression;
         if (!ts.isStringLiteral(expr) && !ts.isNumericLiteral(expr)) {
-          addDiag(node, "Computed property names are not supported");
+          addDiag(
+            ValidatorDiagCode.ComputedPropertyNamesNotSupported,
+            node,
+            "Computed property names are not supported"
+          );
         }
         break;
       }
 
       case ts.SyntaxKind.DebuggerStatement:
-        addDiag(node, "`debugger` is not supported");
+        addDiag(ValidatorDiagCode.DebuggerNotSupported, node, "`debugger` is not supported");
         break;
 
       case ts.SyntaxKind.LabeledStatement:
-        addDiag(node, "Labeled statements are not supported");
+        addDiag(ValidatorDiagCode.LabeledStatementsNotSupported, node, "Labeled statements are not supported");
         break;
 
       case ts.SyntaxKind.DeleteExpression:
-        addDiag(node, "`delete` is not supported");
+        addDiag(ValidatorDiagCode.DeleteNotSupported, node, "`delete` is not supported");
         break;
 
       case ts.SyntaxKind.RegularExpressionLiteral:
-        addDiag(node, "Regular expressions are not supported");
+        addDiag(ValidatorDiagCode.RegularExpressionsNotSupported, node, "Regular expressions are not supported");
         break;
     }
 
     if (ts.isVariableDeclarationList(node)) {
       if (!(node.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const))) {
-        addDiag(node, "`var` is not allowed, use `let` or `const`");
+        addDiag(ValidatorDiagCode.VarNotAllowed, node, "`var` is not allowed, use `let` or `const`");
       }
     }
 
     if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
-      addDiag(node, "Dynamic `import()` is not supported");
+      addDiag(ValidatorDiagCode.DynamicImportNotSupported, node, "Dynamic `import()` is not supported");
     }
 
     if (ts.isIdentifier(node) && FORBIDDEN_GLOBALS.has(node.text)) {
       if (isForbiddenGlobalReference(node)) {
-        addDiag(node, `\`${node.text}\` is not allowed`);
+        addDiag(ValidatorDiagCode.ForbiddenGlobalAccess, node, `\`${node.text}\` is not allowed`);
       }
     }
 
     if (ts.canHaveDecorators(node)) {
       const decorators = ts.getDecorators(node);
       if (decorators && decorators.length > 0) {
-        addDiag(decorators[0], "Decorators are not supported");
+        addDiag(ValidatorDiagCode.DecoratorsNotSupported, decorators[0], "Decorators are not supported");
       }
     }
 

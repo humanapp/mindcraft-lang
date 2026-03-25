@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { DescriptorDiagCode } from "./diag-codes.js";
 import type { CompileDiagnostic, ExtractedDescriptor, ExtractedParam } from "./types.js";
 
 export interface ExtractionResult {
@@ -9,9 +10,10 @@ export interface ExtractionResult {
 export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   const diagnostics: CompileDiagnostic[] = [];
 
-  function addDiag(node: ts.Node, message: string): void {
+  function addDiag(code: DescriptorDiagCode, node: ts.Node, message: string): void {
     const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
     diagnostics.push({
+      code,
       message,
       line: pos.line + 1,
       column: pos.character + 1,
@@ -28,6 +30,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
 
   if (!defaultExport) {
     diagnostics.push({
+      code: DescriptorDiagCode.MissingDefaultExport,
       message: "Missing default export. Expected `export default Sensor({...})` or `export default Actuator({...})`.",
       line: 1,
       column: 1,
@@ -37,31 +40,51 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
 
   const expr = defaultExport.expression;
   if (!ts.isCallExpression(expr)) {
-    addDiag(expr, "Default export must be a call to `Sensor({...})` or `Actuator({...})`.");
+    addDiag(
+      DescriptorDiagCode.InvalidDefaultExport,
+      expr,
+      "Default export must be a call to `Sensor({...})` or `Actuator({...})`."
+    );
     return { diagnostics };
   }
 
   if (!ts.isIdentifier(expr.expression)) {
-    addDiag(expr.expression, "Default export must be a call to `Sensor({...})` or `Actuator({...})`.");
+    addDiag(
+      DescriptorDiagCode.InvalidDefaultExport,
+      expr.expression,
+      "Default export must be a call to `Sensor({...})` or `Actuator({...})`."
+    );
     return { diagnostics };
   }
 
   const callee = expr.expression.text;
   if (callee !== "Sensor" && callee !== "Actuator") {
-    addDiag(expr.expression, "Default export must be a call to `Sensor({...})` or `Actuator({...})`.");
+    addDiag(
+      DescriptorDiagCode.InvalidDefaultExport,
+      expr.expression,
+      "Default export must be a call to `Sensor({...})` or `Actuator({...})`."
+    );
     return { diagnostics };
   }
 
   const kind: "sensor" | "actuator" = callee === "Sensor" ? "sensor" : "actuator";
 
   if (expr.arguments.length !== 1) {
-    addDiag(expr, `\`${callee}()\` must be called with exactly one argument.`);
+    addDiag(
+      DescriptorDiagCode.InvalidCalleeArgumentCount,
+      expr,
+      `\`${callee}()\` must be called with exactly one argument.`
+    );
     return { diagnostics };
   }
 
   const arg = expr.arguments[0];
   if (!ts.isObjectLiteralExpression(arg)) {
-    addDiag(arg, `\`${callee}()\` argument must be an object literal.`);
+    addDiag(
+      DescriptorDiagCode.CalleeArgumentNotObjectLiteral,
+      arg,
+      `\`${callee}()\` argument must be an object literal.`
+    );
     return { diagnostics };
   }
 
@@ -79,17 +102,21 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
           if (ts.isStringLiteral(prop.initializer)) {
             name = prop.initializer.text;
           } else {
-            addDiag(prop.initializer, "`name` must be a string literal.");
+            addDiag(DescriptorDiagCode.NameMustBeStringLiteral, prop.initializer, "`name` must be a string literal.");
           }
           break;
 
         case "output":
           if (kind !== "sensor") {
-            addDiag(prop, "`output` is only valid for sensors.");
+            addDiag(DescriptorDiagCode.OutputOnlyValidForSensors, prop, "`output` is only valid for sensors.");
           } else if (ts.isStringLiteral(prop.initializer)) {
             outputType = prop.initializer.text;
           } else {
-            addDiag(prop.initializer, "`output` must be a string literal.");
+            addDiag(
+              DescriptorDiagCode.OutputMustBeStringLiteral,
+              prop.initializer,
+              "`output` must be a string literal."
+            );
           }
           break;
 
@@ -102,7 +129,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
             onExecuteNode = prop.initializer;
             execIsAsync = prop.initializer.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
           } else {
-            addDiag(prop.initializer, "`onExecute` must be a function.");
+            addDiag(DescriptorDiagCode.OnExecuteMustBeFunction, prop.initializer, "`onExecute` must be a function.");
           }
           break;
 
@@ -110,7 +137,11 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
           if (ts.isFunctionExpression(prop.initializer) || ts.isArrowFunction(prop.initializer)) {
             onPageEnteredNode = prop.initializer;
           } else {
-            addDiag(prop.initializer, "`onPageEntered` must be a function.");
+            addDiag(
+              DescriptorDiagCode.OnPageEnteredMustBeFunction,
+              prop.initializer,
+              "`onPageEntered` must be a function."
+            );
           }
           break;
       }
@@ -125,13 +156,13 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   }
 
   if (name === undefined) {
-    addDiag(arg, "`name` property is required.");
+    addDiag(DescriptorDiagCode.NamePropertyRequired, arg, "`name` property is required.");
   }
   if (kind === "sensor" && outputType === undefined) {
-    addDiag(arg, "`output` property is required for sensors.");
+    addDiag(DescriptorDiagCode.OutputPropertyRequired, arg, "`output` property is required for sensors.");
   }
   if (onExecuteNode === undefined) {
-    addDiag(arg, "`onExecute` method is required.");
+    addDiag(DescriptorDiagCode.OnExecuteRequired, arg, "`onExecute` method is required.");
   }
 
   if (diagnostics.length > 0) {
@@ -152,9 +183,12 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   };
 }
 
-function extractParams(node: ts.Expression, addDiag: (node: ts.Node, message: string) => void): ExtractedParam[] {
+function extractParams(
+  node: ts.Expression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedParam[] {
   if (!ts.isObjectLiteralExpression(node)) {
-    addDiag(node, "`params` must be an object literal.");
+    addDiag(DescriptorDiagCode.ParamsMustBeObjectLiteral, node, "`params` must be an object literal.");
     return [];
   }
 
@@ -162,18 +196,30 @@ function extractParams(node: ts.Expression, addDiag: (node: ts.Node, message: st
 
   for (const prop of node.properties) {
     if (!ts.isPropertyAssignment(prop)) {
-      addDiag(prop, "Param entries must use property assignment syntax.");
+      addDiag(
+        DescriptorDiagCode.ParamEntryMustUsePropertySyntax,
+        prop,
+        "Param entries must use property assignment syntax."
+      );
       continue;
     }
 
     const paramName = getPropertyName(prop);
     if (paramName === undefined) {
-      addDiag(prop.name, "Param name must be an identifier or string literal.");
+      addDiag(
+        DescriptorDiagCode.ParamNameMustBeIdentifier,
+        prop.name,
+        "Param name must be an identifier or string literal."
+      );
       continue;
     }
 
     if (!ts.isObjectLiteralExpression(prop.initializer)) {
-      addDiag(prop.initializer, "Param definition must be an object literal with `type` and optional `default`.");
+      addDiag(
+        DescriptorDiagCode.ParamDefinitionMustBeObjectLiteral,
+        prop.initializer,
+        "Param definition must be an object literal with `type` and optional `default`."
+      );
       continue;
     }
 
@@ -190,13 +236,21 @@ function extractParams(node: ts.Expression, addDiag: (node: ts.Node, message: st
         if (ts.isStringLiteral(paramProp.initializer)) {
           type = paramProp.initializer.text;
         } else {
-          addDiag(paramProp.initializer, "Param `type` must be a string literal.");
+          addDiag(
+            DescriptorDiagCode.ParamTypeMustBeStringLiteral,
+            paramProp.initializer,
+            "Param `type` must be a string literal."
+          );
         }
       } else if (propName === "default") {
         hasDefault = true;
         defaultValue = extractLiteralValue(paramProp.initializer);
         if (defaultValue === undefined && !isNullishLiteral(paramProp.initializer)) {
-          addDiag(paramProp.initializer, "Param `default` must be a literal value.");
+          addDiag(
+            DescriptorDiagCode.ParamDefaultMustBeLiteral,
+            paramProp.initializer,
+            "Param `default` must be a literal value."
+          );
         }
       } else if (propName === "anonymous") {
         if (paramProp.initializer.kind === ts.SyntaxKind.TrueKeyword) {
@@ -204,13 +258,21 @@ function extractParams(node: ts.Expression, addDiag: (node: ts.Node, message: st
         } else if (paramProp.initializer.kind === ts.SyntaxKind.FalseKeyword) {
           anonymous = false;
         } else {
-          addDiag(paramProp.initializer, "Param `anonymous` must be a boolean literal.");
+          addDiag(
+            DescriptorDiagCode.ParamAnonymousMustBeBoolean,
+            paramProp.initializer,
+            "Param `anonymous` must be a boolean literal."
+          );
         }
       }
     }
 
     if (type === undefined) {
-      addDiag(prop.initializer, "Param definition must have a `type` property.");
+      addDiag(
+        DescriptorDiagCode.ParamDefinitionMissingType,
+        prop.initializer,
+        "Param definition must have a `type` property."
+      );
       continue;
     }
 

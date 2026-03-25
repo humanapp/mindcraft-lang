@@ -4,6 +4,7 @@ import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
+import { CompileDiagCode } from "./diag-codes.js";
 import { emitFunction } from "./emit.js";
 import { lowerProgram } from "./lowering.js";
 import type { CompileDiagnostic, CompileOptions, ExtractedDescriptor, UserAuthoredProgram } from "./types.js";
@@ -58,6 +59,7 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
     .filter((d) => d.file?.fileName === "/user-code.ts" || !d.file)
     .map((d) => {
       const result: CompileDiagnostic = {
+        code: CompileDiagCode.TypeScriptError,
         message: ts.flattenDiagnosticMessageText(d.messageText, "\n"),
       };
       if (d.file && d.start !== undefined) {
@@ -74,7 +76,9 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
 
   const sourceFile = tsProgram.getSourceFile("/user-code.ts");
   if (!sourceFile) {
-    return { diagnostics: [{ message: "Internal error: source file not found" }] };
+    return {
+      diagnostics: [{ code: CompileDiagCode.SourceFileNotFound, message: "Internal error: source file not found" }],
+    };
   }
 
   const validationDiags = validateAst(sourceFile);
@@ -117,7 +121,11 @@ export function compileUserTile(source: string, options?: CompileOptions): Compi
   const callDef = buildCallDef(descriptor.name, descriptor.params);
   const outputType = descriptor.outputType ? getBrainServices().types.resolveByName(descriptor.outputType) : undefined;
   if (descriptor.outputType && !outputType) {
-    return { diagnostics: [{ message: `Unknown output type: "${descriptor.outputType}"` }] };
+    return {
+      diagnostics: [
+        { code: CompileDiagCode.UnknownOutputType, message: `Unknown output type: "${descriptor.outputType}"` },
+      ],
+    };
   }
 
   const program: UserAuthoredProgram = {

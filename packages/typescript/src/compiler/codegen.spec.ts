@@ -35,6 +35,7 @@ import {
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile, initCompiler } from "./compile.js";
+import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
@@ -319,7 +320,7 @@ export default Sensor({
       ambientSource: appAmbient,
     });
     assert.equal(result.diagnostics.length, 1);
-    assert.ok(result.diagnostics[0].message.includes("Unknown output type"));
+    assert.equal(result.diagnostics[0].code, CompileDiagCode.UnknownOutputType);
   });
 
   test("app-defined output type resolves via registry", () => {
@@ -2383,7 +2384,7 @@ export default Sensor({
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("unable to determine type")),
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.CannotConvertToString),
       `Expected diagnostic about type determination but got: ${JSON.stringify(result.diagnostics)}`
     );
   });
@@ -2403,7 +2404,7 @@ export default Sensor({
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("No conversion from")),
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.NoConversionToString),
       `Expected no-conversion diagnostic but got: ${JSON.stringify(result.diagnostics)}`
     );
   });
@@ -3307,7 +3308,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource });
     assert.ok(result.diagnostics.length > 0, "expected a diagnostic for unsupported typeof comparison");
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("Unsupported typeof comparison")),
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.UnsupportedTypeofComparison),
       `expected diagnostic about unsupported typeof, got: ${JSON.stringify(result.diagnostics)}`
     );
   });
@@ -4667,7 +4668,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource });
     assert.ok(result.diagnostics.length > 0, "Expected at least one diagnostic for .sort()");
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("sort")),
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.SortRequiresComparatorFn),
       "Expected diagnostic to mention 'sort'"
     );
   });
@@ -5699,8 +5700,8 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource });
     assert.ok(result.diagnostics.length > 0, "Expected compile error for unknown struct field");
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("z")),
-      `Expected diagnostic mentioning 'z', got: ${JSON.stringify(result.diagnostics)}`
+      result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError),
+      `Expected TypeScriptError diagnostic, got: ${JSON.stringify(result.diagnostics)}`
     );
   });
 
@@ -5940,8 +5941,8 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource });
     assert.ok(result.diagnostics.length > 0, "Expected compile error for unknown struct method");
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("nonExistent")),
-      `Expected diagnostic mentioning 'nonExistent', got: ${JSON.stringify(result.diagnostics)}`
+      result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError),
+      `Expected TypeScriptError diagnostic, got: ${JSON.stringify(result.diagnostics)}`
     );
   });
 
@@ -6458,7 +6459,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { ambientSource });
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes(".sort() requires a comparator function")));
+    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.SortRequiresComparatorFn));
   });
 
   test(".sort() mutates the original array", () => {
@@ -6995,8 +6996,8 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource });
     assert.ok(result.diagnostics.length > 0, "Expected compile error for await on sync call");
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("await")),
-      `Expected diagnostic mentioning 'await', got: ${JSON.stringify(result.diagnostics)}`
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.AwaitOnNonAsyncHostCall),
+      `Expected AwaitOnNonAsyncHostCall diagnostic, got: ${JSON.stringify(result.diagnostics)}`
     );
   });
 });
@@ -7104,7 +7105,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource });
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for nested destructuring");
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("Nested destructuring")),
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.NestedDestructuringNotSupported),
       `expected nested destructuring error, got: ${JSON.stringify(result.diagnostics)}`
     );
   });
@@ -7127,7 +7128,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource });
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for rest pattern");
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("Rest patterns")),
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.RestPatternsNotSupported),
       `expected rest pattern error, got: ${JSON.stringify(result.diagnostics)}`
     );
   });

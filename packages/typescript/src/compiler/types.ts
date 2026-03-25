@@ -1,7 +1,9 @@
 import type { BrainActionCallDef, Program, TypeId } from "@mindcraft-lang/core/brain";
 import type ts from "typescript";
+import type { TsDiagCode } from "./diag-codes.js";
 
 export interface CompileDiagnostic {
+  code: TsDiagCode;
   message: string;
   line?: number;
   column?: number;

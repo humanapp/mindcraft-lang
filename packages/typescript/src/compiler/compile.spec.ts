@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
 import { compileUserTile, initCompiler } from "./compile.js";
+import { CompileDiagCode, DescriptorDiagCode, ValidatorDiagCode } from "./diag-codes.js";
 
 const VALID_SENSOR_SOURCE = `
 import { Sensor, type Context } from "mindcraft";
@@ -73,7 +74,7 @@ function doStuff(ctx: Context): void {
     const result = compileUserTile("");
     assert.ok(result.diagnostics.length > 0, "expected at least one diagnostic");
     assert.ok(
-      result.diagnostics.some((d) => d.message.includes("default export")),
+      result.diagnostics.some((d) => d.code === DescriptorDiagCode.MissingDefaultExport),
       "expected diagnostic about missing default export"
     );
   });
@@ -102,7 +103,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes("Classes are not supported")));
+    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.ClassesNotSupported));
   });
 
   test("var declaration produces diagnostic", () => {
@@ -120,7 +121,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes("var")));
+    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.VarNotAllowed));
   });
 
   test("for...in produces diagnostic", () => {
@@ -140,7 +141,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes("for...in")));
+    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.ForInNotSupported));
   });
 
   test("eval reference produces diagnostic", () => {
@@ -159,7 +160,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes("eval")));
+    assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("computed property name produces diagnostic", () => {
@@ -179,7 +180,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes("Computed property names")));
+    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.ComputedPropertyNamesNotSupported));
   });
 
   test("enum declaration produces diagnostic", () => {
@@ -197,7 +198,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes("Enums are not supported")));
+    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.EnumsNotSupported));
   });
 
   test("let and const pass validation", () => {
@@ -321,7 +322,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes("name")));
+    assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("sensor missing output produces diagnostic", () => {
@@ -336,7 +337,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes("output")));
+    assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("missing onExecute produces diagnostic", () => {
@@ -351,7 +352,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.message.includes("onExecute")));
+    assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("descriptor without onPageEntered has null node", () => {

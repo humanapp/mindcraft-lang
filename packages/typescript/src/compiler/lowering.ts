@@ -16,6 +16,7 @@ import {
   type Value,
 } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
+import { LoweringDiagCode } from "./diag-codes.js";
 import type { IrNode } from "./ir.js";
 import { ScopeStack } from "./scope.js";
 import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
@@ -269,7 +270,10 @@ function lowerOnPageEnteredBody(
 
   const body = funcNode.body;
   if (!body || !ts.isBlock(body)) {
-    sharedDiagnostics.push({ message: "onPageEntered function has no body" });
+    sharedDiagnostics.push({
+      code: LoweringDiagCode.OnPageEnteredHasNoBody,
+      message: "onPageEntered function has no body",
+    });
     return {
       ir,
       numParams: 1,
@@ -397,7 +401,7 @@ function lowerOnExecuteBody(
 
   const body = funcNode.body;
   if (!body || !ts.isBlock(body)) {
-    sharedDiagnostics.push({ message: "onExecute function has no body" });
+    sharedDiagnostics.push({ code: LoweringDiagCode.OnExecuteHasNoBody, message: "onExecute function has no body" });
     return {
       ir,
       numParams: hasParams ? 2 : 1,
@@ -460,7 +464,7 @@ function lowerHelperFunction(
 
   const body = funcNode.body;
   if (!body) {
-    sharedDiagnostics.push(makeDiag("Function has no body", funcNode));
+    sharedDiagnostics.push(makeDiag(LoweringDiagCode.FunctionHasNoBody, "Function has no body", funcNode));
     return { ir, numParams, numLocals: scopeStack.nextLocal, name: funcNode.name?.text ?? "<anonymous>" };
   }
 
@@ -565,7 +569,9 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
   } else if (stmt.kind === ts.SyntaxKind.EmptyStatement) {
     // no-op
   } else {
-    ctx.diagnostics.push(makeDiag(`Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`, stmt));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedStatement, `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`, stmt)
+    );
   }
 }
 
@@ -583,7 +589,7 @@ function lowerVariableDeclarationList(declList: ts.VariableDeclarationList, ctx:
     } else if (ts.isArrayBindingPattern(decl.name)) {
       lowerArrayDestructuring(decl.name, decl, ctx);
     } else {
-      ctx.diagnostics.push(makeDiag("Unsupported binding pattern", decl));
+      ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedBindingPattern, "Unsupported binding pattern", decl));
     }
   }
 }
@@ -608,7 +614,13 @@ function lowerObjectDestructuring(
   ctx: LowerContext
 ): void {
   if (!decl.initializer) {
-    ctx.diagnostics.push(makeDiag("Destructuring declaration must have an initializer", decl));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.DestructuringMissingInitializer,
+        "Destructuring declaration must have an initializer",
+        decl
+      )
+    );
     return;
   }
   const srcLocal = ctx.scopeStack.allocLocal();
@@ -617,17 +629,27 @@ function lowerObjectDestructuring(
 
   for (const element of pattern.elements) {
     if (element.dotDotDotToken) {
-      ctx.diagnostics.push(makeDiag("Rest patterns in destructuring are not supported", element));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.RestPatternsNotSupported, "Rest patterns in destructuring are not supported", element)
+      );
       continue;
     }
     if (!ts.isIdentifier(element.name)) {
-      ctx.diagnostics.push(makeDiag("Nested destructuring is not supported", element));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.NestedDestructuringNotSupported, "Nested destructuring is not supported", element)
+      );
       continue;
     }
     let propertyName: string;
     if (element.propertyName) {
       if (!ts.isIdentifier(element.propertyName)) {
-        ctx.diagnostics.push(makeDiag("Computed property names in destructuring are not supported", element));
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.ComputedDestructuringKeyNotSupported,
+            "Computed property names in destructuring are not supported",
+            element
+          )
+        );
         continue;
       }
       propertyName = element.propertyName.text;
@@ -649,7 +671,13 @@ function lowerArrayDestructuring(
   ctx: LowerContext
 ): void {
   if (!decl.initializer) {
-    ctx.diagnostics.push(makeDiag("Destructuring declaration must have an initializer", decl));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.DestructuringMissingInitializer,
+        "Destructuring declaration must have an initializer",
+        decl
+      )
+    );
     return;
   }
   const srcLocal = ctx.scopeStack.allocLocal();
@@ -660,11 +688,15 @@ function lowerArrayDestructuring(
     const element = pattern.elements[i];
     if (ts.isOmittedExpression(element)) continue;
     if (element.dotDotDotToken) {
-      ctx.diagnostics.push(makeDiag("Rest patterns in destructuring are not supported", element));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.RestPatternsNotSupported, "Rest patterns in destructuring are not supported", element)
+      );
       continue;
     }
     if (!ts.isIdentifier(element.name)) {
-      ctx.diagnostics.push(makeDiag("Nested destructuring is not supported", element));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.NestedDestructuringNotSupported, "Nested destructuring is not supported", element)
+      );
       continue;
     }
     const localIdx = ctx.scopeStack.declareLocal(element.name.text);
@@ -761,20 +793,34 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
   const iterableType = ctx.checker.getTypeAtLocation(stmt.expression);
   const listTypeId = resolveListTypeId(iterableType, ctx);
   if (!listTypeId) {
-    ctx.diagnostics.push(makeDiag("`for...of` is only supported on list-typed values", stmt.expression));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.ForOfOnNonListType,
+        "`for...of` is only supported on list-typed values",
+        stmt.expression
+      )
+    );
     ctx.scopeStack.popScope();
     return;
   }
 
   if (!ts.isVariableDeclarationList(stmt.initializer)) {
-    ctx.diagnostics.push(makeDiag("`for...of` requires a variable declaration (e.g. `const x of list`)", stmt));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.ForOfRequiresVariableDeclaration,
+        "`for...of` requires a variable declaration (e.g. `const x of list`)",
+        stmt
+      )
+    );
     ctx.scopeStack.popScope();
     return;
   }
 
   const decls = stmt.initializer.declarations;
   if (decls.length !== 1 || !ts.isIdentifier(decls[0].name)) {
-    ctx.diagnostics.push(makeDiag("`for...of` requires a single identifier binding", stmt));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForOfRequiresSingleIdentifier, "`for...of` requires a single identifier binding", stmt)
+    );
     ctx.scopeStack.popScope();
     return;
   }
@@ -801,7 +847,9 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "ListLen" });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for `for...of`", stmt));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve < operator for `for...of`", stmt)
+    );
     ctx.loopStack.pop();
     ctx.scopeStack.popScope();
     return;
@@ -823,7 +871,9 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for `for...of`", stmt));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve + operator for `for...of`", stmt)
+    );
     ctx.loopStack.pop();
     ctx.scopeStack.popScope();
     return;
@@ -840,7 +890,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
 
 function lowerBreakStatement(stmt: ts.BreakStatement, ctx: LowerContext): void {
   if (ctx.loopStack.length === 0) {
-    ctx.diagnostics.push(makeDiag("`break` outside of loop", stmt));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.BreakOutsideLoop, "`break` outside of loop", stmt));
     return;
   }
   const loop = ctx.loopStack[ctx.loopStack.length - 1];
@@ -849,7 +899,7 @@ function lowerBreakStatement(stmt: ts.BreakStatement, ctx: LowerContext): void {
 
 function lowerContinueStatement(stmt: ts.ContinueStatement, ctx: LowerContext): void {
   if (ctx.loopStack.length === 0) {
-    ctx.diagnostics.push(makeDiag("`continue` outside of loop", stmt));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.ContinueOutsideLoop, "`continue` outside of loop", stmt));
     return;
   }
   const loop = ctx.loopStack[ctx.loopStack.length - 1];
@@ -909,7 +959,9 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
   } else if (ts.isAwaitExpression(expr)) {
     lowerAwaitExpression(expr, ctx);
   } else {
-    ctx.diagnostics.push(makeDiag(`Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedExpression, `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr)
+    );
   }
 }
 
@@ -950,7 +1002,7 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
     return;
   }
 
-  ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.text}`, expr));
+  ctx.diagnostics.push(makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.text}`, expr));
 }
 
 function lowerAwaitExpression(expr: ts.AwaitExpression, ctx: LowerContext): void {
@@ -958,7 +1010,9 @@ function lowerAwaitExpression(expr: ts.AwaitExpression, ctx: LowerContext): void
   lowerExpression(expr.expression, ctx);
   const lastNode = ctx.ir.length > irLenBefore ? ctx.ir[ctx.ir.length - 1] : undefined;
   if (!lastNode || lastNode.kind !== "HostCallArgsAsync") {
-    ctx.diagnostics.push(makeDiag("`await` is only supported on async host function calls", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.AwaitOnNonAsyncHostCall, "`await` is only supported on async host function calls", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "Await" });
@@ -1000,7 +1054,7 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
     return;
   }
 
-  ctx.diagnostics.push(makeDiag("Unsupported function call", expr));
+  ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedFunctionCall, "Unsupported function call", expr));
 }
 
 function lowerStructMethodCall(
@@ -1022,7 +1076,13 @@ function lowerStructMethodCall(
   const fnName = `${structDef.name}.${methodName}`;
   const fnEntry = getBrainServices().functions.get(fnName);
   if (!fnEntry) {
-    ctx.diagnostics.push(makeDiag(`Unknown struct method: '${structDef.name}.${methodName}'`, propAccess));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.UnknownStructMethod,
+        `Unknown struct method: '${structDef.name}.${methodName}'`,
+        propAccess
+      )
+    );
     return true;
   }
 
@@ -1262,7 +1322,11 @@ function checkStructAssignmentCompat(lhsNode: ts.Node, rhsNode: ts.Node, diagNod
 
   if (!registry.isStructurallyCompatible(rhsTypeId, lhsTypeId)) {
     ctx.diagnostics.push(
-      makeDiag(`Type '${rhsDef.name}' is not structurally compatible with '${lhsDef.name}'`, diagNode)
+      makeDiag(
+        LoweringDiagCode.StructurallyIncompatibleTypes,
+        `Type '${rhsDef.name}' is not structurally compatible with '${lhsDef.name}'`,
+        diagNode
+      )
     );
   }
 }
@@ -1274,13 +1338,17 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
   }
 
   if (!ts.isIdentifier(expr.left)) {
-    ctx.diagnostics.push(makeDiag("Assignment target must be a variable", expr.left));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.AssignmentTargetNotVariable, "Assignment target must be a variable", expr.left)
+    );
     return;
   }
 
   const target = resolveVarTarget(expr.left.text, ctx);
   if (!target) {
-    ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.left.text}`, expr.left));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.left.text}`, expr.left)
+    );
     return;
   }
 
@@ -1293,7 +1361,13 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
     const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
     if (!opId) {
-      ctx.diagnostics.push(makeDiag("Unsupported compound assignment operator", expr.operatorToken));
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnsupportedCompoundAssignOperator,
+          "Unsupported compound assignment operator",
+          expr.operatorToken
+        )
+      );
       return;
     }
 
@@ -1303,13 +1377,25 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
     const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
 
     if (!lhsTypeId || !rhsTypeId) {
-      ctx.diagnostics.push(makeDiag("Cannot determine types for compound assignment", expr));
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.CannotDetermineTypesForCompoundAssign,
+          "Cannot determine types for compound assignment",
+          expr
+        )
+      );
       return;
     }
 
     const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
     if (!fnName) {
-      ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.NoOperatorOverload,
+          `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+          expr
+        )
+      );
       return;
     }
     ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
@@ -1342,7 +1428,7 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
       lowerExpression(expr.operand, ctx);
       const fnName = resolveOperator(CoreOpId.Negate, [CoreTypeIds.Number]);
       if (!fnName) {
-        ctx.diagnostics.push(makeDiag("No operator overload for negation", expr));
+        ctx.diagnostics.push(makeDiag(LoweringDiagCode.NoOperatorOverload, "No operator overload for negation", expr));
         return;
       }
       ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
@@ -1352,30 +1438,48 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
     const operandType = ctx.checker.getTypeAtLocation(expr.operand);
     const operandTypeId = tsTypeToTypeId(operandType, ctx.checker);
     if (!operandTypeId) {
-      ctx.diagnostics.push(makeDiag("Cannot determine type for `!` operand", expr));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.CannotDetermineTypeForNotOperand, "Cannot determine type for `!` operand", expr)
+      );
       return;
     }
     const fnName = resolveOperatorWithExpansion(CoreOpId.Not, [operandTypeId]);
     if (!fnName) {
-      ctx.diagnostics.push(makeDiag(`No operator overload for !(${operandTypeId})`, expr));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for !(${operandTypeId})`, expr)
+      );
       return;
     }
     ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
   } else if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
     lowerPrefixIncDec(expr, ctx);
   } else {
-    ctx.diagnostics.push(makeDiag(`Unsupported prefix operator: ${ts.SyntaxKind[expr.operator]}`, expr));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.UnsupportedPrefixOperator,
+        `Unsupported prefix operator: ${ts.SyntaxKind[expr.operator]}`,
+        expr
+      )
+    );
   }
 }
 
 function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): void {
   if (!ts.isIdentifier(expr.operand)) {
-    ctx.diagnostics.push(makeDiag("Increment/decrement target must be a variable", expr.operand));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.IncrDecrTargetNotVariable,
+        "Increment/decrement target must be a variable",
+        expr.operand
+      )
+    );
     return;
   }
   const target = resolveVarTarget(expr.operand.text, ctx);
   if (!target) {
-    ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.operand.text}`, expr.operand));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.operand.text}`, expr.operand)
+    );
     return;
   }
 
@@ -1383,7 +1487,9 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
   const typeId = CoreTypeIds.Number;
   const fnName = resolveOperator(opId, [typeId, typeId]);
   if (!fnName) {
-    ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${typeId}, ${typeId})`, expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for ${opId}(${typeId}, ${typeId})`, expr)
+    );
     return;
   }
 
@@ -1396,12 +1502,20 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
 
 function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext): void {
   if (!ts.isIdentifier(expr.operand)) {
-    ctx.diagnostics.push(makeDiag("Increment/decrement target must be a variable", expr.operand));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.IncrDecrTargetNotVariable,
+        "Increment/decrement target must be a variable",
+        expr.operand
+      )
+    );
     return;
   }
   const target = resolveVarTarget(expr.operand.text, ctx);
   if (!target) {
-    ctx.diagnostics.push(makeDiag(`Undefined variable: ${expr.operand.text}`, expr.operand));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.operand.text}`, expr.operand)
+    );
     return;
   }
 
@@ -1409,7 +1523,9 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   const typeId = CoreTypeIds.Number;
   const fnName = resolveOperator(opId, [typeId, typeId]);
   if (!fnName) {
-    ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${typeId}, ${typeId})`, expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for ${opId}(${typeId}, ${typeId})`, expr)
+    );
     return;
   }
 
@@ -1465,13 +1581,21 @@ function emitToStringIfNeeded(exprNode: ts.Expression, ctx: LowerContext): void 
   const exprType = ctx.checker.getTypeAtLocation(exprNode);
   const typeId = tsTypeToTypeId(exprType, ctx.checker);
   if (!typeId) {
-    ctx.diagnostics.push(makeDiag("Cannot convert expression to string: unable to determine type", exprNode));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotConvertToString,
+        "Cannot convert expression to string: unable to determine type",
+        exprNode
+      )
+    );
     return;
   }
   if (typeId !== CoreTypeIds.String) {
     const fnName = runtime.conversionFnName(typeId, CoreTypeIds.String);
     if (!getBrainServices().functions.get(fnName)) {
-      ctx.diagnostics.push(makeDiag(`No conversion from ${typeId} to string`, exprNode));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.NoConversionToString, `No conversion from ${typeId} to string`, exprNode)
+      );
       return;
     }
     ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
@@ -1481,7 +1605,9 @@ function emitToStringIfNeeded(exprNode: ts.Expression, ctx: LowerContext): void 
 function lowerTemplateLiteral(expr: ts.TemplateExpression, ctx: LowerContext): void {
   const addFnName = resolveOperator(CoreOpId.Add, [CoreTypeIds.String, CoreTypeIds.String]);
   if (!addFnName) {
-    ctx.diagnostics.push(makeDiag("No operator overload for string concatenation", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.NoOverloadForStringConcat, "No operator overload for string concatenation", expr)
+    );
     return;
   }
 
@@ -1561,6 +1687,7 @@ function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): bo
   if (nativeType === undefined) {
     ctx.diagnostics.push(
       makeDiag(
+        LoweringDiagCode.UnsupportedTypeofComparison,
         `Unsupported typeof comparison: "${literalValue}" (supported: "number", "string", "boolean", "undefined")`,
         expr
       )
@@ -1575,7 +1702,7 @@ function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): bo
     const operandTypeId = CoreTypeIds.Boolean;
     const fnName = resolveOperator(CoreOpId.Not, [operandTypeId]);
     if (!fnName) {
-      ctx.diagnostics.push(makeDiag("No operator overload for !(boolean)", expr));
+      ctx.diagnostics.push(makeDiag(LoweringDiagCode.NoOperatorOverload, "No operator overload for !(boolean)", expr));
       return true;
     }
     ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
@@ -1588,7 +1715,9 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
   const listTypeId = resolveListTypeId(objType, ctx);
   if (!listTypeId) {
-    ctx.diagnostics.push(makeDiag("Element access is only supported on list types", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ElementAccessOnNonListType, "Element access is only supported on list types", expr)
+    );
     return;
   }
   lowerExpression(expr.expression, ctx);
@@ -1601,7 +1730,13 @@ function lowerElementAccessAssignment(expr: ts.BinaryExpression, ctx: LowerConte
   const objType = ctx.checker.getTypeAtLocation(elemAccess.expression);
   const listTypeId = resolveListTypeId(objType, ctx);
   if (!listTypeId) {
-    ctx.diagnostics.push(makeDiag("Element access assignment is only supported on list types", expr.left));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.ElementAccessAssignOnNonListType,
+        "Element access assignment is only supported on list types",
+        expr.left
+      )
+    );
     return;
   }
   lowerExpression(elemAccess.expression, ctx);
@@ -1679,18 +1814,24 @@ function lowerListMethodCall(
     case "fill":
     case "copyWithin":
       ctx.diagnostics.push(
-        makeDiag(`Array.${methodName}() is not supported (requires VM-level list mutation ops)`, expr)
+        makeDiag(
+          LoweringDiagCode.ArrayMethodNotSupported,
+          `Array.${methodName}() is not supported (requires VM-level list mutation ops)`,
+          expr
+        )
       );
       return true;
     default:
-      ctx.diagnostics.push(makeDiag(`Unsupported array method: .${methodName}()`, expr));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UnsupportedArrayMethod, `Unsupported array method: .${methodName}()`, expr)
+      );
       return true;
   }
 }
 
 function lowerListPush(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".push() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.PushRequiresOneArg, ".push() requires exactly 1 argument", expr));
     return;
   }
   lowerExpression(propAccess.expression, ctx);
@@ -1700,7 +1841,7 @@ function lowerListPush(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 
 function lowerListPop(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
   if (expr.arguments.length !== 0) {
-    ctx.diagnostics.push(makeDiag(".pop() takes no arguments", expr));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.PopTakesNoArgs, ".pop() takes no arguments", expr));
     return;
   }
   lowerExpression(propAccess.expression, ctx);
@@ -1709,7 +1850,7 @@ function lowerListPop(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
 
 function lowerListShift(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
   if (expr.arguments.length !== 0) {
-    ctx.diagnostics.push(makeDiag(".shift() takes no arguments", expr));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.ShiftTakesNoArgs, ".shift() takes no arguments", expr));
     return;
   }
   lowerExpression(propAccess.expression, ctx);
@@ -1718,7 +1859,9 @@ function lowerListShift(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
 
 function lowerListUnshift(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".unshift() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnshiftRequiresOneArg, ".unshift() requires exactly 1 argument", expr)
+    );
     return;
   }
   lowerExpression(propAccess.expression, ctx);
@@ -1749,7 +1892,9 @@ function lowerListSplice(
    */
 
   if (expr.arguments.length < 1) {
-    ctx.diagnostics.push(makeDiag(".splice() requires at least 1 argument (start)", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.SpliceRequiresAtLeastOneArg, ".splice() requires at least 1 argument (start)", expr)
+    );
     return;
   }
 
@@ -1772,7 +1917,9 @@ function lowerListSplice(
     ctx.ir.push({ kind: "LoadLocal", index: startLocal });
     const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number]);
     if (!subFn) {
-      ctx.diagnostics.push(makeDiag("Cannot resolve - operator for .splice()", expr));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve - operator for .splice()", expr)
+      );
       return;
     }
     ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
@@ -1787,7 +1934,9 @@ function lowerListSplice(
 
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .splice()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .splice()", expr)
+    );
     return;
   }
 
@@ -1809,7 +1958,9 @@ function lowerListSplice(
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .splice()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .splice()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -1848,7 +1999,9 @@ function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
    */
 
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".sort() requires a comparator function", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.SortRequiresComparatorFn, ".sort() requires a comparator function", expr)
+    );
     return;
   }
 
@@ -1875,22 +2028,30 @@ function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .sort()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .sort()", expr)
+    );
     return;
   }
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .sort()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .sort()", expr)
+    );
     return;
   }
   const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!subFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve - operator for .sort()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve - operator for .sort()", expr)
+    );
     return;
   }
   const leFn = resolveOperator(CoreOpId.LessThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!leFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve <= operator for .sort()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve <= operator for .sort()", expr)
+    );
     return;
   }
 
@@ -1988,7 +2149,9 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
    *   return -1;
    */
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".indexOf() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.IndexOfRequiresOneArg, ".indexOf() requires exactly 1 argument", expr)
+    );
     return;
   }
 
@@ -2019,7 +2182,9 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .indexOf()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .indexOf()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -2034,7 +2199,9 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   const searchTypeId = tsTypeToTypeId(searchType, ctx.checker);
   const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId]) : undefined;
   if (!eqFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve === operator for .indexOf()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve === operator for .indexOf()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: eqFn, argc: 2 });
@@ -2044,7 +2211,9 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .indexOf()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .indexOf()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -2078,7 +2247,9 @@ function lowerListFilter(
    *   return result;
    */
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".filter() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.FilterRequiresOneArg, ".filter() requires exactly 1 argument", expr)
+    );
     return;
   }
 
@@ -2114,7 +2285,9 @@ function lowerListFilter(
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .filter()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .filter()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -2148,7 +2321,9 @@ function lowerListFilter(
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .filter()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .filter()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -2168,14 +2343,20 @@ function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
    *   return result;
    */
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".map() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.MapRequiresOneArg, ".map() requires exactly 1 argument", expr));
     return;
   }
 
   const returnType = ctx.checker.getTypeAtLocation(expr);
   const resultListTypeId = resolveListTypeId(returnType, ctx);
   if (!resultListTypeId) {
-    ctx.diagnostics.push(makeDiag("Cannot determine result list type for .map() (add a type annotation)", expr));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotDetermineMapResultListType,
+        "Cannot determine result list type for .map() (add a type annotation)",
+        expr
+      )
+    );
     return;
   }
 
@@ -2210,7 +2391,9 @@ function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .map()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .map()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -2231,7 +2414,9 @@ function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .map()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .map()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -2249,7 +2434,9 @@ function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccess
    *   for (let i = 0; i < arr.length; i++) callback(arr[i]);
    */
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".forEach() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForEachRequiresOneArg, ".forEach() requires exactly 1 argument", expr)
+    );
     return;
   }
 
@@ -2280,7 +2467,9 @@ function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .forEach()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .forEach()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -2297,7 +2486,9 @@ function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .forEach()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .forEach()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -2316,7 +2507,9 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
    *   return false;
    */
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".includes() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.IncludesRequiresOneArg, ".includes() requires exactly 1 argument", expr)
+    );
     return;
   }
 
@@ -2348,7 +2541,9 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .includes()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .includes()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -2363,7 +2558,13 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
   const searchTypeId = tsTypeToTypeId(searchType, ctx.checker);
   const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId]) : undefined;
   if (!eqFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve === operator for .includes()", expr));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotResolveOperatorForArrayMethod,
+        "Cannot resolve === operator for .includes()",
+        expr
+      )
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: eqFn, argc: 2 });
@@ -2373,7 +2574,9 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .includes()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .includes()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -2398,7 +2601,7 @@ function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
    *   return false;
    */
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".some() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.SomeRequiresOneArg, ".some() requires exactly 1 argument", expr));
     return;
   }
 
@@ -2431,7 +2634,9 @@ function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .some()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .some()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -2448,7 +2653,9 @@ function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .some()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .some()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -2473,7 +2680,7 @@ function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
    *   return true;
    */
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".every() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.EveryRequiresOneArg, ".every() requires exactly 1 argument", expr));
     return;
   }
 
@@ -2506,7 +2713,9 @@ function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .every()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .every()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -2523,7 +2732,9 @@ function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .every()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .every()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -2550,7 +2761,7 @@ function lowerListFind(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
    *   return undefined;
    */
   if (expr.arguments.length !== 1) {
-    ctx.diagnostics.push(makeDiag(".find() requires exactly 1 argument", expr));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.FindRequiresOneArg, ".find() requires exactly 1 argument", expr));
     return;
   }
 
@@ -2584,7 +2795,9 @@ function lowerListFind(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .find()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .find()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -2604,7 +2817,9 @@ function lowerListFind(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .find()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .find()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -2671,7 +2886,13 @@ function emitPushAllFromList(srcExpr: ts.Expression, resultLocal: number, ctx: L
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .concat()", diagNode));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotResolveOperatorForArrayMethod,
+        "Cannot resolve < operator for .concat()",
+        diagNode
+      )
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -2688,7 +2909,13 @@ function emitPushAllFromList(srcExpr: ts.Expression, resultLocal: number, ctx: L
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .concat()", diagNode));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotResolveOperatorForArrayMethod,
+        "Cannot resolve + operator for .concat()",
+        diagNode
+      )
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -2710,13 +2937,15 @@ function lowerListJoin(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
    *   return result;
    */
   if (expr.arguments.length > 1) {
-    ctx.diagnostics.push(makeDiag(".join() takes at most 1 argument", expr));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.JoinTakesAtMostOneArg, ".join() takes at most 1 argument", expr));
     return;
   }
 
   const addFnName = resolveOperator(CoreOpId.Add, [CoreTypeIds.String, CoreTypeIds.String]);
   if (!addFnName) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve string concatenation for .join()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.NoOverloadForStringConcat, "Cannot resolve string concatenation for .join()", expr)
+    );
     return;
   }
 
@@ -2752,19 +2981,25 @@ function lowerListJoin(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .join()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .join()", expr)
+    );
     return;
   }
 
   const eqFn = resolveOperator(CoreOpId.EqualTo, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!eqFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve === operator for .join()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve === operator for .join()", expr)
+    );
     return;
   }
 
   const addNumFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addNumFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .join()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .join()", expr)
+    );
     return;
   }
 
@@ -2811,7 +3046,13 @@ function lowerListJoin(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 function emitToStringForJoinElement(ctx: LowerContext, diagNode: ts.Node): void {
   const fnName = runtime.conversionFnName(CoreTypeIds.Number, CoreTypeIds.String);
   if (!getBrainServices().functions.get(fnName)) {
-    ctx.diagnostics.push(makeDiag("Cannot convert list element to string for .join()", diagNode));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotConvertListElementToString,
+        "Cannot convert list element to string for .join()",
+        diagNode
+      )
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
@@ -2831,7 +3072,7 @@ function lowerListReverse(
    *   return result;
    */
   if (expr.arguments.length !== 0) {
-    ctx.diagnostics.push(makeDiag(".reverse() takes no arguments", expr));
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.ReverseTakesNoArgs, ".reverse() takes no arguments", expr));
     return;
   }
 
@@ -2853,7 +3094,9 @@ function lowerListReverse(
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!subFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve - operator for .reverse()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve - operator for .reverse()", expr)
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
@@ -2861,7 +3104,9 @@ function lowerListReverse(
 
   const geqFn = resolveOperator(CoreOpId.GreaterThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!geqFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve >= operator for .reverse()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve >= operator for .reverse()", expr)
+    );
     return;
   }
 
@@ -2903,7 +3148,9 @@ function lowerListSlice(
    *   return result;
    */
   if (expr.arguments.length > 2) {
-    ctx.diagnostics.push(makeDiag(".slice() takes at most 2 arguments", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.SliceTakesAtMostTwoArgs, ".slice() takes at most 2 arguments", expr)
+    );
     return;
   }
 
@@ -2938,13 +3185,17 @@ function lowerListSlice(
 
   const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!ltFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve < operator for .slice()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .slice()", expr)
+    );
     return;
   }
 
   const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
   if (!addFn) {
-    ctx.diagnostics.push(makeDiag("Cannot resolve + operator for .slice()", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .slice()", expr)
+    );
     return;
   }
 
@@ -2993,7 +3244,11 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
   const opId = tsOperatorToOpId(expr.operatorToken.kind);
   if (!opId) {
     ctx.diagnostics.push(
-      makeDiag(`Unsupported operator: ${ts.SyntaxKind[expr.operatorToken.kind]}`, expr.operatorToken)
+      makeDiag(
+        LoweringDiagCode.UnsupportedOperator,
+        `Unsupported operator: ${ts.SyntaxKind[expr.operatorToken.kind]}`,
+        expr.operatorToken
+      )
     );
     return;
   }
@@ -3008,7 +3263,9 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
   const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
 
   if (!lhsTypeId || !rhsTypeId) {
-    ctx.diagnostics.push(makeDiag("Cannot determine types for binary operator", expr));
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotDetermineTypesForBinaryOp, "Cannot determine types for binary operator", expr)
+    );
     return;
   }
 
@@ -3019,7 +3276,13 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
       ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 2 });
       return;
     }
-    ctx.diagnostics.push(makeDiag(`No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`, expr));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NoOperatorOverload,
+        `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+        expr
+      )
+    );
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
@@ -3054,7 +3317,13 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     const fieldName = expr.name.text;
     const hasField = structDef.fields.toArray().some((f) => f.name === fieldName);
     if (!hasField) {
-      ctx.diagnostics.push(makeDiag(`Property '${fieldName}' does not exist on struct '${structDef.name}'`, expr));
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.PropertyNotOnStruct,
+          `Property '${fieldName}' does not exist on struct '${structDef.name}'`,
+          expr
+        )
+      );
       return;
     }
     lowerExpression(expr.expression, ctx);
@@ -3062,7 +3331,7 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     return;
   }
 
-  ctx.diagnostics.push(makeDiag("Unsupported property access", expr));
+  ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedPropertyAccess, "Unsupported property access", expr));
 }
 
 function resolveStructType(type: ts.Type): StructTypeDef | undefined {
@@ -3091,14 +3360,26 @@ function isNativeBackedStruct(def: StructTypeDef): boolean {
 function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext): void {
   const contextualType = ctx.checker.getContextualType(expr);
   if (!contextualType) {
-    ctx.diagnostics.push(makeDiag("Cannot determine type for object literal (add a type annotation)", expr));
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotDetermineTypeForObjectLiteral,
+        "Cannot determine type for object literal (add a type annotation)",
+        expr
+      )
+    );
     return;
   }
 
   const structDef = resolveStructType(contextualType);
   if (structDef) {
     if (isNativeBackedStruct(structDef)) {
-      ctx.diagnostics.push(makeDiag(`Cannot create instances of native-backed struct type '${structDef.name}'`, expr));
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.CannotInstantiateNativeBackedStruct,
+          `Cannot create instances of native-backed struct type '${structDef.name}'`,
+          expr
+        )
+      );
       return;
     }
     lowerObjectLiteralAsStruct(expr, structDef, ctx);
@@ -3111,7 +3392,13 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     return;
   }
 
-  ctx.diagnostics.push(makeDiag("Object literal type does not resolve to a known struct or map type", expr));
+  ctx.diagnostics.push(
+    makeDiag(
+      LoweringDiagCode.ObjectLiteralTypeUnresolvable,
+      "Object literal type does not resolve to a known struct or map type",
+      expr
+    )
+  );
 }
 
 function lowerObjectLiteralAsStruct(
@@ -3123,7 +3410,13 @@ function lowerObjectLiteralAsStruct(
 
   for (const prop of expr.properties) {
     if (!ts.isPropertyAssignment(prop)) {
-      ctx.diagnostics.push(makeDiag("Only simple property assignments are supported in object literals", prop));
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnsupportedPropertyInObjectLiteral,
+          "Only simple property assignments are supported in object literals",
+          prop
+        )
+      );
       return;
     }
     let fieldName: string;
@@ -3132,7 +3425,13 @@ function lowerObjectLiteralAsStruct(
     } else if (ts.isStringLiteral(prop.name)) {
       fieldName = prop.name.text;
     } else {
-      ctx.diagnostics.push(makeDiag("Unsupported property name in object literal", prop));
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnsupportedPropertyNameInObjectLiteral,
+          "Unsupported property name in object literal",
+          prop
+        )
+      );
       return;
     }
     ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
@@ -3146,7 +3445,13 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
 
   for (const prop of expr.properties) {
     if (!ts.isPropertyAssignment(prop)) {
-      ctx.diagnostics.push(makeDiag("Only simple property assignments are supported in map literals", prop));
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnsupportedPropertyInMapLiteral,
+          "Only simple property assignments are supported in map literals",
+          prop
+        )
+      );
       return;
     }
     let keyName: string;
@@ -3155,7 +3460,9 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
     } else if (ts.isStringLiteral(prop.name)) {
       keyName = prop.name.text;
     } else {
-      ctx.diagnostics.push(makeDiag("Unsupported property name in map literal", prop));
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UnsupportedPropertyNameInMapLiteral, "Unsupported property name in map literal", prop)
+      );
       return;
     }
     ctx.ir.push({ kind: "PushConst", value: mkStringValue(keyName) });
@@ -3229,6 +3536,7 @@ function lowerArrayLiteral(expr: ts.ArrayLiteralExpression, ctx: LowerContext): 
   if (!listTypeId) {
     ctx.diagnostics.push(
       makeDiag(
+        LoweringDiagCode.CannotDetermineListType,
         "Cannot determine list type for array literal (add a type annotation or ensure the list type is registered)",
         expr
       )
@@ -3388,9 +3696,9 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
   return undefined;
 }
 
-function makeDiag(message: string, node: ts.Node): CompileDiagnostic {
+function makeDiag(code: LoweringDiagCode, message: string, node: ts.Node): CompileDiagnostic {
   const sourceFile = node.getSourceFile();
-  const diag: CompileDiagnostic = { message };
+  const diag: CompileDiagnostic = { code, message };
   if (sourceFile) {
     const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart());
     diag.line = pos.line + 1;

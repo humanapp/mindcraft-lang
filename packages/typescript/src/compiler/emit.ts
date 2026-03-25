@@ -6,6 +6,7 @@ import {
   mkStringValue,
   type TypeId,
 } from "@mindcraft-lang/core/brain";
+import { EmitDiagCode } from "./diag-codes.js";
 import type { IrNode } from "./ir.js";
 import type { CompileDiagnostic } from "./types.js";
 
@@ -73,7 +74,10 @@ export function emitFunction(
       case "HostCallArgs": {
         const fnId = getBrainServices().functions.get(node.fnName)?.id;
         if (fnId === undefined) {
-          diagnostics.push({ message: `Cannot resolve host function: ${node.fnName}` });
+          diagnostics.push({
+            code: EmitDiagCode.CannotResolveHostFunction,
+            message: `Cannot resolve host function: ${node.fnName}`,
+          });
           return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
         }
         emitter.hostCallArgs(fnId, node.argc, 0);
@@ -82,7 +86,10 @@ export function emitFunction(
       case "HostCallArgsAsync": {
         const fnId = getBrainServices().functions.get(node.fnName)?.id;
         if (fnId === undefined) {
-          diagnostics.push({ message: `Cannot resolve host function: ${node.fnName}` });
+          diagnostics.push({
+            code: EmitDiagCode.CannotResolveHostFunction,
+            message: `Cannot resolve host function: ${node.fnName}`,
+          });
           return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
         }
         emitter.hostCallArgsAsync(fnId, node.argc, 0);
@@ -157,7 +164,10 @@ export function emitFunction(
       case "PushFunctionRef": {
         const funcId = functionTable?.get(node.funcName);
         if (funcId === undefined) {
-          diagnostics.push({ message: `Cannot resolve function: ${node.funcName}` });
+          diagnostics.push({
+            code: EmitDiagCode.CannotResolveFunction,
+            message: `Cannot resolve function: ${node.funcName}`,
+          });
           return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
         }
         const idx = pool.add(mkFunctionValue(funcId));
@@ -167,7 +177,10 @@ export function emitFunction(
       case "MakeClosure": {
         const closureFuncId = functionTable?.get(node.funcName);
         if (closureFuncId === undefined) {
-          diagnostics.push({ message: `Cannot resolve closure function: ${node.funcName}` });
+          diagnostics.push({
+            code: EmitDiagCode.CannotResolveClosureFunction,
+            message: `Cannot resolve closure function: ${node.funcName}`,
+          });
           return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
         }
         emitter.makeClosure(closureFuncId, node.captureCount);
