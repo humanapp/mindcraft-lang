@@ -33,6 +33,70 @@ Depends on: [user-authored-sensors-actuators.md](user-authored-sensors-actuators
 
 ---
 
+## Implementation Status
+
+**Last Updated:** 2026-03-24
+
+This document describes the target architecture for TypeScript authoring and debugging in
+Mindcraft. The implementation is being completed in phases:
+
+### Phase 1: Foundation (In Progress/Partial)
+
+The following components are **implemented and working**:
+
+- **TypeScript Compiler Pipeline** (`packages/typescript`)
+  - Full TypeScript→bytecode compilation with type checking
+  - Virtual file system (in-memory, no disk I/O)
+  - Compilation diagnostics (errors, warnings)
+  - User tile registration (sensors, actuators, parameters)
+  - Async/await support via `IrAwait` and `IrHostCallAsync` instructions
+  - Descriptor extraction (name, params, output type, async flag)
+
+- **Runtime Infrastructure** (`packages/core`)
+  - Stack-based bytecode VM with fiber (coroutine) execution
+  - Async operation handling via handles and suspending/resuming
+  - Exception handling (TRY/THROW/FAULT)
+  - Instruction budgets and fairness scheduling
+  - ErrorValue type with basic stack traces
+  - Frame inspection infrastructure (available at runtime, not exposed to debugger yet)
+
+### Phase 2: Debug System (Planned)
+
+The following are described in this spec but **not yet implemented**:
+
+- **Debug Metadata Emission** — DebugMetadata types (DebugFileInfo, DebugFunctionInfo, Spans)
+  are not yet collected/emitted by the compiler. The compiler must be extended to generate
+  source-to-bytecode mappings, scope information, and callable sites.
+
+- **VM Debug Runtime API** — The `IVMDebugRuntime` interface and its implementation do not
+  exist. The VM must be extended to expose pause/resume, breakpoint checking, and fiber
+  inspection methods.
+
+- **Debug Bridge Layer** — WebSocket-based message transport between VS Code and the
+  Mindcraft app does not exist. Only the in-app registration bridge exists.
+
+- **VS Code Extension** — The extension providing the FileSystemProvider, DAP client, and
+  bridge connection does not exist.
+
+- **Source Mapping and Stepping** — Breakpoint resolution, span boundary detection, and
+  step execution are not yet implemented.
+
+### Architectural Changes Since Spec
+
+1. **Registration Bridge is Separate:** The spec describes a single "bridge layer" relaying
+   all messages (fs, compile, debug, session). The current implementation has a
+   `registration-bridge.ts` that integrates compiled user tiles into the brain's catalog.
+   The WebSocket bridge described in Section 2 is a future addition, not yet implemented.
+
+2. **Diagnostics Flow Works:** The compilation pipeline can emit diagnostics (TypeScript
+   + validator errors) with source positions. The flow described in Section 4 is accurate,
+   but the transport to VS Code (via the bridge) is not yet wired.
+
+3. **Async Execution Model is Finalized:** User-authored tiles can be `async` and use
+   `await`. The implementation is complete and working (Section F in user-authored-sensors-actuators.md).
+
+---
+
 ## 1. System Architecture
 
 ### High-level diagram
@@ -73,12 +137,12 @@ Depends on: [user-authored-sensors-actuators.md](user-authored-sensors-actuators
 **Mindcraft browser app** (runtime host + canonical store):
 
 - Owns the world/project data, including all user-authored TypeScript source files
-- Runs the TypeScript compiler (from the user-authored-sensors-actuators spec)
-- Executes compiled bytecode in the VM (one VM per entity)
-- Exposes a debug runtime API on each VM instance
-- Hosts the bridge client that accepts connections from VS Code
+- Runs the TypeScript compiler (from the user-authored-sensors-actuators spec) ✓ Implemented
+- Executes compiled bytecode in the VM (one VM per entity) ✓ Implemented
+- Exposes a debug runtime API on each VM instance ⚠ Planned (interface spec in section 7)
+- Hosts the bridge client that accepts connections from VS Code ⚠ Planned
 
-**VS Code extension**:
+**VS Code extension** ⚠ Planned:
 
 - Provides a `FileSystemProvider` for the `mindcraft://` URI scheme
 - Presents TypeScript tile source files as editable documents
@@ -86,13 +150,20 @@ Depends on: [user-authored-sensors-actuators.md](user-authored-sensors-actuators
 - Hosts a DAP client for debugging
 - Manages connection lifecycle to the bridge
 
-**Bridge layer**:
+**Bridge layer** ⚠ Planned (WebSocket transport):
+
+- Relays messages between VS Code and the Mindcraft app
+- v1: local companion process on localhost (see section 17 for deployment details)
+- Stateless relay -- does not cache, compile, or interpret messages
+- **Note:** The registration bridge (`registration-bridge.ts` in `packages/typescript`) already
+  integrates compiled user tiles into the brain's catalog; this is separate from the
+  WebSocket bridge described here.
 
 - Relays messages between VS Code and the Mindcraft app
 - v1: local companion process on localhost (see section 17 for deployment details)
 - Stateless relay -- does not cache, compile, or interpret messages
 
-**Debug adapter**:
+**Debug adapter** ⚠ Planned:
 
 - Lives inside the VS Code extension process (inline DA)
 - Translates DAP requests into Mindcraft debug protocol messages
@@ -432,9 +503,13 @@ but the authoritative compilation is the Mindcraft compiler in the app.
 On save, the app:
 
 1. Stores the updated source in the world/project data.
-2. Runs the TypeScript compiler pipeline (stages 1-8 from the referenced spec).
+2. Runs the TypeScript compiler pipeline (see Section B.2 of user-authored-sensors-actuators.md).
+   - The compiler pipeline is **fully implemented** in `packages/typescript/src/compiler/`
+   - Stages: parse (TypeScript AST) → validate → lower to IR → emit bytecode
+   - Output: `UserAuthoredProgram` (bytecode, constants, metadata)
 3. If successful, updates the registered `BrainFunctionEntry` for the sensor/actuator.
-4. Sends diagnostics back to VS Code.
+4. Sends diagnostics back to VS Code. ⚠ Currently only available during compilation; VS Code
+   bridge transport is not yet implemented. See "Compilation Status" subsection below.
 5. If the compiled tile is used in a running brain, the brain hot-reloads the updated
    bytecode (future -- see v1 scope).
 
@@ -467,11 +542,27 @@ updates it on each diagnostics event.
 
 Diagnostics come from two sources:
 
-1. **TypeScript checker diagnostics** (stage 1) -- standard TS errors/warnings
-2. **Subset validator diagnostics** (stage 2) -- Mindcraft-specific restrictions
+1. **TypeScript checker diagnostics** (parse & type check) ✓ Implemented
+   - Standard TS errors/warnings from the compiler's type system
+2. **Subset validator diagnostics** (validation) ✓ Implemented
+   - Mindcraft-specific restrictions (forbids classes, Promise type, eval, etc.)
 
-Both are mapped to source ranges and sent through the same diagnostics channel. The
-extension does not distinguish between them.
+Both are mapped to source ranges and available during compilation. ⚠ **Note:** The
+transport of diagnostics to VS Code via the bridge (shown in the example above) is not
+yet implemented. The compiler emits structured diagnostics with source positions, but
+they currently only exist on the app side. The extension does not distinguish between
+them.
+
+**Debug metadata emission:** ⚠ **Not yet implemented.** Following successful compilation,
+the compiler will emit `DebugMetadata` (Section 6) alongside the `UserAuthoredProgram`.
+This requires extending the compiler pipeline to track:
+- Source file identity and content hashes
+- Function identity and source spans
+- Executable spans aligned to statement boundaries
+- Scope and local variable information
+- Call and suspend site tracking
+
+These will be included in step (2) of the "On save" flow above once implemented.
 
 ### Error mapping
 
@@ -557,12 +648,16 @@ Breakpoints are re-resolved against the new debug metadata.
 
 ## 6. Debug Metadata
 
+⚠ **Implementation Status:** The `DebugMetadata` structure and types are not yet
+implemented in the compiler. This section describes the target design that will be
+required for Phase 2 debugger support. The compiler will be extended to emit these
+structures alongside each compiled `UserAuthoredProgram`.
+
 The compiler-emitted `DebugMetadata` is the single source of truth for all
 debugging behavior. The debug adapter does not infer structure independently --
 it consumes spans, scopes, functions, and mappings exactly as emitted by the
-compiler (stage 7 of the compilation pipeline defined in the referenced spec).
-Every debugger operation -- breakpoint resolution, stepping, scope presentation,
-variable inspection -- is derived from this metadata.
+compiler. Every debugger operation -- breakpoint resolution, stepping, scope
+presentation, variable inspection -- is derived from this metadata.
 
 ### Execution boundary model
 
@@ -767,6 +862,11 @@ sensor/actuator.
 
 ## 7. Debugging Architecture
 
+⚠ **Implementation Status:** The `IVMDebugRuntime` interface and its implementation do
+not yet exist. This section describes the target debug runtime API that the VM must
+expose. The underlying fiber execution infrastructure (FiberScheduler, fiber states,
+frame inspection) exists; the debug API wrapping is planned.
+
 ### Overview
 
 Debugging connects VS Code's Debug Adapter Protocol (DAP) to the Mindcraft VM's
@@ -793,10 +893,10 @@ Mindcraft App -> VM Debug Runtime (per attached VM)
 
 ### Runtime debug API
 
-Each VM instance exposes a debug interface. The debug runtime is activated on
-attach and deactivated on detach.
+Each VM instance will expose a debug interface once implemented. The debug runtime is
+activated on attach and deactivated on detach. Below is the target interface design:
 
-```
+```typescript
 interface IVMDebugRuntime {
   // Lifecycle
   activate(): void
@@ -837,6 +937,52 @@ Key differences from the previous design:
 - Breakpoints are keyed by `debugFuncId` (stable across recompiles) rather than
   raw compiled function ID.
 - Inspection methods are only valid while the VM is paused.
+
+### Implementation Guidance for Phase 2
+
+To implement the debug runtime described in this section, use the following existing
+codebase infrastructure:
+
+**1. Fiber and Execution State (`packages/core/src/brain/runtime/`)**
+- `Fiber` class tracks state (RUNNABLE, WAITING, DONE, FAULT, CANCELLED)
+- `FiberScheduler` manages the fiber queue and execution loop
+- `Frame` objects store PC, locals, and current function context
+- These structures are already sufficient for `listFibers()`, `getStackTrace()`, and
+  `getScopes()`. Extend with debug-aware queries (e.g., adding `getDebugInfo()` methods).
+
+**2. Error and Stack Trace Infrastructure**
+- `ErrorValue` type in VM contains `site: { funcId, pc }` and `stackTrace` array
+- Frame inspection is already performed during error handling
+- Reuse this path for debugger stack reconstruction (map PC to span via debug metadata).
+
+**3. VM Execution Loop (`packages/core/src/brain/runtime/vm.ts`)**
+- The `VM.executeOnce()` method is the heart of the scheduler
+- Fiber stepping, budgets, and breakpoint checking must be integrated here
+- Current: fibers run until budget exhausted or handle suspension
+- Target: check for breakpoints/span boundaries at each VM instruction
+
+**4. Handle and Async Infrastructure**
+- The handle table (`HandleTable`) manages async operation identifiers
+- Fiber suspension/resumption is already automatic via `AWAIT` instructions
+- Debug pause/resume can layer on top: pause blocks the scheduler loop entry,
+  resume un-blocks it.
+
+**5. Compiler Output**
+- `UserAuthoredProgram` is the target for debug metadata attachment
+- The compiler (`packages/typescript/src/compiler/compile.ts`) is the place to emit
+  `DebugMetadata` alongside bytecode.
+- Use `DebugFunctionInfo` and `Span` types (define in a new `packages/typescript/src/debug-metadata.ts`)
+  to track source positions and statement boundaries.
+
+**Steps to implement:**
+1. Add `DebugMetadata` types and emission to the compiler pipeline
+2. Add `debugMetadata` field to `UserAuthoredProgram`
+3. Create `IVMDebugRuntime` interface as a facade on top of `VM` and `FiberScheduler`
+4. Implement pause/resume by adding a paused flag and checking it at fiber yield points
+5. Implement breakpoint checking: map source breakpoints to span boundaries, check at each instruction
+6. Implement step handlers by tracking target function/frame and span boundaries
+
+See `Acknowledgements` section for links to relevant source files.
 
 ---
 
@@ -1420,7 +1566,7 @@ VM executes the **new** bytecode. The scheduler restarts rule fibers from their
 entry points using the new program revision. No fiber continues executing old
 bytecode after re-attach -- the detach-reattach cycle is a clean cut. The brain's
 normal page re-entry or restart behavior applies: callsite-persistent state
-(`moduleVars`) is re-initialized by the module init function, and brain-level
+(`callsiteVars`) is re-initialized by the module init function, and brain-level
 variables retain their values.
 
 ---
@@ -1472,7 +1618,7 @@ marked with `isGenerated: true` in its `DebugFunctionInfo`.
 
 | Function                | Purpose                                                                |
 | ----------------------- | ---------------------------------------------------------------------- |
-| Module init             | Evaluates top-level variable initializers via `STORE_MODULE_VAR`.      |
+| Module init             | Evaluates top-level variable initializers via `STORE_CALLSITE_VAR`.    |
 |                         | Runs once per callsite on first invocation and again on page re-entry. |
 | `onPageEntered` wrapper | Calls module init to reset state, then calls user's `onPageEntered`.   |
 
@@ -1519,11 +1665,11 @@ DAP scope: `{ name: "Locals", presentationHint: "locals" }`
 
 **Callsite State** (`kind: "module"`) -- per-callsite, persists across ticks:
 
-Top-level persistent bindings (`LOAD_MODULE_VAR` / `STORE_MODULE_VAR`) visible
+Top-level persistent bindings (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`) visible
 from the current module. These are scoped per-callsite -- each usage of a
 user-authored tile gets independent module state.
 
-Resolution: the adapter reads the `moduleVars` array from the callsite state
+Resolution: the adapter reads the `callsiteVars` array from the callsite state
 associated with the current fiber's callsite ID. Variable names come from the
 debug metadata's `ScopeInfo` entries with `kind: "module"`.
 
@@ -1535,7 +1681,7 @@ top-level `let`/`const` bindings in lexical scope, so the debugger exposes
 Callsite State for that frame. This means helper functions called from an
 entry point see the same Callsite State as the entry point itself, because
 those module variables are semantically visible at the helper's source
-location. The callsite ID used to resolve `moduleVars` is the one established
+location. The callsite ID used to resolve `callsiteVars` is the one established
 by the entry-point callsite, shared across the entire call tree rooted at
 that entry point.
 
@@ -2309,10 +2455,11 @@ function incrementCount(): void {
   fireCount += 1;
 }
 
-export default Sensor<boolean>({
+export default Sensor({
   name: "cooldown-check",
+  output: "boolean",
   params: { cooldown: { type: "number", default: 5 } },
-  async exec(ctx, params): Promise<boolean> {
+  async onExecute(ctx, params): Promise<boolean> {
     const elapsed = ctx.time - lastFireTime;
     if (elapsed < params.cooldown * 1000) {
       return false;
@@ -2338,7 +2485,7 @@ The compiler (stages 1-8) produces a `UserAuthoredProgram` with:
 ```
 Program.functions:
   [0] module-init          (isGenerated: true)
-  [1] exec                 (isGenerated: false, entry point)
+  [1] onExecute            (isGenerated: false, entry point)
   [2] incrementCount       (isGenerated: false, helper)
 
 Program.constants:
@@ -2349,7 +2496,7 @@ Program.constants:
   [4] "enemy"  (query string)
   [5] 10       (query radius)
 
-moduleVarCount: 2   (lastFireTime at index 0, fireCount at index 1)
+numCallsiteVars: 2   (lastFireTime at index 0, fireCount at index 1)
 ```
 
 ### Debug metadata
@@ -2376,10 +2523,10 @@ DebugMetadata:
           ]
 
     [1] DebugFunctionInfo:
-          debugFunctionId: "sensors/cooldown-check.ts::exec"
+          debugFunctionId: "sensors/cooldown-check.ts::onExecute"
           compiledFuncId: 1
           fileIndex: 0
-          prettyName: "exec"
+          prettyName: "onExecute"
           isGenerated: false
           spans: [
             { spanId: 0, startLine: 14, ..., isStatementBoundary: true },  -- const elapsed = ...
@@ -2440,13 +2587,13 @@ DebugMetadata:
 Breakpoint resolution:
 
 - Stage 1: find span in non-generated function with `startLine == 18`.
-  Matches `exec` span 3 (`spanId: 3`, `startLine: 18`).
-- Result: **verified** at `exec` span 3's PC.
+  Matches `onExecute` span 3 (`spanId: 3`, `startLine: 18`).
+- Result: **verified** at `onExecute` span 3's PC.
 
 ### Stepping walkthrough
 
 The rule fiber evaluates `cooldown-check` via synchronous dispatch.
-The caller's HOST_CALL pushes `exec` as a frame on the same thread.
+The caller's HOST_CALL pushes `onExecute` as a frame on the same thread.
 
 **Stop 1: Breakpoint at line 18**
 
@@ -2460,11 +2607,11 @@ DAP stopped { reason: "breakpoint", threadId: 1 }
 Stack trace:
 
 ```
-Frame 0: exec              line 18   (sensors/cooldown-check.ts)
+Frame 0: onExecute         line 18   (sensors/cooldown-check.ts)
 Frame 1: (rule dispatch)   ...       (brain rule -- dimmed if generated)
 ```
 
-Scopes for Frame 0 (`exec`):
+Scopes for Frame 0 (`onExecute`):
 
 ```
 Locals:
@@ -2498,7 +2645,7 @@ Stack trace:
 
 ```
 Frame 0: incrementCount    line 7    (sensors/cooldown-check.ts)
-Frame 1: exec              line 18   (sensors/cooldown-check.ts)
+Frame 1: onExecute         line 18   (sensors/cooldown-check.ts)
 Frame 2: (rule dispatch)   ...
 ```
 
@@ -2518,20 +2665,20 @@ Brain Variables:
 ```
 
 The helper frame sees Callsite State because `incrementCount` is defined in
-the same authored module. The `moduleVars` are resolved via the entry-point
+the same authored module. The `callsiteVars` are resolved via the entry-point
 callsite ID, shared across the call tree.
 
 **Step over (line 7 -> return to line 19)**
 
-User presses step-over. `fireCount += 1` executes (`LOAD_MODULE_VAR 1`,
-push 1, add, `STORE_MODULE_VAR 1`). The function returns, and the step
-completes in `exec` at the next statement (line 19).
+User presses step-over. `fireCount += 1` executes (`LOAD_CALLSITE_VAR 1`,
+push 1, add, `STORE_CALLSITE_VAR 1`). The function returns, and the step
+completes in `onExecute` at the next statement (line 19).
 
 ```
 DAP stopped { reason: "step", threadId: 1 }
 ```
 
-Scopes for Frame 0 (`exec`) at line 19:
+Scopes for Frame 0 (`onExecute`) at line 19:
 
 ```
 Callsite State:
@@ -2562,7 +2709,7 @@ fiber. The VM re-pauses at the resume PC (the safe point after the AWAIT).
 DAP stopped { reason: "step", threadId: 1 }
 ```
 
-Scopes for Frame 0 (`exec`) at line 20:
+Scopes for Frame 0 (`onExecute`) at line 20:
 
 ```
 Locals:
@@ -2591,6 +2738,38 @@ saves. The app recompiles:
    requested line** (18). The new metadata still has a span at line 18
    (`fireCount += 2`). Breakpoint is **verified** at the new PC.
 5. The VM restarts rule fibers from entry points using the new bytecode.
-   `moduleVars` are re-initialized by the module init function.
+   `callsiteVars` are re-initialized by the module init function.
    Brain variables retain their values.
 6. Execution continues with the new program. The user sees their updated code.
+
+---
+
+## Acknowledgements: Key Source Files for Phase 2 Implementation
+
+This document describes the integration points between the debugger and existing
+Mindcraft infrastructure. Implementation should reference the following files:
+
+**Compiler and Type System:**
+- `packages/typescript/src/compiler/compile.ts` — Main compilation entry point
+- `packages/typescript/src/compiler/emit.ts` — Bytecode emission (extend for debug metadata)
+- `packages/typescript/src/compiler/descriptor.ts` — Tile metadata extraction
+- `packages/typescript/src/index.ts` — Public API
+
+**VM and Fiber Execution:**
+- `packages/core/src/brain/runtime/vm.ts` — Stack-based VM, instruction execution
+- `packages/core/src/brain/runtime/fiber-scheduler.ts` — Fiber queue and scheduling
+- `packages/core/src/brain/interfaces/vm.ts` — Public VM interfaces
+- `packages/core/src/brain/runtime/brain.ts` — Brain orchestration (handles page, rule exec)
+
+**Type Definitions:**
+- `packages/core/src/brain/interfaces/program.ts` — `Program`, `FunctionBytecode` types
+  (extend with `DebugMetadata` field)
+- `packages/core/src/brain/runtime/error.ts` — `ErrorValue` with stack trace support
+
+**User-Authored Tile Integration:**
+- `packages/typescript/src/runtime/authored-function.ts` — User tile execution wrapper
+- `packages/typescript/src/runtime/registration-bridge.ts` — Tile registration
+
+**Supporting Documentation:**
+- `docs/specs/features/user-authored-sensors-actuators.md` — Compilation design
+- `.github/instructions/global.instructions.md` — Code style guidelines
