@@ -31,7 +31,21 @@ const checkerOptions: ts.CompilerOptions = {
 
 let cachedLibFiles: Record<string, string> | undefined;
 
+const TESTED_TS_VERSION = "5.7";
+
+function checkTypeScriptVersion(): void {
+  const actual = ts.version;
+  const [eMajor, eMinor] = TESTED_TS_VERSION.split(".");
+  const [aMajor, aMinor] = actual.split(".");
+  if (aMajor !== eMajor || aMinor !== eMinor) {
+    throw new Error(
+      `TypeScript version mismatch: package was built and tested against ${eMajor}.${eMinor}.x but found ${actual}`
+    );
+  }
+}
+
 export async function initCompiler(): Promise<void> {
+  checkTypeScriptVersion();
   if (cachedLibFiles) return;
   const mod = await import("./lib-dts.generated.js");
   cachedLibFiles = mod.LIB_FILES;
