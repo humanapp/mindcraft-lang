@@ -1,7 +1,9 @@
 name: Deploy vscode-bridge
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "vscode-bridge-v*"
 
 permissions:
   contents: read
