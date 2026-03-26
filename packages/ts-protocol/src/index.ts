@@ -3,3 +3,9 @@ export interface WsMessage {
   id?: string;
   payload?: unknown;
 }
+
+export type SessionRole = "extension" | "runtime";
+
+export interface HelloPayload {
+  role: SessionRole;
+}
