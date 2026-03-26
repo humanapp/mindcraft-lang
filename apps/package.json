@@ -1,5 +1,5 @@
 {
   "scripts": {
-    "install": "npm --prefix sim install"
+    "install": "node scripts/install.js"
   }
 }
