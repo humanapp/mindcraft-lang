@@ -68,6 +68,7 @@ lcov.info
 .env
 .env.*
 *.local
+!.env.example
 
 # ------------------------------------------------------------------
 # Lock / cache files
