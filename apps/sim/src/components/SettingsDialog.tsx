@@ -36,7 +36,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       <DialogContent className="sm:max-w-md bg-slate-100 border-2 border-slate-300 rounded-2xl text-slate-900">
         <DialogHeader className="border-b border-slate-200 pb-3">
           <DialogTitle className="text-slate-900">Settings</DialogTitle>
-          <DialogDescription className="text-slate-500">Configure application settings.</DialogDescription>
+          <DialogDescription className="text-slate-500">Configure application settings</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
