@@ -1,0 +1,10 @@
+*
+
+!packages/ts-protocol/package.json
+!packages/ts-protocol/tsconfig.json
+!packages/ts-protocol/src
+
+!apps/vscode-bridge/package.json
+!apps/vscode-bridge/tsconfig.json
+!apps/vscode-bridge/tsconfig.base.json
+!apps/vscode-bridge/src
