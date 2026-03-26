@@ -46,6 +46,6 @@ jobs:
           username: ${{ secrets.VSCODE_BRIDGE_EC2_USER }}
           key: ${{ secrets.VSCODE_BRIDGE_EC2_SSH_KEY }}
           script: |
-            cd ~/vscode-bridge
-            docker compose pull
-            docker compose up -d
+            docker compose -f /opt/vscode-bridge/docker-compose.yml pull
+            docker compose -f /opt/vscode-bridge/docker-compose.yml up -d
+            docker image prune -f
