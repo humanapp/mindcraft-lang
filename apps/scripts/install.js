@@ -5,6 +5,7 @@ const { execSync } = require("node:child_process");
 const apps = [
     "sim",
     "vscode-bridge",
+    "vscode-extension",
 ];
 
 for (const app of apps) {
