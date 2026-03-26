@@ -1,7 +1,7 @@
 {
 	"name": "@mindcraft-lang/vscode-extension",
 	"displayName": "Mindcraft",
-	"description": "Author Mindcraft tiles in TypeScript using VS Code",
+	"description": "Program sensors and actuators for Mindcraft apps in TypeScript using VS Code",
 	"version": "0.1.0",
 	"private": true,
 	"publisher": "mindcraft-lang",
