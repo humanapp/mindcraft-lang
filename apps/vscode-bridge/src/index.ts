@@ -1,5 +1,6 @@
 import { createApp } from "#app.js";
 import { startServer } from "#server.js";
 
-const app = createApp();
-startServer(app);
+const { app, injectWebSocket } = createApp();
+const server = startServer(app);
+injectWebSocket(server);
