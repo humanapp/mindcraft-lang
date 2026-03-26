@@ -22,11 +22,11 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
     "format": "biome format ./src --write",
-		"test": "tsx --conditions=development --test src/tests/**/*.test.ts",
-		"test:watch": "tsx --conditions=development --test --watch src/tests/**/*.test.ts",
-		"test:coverage": "tsx --conditions=development --test --experimental-test-coverage src/tests/**/*.test.ts"
+		"test": "tsx --conditions=development --test src/**/*.spec.ts",
+		"test:watch": "tsx --conditions=development --test --watch src/**/*.spec.ts",
+		"test:coverage": "tsx --conditions=development --test --experimental-test-coverage src/**/*.spec.ts"
 	},
 	"dependencies": {
 		"@hono/node-server": "^1.19.11",
