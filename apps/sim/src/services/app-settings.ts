@@ -5,7 +5,7 @@ export interface AppSettings {
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
-  vscodeBridgeUrl: "localhost:6464",
+  vscodeBridgeUrl: "vscode-bridge.mindcraft-lang.org",
 };
 
 type Listener = (settings: AppSettings, prev: AppSettings) => void;
@@ -37,7 +37,11 @@ export function getAppSettings(): AppSettings {
 
 export function updateAppSettings(patch: Partial<AppSettings>): void {
   const prev = current;
-  current = { ...current, ...patch };
+  const merged = { ...current, ...patch };
+  if (!merged.vscodeBridgeUrl.trim()) {
+    merged.vscodeBridgeUrl = DEFAULT_SETTINGS.vscodeBridgeUrl;
+  }
+  current = merged;
   persist(current);
   for (const fn of listeners) {
     fn(current, prev);

@@ -8,7 +8,7 @@ import {
   DialogTitle,
   Input,
 } from "@mindcraft-lang/ui";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { type AppSettings, getAppSettings, updateAppSettings } from "@/services/app-settings";
 
 interface SettingsDialogProps {
@@ -19,12 +19,11 @@ interface SettingsDialogProps {
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [draft, setDraft] = useState<AppSettings>(getAppSettings);
 
-  const handleOpen = (next: boolean) => {
-    if (next) {
+  useEffect(() => {
+    if (open) {
       setDraft(getAppSettings());
     }
-    onOpenChange(next);
-  };
+  }, [open]);
 
   const save = () => {
     updateAppSettings(draft);
@@ -32,7 +31,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md bg-slate-100 border-2 border-slate-300 rounded-2xl text-slate-900">
         <DialogHeader className="border-b border-slate-200 pb-3">
           <DialogTitle className="text-slate-900">Settings</DialogTitle>
@@ -50,7 +49,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               onChange={(e) => setDraft((prev) => ({ ...prev, vscodeBridgeUrl: e.target.value }))}
               placeholder="localhost:6464"
             />
-            <p className="text-xs text-slate-500">The address of the running vscode-bridge instance.</p>
           </div>
         </div>
         <DialogFooter className="border-t border-slate-200 pt-3">
