@@ -1,5 +1,5 @@
 import { BridgeClient } from "@mindcraft-lang/ts-authoring";
-import { getAppSettings } from "./app-settings";
+import { getAppSettings, onAppSettingsChange } from "./app-settings";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
 
@@ -91,3 +91,10 @@ export function onBridgeStatusChange(fn: StatusListener): () => void {
     listeners.delete(fn);
   };
 }
+
+onAppSettingsChange((settings, prev) => {
+  if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl && client) {
+    disconnectBridge();
+    connectBridge();
+  }
+});
