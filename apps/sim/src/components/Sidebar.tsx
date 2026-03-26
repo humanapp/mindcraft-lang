@@ -1,12 +1,13 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
-import { Button, Slider } from "@mindcraft-lang/ui";
+import { Button, Slider, Switch } from "@mindcraft-lang/ui";
 import { BookOpen, Info, Settings } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
+import { connectBridge, disconnectBridge, getBridgeStatus, onBridgeStatusChange } from "@/services/vscode-bridge";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",
@@ -57,6 +58,9 @@ export function Sidebar({
 }: SidebarProps) {
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bridgeStatus, setBridgeStatus] = useState(getBridgeStatus);
+
+  useEffect(() => onBridgeStatusChange(setBridgeStatus), []);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toggle: toggleDocs, isOpen: isDocsOpen, open: openDocs, navigateToEntry } = useDocsSidebar();
@@ -264,6 +268,34 @@ export function Sidebar({
         >
           Toggle Debug
         </Button>
+
+        <div className="border-t border-border" />
+
+        {/* VS Code Bridge */}
+        <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="bridge-toggle" className="text-sm font-medium">
+              VS Code Bridge
+            </label>
+            <Switch
+              id="bridge-toggle"
+              checked={bridgeStatus !== "disconnected"}
+              onCheckedChange={(checked) => (checked ? connectBridge() : disconnectBridge())}
+              aria-label="Toggle VS Code bridge connection"
+            />
+          </div>
+          <span
+            className={`text-xs font-mono ${
+              bridgeStatus === "connected"
+                ? "text-green-400"
+                : bridgeStatus === "connecting" || bridgeStatus === "reconnecting"
+                  ? "text-yellow-400"
+                  : "text-muted-foreground"
+            }`}
+          >
+            {bridgeStatus}
+          </span>
+        </div>
       </div>
 
       {/* GitHub link */}
