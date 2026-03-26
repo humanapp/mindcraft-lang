@@ -31,7 +31,7 @@ const checkerOptions: ts.CompilerOptions = {
 
 let cachedLibFiles: Record<string, string> | undefined;
 
-const TESTED_TS_VERSION = "5.7";
+const TESTED_TS_VERSION = "5.9";
 
 function checkTypeScriptVersion(): void {
   const actual = ts.version;
