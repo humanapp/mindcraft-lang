@@ -1,10 +1,11 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
 import { Button, Slider } from "@mindcraft-lang/ui";
-import { BookOpen, Info } from "lucide-react";
+import { BookOpen, Info, Settings } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
+import { SettingsDialog } from "@/components/SettingsDialog";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
@@ -55,6 +56,7 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toggle: toggleDocs, isOpen: isDocsOpen, open: openDocs, navigateToEntry } = useDocsSidebar();
@@ -109,7 +111,19 @@ export function Sidebar({
         >
           <BookOpen className="h-4 w-4" aria-hidden="true" />
         </Button>
+        <Button
+          onClick={() => setSettingsOpen(true)}
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          title="Settings"
+          aria-label="Open settings"
+        >
+          <Settings className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {/* Header */}
