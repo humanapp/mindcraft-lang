@@ -49,9 +49,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "build:prod": "tsc",
-    "clean": "tsc --build tsconfig.json --clean",
+    "build": "tsc --build",
+    "build:prod": "tsc --build",
+    "clean": "tsc --build --clean",
     "lint:only": "biome lint ./src",
     "check:only": "biome check ./src",
     "format:only": "biome format ./src",

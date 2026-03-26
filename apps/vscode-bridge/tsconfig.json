@@ -6,5 +6,6 @@
 		"types": ["node"]
 	},
 	"include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.spec.ts"]
+	"exclude": ["src/**/*.spec.ts"],
+	"references": [{ "path": "../../packages/ts-protocol/tsconfig.json" }]
 }

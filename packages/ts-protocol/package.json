@@ -15,6 +15,9 @@
   "author": "humanapp",
   "license": "MIT",
   "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean",
+    "watch": "tsc --build --watch",
     "lint:only": "biome lint ./src",
     "check:only": "biome check ./src",
     "format:only": "biome format ./src",

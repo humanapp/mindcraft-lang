@@ -5,5 +5,6 @@
 		"rootDir": ".",
 		"types": ["node"]
 	},
-	"include": ["src/**/*.spec.ts"]
+	"include": ["src/**/*.spec.ts"],
+	"references": [{ "path": "../../packages/ts-protocol/tsconfig.json" }]
 }
