@@ -9,13 +9,13 @@
 		"#*.js": {
 			"types": "./src/*.ts",
 			"development": "./src/*.ts",
-			"default": "./dist/src/*.js"
+			"default": "./dist/*.js"
 		}
 	},
 	"scripts": {
 		"dev": "tsx watch --conditions=development --env-file=.env src/index.ts",
 		"build": "tsc --build",
-		"start": "node --env-file=.env dist/src/index.js",
+		"start": "node --env-file=.env dist/index.js",
 		"clean": "rm -rf dist",
 		"lint:only": "biome lint ./src",
 		"check:only": "biome check ./src",
