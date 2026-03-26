@@ -13,9 +13,9 @@
 		}
 	},
 	"scripts": {
-		"dev": "tsx watch --conditions=development src/index.ts",
+		"dev": "tsx watch --conditions=development --env-file=.env src/index.ts",
 		"build": "tsc",
-		"start": "node dist/src/index.js",
+		"start": "node --env-file=.env dist/src/index.js",
 		"clean": "rm -rf dist",
 		"lint:only": "biome lint ./src",
 		"check:only": "biome check ./src",
