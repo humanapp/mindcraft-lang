@@ -1,7 +1,7 @@
 {
   "name": "@mindcraft-lang/ts-protocol",
   "description": "Protocol types for @mindcraft-lang/ts-authoring and related packages",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
