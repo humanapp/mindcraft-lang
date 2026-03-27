@@ -1,19 +1,53 @@
 {
   "name": "@mindcraft-lang/ts-protocol",
-  "description": "Protocol types for ts-authoring and related packages",
+  "description": "Protocol types for @mindcraft-lang/ts-authoring and related packages",
   "version": "0.1.0",
-  "private": true,
+  "license": "MIT",
   "type": "module",
+  "author": "humanapp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "directory": "packages/ts-protocol"
+  },
+  "bugs": {
+    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+  },
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/ts-protocol#readme",
+  "keywords": [
+    "mindcraft",
+    "visual-programming",
+    "tile-based",
+    "typescript",
+    "vscode",
+    "language",
+    "education",
+    "stem",
+    "coding",
+    "game-development",
+    "creative-coding",
+    "kodu",
+    "project-spark"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "browser": "./dist/index.js",
       "import": "./dist/index.js"
     }
   },
-  "author": "humanapp",
-  "license": "MIT",
   "scripts": {
     "build": "tsc --build",
     "clean": "tsc --build --clean",
@@ -24,10 +58,16 @@
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
     "typecheck": "tsc --build --noEmit",
-    "format": "biome format ./src --write"
+    "format": "biome format ./src --write",
+    "pretest": "npm run build",
+    "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
+    "release:patch": "npm run build && npm run check:only && node ../../scripts/release.js patch",
+    "release:minor": "npm run build && npm run check:only && node ../../scripts/release.js minor",
+    "release:major": "npm run build && npm run check:only && node ../../scripts/release.js major"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",
+    "tsx": "^4.21.0",
     "typescript": "~5.9.3"
   }
 }
