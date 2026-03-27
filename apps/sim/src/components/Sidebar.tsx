@@ -40,6 +40,7 @@ export interface SidebarProps {
   onEditBrain: (archetype: Archetype) => void;
   onDesiredCountChange: (archetype: Archetype, count: number) => void;
   onToggleDebug: () => void;
+  debugEnabled: boolean;
   /** Whether the sidebar is open on mobile. Ignored on md+ screens. */
   isOpen?: boolean;
   /** Callback to close the sidebar on mobile. */
@@ -53,6 +54,7 @@ export function Sidebar({
   onEditBrain,
   onDesiredCountChange,
   onToggleDebug,
+  debugEnabled,
   isOpen,
   onClose,
 }: SidebarProps) {
@@ -259,15 +261,17 @@ export function Sidebar({
         )}
 
         {/* Debug toggle */}
-        <Button
-          onClick={onToggleDebug}
-          variant="outline"
-          size="sm"
-          className="w-full text-xs border-slate-600"
-          aria-label="Toggle debug overlay"
-        >
-          Toggle Debug
-        </Button>
+        <div className="flex items-center justify-between">
+          <label htmlFor="debug-toggle" className="text-sm font-medium">
+            Debug Draw
+          </label>
+          <Switch
+            id="debug-toggle"
+            checked={debugEnabled}
+            onCheckedChange={onToggleDebug}
+            aria-label="Toggle debug overlay"
+          />
+        </div>
 
         <div className="border-t border-border" />
 

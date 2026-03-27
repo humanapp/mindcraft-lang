@@ -58,6 +58,7 @@ function App() {
   const [editingArchetype, setEditingArchetype] = useState<Archetype | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [timeSpeed, setTimeSpeed] = useState(1);
+  const [debugEnabled, setDebugEnabled] = useState(false);
   const [scene, setScene] = useState<Playground | null>(null);
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
@@ -106,6 +107,7 @@ function App() {
 
   const handleToggleDebug = useCallback(() => {
     scene?.toggleDebugMode();
+    setDebugEnabled((prev) => !prev);
   }, [scene]);
 
   const getBrainDefForEditing = (): BrainDef | undefined => {
@@ -163,6 +165,7 @@ function App() {
           onEditBrain={handleEditBrain}
           onDesiredCountChange={handleDesiredCountChange}
           onToggleDebug={handleToggleDebug}
+          debugEnabled={debugEnabled}
           isOpen={isSidebarOpen}
           onClose={() => setIsSidebarOpen(false)}
         />
