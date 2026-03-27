@@ -50,6 +50,7 @@
   },
   "scripts": {
     "build": "tsc --build",
+    "build:prod": "tsc --build",
     "clean": "tsc --build --clean",
     "watch": "tsc --build --watch",
     "lint:only": "biome lint ./src",
@@ -57,7 +58,7 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
-    "typecheck": "tsc --build --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
     "format": "biome format ./src --write",
     "pretest": "npm run build",
     "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
