@@ -4,6 +4,5 @@
     "noEmit": true
   },
   "include": ["src/**/*.spec.ts"],
-  "exclude": ["node_modules", "dist"],
-  "references": [{ "path": "../typescript/tsconfig.spec.json" }]
+  "exclude": ["node_modules", "dist"]
 }

@@ -25,8 +25,8 @@ export class ProjectFiles {
     return this._root.read(path);
   }
 
-  write(path: string, content: string, isReadonly?: boolean): void {
-    this._root.write(path, content, isReadonly);
+  write(path: string, content: string, isReadonly?: boolean, etag?: string): void {
+    this._root.write(path, content, isReadonly, etag);
   }
 
   delete(path: string): void {
@@ -71,7 +71,7 @@ export class ProjectFiles {
             // directory already exists
           }
         }
-        this._root.write(path, entry.content, entry.isReadonly, entry.etag);
+        this._root.writeRestore(path, entry.content, entry.isReadonly, entry.etag);
       }
     }
   }
@@ -136,7 +136,7 @@ class FileTree {
     return this.readInternal(dirSegs, fullPath, name);
   }
 
-  write(fullPath: string, content: string, isReadonly?: boolean, etag?: string): void {
+  write(fullPath: string, content: string, isReadonly?: boolean, expectedEtag?: string): void {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
@@ -144,7 +144,18 @@ class FileTree {
     }
     const name = segs[segs.length - 1];
     const dirSegs = segs.slice(0, -1);
-    this.writeInternal(dirSegs, fullPath, name, content, isReadonly ?? false, etag ?? generateEtag());
+    this.writeInternal(dirSegs, fullPath, name, content, isReadonly ?? false, generateEtag(), expectedEtag);
+  }
+
+  writeRestore(fullPath: string, content: string, isReadonly: boolean, etag: string): void {
+    fullPath = normalizePath(fullPath);
+    const segs = fullPath.split("/").filter((s) => s.length > 0);
+    if (segs.length === 0) {
+      throw new Error(`Invalid file path: "${fullPath}"`);
+    }
+    const name = segs[segs.length - 1];
+    const dirSegs = segs.slice(0, -1);
+    this.writeInternal(dirSegs, fullPath, name, content, isReadonly, etag);
   }
 
   delete(fullPath: string): void {
@@ -314,20 +325,23 @@ class FileTree {
     name: string,
     content: string,
     isReadonly: boolean,
-    etag: string
+    newEtag: string,
+    expectedEtag?: string
   ): void {
     if (segs.length === 0) {
-      // If file already exists, check if it's read-only
       const existing = this._files.get(name);
       if (existing?.isReadonly) {
         throw new Error(`File is read-only: ${fullPath}`);
+      }
+      if (expectedEtag !== undefined && existing && existing.etag !== expectedEtag) {
+        throw new Error(`ETag mismatch for ${fullPath}`);
       }
       const entry: TreeFileEntryWithContent = {
         kind: "file",
         path: fullPath,
         name,
         content,
-        etag,
+        etag: newEtag,
         isReadonly,
       };
       this._files.set(name, entry);
@@ -337,7 +351,7 @@ class FileTree {
       if (!child) {
         throw new Error(`Directory not found: ${this.path ? `${this.path}/${next}` : next}`);
       }
-      child.writeInternal(rest, fullPath, name, content, isReadonly, etag);
+      child.writeInternal(rest, fullPath, name, content, isReadonly, newEtag, expectedEtag);
     }
   }
 
