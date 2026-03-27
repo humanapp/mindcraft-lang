@@ -1,6 +1,6 @@
 {
   "name": "@mindcraft-lang/ts-authoring",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "VSCode bridge for authoring sensors and actuators in TypeScript",
   "license": "MIT",
   "type": "module",
