@@ -280,21 +280,6 @@ export function Sidebar({
           </div>
         )}
 
-        {/* Debug toggle */}
-        <div className="flex items-center justify-between">
-          <label htmlFor="debug-toggle" className="text-sm font-medium">
-            Debug Draw
-          </label>
-          <Switch
-            id="debug-toggle"
-            checked={debugEnabled}
-            onCheckedChange={onToggleDebug}
-            aria-label="Toggle debug overlay"
-          />
-        </div>
-
-        <div className="border-t border-border" />
-
         {/* VS Code Bridge */}
         <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
           <div className="flex items-center justify-between">
@@ -319,6 +304,21 @@ export function Sidebar({
           >
             {bridgeStatus}
           </span>
+        </div>
+
+        {/* Debug toggle */}
+        <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="debug-toggle" className="text-sm font-medium">
+              Debug Draw
+            </label>
+            <Switch
+              id="debug-toggle"
+              checked={debugEnabled}
+              onCheckedChange={onToggleDebug}
+              aria-label="Toggle debug overlay"
+            />
+          </div>
         </div>
       </div>
 
