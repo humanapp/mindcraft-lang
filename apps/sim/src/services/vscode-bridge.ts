@@ -1,88 +1,61 @@
-import { BridgeClient } from "@mindcraft-lang/ts-authoring";
+import { Project } from "@mindcraft-lang/ts-authoring";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
-
 type StatusListener = (status: ConnectionStatus) => void;
 
-let client: BridgeClient | undefined;
-let status: ConnectionStatus = "disconnected";
+let project: Project | undefined;
+let sessionUnsub: (() => void) | undefined;
 const listeners = new Set<StatusListener>();
 
-function setStatus(next: ConnectionStatus): void {
-  if (next === status) return;
-  status = next;
+function notifyListeners(status: ConnectionStatus): void {
   for (const fn of listeners) {
     fn(status);
   }
 }
 
-function mapClientState(state: string): ConnectionStatus {
-  switch (state) {
-    case "open":
-      return "connected";
-    case "connecting":
-      return "connecting";
-    case "reconnecting":
-      return "reconnecting";
-    default:
-      return "disconnected";
+function wireSession(): void {
+  sessionUnsub?.();
+  if (project) {
+    sessionUnsub = project.session.onStatusChange(notifyListeners);
   }
 }
 
-let pollTimer: ReturnType<typeof setInterval> | undefined;
-
-function startPolling(): void {
-  stopPolling();
-  pollTimer = setInterval(() => {
-    if (client) {
-      setStatus(mapClientState(client.connectionState));
-    }
-  }, 500);
-}
-
-function stopPolling(): void {
-  if (pollTimer !== undefined) {
-    clearInterval(pollTimer);
-    pollTimer = undefined;
-  }
+function createProject(): Project {
+  const { vscodeBridgeUrl } = getAppSettings();
+  return new Project({
+    appName: "sim",
+    projectId: "sim-default",
+    projectName: "Sim",
+    bridgeUrl: vscodeBridgeUrl,
+    clientRole: "app",
+    filesystem: new Map(),
+  });
 }
 
 export function connectBridge(): void {
-  if (client) return;
-
-  const { vscodeBridgeUrl } = getAppSettings();
-  let base: string;
-  if (vscodeBridgeUrl.startsWith("ws://") || vscodeBridgeUrl.startsWith("wss://")) {
-    base = vscodeBridgeUrl;
-  } else {
-    const isLocalhost = /^localhost(:|$)/.test(vscodeBridgeUrl) || /^127\./.test(vscodeBridgeUrl);
-    const scheme = isLocalhost ? "ws://" : "wss://";
-    base = `${scheme}${vscodeBridgeUrl}`;
-  }
-  const url = base.endsWith("/ws") ? base : `${base.replace(/\/+$/, "")}/ws`;
-
-  client = new BridgeClient();
-  setStatus("connecting");
-  client.connect(url);
-  startPolling();
+  if (project) return;
+  project = createProject();
+  wireSession();
+  project.session.start();
 }
 
 export function disconnectBridge(): void {
-  stopPolling();
-  if (client) {
-    client.close();
-    client = undefined;
-  }
-  setStatus("disconnected");
+  if (!project) return;
+  sessionUnsub?.();
+  sessionUnsub = undefined;
+  project.session.stop();
+  project = undefined;
+  notifyListeners("disconnected");
 }
 
 export function getBridgeStatus(): ConnectionStatus {
-  return status;
+  if (!project) return "disconnected";
+  return project.session.status;
 }
 
-export function getBridgeClient(): BridgeClient | undefined {
-  return client;
+export function getProject(): Project | undefined {
+  return project;
 }
 
 export function onBridgeStatusChange(fn: StatusListener): () => void {
@@ -93,7 +66,7 @@ export function onBridgeStatusChange(fn: StatusListener): () => void {
 }
 
 onAppSettingsChange((settings, prev) => {
-  if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl && client) {
+  if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl && project) {
     disconnectBridge();
     connectBridge();
   }
