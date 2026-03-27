@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
+import { ErrorCode } from "./error-codes.js";
 import { type ExportedFileSystem, ProjectFiles } from "./files.js";
 import type { Project } from "./project.js";
 
@@ -41,23 +42,23 @@ describe("ProjectFiles", () => {
     it("throws when writing to a read-only file", () => {
       pf.mkdir("d");
       pf.write("d/locked.txt", "content", true);
-      assert.throws(() => pf.write("d/locked.txt", "new"), /read-only/i);
+      assert.throws(() => pf.write("d/locked.txt", "new"), { code: ErrorCode.FILE_READ_ONLY });
     });
 
     it("throws when reading a nonexistent file", () => {
-      assert.throws(() => pf.read("nope.txt"), /not found/i);
+      assert.throws(() => pf.read("nope.txt"), { code: ErrorCode.FILE_NOT_FOUND });
     });
 
     it("throws when writing into a nonexistent directory", () => {
-      assert.throws(() => pf.write("missing/file.txt", "x"), /not found/i);
+      assert.throws(() => pf.write("missing/file.txt", "x"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
     });
 
     it("throws when reading with an empty path", () => {
-      assert.throws(() => pf.read(""), /invalid/i);
+      assert.throws(() => pf.read(""), { code: ErrorCode.INVALID_PATH });
     });
 
     it("throws when writing with an empty path", () => {
-      assert.throws(() => pf.write("", "x"), /invalid/i);
+      assert.throws(() => pf.write("", "x"), { code: ErrorCode.INVALID_PATH });
     });
   });
 
@@ -68,25 +69,25 @@ describe("ProjectFiles", () => {
       pf.mkdir("d");
       pf.write("d/f.txt", "content");
       pf.delete("d/f.txt");
-      assert.throws(() => pf.read("d/f.txt"), /not found/i);
+      assert.throws(() => pf.read("d/f.txt"), { code: ErrorCode.FILE_NOT_FOUND });
     });
 
     it("throws when deleting a nonexistent file", () => {
-      assert.throws(() => pf.delete("ghost.txt"), /not found/i);
+      assert.throws(() => pf.delete("ghost.txt"), { code: ErrorCode.FILE_NOT_FOUND });
     });
 
     it("throws when deleting a read-only file", () => {
       pf.mkdir("d");
       pf.write("d/locked.txt", "content", true);
-      assert.throws(() => pf.delete("d/locked.txt"), /read-only/i);
+      assert.throws(() => pf.delete("d/locked.txt"), { code: ErrorCode.FILE_READ_ONLY });
     });
 
     it("throws when deleting with an empty path", () => {
-      assert.throws(() => pf.delete(""), /invalid/i);
+      assert.throws(() => pf.delete(""), { code: ErrorCode.INVALID_PATH });
     });
 
     it("throws when parent directory does not exist", () => {
-      assert.throws(() => pf.delete("no/file.txt"), /not found/i);
+      assert.throws(() => pf.delete("no/file.txt"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
     });
   });
 
@@ -114,11 +115,11 @@ describe("ProjectFiles", () => {
     });
 
     it("throws for a nonexistent path", () => {
-      assert.throws(() => pf.stat("nothing"), /not found/i);
+      assert.throws(() => pf.stat("nothing"), { code: ErrorCode.PATH_NOT_FOUND });
     });
 
     it("throws for an empty path", () => {
-      assert.throws(() => pf.stat(""), /invalid/i);
+      assert.throws(() => pf.stat(""), { code: ErrorCode.INVALID_PATH });
     });
 
     it("stat reflects read-only flag", () => {
@@ -132,7 +133,7 @@ describe("ProjectFiles", () => {
     });
 
     it("throws when intermediate directory does not exist", () => {
-      assert.throws(() => pf.stat("no/such/thing"), /not found/i);
+      assert.throws(() => pf.stat("no/such/thing"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
     });
   });
 
@@ -155,11 +156,11 @@ describe("ProjectFiles", () => {
 
     it("throws when creating a duplicate directory", () => {
       pf.mkdir("dup");
-      assert.throws(() => pf.mkdir("dup"), /already exists/i);
+      assert.throws(() => pf.mkdir("dup"), { code: ErrorCode.DIRECTORY_ALREADY_EXISTS });
     });
 
     it("throws for empty path", () => {
-      assert.throws(() => pf.mkdir(""), /invalid/i);
+      assert.throws(() => pf.mkdir(""), { code: ErrorCode.INVALID_PATH });
     });
   });
 
@@ -167,48 +168,48 @@ describe("ProjectFiles", () => {
     it("removes an empty directory", () => {
       pf.mkdir("temp");
       pf.rmdir("temp");
-      assert.throws(() => pf.stat("temp"), /not found/i);
+      assert.throws(() => pf.stat("temp"), { code: ErrorCode.PATH_NOT_FOUND });
     });
 
     it("removes a directory with writable files", () => {
       pf.mkdir("d");
       pf.write("d/f.txt", "data");
       pf.rmdir("d");
-      assert.throws(() => pf.stat("d"), /not found/i);
+      assert.throws(() => pf.stat("d"), { code: ErrorCode.PATH_NOT_FOUND });
     });
 
     it("throws when removing a directory with read-only files", () => {
       pf.mkdir("d");
       pf.write("d/locked.txt", "x", true);
-      assert.throws(() => pf.rmdir("d"), /read-only/i);
+      assert.throws(() => pf.rmdir("d"), { code: ErrorCode.DIRECTORY_HAS_READONLY });
     });
 
     it("throws when removing a nonexistent directory", () => {
-      assert.throws(() => pf.rmdir("nope"), /not found/i);
+      assert.throws(() => pf.rmdir("nope"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
     });
 
     it("throws for empty path", () => {
-      assert.throws(() => pf.rmdir(""), /invalid/i);
+      assert.throws(() => pf.rmdir(""), { code: ErrorCode.INVALID_PATH });
     });
 
     it("throws when directory has nested read-only files", () => {
       pf.mkdir("a");
       pf.mkdir("a/b");
       pf.write("a/b/locked.txt", "x", true);
-      assert.throws(() => pf.rmdir("a"), /read-only/i);
+      assert.throws(() => pf.rmdir("a"), { code: ErrorCode.DIRECTORY_HAS_READONLY });
     });
 
     it("removes nested directory by path", () => {
       pf.mkdir("a");
       pf.mkdir("a/b");
       pf.rmdir("a/b");
-      assert.throws(() => pf.stat("a/b"), /not found/i);
+      assert.throws(() => pf.stat("a/b"), { code: ErrorCode.PATH_NOT_FOUND });
       const s = pf.stat("a");
       assert.equal(s.kind, "directory");
     });
 
     it("throws when parent directory does not exist", () => {
-      assert.throws(() => pf.rmdir("missing/child"), /not found/i);
+      assert.throws(() => pf.rmdir("missing/child"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
     });
   });
 
@@ -220,7 +221,7 @@ describe("ProjectFiles", () => {
       pf.write("d/old.txt", "content");
       pf.rename("d/old.txt", "d/new.txt");
       assert.equal(pf.read("d/new.txt"), "content");
-      assert.throws(() => pf.read("d/old.txt"), /not found/i);
+      assert.throws(() => pf.read("d/old.txt"), { code: ErrorCode.FILE_NOT_FOUND });
     });
 
     it("moves a file to a different directory", () => {
@@ -229,7 +230,7 @@ describe("ProjectFiles", () => {
       pf.write("src/file.txt", "moved");
       pf.rename("src/file.txt", "dst/file.txt");
       assert.equal(pf.read("dst/file.txt"), "moved");
-      assert.throws(() => pf.read("src/file.txt"), /not found/i);
+      assert.throws(() => pf.read("src/file.txt"), { code: ErrorCode.FILE_NOT_FOUND });
     });
 
     it("preserves etag across rename", () => {
@@ -244,23 +245,23 @@ describe("ProjectFiles", () => {
     it("throws when renaming a read-only file", () => {
       pf.mkdir("d");
       pf.write("d/ro.txt", "locked", true);
-      assert.throws(() => pf.rename("d/ro.txt", "d/moved.txt"), /read-only/i);
+      assert.throws(() => pf.rename("d/ro.txt", "d/moved.txt"), { code: ErrorCode.FILE_READ_ONLY });
     });
 
     it("throws when old and new paths are the same", () => {
       pf.mkdir("d");
       pf.write("d/f.txt", "x");
-      assert.throws(() => pf.rename("d/f.txt", "d/f.txt"), /same/i);
+      assert.throws(() => pf.rename("d/f.txt", "d/f.txt"), { code: ErrorCode.RENAME_SAME_PATH });
     });
 
     it("throws when source file does not exist", () => {
-      assert.throws(() => pf.rename("ghost.txt", "other.txt"), /not found/i);
+      assert.throws(() => pf.rename("ghost.txt", "other.txt"), { code: ErrorCode.FILE_NOT_FOUND });
     });
 
     it("throws when destination directory does not exist", () => {
       pf.mkdir("d");
       pf.write("d/f.txt", "x");
-      assert.throws(() => pf.rename("d/f.txt", "missing/f.txt"), /not found/i);
+      assert.throws(() => pf.rename("d/f.txt", "missing/f.txt"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
     });
   });
 
@@ -303,7 +304,7 @@ describe("ProjectFiles", () => {
     });
 
     it("throws when listing a nonexistent directory", () => {
-      assert.throws(() => pf.list("nope"), /not found/i);
+      assert.throws(() => pf.list("nope"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
     });
 
     it("lists an empty root with no entries", () => {
@@ -444,7 +445,7 @@ describe("ProjectFiles", () => {
       pf.mkdir("d");
       pf.write("d/f.txt", "x");
       pf.delete("/d/f.txt");
-      assert.throws(() => pf.read("d/f.txt"), /not found/i);
+      assert.throws(() => pf.read("d/f.txt"), { code: ErrorCode.FILE_NOT_FOUND });
     });
 
     it("normalizes mkdir / rmdir paths", () => {
@@ -452,7 +453,7 @@ describe("ProjectFiles", () => {
       const s = pf.stat("mydir");
       assert.equal(s.kind, "directory");
       pf.rmdir("/mydir");
-      assert.throws(() => pf.stat("mydir"), /not found/i);
+      assert.throws(() => pf.stat("mydir"), { code: ErrorCode.PATH_NOT_FOUND });
     });
   });
 
@@ -549,14 +550,14 @@ describe("ProjectFiles", () => {
       pf.write("d/b.txt", "overwrite");
       pf.rename("d/a.txt", "d/b.txt");
       assert.equal(pf.read("d/b.txt"), "keep");
-      assert.throws(() => pf.read("d/a.txt"), /not found/i);
+      assert.throws(() => pf.read("d/a.txt"), { code: ErrorCode.FILE_NOT_FOUND });
     });
 
     it("rename fails when target is a read-only file", () => {
       pf.mkdir("d");
       pf.write("d/a.txt", "source");
       pf.write("d/b.txt", "readonly", true);
-      assert.throws(() => pf.rename("d/a.txt", "d/b.txt"), /read-only/i);
+      assert.throws(() => pf.rename("d/a.txt", "d/b.txt"), { code: ErrorCode.FILE_READ_ONLY });
     });
 
     it("list on root path with mixed content", () => {
@@ -583,7 +584,7 @@ describe("ProjectFiles", () => {
     it("write with mismatched etag throws", () => {
       pf.mkdir("d");
       pf.write("d/f.txt", "v1");
-      assert.throws(() => pf.write("d/f.txt", "v2", false, "wrong-etag"), /etag mismatch/i);
+      assert.throws(() => pf.write("d/f.txt", "v2", false, "wrong-etag"), { code: ErrorCode.ETAG_MISMATCH });
       assert.equal(pf.read("d/f.txt"), "v1");
     });
 
@@ -624,7 +625,7 @@ describe("ProjectFiles", () => {
       pf.write("d/f.txt", "v1");
       const staleEtag = (pf.stat("d/f.txt") as { etag: string }).etag;
       pf.write("d/f.txt", "v2");
-      assert.throws(() => pf.write("d/f.txt", "v3", false, staleEtag), /etag mismatch/i);
+      assert.throws(() => pf.write("d/f.txt", "v3", false, staleEtag), { code: ErrorCode.ETAG_MISMATCH });
       assert.equal(pf.read("d/f.txt"), "v2");
     });
   });

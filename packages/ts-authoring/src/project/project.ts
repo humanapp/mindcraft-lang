@@ -1,3 +1,4 @@
+import { AuthoringError, ErrorCode } from "./error-codes.js";
 import { type ExportedFileSystem, ProjectFiles, type ProjectFilesOptions } from "./files.js";
 import { ProjectSession } from "./session.js";
 
@@ -19,19 +20,19 @@ export class Project {
   constructor(public readonly options: ProjectOptions) {
     // Validate options
     if (!options.appName) {
-      throw new Error("appName is required");
+      throw new AuthoringError(ErrorCode.APP_NAME_REQUIRED, "appName is required");
     }
     if (!options.projectId) {
-      throw new Error("projectId is required");
+      throw new AuthoringError(ErrorCode.PROJECT_ID_REQUIRED, "projectId is required");
     }
     if (!options.projectName) {
-      throw new Error("projectName is required");
+      throw new AuthoringError(ErrorCode.PROJECT_NAME_REQUIRED, "projectName is required");
     }
     if (!options.bridgeUrl) {
-      throw new Error("bridgeUrl is required");
+      throw new AuthoringError(ErrorCode.BRIDGE_URL_REQUIRED, "bridgeUrl is required");
     }
     if (options.clientRole !== "extension" && options.clientRole !== "app") {
-      throw new Error("clientRole must be 'extension' or 'app'");
+      throw new AuthoringError(ErrorCode.INVALID_CLIENT_ROLE, "clientRole must be 'extension' or 'app'");
     }
 
     // Initialize subsystems

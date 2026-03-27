@@ -1,3 +1,4 @@
+import { AuthoringError, ErrorCode } from "./error-codes.js";
 import type { Project } from "./project.js";
 
 export interface ProjectFilesOptions {
@@ -129,7 +130,7 @@ class FileTree {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
-      throw new Error(`Invalid file path: "${fullPath}"`);
+      throw new AuthoringError(ErrorCode.INVALID_PATH, `Invalid file path: "${fullPath}"`);
     }
     const name = segs[segs.length - 1];
     const dirSegs = segs.slice(0, -1);
@@ -140,7 +141,7 @@ class FileTree {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
-      throw new Error(`Invalid file path: "${fullPath}"`);
+      throw new AuthoringError(ErrorCode.INVALID_PATH, `Invalid file path: "${fullPath}"`);
     }
     const name = segs[segs.length - 1];
     const dirSegs = segs.slice(0, -1);
@@ -151,7 +152,7 @@ class FileTree {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
-      throw new Error(`Invalid file path: "${fullPath}"`);
+      throw new AuthoringError(ErrorCode.INVALID_PATH, `Invalid file path: "${fullPath}"`);
     }
     const name = segs[segs.length - 1];
     const dirSegs = segs.slice(0, -1);
@@ -162,7 +163,7 @@ class FileTree {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
-      throw new Error(`Invalid file path: "${fullPath}"`);
+      throw new AuthoringError(ErrorCode.INVALID_PATH, `Invalid file path: "${fullPath}"`);
     }
     const name = segs[segs.length - 1];
     const dirSegs = segs.slice(0, -1);
@@ -173,12 +174,12 @@ class FileTree {
     oldFullPath = normalizePath(oldFullPath);
     newFullPath = normalizePath(newFullPath);
     if (oldFullPath === newFullPath) {
-      throw new Error("Old path and new path are the same");
+      throw new AuthoringError(ErrorCode.RENAME_SAME_PATH, "Old path and new path are the same");
     }
     let oldSegs = oldFullPath.split("/").filter((s) => s.length > 0);
     let newSegs = newFullPath.split("/").filter((s) => s.length > 0);
     if (oldSegs.length === 0 || newSegs.length === 0) {
-      throw new Error(`Invalid file path: "${oldFullPath}" or "${newFullPath}"`);
+      throw new AuthoringError(ErrorCode.INVALID_PATH, `Invalid file path: "${oldFullPath}" or "${newFullPath}"`);
     }
     const oldName = oldSegs[oldSegs.length - 1];
     const newName = newSegs[newSegs.length - 1];
@@ -186,7 +187,7 @@ class FileTree {
     newSegs = newSegs.slice(0, -1);
     const oldEntry = this.readEntryInternal(oldSegs, oldFullPath, oldName);
     if (oldEntry.isReadonly) {
-      throw new Error(`File is read-only: ${oldFullPath}`);
+      throw new AuthoringError(ErrorCode.FILE_READ_ONLY, `File is read-only: ${oldFullPath}`);
     }
     this.writeInternal(newSegs, newFullPath, newName, oldEntry.content, oldEntry.isReadonly, oldEntry.etag);
     this.deleteInternal(oldSegs, oldFullPath, oldName);
@@ -196,7 +197,7 @@ class FileTree {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
-      throw new Error(`Invalid path: "${fullPath}"`);
+      throw new AuthoringError(ErrorCode.INVALID_PATH, `Invalid path: "${fullPath}"`);
     }
     const name = segs[segs.length - 1];
     const dirSegs = segs.slice(0, -1);
@@ -207,7 +208,7 @@ class FileTree {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
-      throw new Error(`Invalid directory path: "${fullPath}"`);
+      throw new AuthoringError(ErrorCode.INVALID_PATH, `Invalid directory path: "${fullPath}"`);
     }
     const name = segs[segs.length - 1];
     const dirSegs = segs.slice(0, -1);
@@ -218,7 +219,7 @@ class FileTree {
     fullPath = normalizePath(fullPath);
     const segs = fullPath.split("/").filter((s) => s.length > 0);
     if (segs.length === 0) {
-      throw new Error(`Invalid directory path: "${fullPath}"`);
+      throw new AuthoringError(ErrorCode.INVALID_PATH, `Invalid directory path: "${fullPath}"`);
     }
     const name = segs[segs.length - 1];
     const dirSegs = segs.slice(0, -1);
@@ -260,12 +261,15 @@ class FileTree {
       if (dir) {
         return { kind: "directory", path: dir.path, name: dir.name };
       }
-      throw new Error(`Path not found: ${fullPath}`);
+      throw new AuthoringError(ErrorCode.PATH_NOT_FOUND, `Path not found: ${fullPath}`);
     } else {
       const [next, ...rest] = segs;
       const child = this._dirs.get(next);
       if (!child) {
-        throw new Error(`Directory not found: ${this.path ? `${this.path}/${next}` : next}`);
+        throw new AuthoringError(
+          ErrorCode.DIRECTORY_NOT_FOUND,
+          `Directory not found: ${this.path ? `${this.path}/${next}` : next}`
+        );
       }
       return child.statInternal(rest, fullPath, name);
     }
@@ -293,7 +297,10 @@ class FileTree {
       if (childDir) {
         return childDir.listInternal(rest);
       } else {
-        throw new Error(`Directory not found: ${this.path ? `${this.path}/${next}` : next}`);
+        throw new AuthoringError(
+          ErrorCode.DIRECTORY_NOT_FOUND,
+          `Directory not found: ${this.path ? `${this.path}/${next}` : next}`
+        );
       }
     }
   }
@@ -306,14 +313,17 @@ class FileTree {
     if (segs.length === 0) {
       const file = this._files.get(name);
       if (!file) {
-        throw new Error(`File not found: ${fullPath}`);
+        throw new AuthoringError(ErrorCode.FILE_NOT_FOUND, `File not found: ${fullPath}`);
       }
       return file;
     } else {
       const [next, ...rest] = segs;
       const child = this._dirs.get(next);
       if (!child) {
-        throw new Error(`Directory not found: ${this.path ? `${this.path}/${next}` : next}`);
+        throw new AuthoringError(
+          ErrorCode.DIRECTORY_NOT_FOUND,
+          `Directory not found: ${this.path ? `${this.path}/${next}` : next}`
+        );
       }
       return child.readEntryInternal(rest, fullPath, name);
     }
@@ -331,10 +341,10 @@ class FileTree {
     if (segs.length === 0) {
       const existing = this._files.get(name);
       if (existing?.isReadonly) {
-        throw new Error(`File is read-only: ${fullPath}`);
+        throw new AuthoringError(ErrorCode.FILE_READ_ONLY, `File is read-only: ${fullPath}`);
       }
       if (expectedEtag !== undefined && existing && existing.etag !== expectedEtag) {
-        throw new Error(`ETag mismatch for ${fullPath}`);
+        throw new AuthoringError(ErrorCode.ETAG_MISMATCH, `ETag mismatch for ${fullPath}`);
       }
       const entry: TreeFileEntryWithContent = {
         kind: "file",
@@ -349,7 +359,10 @@ class FileTree {
       const [next, ...rest] = segs;
       const child = this._dirs.get(next);
       if (!child) {
-        throw new Error(`Directory not found: ${this.path ? `${this.path}/${next}` : next}`);
+        throw new AuthoringError(
+          ErrorCode.DIRECTORY_NOT_FOUND,
+          `Directory not found: ${this.path ? `${this.path}/${next}` : next}`
+        );
       }
       child.writeInternal(rest, fullPath, name, content, isReadonly, newEtag, expectedEtag);
     }
@@ -358,18 +371,21 @@ class FileTree {
   private deleteInternal(segs: string[], fullPath: string, name: string): void {
     if (segs.length === 0) {
       if (!this._files.has(name)) {
-        throw new Error(`File not found: ${fullPath}`);
+        throw new AuthoringError(ErrorCode.FILE_NOT_FOUND, `File not found: ${fullPath}`);
       }
       const entry = this._files.get(name);
       if (entry?.isReadonly) {
-        throw new Error(`File is read-only: ${fullPath}`);
+        throw new AuthoringError(ErrorCode.FILE_READ_ONLY, `File is read-only: ${fullPath}`);
       }
       this._files.delete(name);
     } else {
       const [next, ...rest] = segs;
       const child = this._dirs.get(next);
       if (!child) {
-        throw new Error(`Directory not found: ${this.path ? `${this.path}/${next}` : next}`);
+        throw new AuthoringError(
+          ErrorCode.DIRECTORY_NOT_FOUND,
+          `Directory not found: ${this.path ? `${this.path}/${next}` : next}`
+        );
       }
       child.deleteInternal(rest, fullPath, name);
     }
@@ -378,7 +394,7 @@ class FileTree {
   private mkdirInternal(segs: string[], fullPath: string, name: string): void {
     if (segs.length === 0) {
       if (this._dirs.has(name)) {
-        throw new Error(`Directory already exists: ${fullPath}`);
+        throw new AuthoringError(ErrorCode.DIRECTORY_ALREADY_EXISTS, `Directory already exists: ${fullPath}`);
       }
       const childPath = this.path ? `${this.path}/${name}` : name;
       const subtree = new FileTree(childPath, name);
@@ -397,18 +413,21 @@ class FileTree {
   private rmdirInternal(segs: string[], fullPath: string, name: string): void {
     if (segs.length === 0) {
       if (!this._dirs.has(name)) {
-        throw new Error(`Directory not found: ${fullPath}`);
+        throw new AuthoringError(ErrorCode.DIRECTORY_NOT_FOUND, `Directory not found: ${fullPath}`);
       }
       const subtree = this._dirs.get(name)!;
       if (subtree.hasReadonlyFiles()) {
-        throw new Error(`Directory contains read-only files: ${fullPath}`);
+        throw new AuthoringError(ErrorCode.DIRECTORY_HAS_READONLY, `Directory contains read-only files: ${fullPath}`);
       }
       this._dirs.delete(name);
     } else {
       const [next, ...rest] = segs;
       const child = this._dirs.get(next);
       if (!child) {
-        throw new Error(`Directory not found: ${this.path ? `${this.path}/${next}` : next}`);
+        throw new AuthoringError(
+          ErrorCode.DIRECTORY_NOT_FOUND,
+          `Directory not found: ${this.path ? `${this.path}/${next}` : next}`
+        );
       }
       child.rmdirInternal(rest, fullPath, name);
     }
