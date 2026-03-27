@@ -1,6 +1,6 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
 import { Button, Slider, Switch } from "@mindcraft-lang/ui";
-import { BookOpen, Info, Settings } from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, Info, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
@@ -59,6 +59,7 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
+  const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState(getBridgeStatus);
 
@@ -169,6 +170,8 @@ export function Sidebar({
           const s = snapshot?.[arch];
           const avgLife = s && s.deaths > 0 ? s.totalLifespan / s.deaths : 0;
           const avgEnergy = s && s.aliveCount > 0 ? s.totalEnergy / s.aliveCount : 0;
+          const isCollapsed = collapsedArchetypes[arch] ?? false;
+          const toggleCollapsed = () => setCollapsedArchetypes((prev) => ({ ...prev, [arch]: !prev[arch] }));
           return (
             // biome-ignore lint/a11y/useSemanticElements: fieldset would break layout; role="group" provides accessible grouping
             <div
@@ -179,6 +182,19 @@ export function Sidebar({
             >
               {/* Archetype header */}
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={toggleCollapsed}
+                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={isCollapsed ? `Expand ${ARCHETYPE_LABELS[arch]}` : `Collapse ${ARCHETYPE_LABELS[arch]}`}
+                  aria-expanded={!isCollapsed}
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+                  )}
+                </button>
                 <img
                   src={`/assets/brain/icons/${arch}.svg`}
                   alt={`${ARCHETYPE_LABELS[arch]} icon`}
@@ -195,7 +211,7 @@ export function Sidebar({
               </div>
 
               {/* Stats */}
-              {s && (
+              {!isCollapsed && s && (
                 <div className="text-xs text-muted-foreground grid grid-cols-3 gap-1">
                   <div className="flex flex-col">
                     <abbr title="average lifespan" className="no-underline">
@@ -217,35 +233,39 @@ export function Sidebar({
               )}
 
               {/* Population slider */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Population</span>
-                  <span className="text-xs text-muted-foreground font-mono tabular-nums">{desiredCounts[arch]}</span>
+              {!isCollapsed && (
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Population</span>
+                    <span className="text-xs text-muted-foreground font-mono tabular-nums">{desiredCounts[arch]}</span>
+                  </div>
+                  <Slider
+                    value={[desiredCounts[arch]]}
+                    onValueChange={([value]) => updateDesiredCount(arch, value)}
+                    min={0}
+                    max={100}
+                    step={1}
+                    className="w-full"
+                    aria-label={`${ARCHETYPE_LABELS[arch]} population`}
+                  />
                 </div>
-                <Slider
-                  value={[desiredCounts[arch]]}
-                  onValueChange={([value]) => updateDesiredCount(arch, value)}
-                  min={0}
-                  max={100}
-                  step={1}
-                  className="w-full"
-                  aria-label={`${ARCHETYPE_LABELS[arch]} population`}
-                />
-              </div>
+              )}
 
               {/* Brain edit button */}
-              <Button
-                onClick={() => {
-                  onEditBrain(arch);
-                  onClose?.();
-                }}
-                variant="outline"
-                size="sm"
-                className="w-full h-7 text-xs border-slate-600"
-                aria-label={`Edit ${ARCHETYPE_LABELS[arch]} brain`}
-              >
-                Edit Brain
-              </Button>
+              {!isCollapsed && (
+                <Button
+                  onClick={() => {
+                    onEditBrain(arch);
+                    onClose?.();
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-7 text-xs border-slate-600"
+                  aria-label={`Edit ${ARCHETYPE_LABELS[arch]} brain`}
+                >
+                  Edit Brain
+                </Button>
+              )}
             </div>
           );
         })}
