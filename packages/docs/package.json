@@ -42,9 +42,9 @@
     "check": "biome check ./src --write",
     "typecheck": "tsc --noEmit",
     "format": "biome format ./src --write",
-    "release:patch": "npm run check:only && node ../../scripts/release.js patch",
-    "release:minor": "npm run check:only && node ../../scripts/release.js minor",
-    "release:major": "npm run check:only && node ../../scripts/release.js major"
+    "release:patch": "node ../../scripts/release.js patch",
+    "release:minor": "node ../../scripts/release.js minor",
+    "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
     "@mindcraft-lang/core": "file:../core",

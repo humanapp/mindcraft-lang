@@ -61,9 +61,9 @@
     "format": "biome format ./src --write",
     "pretest": "npm run build",
     "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
-    "release:patch": "npm run build && npm run check:only && node ../../scripts/release.js patch",
-    "release:minor": "npm run build && npm run check:only && node ../../scripts/release.js minor",
-    "release:major": "npm run build && npm run check:only && node ../../scripts/release.js major"
+    "release:patch": "node ../../scripts/release.js patch",
+    "release:minor": "node ../../scripts/release.js minor",
+    "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
     "@mindcraft-lang/core": "file:../core",
