@@ -20,6 +20,7 @@ These instructions apply to all Copilot features, including inline tab completio
 - Do not add comments that just restate what the code does. Only include comments that
   explain non-obvious intent, invariants, or constraints.
 - Do not suggest comments in new code blocks that say things like "// no implementation yet, but could add things like `this` or `that`...". This is not helpful. It is better to leave it blank or with a minimal concrete code suggestion.
+- Do not use phrases like "TODO: implement this function" or "implementation goes here" in comments. If the user is asking for a function implementation, just provide the implementation without any placeholder comments, or leave it blank if you cannot infer the implementation. Do not add comments that explain what code should be written rather than writing the code itself.
 
 ## Import Style
 
