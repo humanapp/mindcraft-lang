@@ -6,8 +6,4 @@ export interface WsMessage {
   payload?: unknown;
 }
 
-export type SessionRole = "extension" | "runtime";
-
-export interface HelloPayload {
-  role: SessionRole;
-}
+export type SessionRole = "app" | "extension";
