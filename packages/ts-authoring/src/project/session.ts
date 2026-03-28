@@ -56,6 +56,12 @@ export class ProjectSession {
     const url = buildWsUrl(bridgeUrl, this.project.options.clientRole);
 
     this._client = new WsClient();
+    this._client.onOpen = () => {
+      this.setStatus("connected");
+    };
+    this._client.onDisconnect = () => {
+      this.setStatus("reconnecting");
+    };
     this.setStatus("connecting");
     this.reregisterHandlers();
     this._client.connect(url);

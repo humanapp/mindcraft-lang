@@ -24,6 +24,9 @@ export class WsClient {
   private readonly initialReconnectDelay: number;
   private readonly requestTimeout: number;
 
+  onOpen?: () => void;
+  onDisconnect?: () => void;
+
   private readonly pendingRequests = new Map<
     string,
     { resolve: (msg: WsMessage) => void; reject: (err: Error) => void }
@@ -115,6 +118,7 @@ export class WsClient {
       this.ws = ws;
       this.state = "open";
       this.reconnectDelay = this.initialReconnectDelay;
+      this.onOpen?.();
       this.flushQueue();
     };
 
@@ -161,6 +165,7 @@ export class WsClient {
       return;
     }
     this.state = "reconnecting";
+    this.onDisconnect?.();
     this.scheduleReconnect();
   }
 
