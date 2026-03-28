@@ -9,6 +9,11 @@ applyTo: "apps/vscode-bridge/**"
 Hono + Node.js WebSocket server bridging web app clients and VS Code extensions.
 Routes typed JSON messages between both sides.
 
+This is a production service designed to run continuously for months or years without
+restart. All code must be leak-free and operationally robust -- no unbounded caches, no
+timers that outlive their purpose, no accumulating state from disconnected clients. Treat
+every resource as something that must eventually be reclaimed.
+
 ## Tech Stack
 
 Hono (HTTP + WS), @hono/node-ws, pino (logging), zod (env validation),
