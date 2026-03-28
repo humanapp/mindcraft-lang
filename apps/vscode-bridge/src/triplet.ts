@@ -317,15 +317,10 @@ export const FIRST_WORDS = [
   "worm",
   "yellow",
   "zappy",
-  "slimemist",
-  "goldspark",
-  "wildstorm",
-  "frostdream",
-  "frosthorn",
-  "sugarthorn",
-  "pinestone",
-  "mossflower",
-  "shadowsun",
+  "slimy",
+  "solid",
+  "mossy",
+  "shadowy",
 ] as const;
 
 export const MIDDLE_WORDS = [
