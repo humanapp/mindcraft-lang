@@ -1,3 +1,4 @@
+import type { ExtensionErrorMessage } from "@mindcraft-lang/ts-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
 import { safeSend } from "#transport/ws/safe-send.js";
@@ -23,19 +24,22 @@ export function routeExtensionMessage(ws: WSContext, raw: string) {
   try {
     msg = JSON.parse(raw);
   } catch {
-    safeSend(ws, JSON.stringify({ type: "error", payload: { message: "invalid JSON" } }));
+    const err: ExtensionErrorMessage = { type: "error", payload: { message: "invalid JSON" } };
+    safeSend(ws, JSON.stringify(err));
     return;
   }
 
   if (typeof msg.type !== "string") {
-    safeSend(ws, JSON.stringify({ type: "error", payload: { message: "missing message type" } }));
+    const err: ExtensionErrorMessage = { type: "error", payload: { message: "missing message type" } };
+    safeSend(ws, JSON.stringify(err));
     return;
   }
 
   const handler = handlers[msg.type];
   if (!handler) {
     logger.warn({ type: msg.type }, "unknown extension message type");
-    safeSend(ws, JSON.stringify({ type: "error", payload: { message: `unknown type: ${msg.type}` } }));
+    const err: ExtensionErrorMessage = { type: "error", payload: { message: `unknown type: ${msg.type}` } };
+    safeSend(ws, JSON.stringify(err));
     return;
   }
 
@@ -43,6 +47,7 @@ export function routeExtensionMessage(ws: WSContext, raw: string) {
     handler(ws, msg.payload, msg.id);
   } catch (err) {
     logger.error({ err, type: msg.type }, "handler error");
-    safeSend(ws, JSON.stringify({ type: "error", id: msg.id, payload: { message: "internal error" } }));
+    const errMsg: ExtensionErrorMessage = { type: "error", id: msg.id, payload: { message: "internal error" } };
+    safeSend(ws, JSON.stringify(errMsg));
   }
 }

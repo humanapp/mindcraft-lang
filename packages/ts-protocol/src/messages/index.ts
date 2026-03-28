@@ -1,13 +1,3 @@
-export { WsClient } from "./ws-client.js";
-
-export interface WsMessage {
-  type: string;
-  id?: string;
-  payload?: unknown;
-}
-
-export type SessionRole = "app" | "extension";
-
 export type {
   AppClientMessage,
   AppControlPingMessage,
@@ -20,7 +10,8 @@ export type {
   AppSessionJoinCodePayload,
   AppSessionWelcomeMessage,
   AppSessionWelcomePayload,
-  ErrorPayload,
+} from "./app.js";
+export type {
   ExtensionClientMessage,
   ExtensionControlPingMessage,
   ExtensionControlPongMessage,
@@ -30,4 +21,5 @@ export type {
   ExtensionSessionHelloMessage,
   ExtensionSessionWelcomeMessage,
   ExtensionSessionWelcomePayload,
-} from "./messages/index.js";
+} from "./extension.js";
+export type { ErrorPayload } from "./shared.js";

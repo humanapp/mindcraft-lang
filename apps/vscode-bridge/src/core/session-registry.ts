@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { SessionRole } from "@mindcraft-lang/ts-protocol";
+import type { AppSessionJoinCodeMessage, SessionRole } from "@mindcraft-lang/ts-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
 import { safeSend } from "#transport/ws/safe-send.js";
@@ -44,13 +44,11 @@ function refreshAllJoinCodes(): void {
     const newCode = generateUniqueJoinCode();
     session.joinCode = newCode;
     activeJoinCodes.add(newCode);
-    safeSend(
-      session.ws,
-      JSON.stringify({
-        type: "session:joinCode",
-        payload: { joinCode: newCode },
-      })
-    );
+    const msg: AppSessionJoinCodeMessage = {
+      type: "session:joinCode",
+      payload: { joinCode: newCode },
+    };
+    safeSend(session.ws, JSON.stringify(msg));
   }
   logger.info({ count: appSessions.size }, "refreshed all join codes");
 }
