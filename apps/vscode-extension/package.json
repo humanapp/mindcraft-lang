@@ -37,6 +37,16 @@
 					"when": "mindcraft.enabled"
 				}
 			]
+		},
+		"configuration": {
+			"title": "Mindcraft",
+			"properties": {
+				"mindcraft.bridgeUrl": {
+					"type": "string",
+					"default": "vscode-bridge.mindcraft-lang.org",
+					"description": "URL for the Mindcraft bridge service"
+				}
+			}
 		}
 	},
 	"scripts": {
