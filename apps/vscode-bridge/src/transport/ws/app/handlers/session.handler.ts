@@ -1,10 +1,14 @@
-import type { AppSessionErrorMessage, AppSessionWelcomeMessage } from "@mindcraft-lang/ts-protocol";
+import type {
+  AppSessionErrorMessage,
+  AppSessionHelloPayload,
+  AppSessionWelcomeMessage,
+} from "@mindcraft-lang/ts-protocol";
 import { logger } from "#core/logging/logger.js";
-import { getAppSession, getSessionCount, registerAppSession } from "#core/session-registry.js";
+import { getAppSession, getSessionCount, reclaimAppSession, registerAppSession } from "#core/session-registry.js";
 import { safeSend } from "#transport/ws/safe-send.js";
 import type { WsHandler, WsHandlerMap } from "#transport/ws/types.js";
 
-const hello: WsHandler = (ws, _payload, id) => {
+const hello: WsHandler = (ws, payload, id) => {
   const existing = getAppSession(ws);
   if (existing) {
     const err: AppSessionErrorMessage = {
@@ -16,10 +20,14 @@ const hello: WsHandler = (ws, _payload, id) => {
     return;
   }
 
-  const session = registerAppSession(ws);
+  const helloPayload = payload as AppSessionHelloPayload | undefined;
+  const session = (helloPayload?.sessionId && reclaimAppSession(helloPayload.sessionId, ws)) || registerAppSession(ws);
   const counts = getSessionCount();
 
-  logger.info({ sessionId: session.id, ...counts }, "app hello accepted");
+  logger.info(
+    { sessionId: session.id, reclaimed: session !== undefined && !!helloPayload?.sessionId, ...counts },
+    "app hello accepted"
+  );
 
   const welcome: AppSessionWelcomeMessage = {
     type: "session:welcome",

@@ -6,6 +6,8 @@ import { safeSend } from "#transport/ws/safe-send.js";
 import { generateTriplet } from "#triplet.js";
 
 const JOIN_CODE_TTL_MS = 10 * 60 * 1000;
+const DISCONNECTED_SESSION_TTL_MS = 5 * 60 * 1000;
+const DISCONNECTED_SWEEP_INTERVAL_MS = 60 * 1000;
 
 interface BaseSession {
   id: string;
@@ -26,7 +28,9 @@ export interface ExtensionSession extends BaseSession {
 const appSessions = new Map<WSContext, AppSession>();
 const extensionSessions = new Map<WSContext, ExtensionSession>();
 const activeJoinCodes = new Set<string>();
+const disconnectedAppSessions = new Map<string, { session: AppSession; disconnectedAt: number }>();
 let joinCodeTimer: ReturnType<typeof setInterval> | undefined;
+let disconnectedSweepTimer: ReturnType<typeof setInterval> | undefined;
 
 function generateUniqueJoinCode(): string {
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -63,6 +67,31 @@ function stopJoinCodeTimer(): void {
   if (joinCodeTimer) {
     clearInterval(joinCodeTimer);
     joinCodeTimer = undefined;
+  }
+}
+
+function sweepDisconnectedSessions(): void {
+  const now = Date.now();
+  for (const [id, entry] of disconnectedAppSessions) {
+    if (now - entry.disconnectedAt >= DISCONNECTED_SESSION_TTL_MS) {
+      activeJoinCodes.delete(entry.session.joinCode);
+      disconnectedAppSessions.delete(id);
+      logger.info({ sessionId: id }, "expired disconnected app session");
+    }
+  }
+  if (disconnectedAppSessions.size === 0) stopDisconnectedSweepTimer();
+}
+
+function ensureDisconnectedSweepTimer(): void {
+  if (disconnectedSweepTimer) return;
+  disconnectedSweepTimer = setInterval(sweepDisconnectedSessions, DISCONNECTED_SWEEP_INTERVAL_MS);
+  disconnectedSweepTimer.unref();
+}
+
+function stopDisconnectedSweepTimer(): void {
+  if (disconnectedSweepTimer) {
+    clearInterval(disconnectedSweepTimer);
+    disconnectedSweepTimer = undefined;
   }
 }
 
@@ -112,14 +141,28 @@ export function registerExtensionSession(ws: WSContext): ExtensionSession {
 export function removeAppSession(ws: WSContext): AppSession | undefined {
   const session = appSessions.get(ws);
   if (session) {
-    activeJoinCodes.delete(session.joinCode);
     appSessions.delete(ws);
+    disconnectedAppSessions.set(session.id, { session, disconnectedAt: Date.now() });
+    ensureDisconnectedSweepTimer();
     if (appSessions.size === 0) {
       stopJoinCodeTimer();
     }
-    logger.info({ sessionId: session.id }, "app session removed");
+    logger.info({ sessionId: session.id }, "app session disconnected (available for reclaim)");
   }
   return session;
+}
+
+export function reclaimAppSession(sessionId: string, ws: WSContext): AppSession | undefined {
+  const entry = disconnectedAppSessions.get(sessionId);
+  if (!entry) return undefined;
+  disconnectedAppSessions.delete(sessionId);
+  if (disconnectedAppSessions.size === 0) stopDisconnectedSweepTimer();
+  entry.session.ws = ws;
+  entry.session.connectedAt = Date.now();
+  appSessions.set(ws, entry.session);
+  ensureJoinCodeTimer();
+  logger.info({ sessionId: entry.session.id, joinCode: entry.session.joinCode }, "app session reclaimed");
+  return entry.session;
 }
 
 export function removeExtensionSession(ws: WSContext): ExtensionSession | undefined {
@@ -148,6 +191,7 @@ export function getSessionCount(): { apps: number; extensions: number } {
 
 export function closeAllSessions(): void {
   stopJoinCodeTimer();
+  stopDisconnectedSweepTimer();
   for (const session of appSessions.values()) {
     try {
       session.ws.close(1001, "server shutting down");
@@ -161,11 +205,14 @@ export function closeAllSessions(): void {
   appSessions.clear();
   extensionSessions.clear();
   activeJoinCodes.clear();
+  disconnectedAppSessions.clear();
 }
 
 export function clearAllSessions(): void {
   stopJoinCodeTimer();
+  stopDisconnectedSweepTimer();
   appSessions.clear();
   extensionSessions.clear();
   activeJoinCodes.clear();
+  disconnectedAppSessions.clear();
 }

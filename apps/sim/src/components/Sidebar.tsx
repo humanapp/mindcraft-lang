@@ -1,13 +1,20 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
 import { Button, Slider, Switch } from "@mindcraft-lang/ui";
-import { BookOpen, ChevronDown, ChevronRight, Info, Settings } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronRight, Copy, Info, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
-import { connectBridge, disconnectBridge, getBridgeStatus, onBridgeStatusChange } from "@/services/vscode-bridge";
+import {
+  connectBridge,
+  disconnectBridge,
+  getBridgeJoinCode,
+  getBridgeStatus,
+  onBridgeJoinCodeChange,
+  onBridgeStatusChange,
+} from "@/services/vscode-bridge";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",
@@ -62,8 +69,11 @@ export function Sidebar({
   const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState(getBridgeStatus);
+  const [joinCode, setJoinCode] = useState(getBridgeJoinCode);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => onBridgeStatusChange(setBridgeStatus), []);
+  useEffect(() => onBridgeJoinCodeChange(setJoinCode), []);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toggle: toggleDocs, isOpen: isDocsOpen, open: openDocs, navigateToEntry } = useDocsSidebar();
@@ -304,6 +314,23 @@ export function Sidebar({
           >
             {bridgeStatus}
           </span>
+          {joinCode && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-mono text-slate-300 truncate">{joinCode}</span>
+              <button
+                type="button"
+                className="shrink-0 p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
+                aria-label="Copy join code"
+                onClick={() => {
+                  navigator.clipboard.writeText(joinCode);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+              >
+                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Debug toggle */}

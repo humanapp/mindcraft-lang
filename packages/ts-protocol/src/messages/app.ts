@@ -7,6 +7,10 @@ export interface AppSessionWelcomePayload {
   joinCode: string;
 }
 
+export interface AppSessionHelloPayload {
+  sessionId?: string;
+}
+
 export interface AppSessionJoinCodePayload {
   joinCode: string;
 }
@@ -16,6 +20,7 @@ export interface AppSessionJoinCodePayload {
 export interface AppSessionHelloMessage {
   type: "session:hello";
   id?: string;
+  payload?: AppSessionHelloPayload;
 }
 
 export interface AppControlPingMessage {

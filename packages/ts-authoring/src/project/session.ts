@@ -29,6 +29,14 @@ export class ProjectSession {
     this.on("session:joinCode", (msg) => {
       this.setJoinCode(msg.payload.joinCode);
     });
+    this.addEventListener("status", (status) => {
+      if (status === "connected") {
+        const msg: AppClientMessage = this._sessionId
+          ? { type: "session:hello", payload: { sessionId: this._sessionId } }
+          : { type: "session:hello" };
+        this.send(msg);
+      }
+    });
   }
 
   get status(): ConnectionStatus {
