@@ -45,7 +45,7 @@ function disconnectSession(sessionId: string): void {
   if (closed) {
     console.log(`Disconnected WebSocket for ${sessionId}`);
   } else {
-    console.log(`No active app session found with id: ${sessionId}`);
+    console.log(`No active session found with id: ${sessionId}`);
   }
 }
 
@@ -73,7 +73,7 @@ export function startRepl(): void {
         case "help":
           console.log("\nCommands:");
           console.log("  sessions, ls      List all active sessions");
-          console.log("  disconnect <id>   Disconnect an app session's WebSocket");
+          console.log("  disconnect <id>   Disconnect a session's WebSocket");
           console.log("  help           Show this help");
           console.log("  .exit          Exit the process\n");
           break;

@@ -232,6 +232,12 @@ export function disconnectSessionById(sessionId: string): boolean {
       return true;
     }
   }
+  for (const session of extensionSessions.values()) {
+    if (session.id === sessionId) {
+      session.ws.close(1000, "closed via repl");
+      return true;
+    }
+  }
   return false;
 }
 
