@@ -23,12 +23,17 @@ export interface AppSessionHelloMessage {
   payload?: AppSessionHelloPayload;
 }
 
+export interface AppSessionGoodbyeMessage {
+  type: "session:goodbye";
+  id?: string;
+}
+
 export interface AppControlPingMessage {
   type: "control:ping";
   id?: string;
 }
 
-export type AppClientMessage = AppSessionHelloMessage | AppControlPingMessage;
+export type AppClientMessage = AppSessionHelloMessage | AppSessionGoodbyeMessage | AppControlPingMessage;
 
 // -- Server -> Client --
 

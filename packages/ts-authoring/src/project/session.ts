@@ -67,6 +67,7 @@ export class ProjectSession {
     for (const unsub of this._clientUnsubs) unsub();
     this._clientUnsubs = [];
     if (!this._client) return;
+    this._client.send({ type: "session:goodbye" });
     this._client.close();
     this._client = undefined;
     this.setStatus("disconnected");

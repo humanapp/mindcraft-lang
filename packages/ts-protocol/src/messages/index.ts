@@ -5,6 +5,7 @@ export type {
   AppErrorMessage,
   AppServerMessage,
   AppSessionErrorMessage,
+  AppSessionGoodbyeMessage,
   AppSessionHelloMessage,
   AppSessionHelloPayload,
   AppSessionJoinCodeMessage,

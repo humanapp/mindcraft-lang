@@ -167,6 +167,19 @@ export function removeAppSession(ws: WSContext): AppSession | undefined {
   return session;
 }
 
+export function discardAppSession(ws: WSContext): AppSession | undefined {
+  const session = appSessions.get(ws);
+  if (session) {
+    appSessions.delete(ws);
+    activeJoinCodes.delete(session.joinCode);
+    if (appSessions.size === 0) {
+      stopJoinCodeTimer();
+    }
+    logger.info({ sessionId: session.id }, "app session discarded (goodbye)");
+  }
+  return session;
+}
+
 export function reclaimAppSession(sessionId: string, ws: WSContext): AppSession | undefined {
   const entry = disconnectedAppSessions.get(sessionId);
   if (!entry) return undefined;
