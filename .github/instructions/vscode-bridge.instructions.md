@@ -6,9 +6,8 @@ applyTo: "apps/vscode-bridge/**"
 
 # VSCode Bridge -- Rules & Patterns
 
-The vscode-bridge (`apps/vscode-bridge/`) is a **Hono + Node.js** WebSocket server that
-brokers communication between a web app client and a VS Code extension. It manages sessions
-for both sides and routes typed JSON messages between them.
+Hono + Node.js WebSocket server bridging web app clients and VS Code extensions.
+Routes typed JSON messages between both sides.
 
 ## Tech Stack
 
@@ -17,22 +16,14 @@ Hono (HTTP + WS), @hono/node-ws, pino (logging), zod (env validation),
 
 ## Path Aliases (Node.js subpath imports)
 
-The project uses `#` subpath imports defined in `package.json` `"imports"`:
+`#` subpath imports are defined in `package.json` `"imports"`. Pattern: `#<path>.js`
+resolves to `src/<path>.ts` in dev and `dist/<path>.js` in production. Always use `.js`
+extension with `#` imports.
 
-- `#config/env.js` -> `src/config/env.ts`
-- `#core/logging/logger.js` -> `src/core/logging/logger.ts`
-- `#core/session-registry.js` -> `src/core/session-registry.ts`
-- `#transport/ws/safe-send.js` -> `src/transport/ws/safe-send.ts`
-- `#transport/ws/types.js` -> `src/transport/ws/types.ts`
+Only use `#` imports when the alternative would require `..` segments. Same-directory and
+child-directory imports use relative paths (`./foo.js`, `./sub/bar.js`).
 
-Pattern: `#<path>.js` resolves to `src/<path>.ts` in dev (via `tsx --conditions=development`)
-and `dist/<path>.js` in production. Always use the `.js` extension with `#` imports.
-
-Only use `#` imports when the alternative would require one or more `..` segments. Files in
-the same directory or child directories should use relative paths (e.g., `./foo.js`,
-`./sub/bar.js`).
-
-## Build & Scripts
+## Scripts
 
 ```
 npm run dev        # tsx watch with .env
@@ -47,74 +38,57 @@ npm run test       # tsx --test src/**/*.spec.ts
 
 ### Entry Point
 
-`src/index.ts` -> `createApp()` (Hono app with routes) -> `startServer()` (HTTP + WS).
+`src/index.ts` -> `createApp()` -> `startServer()`.
 
 ### WebSocket Routes
 
-Two WS endpoints, each with independent upgrade, router, and handler layers:
+Two WS endpoints with independent upgrade, router, and handler layers:
 
 - `/app` -- web app clients (sim, etc.)
 - `/extension` -- VS Code extension clients
 
 ### Message Protocol
 
-All messages are JSON with the shape `{ type: string, id?: string, payload?: unknown }`.
-The `type` field routes to a handler. The optional `id` correlates request/response pairs.
+JSON shape: `{ type: string, id?: string, payload?: unknown }`.
+`type` routes to a handler. `id` correlates request/response pairs.
 
 ### Handler Pattern
 
-Handlers are organized by domain in `handlers/` directories under each WS side:
+Handlers live in `transport/ws/<side>/handlers/<domain>.handler.ts`.
 
-```
-transport/ws/app/handlers/session.handler.ts
-transport/ws/app/handlers/control.handler.ts
-transport/ws/extension/handlers/session.handler.ts
-transport/ws/extension/handlers/compile.handler.ts
-...
-```
+Each file exports a `WsHandlerMap` (`Record<string, WsHandler>`). The router spreads all
+maps into a single lookup. Signature: `(ws: WSContext, payload: unknown, id?: string) => void`.
 
-Each handler file exports a `WsHandlerMap` (Record<string, WsHandler>). The router file
-spreads all handler maps into a single lookup table.
-
-A `WsHandler` has the signature: `(ws: WSContext, payload: unknown, id?: string) => void`.
+To add a handler:
+1. Create/edit `transport/ws/<side>/handlers/<domain>.handler.ts`
+2. Export a `WsHandlerMap` with `"<domain>:<action>": handlerFn` entries
+3. Spread it into the router's `handlers` object in `router.ts`
 
 ### Session Registry
 
-`src/core/session-registry.ts` is the central session store. Key types:
+`src/core/session-registry.ts` -- central in-memory session store keyed by `WSContext`.
 
-- `AppSession` -- has `id` (`app_<uuid>`), `ws`, `connectedAt`, `joinCode`
-- `ExtensionSession` -- has `id` (`ext_<uuid>`), `ws`, `connectedAt`
+- `AppSession` -- `id` (`app_<uuid>`), `ws`, `connectedAt`, `joinCode`
+- `ExtensionSession` -- `id` (`ext_<uuid>`), `ws`, `connectedAt`
 
-Sessions are keyed by `WSContext` in in-memory Maps. Registration happens when the client
-sends `session:hello`; removal happens on WebSocket close.
+Registration on `session:hello`; removal on WebSocket close.
 
 ### Join Codes
 
-Each `AppSession` gets a unique join code (three-word triplet from `src/triplet.ts`).
-Join codes are tracked in a Set for uniqueness and refreshed every 10 minutes via a single
-`setInterval`. On refresh, each app session receives a `session:joinCode` push message.
+Each `AppSession` gets a unique three-word triplet (`src/triplet.ts`). Tracked in a Set for
+uniqueness, refreshed every 10 minutes via `setInterval`. On refresh, clients receive a
+`session:joinCode` push.
 
-### Sending Messages to Clients
+### Sending Messages
 
-Always use `safeSend(ws, JSON.stringify({ type, id?, payload? }))` from
-`transport/ws/safe-send.ts`. It wraps `ws.send()` with error handling and logging.
-
-### Adding a New Message Handler
-
-1. Create or edit a handler file in `transport/ws/<side>/handlers/<domain>.handler.ts`
-2. Export a `WsHandlerMap` with `"<domain>:<action>": handlerFn` entries
-3. Import and spread it into the router's `handlers` object in `router.ts`
+Use `safeSend(ws, JSON.stringify({ type, id?, payload? }))` for all outbound messages.
 
 ### Environment
 
-Validated by zod in `src/config/env.ts`:
-
-- `NODE_ENV` -- development | production | test (default: development)
-- `PORT` -- server port (default: 3000)
-- `LOG_LEVEL` -- pino log level (default: info)
+Validated by zod in `src/config/env.ts`: `NODE_ENV`, `PORT` (default 3000),
+`LOG_LEVEL` (default info).
 
 ### Graceful Shutdown
 
-`src/server.ts` handles SIGINT/SIGTERM by calling `closeAllSessions()` (closes all WS
-connections, clears session maps, stops timers) then shuts down the HTTP server with a
+`src/server.ts` handles SIGINT/SIGTERM via `closeAllSessions()` then server close with
 10-second forced exit timeout.
