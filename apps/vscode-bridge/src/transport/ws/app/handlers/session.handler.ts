@@ -27,7 +27,7 @@ const hello: WsHandler = (ws, _payload, id) => {
     JSON.stringify({
       type: "session:welcome",
       id,
-      payload: { sessionId: session.id },
+      payload: { sessionId: session.id, joinCode: session.joinCode },
     })
   );
 };
