@@ -1,5 +1,6 @@
+import type { ExportedFileSystem, FileSystemNotification } from "@mindcraft-lang/ts-protocol";
 import { AuthoringError, ErrorCode } from "./error-codes.js";
-import { type ExportedFileSystem, ProjectFiles, type ProjectFilesOptions } from "./files.js";
+import { ProjectFiles, type ProjectFilesOptions } from "./files.js";
 import { ProjectSession } from "./session.js";
 
 export type ClientRole = "extension" | "app";
@@ -39,6 +40,8 @@ export class Project {
     this._session = new ProjectSession(this);
     const filesOptions: ProjectFilesOptions = {
       entries: options.filesystem,
+      toRemoteChange: this.toRemoteFileChange,
+      fromRemoteChange: this.fromRemoteFileChange,
     };
     this._files = new ProjectFiles(this, filesOptions);
   }
@@ -62,4 +65,12 @@ export class Project {
   get files(): ProjectFiles {
     return this._files;
   }
+
+  toRemoteFileChange = (ev: FileSystemNotification) => {
+    // TODO: pass local file changes to remote
+  };
+
+  fromRemoteFileChange = (ev: FileSystemNotification) => {
+    // TODO: pass remote file changes to app
+  };
 }

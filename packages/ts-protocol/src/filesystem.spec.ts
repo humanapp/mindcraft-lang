@@ -1,23 +1,20 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { ErrorCode } from "./error-codes.js";
-import { type ExportedFileSystem, ProjectFiles } from "./files.js";
-import type { Project } from "./project.js";
+import { type ExportedFileSystem, FileSystem } from "./filesystem.js";
 
-function mockProject(): Project {
-  return {} as Project;
-}
-
-function make(entries?: ExportedFileSystem): ProjectFiles {
-  return new ProjectFiles(mockProject(), entries ? { entries } : undefined);
+function make(entries?: ExportedFileSystem): FileSystem {
+  const fs = new FileSystem();
+  if (entries) fs.import(entries);
+  return fs;
 }
 
 // ---------------------------------------------------------------------------
 // Basic file operations
 // ---------------------------------------------------------------------------
 
-describe("ProjectFiles", () => {
-  let pf: ProjectFiles;
+describe("FileSystem", () => {
+  let pf: FileSystem;
 
   beforeEach(() => {
     pf = make();
@@ -460,24 +457,18 @@ describe("ProjectFiles", () => {
   // -- constructor options --------------------------------------------------
 
   describe("constructor", () => {
-    it("constructs without options", () => {
-      const pf2 = new ProjectFiles(mockProject());
+    it("constructs empty", () => {
+      const pf2 = new FileSystem();
       const entries = pf2.list();
       assert.equal(entries.length, 0);
     });
 
-    it("constructs with initial filesystem entries", () => {
+    it("imports initial filesystem entries", () => {
       const entries: ExportedFileSystem = new Map();
       entries.set("d", { kind: "directory" });
       entries.set("d/hello.txt", { kind: "file", content: "hi", etag: "e1", isReadonly: false });
-      const pf2 = new ProjectFiles(mockProject(), { entries });
+      const pf2 = make(entries);
       assert.equal(pf2.read("d/hello.txt"), "hi");
-    });
-
-    it("stores the project reference", () => {
-      const proj = mockProject();
-      const pf2 = new ProjectFiles(proj);
-      assert.equal(pf2.project, proj);
     });
   });
 

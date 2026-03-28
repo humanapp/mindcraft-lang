@@ -1,3 +1,13 @@
+export { ErrorCode, ProtocolError } from "./error-codes.js";
+export type {
+  ExportedFileSystem,
+  ExportedFileSystemEntry,
+  FileSystemNotification,
+  FileTreeEntry,
+  IFileSystem,
+  StatResult,
+} from "./filesystem.js";
+export { FileSystem, NotifyingFileSystem } from "./filesystem.js";
 export { WsClient } from "./ws-client.js";
 
 export interface WsMessage {
