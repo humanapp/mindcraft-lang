@@ -1,7 +1,8 @@
-import type { WsHandler, WsHandlerMap } from "../../types.js";
+import { safeSend } from "#transport/ws/safe-send.js";
+import type { WsHandler, WsHandlerMap } from "#transport/ws/types.js";
 
 const ping: WsHandler = (ws, _payload, id) => {
-  ws.send(JSON.stringify({ type: "control:pong", id }));
+  safeSend(ws, JSON.stringify({ type: "control:pong", id }));
 };
 
 export const controlHandlers: WsHandlerMap = {

@@ -9,6 +9,7 @@ health.get("/health", (c) => {
     status: "ok",
     packageName,
     packageVersion,
+    uptime: process.uptime(),
   });
 });
 

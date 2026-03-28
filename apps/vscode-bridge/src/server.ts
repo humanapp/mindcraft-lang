@@ -2,8 +2,19 @@ import { serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import { env } from "#config/env.js";
 import { logger } from "#core/logging/logger.js";
+import { closeAllSessions } from "#core/session-registry.js";
 
 export function startServer(app: Hono) {
+  process.on("uncaughtException", (err) => {
+    logger.fatal({ err }, "uncaught exception");
+    process.exit(1);
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    logger.fatal({ err: reason }, "unhandled rejection");
+    process.exit(1);
+  });
+
   const server = serve(
     {
       fetch: app.fetch,
@@ -16,6 +27,7 @@ export function startServer(app: Hono) {
 
   const shutdown = (signal: string) => {
     logger.info({ signal }, "shutting down");
+    closeAllSessions();
     server.close(() => {
       logger.info("server closed");
       process.exit(0);

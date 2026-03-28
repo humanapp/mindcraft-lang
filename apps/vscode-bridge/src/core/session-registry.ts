@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { SessionRole } from "@mindcraft-lang/ts-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
@@ -17,9 +18,6 @@ export interface ExtensionSession extends BaseSession {
   role: "extension";
 }
 
-let nextAppId = 1;
-let nextExtensionId = 1;
-
 const appSessions = new Map<WSContext, AppSession>();
 const extensionSessions = new Map<WSContext, ExtensionSession>();
 
@@ -31,7 +29,7 @@ export function registerAppSession(ws: WSContext): AppSession {
   }
 
   const session: AppSession = {
-    id: `app_${nextAppId++}`,
+    id: `app_${randomUUID()}`,
     role: "app",
     ws,
     connectedAt: Date.now(),
@@ -50,7 +48,7 @@ export function registerExtensionSession(ws: WSContext): ExtensionSession {
   }
 
   const session: ExtensionSession = {
-    id: `ext_${nextExtensionId++}`,
+    id: `ext_${randomUUID()}`,
     role: "extension",
     ws,
     connectedAt: Date.now(),
@@ -87,17 +85,29 @@ export function getExtensionSession(ws: WSContext): ExtensionSession | undefined
   return extensionSessions.get(ws);
 }
 
-export function getSessionCount(): { total: number; apps: number; extensions: number } {
+export function getSessionCount(): { apps: number; extensions: number } {
   return {
-    total: appSessions.size + extensionSessions.size,
     apps: appSessions.size,
     extensions: extensionSessions.size,
   };
 }
 
+export function closeAllSessions(): void {
+  for (const session of appSessions.values()) {
+    try {
+      session.ws.close(1001, "server shutting down");
+    } catch {}
+  }
+  for (const session of extensionSessions.values()) {
+    try {
+      session.ws.close(1001, "server shutting down");
+    } catch {}
+  }
+  appSessions.clear();
+  extensionSessions.clear();
+}
+
 export function clearAllSessions(): void {
   appSessions.clear();
   extensionSessions.clear();
-  nextAppId = 1;
-  nextExtensionId = 1;
 }

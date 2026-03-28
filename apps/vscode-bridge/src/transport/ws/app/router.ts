@@ -1,6 +1,7 @@
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
-import type { WsHandlerMap, WsMessage } from "../types.js";
+import { safeSend } from "#transport/ws/safe-send.js";
+import type { WsHandlerMap, WsMessage } from "#transport/ws/types.js";
 import { controlHandlers } from "./handlers/control.handler.js";
 import { sessionHandlers } from "./handlers/session.handler.js";
 
@@ -14,21 +15,26 @@ export function routeAppMessage(ws: WSContext, raw: string) {
   try {
     msg = JSON.parse(raw);
   } catch {
-    ws.send(JSON.stringify({ type: "error", payload: { message: "invalid JSON" } }));
+    safeSend(ws, JSON.stringify({ type: "error", payload: { message: "invalid JSON" } }));
     return;
   }
 
   if (typeof msg.type !== "string") {
-    ws.send(JSON.stringify({ type: "error", payload: { message: "missing message type" } }));
+    safeSend(ws, JSON.stringify({ type: "error", payload: { message: "missing message type" } }));
     return;
   }
 
   const handler = handlers[msg.type];
   if (!handler) {
     logger.warn({ type: msg.type }, "unknown app message type");
-    ws.send(JSON.stringify({ type: "error", payload: { message: `unknown type: ${msg.type}` } }));
+    safeSend(ws, JSON.stringify({ type: "error", payload: { message: `unknown type: ${msg.type}` } }));
     return;
   }
 
-  handler(ws, msg.payload, msg.id);
+  try {
+    handler(ws, msg.payload, msg.id);
+  } catch (err) {
+    logger.error({ err, type: msg.type }, "handler error");
+    safeSend(ws, JSON.stringify({ type: "error", id: msg.id, payload: { message: "internal error" } }));
+  }
 }

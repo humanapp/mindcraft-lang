@@ -1,3 +1,3 @@
-import type { WsHandlerMap } from "../../types.js";
+import type { WsHandlerMap } from "#transport/ws/types.js";
 
 export const vfsHandlers: WsHandlerMap = {};
