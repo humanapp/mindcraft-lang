@@ -42,4 +42,5 @@ export type {
   ExtensionSessionHelloMessage,
   ExtensionSessionWelcomeMessage,
   ExtensionSessionWelcomePayload,
+  FilesystemChangeMessage,
 } from "./messages/index.js";

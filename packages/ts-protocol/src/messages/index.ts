@@ -24,4 +24,4 @@ export type {
   ExtensionSessionWelcomeMessage,
   ExtensionSessionWelcomePayload,
 } from "./extension.js";
-export type { ErrorPayload } from "./shared.js";
+export type { ErrorPayload, FilesystemChangeMessage } from "./shared.js";

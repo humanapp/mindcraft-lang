@@ -1,4 +1,4 @@
-import type { ErrorPayload } from "./shared.js";
+import type { ErrorPayload, FilesystemChangeMessage } from "./shared.js";
 
 // -- Payloads --
 
@@ -18,7 +18,10 @@ export interface ExtensionControlPingMessage {
   id?: string;
 }
 
-export type ExtensionClientMessage = ExtensionSessionHelloMessage | ExtensionControlPingMessage;
+export type ExtensionClientMessage =
+  | ExtensionSessionHelloMessage
+  | ExtensionControlPingMessage
+  | FilesystemChangeMessage;
 
 // -- Server -> Client --
 

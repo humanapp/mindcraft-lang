@@ -67,7 +67,7 @@ export class Project {
   }
 
   toRemoteFileChange = (ev: FileSystemNotification) => {
-    // TODO: pass local file changes to remote
+    this._session.send({ type: "filesystem:change", payload: ev });
   };
 
   fromRemoteFileChange = (ev: FileSystemNotification) => {

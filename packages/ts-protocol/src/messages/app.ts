@@ -1,4 +1,4 @@
-import type { ErrorPayload } from "./shared.js";
+import type { ErrorPayload, FilesystemChangeMessage } from "./shared.js";
 
 // -- Payloads --
 
@@ -33,7 +33,11 @@ export interface AppControlPingMessage {
   id?: string;
 }
 
-export type AppClientMessage = AppSessionHelloMessage | AppSessionGoodbyeMessage | AppControlPingMessage;
+export type AppClientMessage =
+  | AppSessionHelloMessage
+  | AppSessionGoodbyeMessage
+  | AppControlPingMessage
+  | FilesystemChangeMessage;
 
 // -- Server -> Client --
 
