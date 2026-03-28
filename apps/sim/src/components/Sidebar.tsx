@@ -7,6 +7,7 @@ import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
+import { getUiPreferences, updateUiPreferences } from "@/services/ui-preferences";
 import {
   connectBridge,
   disconnectBridge,
@@ -66,7 +67,9 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
-  const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>({});
+  const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>(
+    () => getUiPreferences().collapsedArchetypes
+  );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bridgeStatus, setBridgeStatus] = useState(getBridgeStatus);
   const [joinCode, setJoinCode] = useState(getBridgeJoinCode);
@@ -74,6 +77,11 @@ export function Sidebar({
 
   useEffect(() => onBridgeStatusChange(setBridgeStatus), []);
   useEffect(() => onBridgeJoinCodeChange(setJoinCode), []);
+  useEffect(() => {
+    if (getUiPreferences().bridgeEnabled) {
+      connectBridge();
+    }
+  }, []);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toggle: toggleDocs, isOpen: isDocsOpen, open: openDocs, navigateToEntry } = useDocsSidebar();
@@ -181,7 +189,12 @@ export function Sidebar({
           const avgLife = s && s.deaths > 0 ? s.totalLifespan / s.deaths : 0;
           const avgEnergy = s && s.aliveCount > 0 ? s.totalEnergy / s.aliveCount : 0;
           const isCollapsed = collapsedArchetypes[arch] ?? false;
-          const toggleCollapsed = () => setCollapsedArchetypes((prev) => ({ ...prev, [arch]: !prev[arch] }));
+          const toggleCollapsed = () =>
+            setCollapsedArchetypes((prev) => {
+              const next = { ...prev, [arch]: !prev[arch] };
+              updateUiPreferences({ collapsedArchetypes: next });
+              return next;
+            });
           return (
             // biome-ignore lint/a11y/useSemanticElements: fieldset would break layout; role="group" provides accessible grouping
             <div
@@ -299,7 +312,14 @@ export function Sidebar({
             <Switch
               id="bridge-toggle"
               checked={bridgeStatus !== "disconnected"}
-              onCheckedChange={(checked) => (checked ? connectBridge() : disconnectBridge())}
+              onCheckedChange={(checked) => {
+                updateUiPreferences({ bridgeEnabled: checked });
+                if (checked) {
+                  connectBridge();
+                } else {
+                  disconnectBridge();
+                }
+              }}
               aria-label="Toggle VS Code bridge connection"
             />
           </div>

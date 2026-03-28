@@ -12,6 +12,7 @@ import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
 import { loadDesiredCounts } from "./services/population-persistence";
+import { getUiPreferences, updateUiPreferences } from "./services/ui-preferences";
 
 /** Compare two snapshots by display-relevant fields to skip no-op re-renders. */
 function statsEqual(
@@ -57,8 +58,8 @@ function App() {
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
   const [editingArchetype, setEditingArchetype] = useState<Archetype | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [timeSpeed, setTimeSpeed] = useState(1);
-  const [debugEnabled, setDebugEnabled] = useState(false);
+  const [timeSpeed, setTimeSpeed] = useState(() => getUiPreferences().timeScale);
+  const [debugEnabled, setDebugEnabled] = useState(() => getUiPreferences().debugEnabled);
   const [scene, setScene] = useState<Playground | null>(null);
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
@@ -75,6 +76,10 @@ function App() {
     const counts = loadDesiredCounts();
     for (const [arch, count] of Object.entries(counts)) {
       scene.setDesiredCount(arch as Archetype, count);
+    }
+    const prefs = getUiPreferences();
+    if (prefs.debugEnabled) {
+      scene.toggleDebugMode();
     }
   }, [scene]);
 
@@ -93,6 +98,11 @@ function App() {
     return () => clearInterval(id);
   }, [scene]);
 
+  const handleTimeSpeedChange = useCallback((speed: number) => {
+    setTimeSpeed(speed);
+    updateUiPreferences({ timeScale: speed });
+  }, []);
+
   const handleEditBrain = useCallback((archetype: Archetype) => {
     setEditingArchetype(archetype);
     setIsBrainEditorOpen(true);
@@ -107,7 +117,11 @@ function App() {
 
   const handleToggleDebug = useCallback(() => {
     scene?.toggleDebugMode();
-    setDebugEnabled((prev) => !prev);
+    setDebugEnabled((prev) => {
+      const next = !prev;
+      updateUiPreferences({ debugEnabled: next });
+      return next;
+    });
   }, [scene]);
 
   const getBrainDefForEditing = (): BrainDef | undefined => {
@@ -161,7 +175,7 @@ function App() {
         <Sidebar
           snapshot={snapshot}
           timeSpeed={timeSpeed}
-          onTimeSpeedChange={setTimeSpeed}
+          onTimeSpeedChange={handleTimeSpeedChange}
           onEditBrain={handleEditBrain}
           onDesiredCountChange={handleDesiredCountChange}
           onToggleDebug={handleToggleDebug}
