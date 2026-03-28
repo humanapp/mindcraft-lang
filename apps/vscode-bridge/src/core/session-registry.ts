@@ -217,6 +217,24 @@ export function getSessionCount(): { apps: number; extensions: number } {
   };
 }
 
+export function getAllAppSessions(): AppSession[] {
+  return [...appSessions.values()];
+}
+
+export function getAllExtensionSessions(): ExtensionSession[] {
+  return [...extensionSessions.values()];
+}
+
+export function disconnectSessionById(sessionId: string): boolean {
+  for (const session of appSessions.values()) {
+    if (session.id === sessionId) {
+      session.ws.close(1000, "closed via repl");
+      return true;
+    }
+  }
+  return false;
+}
+
 export function closeAllSessions(): void {
   stopJoinCodeTimer();
   stopDisconnectedSweepTimer();
