@@ -17,7 +17,7 @@ function notifyListeners(status: ConnectionStatus): void {
 function wireSession(): void {
   sessionUnsub?.();
   if (project) {
-    sessionUnsub = project.session.onStatusChange(notifyListeners);
+    sessionUnsub = project.session.addEventListener("status", notifyListeners);
   }
 }
 
