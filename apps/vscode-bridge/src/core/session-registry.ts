@@ -8,6 +8,8 @@ import { generateTriplet } from "#triplet.js";
 const JOIN_CODE_TTL_MS = 10 * 60 * 1000;
 const DISCONNECTED_SESSION_TTL_MS = 5 * 60 * 1000;
 const DISCONNECTED_SWEEP_INTERVAL_MS = 60 * 1000;
+const DISCONNECTED_MAX_SIZE = 10_000;
+const DISCONNECTED_PURGE_TARGET = 8_000;
 
 interface BaseSession {
   id: string;
@@ -82,6 +84,18 @@ function sweepDisconnectedSessions(): void {
   if (disconnectedAppSessions.size === 0) stopDisconnectedSweepTimer();
 }
 
+function purgeDisconnectedIfNeeded(): void {
+  if (disconnectedAppSessions.size <= DISCONNECTED_MAX_SIZE) return;
+  const entries = [...disconnectedAppSessions.entries()].sort((a, b) => a[1].disconnectedAt - b[1].disconnectedAt);
+  const toRemove = entries.length - DISCONNECTED_PURGE_TARGET;
+  for (let i = 0; i < toRemove; i++) {
+    const [id, entry] = entries[i];
+    activeJoinCodes.delete(entry.session.joinCode);
+    disconnectedAppSessions.delete(id);
+  }
+  logger.info({ purged: toRemove, remaining: disconnectedAppSessions.size }, "purged disconnected app sessions");
+}
+
 function ensureDisconnectedSweepTimer(): void {
   if (disconnectedSweepTimer) return;
   disconnectedSweepTimer = setInterval(sweepDisconnectedSessions, DISCONNECTED_SWEEP_INTERVAL_MS);
@@ -143,6 +157,7 @@ export function removeAppSession(ws: WSContext): AppSession | undefined {
   if (session) {
     appSessions.delete(ws);
     disconnectedAppSessions.set(session.id, { session, disconnectedAt: Date.now() });
+    purgeDisconnectedIfNeeded();
     ensureDisconnectedSweepTimer();
     if (appSessions.size === 0) {
       stopJoinCodeTimer();
