@@ -1,10 +1,6 @@
 export type {
   AppClientMessage,
-  AppControlPingMessage,
-  AppControlPongMessage,
-  AppErrorMessage,
   AppServerMessage,
-  AppSessionErrorMessage,
   AppSessionGoodbyeMessage,
   AppSessionHelloMessage,
   AppSessionHelloPayload,
@@ -16,13 +12,16 @@ export type {
 export { appSessionHelloPayloadSchema } from "./app.js";
 export type {
   ExtensionClientMessage,
-  ExtensionControlPingMessage,
-  ExtensionControlPongMessage,
-  ExtensionErrorMessage,
   ExtensionServerMessage,
-  ExtensionSessionErrorMessage,
   ExtensionSessionHelloMessage,
   ExtensionSessionWelcomeMessage,
   ExtensionSessionWelcomePayload,
 } from "./extension.js";
-export type { ErrorPayload, FilesystemChangeMessage } from "./shared.js";
+export type {
+  ControlPingMessage,
+  ControlPongMessage,
+  ErrorPayload,
+  FilesystemChangeMessage,
+  GeneralErrorMessage,
+  SessionErrorMessage,
+} from "./shared.js";

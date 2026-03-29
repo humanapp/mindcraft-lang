@@ -1,59 +1,38 @@
-import type { AppClientMessage, AppServerMessage, WsMessage } from "@mindcraft-lang/ts-protocol";
+import type { WsMessage } from "@mindcraft-lang/ts-protocol";
 import { WsClient } from "@mindcraft-lang/ts-protocol";
-import type { Project } from "./project.js";
+import type { ClientRole } from "./project.js";
 
 type InternalHandler = (msg: WsMessage) => void;
 
-type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
+export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
 
-interface SessionEventMap {
+export interface SessionEventMap {
   status: ConnectionStatus;
-  joinCode: string;
 }
 
-export class ProjectSession {
+export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage> {
   private _client: WsClient | undefined;
   private _status: ConnectionStatus = "disconnected";
   private _pollTimer: ReturnType<typeof setInterval> | undefined;
   private _eventListeners = new Map<string, Set<(value: never) => void>>();
   private _messageHandlers = new Map<string, Set<InternalHandler>>();
   private _clientUnsubs: (() => void)[] = [];
-  private _sessionId?: string;
-  private _joinCode?: string;
+  private _clientRole: ClientRole;
+  private _bridgeUrl: string;
 
-  constructor(public readonly project: Project) {
-    this.on("session:welcome", (msg) => {
-      this._sessionId = msg.payload.sessionId;
-      this.setJoinCode(msg.payload.joinCode);
-    });
-    this.on("session:joinCode", (msg) => {
-      this.setJoinCode(msg.payload.joinCode);
-    });
-    this.addEventListener("status", (status) => {
-      if (status === "connected") {
-        const msg: AppClientMessage = this._sessionId
-          ? { type: "session:hello", payload: { sessionId: this._sessionId } }
-          : { type: "session:hello" };
-        this.send(msg);
-      }
-    });
+  constructor(clientRole: ClientRole, bridgeUrl: string) {
+    this._clientRole = clientRole;
+    this._bridgeUrl = bridgeUrl;
   }
 
   get status(): ConnectionStatus {
     return this._status;
   }
-  get sessionId(): string | undefined {
-    return this._sessionId;
-  }
-  get joinCode(): string | undefined {
-    return this._joinCode;
-  }
 
   start(): void {
     if (this._client) return;
 
-    const { bridgeUrl } = this.project.options;
-    const url = buildWsUrl(bridgeUrl, this.project.options.clientRole);
+    const url = buildWsUrl(this._bridgeUrl, this._clientRole);
 
     this._client = new WsClient();
     this._client.onOpen = () => {
@@ -73,18 +52,14 @@ export class ProjectSession {
     for (const unsub of this._clientUnsubs) unsub();
     this._clientUnsubs = [];
     if (!this._client) return;
-    this._client.send({ type: "session:goodbye" });
     this._client.close();
     this._client = undefined;
     this.setStatus("disconnected");
   }
 
-  on<T extends AppServerMessage["type"]>(
-    type: T,
-    handler: (msg: Extract<AppServerMessage, { type: T }>) => void
-  ): () => void {
+  on<T extends TServer["type"]>(type: T, handler: (msg: Extract<TServer, { type: T }>) => void): () => void {
     const wrapper: InternalHandler = (msg) => {
-      handler(msg as Extract<AppServerMessage, { type: T }>);
+      handler(msg as Extract<TServer, { type: T }>);
     };
 
     let set = this._messageHandlers.get(type);
@@ -104,7 +79,7 @@ export class ProjectSession {
     };
   }
 
-  send(msg: AppClientMessage): void {
+  send(msg: TClient): void {
     if (!this._client) {
       throw new Error("Session not started");
     }
@@ -140,12 +115,6 @@ export class ProjectSession {
     if (this._status === next) return;
     this._status = next;
     this.emit("status", next);
-  }
-
-  private setJoinCode(code: string): void {
-    if (this._joinCode === code) return;
-    this._joinCode = code;
-    this.emit("joinCode", code);
   }
 
   private startPolling(): void {

@@ -1,4 +1,10 @@
-import type { ErrorPayload, FilesystemChangeMessage } from "./shared.js";
+import type {
+  ControlPingMessage,
+  ControlPongMessage,
+  FilesystemChangeMessage,
+  GeneralErrorMessage,
+  SessionErrorMessage,
+} from "./shared.js";
 
 // -- Payloads --
 
@@ -13,15 +19,7 @@ export interface ExtensionSessionHelloMessage {
   id?: string;
 }
 
-export interface ExtensionControlPingMessage {
-  type: "control:ping";
-  id?: string;
-}
-
-export type ExtensionClientMessage =
-  | ExtensionSessionHelloMessage
-  | ExtensionControlPingMessage
-  | FilesystemChangeMessage;
+export type ExtensionClientMessage = ExtensionSessionHelloMessage | ControlPingMessage | FilesystemChangeMessage;
 
 // -- Server -> Client --
 
@@ -31,25 +29,8 @@ export interface ExtensionSessionWelcomeMessage {
   payload: ExtensionSessionWelcomePayload;
 }
 
-export interface ExtensionSessionErrorMessage {
-  type: "session:error";
-  id?: string;
-  payload: ErrorPayload;
-}
-
-export interface ExtensionControlPongMessage {
-  type: "control:pong";
-  id?: string;
-}
-
-export interface ExtensionErrorMessage {
-  type: "error";
-  id?: string;
-  payload: ErrorPayload;
-}
-
 export type ExtensionServerMessage =
   | ExtensionSessionWelcomeMessage
-  | ExtensionSessionErrorMessage
-  | ExtensionControlPongMessage
-  | ExtensionErrorMessage;
+  | SessionErrorMessage
+  | ControlPongMessage
+  | GeneralErrorMessage;

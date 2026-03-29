@@ -6,10 +6,10 @@ type StatusListener = (status: ConnectionStatus) => void;
 
 type JoinCodeListener = (joinCode: string | undefined) => void;
 
-let project: Project | undefined;
-let sessionUnsub: (() => void) | undefined;
-let joinCodeUnsub: (() => void) | undefined;
+let project: Project<"app"> | undefined;
+let sessionId: string | undefined;
 let currentJoinCode: string | undefined;
+const unsubs: (() => void)[] = [];
 const listeners = new Set<StatusListener>();
 const joinCodeListeners = new Set<JoinCodeListener>();
 
@@ -27,15 +27,37 @@ function notifyJoinCodeListeners(joinCode: string | undefined): void {
 }
 
 function wireSession(): void {
-  sessionUnsub?.();
-  joinCodeUnsub?.();
-  if (project) {
-    sessionUnsub = project.session.addEventListener("status", notifyListeners);
-    joinCodeUnsub = project.session.addEventListener("joinCode", notifyJoinCodeListeners);
-  }
+  for (const unsub of unsubs) unsub();
+  unsubs.length = 0;
+  if (!project) return;
+
+  unsubs.push(project.session.addEventListener("status", notifyListeners));
+
+  unsubs.push(
+    project.session.on("session:welcome", (msg) => {
+      sessionId = msg.payload.sessionId;
+      notifyJoinCodeListeners(msg.payload.joinCode);
+    })
+  );
+
+  unsubs.push(
+    project.session.on("session:joinCode", (msg) => {
+      notifyJoinCodeListeners(msg.payload.joinCode);
+    })
+  );
+
+  unsubs.push(
+    project.session.addEventListener("status", (status) => {
+      if (status === "connected") {
+        project!.session.send(
+          sessionId ? { type: "session:hello", payload: { sessionId } } : { type: "session:hello" }
+        );
+      }
+    })
+  );
 }
 
-function createProject(): Project {
+function createProject(): Project<"app"> {
   const { vscodeBridgeUrl } = getAppSettings();
   return new Project({
     appName: "sim",
@@ -56,12 +78,12 @@ export function connectBridge(): void {
 
 export function disconnectBridge(): void {
   if (!project) return;
-  sessionUnsub?.();
-  sessionUnsub = undefined;
-  joinCodeUnsub?.();
-  joinCodeUnsub = undefined;
+  for (const unsub of unsubs) unsub();
+  unsubs.length = 0;
+  project.session.send({ type: "session:goodbye" });
   project.session.stop();
   project = undefined;
+  sessionId = undefined;
   notifyJoinCodeListeners(undefined);
   notifyListeners("disconnected");
 }
@@ -71,7 +93,7 @@ export function getBridgeStatus(): ConnectionStatus {
   return project.session.status;
 }
 
-export function getProject(): Project | undefined {
+export function getProject(): Project<"app"> | undefined {
   return project;
 }
 

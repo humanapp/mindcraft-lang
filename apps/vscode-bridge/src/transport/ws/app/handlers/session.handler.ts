@@ -1,4 +1,4 @@
-import type { AppSessionErrorMessage, AppSessionWelcomeMessage } from "@mindcraft-lang/ts-protocol";
+import type { AppSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-lang/ts-protocol";
 import { appSessionHelloPayloadSchema } from "@mindcraft-lang/ts-protocol";
 import { logger } from "#core/logging/logger.js";
 import {
@@ -14,7 +14,7 @@ import type { WsHandler, WsHandlerMap } from "#transport/ws/types.js";
 const hello: WsHandler = (ws, payload, id) => {
   const existing = getAppSession(ws);
   if (existing) {
-    const err: AppSessionErrorMessage = {
+    const err: SessionErrorMessage = {
       type: "session:error",
       id,
       payload: { message: "session already established" },
@@ -25,7 +25,7 @@ const hello: WsHandler = (ws, payload, id) => {
 
   const parsed = appSessionHelloPayloadSchema.optional().safeParse(payload);
   if (!parsed.success) {
-    const err: AppSessionErrorMessage = {
+    const err: SessionErrorMessage = {
       type: "session:error",
       id,
       payload: { message: "invalid hello payload" },

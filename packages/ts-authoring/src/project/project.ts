@@ -1,24 +1,35 @@
-import type { ExportedFileSystem, FileSystemNotification } from "@mindcraft-lang/ts-protocol";
+import type {
+  AppClientMessage,
+  AppServerMessage,
+  ExportedFileSystem,
+  ExtensionClientMessage,
+  ExtensionServerMessage,
+  FileSystemNotification,
+} from "@mindcraft-lang/ts-protocol";
 import { AuthoringError, ErrorCode } from "./error-codes.js";
 import { ProjectFiles, type ProjectFilesOptions } from "./files.js";
 import { ProjectSession } from "./session.js";
 
 export type ClientRole = "extension" | "app";
 
-export interface ProjectOptions {
+export type ClientMessageFor<R extends ClientRole> = R extends "app" ? AppClientMessage : ExtensionClientMessage;
+
+export type ServerMessageFor<R extends ClientRole> = R extends "app" ? AppServerMessage : ExtensionServerMessage;
+
+export interface ProjectOptions<R extends ClientRole = ClientRole> {
   appName: string;
   projectId: string;
   projectName: string;
   bridgeUrl: string;
-  clientRole: ClientRole;
+  clientRole: R;
   filesystem: ExportedFileSystem;
 }
 
-export class Project {
-  private _session: ProjectSession;
+export class Project<R extends ClientRole = ClientRole> {
+  private _session: ProjectSession<ClientMessageFor<R>, ServerMessageFor<R>>;
   private _files: ProjectFiles;
 
-  constructor(public readonly options: ProjectOptions) {
+  constructor(public readonly options: ProjectOptions<R>) {
     // Validate options
     if (!options.appName) {
       throw new AuthoringError(ErrorCode.APP_NAME_REQUIRED, "appName is required");
@@ -37,13 +48,13 @@ export class Project {
     }
 
     // Initialize subsystems
-    this._session = new ProjectSession(this);
+    this._session = new ProjectSession<ClientMessageFor<R>, ServerMessageFor<R>>(options.clientRole, options.bridgeUrl);
     const filesOptions: ProjectFilesOptions = {
       entries: options.filesystem,
       toRemoteChange: this.toRemoteFileChange,
       fromRemoteChange: this.fromRemoteFileChange,
     };
-    this._files = new ProjectFiles(this, filesOptions);
+    this._files = new ProjectFiles(filesOptions);
   }
 
   get appName(): string {
@@ -58,7 +69,7 @@ export class Project {
     return this.options.projectName;
   }
 
-  get session(): ProjectSession {
+  get session(): ProjectSession<ClientMessageFor<R>, ServerMessageFor<R>> {
     return this._session;
   }
 
@@ -67,7 +78,7 @@ export class Project {
   }
 
   toRemoteFileChange = (ev: FileSystemNotification) => {
-    this._session.send({ type: "filesystem:change", payload: ev });
+    this._session.send({ type: "filesystem:change", payload: ev } as ClientMessageFor<R>);
   };
 
   fromRemoteFileChange = (ev: FileSystemNotification) => {

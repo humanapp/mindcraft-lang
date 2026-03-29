@@ -1,5 +1,11 @@
 import { z } from "zod";
-import type { ErrorPayload, FilesystemChangeMessage } from "./shared.js";
+import type {
+  ControlPingMessage,
+  ControlPongMessage,
+  FilesystemChangeMessage,
+  GeneralErrorMessage,
+  SessionErrorMessage,
+} from "./shared.js";
 
 // -- Payload Schemas --
 
@@ -33,15 +39,10 @@ export interface AppSessionGoodbyeMessage {
   id?: string;
 }
 
-export interface AppControlPingMessage {
-  type: "control:ping";
-  id?: string;
-}
-
 export type AppClientMessage =
   | AppSessionHelloMessage
   | AppSessionGoodbyeMessage
-  | AppControlPingMessage
+  | ControlPingMessage
   | FilesystemChangeMessage;
 
 // -- Server -> Client --
@@ -57,26 +58,9 @@ export interface AppSessionJoinCodeMessage {
   payload: AppSessionJoinCodePayload;
 }
 
-export interface AppSessionErrorMessage {
-  type: "session:error";
-  id?: string;
-  payload: ErrorPayload;
-}
-
-export interface AppControlPongMessage {
-  type: "control:pong";
-  id?: string;
-}
-
-export interface AppErrorMessage {
-  type: "error";
-  id?: string;
-  payload: ErrorPayload;
-}
-
 export type AppServerMessage =
   | AppSessionWelcomeMessage
   | AppSessionJoinCodeMessage
-  | AppSessionErrorMessage
-  | AppControlPongMessage
-  | AppErrorMessage;
+  | SessionErrorMessage
+  | ControlPongMessage
+  | GeneralErrorMessage;

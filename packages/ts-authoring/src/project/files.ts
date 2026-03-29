@@ -4,7 +4,6 @@ import {
   type FileSystemNotification,
   NotifyingFileSystem,
 } from "@mindcraft-lang/ts-protocol";
-import type { Project } from "./project.js";
 
 export interface ProjectFilesOptions {
   entries: Map<string, ExportedFileSystemEntry>;
@@ -17,10 +16,7 @@ export class ProjectFiles {
   private _toRemote: NotifyingFileSystem;
   private _fromRemote: NotifyingFileSystem;
 
-  constructor(
-    public readonly project: Project,
-    options: ProjectFilesOptions
-  ) {
+  constructor(options: ProjectFilesOptions) {
     this._toRemote = new NotifyingFileSystem(this._fs, options.toRemoteChange);
     this._fromRemote = new NotifyingFileSystem(this._fs, options.fromRemoteChange);
     if (options.entries) {
