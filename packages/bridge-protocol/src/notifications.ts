@@ -12,6 +12,7 @@ export const fileSystemNotificationSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("rename"), oldPath: z.string(), newPath: z.string() }),
   z.object({ action: z.literal("mkdir"), path: z.string() }),
   z.object({ action: z.literal("rmdir"), path: z.string() }),
+  z.object({ action: z.literal("import") }),
 ]);
 
 export type FileSystemNotification = z.infer<typeof fileSystemNotificationSchema>;

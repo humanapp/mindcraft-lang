@@ -66,6 +66,7 @@ export class NotifyingFileSystem implements IFileSystem {
 
   import(entries: ExportedFileSystem): void {
     this._fs.import(entries);
+    this._onChange({ action: "import" });
   }
 }
 
