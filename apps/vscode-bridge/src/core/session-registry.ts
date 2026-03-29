@@ -31,6 +31,7 @@ const appSessions = new Map<WSContext, AppSession>();
 const extensionSessions = new Map<WSContext, ExtensionSession>();
 const activeJoinCodes = new Set<string>();
 const disconnectedAppSessions = new Map<string, { session: AppSession; disconnectedAt: number }>();
+const disconnectedExtensionSessions = new Map<string, { session: ExtensionSession; disconnectedAt: number }>();
 let joinCodeTimer: ReturnType<typeof setInterval> | undefined;
 let disconnectedSweepTimer: ReturnType<typeof setInterval> | undefined;
 
@@ -81,19 +82,41 @@ function sweepDisconnectedSessions(): void {
       logger.info({ sessionId: id }, "expired disconnected app session");
     }
   }
-  if (disconnectedAppSessions.size === 0) stopDisconnectedSweepTimer();
+  for (const [id, entry] of disconnectedExtensionSessions) {
+    if (now - entry.disconnectedAt >= DISCONNECTED_SESSION_TTL_MS) {
+      disconnectedExtensionSessions.delete(id);
+      logger.info({ sessionId: id }, "expired disconnected extension session");
+    }
+  }
+  if (disconnectedAppSessions.size === 0 && disconnectedExtensionSessions.size === 0) stopDisconnectedSweepTimer();
 }
 
-function purgeDisconnectedIfNeeded(): void {
-  if (disconnectedAppSessions.size <= DISCONNECTED_MAX_SIZE) return;
-  const entries = [...disconnectedAppSessions.entries()].sort((a, b) => a[1].disconnectedAt - b[1].disconnectedAt);
-  const toRemove = entries.length - DISCONNECTED_PURGE_TARGET;
-  for (let i = 0; i < toRemove; i++) {
-    const [id, entry] = entries[i];
-    activeJoinCodes.delete(entry.session.joinCode);
-    disconnectedAppSessions.delete(id);
+function purgeDisconnectedIfNeeded(kind: "app" | "extension"): void {
+  if (kind === "app") {
+    if (disconnectedAppSessions.size <= DISCONNECTED_MAX_SIZE) return;
+    const entries = [...disconnectedAppSessions.entries()].sort((a, b) => a[1].disconnectedAt - b[1].disconnectedAt);
+    const toRemove = entries.length - DISCONNECTED_PURGE_TARGET;
+    for (let i = 0; i < toRemove; i++) {
+      const [id, entry] = entries[i];
+      activeJoinCodes.delete(entry.session.joinCode);
+      disconnectedAppSessions.delete(id);
+    }
+    logger.info({ purged: toRemove, remaining: disconnectedAppSessions.size }, "purged disconnected app sessions");
+  } else {
+    if (disconnectedExtensionSessions.size <= DISCONNECTED_MAX_SIZE) return;
+    const entries = [...disconnectedExtensionSessions.entries()].sort(
+      (a, b) => a[1].disconnectedAt - b[1].disconnectedAt
+    );
+    const toRemove = entries.length - DISCONNECTED_PURGE_TARGET;
+    for (let i = 0; i < toRemove; i++) {
+      const [id] = entries[i];
+      disconnectedExtensionSessions.delete(id);
+    }
+    logger.info(
+      { purged: toRemove, remaining: disconnectedExtensionSessions.size },
+      "purged disconnected extension sessions"
+    );
   }
-  logger.info({ purged: toRemove, remaining: disconnectedAppSessions.size }, "purged disconnected app sessions");
 }
 
 function ensureDisconnectedSweepTimer(): void {
@@ -157,7 +180,7 @@ export function removeAppSession(ws: WSContext): AppSession | undefined {
   if (session) {
     appSessions.delete(ws);
     disconnectedAppSessions.set(session.id, { session, disconnectedAt: Date.now() });
-    purgeDisconnectedIfNeeded();
+    purgeDisconnectedIfNeeded("app");
     ensureDisconnectedSweepTimer();
     if (appSessions.size === 0) {
       stopJoinCodeTimer();
@@ -184,7 +207,7 @@ export function reclaimAppSession(sessionId: string, ws: WSContext): AppSession 
   const entry = disconnectedAppSessions.get(sessionId);
   if (!entry) return undefined;
   disconnectedAppSessions.delete(sessionId);
-  if (disconnectedAppSessions.size === 0) stopDisconnectedSweepTimer();
+  if (disconnectedAppSessions.size === 0 && disconnectedExtensionSessions.size === 0) stopDisconnectedSweepTimer();
   entry.session.ws = ws;
   entry.session.connectedAt = Date.now();
   appSessions.set(ws, entry.session);
@@ -197,9 +220,33 @@ export function removeExtensionSession(ws: WSContext): ExtensionSession | undefi
   const session = extensionSessions.get(ws);
   if (session) {
     extensionSessions.delete(ws);
-    logger.info({ sessionId: session.id }, "extension session removed");
+    disconnectedExtensionSessions.set(session.id, { session, disconnectedAt: Date.now() });
+    purgeDisconnectedIfNeeded("extension");
+    ensureDisconnectedSweepTimer();
+    logger.info({ sessionId: session.id }, "extension session disconnected (available for reclaim)");
   }
   return session;
+}
+
+export function discardExtensionSession(ws: WSContext): ExtensionSession | undefined {
+  const session = extensionSessions.get(ws);
+  if (session) {
+    extensionSessions.delete(ws);
+    logger.info({ sessionId: session.id }, "extension session discarded (goodbye)");
+  }
+  return session;
+}
+
+export function reclaimExtensionSession(sessionId: string, ws: WSContext): ExtensionSession | undefined {
+  const entry = disconnectedExtensionSessions.get(sessionId);
+  if (!entry) return undefined;
+  disconnectedExtensionSessions.delete(sessionId);
+  if (disconnectedAppSessions.size === 0 && disconnectedExtensionSessions.size === 0) stopDisconnectedSweepTimer();
+  entry.session.ws = ws;
+  entry.session.connectedAt = Date.now();
+  extensionSessions.set(ws, entry.session);
+  logger.info({ sessionId: entry.session.id }, "extension session reclaimed");
+  return entry.session;
 }
 
 export function getAppSession(ws: WSContext): AppSession | undefined {
@@ -258,6 +305,7 @@ export function closeAllSessions(): void {
   extensionSessions.clear();
   activeJoinCodes.clear();
   disconnectedAppSessions.clear();
+  disconnectedExtensionSessions.clear();
 }
 
 export function clearAllSessions(): void {
@@ -267,4 +315,5 @@ export function clearAllSessions(): void {
   extensionSessions.clear();
   activeJoinCodes.clear();
   disconnectedAppSessions.clear();
+  disconnectedExtensionSessions.clear();
 }
