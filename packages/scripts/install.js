@@ -7,8 +7,7 @@ const packages = [
     "ui",
     "docs",
     "typescript",
-    "ts-authoring",
-    "ts-protocol",
+    "bridge-client",
 ];
 
 for (const pkg of packages) {

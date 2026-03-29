@@ -1,9 +1,9 @@
-name: Publish @mindcraft-lang/ts-protocol
+name: Publish @mindcraft-lang/bridge-client
 
 on:
   push:
     tags:
-      - "ts-protocol-v*"
+      - "bridge-client-v*"
 
 permissions:
   contents: write
@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/ts-protocol
+        working-directory: packages/bridge-client
 
     steps:
       - name: Checkout
@@ -77,7 +77,7 @@ jobs:
 
       - name: Verify package version matches tag
         run: |
-          PACKAGE_VERSION="ts-protocol-v$(node -p "require('./package.json').version")"
+          PACKAGE_VERSION="bridge-client-v$(node -p "require('./package.json').version")"
           if [ "$PACKAGE_VERSION" != "${{ github.ref_name }}" ]; then
             echo "Tag ${{ github.ref_name }} does not match package.json version $PACKAGE_VERSION"
             exit 1

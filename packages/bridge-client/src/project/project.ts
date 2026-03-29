@@ -1,3 +1,4 @@
+import { ErrorCode, ProtocolError } from "../error-codes.js";
 import type {
   AppClientMessage,
   AppServerMessage,
@@ -5,8 +6,7 @@ import type {
   ExtensionClientMessage,
   ExtensionServerMessage,
   FileSystemNotification,
-} from "@mindcraft-lang/ts-protocol";
-import { AuthoringError, ErrorCode } from "./error-codes.js";
+} from "../index.js";
 import { ProjectFiles, type ProjectFilesOptions } from "./files.js";
 import { ProjectSession } from "./session.js";
 
@@ -32,19 +32,19 @@ export class Project<R extends ClientRole = ClientRole> {
   constructor(public readonly options: ProjectOptions<R>) {
     // Validate options
     if (!options.appName) {
-      throw new AuthoringError(ErrorCode.APP_NAME_REQUIRED, "appName is required");
+      throw new ProtocolError(ErrorCode.APP_NAME_REQUIRED, "appName is required");
     }
     if (!options.projectId) {
-      throw new AuthoringError(ErrorCode.PROJECT_ID_REQUIRED, "projectId is required");
+      throw new ProtocolError(ErrorCode.PROJECT_ID_REQUIRED, "projectId is required");
     }
     if (!options.projectName) {
-      throw new AuthoringError(ErrorCode.PROJECT_NAME_REQUIRED, "projectName is required");
+      throw new ProtocolError(ErrorCode.PROJECT_NAME_REQUIRED, "projectName is required");
     }
     if (!options.bridgeUrl) {
-      throw new AuthoringError(ErrorCode.BRIDGE_URL_REQUIRED, "bridgeUrl is required");
+      throw new ProtocolError(ErrorCode.BRIDGE_URL_REQUIRED, "bridgeUrl is required");
     }
     if (options.clientRole !== "extension" && options.clientRole !== "app") {
-      throw new AuthoringError(ErrorCode.INVALID_CLIENT_ROLE, "clientRole must be 'extension' or 'app'");
+      throw new ProtocolError(ErrorCode.INVALID_CLIENT_ROLE, "clientRole must be 'extension' or 'app'");
     }
 
     // Initialize subsystems

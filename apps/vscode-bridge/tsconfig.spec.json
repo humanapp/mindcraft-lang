@@ -6,5 +6,5 @@
 		"types": ["node"]
 	},
 	"include": ["src/**/*.spec.ts"],
-	"references": [{ "path": "../../packages/ts-protocol/tsconfig.json" }]
+	"references": [{ "path": "../../packages/bridge-client/tsconfig.json" }]
 }

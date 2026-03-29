@@ -34,7 +34,7 @@
 	"dependencies": {
 		"@hono/node-server": "^1.19.11",
 		"@hono/node-ws": "^1.3.0",
-		"@mindcraft-lang/ts-protocol": "file:../../packages/ts-protocol",
+		"@mindcraft-lang/bridge-client": "file:../../packages/bridge-client",
 		"hono": "^4.12.7",
 		"pino": "^10.3.1",
 		"zod": "^4.3.6"

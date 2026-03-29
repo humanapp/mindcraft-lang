@@ -1,4 +1,4 @@
-import type { WsMessage } from ".";
+import type { WsMessage } from "./schemas.js";
 
 type MessageHandler = (msg: WsMessage) => void;
 

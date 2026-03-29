@@ -1,4 +1,4 @@
-import type { ControlPongMessage } from "@mindcraft-lang/ts-protocol";
+import type { ControlPongMessage } from "@mindcraft-lang/bridge-client";
 import { safeSend } from "#transport/ws/safe-send.js";
 import type { WsHandler, WsHandlerMap } from "#transport/ws/types.js";
 

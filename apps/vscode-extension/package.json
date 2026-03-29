@@ -67,7 +67,7 @@
 		"package": "vsce package"
 	},
 	"dependencies": {
-		"@mindcraft-lang/ts-authoring": "file:../../packages/ts-authoring"
+		"@mindcraft-lang/bridge-client": "file:../../packages/bridge-client"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.15",

@@ -1,4 +1,4 @@
-import { Project } from "@mindcraft-lang/ts-authoring";
+import { Project } from "@mindcraft-lang/bridge-client";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";

@@ -8,10 +8,9 @@ Packages have internal `file:` dependencies that form a directed graph:
 
 ```
 core            (no local deps)
-ts-protocol     (no local deps)
+bridge-client -> core
 typescript   -> core
 ui           -> core
-ts-authoring -> core, ts-protocol
 docs         -> core, ui
 ```
 
@@ -61,11 +60,11 @@ source files on disk are never modified.
 From the package directory:
 
 ```sh
-cd packages/ts-authoring
+cd packages/bridge-client
 npm run release:patch   # or release:minor / release:major
 ```
 
-This will release `core`, then `ts-protocol`, then `ts-authoring` -- each bumped by
+This will release `core`, then `bridge-client` -- each bumped by
 `patch`, each waiting for CI before proceeding. For a leaf package like `core` with no
 local deps, only `core` itself is released.
 

@@ -17,7 +17,7 @@ every resource as something that must eventually be reclaimed.
 ## Tech Stack
 
 Hono (HTTP + WS), @hono/node-ws, pino (logging), zod (env validation),
-`@mindcraft-lang/ts-protocol` (shared message types), Biome.
+`@mindcraft-lang/bridge-client` (shared message types), Biome.
 
 ## Path Aliases (Node.js subpath imports)
 

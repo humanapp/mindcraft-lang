@@ -2,10 +2,10 @@ FROM node:22-alpine AS builder
 
 WORKDIR /workspace
 
-# Copy ts-protocol (local dependency)
-COPY packages/ts-protocol/package.json packages/ts-protocol/package.json
-COPY packages/ts-protocol/tsconfig.json packages/ts-protocol/tsconfig.json
-COPY packages/ts-protocol/src packages/ts-protocol/src
+# Copy bridge-client (local dependency)
+COPY packages/bridge-client/package.json packages/bridge-client/package.json
+COPY packages/bridge-client/tsconfig.json packages/bridge-client/tsconfig.json
+COPY packages/bridge-client/src packages/bridge-client/src
 
 # Copy vscode-bridge
 COPY apps/vscode-bridge/package.json apps/vscode-bridge/package.json
@@ -13,8 +13,8 @@ COPY apps/vscode-bridge/tsconfig.json apps/vscode-bridge/tsconfig.json
 COPY apps/vscode-bridge/tsconfig.base.json apps/vscode-bridge/tsconfig.base.json
 COPY apps/vscode-bridge/src apps/vscode-bridge/src
 
-# Build ts-protocol first
-WORKDIR /workspace/packages/ts-protocol
+# Build bridge-client first
+WORKDIR /workspace/packages/bridge-client
 RUN npm install && npm run build
 
 # Build vscode-bridge
@@ -26,9 +26,9 @@ FROM node:22-alpine
 
 WORKDIR /workspace
 
-# Copy built ts-protocol (needed at runtime via file: reference)
-COPY --from=builder /workspace/packages/ts-protocol/package.json packages/ts-protocol/package.json
-COPY --from=builder /workspace/packages/ts-protocol/dist packages/ts-protocol/dist
+# Copy built bridge-client (needed at runtime via file: reference)
+COPY --from=builder /workspace/packages/bridge-client/package.json packages/bridge-client/package.json
+COPY --from=builder /workspace/packages/bridge-client/dist packages/bridge-client/dist
 
 # Copy built vscode-bridge
 COPY --from=builder /workspace/apps/vscode-bridge/package.json apps/vscode-bridge/package.json

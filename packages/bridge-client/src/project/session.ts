@@ -1,5 +1,5 @@
-import type { WsMessage } from "@mindcraft-lang/ts-protocol";
-import { WsClient } from "@mindcraft-lang/ts-protocol";
+import type { WsMessage } from "../schemas.js";
+import { WsClient } from "../ws-client.js";
 import type { ClientRole } from "./project.js";
 
 type InternalHandler = (msg: WsMessage) => void;

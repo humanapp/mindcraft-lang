@@ -1,5 +1,5 @@
-import type { ConnectionStatus } from "@mindcraft-lang/ts-authoring";
-import { Project } from "@mindcraft-lang/ts-authoring";
+import type { ConnectionStatus } from "@mindcraft-lang/bridge-client";
+import { Project } from "@mindcraft-lang/bridge-client";
 import * as vscode from "vscode";
 
 export class ProjectManager implements vscode.Disposable {

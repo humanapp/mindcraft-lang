@@ -3,7 +3,7 @@ import {
   FileSystem,
   type FileSystemNotification,
   NotifyingFileSystem,
-} from "@mindcraft-lang/ts-protocol";
+} from "../filesystem.js";
 
 export interface ProjectFilesOptions {
   entries: Map<string, ExportedFileSystemEntry>;

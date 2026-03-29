@@ -1,8 +1,8 @@
 *
 
-!packages/ts-protocol/package.json
-!packages/ts-protocol/tsconfig.json
-!packages/ts-protocol/src
+!packages/bridge-client/package.json
+!packages/bridge-client/tsconfig.json
+!packages/bridge-client/src
 
 !apps/vscode-bridge/package.json
 !apps/vscode-bridge/tsconfig.json

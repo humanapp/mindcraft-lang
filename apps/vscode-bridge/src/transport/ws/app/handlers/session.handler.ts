@@ -1,5 +1,5 @@
-import type { AppSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-lang/ts-protocol";
-import { sessionHelloPayloadSchema } from "@mindcraft-lang/ts-protocol";
+import type { AppSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-lang/bridge-client";
+import { sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-client";
 import { logger } from "#core/logging/logger.js";
 import {
   discardAppSession,
