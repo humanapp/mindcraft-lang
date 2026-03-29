@@ -24,6 +24,10 @@
 				"title": "Mindcraft: Connect"
 			},
 			{
+				"command": "mindcraft.disconnect",
+				"title": "Mindcraft: Disconnect"
+			},
+			{
 				"command": "mindcraft.hide",
 				"title": "Mindcraft: Hide"
 			}
@@ -61,6 +65,9 @@
 		"typecheck": "tsc --noEmit",
 		"format": "biome format ./src --write",
 		"package": "vsce package"
+	},
+	"dependencies": {
+		"@mindcraft-lang/ts-authoring": "file:../../packages/ts-authoring"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.15",

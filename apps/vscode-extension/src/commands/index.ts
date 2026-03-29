@@ -1,8 +1,8 @@
 import * as vscode from "vscode";
+import type { ProjectManager } from "../services/project-manager";
 import { setMindcraftEnabled } from "../state/context";
-import type { MindcraftSessionsProvider } from "../views/mindcraftSessionsProvider";
 
-export function registerCommands(context: vscode.ExtensionContext, sessionsProvider: MindcraftSessionsProvider): void {
+export function registerCommands(context: vscode.ExtensionContext, projectManager: ProjectManager): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("mindcraft.show", () => {
       setMindcraftEnabled(true);
@@ -26,7 +26,16 @@ export function registerCommands(context: vscode.ExtensionContext, sessionsProvi
         return;
       }
 
-      vscode.window.showInformationMessage(`Connecting to Mindcraft session "${code}" (not implemented yet).`);
+      try {
+        projectManager.connect(code);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(`Failed to connect: ${msg}`);
+      }
+    }),
+
+    vscode.commands.registerCommand("mindcraft.disconnect", () => {
+      projectManager.disconnect();
     }),
 
     vscode.commands.registerCommand("mindcraft.hide", () => {

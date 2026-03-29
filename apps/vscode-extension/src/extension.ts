@@ -1,18 +1,20 @@
 import * as vscode from "vscode";
 import { registerCommands } from "./commands";
+import { ProjectManager } from "./services/project-manager";
 import { createStatusBarItem } from "./ui/statusBar";
 import { MindcraftSessionsProvider } from "./views/mindcraftSessionsProvider";
 
 export function activate(context: vscode.ExtensionContext) {
-  const sessionsProvider = new MindcraftSessionsProvider();
+  const projectManager = new ProjectManager();
+  const sessionsProvider = new MindcraftSessionsProvider(projectManager);
   const treeView = vscode.window.createTreeView("mindcraft.sessions", {
     treeDataProvider: sessionsProvider,
   });
 
-  registerCommands(context, sessionsProvider);
+  registerCommands(context, projectManager);
   createStatusBarItem(context);
 
-  context.subscriptions.push(treeView);
+  context.subscriptions.push(treeView, projectManager);
 }
 
 export function deactivate() {}
