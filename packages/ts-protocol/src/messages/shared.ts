@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { FileSystemNotification } from "../filesystem.js";
 
 export interface ErrorPayload {
@@ -30,4 +31,21 @@ export interface GeneralErrorMessage {
   type: "error";
   id?: string;
   payload: ErrorPayload;
+}
+
+export const sessionHelloPayloadSchema = z.object({
+  sessionId: z.string().optional(),
+});
+
+export type SessionHelloPayload = z.infer<typeof sessionHelloPayloadSchema>;
+
+export interface SessionHelloMessage {
+  type: "session:hello";
+  id?: string;
+  payload?: SessionHelloPayload;
+}
+
+export interface SessionGoodbyeMessage {
+  type: "session:goodbye";
+  id?: string;
 }

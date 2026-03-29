@@ -1,5 +1,5 @@
 import type { AppSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-lang/ts-protocol";
-import { appSessionHelloPayloadSchema } from "@mindcraft-lang/ts-protocol";
+import { sessionHelloPayloadSchema } from "@mindcraft-lang/ts-protocol";
 import { logger } from "#core/logging/logger.js";
 import {
   discardAppSession,
@@ -23,7 +23,7 @@ const hello: WsHandler = (ws, payload, id) => {
     return;
   }
 
-  const parsed = appSessionHelloPayloadSchema.optional().safeParse(payload);
+  const parsed = sessionHelloPayloadSchema.optional().safeParse(payload);
   if (!parsed.success) {
     const err: SessionErrorMessage = {
       type: "session:error",

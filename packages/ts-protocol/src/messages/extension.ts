@@ -4,6 +4,8 @@ import type {
   FilesystemChangeMessage,
   GeneralErrorMessage,
   SessionErrorMessage,
+  SessionGoodbyeMessage,
+  SessionHelloMessage,
 } from "./shared.js";
 
 // -- Payloads --
@@ -14,12 +16,11 @@ export interface ExtensionSessionWelcomePayload {
 
 // -- Client -> Server --
 
-export interface ExtensionSessionHelloMessage {
-  type: "session:hello";
-  id?: string;
-}
-
-export type ExtensionClientMessage = ExtensionSessionHelloMessage | ControlPingMessage | FilesystemChangeMessage;
+export type ExtensionClientMessage =
+  | SessionHelloMessage
+  | SessionGoodbyeMessage
+  | ControlPingMessage
+  | FilesystemChangeMessage;
 
 // -- Server -> Client --
 

@@ -18,9 +18,6 @@ export type SessionRole = "app" | "extension";
 export type {
   AppClientMessage,
   AppServerMessage,
-  AppSessionGoodbyeMessage,
-  AppSessionHelloMessage,
-  AppSessionHelloPayload,
   AppSessionJoinCodeMessage,
   AppSessionJoinCodePayload,
   AppSessionWelcomeMessage,
@@ -30,11 +27,13 @@ export type {
   ErrorPayload,
   ExtensionClientMessage,
   ExtensionServerMessage,
-  ExtensionSessionHelloMessage,
   ExtensionSessionWelcomeMessage,
   ExtensionSessionWelcomePayload,
   FilesystemChangeMessage,
   GeneralErrorMessage,
   SessionErrorMessage,
+  SessionGoodbyeMessage,
+  SessionHelloMessage,
+  SessionHelloPayload,
 } from "./messages/index.js";
-export { appSessionHelloPayloadSchema } from "./messages/index.js";
+export { sessionHelloPayloadSchema } from "./messages/index.js";

@@ -19,14 +19,27 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
   private _clientUnsubs: (() => void)[] = [];
   private _clientRole: ClientRole;
   private _bridgeUrl: string;
+  private _sessionId: string | undefined;
 
   constructor(clientRole: ClientRole, bridgeUrl: string) {
     this._clientRole = clientRole;
     this._bridgeUrl = bridgeUrl;
+    this.addEventListener("status", (status) => {
+      if (status === "connected") {
+        const msg = this._sessionId
+          ? { type: "session:hello", payload: { sessionId: this._sessionId } }
+          : { type: "session:hello" };
+        this.send(msg as TClient);
+      }
+    });
   }
 
   get status(): ConnectionStatus {
     return this._status;
+  }
+
+  get sessionId(): string | undefined {
+    return this._sessionId;
   }
 
   start(): void {
@@ -45,6 +58,13 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
     this.reregisterHandlers();
     this._client.connect(url);
     this.startPolling();
+
+    this._client.on("session:welcome", (msg: WsMessage) => {
+      const payload = msg.payload as { sessionId?: string } | undefined;
+      if (payload?.sessionId) {
+        this._sessionId = payload.sessionId;
+      }
+    });
   }
 
   stop(): void {
@@ -52,6 +72,7 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
     for (const unsub of this._clientUnsubs) unsub();
     this._clientUnsubs = [];
     if (!this._client) return;
+    this._client.send({ type: "session:goodbye" });
     this._client.close();
     this._client = undefined;
     this.setStatus("disconnected");

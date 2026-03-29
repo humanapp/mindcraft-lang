@@ -7,7 +7,6 @@ type StatusListener = (status: ConnectionStatus) => void;
 type JoinCodeListener = (joinCode: string | undefined) => void;
 
 let project: Project<"app"> | undefined;
-let sessionId: string | undefined;
 let currentJoinCode: string | undefined;
 const unsubs: (() => void)[] = [];
 const listeners = new Set<StatusListener>();
@@ -35,7 +34,6 @@ function wireSession(): void {
 
   unsubs.push(
     project.session.on("session:welcome", (msg) => {
-      sessionId = msg.payload.sessionId;
       notifyJoinCodeListeners(msg.payload.joinCode);
     })
   );
@@ -43,16 +41,6 @@ function wireSession(): void {
   unsubs.push(
     project.session.on("session:joinCode", (msg) => {
       notifyJoinCodeListeners(msg.payload.joinCode);
-    })
-  );
-
-  unsubs.push(
-    project.session.addEventListener("status", (status) => {
-      if (status === "connected") {
-        project!.session.send(
-          sessionId ? { type: "session:hello", payload: { sessionId } } : { type: "session:hello" }
-        );
-      }
     })
   );
 }
@@ -80,10 +68,8 @@ export function disconnectBridge(): void {
   if (!project) return;
   for (const unsub of unsubs) unsub();
   unsubs.length = 0;
-  project.session.send({ type: "session:goodbye" });
   project.session.stop();
   project = undefined;
-  sessionId = undefined;
   notifyJoinCodeListeners(undefined);
   notifyListeners("disconnected");
 }
