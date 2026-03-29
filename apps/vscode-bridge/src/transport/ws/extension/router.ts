@@ -1,4 +1,4 @@
-import type { GeneralErrorMessage } from "@mindcraft-lang/bridge-client";
+import type { GeneralErrorMessage } from "@mindcraft-lang/bridge-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
 import { safeSend } from "#transport/ws/safe-send.js";

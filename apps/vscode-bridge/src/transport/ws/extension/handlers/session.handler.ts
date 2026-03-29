@@ -1,5 +1,5 @@
-import type { ExtensionSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-lang/bridge-client";
-import { sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-client";
+import type { ExtensionSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-lang/bridge-protocol";
+import { sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-protocol";
 import { logger } from "#core/logging/logger.js";
 import {
   discardExtensionSession,

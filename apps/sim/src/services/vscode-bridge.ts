@@ -1,4 +1,4 @@
-import { Project } from "@mindcraft-lang/bridge-client";
+import { AppProject } from "@mindcraft-lang/bridge-app";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
@@ -6,7 +6,7 @@ type StatusListener = (status: ConnectionStatus) => void;
 
 type JoinCodeListener = (joinCode: string | undefined) => void;
 
-let project: Project<"app"> | undefined;
+let project: AppProject | undefined;
 let currentJoinCode: string | undefined;
 const unsubs: (() => void)[] = [];
 const listeners = new Set<StatusListener>();
@@ -31,28 +31,16 @@ function wireSession(): void {
   if (!project) return;
 
   unsubs.push(project.session.addEventListener("status", notifyListeners));
-
-  unsubs.push(
-    project.session.on("session:welcome", (msg) => {
-      notifyJoinCodeListeners(msg.payload.joinCode);
-    })
-  );
-
-  unsubs.push(
-    project.session.on("session:joinCode", (msg) => {
-      notifyJoinCodeListeners(msg.payload.joinCode);
-    })
-  );
+  unsubs.push(project.onJoinCodeChange(notifyJoinCodeListeners));
 }
 
-function createProject(): Project<"app"> {
+function createProject(): AppProject {
   const { vscodeBridgeUrl } = getAppSettings();
-  return new Project({
+  return new AppProject({
     appName: "sim",
     projectId: "sim-default",
     projectName: "Sim",
     bridgeUrl: vscodeBridgeUrl,
-    clientRole: "app",
     filesystem: new Map(),
   });
 }
@@ -79,7 +67,7 @@ export function getBridgeStatus(): ConnectionStatus {
   return project.session.status;
 }
 
-export function getProject(): Project<"app"> | undefined {
+export function getProject(): AppProject | undefined {
   return project;
 }
 

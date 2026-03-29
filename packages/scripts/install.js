@@ -7,7 +7,9 @@ const packages = [
     "ui",
     "docs",
     "typescript",
+    "bridge-protocol",
     "bridge-client",
+    "bridge-app",
 ];
 
 for (const pkg of packages) {

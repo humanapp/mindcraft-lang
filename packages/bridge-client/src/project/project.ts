@@ -1,36 +1,23 @@
+import type { FileSystemNotification, WsMessage } from "@mindcraft-lang/bridge-protocol";
 import { ErrorCode, ProtocolError } from "../error-codes.js";
-import type {
-  AppClientMessage,
-  AppServerMessage,
-  ExportedFileSystem,
-  ExtensionClientMessage,
-  ExtensionServerMessage,
-  FileSystemNotification,
-} from "../index.js";
+import type { ExportedFileSystem } from "../filesystem.js";
 import { ProjectFiles, type ProjectFilesOptions } from "./files.js";
 import { ProjectSession } from "./session.js";
 
-export type ClientRole = "extension" | "app";
-
-export type ClientMessageFor<R extends ClientRole> = R extends "app" ? AppClientMessage : ExtensionClientMessage;
-
-export type ServerMessageFor<R extends ClientRole> = R extends "app" ? AppServerMessage : ExtensionServerMessage;
-
-export interface ProjectOptions<R extends ClientRole = ClientRole> {
+export interface ProjectOptions<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
   appName: string;
   projectId: string;
   projectName: string;
   bridgeUrl: string;
-  clientRole: R;
+  wsPath: string;
   filesystem: ExportedFileSystem;
 }
 
-export class Project<R extends ClientRole = ClientRole> {
-  private _session: ProjectSession<ClientMessageFor<R>, ServerMessageFor<R>>;
+export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
+  private _session: ProjectSession<TClient, TServer>;
   private _files: ProjectFiles;
 
-  constructor(public readonly options: ProjectOptions<R>) {
-    // Validate options
+  constructor(public readonly options: ProjectOptions<TClient, TServer>) {
     if (!options.appName) {
       throw new ProtocolError(ErrorCode.APP_NAME_REQUIRED, "appName is required");
     }
@@ -43,12 +30,11 @@ export class Project<R extends ClientRole = ClientRole> {
     if (!options.bridgeUrl) {
       throw new ProtocolError(ErrorCode.BRIDGE_URL_REQUIRED, "bridgeUrl is required");
     }
-    if (options.clientRole !== "extension" && options.clientRole !== "app") {
-      throw new ProtocolError(ErrorCode.INVALID_CLIENT_ROLE, "clientRole must be 'extension' or 'app'");
+    if (!options.wsPath) {
+      throw new ProtocolError(ErrorCode.INVALID_CLIENT_ROLE, "wsPath is required");
     }
 
-    // Initialize subsystems
-    this._session = new ProjectSession<ClientMessageFor<R>, ServerMessageFor<R>>(options.clientRole, options.bridgeUrl);
+    this._session = new ProjectSession<TClient, TServer>(options.wsPath, options.bridgeUrl);
     const filesOptions: ProjectFilesOptions = {
       entries: options.filesystem,
       toRemoteChange: this.toRemoteFileChange,
@@ -69,7 +55,7 @@ export class Project<R extends ClientRole = ClientRole> {
     return this.options.projectName;
   }
 
-  get session(): ProjectSession<ClientMessageFor<R>, ServerMessageFor<R>> {
+  get session(): ProjectSession<TClient, TServer> {
     return this._session;
   }
 
@@ -78,10 +64,8 @@ export class Project<R extends ClientRole = ClientRole> {
   }
 
   toRemoteFileChange = (ev: FileSystemNotification) => {
-    this._session.send({ type: "filesystem:change", payload: ev } as ClientMessageFor<R>);
+    this._session.send({ type: "filesystem:change", payload: ev } as TClient);
   };
 
-  fromRemoteFileChange = (ev: FileSystemNotification) => {
-    // TODO: pass remote file changes to app
-  };
+  fromRemoteFileChange = (_ev: FileSystemNotification) => {};
 }

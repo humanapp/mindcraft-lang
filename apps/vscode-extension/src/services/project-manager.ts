@@ -1,9 +1,9 @@
-import type { ConnectionStatus } from "@mindcraft-lang/bridge-client";
-import { Project } from "@mindcraft-lang/bridge-client";
+import { type ConnectionStatus, Project } from "@mindcraft-lang/bridge-client";
+import type { ExtensionClientMessage, ExtensionServerMessage } from "@mindcraft-lang/bridge-protocol";
 import * as vscode from "vscode";
 
 export class ProjectManager implements vscode.Disposable {
-  private _project: Project<"extension"> | undefined;
+  private _project: Project<ExtensionClientMessage, ExtensionServerMessage> | undefined;
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
 
@@ -13,7 +13,7 @@ export class ProjectManager implements vscode.Disposable {
   private readonly _onDidChangeStatus = new vscode.EventEmitter<ConnectionStatus>();
   readonly onDidChangeStatus = this._onDidChangeStatus.event;
 
-  get project(): Project<"extension"> | undefined {
+  get project(): Project<ExtensionClientMessage, ExtensionServerMessage> | undefined {
     return this._project;
   }
 
@@ -29,12 +29,12 @@ export class ProjectManager implements vscode.Disposable {
       throw new Error("mindcraft.bridgeUrl is not configured");
     }
 
-    const project = new Project({
+    const project = new Project<ExtensionClientMessage, ExtensionServerMessage>({
       appName: "vscode",
       projectId: `vscode-${joinCode}`,
       projectName: "VS Code",
       bridgeUrl,
-      clientRole: "extension",
+      wsPath: "extension",
       filesystem: new Map(),
     });
 

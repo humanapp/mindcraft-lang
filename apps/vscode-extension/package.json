@@ -67,7 +67,8 @@
 		"package": "vsce package"
 	},
 	"dependencies": {
-		"@mindcraft-lang/bridge-client": "file:../../packages/bridge-client"
+		"@mindcraft-lang/bridge-client": "file:../../packages/bridge-client",
+		"@mindcraft-lang/bridge-protocol": "file:../../packages/bridge-protocol"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.3.15",

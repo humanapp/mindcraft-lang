@@ -1,4 +1,4 @@
-import type { WsMessage } from "./schemas.js";
+import type { WsMessage } from "@mindcraft-lang/bridge-protocol";
 
 type MessageHandler = (msg: WsMessage) => void;
 

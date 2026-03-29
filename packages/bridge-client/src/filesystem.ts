@@ -1,5 +1,7 @@
-import { z } from "zod";
+import type { FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import { ErrorCode, ProtocolError } from "./error-codes.js";
+
+export type { FileSystemNotification };
 
 export interface IFileSystem {
   list(path?: string): FileTreeEntry[];
@@ -13,22 +15,6 @@ export interface IFileSystem {
   export(): ExportedFileSystem;
   import(entries: ExportedFileSystem): void;
 }
-
-export const fileSystemNotificationSchema = z.discriminatedUnion("action", [
-  z.object({
-    action: z.literal("write"),
-    path: z.string(),
-    content: z.string(),
-    isReadonly: z.boolean().optional(),
-    newEtag: z.string(),
-  }),
-  z.object({ action: z.literal("delete"), path: z.string() }),
-  z.object({ action: z.literal("rename"), oldPath: z.string(), newPath: z.string() }),
-  z.object({ action: z.literal("mkdir"), path: z.string() }),
-  z.object({ action: z.literal("rmdir"), path: z.string() }),
-]);
-
-export type FileSystemNotification = z.infer<typeof fileSystemNotificationSchema>;
 
 export class NotifyingFileSystem implements IFileSystem {
   constructor(

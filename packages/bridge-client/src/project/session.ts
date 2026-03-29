@@ -1,6 +1,5 @@
-import type { WsMessage } from "../schemas.js";
+import type { WsMessage } from "@mindcraft-lang/bridge-protocol";
 import { WsClient } from "../ws-client.js";
-import type { ClientRole } from "./project.js";
 
 type InternalHandler = (msg: WsMessage) => void;
 
@@ -17,12 +16,12 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
   private _eventListeners = new Map<string, Set<(value: never) => void>>();
   private _messageHandlers = new Map<string, Set<InternalHandler>>();
   private _clientUnsubs: (() => void)[] = [];
-  private _clientRole: ClientRole;
+  private _wsPath: string;
   private _bridgeUrl: string;
   private _sessionId: string | undefined;
 
-  constructor(clientRole: ClientRole, bridgeUrl: string) {
-    this._clientRole = clientRole;
+  constructor(wsPath: string, bridgeUrl: string) {
+    this._wsPath = wsPath;
     this._bridgeUrl = bridgeUrl;
     this.addEventListener("status", (status) => {
       if (status === "connected") {
@@ -45,7 +44,7 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
   start(): void {
     if (this._client) return;
 
-    const url = buildWsUrl(this._bridgeUrl, this._clientRole);
+    const url = buildWsUrl(this._bridgeUrl, this._wsPath);
 
     this._client = new WsClient();
     this._client.onOpen = () => {
@@ -172,13 +171,12 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
   }
 }
 
-function buildWsUrl(bridgeUrl: string, clientRole: string): string {
-  // Strip any existing scheme (ws, wss, http, https, etc.) so URL can parse the rest reliably.
+function buildWsUrl(bridgeUrl: string, wsPath: string): string {
   const withoutScheme = bridgeUrl.replace(/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//, "");
   const parsed = new URL(`http://${withoutScheme}`);
   const { hostname, port } = parsed;
   const isLocalhost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
   const scheme = isLocalhost ? "ws://" : "wss://";
   const portPart = port !== "" ? `:${port}` : "";
-  return `${scheme}${hostname}${portPart}/${clientRole}`;
+  return `${scheme}${hostname}${portPart}/${wsPath}`;
 }

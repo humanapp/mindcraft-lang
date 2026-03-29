@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { FileSystemNotification } from "../filesystem.js";
+import type { FileSystemNotification } from "../notifications.js";
 
 export interface ErrorPayload {
   message: string;

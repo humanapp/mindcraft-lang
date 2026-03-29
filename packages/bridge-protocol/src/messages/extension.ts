@@ -8,21 +8,15 @@ import type {
   SessionHelloMessage,
 } from "./shared.js";
 
-// -- Payloads --
-
 export interface ExtensionSessionWelcomePayload {
   sessionId: string;
 }
-
-// -- Client -> Server --
 
 export type ExtensionClientMessage =
   | SessionHelloMessage
   | SessionGoodbyeMessage
   | ControlPingMessage
   | FilesystemChangeMessage;
-
-// -- Server -> Client --
 
 export interface ExtensionSessionWelcomeMessage {
   type: "session:welcome";

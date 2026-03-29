@@ -7,11 +7,13 @@ This document describes how to publish `@mindcraft-lang/*` packages to npm.
 Packages have internal `file:` dependencies that form a directed graph:
 
 ```
-core            (no local deps)
-bridge-client -> core
-typescript   -> core
-ui           -> core
-docs         -> core, ui
+core              (no local deps)
+bridge-protocol   (no local deps)
+bridge-client  -> core, bridge-protocol
+bridge-app     -> bridge-client, bridge-protocol
+typescript     -> core
+ui             -> core
+docs           -> core, ui
 ```
 
 The release script handles dependency ordering automatically -- see "Running a Release"
@@ -64,7 +66,7 @@ cd packages/bridge-client
 npm run release:patch   # or release:minor / release:major
 ```
 
-This will release `core`, then `bridge-client` -- each bumped by
+This will release `core`, then `bridge-protocol`, then `bridge-client` -- each bumped by
 `patch`, each waiting for CI before proceeding. For a leaf package like `core` with no
 local deps, only `core` itself is released.
 
