@@ -13,6 +13,7 @@ export type {
   AppSessionWelcomeMessage,
   AppSessionWelcomePayload,
 } from "./app.js";
+export { appSessionHelloPayloadSchema } from "./app.js";
 export type {
   ExtensionClientMessage,
   ExtensionControlPingMessage,

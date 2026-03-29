@@ -2,7 +2,8 @@ import type { AppErrorMessage } from "@mindcraft-lang/ts-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
 import { safeSend } from "#transport/ws/safe-send.js";
-import type { WsHandlerMap, WsMessage } from "#transport/ws/types.js";
+import type { WsHandlerMap } from "#transport/ws/types.js";
+import { wsMessageSchema } from "#transport/ws/types.js";
 import { controlHandlers } from "./handlers/control.handler.js";
 import { sessionHandlers } from "./handlers/session.handler.js";
 
@@ -12,20 +13,23 @@ const handlers: WsHandlerMap = {
 };
 
 export function routeAppMessage(ws: WSContext, raw: string) {
-  let msg: WsMessage;
+  let parsed: unknown;
   try {
-    msg = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     const err: AppErrorMessage = { type: "error", payload: { message: "invalid JSON" } };
     safeSend(ws, JSON.stringify(err));
     return;
   }
 
-  if (typeof msg.type !== "string") {
-    const err: AppErrorMessage = { type: "error", payload: { message: "missing message type" } };
+  const result = wsMessageSchema.safeParse(parsed);
+  if (!result.success) {
+    const err: AppErrorMessage = { type: "error", payload: { message: "invalid message envelope" } };
     safeSend(ws, JSON.stringify(err));
     return;
   }
+
+  const msg = result.data;
 
   const handler = handlers[msg.type];
   if (!handler) {

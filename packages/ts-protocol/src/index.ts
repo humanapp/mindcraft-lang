@@ -7,14 +7,11 @@ export type {
   IFileSystem,
   StatResult,
 } from "./filesystem.js";
-export { FileSystem, NotifyingFileSystem } from "./filesystem.js";
-export { WsClient } from "./ws-client.js";
+export { FileSystem, fileSystemNotificationSchema, NotifyingFileSystem } from "./filesystem.js";
+export type { WsMessage } from "./schemas.js";
 
-export interface WsMessage {
-  type: string;
-  id?: string;
-  payload?: unknown;
-}
+export { wsMessageSchema } from "./schemas.js";
+export { WsClient } from "./ws-client.js";
 
 export type SessionRole = "app" | "extension";
 
@@ -44,3 +41,4 @@ export type {
   ExtensionSessionWelcomePayload,
   FilesystemChangeMessage,
 } from "./messages/index.js";
+export { appSessionHelloPayloadSchema } from "./messages/index.js";

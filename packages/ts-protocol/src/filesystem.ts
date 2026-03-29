@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { ErrorCode, ProtocolError } from "./error-codes.js";
 
 export interface IFileSystem {
@@ -13,12 +14,21 @@ export interface IFileSystem {
   import(entries: ExportedFileSystem): void;
 }
 
-export type FileSystemNotification =
-  | { action: "write"; path: string; content: string; isReadonly: boolean | undefined; newEtag: string }
-  | { action: "delete"; path: string }
-  | { action: "rename"; oldPath: string; newPath: string }
-  | { action: "mkdir"; path: string }
-  | { action: "rmdir"; path: string };
+export const fileSystemNotificationSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("write"),
+    path: z.string(),
+    content: z.string(),
+    isReadonly: z.boolean().optional(),
+    newEtag: z.string(),
+  }),
+  z.object({ action: z.literal("delete"), path: z.string() }),
+  z.object({ action: z.literal("rename"), oldPath: z.string(), newPath: z.string() }),
+  z.object({ action: z.literal("mkdir"), path: z.string() }),
+  z.object({ action: z.literal("rmdir"), path: z.string() }),
+]);
+
+export type FileSystemNotification = z.infer<typeof fileSystemNotificationSchema>;
 
 export class NotifyingFileSystem implements IFileSystem {
   constructor(

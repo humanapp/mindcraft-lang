@@ -1,15 +1,20 @@
+import { z } from "zod";
 import type { ErrorPayload, FilesystemChangeMessage } from "./shared.js";
 
-// -- Payloads --
+// -- Payload Schemas --
+
+export const appSessionHelloPayloadSchema = z.object({
+  sessionId: z.string().optional(),
+});
+
+// -- Payload Types --
 
 export interface AppSessionWelcomePayload {
   sessionId: string;
   joinCode: string;
 }
 
-export interface AppSessionHelloPayload {
-  sessionId?: string;
-}
+export type AppSessionHelloPayload = z.infer<typeof appSessionHelloPayloadSchema>;
 
 export interface AppSessionJoinCodePayload {
   joinCode: string;
