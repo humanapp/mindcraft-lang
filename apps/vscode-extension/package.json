@@ -31,6 +31,14 @@
 				"title": "Mindcraft: Disconnect"
 			},
 			{
+				"command": "mindcraft.createSensor",
+				"title": "Mindcraft: Create New Sensor"
+			},
+			{
+				"command": "mindcraft.createActuator",
+				"title": "Mindcraft: Create New Actuator"
+			},
+			{
 				"command": "mindcraft.hide",
 				"title": "Mindcraft: Hide"
 			}

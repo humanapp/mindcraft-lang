@@ -31,6 +31,8 @@ export class MindcraftSessionsProvider implements vscode.TreeDataProvider<Sessio
     return [
       new SessionItem(`Session: ${status}`, vscode.TreeItemCollapsibleState.None),
       new SessionItem("Disconnect", vscode.TreeItemCollapsibleState.None, "mindcraft.disconnect"),
+      new SessionItem("Create new sensor", vscode.TreeItemCollapsibleState.None, "mindcraft.createSensor"),
+      new SessionItem("Create new actuator", vscode.TreeItemCollapsibleState.None, "mindcraft.createActuator"),
     ];
   }
 }
