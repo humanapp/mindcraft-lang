@@ -7,6 +7,8 @@ export type {
   AppSessionWelcomePayload,
 } from "./app.js";
 export type {
+  ExtensionAppStatusMessage,
+  ExtensionAppStatusPayload,
   ExtensionClientMessage,
   ExtensionServerMessage,
   ExtensionSessionWelcomeMessage,

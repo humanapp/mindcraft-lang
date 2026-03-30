@@ -5,6 +5,7 @@ import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-pr
 
 export class ProjectManager implements vscode.Disposable {
   private _project: Project<ExtensionClientMessage, ExtensionServerMessage> | undefined;
+  private _appBound = false;
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _fsProvider = new MindcraftFileSystemProvider();
@@ -14,6 +15,9 @@ export class ProjectManager implements vscode.Disposable {
 
   private readonly _onDidChangeStatus = new vscode.EventEmitter<ConnectionStatus>();
   readonly onDidChangeStatus = this._onDidChangeStatus.event;
+
+  private readonly _onDidChangeAppBound = new vscode.EventEmitter<boolean>();
+  readonly onDidChangeAppBound = this._onDidChangeAppBound.event;
 
   get fsProvider(): MindcraftFileSystemProvider {
     return this._fsProvider;
@@ -25,6 +29,10 @@ export class ProjectManager implements vscode.Disposable {
 
   get status(): ConnectionStatus {
     return this._project?.session.status ?? "disconnected";
+  }
+
+  get appBound(): boolean {
+    return this._appBound;
   }
 
   connect(joinCode: string): void {
@@ -54,6 +62,16 @@ export class ProjectManager implements vscode.Disposable {
       })
     );
 
+    this._unsubs.push(
+      project.session.on("session:appStatus", (msg) => {
+        const bound = msg.payload?.bound ?? false;
+        if (this._appBound !== bound) {
+          this._appBound = bound;
+          this._onDidChangeAppBound.fire(bound);
+        }
+      })
+    );
+
     project.fromRemoteFileChange = (ev) => this.handleFilesystemNotification(ev);
 
     this._fsProvider.setFileSystems(project.files.raw, project.files.toRemote);
@@ -79,6 +97,10 @@ export class ProjectManager implements vscode.Disposable {
     this.removeWorkspaceFolder();
     this._onDidChangeProject.fire();
     this._onDidChangeStatus.fire("disconnected");
+    if (this._appBound) {
+      this._appBound = false;
+      this._onDidChangeAppBound.fire(false);
+    }
   }
 
   private handleFilesystemNotification(ev: FileSystemNotification): void {
@@ -137,6 +159,7 @@ export class ProjectManager implements vscode.Disposable {
     this._fsProvider.dispose();
     this._onDidChangeProject.dispose();
     this._onDidChangeStatus.dispose();
+    this._onDidChangeAppBound.dispose();
     for (const d of this._disposables) d.dispose();
   }
 }

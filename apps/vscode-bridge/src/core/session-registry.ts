@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { AppSessionJoinCodeMessage, SessionRole } from "@mindcraft-lang/bridge-protocol";
+import type {
+  AppSessionJoinCodeMessage,
+  ExtensionAppStatusMessage,
+  SessionRole,
+} from "@mindcraft-lang/bridge-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
 import { safeSend } from "#transport/ws/safe-send.js";
@@ -75,9 +79,15 @@ function stopJoinCodeTimer(): void {
 }
 
 function unbindExtensionsFromApp(appSessionId: string): void {
+  const appStatusMsg: ExtensionAppStatusMessage = {
+    type: "session:appStatus",
+    payload: { bound: false },
+  };
+  const serialized = JSON.stringify(appStatusMsg);
   for (const session of extensionSessions.values()) {
     if (session.appSessionId === appSessionId) {
       session.appSessionId = undefined;
+      safeSend(session.ws, serialized);
       logger.info({ extensionSessionId: session.id, appSessionId }, "unbound active extension from purged app session");
     }
   }
@@ -245,6 +255,16 @@ export function reclaimAppSession(sessionId: string, ws: WSContext): AppSession 
   entry.session.connectedAt = Date.now();
   appSessions.set(ws, entry.session);
   ensureJoinCodeTimer();
+
+  const appStatusMsg: ExtensionAppStatusMessage = {
+    type: "session:appStatus",
+    payload: { bound: true },
+  };
+  const serialized = JSON.stringify(appStatusMsg);
+  for (const ext of getExtensionsByAppSessionId(entry.session.id)) {
+    safeSend(ext.ws, serialized);
+  }
+
   logger.info({ sessionId: entry.session.id, joinCode: entry.session.joinCode }, "app session reclaimed");
   return entry.session;
 }

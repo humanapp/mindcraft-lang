@@ -8,6 +8,8 @@ export type {
   ControlPingMessage,
   ControlPongMessage,
   ErrorPayload,
+  ExtensionAppStatusMessage,
+  ExtensionAppStatusPayload,
   ExtensionClientMessage,
   ExtensionServerMessage,
   ExtensionSessionWelcomeMessage,

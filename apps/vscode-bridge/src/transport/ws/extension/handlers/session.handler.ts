@@ -1,4 +1,8 @@
-import type { ExtensionSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-lang/bridge-protocol";
+import type {
+  ExtensionAppStatusMessage,
+  ExtensionSessionWelcomeMessage,
+  SessionErrorMessage,
+} from "@mindcraft-lang/bridge-protocol";
 import { sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-protocol";
 import { logger } from "#core/logging/logger.js";
 import {
@@ -51,6 +55,12 @@ const hello: WsHandler = (ws, payload, id) => {
     payload: { sessionId: session.id },
   };
   safeSend(ws, JSON.stringify(welcome));
+
+  const appStatus: ExtensionAppStatusMessage = {
+    type: "session:appStatus",
+    payload: { bound: session.appSessionId !== undefined },
+  };
+  safeSend(ws, JSON.stringify(appStatus));
 };
 
 const goodbye: WsHandler = (ws) => {

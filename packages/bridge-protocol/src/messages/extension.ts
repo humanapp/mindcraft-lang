@@ -26,8 +26,18 @@ export interface ExtensionSessionWelcomeMessage {
   payload: ExtensionSessionWelcomePayload;
 }
 
+export interface ExtensionAppStatusPayload {
+  bound: boolean;
+}
+
+export interface ExtensionAppStatusMessage {
+  type: "session:appStatus";
+  payload: ExtensionAppStatusPayload;
+}
+
 export type ExtensionServerMessage =
   | ExtensionSessionWelcomeMessage
+  | ExtensionAppStatusMessage
   | SessionErrorMessage
   | ControlPongMessage
   | GeneralErrorMessage
