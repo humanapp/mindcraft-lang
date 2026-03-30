@@ -26,12 +26,13 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   stat(uri: vscode.Uri): vscode.FileStat {
-    const fs = this.requireReadFs();
     const path = toFsPath(uri);
 
     if (path === "") {
       return { type: vscode.FileType.Directory, ctime: 0, mtime: 0, size: 0 };
     }
+
+    const fs = this.requireReadFs();
 
     try {
       const result = fs.stat(path);
@@ -55,7 +56,10 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider {
   }
 
   readDirectory(uri: vscode.Uri): [string, vscode.FileType][] {
-    const fs = this.requireReadFs();
+    if (!this._readFs) {
+      return [];
+    }
+    const fs = this._readFs;
     const path = toFsPath(uri);
     try {
       const entries = fs.list(path || undefined);

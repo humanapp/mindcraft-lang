@@ -12,6 +12,9 @@
 	"categories": [
 		"Programming Languages"
 	],
+	"activationEvents": [
+		"onStartupFinished"
+	],
 	"browser": "./dist/extension.js",
 	"contributes": {
 		"commands": [

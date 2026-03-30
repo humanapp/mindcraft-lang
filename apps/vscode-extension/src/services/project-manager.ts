@@ -3,12 +3,15 @@ import type { ExtensionClientMessage, ExtensionServerMessage } from "@mindcraft-
 import * as vscode from "vscode";
 import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
 
+const PENDING_JOIN_CODE_KEY = "mindcraft.pendingJoinCode";
+
 export class ProjectManager implements vscode.Disposable {
   private _project: Project<ExtensionClientMessage, ExtensionServerMessage> | undefined;
   private _appBound = false;
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _fsProvider = new MindcraftFileSystemProvider();
+  private _globalState: vscode.Memento | undefined;
 
   private readonly _onDidChangeProject = new vscode.EventEmitter<void>();
   readonly onDidChangeProject = this._onDidChangeProject.event;
@@ -35,6 +38,15 @@ export class ProjectManager implements vscode.Disposable {
     return this._appBound;
   }
 
+  initialize(globalState: vscode.Memento): void {
+    this._globalState = globalState;
+    const pendingCode = globalState.get<string>(PENDING_JOIN_CODE_KEY);
+    if (pendingCode) {
+      globalState.update(PENDING_JOIN_CODE_KEY, undefined);
+      this.connect(pendingCode);
+    }
+  }
+
   connect(joinCode: string): void {
     this.disconnectActive();
 
@@ -57,7 +69,16 @@ export class ProjectManager implements vscode.Disposable {
       project.session.addEventListener("status", (status) => {
         this._onDidChangeStatus.fire(status);
         if (status === "connected") {
-          project.requestSync().catch(() => {});
+          project
+            .requestSync()
+            .then(() => {
+              if (!this.hasWorkspaceFolder()) {
+                this._globalState?.update(PENDING_JOIN_CODE_KEY, joinCode);
+                this.addWorkspaceFolder();
+              }
+              this.fireRootChanged();
+            })
+            .catch(() => {});
         }
       })
     );
@@ -76,15 +97,16 @@ export class ProjectManager implements vscode.Disposable {
 
     this._fsProvider.setFileSystems(project.files.raw, project.files.toRemote);
 
+    this._project = project;
     project.session.start();
 
-    this._project = project;
     this._onDidChangeProject.fire();
-    this.addWorkspaceFolder();
   }
 
   disconnect(): void {
     this.disconnectActive();
+    this.removeWorkspaceFolder();
+    this._globalState?.update(PENDING_JOIN_CODE_KEY, undefined);
   }
 
   private disconnectActive(): void {
@@ -94,7 +116,6 @@ export class ProjectManager implements vscode.Disposable {
     this._project.session.stop();
     this._project = undefined;
     this._fsProvider.setFileSystems(undefined, undefined);
-    this.removeWorkspaceFolder();
     this._onDidChangeProject.fire();
     this._onDidChangeStatus.fire("disconnected");
     if (this._appBound) {
@@ -130,6 +151,15 @@ export class ProjectManager implements vscode.Disposable {
     }
 
     this._fsProvider.fireChanges(events);
+  }
+
+  private fireRootChanged(): void {
+    const uri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: "/" });
+    this._fsProvider.fireChanges([{ type: vscode.FileChangeType.Changed, uri }]);
+  }
+
+  private hasWorkspaceFolder(): boolean {
+    return this.findWorkspaceFolderIndex() !== -1;
   }
 
   private addWorkspaceFolder(): void {

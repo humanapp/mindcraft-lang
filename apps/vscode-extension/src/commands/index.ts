@@ -28,6 +28,8 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
 
       try {
         projectManager.connect(code);
+        await setMindcraftEnabled(true);
+        vscode.commands.executeCommand("mindcraft.sessions.focus");
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         vscode.window.showErrorMessage(`Failed to connect: ${msg}`);

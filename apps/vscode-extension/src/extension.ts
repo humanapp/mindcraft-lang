@@ -22,6 +22,8 @@ export function activate(context: vscode.ExtensionContext) {
   registerCommands(context, projectManager);
   createStatusBarItem(context, projectManager);
 
+  projectManager.initialize(context.globalState);
+
   context.subscriptions.push(treeView, projectManager);
 }
 
