@@ -8,7 +8,6 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
     vscode.commands.registerCommand("mindcraft.show", () => {
       setMindcraftEnabled(true);
       vscode.commands.executeCommand("mindcraft.sessions.focus");
-      vscode.window.showInformationMessage("Mindcraft view enabled.");
     }),
 
     vscode.commands.registerCommand("mindcraft.connect", async () => {
