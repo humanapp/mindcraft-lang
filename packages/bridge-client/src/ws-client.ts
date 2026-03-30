@@ -197,12 +197,13 @@ export class WsClient {
 
   private scheduleReconnect(): void {
     this.clearReconnectTimer();
+    const jitter = this.reconnectDelay * (0.5 + Math.random() * 0.5);
     this.reconnectTimer = setTimeout(() => {
       if (this.state !== "reconnecting") {
         return;
       }
       this.openSocket();
-    }, this.reconnectDelay);
+    }, jitter);
 
     this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
   }
