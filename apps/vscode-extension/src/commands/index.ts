@@ -41,6 +41,17 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
       projectManager.disconnect();
     }),
 
+    vscode.commands.registerCommand("mindcraft.confirmDisconnect", async () => {
+      const choice = await vscode.window.showWarningMessage(
+        "Are you sure you want to disconnect from the Mindcraft session?",
+        { modal: true },
+        "Disconnect"
+      );
+      if (choice === "Disconnect") {
+        projectManager.disconnect();
+      }
+    }),
+
     vscode.commands.registerCommand("mindcraft.createSensor", async () => {
       await createFileFromTemplate(projectManager, "MySensor", "// Sensor code goes here\n");
     }),
