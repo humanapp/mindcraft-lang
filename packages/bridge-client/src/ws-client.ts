@@ -64,7 +64,16 @@ export class WsClient {
 
   send(msg: WsMessage): void {
     if (this.state === "open" && this.ws) {
-      this.ws.send(JSON.stringify(msg));
+      if (this.queuedMessages.length > 0) {
+        this.queuedMessages.push(msg);
+        this.flushQueue();
+      } else {
+        try {
+          this.ws.send(JSON.stringify(msg));
+        } catch {
+          this.queuedMessages.push(msg);
+        }
+      }
     } else if (this.state === "connecting" || this.state === "reconnecting") {
       this.queuedMessages.push(msg);
     }
