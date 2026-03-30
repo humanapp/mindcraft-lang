@@ -11,6 +11,7 @@ interface WsClientOptions {
   heartbeatInterval?: number;
   heartbeatMessage?: WsMessage;
   maxMissedHeartbeats?: number;
+  maxQueueSize?: number;
 }
 
 const DEFAULT_MAX_RECONNECT_DELAY = 30_000;
@@ -18,6 +19,7 @@ const DEFAULT_INITIAL_RECONNECT_DELAY = 500;
 const DEFAULT_REQUEST_TIMEOUT = 30_000;
 const DEFAULT_HEARTBEAT_INTERVAL = 15_000;
 const DEFAULT_MAX_MISSED_HEARTBEATS = 2;
+const DEFAULT_MAX_QUEUE_SIZE = 1000;
 
 export class WsClient {
   private ws: WebSocket | undefined;
@@ -31,6 +33,7 @@ export class WsClient {
   private readonly heartbeatInterval: number;
   private readonly heartbeatMessage: WsMessage;
   private readonly maxMissedHeartbeats: number;
+  private readonly maxQueueSize: number;
   private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
   private missedHeartbeats = 0;
 
@@ -51,6 +54,7 @@ export class WsClient {
     this.heartbeatInterval = options?.heartbeatInterval ?? DEFAULT_HEARTBEAT_INTERVAL;
     this.heartbeatMessage = options?.heartbeatMessage ?? { type: "ping" };
     this.maxMissedHeartbeats = options?.maxMissedHeartbeats ?? DEFAULT_MAX_MISSED_HEARTBEATS;
+    this.maxQueueSize = options?.maxQueueSize ?? DEFAULT_MAX_QUEUE_SIZE;
     this.reconnectDelay = this.initialReconnectDelay;
   }
 
@@ -79,17 +83,19 @@ export class WsClient {
   send(msg: WsMessage): void {
     if (this.state === "open" && this.ws) {
       if (this.queuedMessages.length > 0) {
-        this.queuedMessages.push(msg);
-        this.flushQueue();
+        this.enqueue(msg);
+        if (this.state === "open") {
+          this.flushQueue();
+        }
       } else {
         try {
           this.ws.send(JSON.stringify(msg));
         } catch {
-          this.queuedMessages.push(msg);
+          this.enqueue(msg);
         }
       }
     } else if (this.state === "connecting" || this.state === "reconnecting") {
-      this.queuedMessages.push(msg);
+      this.enqueue(msg);
     }
   }
 
@@ -235,6 +241,15 @@ export class WsClient {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = undefined;
     }
+  }
+
+  private enqueue(msg: WsMessage): void {
+    if (this.queuedMessages.length >= this.maxQueueSize) {
+      this.queuedMessages.length = 0;
+      this.close();
+      return;
+    }
+    this.queuedMessages.push(msg);
   }
 
   private flushQueue(): void {
