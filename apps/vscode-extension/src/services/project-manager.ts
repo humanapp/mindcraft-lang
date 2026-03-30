@@ -116,6 +116,7 @@ export class ProjectManager implements vscode.Disposable {
 
   disconnect(): void {
     this.disconnectActive();
+    this.closeMindcraftTabs();
     this.removeWorkspaceFolder();
     this._globalState?.update(PENDING_JOIN_CODE_KEY, undefined);
   }
@@ -190,6 +191,19 @@ export class ProjectManager implements vscode.Disposable {
     const folder = vscode.workspace.workspaceFolders![index];
     if (folder.name === name) return;
     vscode.workspace.updateWorkspaceFolders(index, 1, { uri: folder.uri, name });
+  }
+
+  private closeMindcraftTabs(): void {
+    const tabs = vscode.window.tabGroups.all.flatMap((group) =>
+      group.tabs.filter((tab) => {
+        if (tab.input instanceof vscode.TabInputText) return tab.input.uri.scheme === MINDCRAFT_SCHEME;
+        if (tab.input instanceof vscode.TabInputCustom) return tab.input.uri.scheme === MINDCRAFT_SCHEME;
+        return false;
+      })
+    );
+    if (tabs.length > 0) {
+      vscode.window.tabGroups.close(tabs);
+    }
   }
 
   private removeWorkspaceFolder(): void {
