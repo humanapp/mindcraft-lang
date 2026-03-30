@@ -45,6 +45,8 @@ export class ProjectManager implements vscode.Disposable {
     if (pendingCode) {
       globalState.update(PENDING_JOIN_CODE_KEY, undefined);
       this.connect(pendingCode);
+    } else {
+      this.removeWorkspaceFolder();
     }
   }
 
