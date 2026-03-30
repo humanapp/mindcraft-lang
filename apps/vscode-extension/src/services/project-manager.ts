@@ -123,6 +123,12 @@ export class ProjectManager implements vscode.Disposable {
     this._globalState?.update(PENDING_JOIN_CODE_KEY, undefined);
   }
 
+  async sync(): Promise<void> {
+    if (!this._project) return;
+    await this._project.requestSync();
+    this.fireRootChanged();
+  }
+
   private disconnectActive(): void {
     if (!this._project) return;
     for (const unsub of this._unsubs) unsub();

@@ -41,6 +41,10 @@
 			{
 				"command": "mindcraft.hide",
 				"title": "Mindcraft: Hide"
+			},
+			{
+				"command": "mindcraft.sync",
+				"title": "Mindcraft: Sync Files"
 			}
 		],
 		"views": {

@@ -65,6 +65,15 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
       await createFileFromTemplate(projectManager, "MyActuator", "// Actuator code goes here\n");
     }),
 
+    vscode.commands.registerCommand("mindcraft.sync", async () => {
+      if (!projectManager.project) {
+        vscode.window.showWarningMessage("Not connected to a Mindcraft session.");
+        return;
+      }
+      await projectManager.sync();
+      vscode.window.showInformationMessage("Mindcraft files synced.");
+    }),
+
     vscode.commands.registerCommand("mindcraft.hide", () => {
       setMindcraftEnabled(false);
       vscode.window.showInformationMessage("Mindcraft view hidden.");
