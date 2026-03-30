@@ -60,7 +60,7 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
 
     const url = buildWsUrl(this._bridgeUrl, this._wsPath);
 
-    this._client = new WsClient();
+    this._client = new WsClient({ heartbeatMessage: { type: "control:ping" } });
     this._client.onOpen = () => {
       this.setStatus("connected");
     };

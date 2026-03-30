@@ -8,11 +8,16 @@ interface WsClientOptions {
   maxReconnectDelay?: number;
   initialReconnectDelay?: number;
   requestTimeout?: number;
+  heartbeatInterval?: number;
+  heartbeatMessage?: WsMessage;
+  maxMissedHeartbeats?: number;
 }
 
 const DEFAULT_MAX_RECONNECT_DELAY = 30_000;
 const DEFAULT_INITIAL_RECONNECT_DELAY = 500;
 const DEFAULT_REQUEST_TIMEOUT = 30_000;
+const DEFAULT_HEARTBEAT_INTERVAL = 15_000;
+const DEFAULT_MAX_MISSED_HEARTBEATS = 2;
 
 export class WsClient {
   private ws: WebSocket | undefined;
@@ -23,6 +28,11 @@ export class WsClient {
   private readonly maxReconnectDelay: number;
   private readonly initialReconnectDelay: number;
   private readonly requestTimeout: number;
+  private readonly heartbeatInterval: number;
+  private readonly heartbeatMessage: WsMessage;
+  private readonly maxMissedHeartbeats: number;
+  private heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+  private missedHeartbeats = 0;
 
   onOpen?: () => void;
   onDisconnect?: () => void;
@@ -38,6 +48,9 @@ export class WsClient {
     this.maxReconnectDelay = options?.maxReconnectDelay ?? DEFAULT_MAX_RECONNECT_DELAY;
     this.initialReconnectDelay = options?.initialReconnectDelay ?? DEFAULT_INITIAL_RECONNECT_DELAY;
     this.requestTimeout = options?.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT;
+    this.heartbeatInterval = options?.heartbeatInterval ?? DEFAULT_HEARTBEAT_INTERVAL;
+    this.heartbeatMessage = options?.heartbeatMessage ?? { type: "ping" };
+    this.maxMissedHeartbeats = options?.maxMissedHeartbeats ?? DEFAULT_MAX_MISSED_HEARTBEATS;
     this.reconnectDelay = this.initialReconnectDelay;
   }
 
@@ -56,6 +69,7 @@ export class WsClient {
 
   close(): void {
     this.state = "closed";
+    this.stopHeartbeat();
     this.clearReconnectTimer();
     this.rejectAllPending(new Error("client closed"));
     this.ws?.close();
@@ -127,11 +141,13 @@ export class WsClient {
       this.ws = ws;
       this.state = "open";
       this.reconnectDelay = this.initialReconnectDelay;
+      this.startHeartbeat();
       this.onOpen?.();
       this.flushQueue();
     };
 
     ws.onmessage = (event: MessageEvent) => {
+      this.missedHeartbeats = 0;
       let msg: WsMessage;
       try {
         msg = JSON.parse(String(event.data)) as WsMessage;
@@ -169,6 +185,7 @@ export class WsClient {
   }
 
   private handleDisconnect(): void {
+    this.stopHeartbeat();
     this.ws = undefined;
     if (this.state === "closed") {
       return;
@@ -194,6 +211,28 @@ export class WsClient {
     if (this.reconnectTimer !== undefined) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = undefined;
+    }
+  }
+
+  private startHeartbeat(): void {
+    this.stopHeartbeat();
+    if (this.heartbeatInterval <= 0) return;
+    this.missedHeartbeats = 0;
+    this.heartbeatTimer = setInterval(() => {
+      if (this.state !== "open" || !this.ws) return;
+      this.missedHeartbeats++;
+      if (this.missedHeartbeats > this.maxMissedHeartbeats) {
+        this.ws.close();
+        return;
+      }
+      this.send(this.heartbeatMessage);
+    }, this.heartbeatInterval);
+  }
+
+  private stopHeartbeat(): void {
+    if (this.heartbeatTimer !== undefined) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = undefined;
     }
   }
 
