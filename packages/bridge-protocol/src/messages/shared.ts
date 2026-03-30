@@ -42,6 +42,9 @@ export interface GeneralErrorMessage {
 export const sessionHelloPayloadSchema = z.object({
   sessionId: z.string().optional(),
   joinCode: z.string().optional(),
+  appName: z.string().optional(),
+  projectId: z.string().optional(),
+  projectName: z.string().optional(),
 });
 
 export type SessionHelloPayload = z.infer<typeof sessionHelloPayloadSchema>;

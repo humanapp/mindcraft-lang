@@ -40,7 +40,12 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
       throw new ProtocolError(ErrorCode.INVALID_CLIENT_ROLE, "wsPath is required");
     }
 
-    this._session = new ProjectSession<TClient, TServer>(options.wsPath, options.bridgeUrl, options.joinCode);
+    this._session = new ProjectSession<TClient, TServer>(
+      options.wsPath,
+      options.bridgeUrl,
+      { appName: options.appName, projectId: options.projectId, projectName: options.projectName },
+      options.joinCode
+    );
     const filesOptions: ProjectFilesOptions = {
       entries: options.filesystem,
       toRemoteChange: this.toRemoteFileChange,

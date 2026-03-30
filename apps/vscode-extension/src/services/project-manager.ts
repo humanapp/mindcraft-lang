@@ -12,6 +12,7 @@ export class ProjectManager implements vscode.Disposable {
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _fsProvider = new MindcraftFileSystemProvider();
   private _globalState: vscode.Memento | undefined;
+  private _workspaceFolderName = "Mindcraft";
 
   private readonly _onDidChangeProject = new vscode.EventEmitter<void>();
   readonly onDidChangeProject = this._onDidChangeProject.event;
@@ -86,6 +87,13 @@ export class ProjectManager implements vscode.Disposable {
     this._unsubs.push(
       project.session.on("session:appStatus", (msg) => {
         const bound = msg.payload?.bound ?? false;
+        if (bound) {
+          const p = msg.payload;
+          if (p?.appName) project.options.appName = p.appName;
+          if (p?.projectId) project.options.projectId = p.projectId;
+          if (p?.projectName) project.options.projectName = p.projectName;
+          this.renameWorkspaceFolder(`${project.options.projectName} (${project.options.appName})`);
+        }
         if (this._appBound !== bound) {
           this._appBound = bound;
           this._onDidChangeAppBound.fire(bound);
@@ -171,8 +179,17 @@ export class ProjectManager implements vscode.Disposable {
     if (existing !== -1) return;
     vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders?.length ?? 0, 0, {
       uri,
-      name: "Mindcraft",
+      name: this._workspaceFolderName,
     });
+  }
+
+  private renameWorkspaceFolder(name: string): void {
+    this._workspaceFolderName = name;
+    const index = this.findWorkspaceFolderIndex();
+    if (index === -1) return;
+    const folder = vscode.workspace.workspaceFolders![index];
+    if (folder.name === name) return;
+    vscode.workspace.updateWorkspaceFolders(index, 1, { uri: folder.uri, name });
   }
 
   private removeWorkspaceFolder(): void {

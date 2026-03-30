@@ -9,6 +9,12 @@ export interface SessionEventMap {
   status: ConnectionStatus;
 }
 
+export interface SessionMeta {
+  appName: string;
+  projectId: string;
+  projectName: string;
+}
+
 export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage> {
   private _client: WsClient | undefined;
   private _status: ConnectionStatus = "disconnected";
@@ -20,18 +26,23 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
   private _bridgeUrl: string;
   private _sessionId: string | undefined;
   private _joinCode: string | undefined;
+  private _meta: SessionMeta;
 
-  constructor(wsPath: string, bridgeUrl: string, joinCode?: string) {
+  constructor(wsPath: string, bridgeUrl: string, meta: SessionMeta, joinCode?: string) {
     this._wsPath = wsPath;
     this._bridgeUrl = bridgeUrl;
+    this._meta = meta;
     this._joinCode = joinCode;
     this.addEventListener("status", (status) => {
       if (status === "connected") {
-        const payload: Record<string, string> = {};
+        const payload: Record<string, string> = {
+          appName: this._meta.appName,
+          projectId: this._meta.projectId,
+          projectName: this._meta.projectName,
+        };
         if (this._sessionId) payload.sessionId = this._sessionId;
         if (this._joinCode) payload.joinCode = this._joinCode;
-        const msg = Object.keys(payload).length > 0 ? { type: "session:hello", payload } : { type: "session:hello" };
-        this.send(msg as TClient);
+        this.send({ type: "session:hello", payload } as TClient);
       }
     });
   }

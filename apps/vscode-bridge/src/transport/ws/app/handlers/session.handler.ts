@@ -2,6 +2,7 @@ import type { AppSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-l
 import { sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-protocol";
 import { logger } from "#core/logging/logger.js";
 import {
+  type AppSessionMeta,
   discardAppSession,
   getAppSession,
   getSessionCount,
@@ -35,7 +36,13 @@ const hello: WsHandler = (ws, payload, id) => {
   }
 
   const helloPayload = parsed.data;
-  const session = (helloPayload?.sessionId && reclaimAppSession(helloPayload.sessionId, ws)) || registerAppSession(ws);
+  const meta: AppSessionMeta = {
+    appName: helloPayload?.appName,
+    projectId: helloPayload?.projectId,
+    projectName: helloPayload?.projectName,
+  };
+  const session =
+    (helloPayload?.sessionId && reclaimAppSession(helloPayload.sessionId, ws)) || registerAppSession(ws, meta);
   const counts = getSessionCount();
 
   logger.info(

@@ -28,6 +28,9 @@ export interface ExtensionSessionWelcomeMessage {
 
 export interface ExtensionAppStatusPayload {
   bound: boolean;
+  appName?: string;
+  projectId?: string;
+  projectName?: string;
 }
 
 export interface ExtensionAppStatusMessage {
