@@ -1,5 +1,7 @@
-import { AppProject } from "@mindcraft-lang/bridge-app";
+import { AppProject, type AppProjectOptions } from "@mindcraft-lang/bridge-app";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
+
+const LS_FS_KEY = "sim:vscode-bridge:filesystem";
 
 type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
 type StatusListener = (status: ConnectionStatus) => void;
@@ -11,6 +13,28 @@ let currentJoinCode: string | undefined;
 const unsubs: (() => void)[] = [];
 const listeners = new Set<StatusListener>();
 const joinCodeListeners = new Set<JoinCodeListener>();
+
+let saveTimer: ReturnType<typeof setTimeout> | undefined;
+
+function saveFilesystem(): void {
+  if (!project) return;
+  if (saveTimer !== undefined) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    if (!project) return;
+    const exported = project.files.raw.export();
+    localStorage.setItem(LS_FS_KEY, JSON.stringify([...exported]));
+  }, 500);
+}
+
+function loadFilesystem(): AppProjectOptions["filesystem"] {
+  const json = localStorage.getItem(LS_FS_KEY);
+  if (!json) return new Map();
+  try {
+    return new Map(JSON.parse(json));
+  } catch {
+    return new Map();
+  }
+}
 
 function notifyListeners(status: ConnectionStatus): void {
   for (const fn of listeners) {
@@ -41,13 +65,14 @@ function createProject(): AppProject {
     projectId: "sim-default",
     projectName: "Sim",
     bridgeUrl: vscodeBridgeUrl,
-    filesystem: new Map(),
+    filesystem: loadFilesystem(),
   });
 }
 
 export function connectBridge(): void {
   if (project) return;
   project = createProject();
+  project.fromRemoteFileChange = () => saveFilesystem();
   wireSession();
   project.session.start();
 }
