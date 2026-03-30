@@ -74,12 +74,31 @@ function stopJoinCodeTimer(): void {
   }
 }
 
+function unbindExtensionsFromApp(appSessionId: string): void {
+  for (const session of extensionSessions.values()) {
+    if (session.appSessionId === appSessionId) {
+      session.appSessionId = undefined;
+      logger.info({ extensionSessionId: session.id, appSessionId }, "unbound active extension from purged app session");
+    }
+  }
+  for (const entry of disconnectedExtensionSessions.values()) {
+    if (entry.session.appSessionId === appSessionId) {
+      entry.session.appSessionId = undefined;
+      logger.info(
+        { extensionSessionId: entry.session.id, appSessionId },
+        "unbound disconnected extension from purged app session"
+      );
+    }
+  }
+}
+
 function sweepDisconnectedSessions(): void {
   const now = Date.now();
   for (const [id, entry] of disconnectedAppSessions) {
     if (now - entry.disconnectedAt >= DISCONNECTED_SESSION_TTL_MS) {
       activeJoinCodes.delete(entry.session.joinCode);
       disconnectedAppSessions.delete(id);
+      unbindExtensionsFromApp(id);
       logger.info({ sessionId: id }, "expired disconnected app session");
     }
   }
@@ -101,6 +120,7 @@ function purgeDisconnectedIfNeeded(kind: "app" | "extension"): void {
       const [id, entry] = entries[i];
       activeJoinCodes.delete(entry.session.joinCode);
       disconnectedAppSessions.delete(id);
+      unbindExtensionsFromApp(id);
     }
     logger.info({ purged: toRemove, remaining: disconnectedAppSessions.size }, "purged disconnected app sessions");
   } else {
@@ -207,6 +227,7 @@ export function discardAppSession(ws: WSContext): AppSession | undefined {
   if (session) {
     appSessions.delete(ws);
     activeJoinCodes.delete(session.joinCode);
+    unbindExtensionsFromApp(session.id);
     if (appSessions.size === 0) {
       stopJoinCodeTimer();
     }
