@@ -7,6 +7,7 @@ export interface IFileSystem {
   list(path?: string): FileTreeEntry[];
   read(path: string): string;
   write(path: string, content: string, isReadonly?: boolean, etag?: string): string;
+  writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void;
   delete(path: string): void;
   rename(oldPath: string, newPath: string): void;
   stat(path: string): StatResult;
@@ -34,6 +35,11 @@ export class NotifyingFileSystem implements IFileSystem {
     const newEtag = this._fs.write(path, content, isReadonly, expectedEtag);
     this._onChange({ action: "write", path, content, isReadonly, newEtag });
     return newEtag;
+  }
+
+  writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void {
+    this._fs.writeRestore(path, content, isReadonly, etag);
+    this._onChange({ action: "write", path, content, isReadonly, newEtag: etag });
   }
 
   delete(path: string): void {
@@ -72,7 +78,7 @@ export class NotifyingFileSystem implements IFileSystem {
   applyNotification(ev: FileSystemNotification): void {
     switch (ev.action) {
       case "write":
-        this.write(ev.path, ev.content, ev.isReadonly);
+        this.writeRestore(ev.path, ev.content, ev.isReadonly ?? false, ev.newEtag);
         break;
       case "delete":
         this.delete(ev.path);
@@ -134,6 +140,10 @@ export class FileSystem implements IFileSystem {
 
   write(path: string, content: string, isReadonly?: boolean, expectedEtag?: string): string {
     return this._root.write(path, content, isReadonly, expectedEtag);
+  }
+
+  writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void {
+    this._root.writeRestore(path, content, isReadonly, etag);
   }
 
   delete(path: string): void {
