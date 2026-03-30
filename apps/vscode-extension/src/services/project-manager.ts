@@ -90,6 +90,9 @@ export class ProjectManager implements vscode.Disposable {
           this._appBound = bound;
           this._onDidChangeAppBound.fire(bound);
         }
+        if (!bound && this._project) {
+          this.disconnect();
+        }
       })
     );
 

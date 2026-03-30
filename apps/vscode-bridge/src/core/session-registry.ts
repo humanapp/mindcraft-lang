@@ -78,16 +78,28 @@ function stopJoinCodeTimer(): void {
   }
 }
 
-function unbindExtensionsFromApp(appSessionId: string): void {
-  const appStatusMsg: ExtensionAppStatusMessage = {
+function notifyExtensionsAppStatus(appSessionId: string, bound: boolean): void {
+  const extensions = getExtensionsByAppSessionId(appSessionId);
+  if (extensions.length === 0) {
+    logger.info({ appSessionId, bound }, "no extensions to notify of appStatus");
+    return;
+  }
+  const msg: ExtensionAppStatusMessage = {
     type: "session:appStatus",
-    payload: { bound: false },
+    payload: { bound },
   };
-  const serialized = JSON.stringify(appStatusMsg);
+  const serialized = JSON.stringify(msg);
+  for (const ext of extensions) {
+    logger.info({ extensionSessionId: ext.id, appSessionId, bound }, "sending appStatus to extension");
+    safeSend(ext.ws, serialized);
+  }
+}
+
+function unbindExtensionsFromApp(appSessionId: string): void {
+  notifyExtensionsAppStatus(appSessionId, false);
   for (const session of extensionSessions.values()) {
     if (session.appSessionId === appSessionId) {
       session.appSessionId = undefined;
-      safeSend(session.ws, serialized);
       logger.info({ extensionSessionId: session.id, appSessionId }, "unbound active extension from purged app session");
     }
   }
@@ -256,14 +268,7 @@ export function reclaimAppSession(sessionId: string, ws: WSContext): AppSession 
   appSessions.set(ws, entry.session);
   ensureJoinCodeTimer();
 
-  const appStatusMsg: ExtensionAppStatusMessage = {
-    type: "session:appStatus",
-    payload: { bound: true },
-  };
-  const serialized = JSON.stringify(appStatusMsg);
-  for (const ext of getExtensionsByAppSessionId(entry.session.id)) {
-    safeSend(ext.ws, serialized);
-  }
+  notifyExtensionsAppStatus(entry.session.id, true);
 
   logger.info({ sessionId: entry.session.id, joinCode: entry.session.joinCode }, "app session reclaimed");
   return entry.session;
