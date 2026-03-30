@@ -18,7 +18,7 @@ function listSessions(): void {
     console.log("\nApp sessions:");
     for (const s of apps) {
       const age = Math.round((Date.now() - s.connectedAt) / 1000);
-      console.log(`  ${s.id}  joinCode=${s.joinCode}  age=${age}s`);
+      console.log(`  ${s.id}  joinCode=${s.joinCode}  appName=${s.appName}  projectName=${s.projectName}  age=${age}s`);
     }
   }
 
@@ -26,7 +26,7 @@ function listSessions(): void {
     console.log("\nExtension sessions:");
     for (const s of extensions) {
       const age = Math.round((Date.now() - s.connectedAt) / 1000);
-      console.log(`  ${s.id}  age=${age}s`);
+      console.log(`  ${s.id}  appSessionId=${s.appSessionId ?? "(none)"}  age=${age}s`);
     }
   }
 
