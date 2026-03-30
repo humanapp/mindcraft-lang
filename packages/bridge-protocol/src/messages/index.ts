@@ -17,6 +17,7 @@ export type {
   ControlPongMessage,
   ErrorPayload,
   FilesystemChangeMessage,
+  FilesystemSyncMessage,
   GeneralErrorMessage,
   SessionErrorMessage,
   SessionGoodbyeMessage,

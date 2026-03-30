@@ -25,6 +25,7 @@ export interface AppSession extends BaseSession {
 
 export interface ExtensionSession extends BaseSession {
   role: "extension";
+  appSessionId: string | undefined;
 }
 
 const appSessions = new Map<WSContext, AppSession>();
@@ -156,11 +157,21 @@ export function registerAppSession(ws: WSContext): AppSession {
   return session;
 }
 
-export function registerExtensionSession(ws: WSContext): ExtensionSession {
+export function registerExtensionSession(ws: WSContext, joinCode?: string): ExtensionSession {
   const existing = extensionSessions.get(ws);
   if (existing) {
     logger.warn({ sessionId: existing.id }, "extension session already registered, replacing");
     extensionSessions.delete(ws);
+  }
+
+  let appSessionId: string | undefined;
+  if (joinCode) {
+    const app = getAppByJoinCode(joinCode);
+    if (app) {
+      appSessionId = app.id;
+    } else {
+      logger.warn({ joinCode }, "extension hello with unknown joinCode");
+    }
   }
 
   const session: ExtensionSession = {
@@ -168,10 +179,11 @@ export function registerExtensionSession(ws: WSContext): ExtensionSession {
     role: "extension",
     ws,
     connectedAt: Date.now(),
+    appSessionId,
   };
 
   extensionSessions.set(ws, session);
-  logger.info({ sessionId: session.id }, "extension session registered");
+  logger.info({ sessionId: session.id, appSessionId }, "extension session registered");
   return session;
 }
 
@@ -253,6 +265,15 @@ export function getAppSession(ws: WSContext): AppSession | undefined {
   return appSessions.get(ws);
 }
 
+export function getAppSessionById(sessionId: string): AppSession | undefined {
+  for (const session of appSessions.values()) {
+    if (session.id === sessionId) {
+      return session;
+    }
+  }
+  return undefined;
+}
+
 export function getExtensionSession(ws: WSContext): ExtensionSession | undefined {
   return extensionSessions.get(ws);
 }
@@ -270,6 +291,25 @@ export function getAllAppSessions(): AppSession[] {
 
 export function getAllExtensionSessions(): ExtensionSession[] {
   return [...extensionSessions.values()];
+}
+
+export function getExtensionsByAppSessionId(appSessionId: string): ExtensionSession[] {
+  const result: ExtensionSession[] = [];
+  for (const session of extensionSessions.values()) {
+    if (session.appSessionId === appSessionId) {
+      result.push(session);
+    }
+  }
+  return result;
+}
+
+export function getAppByJoinCode(joinCode: string): AppSession | undefined {
+  for (const session of appSessions.values()) {
+    if (session.joinCode === joinCode) {
+      return session;
+    }
+  }
+  return undefined;
 }
 
 export function disconnectSessionById(sessionId: string): boolean {

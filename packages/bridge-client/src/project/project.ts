@@ -1,4 +1,9 @@
-import type { FileSystemNotification, WsMessage } from "@mindcraft-lang/bridge-protocol";
+import type {
+  FileSystemNotification,
+  FilesystemChangeMessage,
+  FilesystemSyncPayload,
+  WsMessage,
+} from "@mindcraft-lang/bridge-protocol";
 import { ErrorCode, ProtocolError } from "../error-codes.js";
 import type { ExportedFileSystem } from "../filesystem.js";
 import { ProjectFiles, type ProjectFilesOptions } from "./files.js";
@@ -11,6 +16,7 @@ export interface ProjectOptions<TClient extends WsMessage = WsMessage, TServer e
   bridgeUrl: string;
   wsPath: string;
   filesystem: ExportedFileSystem;
+  joinCode?: string;
 }
 
 export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
@@ -34,13 +40,25 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
       throw new ProtocolError(ErrorCode.INVALID_CLIENT_ROLE, "wsPath is required");
     }
 
-    this._session = new ProjectSession<TClient, TServer>(options.wsPath, options.bridgeUrl);
+    this._session = new ProjectSession<TClient, TServer>(options.wsPath, options.bridgeUrl, options.joinCode);
     const filesOptions: ProjectFilesOptions = {
       entries: options.filesystem,
       toRemoteChange: this.toRemoteFileChange,
-      fromRemoteChange: this.fromRemoteFileChange,
+      fromRemoteChange: (ev) => this.fromRemoteFileChange(ev),
     };
     this._files = new ProjectFiles(filesOptions);
+
+    this._session.on("filesystem:change" as TServer["type"], (msg) => {
+      this._files.fromRemote.applyNotification((msg as unknown as FilesystemChangeMessage).payload);
+    });
+
+    this._session.on("filesystem:sync" as TServer["type"], (msg) => {
+      const wsMsg = msg as unknown as WsMessage;
+      if (wsMsg.id && !wsMsg.payload) {
+        const entries = [...this._files.raw.export()];
+        this._session.send({ type: "filesystem:sync", id: wsMsg.id, payload: { entries } } as TClient);
+      }
+    });
   }
 
   get appName(): string {
@@ -68,4 +86,12 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
   };
 
   fromRemoteFileChange = (_ev: FileSystemNotification) => {};
+
+  async requestSync(): Promise<void> {
+    const response = await this._session.request("filesystem:sync");
+    const payload = response.payload as FilesystemSyncPayload | undefined;
+    if (payload?.entries) {
+      this._files.fromRemote.applyNotification({ action: "import", entries: payload.entries });
+    }
+  }
 }

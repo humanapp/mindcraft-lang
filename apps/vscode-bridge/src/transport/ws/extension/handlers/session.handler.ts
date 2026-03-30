@@ -36,7 +36,8 @@ const hello: WsHandler = (ws, payload, id) => {
 
   const helloPayload = parsed.data;
   const session =
-    (helloPayload?.sessionId && reclaimExtensionSession(helloPayload.sessionId, ws)) || registerExtensionSession(ws);
+    (helloPayload?.sessionId && reclaimExtensionSession(helloPayload.sessionId, ws)) ||
+    registerExtensionSession(ws, helloPayload?.joinCode);
   const counts = getSessionCount();
 
   logger.info(

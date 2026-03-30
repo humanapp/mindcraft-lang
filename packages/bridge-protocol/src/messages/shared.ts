@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { FileSystemNotification } from "../notifications.js";
+import type { FileSystemNotification, FilesystemSyncPayload } from "../notifications.js";
 
 export interface ErrorPayload {
   message: string;
@@ -9,6 +9,12 @@ export interface FilesystemChangeMessage {
   type: "filesystem:change";
   id?: string;
   payload: FileSystemNotification;
+}
+
+export interface FilesystemSyncMessage {
+  type: "filesystem:sync";
+  id?: string;
+  payload?: FilesystemSyncPayload;
 }
 
 export interface ControlPingMessage {
@@ -35,6 +41,7 @@ export interface GeneralErrorMessage {
 
 export const sessionHelloPayloadSchema = z.object({
   sessionId: z.string().optional(),
+  joinCode: z.string().optional(),
 });
 
 export type SessionHelloPayload = z.infer<typeof sessionHelloPayloadSchema>;

@@ -2,6 +2,7 @@ import type {
   ControlPingMessage,
   ControlPongMessage,
   FilesystemChangeMessage,
+  FilesystemSyncMessage,
   GeneralErrorMessage,
   SessionErrorMessage,
   SessionGoodbyeMessage,
@@ -16,7 +17,8 @@ export type ExtensionClientMessage =
   | SessionHelloMessage
   | SessionGoodbyeMessage
   | ControlPingMessage
-  | FilesystemChangeMessage;
+  | FilesystemChangeMessage
+  | FilesystemSyncMessage;
 
 export interface ExtensionSessionWelcomeMessage {
   type: "session:welcome";
@@ -28,4 +30,6 @@ export type ExtensionServerMessage =
   | ExtensionSessionWelcomeMessage
   | SessionErrorMessage
   | ControlPongMessage
-  | GeneralErrorMessage;
+  | GeneralErrorMessage
+  | FilesystemChangeMessage
+  | FilesystemSyncMessage;

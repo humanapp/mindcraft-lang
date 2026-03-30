@@ -13,6 +13,7 @@ export type {
   ExtensionSessionWelcomeMessage,
   ExtensionSessionWelcomePayload,
   FilesystemChangeMessage,
+  FilesystemSyncMessage,
   GeneralErrorMessage,
   SessionErrorMessage,
   SessionGoodbyeMessage,
@@ -20,8 +21,8 @@ export type {
   SessionHelloPayload,
 } from "./messages/index.js";
 export { sessionHelloPayloadSchema } from "./messages/index.js";
-export type { FileSystemNotification } from "./notifications.js";
-export { fileSystemNotificationSchema } from "./notifications.js";
+export type { FileSystemNotification, FilesystemSyncPayload } from "./notifications.js";
+export { fileSystemNotificationSchema, filesystemSyncPayloadSchema } from "./notifications.js";
 
 export type { WsMessage } from "./schemas.js";
 export { wsMessageSchema } from "./schemas.js";

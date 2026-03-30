@@ -66,7 +66,57 @@ export class NotifyingFileSystem implements IFileSystem {
 
   import(entries: ExportedFileSystem): void {
     this._fs.import(entries);
-    this._onChange({ action: "import" });
+    this._onChange({ action: "import", entries: [...entries] });
+  }
+
+  applyNotification(ev: FileSystemNotification): void {
+    switch (ev.action) {
+      case "write":
+        this.write(ev.path, ev.content, ev.isReadonly);
+        break;
+      case "delete":
+        this.delete(ev.path);
+        break;
+      case "rename":
+        this.rename(ev.oldPath, ev.newPath);
+        break;
+      case "mkdir":
+        this.mkdir(ev.path);
+        break;
+      case "rmdir":
+        this.rmdir(ev.path);
+        break;
+      case "import": {
+        const before = this._fs.export();
+        const entries: ExportedFileSystem = new Map(ev.entries);
+        this._fs.import(entries);
+        for (const [path, entry] of entries) {
+          const prev = before.get(path);
+          if (!prev) {
+            if (entry.kind === "directory") {
+              this._onChange({ action: "mkdir", path });
+            } else {
+              this._onChange({
+                action: "write",
+                path,
+                content: entry.content,
+                isReadonly: entry.isReadonly,
+                newEtag: entry.etag,
+              });
+            }
+          } else if (entry.kind === "file" && prev.kind === "file" && entry.etag !== prev.etag) {
+            this._onChange({
+              action: "write",
+              path,
+              content: entry.content,
+              isReadonly: entry.isReadonly,
+              newEtag: entry.etag,
+            });
+          }
+        }
+        break;
+      }
+    }
   }
 }
 

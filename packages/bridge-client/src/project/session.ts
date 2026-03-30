@@ -19,15 +19,18 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
   private _wsPath: string;
   private _bridgeUrl: string;
   private _sessionId: string | undefined;
+  private _joinCode: string | undefined;
 
-  constructor(wsPath: string, bridgeUrl: string) {
+  constructor(wsPath: string, bridgeUrl: string, joinCode?: string) {
     this._wsPath = wsPath;
     this._bridgeUrl = bridgeUrl;
+    this._joinCode = joinCode;
     this.addEventListener("status", (status) => {
       if (status === "connected") {
-        const msg = this._sessionId
-          ? { type: "session:hello", payload: { sessionId: this._sessionId } }
-          : { type: "session:hello" };
+        const payload: Record<string, string> = {};
+        if (this._sessionId) payload.sessionId = this._sessionId;
+        if (this._joinCode) payload.joinCode = this._joinCode;
+        const msg = Object.keys(payload).length > 0 ? { type: "session:hello", payload } : { type: "session:hello" };
         this.send(msg as TClient);
       }
     });
@@ -104,6 +107,13 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
       throw new Error("Session not started");
     }
     this._client.send(msg);
+  }
+
+  request(type: string, payload?: unknown): Promise<WsMessage> {
+    if (!this._client) {
+      throw new Error("Session not started");
+    }
+    return this._client.request(type, payload);
   }
 
   addEventListener<K extends keyof SessionEventMap>(

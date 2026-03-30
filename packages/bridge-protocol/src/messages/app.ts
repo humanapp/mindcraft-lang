@@ -2,6 +2,7 @@ import type {
   ControlPingMessage,
   ControlPongMessage,
   FilesystemChangeMessage,
+  FilesystemSyncMessage,
   GeneralErrorMessage,
   SessionErrorMessage,
   SessionGoodbyeMessage,
@@ -21,7 +22,8 @@ export type AppClientMessage =
   | SessionHelloMessage
   | SessionGoodbyeMessage
   | ControlPingMessage
-  | FilesystemChangeMessage;
+  | FilesystemChangeMessage
+  | FilesystemSyncMessage;
 
 export interface AppSessionWelcomeMessage {
   type: "session:welcome";
@@ -39,4 +41,6 @@ export type AppServerMessage =
   | AppSessionJoinCodeMessage
   | SessionErrorMessage
   | ControlPongMessage
-  | GeneralErrorMessage;
+  | GeneralErrorMessage
+  | FilesystemChangeMessage
+  | FilesystemSyncMessage;
