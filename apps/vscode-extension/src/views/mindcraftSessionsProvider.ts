@@ -22,26 +22,32 @@ export class MindcraftSessionsProvider implements vscode.TreeDataProvider<Sessio
     const project = this.projectManager.project;
     if (!project) {
       return [
-        new SessionItem("No active session", vscode.TreeItemCollapsibleState.None),
-        new SessionItem("Connect to Mindcraft", vscode.TreeItemCollapsibleState.None, "mindcraft.connect"),
+        new SessionItem("Connect to Mindcraft...", vscode.TreeItemCollapsibleState.None, "mindcraft.connect", "plug"),
       ];
     }
 
     const status = this.projectManager.status;
     return [
-      new SessionItem(`Session: ${status}`, vscode.TreeItemCollapsibleState.None),
-      new SessionItem("Disconnect", vscode.TreeItemCollapsibleState.None, "mindcraft.confirmDisconnect"),
-      new SessionItem("Create new sensor", vscode.TreeItemCollapsibleState.None, "mindcraft.createSensor"),
-      new SessionItem("Create new actuator", vscode.TreeItemCollapsibleState.None, "mindcraft.createActuator"),
+      new SessionItem(
+        "Disconnect",
+        vscode.TreeItemCollapsibleState.None,
+        "mindcraft.confirmDisconnect",
+        "debug-disconnect"
+      ),
+      new SessionItem("Create new sensor", vscode.TreeItemCollapsibleState.None, "mindcraft.createSensor", "eye"),
+      new SessionItem("Create new actuator", vscode.TreeItemCollapsibleState.None, "mindcraft.createActuator", "zap"),
     ];
   }
 }
 
 class SessionItem extends vscode.TreeItem {
-  constructor(label: string, collapsibleState: vscode.TreeItemCollapsibleState, commandId?: string) {
+  constructor(label: string, collapsibleState: vscode.TreeItemCollapsibleState, commandId?: string, icon?: string) {
     super(label, collapsibleState);
     if (commandId) {
       this.command = { command: commandId, title: label };
+    }
+    if (icon) {
+      this.iconPath = new vscode.ThemeIcon(icon);
     }
   }
 }
