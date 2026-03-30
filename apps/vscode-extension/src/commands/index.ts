@@ -1,13 +1,19 @@
 import * as vscode from "vscode";
 import { MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
 import type { ProjectManager } from "../services/project-manager";
-import { setMindcraftEnabled } from "../state/context";
+import { isMindcraftEnabled, setMindcraftEnabled } from "../state/context";
 
 export function registerCommands(context: vscode.ExtensionContext, projectManager: ProjectManager): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("mindcraft.show", () => {
+      const wasHidden = !isMindcraftEnabled();
       setMindcraftEnabled(true);
       vscode.commands.executeCommand("mindcraft.sessions.focus");
+      if (wasHidden) {
+        vscode.window.showInformationMessage("Mindcraft view enabled.");
+      } else if (!projectManager.project) {
+        vscode.commands.executeCommand("mindcraft.connect");
+      }
     }),
 
     vscode.commands.registerCommand("mindcraft.connect", async () => {
