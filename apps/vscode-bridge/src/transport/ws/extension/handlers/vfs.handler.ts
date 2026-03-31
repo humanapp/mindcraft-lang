@@ -6,6 +6,7 @@ import type {
 import { fileSystemNotificationSchema } from "@mindcraft-lang/bridge-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
+import { addPendingRequest } from "#core/pending-requests.js";
 import { getAppSessionById, getExtensionSession } from "#core/session-registry.js";
 import { safeSend } from "#transport/ws/safe-send.js";
 import type { WsHandler, WsHandlerMap } from "#transport/ws/types.js";
@@ -14,12 +15,6 @@ function sendChangeError(ws: WSContext, id: string | undefined, message: string)
   if (!id) return;
   const err: SessionErrorMessage = { type: "session:error", id, payload: { message } };
   safeSend(ws, JSON.stringify(err));
-}
-
-function sendChangeAck(ws: WSContext, id: string | undefined): void {
-  if (!id) return;
-  const ack: FilesystemChangeMessage = { type: "filesystem:change", id };
-  safeSend(ws, JSON.stringify(ack));
 }
 
 const filesystemChange: WsHandler = (ws, payload, id, seq) => {
@@ -50,7 +45,7 @@ const filesystemChange: WsHandler = (ws, payload, id, seq) => {
     return;
   }
 
-  const msg: FilesystemChangeMessage = { type: "filesystem:change", payload: parsed.data, seq };
+  const msg: FilesystemChangeMessage = { type: "filesystem:change", id, payload: parsed.data, seq };
   if (!safeSend(appSession.ws, JSON.stringify(msg))) {
     logger.warn(
       { appSessionId: extSession.appSessionId, extensionSessionId: extSession.id },
@@ -60,7 +55,9 @@ const filesystemChange: WsHandler = (ws, payload, id, seq) => {
     return;
   }
 
-  sendChangeAck(ws, id);
+  if (id) {
+    addPendingRequest(id, ws, extSession.appSessionId, parsed.data);
+  }
 };
 
 const filesystemSync: WsHandler = (ws, _payload, id, seq) => {

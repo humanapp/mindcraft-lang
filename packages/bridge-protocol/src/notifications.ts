@@ -14,9 +14,15 @@ export const fileSystemNotificationSchema = z.discriminatedUnion("action", [
     content: z.string(),
     isReadonly: z.boolean().optional(),
     newEtag: z.string(),
+    expectedEtag: z.string().optional(),
   }),
-  z.object({ action: z.literal("delete"), path: z.string() }),
-  z.object({ action: z.literal("rename"), oldPath: z.string(), newPath: z.string() }),
+  z.object({ action: z.literal("delete"), path: z.string(), expectedEtag: z.string().optional() }),
+  z.object({
+    action: z.literal("rename"),
+    oldPath: z.string(),
+    newPath: z.string(),
+    expectedEtag: z.string().optional(),
+  }),
   z.object({ action: z.literal("mkdir"), path: z.string() }),
   z.object({ action: z.literal("rmdir"), path: z.string() }),
   z.object({

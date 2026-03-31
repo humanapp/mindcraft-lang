@@ -59,7 +59,18 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
       const wsMsg = msg as unknown as WsMessage;
       if (!wsMsg.payload) return;
       if (wsMsg.seq !== undefined && wsMsg.seq <= this._peerSeq) return;
-      this._files.fromRemote.applyNotification((msg as unknown as FilesystemChangeMessage).payload!);
+      const notification = (msg as unknown as FilesystemChangeMessage).payload!;
+      if (wsMsg.id) {
+        try {
+          this._files.fromRemote.applyNotification(notification);
+          this._session.send({ type: "filesystem:change", id: wsMsg.id } as TClient);
+        } catch (e) {
+          const message = e instanceof ProtocolError ? e.message : "apply failed";
+          this._session.send({ type: "session:error", id: wsMsg.id, payload: { message } } as TClient);
+        }
+      } else {
+        this._files.fromRemote.applyNotification(notification);
+      }
     });
 
     this._session.on("filesystem:sync" as TServer["type"], (msg) => {

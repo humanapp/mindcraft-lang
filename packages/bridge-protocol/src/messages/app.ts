@@ -21,6 +21,7 @@ export interface AppSessionJoinCodePayload {
 export type AppClientMessage =
   | SessionHelloMessage
   | SessionGoodbyeMessage
+  | SessionErrorMessage
   | ControlPingMessage
   | FilesystemChangeMessage
   | FilesystemSyncMessage;

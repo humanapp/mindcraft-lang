@@ -1,6 +1,12 @@
-import type { GeneralErrorMessage } from "@mindcraft-lang/bridge-protocol";
+import type {
+  FileSystemNotification,
+  FilesystemChangeMessage,
+  GeneralErrorMessage,
+} from "@mindcraft-lang/bridge-protocol";
 import type { WSContext } from "hono/ws";
 import { logger } from "#core/logging/logger.js";
+import { takePendingRequest } from "#core/pending-requests.js";
+import { getExtensionsByAppSessionId } from "#core/session-registry.js";
 import { safeSend } from "#transport/ws/safe-send.js";
 import type { WsHandlerMap } from "#transport/ws/types.js";
 import { wsMessageSchema } from "#transport/ws/types.js";
@@ -13,6 +19,20 @@ const handlers: WsHandlerMap = {
   ...controlHandlers,
   ...filesystemHandlers,
 };
+
+function broadcastToOtherExtensions(appSessionId: string, senderWs: WSContext, payload: FileSystemNotification): void {
+  const broadcastPayload = { ...payload };
+  if ("expectedEtag" in broadcastPayload) {
+    delete (broadcastPayload as { expectedEtag?: string }).expectedEtag;
+  }
+  const msg: FilesystemChangeMessage = { type: "filesystem:change", payload: broadcastPayload };
+  const raw = JSON.stringify(msg);
+  for (const ext of getExtensionsByAppSessionId(appSessionId)) {
+    if (ext.ws !== senderWs) {
+      safeSend(ext.ws, raw);
+    }
+  }
+}
 
 export function routeAppMessage(ws: WSContext, raw: string) {
   let parsed: unknown;
@@ -32,6 +52,17 @@ export function routeAppMessage(ws: WSContext, raw: string) {
   }
 
   const msg = result.data;
+
+  if (msg.id) {
+    const pending = takePendingRequest(msg.id);
+    if (pending) {
+      safeSend(pending.extensionWs, raw);
+      if (msg.type !== "session:error") {
+        broadcastToOtherExtensions(pending.appSessionId, pending.extensionWs, pending.payload);
+      }
+      return;
+    }
+  }
 
   const handler = handlers[msg.type];
   if (!handler) {

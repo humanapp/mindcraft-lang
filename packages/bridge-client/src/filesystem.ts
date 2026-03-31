@@ -32,8 +32,17 @@ export class NotifyingFileSystem implements IFileSystem {
   }
 
   write(path: string, content: string, isReadonly?: boolean, expectedEtag?: string): string {
+    let preWriteEtag: string | undefined;
+    try {
+      const existing = this._fs.stat(path);
+      if (existing.kind === "file") {
+        preWriteEtag = existing.etag;
+      }
+    } catch {
+      // File doesn't exist yet
+    }
     const newEtag = this._fs.write(path, content, isReadonly, expectedEtag);
-    this._onChange({ action: "write", path, content, isReadonly, newEtag });
+    this._onChange({ action: "write", path, content, isReadonly, newEtag, expectedEtag: preWriteEtag });
     return newEtag;
   }
 
@@ -43,13 +52,31 @@ export class NotifyingFileSystem implements IFileSystem {
   }
 
   delete(path: string): void {
+    let expectedEtag: string | undefined;
+    try {
+      const existing = this._fs.stat(path);
+      if (existing.kind === "file") {
+        expectedEtag = existing.etag;
+      }
+    } catch {
+      // Path doesn't exist or is a directory
+    }
     this._fs.delete(path);
-    this._onChange({ action: "delete", path });
+    this._onChange({ action: "delete", path, expectedEtag });
   }
 
   rename(oldPath: string, newPath: string): void {
+    let expectedEtag: string | undefined;
+    try {
+      const existing = this._fs.stat(oldPath);
+      if (existing.kind === "file") {
+        expectedEtag = existing.etag;
+      }
+    } catch {
+      // Path doesn't exist
+    }
     this._fs.rename(oldPath, newPath);
-    this._onChange({ action: "rename", oldPath, newPath });
+    this._onChange({ action: "rename", oldPath, newPath, expectedEtag });
   }
 
   stat(path: string): StatResult {
@@ -78,12 +105,57 @@ export class NotifyingFileSystem implements IFileSystem {
   applyNotification(ev: FileSystemNotification): void {
     switch (ev.action) {
       case "write":
+        if (ev.expectedEtag !== undefined) {
+          try {
+            const current = this._fs.stat(ev.path);
+            if (current.kind === "file" && current.etag !== ev.expectedEtag) {
+              throw new ProtocolError(
+                ErrorCode.ETAG_MISMATCH,
+                `etag mismatch for ${ev.path}: expected ${ev.expectedEtag}, got ${current.etag}`
+              );
+            }
+          } catch (e) {
+            if (e instanceof ProtocolError && e.code === ErrorCode.ETAG_MISMATCH) {
+              throw e;
+            }
+          }
+        }
         this.writeRestore(ev.path, ev.content, ev.isReadonly ?? false, ev.newEtag);
         break;
       case "delete":
+        if (ev.expectedEtag !== undefined) {
+          try {
+            const current = this._fs.stat(ev.path);
+            if (current.kind === "file" && current.etag !== ev.expectedEtag) {
+              throw new ProtocolError(
+                ErrorCode.ETAG_MISMATCH,
+                `etag mismatch for ${ev.path}: expected ${ev.expectedEtag}, got ${current.etag}`
+              );
+            }
+          } catch (e) {
+            if (e instanceof ProtocolError && e.code === ErrorCode.ETAG_MISMATCH) {
+              throw e;
+            }
+          }
+        }
         this.delete(ev.path);
         break;
       case "rename":
+        if (ev.expectedEtag !== undefined) {
+          try {
+            const current = this._fs.stat(ev.oldPath);
+            if (current.kind === "file" && current.etag !== ev.expectedEtag) {
+              throw new ProtocolError(
+                ErrorCode.ETAG_MISMATCH,
+                `etag mismatch for ${ev.oldPath}: expected ${ev.expectedEtag}, got ${current.etag}`
+              );
+            }
+          } catch (e) {
+            if (e instanceof ProtocolError && e.code === ErrorCode.ETAG_MISMATCH) {
+              throw e;
+            }
+          }
+        }
         this.rename(ev.oldPath, ev.newPath);
         break;
       case "mkdir":
