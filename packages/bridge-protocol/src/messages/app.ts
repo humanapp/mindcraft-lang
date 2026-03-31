@@ -12,6 +12,7 @@ import type {
 export interface AppSessionWelcomePayload {
   sessionId: string;
   joinCode: string;
+  bindingToken?: string;
 }
 
 export interface AppSessionJoinCodePayload {

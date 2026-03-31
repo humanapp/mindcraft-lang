@@ -4,6 +4,7 @@ import type {
   SessionErrorMessage,
 } from "@mindcraft-lang/bridge-protocol";
 import { sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-protocol";
+import { createBindingToken } from "#core/binding-token.js";
 import { logger } from "#core/logging/logger.js";
 import {
   discardExtensionSession,
@@ -42,7 +43,7 @@ const hello: WsHandler = (ws, payload, id) => {
   const helloPayload = parsed.data;
   const session =
     (helloPayload?.sessionId && reclaimExtensionSession(helloPayload.sessionId, ws)) ||
-    registerExtensionSession(ws, helloPayload?.joinCode);
+    registerExtensionSession(ws, helloPayload?.joinCode, helloPayload?.bindingToken);
   const counts = getSessionCount();
 
   logger.info(
@@ -57,6 +58,10 @@ const hello: WsHandler = (ws, payload, id) => {
   };
   safeSend(ws, JSON.stringify(welcome));
 
+  if (session.pendingJoinCode || session.pendingBindingId) {
+    return;
+  }
+
   const bound = session.appSessionId !== undefined;
   const appStatusPayload: ExtensionAppStatusMessage["payload"] = { bound };
   if (bound) {
@@ -66,6 +71,7 @@ const hello: WsHandler = (ws, payload, id) => {
       appStatusPayload.projectId = app.projectId;
       appStatusPayload.projectName = app.projectName;
       appStatusPayload.clientConnected = true;
+      appStatusPayload.bindingToken = createBindingToken(app.bindingId);
     }
   }
   const appStatus: ExtensionAppStatusMessage = {

@@ -7,6 +7,7 @@ import {
   getDisconnectedAppSessions,
   getDisconnectedExtensionSessions,
   getSessionCount,
+  killSessionById,
 } from "#core/session-registry.js";
 
 function listSessions(): void {
@@ -72,6 +73,19 @@ function disconnectSession(sessionId: string): void {
   }
 }
 
+function killSession(sessionId: string): void {
+  if (!sessionId) {
+    console.log("Usage: kill <sessionId>");
+    return;
+  }
+  const killed = killSessionById(sessionId);
+  if (killed) {
+    console.log(`Killed and purged session ${sessionId}`);
+  } else {
+    console.log(`No session found with id: ${sessionId}`);
+  }
+}
+
 export function startRepl(): void {
   const r = repl.start({
     prompt: "bridge> ",
@@ -93,12 +107,16 @@ export function startRepl(): void {
         case "disconnect":
           disconnectSession(args[0]);
           break;
+        case "kill":
+          killSession(args[0]);
+          break;
         case "help":
           console.log("\nCommands:");
           console.log("  sessions, ls      List all sessions (connected + disconnected)");
           console.log("  disconnect <id>   Disconnect a session's WebSocket");
-          console.log("  help           Show this help");
-          console.log("  .exit          Exit the process\n");
+          console.log("  kill <id>         Close and permanently purge a session");
+          console.log("  help              Show this help");
+          console.log("  .exit             Exit the process\n");
           break;
         default:
           console.log(`Unknown command: ${cmd}. Type "help" for available commands.`);

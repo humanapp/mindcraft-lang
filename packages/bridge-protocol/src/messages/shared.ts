@@ -47,6 +47,7 @@ export const sessionHelloPayloadSchema = z.object({
   appName: z.string().optional(),
   projectId: z.string().optional(),
   projectName: z.string().optional(),
+  bindingToken: z.string().optional(),
 });
 
 export type SessionHelloPayload = z.infer<typeof sessionHelloPayloadSchema>;

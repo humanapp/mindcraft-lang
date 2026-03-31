@@ -1,5 +1,6 @@
 import type { AppSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-lang/bridge-protocol";
 import { sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-protocol";
+import { createBindingToken } from "#core/binding-token.js";
 import { logger } from "#core/logging/logger.js";
 import {
   type AppSessionMeta,
@@ -42,7 +43,8 @@ const hello: WsHandler = (ws, payload, id) => {
     projectName: helloPayload?.projectName,
   };
   const session =
-    (helloPayload?.sessionId && reclaimAppSession(helloPayload.sessionId, ws)) || registerAppSession(ws, meta);
+    (helloPayload?.sessionId && reclaimAppSession(helloPayload.sessionId, ws)) ||
+    registerAppSession(ws, meta, helloPayload?.bindingToken);
   const counts = getSessionCount();
 
   logger.info(
@@ -53,7 +55,11 @@ const hello: WsHandler = (ws, payload, id) => {
   const welcome: AppSessionWelcomeMessage = {
     type: "session:welcome",
     id,
-    payload: { sessionId: session.id, joinCode: session.joinCode },
+    payload: {
+      sessionId: session.id,
+      joinCode: session.joinCode,
+      bindingToken: createBindingToken(session.bindingId),
+    },
   };
   safeSend(ws, JSON.stringify(welcome));
 };

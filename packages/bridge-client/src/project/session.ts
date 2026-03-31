@@ -13,6 +13,7 @@ export interface SessionMeta {
   appName: string;
   projectId: string;
   projectName: string;
+  bindingToken?: string;
 }
 
 export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage> {
@@ -39,6 +40,7 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
           projectId: this._meta.projectId,
           projectName: this._meta.projectName,
         };
+        if (this._meta.bindingToken) payload.bindingToken = this._meta.bindingToken;
         if (this._sessionId) payload.sessionId = this._sessionId;
         if (this._joinCode) payload.joinCode = this._joinCode;
         this.send({ type: "session:hello", payload } as TClient);
@@ -72,9 +74,12 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
 
     this._clientUnsubs.push(
       this._client.on("session:welcome", (msg: WsMessage) => {
-        const payload = msg.payload as { sessionId?: string } | undefined;
+        const payload = msg.payload as { sessionId?: string; bindingToken?: string } | undefined;
         if (payload?.sessionId) {
           this._sessionId = payload.sessionId;
+        }
+        if (payload?.bindingToken) {
+          this._meta.bindingToken = payload.bindingToken;
         }
       })
     );

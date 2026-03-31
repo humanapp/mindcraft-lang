@@ -7,6 +7,7 @@ import * as vscode from "vscode";
 import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
 
 const PENDING_JOIN_CODE_KEY = "mindcraft.pendingJoinCode";
+const BINDING_TOKEN_KEY = "mindcraft.bindingToken";
 
 function pendingChangeKey(ev: FileSystemNotification): string | undefined {
   switch (ev.action) {
@@ -91,6 +92,9 @@ export class ProjectManager implements vscode.Disposable {
       throw new Error("mindcraft.bridgeUrl is not configured");
     }
 
+    const savedBindingToken = this._globalState?.get<string>(BINDING_TOKEN_KEY);
+    this._globalState?.update(BINDING_TOKEN_KEY, undefined);
+
     const project = new Project<ExtensionClientMessage, ExtensionServerMessage>({
       appName: "vscode",
       projectId: `vscode-${joinCode}`,
@@ -99,6 +103,7 @@ export class ProjectManager implements vscode.Disposable {
       wsPath: "extension",
       filesystem: new Map(),
       joinCode,
+      bindingToken: savedBindingToken,
     });
 
     this._unsubs.push(
@@ -121,6 +126,9 @@ export class ProjectManager implements vscode.Disposable {
           if (p?.appName) project.options.appName = p.appName;
           if (p?.projectId) project.options.projectId = p.projectId;
           if (p?.projectName) project.options.projectName = p.projectName;
+          if (p?.bindingToken) {
+            this._globalState?.update(BINDING_TOKEN_KEY, p.bindingToken);
+          }
           this.renameWorkspaceFolder(`${project.options.projectName} (${project.options.appName})`);
         }
         if (this._appBound !== bound) {

@@ -17,6 +17,7 @@ export interface ProjectOptions<TClient extends WsMessage = WsMessage, TServer e
   wsPath: string;
   filesystem: ExportedFileSystem;
   joinCode?: string;
+  bindingToken?: string;
 }
 
 export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
@@ -45,7 +46,12 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
     this._session = new ProjectSession<TClient, TServer>(
       options.wsPath,
       options.bridgeUrl,
-      { appName: options.appName, projectId: options.projectId, projectName: options.projectName },
+      {
+        appName: options.appName,
+        projectId: options.projectId,
+        projectName: options.projectName,
+        bindingToken: options.bindingToken,
+      },
       options.joinCode
     );
     const filesOptions: ProjectFilesOptions = {

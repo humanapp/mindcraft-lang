@@ -5,6 +5,7 @@ import type {
   SessionRole,
 } from "@mindcraft-lang/bridge-protocol";
 import type { WSContext } from "hono/ws";
+import { createBindingToken, generateBindingId, verifyBindingToken } from "#core/binding-token.js";
 import { logger } from "#core/logging/logger.js";
 import { safeSend } from "#transport/ws/safe-send.js";
 import { generateTriplet } from "#triplet.js";
@@ -25,6 +26,7 @@ interface BaseSession {
 export interface AppSession extends BaseSession {
   role: "app";
   joinCode: string;
+  bindingId: string;
   appName?: string;
   projectId?: string;
   projectName?: string;
@@ -33,6 +35,8 @@ export interface AppSession extends BaseSession {
 export interface ExtensionSession extends BaseSession {
   role: "extension";
   appSessionId: string | undefined;
+  pendingJoinCode: string | undefined;
+  pendingBindingId: string | undefined;
 }
 
 const appSessions = new Map<WSContext, AppSession>();
@@ -96,11 +100,13 @@ function notifyExtensionsAppStatus(appSessionId: string, bound: boolean, clientC
         payload.appName = disconnected.session.appName;
         payload.projectId = disconnected.session.projectId;
         payload.projectName = disconnected.session.projectName;
+        payload.bindingToken = createBindingToken(disconnected.session.bindingId);
       }
     } else {
       payload.appName = app.appName;
       payload.projectId = app.projectId;
       payload.projectName = app.projectName;
+      payload.bindingToken = createBindingToken(app.bindingId);
     }
     if (clientConnected !== undefined) {
       payload.clientConnected = clientConnected;
@@ -203,12 +209,26 @@ export interface AppSessionMeta {
   projectName?: string;
 }
 
-export function registerAppSession(ws: WSContext, meta?: AppSessionMeta): AppSession {
+export function registerAppSession(ws: WSContext, meta?: AppSessionMeta, bindingToken?: string): AppSession {
   const existing = appSessions.get(ws);
   if (existing) {
     logger.warn({ sessionId: existing.id }, "app session already registered, replacing");
     activeJoinCodes.delete(existing.joinCode);
     appSessions.delete(ws);
+  }
+
+  let bindingId: string;
+  if (bindingToken) {
+    const verified = verifyBindingToken(bindingToken);
+    if (verified) {
+      bindingId = verified;
+      logger.info({ bindingId }, "app restored bindingId from token");
+    } else {
+      bindingId = generateBindingId();
+      logger.warn("app sent invalid bindingToken; generated new bindingId");
+    }
+  } else {
+    bindingId = generateBindingId();
   }
 
   const joinCode = generateUniqueJoinCode();
@@ -218,6 +238,7 @@ export function registerAppSession(ws: WSContext, meta?: AppSessionMeta): AppSes
     ws,
     connectedAt: Date.now(),
     joinCode,
+    bindingId,
     appName: meta?.appName,
     projectId: meta?.projectId,
     projectName: meta?.projectName,
@@ -227,10 +248,46 @@ export function registerAppSession(ws: WSContext, meta?: AppSessionMeta): AppSes
   activeJoinCodes.add(joinCode);
   ensureJoinCodeTimer();
   logger.info({ sessionId: session.id, joinCode }, "app session registered");
+  bindPendingExtensions(session);
   return session;
 }
 
-export function registerExtensionSession(ws: WSContext, joinCode?: string): ExtensionSession {
+function bindPendingExtensions(app: AppSession): void {
+  for (const ext of extensionSessions.values()) {
+    const matchJoinCode = ext.pendingJoinCode && ext.pendingJoinCode === app.joinCode;
+    const matchBinding = ext.pendingBindingId && ext.pendingBindingId === app.bindingId;
+    if (matchJoinCode || matchBinding) {
+      ext.appSessionId = app.id;
+      ext.pendingJoinCode = undefined;
+      ext.pendingBindingId = undefined;
+      logger.info(
+        {
+          extensionSessionId: ext.id,
+          appSessionId: app.id,
+          matchJoinCode: !!matchJoinCode,
+          matchBinding: !!matchBinding,
+        },
+        "bound pending extension to app"
+      );
+      notifyExtensionsAppStatus(app.id, true, true);
+    }
+  }
+  for (const entry of disconnectedExtensionSessions.values()) {
+    const matchJoinCode = entry.session.pendingJoinCode && entry.session.pendingJoinCode === app.joinCode;
+    const matchBinding = entry.session.pendingBindingId && entry.session.pendingBindingId === app.bindingId;
+    if (matchJoinCode || matchBinding) {
+      entry.session.appSessionId = app.id;
+      entry.session.pendingJoinCode = undefined;
+      entry.session.pendingBindingId = undefined;
+      logger.info(
+        { extensionSessionId: entry.session.id, appSessionId: app.id },
+        "bound pending disconnected extension to app"
+      );
+    }
+  }
+}
+
+export function registerExtensionSession(ws: WSContext, joinCode?: string, bindingToken?: string): ExtensionSession {
   const existing = extensionSessions.get(ws);
   if (existing) {
     logger.warn({ sessionId: existing.id }, "extension session already registered, replacing");
@@ -238,13 +295,37 @@ export function registerExtensionSession(ws: WSContext, joinCode?: string): Exte
   }
 
   let appSessionId: string | undefined;
+  let pendingJoinCode: string | undefined;
+  let pendingBindingId: string | undefined;
+
   if (joinCode) {
     const app = getAppByJoinCode(joinCode);
     if (app) {
       appSessionId = app.id;
     } else {
-      logger.warn({ joinCode }, "extension hello with unknown joinCode");
+      pendingJoinCode = joinCode;
     }
+  }
+
+  if (!appSessionId && bindingToken) {
+    const verified = verifyBindingToken(bindingToken);
+    if (verified) {
+      const app = getAppByBindingId(verified);
+      if (app) {
+        appSessionId = app.id;
+        pendingJoinCode = undefined;
+        logger.info({ bindingId: verified }, "extension bound via bindingToken");
+      } else {
+        pendingBindingId = verified;
+        logger.info({ bindingId: verified }, "extension pending with verified bindingId");
+      }
+    } else {
+      logger.warn("extension sent invalid bindingToken");
+    }
+  }
+
+  if (!appSessionId && pendingJoinCode) {
+    logger.warn({ joinCode }, "extension hello with unknown joinCode (pending)");
   }
 
   const session: ExtensionSession = {
@@ -253,10 +334,12 @@ export function registerExtensionSession(ws: WSContext, joinCode?: string): Exte
     ws,
     connectedAt: Date.now(),
     appSessionId,
+    pendingJoinCode,
+    pendingBindingId,
   };
 
   extensionSessions.set(ws, session);
-  logger.info({ sessionId: session.id, appSessionId }, "extension session registered");
+  logger.info({ sessionId: session.id, appSessionId, pendingBindingId }, "extension session registered");
   return session;
 }
 
@@ -303,6 +386,7 @@ export function reclaimAppSession(sessionId: string, ws: WSContext): AppSession 
   notifyExtensionsAppStatus(entry.session.id, true, true);
 
   logger.info({ sessionId: entry.session.id, joinCode: entry.session.joinCode }, "app session reclaimed");
+  bindPendingExtensions(entry.session);
   return entry.session;
 }
 
@@ -398,6 +482,15 @@ export function getAppByJoinCode(joinCode: string): AppSession | undefined {
   return undefined;
 }
 
+export function getAppByBindingId(bindingId: string): AppSession | undefined {
+  for (const session of appSessions.values()) {
+    if (session.bindingId === bindingId) {
+      return session;
+    }
+  }
+  return undefined;
+}
+
 export function disconnectSessionById(sessionId: string): boolean {
   for (const session of appSessions.values()) {
     if (session.id === sessionId) {
@@ -410,6 +503,48 @@ export function disconnectSessionById(sessionId: string): boolean {
       session.ws.close(1000, "closed via repl");
       return true;
     }
+  }
+  return false;
+}
+
+export function killSessionById(sessionId: string): boolean {
+  for (const [ws, session] of appSessions) {
+    if (session.id === sessionId) {
+      appSessions.delete(ws);
+      activeJoinCodes.delete(session.joinCode);
+      unbindExtensionsFromApp(session.id);
+      if (appSessions.size === 0) stopJoinCodeTimer();
+      try {
+        session.ws.close(1000, "killed via repl");
+      } catch {}
+      logger.info({ sessionId }, "app session killed via repl");
+      return true;
+    }
+  }
+  for (const [ws, session] of extensionSessions) {
+    if (session.id === sessionId) {
+      extensionSessions.delete(ws);
+      try {
+        session.ws.close(1000, "killed via repl");
+      } catch {}
+      logger.info({ sessionId }, "extension session killed via repl");
+      return true;
+    }
+  }
+  if (disconnectedAppSessions.has(sessionId)) {
+    const entry = disconnectedAppSessions.get(sessionId)!;
+    activeJoinCodes.delete(entry.session.joinCode);
+    disconnectedAppSessions.delete(sessionId);
+    unbindExtensionsFromApp(sessionId);
+    if (disconnectedAppSessions.size === 0 && disconnectedExtensionSessions.size === 0) stopDisconnectedSweepTimer();
+    logger.info({ sessionId }, "disconnected app session killed via repl");
+    return true;
+  }
+  if (disconnectedExtensionSessions.has(sessionId)) {
+    disconnectedExtensionSessions.delete(sessionId);
+    if (disconnectedAppSessions.size === 0 && disconnectedExtensionSessions.size === 0) stopDisconnectedSweepTimer();
+    logger.info({ sessionId }, "disconnected extension session killed via repl");
+    return true;
   }
   return false;
 }

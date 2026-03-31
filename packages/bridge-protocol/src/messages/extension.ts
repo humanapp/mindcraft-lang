@@ -32,6 +32,7 @@ export interface ExtensionAppStatusPayload {
   appName?: string;
   projectId?: string;
   projectName?: string;
+  bindingToken?: string;
 }
 
 export interface ExtensionAppStatusMessage {
