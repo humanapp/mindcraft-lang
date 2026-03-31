@@ -141,7 +141,13 @@ export class WsClient {
   }
 
   private openSocket(): void {
-    const ws = new WebSocket(this.url);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(this.url);
+    } catch {
+      this.handleDisconnect();
+      return;
+    }
 
     ws.onopen = () => {
       this.ws = ws;
