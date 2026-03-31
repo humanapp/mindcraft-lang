@@ -1,4 +1,4 @@
-import { type IFileSystem, ProtocolError } from "@mindcraft-lang/bridge-client";
+import { ErrorCode, type IFileSystem, ProtocolError } from "@mindcraft-lang/bridge-client";
 import * as vscode from "vscode";
 
 export const MINDCRAFT_SCHEME = "mindcraft";
@@ -94,6 +94,19 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider {
       fs.write(path, new TextDecoder().decode(content));
     } catch (e) {
       if (e instanceof ProtocolError) {
+        if (e.code === ErrorCode.ETAG_MISMATCH) {
+          vscode.window
+            .showErrorMessage(
+              "This file was modified by another client. Run Mindcraft: Sync to re-sync your files.",
+              "Sync Now"
+            )
+            .then((choice) => {
+              if (choice === "Sync Now") {
+                vscode.commands.executeCommand("mindcraft.sync");
+              }
+            });
+          throw new vscode.FileSystemError("File was modified by another client");
+        }
         throw vscode.FileSystemError.NoPermissions(uri);
       }
       throw e;
