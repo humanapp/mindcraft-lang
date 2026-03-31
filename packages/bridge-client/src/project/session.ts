@@ -70,12 +70,14 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
     this.reregisterHandlers();
     this._client.connect(url);
 
-    this._client.on("session:welcome", (msg: WsMessage) => {
-      const payload = msg.payload as { sessionId?: string } | undefined;
-      if (payload?.sessionId) {
-        this._sessionId = payload.sessionId;
-      }
-    });
+    this._clientUnsubs.push(
+      this._client.on("session:welcome", (msg: WsMessage) => {
+        const payload = msg.payload as { sessionId?: string } | undefined;
+        if (payload?.sessionId) {
+          this._sessionId = payload.sessionId;
+        }
+      })
+    );
   }
 
   stop(): void {
