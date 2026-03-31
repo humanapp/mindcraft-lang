@@ -10,8 +10,25 @@ import { routeExtensionMessage } from "./router.js";
 type UpgradeWebSocket = NodeWebSocket["upgradeWebSocket"];
 
 const MAX_MESSAGE_BYTES = 1_048_576;
+const STALE_CONNECTION_MS = 60_000;
+const STALE_SWEEP_INTERVAL_MS = 15_000;
 const connectionThrottle = new TokenBucketMap(10, 0.5);
 const messageBuckets = new Map<WSContext, TokenBucket>();
+const lastActivity = new Map<WSContext, number>();
+
+const staleSweepTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [ws, lastAt] of lastActivity) {
+    if (now - lastAt > STALE_CONNECTION_MS) {
+      logger.warn("closing stale extension ws connection");
+      lastActivity.delete(ws);
+      try {
+        ws.close(1000, "idle timeout");
+      } catch {}
+    }
+  }
+}, STALE_SWEEP_INTERVAL_MS);
+staleSweepTimer.unref();
 
 export function createExtensionWsRoutes(upgradeWebSocket: UpgradeWebSocket) {
   const routes = new Hono();
@@ -30,8 +47,10 @@ export function createExtensionWsRoutes(upgradeWebSocket: UpgradeWebSocket) {
         onOpen(_, ws) {
           logger.info("extension ws connection opened");
           messageBuckets.set(ws, new TokenBucket(100, 50));
+          lastActivity.set(ws, Date.now());
         },
         onMessage(evt, ws) {
+          lastActivity.set(ws, Date.now());
           if (typeof evt.data !== "string") {
             safeSend(ws, JSON.stringify({ type: "error", payload: { message: "binary messages not supported" } }));
             return;
@@ -49,6 +68,7 @@ export function createExtensionWsRoutes(upgradeWebSocket: UpgradeWebSocket) {
         },
         onClose(_, ws) {
           messageBuckets.delete(ws);
+          lastActivity.delete(ws);
           const session = removeExtensionSession(ws);
           if (session) {
             logger.info({ sessionId: session.id }, "extension session closed");
