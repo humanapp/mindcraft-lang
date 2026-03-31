@@ -18,7 +18,6 @@ export interface SessionMeta {
 export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage> {
   private _client: WsClient | undefined;
   private _status: ConnectionStatus = "disconnected";
-  private _pollTimer: ReturnType<typeof setInterval> | undefined;
   private _eventListeners = new Map<string, Set<(value: never) => void>>();
   private _messageHandlers = new Map<string, Set<InternalHandler>>();
   private _clientUnsubs: (() => void)[] = [];
@@ -70,7 +69,6 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
     this.setStatus("connecting");
     this.reregisterHandlers();
     this._client.connect(url);
-    this.startPolling();
 
     this._client.on("session:welcome", (msg: WsMessage) => {
       const payload = msg.payload as { sessionId?: string } | undefined;
@@ -81,7 +79,6 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
   }
 
   stop(): void {
-    this.stopPolling();
     for (const unsub of this._clientUnsubs) unsub();
     this._clientUnsubs = [];
     if (!this._client) return;
@@ -156,31 +153,6 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
     if (this._status === next) return;
     this._status = next;
     this.emit("status", next);
-  }
-
-  private startPolling(): void {
-    if (this._pollTimer) return;
-    this._pollTimer = setInterval(() => {
-      if (this._client) {
-        const state = this._client.connectionState;
-        if (state === "open") {
-          this.setStatus("connected");
-        } else if (state === "connecting") {
-          this.setStatus("connecting");
-        } else if (state === "reconnecting") {
-          this.setStatus("reconnecting");
-        } else {
-          this.setStatus("disconnected");
-        }
-      }
-    }, 500);
-  }
-
-  private stopPolling(): void {
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = undefined;
-    }
   }
 
   private reregisterHandlers(): void {
