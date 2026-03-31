@@ -1,6 +1,7 @@
 import { AppProject, type AppProjectOptions } from "@mindcraft-lang/bridge-app";
 import { buildAmbientDeclarations } from "@mindcraft-lang/typescript";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
+import * as userTileCompiler from "./user-tile-compiler";
 
 const LS_FS_KEY = "sim:vscode-bridge:filesystem";
 
@@ -98,7 +99,23 @@ function createProject(): AppProject {
 export function connectBridge(): void {
   if (project) return;
   project = createProject();
-  project.fromRemoteFileChange = () => saveFilesystem();
+  project.fromRemoteFileChange = (ev) => {
+    saveFilesystem();
+    switch (ev.action) {
+      case "write":
+        userTileCompiler.fileWritten(ev.path, ev.content);
+        break;
+      case "delete":
+        userTileCompiler.fileDeleted(ev.path);
+        break;
+      case "rename":
+        userTileCompiler.fileRenamed(ev.oldPath, ev.newPath);
+        break;
+      case "import":
+        userTileCompiler.fullSync(ev.entries);
+        break;
+    }
+  };
   wireSession();
   project.session.start();
 }
