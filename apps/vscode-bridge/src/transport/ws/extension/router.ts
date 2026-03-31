@@ -48,7 +48,7 @@ export function routeExtensionMessage(ws: WSContext, raw: string) {
   }
 
   try {
-    handler(ws, msg.payload, msg.id);
+    handler(ws, msg.payload, msg.id, msg.seq);
   } catch (err) {
     logger.error({ err, type: msg.type }, "handler error");
     const errMsg: GeneralErrorMessage = { type: "error", id: msg.id, payload: { message: "internal error" } };

@@ -99,9 +99,9 @@ export class WsClient {
     }
   }
 
-  request(type: string, payload?: unknown): Promise<WsMessage> {
+  request(type: string, payload?: unknown, seq?: number): Promise<WsMessage> {
     const id = crypto.randomUUID();
-    const msg: WsMessage = { type, id, payload };
+    const msg: WsMessage = { type, id, payload, seq };
 
     return new Promise<WsMessage>((resolve, reject) => {
       const timer = setTimeout(() => {

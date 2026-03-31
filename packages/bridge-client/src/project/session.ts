@@ -117,11 +117,11 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
     this._client.send(msg);
   }
 
-  request(type: string, payload?: unknown): Promise<WsMessage> {
+  request(type: string, payload?: unknown, seq?: number): Promise<WsMessage> {
     if (!this._client) {
       throw new Error("Session not started");
     }
-    return this._client.request(type, payload);
+    return this._client.request(type, payload, seq);
   }
 
   addEventListener<K extends keyof SessionEventMap>(

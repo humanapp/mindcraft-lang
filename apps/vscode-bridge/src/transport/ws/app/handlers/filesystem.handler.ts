@@ -5,7 +5,7 @@ import { getAppSession, getExtensionsByAppSessionId } from "#core/session-regist
 import { safeSend } from "#transport/ws/safe-send.js";
 import type { WsHandler, WsHandlerMap } from "#transport/ws/types.js";
 
-const filesystemChange: WsHandler = (ws, payload, id) => {
+const filesystemChange: WsHandler = (ws, payload, id, seq) => {
   const appSession = getAppSession(ws);
   if (!appSession) {
     logger.warn("filesystem:change from unregistered app session");
@@ -23,7 +23,7 @@ const filesystemChange: WsHandler = (ws, payload, id) => {
     return;
   }
 
-  const msg: FilesystemChangeMessage = { type: "filesystem:change", id, payload: parsed.data };
+  const msg: FilesystemChangeMessage = { type: "filesystem:change", id, payload: parsed.data, seq };
   const raw = JSON.stringify(msg);
   for (const ext of extensions) {
     if (!safeSend(ext.ws, raw)) {
@@ -35,7 +35,7 @@ const filesystemChange: WsHandler = (ws, payload, id) => {
   }
 };
 
-const filesystemSync: WsHandler = (ws, payload, id) => {
+const filesystemSync: WsHandler = (ws, payload, id, seq) => {
   const appSession = getAppSession(ws);
   if (!appSession) {
     logger.warn("filesystem:sync from unregistered app session");
@@ -53,7 +53,7 @@ const filesystemSync: WsHandler = (ws, payload, id) => {
     return;
   }
 
-  const msg: FilesystemSyncMessage = { type: "filesystem:sync", id, payload: parsed.data };
+  const msg: FilesystemSyncMessage = { type: "filesystem:sync", id, payload: parsed.data, seq };
   const raw = JSON.stringify(msg);
   for (const ext of extensions) {
     if (!safeSend(ext.ws, raw)) {

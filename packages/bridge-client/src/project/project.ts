@@ -22,6 +22,8 @@ export interface ProjectOptions<TClient extends WsMessage = WsMessage, TServer e
 export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
   private _session: ProjectSession<TClient, TServer>;
   private _files: ProjectFiles;
+  private _outboundSeq = 0;
+  private _peerSeq = 0;
 
   constructor(public readonly options: ProjectOptions<TClient, TServer>) {
     if (!options.appName) {
@@ -54,14 +56,22 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
     this._files = new ProjectFiles(filesOptions);
 
     this._session.on("filesystem:change" as TServer["type"], (msg) => {
+      const wsMsg = msg as unknown as WsMessage;
+      if (wsMsg.seq !== undefined && wsMsg.seq <= this._peerSeq) return;
       this._files.fromRemote.applyNotification((msg as unknown as FilesystemChangeMessage).payload);
     });
 
     this._session.on("filesystem:sync" as TServer["type"], (msg) => {
       const wsMsg = msg as unknown as WsMessage;
       if (wsMsg.id && !wsMsg.payload) {
+        if (wsMsg.seq !== undefined) this._peerSeq = wsMsg.seq;
         const entries = [...this._files.raw.export()];
-        this._session.send({ type: "filesystem:sync", id: wsMsg.id, payload: { entries } } as TClient);
+        this._session.send({
+          type: "filesystem:sync",
+          id: wsMsg.id,
+          payload: { entries },
+          seq: this._outboundSeq,
+        } as TClient);
       }
     });
   }
@@ -87,13 +97,15 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
   }
 
   toRemoteFileChange = (ev: FileSystemNotification) => {
-    this._session.send({ type: "filesystem:change", payload: ev } as TClient);
+    this._outboundSeq++;
+    this._session.send({ type: "filesystem:change", payload: ev, seq: this._outboundSeq } as TClient);
   };
 
   fromRemoteFileChange = (_ev: FileSystemNotification) => {};
 
   async requestSync(): Promise<void> {
-    const response = await this._session.request("filesystem:sync");
+    const response = await this._session.request("filesystem:sync", undefined, this._outboundSeq);
+    if (response.seq !== undefined) this._peerSeq = response.seq;
     const payload = response.payload as FilesystemSyncPayload | undefined;
     if (payload?.entries) {
       this._files.fromRemote.applyNotification({ action: "import", entries: payload.entries });

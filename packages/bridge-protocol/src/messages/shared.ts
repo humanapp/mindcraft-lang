@@ -9,12 +9,14 @@ export interface FilesystemChangeMessage {
   type: "filesystem:change";
   id?: string;
   payload: FileSystemNotification;
+  seq?: number;
 }
 
 export interface FilesystemSyncMessage {
   type: "filesystem:sync";
   id?: string;
   payload?: FilesystemSyncPayload;
+  seq?: number;
 }
 
 export interface ControlPingMessage {

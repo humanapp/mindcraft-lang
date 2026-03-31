@@ -391,6 +391,16 @@ describe("WsClient", () => {
   // -----------------------------------------------------------------------
 
   describe("reconnection", () => {
+    const originalRandom = Math.random;
+
+    beforeEach(() => {
+      Math.random = () => 1;
+    });
+
+    afterEach(() => {
+      Math.random = originalRandom;
+    });
+
     it("fires onDisconnect and enters reconnecting state on socket close", () => {
       const client = new WsClient();
       let disconnected = false;
