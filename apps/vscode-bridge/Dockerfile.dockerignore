@@ -1,5 +1,9 @@
 *
 
+!packages/bridge-protocol/package.json
+!packages/bridge-protocol/tsconfig.json
+!packages/bridge-protocol/src
+
 !packages/bridge-client/package.json
 !packages/bridge-client/tsconfig.json
 !packages/bridge-client/src
