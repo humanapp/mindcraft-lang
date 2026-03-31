@@ -11,6 +11,76 @@ import type {
 import { getBrainServices, NativeType } from "@mindcraft-lang/core/brain";
 
 const AMBIENT_HEADER = `
+/** @deprecated Not available in Mindcraft */
+interface CallableFunction {}
+/** @deprecated Not available in Mindcraft */
+interface Function {}
+/** @deprecated Not available in Mindcraft */
+interface IArguments {}
+/** @deprecated Not available in Mindcraft */
+interface NewableFunction {}
+/** @deprecated Not available in Mindcraft */
+interface Object {}
+/** @deprecated Not available in Mindcraft */
+interface RegExp {}
+
+interface Boolean {}
+interface Number {}
+interface String {}
+interface Array<T> {
+  readonly length: number;
+  [n: number]: T;
+  push(...items: T[]): number;
+  pop(): T | undefined;
+  shift(): T | undefined;
+  unshift(...items: T[]): number;
+  splice(start: number, deleteCount?: number, ...items: T[]): T[];
+  indexOf(searchElement: T, fromIndex?: number): number;
+  lastIndexOf(searchElement: T, fromIndex?: number): number;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  find(predicate: (value: T, index: number, array: T[]) => unknown): T | undefined;
+  findIndex(predicate: (value: T, index: number, array: T[]) => unknown): number;
+  some(predicate: (value: T, index: number, array: T[]) => unknown): boolean;
+  every(predicate: (value: T, index: number, array: T[]) => unknown): boolean;
+  forEach(callbackfn: (value: T, index: number, array: T[]) => void): void;
+  map<U>(callbackfn: (value: T, index: number, array: T[]) => U): U[];
+  filter(predicate: (value: T, index: number, array: T[]) => unknown): T[];
+  reduce(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T;
+  reduce<U>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue: U): U;
+  reduceRight(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T;
+  reduceRight<U>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue: U): U;
+  concat(...items: (T | T[])[]): T[];
+  join(separator?: string): string;
+  reverse(): T[];
+  slice(start?: number, end?: number): T[];
+  sort(compareFn?: (a: T, b: T) => number): T[];
+}
+type Record<K extends string | number | symbol, T> = { [P in K]: T; };
+interface PromiseLike<T> {
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): PromiseLike<TResult1 | TResult2>;
+}
+interface Promise<T> {
+  then<TResult1 = T, TResult2 = never>(
+    onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+    onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+  ): Promise<TResult1 | TResult2>;
+  catch<TResult = never>(
+    onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
+  ): Promise<T | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<T>;
+}
+interface PromiseConstructor {
+  new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: unknown) => void) => void): Promise<T>;
+  resolve(): Promise<void>;
+  resolve<T>(value: T | PromiseLike<T>): Promise<T>;
+  reject<T = never>(reason?: unknown): Promise<T>;
+  all<T extends readonly unknown[]>(values: T): Promise<{ -readonly [P in keyof T]: T[P] extends PromiseLike<infer U> ? U : T[P] }>;
+  race<T extends readonly unknown[]>(values: T): Promise<T[number] extends PromiseLike<infer U> ? U : T[number]>;
+}
+declare var Promise: PromiseConstructor;
 `;
 
 const AMBIENT_MODULE_START = `

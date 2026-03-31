@@ -17,6 +17,16 @@ const joinCodeListeners = new Set<JoinCodeListener>();
 
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
+const TS_CONFIG = `{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "strict": true,
+    "noLib": true
+  },
+  "include": ["**/*.ts", "**/*.d.ts"]
+}`;
+
 function saveFilesystem(): void {
   if (!project) return;
   if (saveTimer !== undefined) clearTimeout(saveTimer);
@@ -68,6 +78,12 @@ function createProject(): AppProject {
     kind: "file",
     content: buildAmbientDeclarations(),
     etag: `ambient-${Date.now()}`,
+    isReadonly: true,
+  });
+  filesystem.set("tsconfig.json", {
+    kind: "file",
+    content: TS_CONFIG,
+    etag: `tsconfig-${Date.now()}`,
     isReadonly: true,
   });
   return new AppProject({
