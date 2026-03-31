@@ -65,6 +65,7 @@ const hello: WsHandler = (ws, payload, id) => {
       appStatusPayload.appName = app.appName;
       appStatusPayload.projectId = app.projectId;
       appStatusPayload.projectName = app.projectName;
+      appStatusPayload.clientConnected = true;
     }
   }
   const appStatus: ExtensionAppStatusMessage = {

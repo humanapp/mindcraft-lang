@@ -81,7 +81,7 @@ function stopJoinCodeTimer(): void {
   }
 }
 
-function notifyExtensionsAppStatus(appSessionId: string, bound: boolean): void {
+function notifyExtensionsAppStatus(appSessionId: string, bound: boolean, clientConnected?: boolean): void {
   const extensions = getExtensionsByAppSessionId(appSessionId);
   if (extensions.length === 0) {
     logger.info({ appSessionId, bound }, "no extensions to notify of appStatus");
@@ -90,10 +90,20 @@ function notifyExtensionsAppStatus(appSessionId: string, bound: boolean): void {
   const payload: ExtensionAppStatusMessage["payload"] = { bound };
   if (bound) {
     const app = getAppSessionById(appSessionId);
-    if (app) {
+    if (!app) {
+      const disconnected = disconnectedAppSessions.get(appSessionId);
+      if (disconnected) {
+        payload.appName = disconnected.session.appName;
+        payload.projectId = disconnected.session.projectId;
+        payload.projectName = disconnected.session.projectName;
+      }
+    } else {
       payload.appName = app.appName;
       payload.projectId = app.projectId;
       payload.projectName = app.projectName;
+    }
+    if (clientConnected !== undefined) {
+      payload.clientConnected = clientConnected;
     }
   }
   const msg: ExtensionAppStatusMessage = {
@@ -102,7 +112,7 @@ function notifyExtensionsAppStatus(appSessionId: string, bound: boolean): void {
   };
   const serialized = JSON.stringify(msg);
   for (const ext of extensions) {
-    logger.info({ extensionSessionId: ext.id, appSessionId, bound }, "sending appStatus to extension");
+    logger.info({ extensionSessionId: ext.id, appSessionId, bound, clientConnected }, "sending appStatus to extension");
     safeSend(ext.ws, serialized);
   }
 }
@@ -257,6 +267,7 @@ export function removeAppSession(ws: WSContext): AppSession | undefined {
     disconnectedAppSessions.set(session.id, { session, disconnectedAt: Date.now() });
     purgeDisconnectedIfNeeded("app");
     ensureDisconnectedSweepTimer();
+    notifyExtensionsAppStatus(session.id, true, false);
     if (appSessions.size === 0) {
       stopJoinCodeTimer();
     }
@@ -289,7 +300,7 @@ export function reclaimAppSession(sessionId: string, ws: WSContext): AppSession 
   appSessions.set(ws, entry.session);
   ensureJoinCodeTimer();
 
-  notifyExtensionsAppStatus(entry.session.id, true);
+  notifyExtensionsAppStatus(entry.session.id, true, true);
 
   logger.info({ sessionId: entry.session.id, joinCode: entry.session.joinCode }, "app session reclaimed");
   return entry.session;

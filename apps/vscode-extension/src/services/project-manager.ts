@@ -11,6 +11,7 @@ const PENDING_JOIN_CODE_KEY = "mindcraft.pendingJoinCode";
 export class ProjectManager implements vscode.Disposable {
   private _project: ExtensionProject | undefined;
   private _appBound = false;
+  private _appClientConnected = false;
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _fsProvider = new MindcraftFileSystemProvider();
@@ -26,6 +27,9 @@ export class ProjectManager implements vscode.Disposable {
   private readonly _onDidChangeAppBound = new vscode.EventEmitter<boolean>();
   readonly onDidChangeAppBound = this._onDidChangeAppBound.event;
 
+  private readonly _onDidChangeAppClientConnected = new vscode.EventEmitter<boolean>();
+  readonly onDidChangeAppClientConnected = this._onDidChangeAppClientConnected.event;
+
   get fsProvider(): MindcraftFileSystemProvider {
     return this._fsProvider;
   }
@@ -40,6 +44,10 @@ export class ProjectManager implements vscode.Disposable {
 
   get appBound(): boolean {
     return this._appBound;
+  }
+
+  get appClientConnected(): boolean {
+    return this._appClientConnected;
   }
 
   initialize(globalState: vscode.Memento): void {
@@ -85,6 +93,7 @@ export class ProjectManager implements vscode.Disposable {
     this._unsubs.push(
       project.session.on("session:appStatus", (msg) => {
         const bound = msg.payload?.bound ?? false;
+        const clientConnected = msg.payload?.clientConnected ?? false;
         if (bound) {
           const p = msg.payload;
           if (p?.appName) project.options.appName = p.appName;
@@ -95,6 +104,10 @@ export class ProjectManager implements vscode.Disposable {
         if (this._appBound !== bound) {
           this._appBound = bound;
           this._onDidChangeAppBound.fire(bound);
+        }
+        if (this._appClientConnected !== clientConnected) {
+          this._appClientConnected = clientConnected;
+          this._onDidChangeAppClientConnected.fire(clientConnected);
         }
         if (!bound && this._project) {
           this.disconnect();
@@ -156,6 +169,10 @@ export class ProjectManager implements vscode.Disposable {
     if (this._appBound) {
       this._appBound = false;
       this._onDidChangeAppBound.fire(false);
+    }
+    if (this._appClientConnected) {
+      this._appClientConnected = false;
+      this._onDidChangeAppClientConnected.fire(false);
     }
   }
 
@@ -248,6 +265,7 @@ export class ProjectManager implements vscode.Disposable {
     this._onDidChangeProject.dispose();
     this._onDidChangeStatus.dispose();
     this._onDidChangeAppBound.dispose();
+    this._onDidChangeAppClientConnected.dispose();
     for (const d of this._disposables) d.dispose();
   }
 }
