@@ -76,6 +76,8 @@ export class ProjectManager implements vscode.Disposable {
         this._onDidChangeStatus.fire(status);
         if (status === "connected") {
           this.syncWithRetry(project, joinCode);
+        } else if (status === "disconnected") {
+          this.disconnect();
         }
       })
     );
