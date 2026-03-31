@@ -13,6 +13,7 @@
 		"Programming Languages"
 	],
 	"activationEvents": [
+		"onFileSystem:mindcraft",
 		"onStartupFinished"
 	],
 	"browser": "./dist/extension.js",
@@ -67,7 +68,7 @@
 				}
 			}
 		}
-	},
+  },
 	"scripts": {
 		"dev": "node esbuild.mjs --watch",
 		"build": "node esbuild.mjs --production",
@@ -88,6 +89,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.3.15",
 		"@types/vscode": "^1.100.0",
+		"@vscode/test-web": "^0.0.80",
 		"esbuild": "^0.25.0",
 		"typescript": "~5.9.3"
 	}

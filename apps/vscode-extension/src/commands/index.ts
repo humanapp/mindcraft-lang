@@ -3,6 +3,26 @@ import { MINDCRAFT_SCHEME } from "../services/mindcraft-fs-provider";
 import type { ProjectManager } from "../services/project-manager";
 import { isMindcraftEnabled, setMindcraftEnabled } from "../state/context";
 
+const SENSOR_TEMPLATE = `import { Sensor } from "mindcraft";
+
+export default Sensor({
+  name: "my-sensor",
+  output: "boolean",
+  onExecute(ctx, params) {
+    return false;
+  },
+});
+`;
+
+const ACTUATOR_TEMPLATE = `import { Actuator } from "mindcraft";
+
+export default Actuator({
+  name: "my-actuator",
+  onExecute(ctx, params) {
+  },
+});
+`;
+
 export function registerCommands(context: vscode.ExtensionContext, projectManager: ProjectManager): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("mindcraft.show", () => {
@@ -58,11 +78,11 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
     }),
 
     vscode.commands.registerCommand("mindcraft.createSensor", async () => {
-      await createFileFromTemplate(projectManager, "MySensor", "// Sensor code goes here\n");
+      await createFileFromTemplate(projectManager, "my-sensor", SENSOR_TEMPLATE);
     }),
 
     vscode.commands.registerCommand("mindcraft.createActuator", async () => {
-      await createFileFromTemplate(projectManager, "MyActuator", "// Actuator code goes here\n");
+      await createFileFromTemplate(projectManager, "my-actuator", ACTUATOR_TEMPLATE);
     }),
 
     vscode.commands.registerCommand("mindcraft.sync", async () => {

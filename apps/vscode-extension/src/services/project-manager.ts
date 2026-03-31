@@ -136,7 +136,7 @@ export class ProjectManager implements vscode.Disposable {
         }
         this.fireRootChanged();
         return;
-      } catch {
+      } catch (e) {
         if (i < maxAttempts - 1) {
           await new Promise<void>((r) => setTimeout(r, 1000 * 2 ** i));
         }
@@ -205,6 +205,7 @@ export class ProjectManager implements vscode.Disposable {
       uri,
       name: this._workspaceFolderName,
     });
+    vscode.commands.executeCommand("typescript.restartTsServer");
   }
 
   private renameWorkspaceFolder(name: string): void {

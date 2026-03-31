@@ -1,4 +1,5 @@
 import { AppProject, type AppProjectOptions } from "@mindcraft-lang/bridge-app";
+import { buildAmbientDeclarations } from "@mindcraft-lang/typescript";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
 
 const LS_FS_KEY = "sim:vscode-bridge:filesystem";
@@ -58,14 +59,23 @@ function wireSession(): void {
   unsubs.push(project.onJoinCodeChange(notifyJoinCodeListeners));
 }
 
+const AMBIENT_PATH = "mindcraft.d.ts";
+
 function createProject(): AppProject {
   const { vscodeBridgeUrl } = getAppSettings();
+  const filesystem = loadFilesystem();
+  filesystem.set(AMBIENT_PATH, {
+    kind: "file",
+    content: buildAmbientDeclarations(),
+    etag: `ambient-${Date.now()}`,
+    isReadonly: true,
+  });
   return new AppProject({
     appName: "sim",
     projectId: "sim-default",
     projectName: "Sim",
     bridgeUrl: vscodeBridgeUrl,
-    filesystem: loadFilesystem(),
+    filesystem,
   });
 }
 
