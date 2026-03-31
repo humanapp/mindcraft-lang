@@ -6,7 +6,6 @@ type ExtensionProject = Project<ExtensionClientMessage, ExtensionServerMessage>;
 import * as vscode from "vscode";
 import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
 
-const PENDING_JOIN_CODE_KEY = "mindcraft.pendingJoinCode";
 const BINDING_TOKEN_KEY = "mindcraft.bindingToken";
 
 function pendingChangeKey(ev: FileSystemNotification): string | undefined {
@@ -75,16 +74,15 @@ export class ProjectManager implements vscode.Disposable {
 
   initialize(globalState: vscode.Memento): void {
     this._globalState = globalState;
-    const pendingCode = globalState.get<string>(PENDING_JOIN_CODE_KEY);
-    if (pendingCode) {
-      globalState.update(PENDING_JOIN_CODE_KEY, undefined);
-      this.connect(pendingCode);
+    const bindingToken = globalState.get<string>(BINDING_TOKEN_KEY);
+    if (bindingToken) {
+      this.connect(undefined, bindingToken);
     } else {
       this.removeWorkspaceFolder();
     }
   }
 
-  connect(joinCode: string): void {
+  connect(joinCode?: string, savedToken?: string): void {
     this.disconnectActive();
 
     const bridgeUrl = vscode.workspace.getConfiguration("mindcraft").get<string>("bridgeUrl", "");
@@ -92,25 +90,32 @@ export class ProjectManager implements vscode.Disposable {
       throw new Error("mindcraft.bridgeUrl is not configured");
     }
 
-    const savedBindingToken = this._globalState?.get<string>(BINDING_TOKEN_KEY);
+    const bindingToken = savedToken ?? this._globalState?.get<string>(BINDING_TOKEN_KEY);
     this._globalState?.update(BINDING_TOKEN_KEY, undefined);
 
     const project = new Project<ExtensionClientMessage, ExtensionServerMessage>({
       appName: "vscode",
-      projectId: `vscode-${joinCode}`,
+      projectId: "vscode-extension",
       projectName: "VS Code",
       bridgeUrl,
       wsPath: "extension",
       filesystem: new Map(),
       joinCode,
-      bindingToken: savedBindingToken,
+      bindingToken,
     });
 
     this._unsubs.push(
       project.session.addEventListener("status", (status) => {
         this._onDidChangeStatus.fire(status);
         if (status === "connected") {
-          this.syncWithRetry(project, joinCode);
+          if (this._appBound) {
+            this._appBound = false;
+            this._onDidChangeAppBound.fire(false);
+          }
+          if (this._appClientConnected) {
+            this._appClientConnected = false;
+            this._onDidChangeAppClientConnected.fire(false);
+          }
         } else if (status === "disconnected") {
           this.disconnect();
         }
@@ -131,6 +136,8 @@ export class ProjectManager implements vscode.Disposable {
           }
           this.renameWorkspaceFolder(`${project.options.projectName} (${project.options.appName})`);
         }
+        const wasBound = this._appBound;
+        const wasClientConnected = this._appClientConnected;
         if (this._appBound !== bound) {
           this._appBound = bound;
           this._onDidChangeAppBound.fire(bound);
@@ -138,7 +145,12 @@ export class ProjectManager implements vscode.Disposable {
         if (this._appClientConnected !== clientConnected) {
           this._appClientConnected = clientConnected;
           this._onDidChangeAppClientConnected.fire(clientConnected);
-          if (clientConnected && this._pendingChanges.length > 0) {
+        }
+        if (bound && clientConnected) {
+          if (!wasBound || !wasClientConnected) {
+            this.syncWithRetry(project);
+          }
+          if (this._pendingChanges.length > 0) {
             this.syncAndClearPending();
           }
         }
@@ -163,7 +175,7 @@ export class ProjectManager implements vscode.Disposable {
     this.disconnectActive();
     this.closeMindcraftTabs();
     this.removeWorkspaceFolder();
-    this._globalState?.update(PENDING_JOIN_CODE_KEY, undefined);
+    this._globalState?.update(BINDING_TOKEN_KEY, undefined);
   }
 
   async sync(): Promise<void> {
@@ -231,13 +243,12 @@ export class ProjectManager implements vscode.Disposable {
     }
   }
 
-  private async syncWithRetry(project: ExtensionProject, joinCode: string, maxAttempts = 3): Promise<void> {
+  private async syncWithRetry(project: ExtensionProject, maxAttempts = 3): Promise<void> {
     for (let i = 0; i < maxAttempts; i++) {
       if (this._project !== project) return;
       try {
         await project.requestSync();
         if (!this.hasWorkspaceFolder()) {
-          this._globalState?.update(PENDING_JOIN_CODE_KEY, joinCode);
           this.addWorkspaceFolder();
         }
         this.fireRootChanged();
