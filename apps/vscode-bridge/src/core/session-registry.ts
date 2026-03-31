@@ -360,6 +360,14 @@ export function getAllExtensionSessions(): ExtensionSession[] {
   return [...extensionSessions.values()];
 }
 
+export function getDisconnectedAppSessions(): { session: AppSession; disconnectedAt: number }[] {
+  return [...disconnectedAppSessions.values()];
+}
+
+export function getDisconnectedExtensionSessions(): { session: ExtensionSession; disconnectedAt: number }[] {
+  return [...disconnectedExtensionSessions.values()];
+}
+
 export function getExtensionsByAppSessionId(appSessionId: string): ExtensionSession[] {
   const result: ExtensionSession[] = [];
   for (const session of extensionSessions.values()) {

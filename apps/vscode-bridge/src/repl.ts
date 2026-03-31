@@ -4,6 +4,8 @@ import {
   disconnectSessionById,
   getAllAppSessions,
   getAllExtensionSessions,
+  getDisconnectedAppSessions,
+  getDisconnectedExtensionSessions,
   getSessionCount,
 } from "#core/session-registry.js";
 
@@ -30,7 +32,28 @@ function listSessions(): void {
     }
   }
 
-  if (apps.length === 0 && extensions.length === 0) {
+  const disconnectedApps = getDisconnectedAppSessions();
+  const disconnectedExts = getDisconnectedExtensionSessions();
+
+  if (disconnectedApps.length > 0) {
+    console.log("\nDisconnected app sessions:");
+    for (const { session: s, disconnectedAt } of disconnectedApps) {
+      const ago = Math.round((Date.now() - disconnectedAt) / 1000);
+      console.log(
+        `  ${s.id}  joinCode=${s.joinCode}  appName=${s.appName}  projectName=${s.projectName}  disconnected=${ago}s ago`
+      );
+    }
+  }
+
+  if (disconnectedExts.length > 0) {
+    console.log("\nDisconnected extension sessions:");
+    for (const { session: s, disconnectedAt } of disconnectedExts) {
+      const ago = Math.round((Date.now() - disconnectedAt) / 1000);
+      console.log(`  ${s.id}  appSessionId=${s.appSessionId ?? "(none)"}  disconnected=${ago}s ago`);
+    }
+  }
+
+  if (apps.length === 0 && extensions.length === 0 && disconnectedApps.length === 0 && disconnectedExts.length === 0) {
     console.log("  (none)");
   }
   console.log();
@@ -72,7 +95,7 @@ export function startRepl(): void {
           break;
         case "help":
           console.log("\nCommands:");
-          console.log("  sessions, ls      List all active sessions");
+          console.log("  sessions, ls      List all sessions (connected + disconnected)");
           console.log("  disconnect <id>   Disconnect a session's WebSocket");
           console.log("  help           Show this help");
           console.log("  .exit          Exit the process\n");
