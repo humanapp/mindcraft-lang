@@ -26,7 +26,12 @@ const filesystemChange: WsHandler = (ws, payload, id) => {
   const msg: FilesystemChangeMessage = { type: "filesystem:change", id, payload: parsed.data };
   const raw = JSON.stringify(msg);
   for (const ext of extensions) {
-    safeSend(ext.ws, raw);
+    if (!safeSend(ext.ws, raw)) {
+      logger.warn(
+        { extensionSessionId: ext.id, appSessionId: appSession.id },
+        "failed to relay filesystem:change to extension"
+      );
+    }
   }
 };
 
@@ -51,7 +56,12 @@ const filesystemSync: WsHandler = (ws, payload, id) => {
   const msg: FilesystemSyncMessage = { type: "filesystem:sync", id, payload: parsed.data };
   const raw = JSON.stringify(msg);
   for (const ext of extensions) {
-    safeSend(ext.ws, raw);
+    if (!safeSend(ext.ws, raw)) {
+      logger.warn(
+        { extensionSessionId: ext.id, appSessionId: appSession.id },
+        "failed to relay filesystem:sync to extension"
+      );
+    }
   }
 };
 

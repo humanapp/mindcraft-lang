@@ -30,7 +30,12 @@ const filesystemChange: WsHandler = (ws, payload, id) => {
   }
 
   const msg: FilesystemChangeMessage = { type: "filesystem:change", id, payload: parsed.data };
-  safeSend(appSession.ws, JSON.stringify(msg));
+  if (!safeSend(appSession.ws, JSON.stringify(msg))) {
+    logger.warn(
+      { appSessionId: extSession.appSessionId, extensionSessionId: extSession.id },
+      "failed to relay filesystem:change to app"
+    );
+  }
 };
 
 const filesystemSync: WsHandler = (ws, _payload, id) => {
@@ -52,7 +57,12 @@ const filesystemSync: WsHandler = (ws, _payload, id) => {
   }
 
   const msg: FilesystemSyncMessage = { type: "filesystem:sync", id };
-  safeSend(appSession.ws, JSON.stringify(msg));
+  if (!safeSend(appSession.ws, JSON.stringify(msg))) {
+    logger.warn(
+      { appSessionId: extSession.appSessionId, extensionSessionId: extSession.id },
+      "failed to relay filesystem:sync to app"
+    );
+  }
 };
 
 export const vfsHandlers: WsHandlerMap = {
