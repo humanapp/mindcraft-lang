@@ -1,12 +1,15 @@
 import { type ConnectionStatus, type FileSystemNotification, Project } from "@mindcraft-lang/bridge-client";
 import type { ExtensionClientMessage, ExtensionServerMessage } from "@mindcraft-lang/bridge-protocol";
+
+type ExtensionProject = Project<ExtensionClientMessage, ExtensionServerMessage>;
+
 import * as vscode from "vscode";
 import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
 
 const PENDING_JOIN_CODE_KEY = "mindcraft.pendingJoinCode";
 
 export class ProjectManager implements vscode.Disposable {
-  private _project: Project<ExtensionClientMessage, ExtensionServerMessage> | undefined;
+  private _project: ExtensionProject | undefined;
   private _appBound = false;
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
@@ -27,7 +30,7 @@ export class ProjectManager implements vscode.Disposable {
     return this._fsProvider;
   }
 
-  get project(): Project<ExtensionClientMessage, ExtensionServerMessage> | undefined {
+  get project(): ExtensionProject | undefined {
     return this._project;
   }
 
@@ -72,16 +75,7 @@ export class ProjectManager implements vscode.Disposable {
       project.session.addEventListener("status", (status) => {
         this._onDidChangeStatus.fire(status);
         if (status === "connected") {
-          project
-            .requestSync()
-            .then(() => {
-              if (!this.hasWorkspaceFolder()) {
-                this._globalState?.update(PENDING_JOIN_CODE_KEY, joinCode);
-                this.addWorkspaceFolder();
-              }
-              this.fireRootChanged();
-            })
-            .catch(() => {});
+          this.syncWithRetry(project, joinCode);
         }
       })
     );
@@ -127,6 +121,25 @@ export class ProjectManager implements vscode.Disposable {
     if (!this._project) return;
     await this._project.requestSync();
     this.fireRootChanged();
+  }
+
+  private async syncWithRetry(project: ExtensionProject, joinCode: string, maxAttempts = 3): Promise<void> {
+    for (let i = 0; i < maxAttempts; i++) {
+      if (this._project !== project) return;
+      try {
+        await project.requestSync();
+        if (!this.hasWorkspaceFolder()) {
+          this._globalState?.update(PENDING_JOIN_CODE_KEY, joinCode);
+          this.addWorkspaceFolder();
+        }
+        this.fireRootChanged();
+        return;
+      } catch {
+        if (i < maxAttempts - 1) {
+          await new Promise<void>((r) => setTimeout(r, 1000 * 2 ** i));
+        }
+      }
+    }
   }
 
   private disconnectActive(): void {
