@@ -50,15 +50,16 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
     );
     const filesOptions: ProjectFilesOptions = {
       entries: options.filesystem,
-      toRemoteChange: this.toRemoteFileChange,
+      toRemoteChange: (ev) => this.toRemoteFileChange(ev),
       fromRemoteChange: (ev) => this.fromRemoteFileChange(ev),
     };
     this._files = new ProjectFiles(filesOptions);
 
     this._session.on("filesystem:change" as TServer["type"], (msg) => {
       const wsMsg = msg as unknown as WsMessage;
+      if (!wsMsg.payload) return;
       if (wsMsg.seq !== undefined && wsMsg.seq <= this._peerSeq) return;
-      this._files.fromRemote.applyNotification((msg as unknown as FilesystemChangeMessage).payload);
+      this._files.fromRemote.applyNotification((msg as unknown as FilesystemChangeMessage).payload!);
     });
 
     this._session.on("filesystem:sync" as TServer["type"], (msg) => {

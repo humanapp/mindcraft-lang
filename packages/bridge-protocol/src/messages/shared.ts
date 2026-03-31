@@ -8,7 +8,7 @@ export interface ErrorPayload {
 export interface FilesystemChangeMessage {
   type: "filesystem:change";
   id?: string;
-  payload: FileSystemNotification;
+  payload?: FileSystemNotification;
   seq?: number;
 }
 

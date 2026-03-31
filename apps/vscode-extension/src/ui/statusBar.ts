@@ -13,6 +13,7 @@ export function createStatusBarItem(
     const status = projectManager.status;
     const appBound = projectManager.appBound;
     const appClientConnected = projectManager.appClientConnected;
+    const pendingChanges = projectManager.pendingChanges;
 
     switch (status) {
       case "disconnected":
@@ -36,8 +37,12 @@ export function createStatusBarItem(
           item.tooltip = "Connected to bridge and bound to app";
           item.backgroundColor = undefined;
         } else if (appBound) {
-          item.text = "$(warning) Mindcraft: App Offline";
-          item.tooltip = "App client disconnected -- waiting for reconnect";
+          const pending = pendingChanges > 0 ? ` (${pendingChanges} pending)` : "";
+          item.text = `$(warning) Mindcraft: App Offline${pending}`;
+          item.tooltip =
+            pendingChanges > 0
+              ? `App client disconnected -- ${pendingChanges} unsent change(s) will sync on reconnect`
+              : "App client disconnected -- waiting for reconnect";
           item.backgroundColor = new vscode.ThemeColor("statusBarItem.warningBackground");
         } else {
           item.text = "$(warning) Mindcraft: No App";
@@ -55,6 +60,7 @@ export function createStatusBarItem(
     projectManager.onDidChangeStatus(update),
     projectManager.onDidChangeAppBound(update),
     projectManager.onDidChangeAppClientConnected(update),
+    projectManager.onDidChangePendingChanges(update),
     item
   );
 

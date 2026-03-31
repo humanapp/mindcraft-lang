@@ -8,10 +8,25 @@ import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-pr
 
 const PENDING_JOIN_CODE_KEY = "mindcraft.pendingJoinCode";
 
+function pendingChangeKey(ev: FileSystemNotification): string | undefined {
+  switch (ev.action) {
+    case "write":
+    case "delete":
+    case "mkdir":
+    case "rmdir":
+      return `${ev.action}:${ev.path}`;
+    case "rename":
+      return `rename:${ev.oldPath}`;
+    case "import":
+      return undefined;
+  }
+}
+
 export class ProjectManager implements vscode.Disposable {
   private _project: ExtensionProject | undefined;
   private _appBound = false;
   private _appClientConnected = false;
+  private _pendingChanges: FileSystemNotification[] = [];
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _fsProvider = new MindcraftFileSystemProvider();
@@ -29,6 +44,9 @@ export class ProjectManager implements vscode.Disposable {
 
   private readonly _onDidChangeAppClientConnected = new vscode.EventEmitter<boolean>();
   readonly onDidChangeAppClientConnected = this._onDidChangeAppClientConnected.event;
+
+  private readonly _onDidChangePendingChanges = new vscode.EventEmitter<number>();
+  readonly onDidChangePendingChanges = this._onDidChangePendingChanges.event;
 
   get fsProvider(): MindcraftFileSystemProvider {
     return this._fsProvider;
@@ -48,6 +66,10 @@ export class ProjectManager implements vscode.Disposable {
 
   get appClientConnected(): boolean {
     return this._appClientConnected;
+  }
+
+  get pendingChanges(): number {
+    return this._pendingChanges.length;
   }
 
   initialize(globalState: vscode.Memento): void {
@@ -108,6 +130,9 @@ export class ProjectManager implements vscode.Disposable {
         if (this._appClientConnected !== clientConnected) {
           this._appClientConnected = clientConnected;
           this._onDidChangeAppClientConnected.fire(clientConnected);
+          if (clientConnected && this._pendingChanges.length > 0) {
+            this.syncAndClearPending();
+          }
         }
         if (!bound && this._project) {
           this.disconnect();
@@ -115,6 +140,7 @@ export class ProjectManager implements vscode.Disposable {
       })
     );
 
+    project.toRemoteFileChange = (ev) => this.sendChangeWithAck(project, ev);
     project.fromRemoteFileChange = (ev) => this.handleFilesystemNotification(ev);
 
     this._fsProvider.setFileSystems(project.files.raw, project.files.toRemote);
@@ -136,6 +162,65 @@ export class ProjectManager implements vscode.Disposable {
     if (!this._project) return;
     await this._project.requestSync();
     this.fireRootChanged();
+  }
+
+  private sendChangeWithAck(project: ExtensionProject, ev: FileSystemNotification): void {
+    project.session.request("filesystem:change", ev).then(
+      (response) => {
+        if (this._project !== project) return;
+        if (response.type === "session:error") {
+          this.enqueuePendingChange(ev);
+        }
+      },
+      () => {
+        if (this._project !== project) return;
+        this.enqueuePendingChange(ev);
+      }
+    );
+  }
+
+  private enqueuePendingChange(ev: FileSystemNotification): void {
+    const key = pendingChangeKey(ev);
+    if (key !== undefined) {
+      const idx = this._pendingChanges.findIndex((e) => pendingChangeKey(e) === key);
+      if (idx !== -1) {
+        this._pendingChanges.splice(idx, 1);
+      }
+    }
+    this._pendingChanges.push(ev);
+    this._onDidChangePendingChanges.fire(this._pendingChanges.length);
+  }
+
+  private async syncAndClearPending(): Promise<void> {
+    const project = this._project;
+    if (!project) return;
+    const pending = this._pendingChanges.splice(0);
+    if (pending.length === 0) return;
+    this._onDidChangePendingChanges.fire(0);
+    const failed: FileSystemNotification[] = [];
+    for (const ev of pending) {
+      if (this._project !== project) return;
+      try {
+        const response = await project.session.request("filesystem:change", ev);
+        if (response.type === "session:error") {
+          failed.push(ev);
+        }
+      } catch {
+        failed.push(ev);
+      }
+    }
+    if (this._project !== project) return;
+    if (failed.length > 0) {
+      this._pendingChanges.unshift(...failed);
+      this._onDidChangePendingChanges.fire(this._pendingChanges.length);
+    } else {
+      try {
+        await project.requestSync();
+        this.fireRootChanged();
+      } catch {
+        // Sync pull failed; not critical since pending changes were delivered
+      }
+    }
   }
 
   private async syncWithRetry(project: ExtensionProject, joinCode: string, maxAttempts = 3): Promise<void> {
@@ -173,6 +258,10 @@ export class ProjectManager implements vscode.Disposable {
     if (this._appClientConnected) {
       this._appClientConnected = false;
       this._onDidChangeAppClientConnected.fire(false);
+    }
+    if (this._pendingChanges.length > 0) {
+      this._pendingChanges.length = 0;
+      this._onDidChangePendingChanges.fire(0);
     }
   }
 
@@ -266,6 +355,7 @@ export class ProjectManager implements vscode.Disposable {
     this._onDidChangeStatus.dispose();
     this._onDidChangeAppBound.dispose();
     this._onDidChangeAppClientConnected.dispose();
+    this._onDidChangePendingChanges.dispose();
     for (const d of this._disposables) d.dispose();
   }
 }
