@@ -2,13 +2,13 @@
 
 Wire filesystem changes from the VS Code bridge into the TypeScript compilation
 pipeline so that user-authored `.ts` sensors and actuators are compiled and
-registered as tiles in the sim app. Starts with standalone single-file compilation;
-multi-file imports are a later phase.
+registered as tiles in the sim app. Multi-file imports across `.ts` files are
+supported -- the compiler resolves relative imports automatically.
 
 Depends on infrastructure from:
 - [user-authored-sensors-actuators.md](user-authored-sensors-actuators.md) (compiler pipeline)
 - [vscode-authoring-debugging.md](vscode-authoring-debugging.md) (bridge architecture)
-- `packages/typescript` (compileUserTile, linkUserPrograms, createUserTileExec, registerUserTile)
+- `packages/typescript` (UserTileProject, linkUserPrograms, createUserTileExec, registerUserTile)
 - `packages/bridge-client` (Project, ProjectFiles, FileSystemNotification)
 
 ---
@@ -41,23 +41,31 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-03-31) Phase 1 complete. File changes from the VS Code bridge
-trigger compilation via `compileUserTile`. Results are cached in
-`apps/sim/src/services/user-tile-compiler.ts` with listener hooks for future
+(Updated 2026-03-31) Phase 1 complete and reworked. `user-tile-compiler.ts`
+maintains a persistent `UserTileProject` instance that mirrors the bridge
+filesystem. Any file mutation (`updateFile`, `deleteFile`, `renameFile`,
+`setFiles`) triggers `compileAll()`, which type-checks the whole project as a
+single `ts.createProgram` and produces `CompileResult` per entry-point file.
+Cross-file imports are resolved automatically. Full-sync on reconnect is
+handled via `setFiles()`. Results are cached with listener hooks for future
 phases. No tile registration yet.
 
 ---
 
 ## Architecture Context
 
-### File change flow (already working)
+### File change flow
 
 ```
 VS Code edit -> extension -> bridge server -> sim app
                                                |
                           project.fromRemoteFileChange(notification)
                                                |
-                          currently: saveFilesystem() only
+                          saveFilesystem() + userTileCompiler.*()
+                                               |
+                          UserTileProject.compileAll()
+                                               |
+                          onCompilation / onRemoval listeners
 ```
 
 `fromRemoteFileChange` fires on every remote mutation with a `FileSystemNotification`:
@@ -66,18 +74,33 @@ VS Code edit -> extension -> bridge server -> sim app
 - `action: "rename"` -- `oldPath`, `newPath`
 - `action: "import"` -- `entries` (full sync)
 
-### Compilation pipeline (packages/typescript, existing)
+### Compilation pipeline (packages/typescript)
 
-| Function | Input | Output |
+The primary compilation API is `UserTileProject`, a stateful class that holds
+all project files and compiles them as a unit:
+
+| Method / Class | Input | Output |
 |---|---|---|
-| `compileUserTile(source, options?)` | single TS source string | `CompileResult` with diagnostics + `UserAuthoredProgram` |
+| `new UserTileProject(options?)` | optional `CompileOptions` | project instance |
+| `project.setFiles(files)` | `Map<string, string>` (full sync) | replaces all files |
+| `project.updateFile(path, content)` | path + source | adds or updates one file |
+| `project.deleteFile(path)` | path | removes one file |
+| `project.renameFile(old, new)` | old + new path | moves a file |
+| `project.compileAll()` | (uses internal file map) | `ProjectCompileResult` |
+| `project.compileAffected()` | (uses internal file map) | `ProjectCompileResult` (currently same as `compileAll`) |
 | `linkUserPrograms(brainProgram, userPrograms)` | base program + compiled tiles | `LinkResult` with `linkedProgram` + `UserTileLinkInfo[]` |
 | `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)` | linked program + VM | `HostAsyncFn` |
 | `registerUserTile(linkInfo, hostFn)` | link info + host fn | registers tiles in brain services |
 
-`compileUserTile` operates on a single source file. Multi-file imports are not yet
-supported (module resolution, lowering, and linking would all need work). Standalone
-single-file compilation is the starting scope.
+`ProjectCompileResult` contains:
+- `results: Map<string, CompileResult>` -- one entry per file that has
+  `export default Sensor(...)` or `export default Actuator(...)`. Files without
+  a default export are utility/library modules and produce no entry.
+- `tsErrors: Map<string, CompileDiagnostic[]>` -- TypeScript type errors by file.
+  When tsErrors is non-empty, results is empty (type errors block compilation).
+
+Cross-file imports are resolved automatically. When a utility file changes,
+`compileAll()` recompiles all entry points that (transitively) import it.
 
 ### Registration constraints
 
@@ -89,47 +112,50 @@ single-file compilation is the starting scope.
 
 ---
 
-## Phase 1: Compile on file change
+## Phase 1: Compile on file change (complete)
 
-Hook `fromRemoteFileChange` to detect `.ts` file writes, compile them via
-`compileUserTile`, and cache results. No tile registration yet -- just compilation
-and diagnostic reporting.
+Hook `fromRemoteFileChange` to detect `.ts` file mutations, maintain a
+persistent `UserTileProject` instance, and recompile the whole project on each
+change. No tile registration yet -- just compilation and diagnostic reporting.
 
 ### Deliverables
 
 1. New module `apps/sim/src/services/user-tile-compiler.ts`:
+   - Maintains a `UserTileProject` instance that mirrors the bridge filesystem.
    - Maintains a `Map<path, CompileResult>` cache of compilation results.
-   - `handleFileChange(notification: FileSystemNotification)` -- filters for `.ts`
-     writes (excluding `.d.ts` and `tsconfig.json`), reads content from the
-     notification, calls `compileUserTile(content)`, caches the result.
-   - Handles `"delete"` by removing from cache.
-   - Handles `"rename"` by updating the cache key.
-   - Handles `"import"` (full sync) by diffing against known files and
-     recompiling changed/new entries, removing deleted ones.
-   - Exposes an observable for consumers to react to compilation results
-     (e.g., a callback or event pattern).
+   - `fileWritten(path, content)` -- calls `project.updateFile()`, recompiles.
+   - `fileDeleted(path)` -- calls `project.deleteFile()`, recompiles.
+   - `fileRenamed(oldPath, newPath)` -- calls `project.renameFile()`, recompiles.
+   - `fullSync(files)` -- filters for `.ts`/`.d.ts` files, calls
+     `project.setFiles()`, recompiles.
+   - `recompileAll()` -- calls `project.compileAll()`, diffs results against
+     cache, fires `onCompilation` for new/changed entries and `onRemoval` for
+     disappeared entries.
+   - Exposes `onCompilation(fn)` and `onRemoval(fn)` listener hooks.
 2. Wire into `vscode-bridge.ts`:
-   - `fromRemoteFileChange` calls both `saveFilesystem()` and
-     `handleFileChange(notification)`.
-3. Console logging of compile results (diagnostics or success) for
-   verification during development.
+   - `fromRemoteFileChange` callback dispatches to `fileWritten`, `fileDeleted`,
+     `fileRenamed`, or `fullSync` based on `ev.action`.
+3. Logging of compile results (diagnostics or success) via `logger` from
+   `@mindcraft-lang/core`.
 
 ### Risks
 
-- `compileUserTile` is synchronous and calls `ts.createProgram` -- may be slow
-  for large files. Acceptable for Phase 1; consider async/debounce later.
+- `compileAll()` is synchronous and creates a new `ts.createProgram` on every
+  call -- may be slow for large projects. Acceptable for now; consider
+  debouncing or `compileAffected()` (once it does incremental work) later.
 
 ### Phase 1 Notes (2026-03-31)
 
-- Spec called for a single `handleFileChange(notification)` entry point taking
-  `FileSystemNotification`. Built instead as separate `fileWritten`, `fileDeleted`,
-  `fileRenamed`, `fullSync` functions dispatched from `vscode-bridge.ts`. This
-  avoids importing bridge-protocol types into the compiler module.
-- `needsRecompile()` is stubbed to always return `true`. Could compare content
-  hashes later but not needed yet.
+- Originally built with per-file `compileUserTile()` calls. Reworked same day
+  to use `UserTileProject` after the compiler was updated to support multi-file
+  project compilation.
+- API uses separate `fileWritten`, `fileDeleted`, `fileRenamed`, `fullSync`
+  functions dispatched from `vscode-bridge.ts` -- compiler module has no
+  bridge-protocol dependency.
 - Uses `logger` from `@mindcraft-lang/core` instead of `console`.
-- `CompileDiagnostic` type is imported but unused (only `CompileResult` is
-  needed). Biome did not flag it; may want to remove in a future cleanup.
+- `recompileAll()` diffs the new result set against the cache to detect both
+  new/changed entries and removed entries (e.g., when a file loses its default
+  export or is deleted). This also covers full-sync on reconnect.
 - **Gap identified post-phase:** `createProject()` loads the filesystem from
   localStorage but does not compile `.ts` files at that point. User tiles
   from the persisted filesystem are not compiled until a remote file change
@@ -211,12 +237,17 @@ functions via the Phase 3 indirection wrappers.
 
 ---
 
-## Phase 3: Tile registration with stable function wrappers
+## Phase 3: Tile registration and hot-swap
 
-On first successful compile of a `.ts` file, register its sensor/actuator tile
-in the brain services using an indirection wrapper so that the underlying
-function can be hot-swapped on recompile. If Phase 2 already registered a stub
-for this tile, reuse that function registry entry.
+On successful compile, register sensor/actuator tiles in the brain services
+using indirection wrappers so the underlying function can be hot-swapped on
+recompile. If Phase 2 already registered a stub for a tile, reuse that
+function registry entry.
+
+Since `compileAll()` returns the full set of compiled tiles on every mutation
+(not just the changed file), the registration layer always receives the
+complete picture. Diffing against the previously registered set determines
+what to add, update, or remove.
 
 ### Prerequisites
 
@@ -228,13 +259,22 @@ for this tile, reuse that function registry entry.
 
 1. Indirection wrapper factory -- creates a stable `HostAsyncFn` that delegates
    to a mutable inner function reference. Exposes a `swap(newFn)` method.
-2. On first successful compile:
-   - Call `registerUserTile(linkInfo, wrapperFn)` to register tiles + params.
+2. On first successful compile of a tile:
+   - Call `registerUserTile(linkInfo, wrapperFn)` to register tile + params.
    - Store the mapping: `filePath -> { tileId, wrapper }`.
-3. Linking strategy: `linkUserPrograms` needs a `BrainProgram`. For registration
+3. On recompile with same name/kind: recompile, re-link,
+   `createUserTileExec` with new linked program, swap the wrapper's inner
+   function. No re-registration needed.
+4. On recompile with changed name/kind/params: delete old tile from
+   `TileCatalog`, register new tile. The old `FunctionRegistry` entry becomes
+   orphaned (acceptable).
+5. On `.ts` file deletion: remove tile from `TileCatalog`, remove from cache.
+6. Notify the brain editor UI that tile definitions have changed so the palette
+   updates.
+7. Linking strategy: `linkUserPrograms` needs a `BrainProgram`. For registration
    purposes, create a minimal empty brain program to link against. The real
-   linking happens at brain-run time (Phase 5).
-4. Handle the `createUserTileExec` dependency on VM + Scheduler -- defer actual
+   linking happens at brain-run time (Phase 4).
+8. Handle the `createUserTileExec` dependency on VM + Scheduler -- defer actual
    exec creation. The wrapper starts as a no-op until a VM is available.
 
 ### Risks
@@ -245,34 +285,15 @@ for this tile, reuse that function registry entry.
 - If a tile's signature changes (params, kind, name), need to `tiles.delete()`
   the old tile and re-register. The function registry entry cannot be removed,
   so the old entry becomes dead weight. Acceptable for now.
-
----
-
-## Phase 4: Hot-swap on recompile
-
-When a `.ts` file is re-saved and recompiled successfully:
-
-### Deliverables
-
-1. If name/kind unchanged: recompile, re-link, `createUserTileExec` with new
-   linked program, swap the wrapper's inner function.
-2. If name/kind/params changed: delete old tile from `TileCatalog`, register new
-   tile. The old `FunctionRegistry` entry becomes orphaned (acceptable).
-3. On `.ts` file deletion: remove tile from `TileCatalog`, remove from cache.
-4. Notify the brain editor UI that tile definitions have changed so the palette
-   updates.
-
-### Risks
-
 - Running brains that reference a tile mid-swap could see inconsistent state.
-  Phases 1-4 assume brains are not running during authoring, or that a stale
-  reference is acceptable.
+  Assume brains are not running during authoring, or that a stale reference is
+  acceptable.
 - Need to understand how the brain editor discovers available tiles (likely
   reads from `TileCatalog` on render). If it caches, it needs a refresh signal.
 
 ---
 
-## Phase 5: Integration with brain execution
+## Phase 4: Integration with brain execution
 
 Connect the compiled user tiles to actual brain program execution so they
 run in the simulation.
@@ -298,43 +319,6 @@ run in the simulation.
 
 ---
 
-## Phase 6: Full-sync and reconnect handling
-
-Handle `filesystem:sync` (import) events robustly when the extension
-reconnects or a full sync is triggered.
-
-### Deliverables
-
-1. On `"import"` notification: diff the incoming file set against the
-   compilation cache.
-   - New `.ts` files: compile and register.
-   - Changed `.ts` files: recompile and swap.
-   - Removed `.ts` files: delete tiles, remove from cache.
-2. Batch compilation to avoid redundant work during large imports.
-3. Handle the initial connection case: when the extension first syncs,
-   compile all `.ts` files in the project.
-
----
-
-## Phase 7: Multi-file imports (future)
-
-Enable `.ts` files to import from other `.ts` files in the project filesystem.
-This requires changes to `packages/typescript`:
-
-1. Expand `CompileOptions` with `additionalFiles?: Map<string, string>`.
-2. Populate the virtual FS with all project `.ts` files.
-3. Fix relative module resolution in `virtual-host.ts` (`resolveModuleNameLiterals`
-   must resolve relative to `containingFile`).
-4. Pass all user files as root files to `ts.createProgram`.
-5. Cross-file lowering: either merge ASTs or lower each file independently
-   and link at the IR level.
-6. Dependency tracking: when a utility file changes, recompile all files
-   that import it.
-
-Out of scope until Phases 1-6 are stable.
-
----
-
 ## Phase Log
 
 (Written during post-mortem only. Do not edit during implementation.)
@@ -350,9 +334,19 @@ lives in `vscode-bridge.ts` via a switch on `ev.action`. Logging via `logger`
 from `@mindcraft-lang/core`. Listener hooks (`onCompilation`, `onRemoval`) for
 Phase 2 integration.
 
+**Reworked same day:** After `packages/typescript` was updated to support
+multi-file project compilation via `UserTileProject`, the module was reworked to
+maintain a persistent `UserTileProject` instance instead of calling per-file
+`compileUserTile()`. `recompileAll()` now calls `project.compileAll()` and diffs
+results against the cache, firing listeners for both new/changed and removed
+entries. Full-sync and multi-file imports are handled implicitly.
+
 **Deviations:**
 - API shape: separate functions instead of single `handleFileChange`. Cleaner
   separation -- compiler module has no bridge-protocol import.
 - Logging: `logger` instead of `console` (per project convention).
+- Compilation model: project-level `compileAll()` instead of per-file
+  `compileUserTile()`. Also covers what was originally planned as Phase 6
+  (full-sync) and Phase 7 (multi-file imports).
 
 **No upstream spec amendments needed.** No new risks discovered.
