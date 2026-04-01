@@ -11,7 +11,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.workspace.registerFileSystemProvider(MINDCRAFT_SCHEME, projectManager.fsProvider, {
       isCaseSensitive: true,
-    })
+    }),
+    vscode.window.registerFileDecorationProvider(projectManager.fsProvider)
   );
 
   const sessionsProvider = new MindcraftSessionsProvider(projectManager);

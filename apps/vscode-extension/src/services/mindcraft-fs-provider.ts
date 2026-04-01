@@ -3,9 +3,12 @@ import * as vscode from "vscode";
 
 export const MINDCRAFT_SCHEME = "mindcraft";
 
-export class MindcraftFileSystemProvider implements vscode.FileSystemProvider {
+export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, vscode.FileDecorationProvider {
   private readonly _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
   readonly onDidChangeFile = this._onDidChangeFile.event;
+
+  private readonly _onDidChangeFileDecorations = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
+  readonly onDidChangeFileDecorations = this._onDidChangeFileDecorations.event;
 
   private _readFs: IFileSystem | undefined;
   private _writeFs: IFileSystem | undefined;
@@ -13,11 +16,13 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider {
   setFileSystems(readFs: IFileSystem | undefined, writeFs: IFileSystem | undefined): void {
     this._readFs = readFs;
     this._writeFs = writeFs;
+    this._onDidChangeFileDecorations.fire(undefined);
   }
 
   fireChanges(events: vscode.FileChangeEvent[]): void {
     if (events.length > 0) {
       this._onDidChangeFile.fire(events);
+      this._onDidChangeFileDecorations.fire(events.map((e) => e.uri));
     }
   }
 
@@ -169,8 +174,24 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider {
     return this._writeFs;
   }
 
+  provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
+    if (uri.scheme !== MINDCRAFT_SCHEME || !this._readFs) {
+      return undefined;
+    }
+    try {
+      const result = this._readFs.stat(toFsPath(uri));
+      if (result.kind === "file" && result.isReadonly) {
+        return new vscode.FileDecoration(undefined, undefined, new vscode.ThemeColor("disabledForeground"));
+      }
+    } catch {
+      // Ignore errors
+    }
+    return undefined;
+  }
+
   dispose(): void {
     this._onDidChangeFile.dispose();
+    this._onDidChangeFileDecorations.dispose();
   }
 }
 
