@@ -20,7 +20,7 @@ main plan's numbering.
 
 ## Current State
 
-(Updated 2026-04-01, after D3b completion)
+(Updated 2026-04-01, after D4 completion)
 
 ### What works
 
@@ -48,6 +48,12 @@ main plan's numbering.
   a new struct with remaining fields. Works for any struct at runtime (including
   native-backed). Supports nested binding on the rest target and nested
   destructuring combined with rest at any level.
+- **Computed property names in destructuring:** `const { ["x"]: val } = obj`,
+  `const { [key]: val } = obj`. Implemented via `IrGetFieldDynamic` IR node
+  that emits the same `GET_FIELD` opcode but with the key expression already on
+  the stack. Works with rest patterns: computed key is evaluated into a temp
+  local, which is reused by `lowerObjectRestElement` to push the exclude key.
+  Validator relaxed to allow non-literal computed keys in binding elements.
 
 ### What is rejected
 
@@ -55,7 +61,6 @@ main plan's numbering.
 |---|---|---|
 | Array rest not in last position | `RestElementMustBeLast` (3025) | `lowerArrayBindingPattern` |
 | Object rest not in last position | `RestElementMustBeLast` (3025) | `lowerObjectBindingPattern` |
-| Computed property names | `ComputedDestructuringKeyNotSupported` (3023) | `lowerObjectBindingPattern` |
 | Destructuring in `onExecute` params | `DestructuringInOnExecuteNotSupported` (3024) | `lowerOnExecuteBody` |
 
 ### Known limitations
@@ -70,6 +75,8 @@ main plan's numbering.
 - `IrGetField { fieldName: string }` -- static field name, emitter pushes string
   constant then emits `GET_FIELD`. The VM's `execGetField` pops fieldName + source
   from stack (already dynamic at the opcode level).
+- `IrGetFieldDynamic` -- no embedded field name. Both source and key are already
+  on the stack from the lowering. Emitter maps directly to `GET_FIELD`.
 - `IrListGet` -- pops index + list from stack, pushes element.
 - `lowerListSlice` -- inline expansion of `.slice(start, end?)` using a loop with
   `ListNew`/`ListGet`/`ListPush`. Reusable for array rest patterns.
@@ -741,3 +748,65 @@ node, emit handler, lowering logic).
   constant pool index for typeId. No variadic argument complexity.
 - Registered a `Player` struct type (name: string, pos: Vector2, health: number)
   in tests to exercise 3-field rest scenarios.
+
+### D4: Computed Property Names in Destructuring -- 2026-04-01
+
+**Planned:** Support computed property names in object destructuring via a new
+`IrGetFieldDynamic` IR node (Approach A from the spec). Remove the
+`ComputedDestructuringKeyNotSupported` diagnostic. Support both string literal
+and variable-expression computed keys.
+
+**Actual:**
+
+- Added `IrGetFieldDynamic { kind: "GetFieldDynamic" }` to the IR node union in
+  `ir.ts`. No embedded field name -- both source and key are already on the stack.
+- Added `case "GetFieldDynamic"` emit handler in `emit.ts`: calls
+  `emitter.getField()` directly (same `GET_FIELD` opcode, no preceding constant
+  push).
+- In `lowerObjectBindingPattern`, replaced the `ComputedDestructuringKeyNotSupported`
+  rejection with a computed-key handling path: when `element.propertyName` is a
+  `ComputedPropertyName`, evaluates the expression via `lowerExpression`, emits
+  `GetFieldDynamic`. Supports both identifier bindings and nested binding patterns
+  on the computed-key target.
+- Computed keys combined with rest patterns (e.g., `const { [key]: val, ...rest } = obj`)
+  are fully supported. When `hasRest` is true, the computed key expression is
+  evaluated into a temp local first. The temp is used for both the `GetFieldDynamic`
+  field access and by `lowerObjectRestElement` (via `LoadLocal`) to push the exclude
+  key onto the stack for `STRUCT_COPY_EXCEPT`.
+- `lowerObjectRestElement` signature extended to accept a
+  `computedKeyLocals: Map<ts.BindingElement, number>` parameter. For siblings with
+  computed keys, it emits `LoadLocal(tempKeyLocal)` instead of
+  `PushConst(mkStringValue(key))`.
+- Removed `ComputedDestructuringKeyNotSupported` (3023) from the diag codes enum.
+  Initially replaced with `ComputedKeyWithRestNotSupported` (3023) for the
+  computed+rest rejection, then removed entirely when computed+rest was implemented.
+- Relaxed the validator: `ComputedPropertyName` nodes whose parent is a
+  `BindingElement` (destructuring) are now allowed regardless of whether the
+  expression is a literal. Non-literal computed keys in object literals are still
+  rejected.
+- 3 tests added (437 total): string literal computed key `{ ["x"]: val }`,
+  variable computed key `{ [key]: val }`, computed key + rest
+  `{ ["x"]: val, ...rest }` with `val + rest.y` verification.
+- No VM or `packages/core` changes needed. `GET_FIELD` was already dynamic at the
+  opcode level.
+
+**Deviations from plan:**
+
+- The spec suggested potentially rejecting computed keys + rest for v1. Both were
+  implemented in a single pass by storing the evaluated key in a temp local.
+- The spec mentioned adding a `ComputedDestructuringKeyNotSupported` removal. In
+  practice the code went 3023 -> `ComputedKeyWithRestNotSupported` -> removed
+  entirely within the same implementation pass.
+- The spec mentioned non-string computed keys as a risk (VM throws
+  `GET_FIELD: field name must be string`). No coercion was added -- the TS checker
+  constrains the key type, and runtime type mismatches throw at the VM level.
+
+**Discoveries:**
+
+- The validator's `ComputedPropertyName` check (`ts.SyntaxKind.ComputedPropertyName`)
+  fires for all computed property names including those in destructuring binding
+  elements. Scoping the relaxation to `ts.isBindingElement(node.parent)` keeps
+  object literal computed keys restricted while allowing destructuring.
+- Computed keys + rest naturally requires two uses of the key value: once for field
+  access, once for rest exclusion. Evaluating the expression once into a temp local
+  avoids double evaluation and handles expressions with side effects correctly.
