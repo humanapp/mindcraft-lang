@@ -7065,27 +7065,198 @@ export default Sensor({
     }
   });
 
-  test("nested destructuring produces validation error", () => {
+  test("nested object destructuring: const { inner: { x, y } } = obj", () => {
     const ambientSource = buildAmbientDeclarations();
+
+    const types = getBrainServices().types;
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
+    if (!types.get(entityTypeId)) {
+      types.addStructType("Entity", {
+        fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
+      });
+    }
+
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
+interface Entity {
+  pos: Vector2;
+}
+
 export default Sensor({
-  name: "nested-destructure",
+  name: "nested-obj-destructure",
   output: "number",
   onExecute(ctx: Context): number {
-    const obj = { inner: { x: 1, y: 2 } };
-    const { inner: { x } } = obj;
-    return x;
+    const entity: Entity = { pos: { x: 10, y: 20 } };
+    const { pos: { x, y } } = entity;
+    return x + y;
   },
 });
 `;
     const result = compileUserTile(source, { ambientSource });
-    assert.ok(result.diagnostics.length > 0, "expected diagnostics for nested destructuring");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.NestedDestructuringNotSupported),
-      `expected nested destructuring error, got: ${JSON.stringify(result.diagnostics)}`
-    );
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 30);
+    }
+  });
+
+  test("nested array-in-object destructuring: const { pos: [x, y] } = entity", () => {
+    const ambientSource = buildAmbientDeclarations();
+
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const numListTypeId = types.instantiate("List", List.from([numTypeId]));
+    const coordTypeId = mkTypeId(NativeType.Struct, "Coord");
+    if (!types.get(coordTypeId)) {
+      types.addStructType("Coord", {
+        fields: List.from([{ name: "pos", typeId: numListTypeId }]),
+      });
+    }
+
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+interface Coord {
+  pos: number[];
+}
+
+export default Sensor({
+  name: "nested-arr-in-obj",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const entity: Coord = { pos: [3, 4] };
+    const { pos: [x, y] } = entity;
+    return x + y;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 7);
+    }
+  });
+
+  test("mixed nesting: object containing array", () => {
+    const ambientSource = buildAmbientDeclarations();
+
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const numListTypeId = types.instantiate("List", List.from([numTypeId]));
+    const pairHolderTypeId = mkTypeId(NativeType.Struct, "PairHolder");
+    if (!types.get(pairHolderTypeId)) {
+      types.addStructType("PairHolder", {
+        fields: List.from([{ name: "items", typeId: numListTypeId }]),
+      });
+    }
+
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+interface PairHolder {
+  items: number[];
+}
+
+export default Sensor({
+  name: "mixed-nesting",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const data: PairHolder = { items: [100, 200] };
+    const { items: [first, second] } = data;
+    return first + second;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 300);
+    }
+  });
+
+  test("three levels of nesting: array in object in object", () => {
+    const ambientSource = buildAmbientDeclarations();
+
+    const types = getBrainServices().types;
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
+    const wrapperTypeId = mkTypeId(NativeType.Struct, "Wrapper");
+    if (!types.get(wrapperTypeId)) {
+      types.addStructType("Wrapper", {
+        fields: List.from([{ name: "entity", typeId: entityTypeId }]),
+      });
+    }
+
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+interface Entity {
+  pos: Vector2;
+}
+interface Wrapper {
+  entity: Entity;
+}
+
+export default Sensor({
+  name: "deep-nesting",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const w: Wrapper = { entity: { pos: { x: 5, y: 6 } } };
+    const { entity: { pos: { x, y } } } = w;
+    return x + y;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 11);
+    }
   });
 
   test("rest pattern in destructuring produces validation error", () => {

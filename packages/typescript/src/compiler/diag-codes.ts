@@ -129,8 +129,6 @@ export enum LoweringDiagCode {
   DestructuringMissingInitializer = 3020,
   /** Rest (...) patterns in destructuring are not supported */
   RestPatternsNotSupported = 3021,
-  /** Nested destructuring patterns are not supported */
-  NestedDestructuringNotSupported = 3022,
   /** Computed keys in destructuring are not supported */
   ComputedDestructuringKeyNotSupported = 3023,
   /** for...of is only supported on list-typed values */

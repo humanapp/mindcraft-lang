@@ -402,6 +402,10 @@ function lowerOnExecuteBody(
   const funcNode = descriptor.onExecuteNode;
 
   const paramLocals = new Map<string, number>();
+  // Local 0 is always the injected context struct. When the tile has parameters,
+  // local 1 holds the params as a Map<number, Value> (integer-keyed by param index).
+  // The loop below unpacks each param into its own local so user code can reference
+  // params by name via normal LoadLocal instructions.
   let nextLocal = hasParams ? 2 : 1;
 
   const ctxParam = funcNode.parameters[0];
@@ -659,7 +663,12 @@ function lowerDestructuringDefault(element: ts.BindingElement, localIdx: number,
   const keepLabel = allocLabel(ctx);
   const endLabel = allocLabel(ctx);
   ctx.ir.push({ kind: "LoadLocal", index: localIdx });
+  // TypeCheck(Nil) matches only nil/undefined -- not false or 0 -- matching JS
+  // semantics where defaults only apply when the value is absent, not just falsy.
   ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+  // If value is NOT nil, jump past the default. Both labels land at the same
+  // instruction: keepLabel skips the default-assignment, endLabel jumps past it
+  // after assigning. They coincide because there is no extra code after the store.
   ctx.ir.push({ kind: "JumpIfFalse", labelId: keepLabel });
   lowerExpression(element.initializer, ctx);
   ctx.ir.push({ kind: "StoreLocal", index: localIdx });
@@ -686,7 +695,10 @@ function lowerObjectDestructuring(
   const srcLocal = ctx.scopeStack.allocLocal();
   lowerExpression(decl.initializer, ctx);
   ctx.ir.push({ kind: "StoreLocal", index: srcLocal });
+  lowerObjectBindingPattern(pattern, srcLocal, ctx);
+}
 
+function lowerObjectBindingPattern(pattern: ts.ObjectBindingPattern, srcLocal: number, ctx: LowerContext): void {
   for (const element of pattern.elements) {
     if (element.dotDotDotToken) {
       ctx.diagnostics.push(
@@ -694,12 +706,7 @@ function lowerObjectDestructuring(
       );
       continue;
     }
-    if (!ts.isIdentifier(element.name)) {
-      ctx.diagnostics.push(
-        makeDiag(LoweringDiagCode.NestedDestructuringNotSupported, "Nested destructuring is not supported", element)
-      );
-      continue;
-    }
+
     let propertyName: string;
     if (element.propertyName) {
       if (!ts.isIdentifier(element.propertyName)) {
@@ -713,15 +720,33 @@ function lowerObjectDestructuring(
         continue;
       }
       propertyName = element.propertyName.text;
-    } else {
+    } else if (ts.isIdentifier(element.name)) {
       propertyName = element.name.text;
+    } else {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UnsupportedBindingPattern, "Unsupported binding pattern", element)
+      );
+      continue;
     }
 
-    const localIdx = ctx.scopeStack.declareLocal(element.name.text);
-    ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
-    ctx.ir.push({ kind: "GetField", fieldName: propertyName });
-    ctx.ir.push({ kind: "StoreLocal", index: localIdx });
-    lowerDestructuringDefault(element, localIdx, ctx);
+    if (ts.isIdentifier(element.name)) {
+      const localIdx = ctx.scopeStack.declareLocal(element.name.text);
+      ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+      ctx.ir.push({ kind: "GetField", fieldName: propertyName });
+      ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+      lowerDestructuringDefault(element, localIdx, ctx);
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      const tempLocal = ctx.scopeStack.allocLocal();
+      ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+      ctx.ir.push({ kind: "GetField", fieldName: propertyName });
+      ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+      lowerDestructuringDefault(element, tempLocal, ctx);
+      if (ts.isObjectBindingPattern(element.name)) {
+        lowerObjectBindingPattern(element.name, tempLocal, ctx);
+      } else {
+        lowerArrayBindingPattern(element.name, tempLocal, ctx);
+      }
+    }
   }
 }
 
@@ -743,7 +768,10 @@ function lowerArrayDestructuring(
   const srcLocal = ctx.scopeStack.allocLocal();
   lowerExpression(decl.initializer, ctx);
   ctx.ir.push({ kind: "StoreLocal", index: srcLocal });
+  lowerArrayBindingPattern(pattern, srcLocal, ctx);
+}
 
+function lowerArrayBindingPattern(pattern: ts.ArrayBindingPattern, srcLocal: number, ctx: LowerContext): void {
   for (let i = 0; i < pattern.elements.length; i++) {
     const element = pattern.elements[i];
     if (ts.isOmittedExpression(element)) continue;
@@ -753,18 +781,27 @@ function lowerArrayDestructuring(
       );
       continue;
     }
-    if (!ts.isIdentifier(element.name)) {
-      ctx.diagnostics.push(
-        makeDiag(LoweringDiagCode.NestedDestructuringNotSupported, "Nested destructuring is not supported", element)
-      );
-      continue;
+
+    if (ts.isIdentifier(element.name)) {
+      const localIdx = ctx.scopeStack.declareLocal(element.name.text);
+      ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+      ctx.ir.push({ kind: "PushConst", value: mkNumberValue(i) });
+      ctx.ir.push({ kind: "ListGet" });
+      ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+      lowerDestructuringDefault(element, localIdx, ctx);
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      const tempLocal = ctx.scopeStack.allocLocal();
+      ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+      ctx.ir.push({ kind: "PushConst", value: mkNumberValue(i) });
+      ctx.ir.push({ kind: "ListGet" });
+      ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+      lowerDestructuringDefault(element, tempLocal, ctx);
+      if (ts.isObjectBindingPattern(element.name)) {
+        lowerObjectBindingPattern(element.name, tempLocal, ctx);
+      } else {
+        lowerArrayBindingPattern(element.name, tempLocal, ctx);
+      }
     }
-    const localIdx = ctx.scopeStack.declareLocal(element.name.text);
-    ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
-    ctx.ir.push({ kind: "PushConst", value: mkNumberValue(i) });
-    ctx.ir.push({ kind: "ListGet" });
-    ctx.ir.push({ kind: "StoreLocal", index: localIdx });
-    lowerDestructuringDefault(element, localIdx, ctx);
   }
 }
 
@@ -1565,6 +1602,7 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
   emitLoad(target, ctx);
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  // Dup after arithmetic: leaves the new value on the stack as the expression result.
   ctx.ir.push({ kind: "Dup" });
   emitStore(target, ctx);
 }
@@ -1599,6 +1637,8 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   }
 
   emitLoad(target, ctx);
+  // Dup before arithmetic: the old value copy stays on the stack as the expression
+  // result while the new value is computed and stored over it.
   ctx.ir.push({ kind: "Dup" });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
@@ -1608,6 +1648,9 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
 function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
   const endLabel = allocLabel(ctx);
   lowerExpression(expr.left, ctx);
+  // Dup before JumpIfFalse/JumpIfTrue because the conditional jump consumes the
+  // value it tests. The duplicate is what remains on the stack as the result when
+  // the short-circuit branch is taken (the left-hand value is the overall result).
   ctx.ir.push({ kind: "Dup" });
   if (expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
     ctx.ir.push({ kind: "JumpIfFalse", labelId: endLabel });
@@ -1636,8 +1679,15 @@ function lowerNullishCoalescing(expr: ts.BinaryExpression, ctx: LowerContext): v
   const endLabel = allocLabel(ctx);
 
   lowerExpression(expr.left, ctx);
+  // Dup the left value before testing so the original stays on the stack if it
+  // is non-nil (TypeCheck consumes its operand).
   ctx.ir.push({ kind: "Dup" });
+  // TypeCheck(Nil) is nil-only -- not a general falsy check -- matching ?? semantics
+  // where false, 0, and "" are NOT replaced by the right operand.
   ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+  // keepLabel and endLabel occupy the same instruction position: keepLabel is the
+  // target when the jump is NOT taken (value was non-nil, keep it); endLabel is
+  // the target of the unconditional jump after assigning the right-hand value.
   ctx.ir.push({ kind: "JumpIfFalse", labelId: keepLabel });
   ctx.ir.push({ kind: "Pop" });
   lowerExpression(expr.right, ctx);
@@ -1765,6 +1815,10 @@ function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): bo
   }
 
   lowerExpression(typeofExpr.expression, ctx);
+  // The VM has no general typeof instruction. `typeof x === "T"` is recognized
+  // as a pattern at lowering time and compiled directly to a TypeCheck opcode.
+  // Unsupported type strings (e.g. "object", "function") produce a diagnostic
+  // above rather than falling through to the generic binary-op path.
   ctx.ir.push({ kind: "TypeCheck", nativeType });
 
   if (op === ts.SyntaxKind.ExclamationEqualsEqualsToken || op === ts.SyntaxKind.ExclamationEqualsToken) {
