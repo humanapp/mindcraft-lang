@@ -2582,7 +2582,8 @@ function lowerListFilter(
 
   ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
   ctx.ir.push({ kind: "Swap" });
-  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "CallIndirectArgs", argc: 2 });
 
   ctx.ir.push({ kind: "JumpIfFalse", labelId: skipLabel });
 
@@ -2684,7 +2685,8 @@ function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "ListGet" });
-  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "CallIndirectArgs", argc: 2 });
 
   ctx.ir.push({ kind: "LoadLocal", index: resultListLocal });
   ctx.ir.push({ kind: "Swap" });
@@ -2760,7 +2762,8 @@ function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "ListGet" });
-  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "CallIndirectArgs", argc: 2 });
   ctx.ir.push({ kind: "Pop" });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
@@ -2927,7 +2930,8 @@ function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "ListGet" });
-  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "CallIndirectArgs", argc: 2 });
   ctx.ir.push({ kind: "JumpIfTrue", labelId: foundLabel });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
@@ -3006,7 +3010,8 @@ function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "ListGet" });
-  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "CallIndirectArgs", argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: failLabel });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
@@ -3091,7 +3096,8 @@ function lowerListFind(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 
   ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
   ctx.ir.push({ kind: "LoadLocal", index: elemLocal });
-  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "CallIndirectArgs", argc: 2 });
   ctx.ir.push({ kind: "JumpIfTrue", labelId: foundLabel });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
@@ -3656,7 +3662,8 @@ function lowerListFindIndex(expr: ts.CallExpression, propAccess: ts.PropertyAcce
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "ListGet" });
-  ctx.ir.push({ kind: "CallIndirect", argc: 1 });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "CallIndirectArgs", argc: 2 });
   ctx.ir.push({ kind: "JumpIfTrue", labelId: foundLabel });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
@@ -3753,7 +3760,8 @@ function lowerListReduce(expr: ts.CallExpression, propAccess: ts.PropertyAccessE
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "ListGet" });
-  ctx.ir.push({ kind: "CallIndirect", argc: 2 });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "CallIndirectArgs", argc: 3 });
   ctx.ir.push({ kind: "StoreLocal", index: accLocal });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });

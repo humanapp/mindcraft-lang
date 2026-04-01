@@ -840,3 +840,92 @@ describe("Array.from", () => {
     assert.deepStrictEqual(v, [0, 1, 2]);
   });
 });
+
+describe("callback index parameter", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("filter with index parameter", () => {
+    const v = compileAndRunNumberList(`
+      const arr: NumberList = [10, 20, 30, 40];
+      return arr.filter((_val: number, idx: number) => idx >= 2);
+    `);
+    assert.deepStrictEqual(v, [30, 40]);
+  });
+
+  test("map with index parameter", () => {
+    const v = compileAndRunNumberList(`
+      const arr: NumberList = [10, 20, 30];
+      return arr.map((_val: number, idx: number) => idx);
+    `);
+    assert.deepStrictEqual(v, [0, 1, 2]);
+  });
+
+  test("forEach with index parameter", () => {
+    const v = compileAndRunNumberList(`
+      const arr: NumberList = [10, 20, 30];
+      const result: NumberList = [];
+      arr.forEach((_val: number, idx: number) => { result.push(idx); });
+      return result;
+    `);
+    assert.deepStrictEqual(v, [0, 1, 2]);
+  });
+
+  test("some with index parameter", () => {
+    const v = compileAndRunBoolean(`
+      const arr: number[] = [10, 20, 30];
+      return arr.some((_val: number, idx: number) => idx === 2);
+    `);
+    assert.equal(v, true);
+  });
+
+  test("every with index parameter", () => {
+    const v = compileAndRunBoolean(`
+      const arr: number[] = [10, 20, 30];
+      return arr.every((_val: number, idx: number) => idx < 3);
+    `);
+    assert.equal(v, true);
+  });
+
+  test("find with index parameter", () => {
+    const v = compileAndRunNumber(`
+      const arr: number[] = [10, 20, 30];
+      const found = arr.find((_val: number, idx: number) => idx === 1);
+      return found ?? 0;
+    `);
+    assert.equal(v, 20);
+  });
+
+  test("findIndex with index parameter", () => {
+    const v = compileAndRunNumber(`
+      const arr: number[] = [10, 20, 30];
+      return arr.findIndex((_val: number, idx: number) => idx === 2);
+    `);
+    assert.equal(v, 2);
+  });
+
+  test("reduce with index parameter", () => {
+    const v = compileAndRunNumber(`
+      const arr: number[] = [10, 20, 30];
+      return arr.reduce((acc: number, _val: number, idx: number) => acc + idx, 0);
+    `);
+    assert.equal(v, 3);
+  });
+
+  test("filter with value-only callback still works", () => {
+    const v = compileAndRunNumberList(`
+      const arr: NumberList = [1, 2, 3, 4, 5];
+      return arr.filter((val: number) => val > 3);
+    `);
+    assert.deepStrictEqual(v, [4, 5]);
+  });
+
+  test("map with value-only callback still works", () => {
+    const v = compileAndRunNumberList(`
+      const arr: NumberList = [1, 2, 3];
+      return arr.map((val: number) => val * 10);
+    `);
+    assert.deepStrictEqual(v, [10, 20, 30]);
+  });
+});
