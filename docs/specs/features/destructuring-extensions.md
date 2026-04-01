@@ -40,12 +40,16 @@ main plan's numbering.
   as `srcLocal`.
 - Capture analysis correctly excludes destructured param names from free-variable
   detection in closures.
+- **Array rest patterns:** `const [first, ...rest] = arr`. Implemented via inline
+  slice loop in `lowerArrayRestElement`. Rest element must be last. Supports
+  nested binding on the rest target.
 
 ### What is rejected
 
 | Pattern | Diagnostic code | Location |
 |---|---|---|
-| Rest patterns (`...rest`) | `RestPatternsNotSupported` (3021) | `lowerObjectBindingPattern`, `lowerArrayBindingPattern` |
+| Object rest patterns (`...rest`) | `RestPatternsNotSupported` (3021) | `lowerObjectBindingPattern` |
+| Array rest not in last position | `RestElementMustBeLast` (3025) | `lowerArrayBindingPattern` |
 | Computed property names | `ComputedDestructuringKeyNotSupported` (3023) | `lowerObjectBindingPattern` |
 | Destructuring in `onExecute` params | `DestructuringInOnExecuteNotSupported` (3024) | `lowerOnExecuteBody` |
 
@@ -620,3 +624,39 @@ destructuring diagnostic.
   patterns need parameter-position support.
 - `collectBindingNames` is available for any future code that needs to enumerate
   the leaf names in a binding pattern (e.g., D3b object rest field exclusion).
+
+### D3a: Array Rest -- 2026-04-01
+
+**Planned:** Support `...rest` in array destructuring via inline slice loop;
+validate rest-is-last; resolve list type for `ListNew`.
+
+**Actual:**
+
+- Added `lowerArrayRestElement(element, restIndex, srcLocal, ctx)` in lowering.ts.
+  Emits `ListNew`, loop from `restIndex` to `ListLen` with `<` and `+` operators,
+  `ListGet` + `ListPush` per iteration. Matches `lowerListSlice` pattern exactly.
+- Rest-is-last guard in `lowerArrayBindingPattern` with new diag code
+  `RestElementMustBeLast` (3025).
+- List type resolved via `tsTypeToTypeId()` on the rest binding's type, fallback
+  to source array type, then `"list:any"`.
+- Nested binding on rest target supported (delegates to core helpers).
+- 4 tests: `[first, ...rest]`, `[a, b, ...tail]`, `[...all]`, object rest still
+  rejected. Replaced 1 old rejection test. All 428 tests pass.
+
+**Deviations from plan:**
+
+- Originally used `RestPatternsNotSupported` for the rest-not-last guard.
+  Post-implementation, added dedicated `RestElementMustBeLast` (3025) to avoid
+  conflating with the object rest rejection code.
+- No dedicated "rest not in last position" test -- TypeScript enforces this at the
+  parser level so it cannot be reached via `compileUserTile`. The guard is
+  defense-in-depth.
+
+**Discoveries for future phases:**
+
+- `lowerArrayRestElement` can be called from parameter-position destructuring
+  (D2 helpers) with no changes -- it just needs `srcLocal` and `restIndex`.
+- The `resolveOperator` calls for `<` and `+` on Number never fail in practice
+  (core operators are always registered), but the error paths are present.
+- D3b (object rest) will need a different mechanism entirely (new opcode
+  `STRUCT_COPY_EXCEPT` per user decision).
