@@ -133,6 +133,8 @@ export enum LoweringDiagCode {
   ComputedDestructuringKeyNotSupported = 3023,
   /** Destructuring in onExecute parameter position is not supported */
   DestructuringInOnExecuteNotSupported = 3024,
+  /** Rest element must be the last element in an array destructuring pattern */
+  RestElementMustBeLast = 3025,
   /** for...of is only supported on list-typed values */
   ForOfOnNonListType = 3030,
   /** for...of requires a variable declaration as its initializer */

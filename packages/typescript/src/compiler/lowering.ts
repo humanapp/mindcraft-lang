@@ -811,9 +811,13 @@ function lowerArrayBindingPattern(pattern: ts.ArrayBindingPattern, srcLocal: num
     const element = pattern.elements[i];
     if (ts.isOmittedExpression(element)) continue;
     if (element.dotDotDotToken) {
-      ctx.diagnostics.push(
-        makeDiag(LoweringDiagCode.RestPatternsNotSupported, "Rest patterns in destructuring are not supported", element)
-      );
+      if (i !== pattern.elements.length - 1) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.RestElementMustBeLast, "Rest element must be last in array destructuring", element)
+        );
+        continue;
+      }
+      lowerArrayRestElement(element, i, srcLocal, ctx);
       continue;
     }
 
@@ -836,6 +840,85 @@ function lowerArrayBindingPattern(pattern: ts.ArrayBindingPattern, srcLocal: num
       } else {
         lowerArrayBindingPattern(element.name, tempLocal, ctx);
       }
+    }
+  }
+}
+
+function lowerArrayRestElement(
+  element: ts.BindingElement,
+  restIndex: number,
+  srcLocal: number,
+  ctx: LowerContext
+): void {
+  const restType = ctx.checker.getTypeAtLocation(element.name);
+  let listTypeId = tsTypeToTypeId(restType, ctx.checker);
+  if (!listTypeId) {
+    const srcType = ctx.checker.getTypeAtLocation(element.parent);
+    listTypeId = tsTypeToTypeId(srcType, ctx.checker) ?? "list:any";
+  }
+
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve < operator for rest pattern", element)
+    );
+    return;
+  }
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve + operator for rest pattern", element)
+    );
+    return;
+  }
+
+  const resultLocal = ctx.scopeStack.allocLocal();
+  const idxLocal = ctx.scopeStack.allocLocal();
+  const endLocal = ctx.scopeStack.allocLocal();
+  const loopStart = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  ctx.ir.push({ kind: "ListNew", typeId: listTypeId });
+  ctx.ir.push({ kind: "StoreLocal", index: resultLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(restIndex) });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  ctx.ir.push({ kind: "StoreLocal", index: endLocal });
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: endLocal });
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "ListGet" });
+  ctx.ir.push({ kind: "ListPush" });
+  ctx.ir.push({ kind: "StoreLocal", index: resultLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+
+  if (ts.isIdentifier(element.name)) {
+    const localIdx = ctx.scopeStack.declareLocal(element.name.text);
+    ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
+    ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+  } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+    if (ts.isObjectBindingPattern(element.name)) {
+      lowerObjectBindingPattern(element.name, resultLocal, ctx);
+    } else {
+      lowerArrayBindingPattern(element.name, resultLocal, ctx);
     }
   }
 }

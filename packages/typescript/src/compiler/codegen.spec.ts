@@ -7306,7 +7306,7 @@ export default Sensor({
     }
   });
 
-  test("rest pattern in destructuring produces validation error", () => {
+  test("array rest pattern: const [first, ...rest] = arr", () => {
     const ambientSource = buildAmbientDeclarations();
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -7315,14 +7315,113 @@ export default Sensor({
   name: "rest-destructure",
   output: "number",
   onExecute(ctx: Context): number {
-    const arr: number[] = [1, 2, 3];
+    const arr: number[] = [1, 2, 3, 4];
     const [first, ...rest] = arr;
-    return first;
+    return first + rest[0] + rest[1] + rest[2];
   },
 });
 `;
     const result = compileUserTile(source, { ambientSource });
-    assert.ok(result.diagnostics.length > 0, "expected diagnostics for rest pattern");
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.ok(runResult2.result);
+      assert.equal((runResult2.result as NumberValue).v, 10);
+    }
+  });
+
+  test("array rest pattern: const [a, b, ...tail] = arr", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "rest-tail",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [10, 20, 30, 40, 50];
+    const [a, b, ...tail] = arr;
+    return a + b + tail.length;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.ok(runResult2.result);
+      assert.equal((runResult2.result as NumberValue).v, 33);
+    }
+  });
+
+  test("array rest pattern: const [...all] = arr copies the array", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "rest-all",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [5, 10, 15];
+    const [...all] = arr;
+    return all[0] + all[1] + all[2];
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.ok(runResult2.result);
+      assert.equal((runResult2.result as NumberValue).v, 30);
+    }
+  });
+
+  test("object rest pattern produces diagnostic (not yet implemented)", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "obj-rest",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const obj: Vector2 = { x: 1, y: 2 };
+    const { x, ...rest } = obj;
+    return x;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0, "expected diagnostics for object rest pattern");
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.RestPatternsNotSupported),
       `expected rest pattern error, got: ${JSON.stringify(result.diagnostics)}`
