@@ -49,6 +49,17 @@ export const MathOps = {
     return count;
   },
   abs: (n: number) => math.abs(n),
+  acos: (n: number) => math.acos(n),
+  asin: (n: number) => math.asin(n),
+  atan: (n: number) => math.atan(n),
+  atan2: (y: number, x: number) => math.atan2(y, x),
+  cos: (n: number) => math.cos(n),
+  exp: (n: number) => math.exp(n),
+  log: (n: number) => math.log(n),
+  pow: (base: number, exp: number) => math.pow(base, exp),
+  sin: (n: number) => math.sin(n),
+  sqrt: (n: number) => math.sqrt(n),
+  tan: (n: number) => math.tan(n),
   parseFloat: (value: string) => {
     const num = tonumber(value);
     return num !== undefined ? num : 0 / 0; // NaN

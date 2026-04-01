@@ -1091,6 +1091,9 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
   }
 
   if (ts.isPropertyAccessExpression(expr.expression)) {
+    if (lowerMathCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerStructMethodCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -3348,6 +3351,110 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
 }
 
+const MATH_CONSTANTS = new Map<string, number>([
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: compile-time constant
+  ["E", 2.718281828459045],
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: compile-time constant
+  ["LN10", 2.302585092994046],
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: compile-time constant
+  ["LN2", 0.6931471805599453],
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: compile-time constant
+  ["LOG2E", 1.4426950408889634],
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: compile-time constant
+  ["LOG10E", 0.4342944819032518],
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: compile-time constant
+  ["PI", 3.141592653589793],
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: compile-time constant
+  ["SQRT1_2", 0.7071067811865476],
+  // biome-ignore lint/suspicious/noApproximativeNumericConstant: compile-time constant
+  ["SQRT2", 1.4142135623730951],
+]);
+
+const MATH_UNARY_METHODS = new Map<string, string>([
+  ["abs", "$$math_abs"],
+  ["acos", "$$math_acos"],
+  ["asin", "$$math_asin"],
+  ["atan", "$$math_atan"],
+  ["ceil", "$$math_ceil"],
+  ["cos", "$$math_cos"],
+  ["exp", "$$math_exp"],
+  ["floor", "$$math_floor"],
+  ["log", "$$math_log"],
+  ["round", "$$math_round"],
+  ["sin", "$$math_sin"],
+  ["sqrt", "$$math_sqrt"],
+  ["tan", "$$math_tan"],
+]);
+
+const MATH_BINARY_METHODS = new Map<string, string>([
+  ["atan2", "$$math_atan2"],
+  ["max", "$$math_max"],
+  ["min", "$$math_min"],
+  ["pow", "$$math_pow"],
+]);
+
+function isMathGlobal(expr: ts.Expression, ctx: LowerContext): boolean {
+  if (!ts.isIdentifier(expr) || expr.text !== "Math") return false;
+  const sym = ctx.checker.getSymbolAtLocation(expr);
+  if (!sym) return false;
+  const decls = sym.getDeclarations();
+  if (!decls || decls.length === 0) return false;
+  for (const d of decls) {
+    if (ts.isVariableDeclaration(d) || ts.isInterfaceDeclaration(d)) {
+      const sf = d.getSourceFile();
+      if (sf.isDeclarationFile || sf.fileName.includes("lib.")) return true;
+    }
+  }
+  return false;
+}
+
+function lowerMathCall(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): boolean {
+  if (!isMathGlobal(propAccess.expression, ctx)) return false;
+
+  const methodName = propAccess.name.text;
+
+  if (methodName === "random") {
+    if (expr.arguments.length !== 0) {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.MathMethodWrongArgCount, "Math.random() takes no arguments", expr)
+      );
+      return true;
+    }
+    ctx.ir.push({ kind: "HostCallArgs", fnName: "$$math_random", argc: 0 });
+    return true;
+  }
+
+  const unaryFn = MATH_UNARY_METHODS.get(methodName);
+  if (unaryFn) {
+    if (expr.arguments.length !== 1) {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.MathMethodWrongArgCount, `Math.${methodName}() requires exactly 1 argument`, expr)
+      );
+      return true;
+    }
+    lowerExpression(expr.arguments[0], ctx);
+    ctx.ir.push({ kind: "HostCallArgs", fnName: unaryFn, argc: 1 });
+    return true;
+  }
+
+  const binaryFn = MATH_BINARY_METHODS.get(methodName);
+  if (binaryFn) {
+    if (expr.arguments.length !== 2) {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.MathMinMaxRequiresTwoArgs, `Math.${methodName}() requires exactly 2 arguments`, expr)
+      );
+      return true;
+    }
+    lowerExpression(expr.arguments[0], ctx);
+    lowerExpression(expr.arguments[1], ctx);
+    ctx.ir.push({ kind: "HostCallArgs", fnName: binaryFn, argc: 2 });
+    return true;
+  }
+
+  ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedMathMethod, `Math.${methodName}() is not supported`, expr));
+  return true;
+}
+
 function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContext): void {
   if (ts.isIdentifier(expr.expression) && ctx.paramsSymbol) {
     const objSymbol = ctx.checker.getSymbolAtLocation(expr.expression);
@@ -3359,6 +3466,18 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
         return;
       }
     }
+  }
+
+  if (isMathGlobal(expr.expression, ctx)) {
+    const constVal = MATH_CONSTANTS.get(expr.name.text);
+    if (constVal !== undefined) {
+      ctx.ir.push({ kind: "PushConst", value: mkNumberValue(constVal) });
+      return;
+    }
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedPropertyAccess, `Math.${expr.name.text} is not a known constant`, expr)
+    );
+    return;
   }
 
   if (expr.name.text === "length") {

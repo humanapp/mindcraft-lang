@@ -11,6 +11,17 @@ export declare const MathOps: {
   max: (a: number, b: number) => number;
   clz32: (n: number) => number;
   abs: (n: number) => number;
+  acos: (n: number) => number;
+  asin: (n: number) => number;
+  atan: (n: number) => number;
+  atan2: (y: number, x: number) => number;
+  cos: (n: number) => number;
+  exp: (n: number) => number;
+  log: (n: number) => number;
+  pow: (base: number, exp: number) => number;
+  sin: (n: number) => number;
+  sqrt: (n: number) => number;
+  tan: (n: number) => number;
   parseFloat: (value: string) => number;
   isNaN: (value: number) => boolean;
 };

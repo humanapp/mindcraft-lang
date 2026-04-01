@@ -20,11 +20,17 @@ declare function parseFloat(string: string): number;
 declare function isNaN(number: number): boolean;
 declare function isFinite(number: number): boolean;
 
+/** @deprecated Not supported in Mindcraft Runtime */
 interface Object {}
+/** @deprecated Not supported in Mindcraft Runtime */
 interface Function {}
+/** @deprecated Not supported in Mindcraft Runtime */
 interface CallableFunction extends Function {}
+/** @deprecated Not supported in Mindcraft Runtime */
 interface NewableFunction extends Function {}
+/** @deprecated Not supported in Mindcraft Runtime */
 interface IArguments {}
+/** @deprecated Not supported in Mindcraft Runtime */
 interface RegExp {}
 
 declare type PromiseConstructorLike = new <T>(
