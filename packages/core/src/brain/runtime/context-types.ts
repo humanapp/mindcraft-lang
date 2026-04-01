@@ -84,6 +84,8 @@ export function registerContextTypes() {
 
   const emptyCallDef = mkCallDef({ type: "bag", items: [] });
 
+  // Struct method calling convention: the emitter pushes the struct value itself as
+  // arg index 0 (the receiver). User-visible arguments start at index 1.
   functions.register(
     "SelfContext.getVariable",
     false,

@@ -428,6 +428,8 @@ export class TypeRegistry implements ITypeRegistry {
         hasNil = true;
       }
     });
+    // A two-member union where one member is Nil is canonicalized as a nullable
+    // type (T?) rather than a full Union.
     if (sorted.size() === 2 && hasNil) {
       const first = sorted.get(0)!;
       const second = sorted.get(1)!;
@@ -505,6 +507,8 @@ export class TypeRegistry implements ITypeRegistry {
 
     if (sourceStruct.nominal || targetStruct.nominal) return false;
 
+    // Target-subset rule: every field the target declares must exist in the source
+    // with a compatible type. The source may have additional fields; that is allowed.
     let compatible = true;
     targetStruct.fields.forEach((targetField) => {
       if (!compatible) return;

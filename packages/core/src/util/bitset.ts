@@ -81,6 +81,8 @@ export class BitSet implements ReadonlyBitSet {
 
     // Check if it's a number using type guard
     const numVal = val as number;
+    // NaN is the only value not equal to itself; this serves as a cross-platform
+    // NaN guard. (numVal | 0) === numVal then checks that the value is a 32-bit integer.
     if (numVal === numVal && (numVal | 0) === numVal) {
       P.data = List.from([numVal | 0]);
       P._ = 0;
@@ -354,6 +356,9 @@ export class BitSet implements ReadonlyBitSet {
     for (let j = 0; j < len; j++) {
       let v = this.data.get(j);
       if (v !== 0) {
+        // (v ^ (v-1)) sets all bits from bit 0 up through the lowest set bit.
+        // >>> 1 shifts that mask right by one, so popCount gives the count of
+        // trailing zeros.
         v = (v ^ (v - 1)) >>> 1;
         return j * BitSet.WORD_LENGTH + BitSet.popCount(v);
       }
