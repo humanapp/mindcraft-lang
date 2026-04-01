@@ -6,7 +6,7 @@ import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { emitFunction } from "./emit.js";
-import type { ImportedFunction } from "./lowering.js";
+import type { ImportedFunction, ImportedVariable } from "./lowering.js";
 import { lowerProgram } from "./lowering.js";
 import type { CompileDiagnostic, CompileOptions, ExtractedDescriptor, UserAuthoredProgram } from "./types.js";
 import { validateAst } from "./validator.js";
@@ -201,12 +201,19 @@ export class UserTileProject {
       return { diagnostics: validationDiags };
     }
 
-    const imported = collectImportedFunctions(sourceFile, checker, tsProgram, compilerFiles);
+    const imported = collectImports(sourceFile, checker, tsProgram, compilerFiles);
     if (imported.diagnostics.length > 0) {
       return { diagnostics: imported.diagnostics };
     }
 
-    const programResult = lowerProgram(sourceFile, descriptor, checker, imported.functions);
+    const programResult = lowerProgram(
+      sourceFile,
+      descriptor,
+      checker,
+      imported.functions,
+      imported.variables,
+      imported.moduleInitOrder
+    );
     if (programResult.diagnostics.length > 0) {
       return { diagnostics: programResult.diagnostics };
     }
@@ -269,31 +276,27 @@ export class UserTileProject {
 
 interface CollectResult {
   functions: ImportedFunction[];
+  variables: ImportedVariable[];
+  moduleInitOrder: string[];
   diagnostics: CompileDiagnostic[];
 }
 
-function collectImportedFunctions(
+function collectImports(
   entryFile: ts.SourceFile,
   checker: ts.TypeChecker,
   tsProgram: ts.Program,
   compilerFiles: Map<string, string>
 ): CollectResult {
   const functions: ImportedFunction[] = [];
+  const variables: ImportedVariable[] = [];
   const diagnostics: CompileDiagnostic[] = [];
   const visitedFiles = new Set<string>();
+  const moduleInitOrder: string[] = [];
   visitedFiles.add(entryFile.fileName);
 
   function visitFile(sourceFile: ts.SourceFile): void {
     if (visitedFiles.has(sourceFile.fileName)) return;
     visitedFiles.add(sourceFile.fileName);
-
-    if (hasTopLevelVariables(sourceFile)) {
-      diagnostics.push({
-        code: CompileDiagCode.HelperModuleHasVariables,
-        message: `Helper module "${toVfsPath(sourceFile.fileName)}" contains top-level variables, which are not yet supported in imported modules`,
-      });
-      return;
-    }
 
     for (const stmt of sourceFile.statements) {
       if (ts.isImportDeclaration(stmt)) {
@@ -303,6 +306,25 @@ function collectImportedFunctions(
         }
       }
     }
+
+    for (const stmt of sourceFile.statements) {
+      if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+        functions.push({ localName: stmt.name.text, node: stmt });
+      }
+      if (ts.isVariableStatement(stmt)) {
+        for (const decl of stmt.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name)) {
+            variables.push({
+              name: decl.name.text,
+              initializer: decl.initializer,
+              sourceModule: sourceFile.fileName,
+            });
+          }
+        }
+      }
+    }
+
+    moduleInitOrder.push(sourceFile.fileName);
   }
 
   for (const stmt of entryFile.statements) {
@@ -313,12 +335,6 @@ function collectImportedFunctions(
     const importedFile = resolveImportedSourceFile(stmt, entryFile, tsProgram, compilerFiles);
     if (importedFile) {
       visitFile(importedFile);
-
-      for (const iStmt of importedFile.statements) {
-        if (ts.isFunctionDeclaration(iStmt) && iStmt.name) {
-          functions.push({ localName: iStmt.name.text, node: iStmt });
-        }
-      }
     }
 
     if (importClause.namedBindings && ts.isNamedImports(importClause.namedBindings)) {
@@ -345,7 +361,7 @@ function collectImportedFunctions(
     }
   }
 
-  return { functions, diagnostics };
+  return { functions, variables, moduleInitOrder, diagnostics };
 }
 
 function resolveImportedSourceFile(
@@ -385,15 +401,6 @@ function resolvePath(base: string, relative: string): string {
     }
   }
   return `/${segments.join("/")}`;
-}
-
-function hasTopLevelVariables(sourceFile: ts.SourceFile): boolean {
-  for (const stmt of sourceFile.statements) {
-    if (ts.isVariableStatement(stmt)) {
-      return true;
-    }
-  }
-  return false;
 }
 
 function hasDefaultExport(sourceFile: ts.SourceFile): boolean {

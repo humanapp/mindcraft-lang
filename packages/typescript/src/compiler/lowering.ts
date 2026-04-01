@@ -37,6 +37,12 @@ export interface ImportedFunction {
   node: ts.FunctionDeclaration;
 }
 
+export interface ImportedVariable {
+  name: string;
+  initializer: ts.Expression | undefined;
+  sourceModule: string;
+}
+
 export interface ProgramLoweringResult {
   functions: FunctionEntry[];
   entryFuncId: number;
@@ -129,7 +135,9 @@ export function lowerProgram(
   sourceFile: ts.SourceFile,
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
-  importedFunctions?: ImportedFunction[]
+  importedFunctions?: ImportedFunction[],
+  importedVariables?: ImportedVariable[],
+  moduleInitOrder?: string[]
 ): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
@@ -155,6 +163,14 @@ export function lowerProgram(
     }
   }
 
+  if (importedVariables) {
+    for (const iv of importedVariables) {
+      if (!callsiteVars.has(iv.name)) {
+        callsiteVars.set(iv.name, nextCallsiteVar++);
+      }
+    }
+  }
+
   if (importedFunctions) {
     for (const imp of importedFunctions) {
       const declaredName = imp.node.name?.text;
@@ -175,8 +191,9 @@ export function lowerProgram(
   }
 
   const hasInitializers = hasTopLevelInitializers(sourceFile);
+  const hasImportedInitializers = importedVariables?.some((iv) => iv.initializer) ?? false;
   let initFuncId: number | undefined;
-  if (hasInitializers) {
+  if (hasInitializers || hasImportedInitializers) {
     initFuncId = funcIdCounter.value++;
   }
 
@@ -221,15 +238,17 @@ export function lowerProgram(
     functions.push(entry);
   }
 
-  if (hasInitializers && initFuncId !== undefined) {
-    const initEntry = generateModuleInit(
+  if (initFuncId !== undefined) {
+    const initEntry = generateModuleInitWithImports(
       sourceFile,
       checker,
       callsiteVars,
       functionTable,
       diagnostics,
       funcIdCounter,
-      closureFunctions
+      closureFunctions,
+      importedVariables ?? [],
+      moduleInitOrder ?? []
     );
     functions.push(initEntry);
   }
@@ -501,14 +520,16 @@ function lowerHelperFunction(
   };
 }
 
-function generateModuleInit(
+function generateModuleInitWithImports(
   sourceFile: ts.SourceFile,
   checker: ts.TypeChecker,
   callsiteVars: Map<string, number>,
   functionTable: Map<string, number>,
   sharedDiagnostics: CompileDiagnostic[],
   funcIdCounter: { value: number },
-  closureFunctions: Map<number, FunctionEntry>
+  closureFunctions: Map<number, FunctionEntry>,
+  importedVariables: ImportedVariable[],
+  moduleInitOrder: string[]
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const scopeStack = new ScopeStack(0);
@@ -527,6 +548,18 @@ function generateModuleInit(
     funcIdCounter,
     closureFunctions,
   };
+
+  for (const moduleName of moduleInitOrder) {
+    for (const iv of importedVariables) {
+      if (iv.sourceModule === moduleName && iv.initializer) {
+        const varIdx = callsiteVars.get(iv.name);
+        if (varIdx !== undefined) {
+          lowerExpression(iv.initializer, ctx);
+          ir.push({ kind: "StoreCallsiteVar", index: varIdx });
+        }
+      }
+    }
+  }
 
   for (const stmt of sourceFile.statements) {
     if (ts.isVariableStatement(stmt) && ts.isSourceFile(stmt.parent)) {
