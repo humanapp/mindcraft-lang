@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
-import { compileUserTile, initCompiler } from "./compile.js";
+import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, DescriptorDiagCode, ValidatorDiagCode } from "./diag-codes.js";
 
 const VALID_SENSOR_SOURCE = `
@@ -20,9 +20,8 @@ export default Sensor({
 `;
 
 describe("compileUserTile", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
   test("valid sensor source produces zero diagnostics", () => {
     const result = compileUserTile(VALID_SENSOR_SOURCE);
@@ -81,9 +80,8 @@ function doStuff(ctx: Context): void {
 });
 
 describe("AST validation", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("class declaration produces diagnostic", () => {
@@ -208,10 +206,6 @@ export default Sensor({
 });
 
 describe("descriptor extraction", () => {
-  before(async () => {
-    await initCompiler();
-  });
-
   test("valid sensor extracts correct descriptor", () => {
     const result = compileUserTile(VALID_SENSOR_SOURCE);
     assert.deepStrictEqual(result.diagnostics, []);

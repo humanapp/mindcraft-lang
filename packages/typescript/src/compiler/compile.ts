@@ -19,7 +19,7 @@ export interface CompileResult {
   descriptor?: ExtractedDescriptor;
 }
 
-const LIB_DIR = "/lib/";
+const LIB_FILE = "/lib/lib.mindcraft.d.ts";
 
 const checkerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ES5,
@@ -29,11 +29,12 @@ const checkerOptions: ts.CompilerOptions = {
   skipLibCheck: false,
 };
 
-let cachedLibFiles: Record<string, string> | undefined;
-
 const TESTED_TS_VERSION = "5.9";
 
+let versionChecked = false;
+
 function checkTypeScriptVersion(): void {
+  if (versionChecked) return;
   const actual = ts.version;
   const [eMajor, eMinor] = TESTED_TS_VERSION.split(".");
   const [aMajor, aMinor] = actual.split(".");
@@ -42,31 +43,20 @@ function checkTypeScriptVersion(): void {
       `TypeScript version mismatch: package was built and tested against ${eMajor}.${eMinor}.x but found ${actual}`
     );
   }
-}
-
-export async function initCompiler(): Promise<void> {
-  checkTypeScriptVersion();
-  if (cachedLibFiles) return;
-  const mod = await import("./lib-dts.generated.js");
-  cachedLibFiles = mod.LIB_FILES;
+  versionChecked = true;
 }
 
 export function compileUserTile(source: string, options?: CompileOptions): CompileResult {
-  if (!cachedLibFiles) {
-    throw new Error("Compiler not initialized. Call initCompiler() first.");
-  }
+  checkTypeScriptVersion();
+
+  const ambientSource = options?.ambientSource ?? buildAmbientDeclarations();
 
   const files = new Map<string, string>();
-
-  for (const [name, content] of Object.entries(cachedLibFiles)) {
-    files.set(`${LIB_DIR}${name}`, content);
-  }
-
-  files.set("/mindcraft.d.ts", options?.ambientSource ?? buildAmbientDeclarations());
+  files.set(LIB_FILE, ambientSource);
   files.set("/user-code.ts", source);
 
   const host = createVirtualCompilerHost(files, checkerOptions);
-  const tsProgram = ts.createProgram(["/mindcraft.d.ts", "/user-code.ts"], checkerOptions, host);
+  const tsProgram = ts.createProgram(["/user-code.ts"], checkerOptions, host);
   const tsDiagnostics = ts.getPreEmitDiagnostics(tsProgram);
 
   const diagnostics: CompileDiagnostic[] = tsDiagnostics

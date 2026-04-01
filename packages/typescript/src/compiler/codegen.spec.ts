@@ -34,7 +34,7 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
-import { compileUserTile, initCompiler } from "./compile.js";
+import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -67,9 +67,8 @@ function mkArgsMap(entries: Record<number, Value>): MapValue {
 }
 
 describe("lowering + emission", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("sync sensor with comparison compiles and executes correctly (true case)", () => {
@@ -433,9 +432,8 @@ describe("buildCallDef", () => {
 });
 
 describe("control flow + local variables", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("if/else returns correct value for true branch", () => {
@@ -876,9 +874,8 @@ export default Sensor({
 });
 
 describe("helper functions + callsite-persistent state", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("helper function called from onExecute returns correct value", () => {
@@ -1445,9 +1442,8 @@ export default Sensor({
 });
 
 describe("onPageEntered + lifecycle wrapper", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("onPageEntered resets a callsite var; next exec call sees the reset value", () => {
@@ -1721,9 +1717,8 @@ export default Sensor({
 });
 
 describe("null literal support", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("null assigned to a variable compiles to NIL_VALUE", () => {
@@ -2413,7 +2408,6 @@ export default Sensor({
 describe("struct literal compilation", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -2599,7 +2593,6 @@ export default Sensor({
 describe("array/list literal compilation", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -2794,7 +2787,6 @@ export default Sensor({
 describe("mixed-type list compilation (AnyList)", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const anyTypeId = mkTypeId(NativeType.Any, "any");
@@ -2936,9 +2928,8 @@ export default Sensor({
 });
 
 describe("nullable types", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("tsTypeToTypeId returns nullable TypeId for number | null parameter", () => {
@@ -2994,7 +2985,6 @@ export default Sensor({
 describe("auto-instantiated list types", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -3057,9 +3047,8 @@ export default Sensor({
 });
 
 describe("union types", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("tsTypeToTypeId returns a union TypeId for number | string (not Any)", () => {
@@ -3151,9 +3140,8 @@ export default Sensor({
 });
 
 describe("typeof lowering", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("typeof x === 'number' compiles and returns true for number", () => {
@@ -3356,9 +3344,8 @@ export default Sensor({
 // ---- Function references ----
 
 describe("function references and CALL_INDIRECT", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("passing a named function as argument and calling via indirect call", () => {
@@ -3452,9 +3439,8 @@ export default Sensor({
 // ---- Closures ----
 
 describe("closures", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("simple closure: makeAdder pattern", () => {
@@ -3667,7 +3653,6 @@ export default Sensor({
 describe("list element access and methods", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -4677,9 +4662,8 @@ export default Sensor({
 // ---- Function type signatures ----
 
 describe("function type signatures", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("callback parameter gets typed FunctionTypeDef TypeId", () => {
@@ -4782,7 +4766,6 @@ export default Sensor({
 describe("map literal compilation", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -5017,7 +5000,6 @@ export default Sensor({
 describe("enum value literals", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
     const types = getBrainServices().types;
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
@@ -5296,7 +5278,6 @@ export default Sensor({
 describe("property access chains + host calls", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const fns = getBrainServices().functions;
@@ -5763,7 +5744,6 @@ export default Sensor({
 describe("struct method calls", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const fns = getBrainServices().functions;
@@ -6764,7 +6744,6 @@ export default Sensor({
 describe("await expression", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const fns = getBrainServices().functions;
@@ -7005,7 +6984,6 @@ export default Sensor({
 describe("destructuring", () => {
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const numTypeId = mkTypeId(NativeType.Number, "number");

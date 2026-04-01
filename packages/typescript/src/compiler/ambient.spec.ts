@@ -3,12 +3,11 @@ import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import { getBrainServices, mkTypeId, NativeType, registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
 import { buildAmbientDeclarations } from "./ambient.js";
-import { compileUserTile, initCompiler } from "./compile.js";
+import { compileUserTile } from "./compile.js";
 
 describe("buildAmbientDeclarations", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("generates plain interface for user-creatable struct", () => {

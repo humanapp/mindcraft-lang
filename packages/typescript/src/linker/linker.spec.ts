@@ -22,7 +22,7 @@ import {
   ValueDict,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
-import { compileUserTile, initCompiler } from "../compiler/compile.js";
+import { compileUserTile } from "../compiler/compile.js";
 import { linkUserPrograms } from "./linker.js";
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -103,9 +103,8 @@ function mkBrainProgramWithStubFunction(): BrainProgram {
 }
 
 describe("linker", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("constant pool indices are correct after merging", () => {

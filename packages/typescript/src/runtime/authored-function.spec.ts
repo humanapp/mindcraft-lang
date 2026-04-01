@@ -30,7 +30,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { buildAmbientDeclarations } from "../compiler/ambient.js";
-import { compileUserTile, initCompiler } from "../compiler/compile.js";
+import { compileUserTile } from "../compiler/compile.js";
 import type { UserTileLinkInfo } from "../compiler/types.js";
 import { linkUserPrograms } from "../linker/linker.js";
 import { createUserTileExec } from "./authored-function.js";
@@ -101,9 +101,8 @@ function emptyArgs(): MapValue {
 }
 
 describe("authored-function", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("sync sensor resolves handle within same tick", () => {
@@ -278,9 +277,8 @@ export default Sensor({
 });
 
 describe("registration-bridge", () => {
-  before(async () => {
+  before(() => {
     registerCoreBrainComponents();
-    await initCompiler();
   });
 
   test("creates correct BrainTileSensorDef with expected tileId", () => {
@@ -364,7 +362,6 @@ describe("async exec", () => {
 
   before(async () => {
     registerCoreBrainComponents();
-    await initCompiler();
 
     const types = getBrainServices().types;
     const fns = getBrainServices().functions;

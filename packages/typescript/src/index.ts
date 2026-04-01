@@ -6,7 +6,7 @@ export type {
   ExtractedDescriptor,
   ExtractedParam,
 } from "./compiler/compile.js";
-export { compileUserTile, initCompiler } from "./compiler/compile.js";
+export { compileUserTile } from "./compiler/compile.js";
 export type { TsDiagCode } from "./compiler/diag-codes.js";
 export {
   CompileDiagCode,
