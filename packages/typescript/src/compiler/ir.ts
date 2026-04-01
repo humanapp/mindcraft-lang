@@ -20,6 +20,7 @@ export type IrNode =
   | IrHostCallArgsAsync
   | IrAwait
   | IrGetField
+  | IrGetFieldDynamic
   | IrMapGet
   | IrMapNew
   | IrMapSet
@@ -228,4 +229,8 @@ export interface IrLoadCapture {
 export interface IrGetField {
   kind: "GetField";
   fieldName: string;
+}
+
+export interface IrGetFieldDynamic {
+  kind: "GetFieldDynamic";
 }

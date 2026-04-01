@@ -160,6 +160,9 @@ export function emitFunction(
         emitter.getField();
         break;
       }
+      case "GetFieldDynamic":
+        emitter.getField();
+        break;
       case "TypeCheck":
         emitter.typeCheck(node.nativeType);
         break;

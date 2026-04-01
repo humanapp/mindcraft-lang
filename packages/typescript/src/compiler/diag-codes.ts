@@ -129,8 +129,6 @@ export enum LoweringDiagCode {
   DestructuringMissingInitializer = 3020,
   /** Rest (...) patterns in destructuring are not supported */
   RestPatternsNotSupported = 3021,
-  /** Computed keys in destructuring are not supported */
-  ComputedDestructuringKeyNotSupported = 3023,
   /** Destructuring in onExecute parameter position is not supported */
   DestructuringInOnExecuteNotSupported = 3024,
   /** Rest element must be the last element in an array destructuring pattern */

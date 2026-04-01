@@ -734,6 +734,8 @@ function lowerObjectDestructuring(
 }
 
 function lowerObjectBindingPattern(pattern: ts.ObjectBindingPattern, srcLocal: number, ctx: LowerContext): void {
+  const hasRest = pattern.elements.some((e) => e.dotDotDotToken);
+  const computedKeyLocals = new Map<ts.BindingElement, number>();
   for (const element of pattern.elements) {
     if (element.dotDotDotToken) {
       if (element !== pattern.elements[pattern.elements.length - 1]) {
@@ -742,7 +744,49 @@ function lowerObjectBindingPattern(pattern: ts.ObjectBindingPattern, srcLocal: n
         );
         continue;
       }
-      lowerObjectRestElement(element, pattern, srcLocal, ctx);
+      lowerObjectRestElement(element, pattern, srcLocal, computedKeyLocals, ctx);
+      continue;
+    }
+
+    const isComputed = element.propertyName && ts.isComputedPropertyName(element.propertyName);
+
+    if (isComputed) {
+      let keyLocal: number | undefined;
+      if (hasRest) {
+        keyLocal = ctx.scopeStack.allocLocal();
+        lowerExpression(element.propertyName!.expression, ctx);
+        ctx.ir.push({ kind: "StoreLocal", index: keyLocal });
+        computedKeyLocals.set(element, keyLocal);
+      }
+
+      if (ts.isIdentifier(element.name)) {
+        const localIdx = ctx.scopeStack.declareLocal(element.name.text);
+        ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+        if (keyLocal !== undefined) {
+          ctx.ir.push({ kind: "LoadLocal", index: keyLocal });
+        } else {
+          lowerExpression(element.propertyName!.expression, ctx);
+        }
+        ctx.ir.push({ kind: "GetFieldDynamic" });
+        ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+        lowerDestructuringDefault(element, localIdx, ctx);
+      } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+        const tempLocal = ctx.scopeStack.allocLocal();
+        ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+        if (keyLocal !== undefined) {
+          ctx.ir.push({ kind: "LoadLocal", index: keyLocal });
+        } else {
+          lowerExpression(element.propertyName!.expression, ctx);
+        }
+        ctx.ir.push({ kind: "GetFieldDynamic" });
+        ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+        lowerDestructuringDefault(element, tempLocal, ctx);
+        if (ts.isObjectBindingPattern(element.name)) {
+          lowerObjectBindingPattern(element.name, tempLocal, ctx);
+        } else {
+          lowerArrayBindingPattern(element.name, tempLocal, ctx);
+        }
+      }
       continue;
     }
 
@@ -750,11 +794,7 @@ function lowerObjectBindingPattern(pattern: ts.ObjectBindingPattern, srcLocal: n
     if (element.propertyName) {
       if (!ts.isIdentifier(element.propertyName)) {
         ctx.diagnostics.push(
-          makeDiag(
-            LoweringDiagCode.ComputedDestructuringKeyNotSupported,
-            "Computed property names in destructuring are not supported",
-            element
-          )
+          makeDiag(LoweringDiagCode.UnsupportedBindingPattern, "Unsupported binding pattern", element)
         );
         continue;
       }
@@ -793,26 +833,30 @@ function lowerObjectRestElement(
   element: ts.BindingElement,
   pattern: ts.ObjectBindingPattern,
   srcLocal: number,
+  computedKeyLocals: Map<ts.BindingElement, number>,
   ctx: LowerContext
 ): void {
-  const excludedKeys: string[] = [];
-  for (const other of pattern.elements) {
-    if (other === element) continue;
-    if (other.propertyName && ts.isIdentifier(other.propertyName)) {
-      excludedKeys.push(other.propertyName.text);
-    } else if (ts.isIdentifier(other.name)) {
-      excludedKeys.push(other.name.text);
-    }
-  }
-
   const restType = ctx.checker.getTypeAtLocation(element.name);
   const typeId = tsTypeToTypeId(restType, ctx.checker) ?? "struct:<anonymous>";
 
   ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
-  for (const key of excludedKeys) {
-    ctx.ir.push({ kind: "PushConst", value: mkStringValue(key) });
+
+  let numExclude = 0;
+  for (const other of pattern.elements) {
+    if (other === element) continue;
+    const computedKeyLocal = computedKeyLocals.get(other);
+    if (computedKeyLocal !== undefined) {
+      ctx.ir.push({ kind: "LoadLocal", index: computedKeyLocal });
+      numExclude++;
+    } else if (other.propertyName && ts.isIdentifier(other.propertyName)) {
+      ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.propertyName.text) });
+      numExclude++;
+    } else if (ts.isIdentifier(other.name)) {
+      ctx.ir.push({ kind: "PushConst", value: mkStringValue(other.name.text) });
+      numExclude++;
+    }
   }
-  ctx.ir.push({ kind: "StructCopyExcept", numExclude: excludedKeys.length, typeId });
+  ctx.ir.push({ kind: "StructCopyExcept", numExclude, typeId });
 
   if (ts.isIdentifier(element.name)) {
     const localIdx = ctx.scopeStack.declareLocal(element.name.text);

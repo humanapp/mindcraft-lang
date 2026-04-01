@@ -7703,6 +7703,106 @@ export default Sensor({
     }
   });
 
+  test("computed property name in destructuring: const { ['x']: val } = obj", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "computed-key-literal",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const obj: Vector2 = { x: 42, y: 99 };
+    const { ["x"]: val } = obj;
+    return val;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 42);
+    }
+  });
+
+  test("computed property name with variable key: const key = 'y'; const { [key]: val } = obj", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "computed-key-variable",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const obj: Vector2 = { x: 10, y: 55 };
+    const key = "y";
+    const { [key]: val } = obj;
+    return val;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 55);
+    }
+  });
+
+  test("computed property name combined with rest pattern: const { ['x']: val, ...rest } = obj", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "computed-key-rest",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const obj: Vector2 = { x: 1, y: 2 };
+    const { ["x"]: val, ...rest } = obj;
+    return val + rest.y;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 3);
+    }
+  });
+
   test("object destructuring with default value uses default when field is present", () => {
     const ambientSource = buildAmbientDeclarations();
     const source = `

@@ -63,7 +63,8 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
 
       case ts.SyntaxKind.ComputedPropertyName: {
         const expr = (node as ts.ComputedPropertyName).expression;
-        if (!ts.isStringLiteral(expr) && !ts.isNumericLiteral(expr)) {
+        const inDestructuring = node.parent && ts.isBindingElement(node.parent);
+        if (!inDestructuring && !ts.isStringLiteral(expr) && !ts.isNumericLiteral(expr)) {
           addDiag(
             ValidatorDiagCode.ComputedPropertyNamesNotSupported,
             node,
