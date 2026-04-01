@@ -41,7 +41,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-03-31) Phase 1 complete. Phase 2 not started.
+(Updated 2026-03-31) Phase 1 and Phase 2 complete. All phases done.
 
 ---
 
@@ -298,3 +298,61 @@ entry-point's space.
   `CompileResult` with diagnostics.
 - On TS errors, compilation short-circuits: no entry-points are compiled.
   The `tsErrors` map is populated and `results` is empty.
+
+### Phase 2 -- 2026-03-31
+
+**Status**: Complete. 259/259 tests pass (253 existing + 6 new). TypeScript
+and Biome clean.
+
+**Files modified**:
+- `packages/typescript/src/compiler/lowering.ts` -- added `ImportedVariable`
+  interface; `lowerProgram` extended with `importedVariables` and
+  `moduleInitOrder` params; replaced `generateModuleInit` with
+  `generateModuleInitWithImports` that emits helper module initializers in
+  topological order before entry-point's own initializers
+- `packages/typescript/src/compiler/project.ts` -- replaced
+  `collectImportedFunctions` with `collectImports` that also gathers
+  variables and computes `moduleInitOrder`; removed `hasTopLevelVariables`
+  restriction and the dead function; `_compileEntryPoint` now passes
+  variables and init order to `lowerProgram`
+
+**Files created**:
+- `packages/typescript/src/compiler/multi-file.spec.ts` -- 6 end-to-end
+  tests: constant from helper, mutable state via imported function, diamond
+  import, init ordering, function-only helper (no init), per-importer
+  isolation
+
+**Deliverable deviations from plan**:
+
+- D1 (callsite var promotion): Implemented as planned. Imported variables
+  are added to the `callsiteVars` map in `lowerProgram` before function
+  lowering, so helper function bodies naturally resolve their variable
+  references via the existing `LoadCallsiteVar`/`StoreCallsiteVar` IR.
+  No AST "rewriting" needed -- the name-based resolution handles it.
+- D2 (per-importer isolation): Implemented as planned. Each entry-point
+  runs `collectImports` independently, producing its own variable list
+  and callsite var slots. Verified by test.
+- D3 (init ordering): Implemented via post-order DFS in `visitFile` --
+  `moduleInitOrder` is populated after all transitive imports are visited.
+  `generateModuleInitWithImports` iterates this order, then the
+  entry-point's own variables. Simpler than the planned topological sort
+  because the DFS naturally produces the correct order. Verified by test.
+- D4 (validator update): The Phase 1 restriction was in `project.ts`
+  (`hasTopLevelVariables` check), not in `validator.ts`. Removed it by
+  deleting the check and the dead function. No validator change needed.
+- D5 (diamond imports): Implemented via the `visitedFiles` set in
+  `visitFile`. A module is visited once, so its variables appear once in
+  the callsite var space. Verified by test (10 + 5 + 3 = 18).
+
+**Key decisions**:
+- `ImportedVariable` carries the initializer AST node directly, not a copy.
+  The lowering context lowers expressions from the helper module's AST in
+  the entry-point's init function. This works because `lowerExpression`
+  only uses the `LowerContext` (which holds the entry-point's callsite var
+  map) and the checker (which is shared across the whole program).
+- `HelperModuleHasVariables = 5003` diag code left in the enum as dead code
+  to avoid breaking changes. No code references it anymore.
+- No circular import detection was added. Function-level circularity is
+  handled by function table pre-population, and circular variable init
+  would cause a runtime issue (reading nil before init) which is acceptable
+  for now -- the same behavior TypeScript has for circular ES module vars.
