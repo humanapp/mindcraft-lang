@@ -20,7 +20,7 @@ main plan's numbering.
 
 ## Current State
 
-(Updated 2026-04-01, after D1 completion)
+(Updated 2026-04-01, after D3b completion)
 
 ### What works
 
@@ -43,15 +43,27 @@ main plan's numbering.
 - **Array rest patterns:** `const [first, ...rest] = arr`. Implemented via inline
   slice loop in `lowerArrayRestElement`. Rest element must be last. Supports
   nested binding on the rest target.
+- **Object rest patterns:** `const { x, ...rest } = obj`. Implemented via
+  `STRUCT_COPY_EXCEPT` VM opcode. Pops N excluded keys and source struct, pushes
+  a new struct with remaining fields. Works for any struct at runtime (including
+  native-backed). Supports nested binding on the rest target and nested
+  destructuring combined with rest at any level.
 
 ### What is rejected
 
 | Pattern | Diagnostic code | Location |
 |---|---|---|
-| Object rest patterns (`...rest`) | `RestPatternsNotSupported` (3021) | `lowerObjectBindingPattern` |
 | Array rest not in last position | `RestElementMustBeLast` (3025) | `lowerArrayBindingPattern` |
+| Object rest not in last position | `RestElementMustBeLast` (3025) | `lowerObjectBindingPattern` |
 | Computed property names | `ComputedDestructuringKeyNotSupported` (3023) | `lowerObjectBindingPattern` |
 | Destructuring in `onExecute` params | `DestructuringInOnExecuteNotSupported` (3024) | `lowerOnExecuteBody` |
+
+### Known limitations
+
+- `tsTypeToTypeId` returns `undefined` for `Omit<T, K>`, so the rest struct
+  gets typeId `"struct:<anonymous>"`. Property access still works because
+  `lowerPropertyAccess` falls back to TS `type.getProperties()` when
+  `resolveStructType` returns `undefined`.
 
 ### Key existing infrastructure
 
@@ -660,3 +672,72 @@ validate rest-is-last; resolve list type for `ListNew`.
   (core operators are always registered), but the error paths are present.
 - D3b (object rest) will need a different mechanism entirely (new opcode
   `STRUCT_COPY_EXCEPT` per user decision).
+
+### D3b: Object Rest -- 2026-04-01
+
+**Planned:** Support `const { x, ...rest } = obj` in object destructuring via a
+new `STRUCT_COPY_EXCEPT` VM opcode (Option 2 from the spec). Deliver changes across
+both `packages/core` (opcode, VM handler, emitter) and `packages/typescript` (IR
+node, emit handler, lowering logic).
+
+**Actual:**
+
+- **packages/core changes:**
+  - Added `STRUCT_COPY_EXCEPT = 113` to `Op` enum in `vm.ts` (interfaces), after
+    `STRUCT_SET = 112`.
+  - Added `execStructCopyExcept(fiber, ins, frame)` VM handler: pops `ins.a`
+    string keys into an exclude `Dict`, pops source struct, iterates
+    `source.v.forEach()` to copy non-excluded fields into a new `Dict`, resolves
+    typeId from constant pool at `ins.b`, pushes `V.struct(fields, typeId)`.
+  - Added `structCopyExcept(numExclude, typeIdConstIdx)` method to
+    `BytecodeEmitter`.
+- **packages/typescript changes:**
+  - Added `IrStructCopyExcept { kind: "StructCopyExcept"; numExclude: number;
+    typeId: string }` to the IR node union in `ir.ts`.
+  - Added `case "StructCopyExcept"` emit handler in `emit.ts`: gets typeId
+    constant pool index, calls `emitter.structCopyExcept(node.numExclude, typeIdIdx)`.
+  - Replaced object rest rejection in `lowerObjectBindingPattern` with delegation
+    to `lowerObjectRestElement`. Rest-not-last guard uses `RestElementMustBeLast`
+    (3025).
+  - Added `lowerObjectRestElement(element, pattern, srcLocal, ctx)`: collects
+    excluded key names from non-rest siblings, resolves rest typeId via
+    `tsTypeToTypeId` (fallback `"struct:<anonymous>"`), emits `LoadLocal(srcLocal)`,
+    pushes each excluded key as `PushConst(mkStringValue(key))`, emits
+    `StructCopyExcept`, stores into rest binding. Supports nested binding on
+    the rest target (delegates to core helpers).
+- 5 tests added, 1 rejection test replaced. 2 additional tests for property
+  access on rest variables (434 total). Typecheck and lint clean across both
+  packages.
+
+**Deviations from plan:**
+
+- The spec recommended Option 1 (compile-time field enumeration) for v1. The user
+  chose Option 2 (new VM opcode) instead, providing broader runtime support
+  including native-backed structs and anonymous types.
+- The spec mentioned emitting a diagnostic when the struct type cannot be
+  statically resolved. With Option 2, no such diagnostic is needed -- the opcode
+  works on any struct at runtime.
+- `RestPatternsNotSupported` (3021) is no longer emitted for object rest. It
+  remains in the diag code enum but is unused for object destructuring. It may
+  still be reachable via other future code paths or can be cleaned up later.
+- Added a TS property fallback in `lowerPropertyAccess`: when `resolveStructType`
+  returns `undefined`, the lowering now checks `type.getProperties()` from the
+  TS checker. If the accessed property exists on the TS type, `GetField` is
+  emitted directly. This fixes property access on rest variables whose type is
+  `Omit<T, K>` (anonymous to the Mindcraft type registry).
+
+**Discoveries:**
+
+- Property access on the rest variable (e.g., `rest.y`) initially did not compile
+  because `resolveStructType` cannot resolve the anonymous `Omit<...>` type that
+  TS infers for rest bindings. Fixed by adding a fallback in `lowerPropertyAccess`
+  that checks `type.getProperties()` from the TS checker when `resolveStructType`
+  returns `undefined`. If the TS type has the property, `GetField` is emitted
+  directly, trusting the TS checker's validation. 2 tests added (434 total).
+- `tsTypeToTypeId` returns `undefined` for the `Omit<T, K>` utility type that TS
+  assigns to rest bindings. The `"struct:<anonymous>"` fallback handles this
+  gracefully at runtime.
+- The opcode approach is clean: `ins.a` = number of exclude keys, `ins.b` =
+  constant pool index for typeId. No variadic argument complexity.
+- Registered a `Player` struct type (name: string, pos: Vector2, health: number)
+  in tests to exercise 3-field rest scenarios.
