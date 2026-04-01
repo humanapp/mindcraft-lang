@@ -41,8 +41,10 @@ not survive. Keep this doc current.
 
 ## Current State
 
-Not started. The compiler (`initCompiler()`) is preloaded in `apps/sim/src/bootstrap.ts`
-but no compilation or tile registration is wired to filesystem changes.
+(Updated 2026-03-31) Phase 1 complete. File changes from the VS Code bridge
+trigger compilation via `compileUserTile`. Results are cached in
+`apps/sim/src/services/user-tile-compiler.ts` with listener hooks for future
+phases. No tile registration yet.
 
 ---
 
@@ -116,16 +118,111 @@ and diagnostic reporting.
 
 - `compileUserTile` is synchronous and calls `ts.createProgram` -- may be slow
   for large files. Acceptable for Phase 1; consider async/debounce later.
-- `initCompiler()` is async (loads lib files). Must ensure it has completed
-  before first compilation attempt.
+
+### Phase 1 Notes (2026-03-31)
+
+- Spec called for a single `handleFileChange(notification)` entry point taking
+  `FileSystemNotification`. Built instead as separate `fileWritten`, `fileDeleted`,
+  `fileRenamed`, `fullSync` functions dispatched from `vscode-bridge.ts`. This
+  avoids importing bridge-protocol types into the compiler module.
+- `needsRecompile()` is stubbed to always return `true`. Could compare content
+  hashes later but not needed yet.
+- Uses `logger` from `@mindcraft-lang/core` instead of `console`.
+- `CompileDiagnostic` type is imported but unused (only `CompileResult` is
+  needed). Biome did not flag it; may want to remove in a future cleanup.
+- **Gap identified post-phase:** `createProject()` loads the filesystem from
+  localStorage but does not compile `.ts` files at that point. User tiles
+  from the persisted filesystem are not compiled until a remote file change
+  arrives. Phase 2 addresses the startup case via a metadata cache for tile
+  registration, and Phase 3 handles initial compilation once the bridge
+  connects and delivers the filesystem.
 
 ---
 
-## Phase 2: Tile registration with stable function wrappers
+## Phase 2: Tile metadata cache and startup stub registration
+
+### Problem
+
+`BrainTileSet.deserialize()` searches the global `TileCatalog` for every tile ID
+in the brain binary. If a user-authored tile ID (e.g., `user.sensor.MyThing`)
+is not registered, deserialization throws. The sim's `loadBrainFromLocalStorage`
+catches the error and silently falls back to the default brain -- the user's
+saved brain is discarded without warning.
+
+The startup ordering makes this unavoidable:
+
+1. `registerCoreBrainComponents()` + `registerBrainComponents()` -- sync, module eval
+2. React renders, Phaser boots
+3. **Engine loads brains from localStorage** -- sync, calls `deserialize()`
+4. `connectBridge()` -- after first React render
+5. Bridge connects, filesystem arrives, `.ts` files compiled
+
+User tile compilation cannot run before brain loading (step 3) because the
+`.ts` source files only arrive via the bridge (step 5). Without pre-registered
+tile stubs, any brain referencing a user tile will fail to deserialize.
+
+### Solution
+
+Cache tile registration metadata (name, kind, callDef, params, outputType) in
+localStorage alongside the filesystem. On startup, synchronously re-register
+stub tiles from this cache before brains are loaded. After the bridge
+connects and `.ts` files are compiled, upgrade the stubs with real host
+functions via the Phase 3 indirection wrappers.
+
+### Deliverables
+
+1. **Metadata type**: define a serializable `UserTileMetadata` shape containing
+   everything needed by `registerUserTile` except the actual `HostAsyncFn`:
+   tile ID, kind, name, callDef, params, outputType.
+2. **Persist metadata**: when Phase 1's `onCompilation` fires with a successful
+   result, extract metadata from the `UserAuthoredProgram` and save a
+   `Map<path, UserTileMetadata>` to localStorage (e.g., key
+   `sim:user-tile-metadata`). Remove entries on file deletion.
+3. **Startup stub registration**: in `bootstrap.ts` (or a new module called from
+   it), read the metadata cache from localStorage and register each entry as a
+   tile with a no-op `HostAsyncFn`. This runs synchronously before React/Phaser,
+   so tiles exist in the catalog when brains deserialize.
+4. **Upgrade path**: when real compilation finishes (Phase 3), the indirection
+   wrapper swaps in the real host function. The stub entry's function registry
+   slot is reused.
+
+### Startup sequence after this phase
+
+| Step | What |
+|---|---|
+| 1 | `registerCoreBrainComponents()`, `registerBrainComponents()` |
+| 2 | **Load user tile metadata cache, register stubs** (sync) |
+| 3 | React renders, Phaser boots |
+| 4 | Engine loads brains from localStorage (stubs exist -- deser succeeds) |
+| 5 | `connectBridge()` starts, filesystem arrives |
+| 6 | Compile `.ts` files, upgrade stubs with real host functions |
+
+### Risks
+
+- Metadata cache can go stale if the user edits `.ts` files outside the
+  bridge (unlikely in practice -- the bridge is the editing path).
+- If the cached callDef doesn't match the tile usage in a saved brain
+  (e.g., user changed params and re-saved), the brain will load but may
+  fail at compile/runtime. This is the same behavior as changing any tile's
+  contract -- acceptable.
+- Need to ensure the stub's function registry name matches what
+  `registerUserTile` would produce (e.g., `user.sensor.MyThing`) so that
+  Phase 3 can find and reuse the entry.
+
+---
+
+## Phase 3: Tile registration with stable function wrappers
 
 On first successful compile of a `.ts` file, register its sensor/actuator tile
 in the brain services using an indirection wrapper so that the underlying
-function can be hot-swapped on recompile.
+function can be hot-swapped on recompile. If Phase 2 already registered a stub
+for this tile, reuse that function registry entry.
+
+### Prerequisites
+
+- Phase 1's `onCompilation` and `onRemoval` listeners are the integration points.
+- Phase 2's stub registration establishes the function registry entries and
+  tile catalog entries. Phase 3 upgrades them in-place.
 
 ### Deliverables
 
@@ -136,7 +233,7 @@ function can be hot-swapped on recompile.
    - Store the mapping: `filePath -> { tileId, wrapper }`.
 3. Linking strategy: `linkUserPrograms` needs a `BrainProgram`. For registration
    purposes, create a minimal empty brain program to link against. The real
-   linking happens at brain-run time (Phase 4).
+   linking happens at brain-run time (Phase 5).
 4. Handle the `createUserTileExec` dependency on VM + Scheduler -- defer actual
    exec creation. The wrapper starts as a no-op until a VM is available.
 
@@ -151,7 +248,7 @@ function can be hot-swapped on recompile.
 
 ---
 
-## Phase 3: Hot-swap on recompile
+## Phase 4: Hot-swap on recompile
 
 When a `.ts` file is re-saved and recompiled successfully:
 
@@ -168,14 +265,14 @@ When a `.ts` file is re-saved and recompiled successfully:
 ### Risks
 
 - Running brains that reference a tile mid-swap could see inconsistent state.
-  Phase 1-3 assumes brains are not running during authoring, or that a stale
+  Phases 1-4 assume brains are not running during authoring, or that a stale
   reference is acceptable.
 - Need to understand how the brain editor discovers available tiles (likely
   reads from `TileCatalog` on render). If it caches, it needs a refresh signal.
 
 ---
 
-## Phase 4: Integration with brain execution
+## Phase 5: Integration with brain execution
 
 Connect the compiled user tiles to actual brain program execution so they
 run in the simulation.
@@ -188,7 +285,7 @@ run in the simulation.
      linked program.
    - For each `UserTileLinkInfo`, call `createUserTileExec(linkedProgram,
      linkInfo, vm, scheduler)` and swap into the corresponding wrapper.
-2. The wrappers registered in Phase 2 now delegate to real exec functions.
+2. The wrappers registered in Phase 3 now delegate to real exec functions.
 3. When user tiles are recompiled while a brain is running, re-link and
    re-swap. Define when this takes effect (next tick? next brain restart?).
 
@@ -201,7 +298,7 @@ run in the simulation.
 
 ---
 
-## Phase 5: Full-sync and reconnect handling
+## Phase 6: Full-sync and reconnect handling
 
 Handle `filesystem:sync` (import) events robustly when the extension
 reconnects or a full sync is triggered.
@@ -219,7 +316,7 @@ reconnects or a full sync is triggered.
 
 ---
 
-## Phase 6: Multi-file imports (future)
+## Phase 7: Multi-file imports (future)
 
 Enable `.ts` files to import from other `.ts` files in the project filesystem.
 This requires changes to `packages/typescript`:
@@ -234,10 +331,28 @@ This requires changes to `packages/typescript`:
 6. Dependency tracking: when a utility file changes, recompile all files
    that import it.
 
-Out of scope until Phases 1-5 are stable.
+Out of scope until Phases 1-6 are stable.
 
 ---
 
 ## Phase Log
 
 (Written during post-mortem only. Do not edit during implementation.)
+
+### Phase 1 (2026-03-31)
+
+**Planned:** New `user-tile-compiler.ts` module with `handleFileChange()` taking
+a `FileSystemNotification`, wired into `vscode-bridge.ts`. Console logging.
+
+**Built:** `user-tile-compiler.ts` with separate `fileWritten`, `fileDeleted`,
+`fileRenamed`, `fullSync` entry points (no bridge-protocol dependency). Dispatch
+lives in `vscode-bridge.ts` via a switch on `ev.action`. Logging via `logger`
+from `@mindcraft-lang/core`. Listener hooks (`onCompilation`, `onRemoval`) for
+Phase 2 integration.
+
+**Deviations:**
+- API shape: separate functions instead of single `handleFileChange`. Cleaner
+  separation -- compiler module has no bridge-protocol import.
+- Logging: `logger` instead of `console` (per project convention).
+
+**No upstream spec amendments needed.** No new risks discovered.
