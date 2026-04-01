@@ -271,6 +271,8 @@ export enum CompileDiagCode {
   UnknownOutputType = 5001,
   /** Diagnostic produced by TypeScript's own type-checker (pre-emit phase) */
   TypeScriptError = 5002,
+  /** Helper module contains top-level variables (not yet supported) */
+  HelperModuleHasVariables = 5003,
 }
 
 /**

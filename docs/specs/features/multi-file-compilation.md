@@ -41,7 +41,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-03-31) Not started.
+(Updated 2026-03-31) Phase 1 complete. Phase 2 not started.
 
 ---
 
@@ -221,8 +221,80 @@ entry-point's space.
   helpers accumulates their variables. Not a correctness issue but could
   affect memory if helpers are large. Unlikely in practice.
 
+### Phase 1 discoveries relevant to Phase 2
+
+- `collectImportedFunctions()` in `project.ts` is where the helper module
+  variable restriction lives (`hasTopLevelVariables` check). This is the
+  exact site to lift for Phase 2.
+- Function resolution is per-entry-point, not global. Each entry-point
+  only gets functions it actually imports (transitively). This naturally
+  supports Phase 2's per-importer variable isolation -- each entry-point
+  will get its own callsite var slots for each imported helper's state.
+- `resolvePath` utility is duplicated in `virtual-host.ts` and `project.ts`.
+  Minor duplication; could be extracted if it grows but not worth it now.
+- The `ImportDeclaration` skip in the validator (`return` early) prevents
+  child nodes from being visited. If Phase 2 needs to validate import
+  structure (e.g., reject certain re-export patterns), the validator would
+  need refinement.
+
 ---
 
 ## Phase Log
 
-(Post-mortem entries go here after each phase is declared complete.)
+### Phase 1 -- 2026-03-31
+
+**Status**: Complete. 253/253 tests pass. TypeScript and Biome clean.
+
+**Files created**:
+- `packages/typescript/src/compiler/project.ts` -- `UserTileProject` class,
+  `CompileResult`, `ProjectCompileResult` types, import collection logic
+
+**Files modified**:
+- `packages/typescript/src/compiler/compile.ts` -- slimmed to thin wrapper
+  delegating to `UserTileProject`
+- `packages/typescript/src/compiler/virtual-host.ts` -- relative import
+  resolution (`./`, `../`) in `resolveModuleNameLiterals`
+- `packages/typescript/src/compiler/lowering.ts` -- `ImportedFunction`
+  interface, `importedFunctions` parameter on `lowerProgram`
+- `packages/typescript/src/compiler/validator.ts` -- early return for
+  `ImportDeclaration` (allows static imports, still rejects dynamic)
+- `packages/typescript/src/compiler/diag-codes.ts` -- added
+  `HelperModuleHasVariables = 5003`
+- `packages/typescript/src/index.ts` -- exports for `UserTileProject`,
+  `ProjectCompileResult`
+- `apps/sim/src/services/user-tile-compiler.ts` -- rewritten to use
+  `UserTileProject` instance
+
+**Deliverable deviations from plan**:
+
+- D5 (per-file pipeline): Plan said `extractDescriptor` would be the
+  entry-point detection mechanism. Implementation uses a simpler
+  `hasDefaultExport()` syntactic check first, then runs `extractDescriptor`
+  only on entry-point files. Functionally equivalent, avoids running the
+  full extraction on helper modules.
+- D6 (global function table): Plan said "scan all source files" for a
+  single shared function table. Implementation uses per-entry-point import
+  collection via `collectImportedFunctions()` with transitive resolution.
+  Each entry-point only gets functions it actually imports, not all functions
+  in the project. More conservative and correct.
+- D7 (cross-file function resolution): Plan said `checker.getSymbolAtLocation()`
+  on call expressions. Implementation walks import declarations structurally
+  and uses `checker.getAliasedSymbol()` for named import alias resolution.
+  Same effect, different mechanism.
+- D9 (helper module restriction): Plan said "validator rejects top-level
+  variables in non-entry-point files." Implementation enforces this at the
+  project level in `collectImportedFunctions()` via `hasTopLevelVariables()`
+  check, not in the generic validator. This is correct because the
+  restriction is contextual (only applies to files imported as helpers, not
+  to entry-points).
+
+**Key decisions**:
+- `mindcraft.d.ts` from the VFS maps to `/lib/lib.mindcraft.d.ts` in the
+  compiler path space. The `UserTileProject` constructor falls back to
+  `buildAmbientDeclarations()` only if `mindcraft.d.ts` is not in the file
+  map.
+- Helper module detection: files without `export default` are helpers.
+  Files with `export default` that fail `extractDescriptor` still get a
+  `CompileResult` with diagnostics.
+- On TS errors, compilation short-circuits: no entry-points are compiled.
+  The `tsErrors` map is populated and `results` is empty.

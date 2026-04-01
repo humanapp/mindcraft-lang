@@ -1,6 +1,6 @@
 import { logger } from "@mindcraft-lang/core";
-import type { CompileDiagnostic, CompileResult } from "@mindcraft-lang/typescript";
-import { compileUserTile } from "@mindcraft-lang/typescript";
+import type { CompileResult } from "@mindcraft-lang/typescript";
+import { UserTileProject } from "@mindcraft-lang/typescript";
 
 export interface TileCompilationEntry {
   path: string;
@@ -10,6 +10,12 @@ export interface TileCompilationEntry {
 type CompilationListener = (entry: TileCompilationEntry) => void;
 type RemovalListener = (path: string) => void;
 
+let project: UserTileProject | undefined;
+function getProject(): UserTileProject {
+  if (!project) project = new UserTileProject();
+  return project;
+}
+
 const cache = new Map<string, CompileResult>();
 const compilationListeners = new Set<CompilationListener>();
 const removalListeners = new Set<RemovalListener>();
@@ -18,11 +24,37 @@ function isUserTsFile(path: string): boolean {
   return path.endsWith(".ts") && !path.endsWith(".d.ts");
 }
 
-function compile(path: string, content: string): void {
-  const result = compileUserTile(content);
-  cache.set(path, result);
-  logResult(path, result);
-  for (const fn of compilationListeners) fn({ path, result });
+function isDtsFile(path: string): boolean {
+  return path.endsWith(".d.ts");
+}
+
+function recompileAll(): void {
+  const result = getProject().compileAll();
+
+  for (const [path, tsErrs] of result.tsErrors) {
+    logger.warn(`[user-tile-compiler] ${path}: ${tsErrs.length} TypeScript error(s)`);
+    for (const d of tsErrs) {
+      const loc = d.line !== undefined ? `:${d.line}:${d.column}` : "";
+      logger.warn(`  ${path}${loc} - ${d.message}`);
+    }
+  }
+
+  const currentPaths = new Set(cache.keys());
+  const newPaths = new Set(result.results.keys());
+
+  for (const path of currentPaths) {
+    if (!newPaths.has(path)) {
+      cache.delete(path);
+      logger.info(`[user-tile-compiler] ${path}: removed`);
+      for (const fn of removalListeners) fn(path);
+    }
+  }
+
+  for (const [path, compileResult] of result.results) {
+    cache.set(path, compileResult);
+    logResult(path, compileResult);
+    for (const fn of compilationListeners) fn({ path, result: compileResult });
+  }
 }
 
 function logResult(path: string, result: CompileResult): void {
@@ -38,51 +70,32 @@ function logResult(path: string, result: CompileResult): void {
 }
 
 export function fileWritten(path: string, content: string): void {
-  if (!isUserTsFile(path)) return;
-  compile(path, content);
+  if (!isUserTsFile(path) && !isDtsFile(path)) return;
+  getProject().updateFile(path, content);
+  recompileAll();
 }
 
 export function fileDeleted(path: string): void {
-  if (!isUserTsFile(path)) return;
-  if (cache.delete(path)) {
-    logger.info(`[user-tile-compiler] ${path}: removed`);
-    for (const fn of removalListeners) fn(path);
-  }
+  if (!isUserTsFile(path) && !isDtsFile(path)) return;
+  getProject().deleteFile(path);
+  recompileAll();
 }
 
 export function fileRenamed(oldPath: string, newPath: string): void {
-  if (isUserTsFile(oldPath) && cache.has(oldPath)) {
-    const result = cache.get(oldPath)!;
-    cache.delete(oldPath);
-    if (isUserTsFile(newPath)) {
-      cache.set(newPath, result);
-    } else {
-      for (const fn of removalListeners) fn(oldPath);
-    }
-  }
+  if (!isUserTsFile(oldPath) && !isDtsFile(oldPath)) return;
+  getProject().renameFile(oldPath, newPath);
+  recompileAll();
 }
 
 export function fullSync(files: Iterable<[string, { kind: string; content?: string }]>): void {
-  const incomingPaths = new Set<string>();
+  const allFiles = new Map<string, string>();
   for (const [path, entry] of files) {
-    if (!isUserTsFile(path) || entry.kind !== "file" || entry.content === undefined) continue;
-    incomingPaths.add(path);
-    const prev = cache.get(path);
-    if (!prev || needsRecompile(prev, entry.content)) {
-      compile(path, entry.content);
-    }
+    if (entry.kind !== "file" || entry.content === undefined) continue;
+    if (!isUserTsFile(path) && !isDtsFile(path)) continue;
+    allFiles.set(path, entry.content);
   }
-  for (const path of cache.keys()) {
-    if (!incomingPaths.has(path)) {
-      cache.delete(path);
-      logger.info(`[user-tile-compiler] ${path}: removed (sync)`);
-      for (const fn of removalListeners) fn(path);
-    }
-  }
-}
-
-function needsRecompile(_prev: CompileResult, _newContent: string): boolean {
-  return true;
+  getProject().setFiles(allFiles);
+  recompileAll();
 }
 
 export function getCompileResult(path: string): CompileResult | undefined {

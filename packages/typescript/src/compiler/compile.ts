@@ -1,161 +1,31 @@
-import { List } from "@mindcraft-lang/core";
-import { compiler, getBrainServices } from "@mindcraft-lang/core/brain";
-import ts from "typescript";
-import { buildAmbientDeclarations } from "./ambient.js";
-import { buildCallDef } from "./call-def-builder.js";
-import { extractDescriptor } from "./descriptor.js";
-import { CompileDiagCode } from "./diag-codes.js";
-import { emitFunction } from "./emit.js";
-import { lowerProgram } from "./lowering.js";
-import type { CompileDiagnostic, CompileOptions, ExtractedDescriptor, UserAuthoredProgram } from "./types.js";
-import { validateAst } from "./validator.js";
-import { createVirtualCompilerHost } from "./virtual-host.js";
+import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
+import { UserTileProject } from "./project.js";
+import type { CompileOptions } from "./types.js";
 
+export type { CompileResult, ProjectCompileResult } from "./project.js";
+export { UserTileProject } from "./project.js";
 export type { CompileDiagnostic, CompileOptions, ExtractedDescriptor, ExtractedParam } from "./types.js";
 
-export interface CompileResult {
-  diagnostics: CompileDiagnostic[];
-  program?: UserAuthoredProgram;
-  descriptor?: ExtractedDescriptor;
-}
+export function compileUserTile(source: string, options?: CompileOptions) {
+  const project = new UserTileProject(options);
+  project.updateFile("user-code.ts", source);
+  const result = project.compileAll();
+  const entry = result.results.get("user-code.ts");
+  if (entry) return entry;
 
-const LIB_FILE = "/lib/lib.mindcraft.d.ts";
-
-const checkerOptions: ts.CompilerOptions = {
-  target: ts.ScriptTarget.ES5,
-  module: ts.ModuleKind.ES2015,
-  strict: true,
-  noEmit: true,
-  skipLibCheck: false,
-};
-
-const TESTED_TS_VERSION = "5.9";
-
-let versionChecked = false;
-
-function checkTypeScriptVersion(): void {
-  if (versionChecked) return;
-  const actual = ts.version;
-  const [eMajor, eMinor] = TESTED_TS_VERSION.split(".");
-  const [aMajor, aMinor] = actual.split(".");
-  if (aMajor !== eMajor || aMinor !== eMinor) {
-    throw new Error(
-      `TypeScript version mismatch: package was built and tested against ${eMajor}.${eMinor}.x but found ${actual}`
-    );
-  }
-  versionChecked = true;
-}
-
-export function compileUserTile(source: string, options?: CompileOptions): CompileResult {
-  checkTypeScriptVersion();
-
-  const ambientSource = options?.ambientSource ?? buildAmbientDeclarations();
-
-  const files = new Map<string, string>();
-  files.set(LIB_FILE, ambientSource);
-  files.set("/user-code.ts", source);
-
-  const host = createVirtualCompilerHost(files, checkerOptions);
-  const tsProgram = ts.createProgram(["/user-code.ts"], checkerOptions, host);
-  const tsDiagnostics = ts.getPreEmitDiagnostics(tsProgram);
-
-  const diagnostics: CompileDiagnostic[] = tsDiagnostics
-    .filter((d) => d.file?.fileName === "/user-code.ts" || !d.file)
-    .map((d) => {
-      const result: CompileDiagnostic = {
-        code: CompileDiagCode.TypeScriptError,
-        message: ts.flattenDiagnosticMessageText(d.messageText, "\n"),
-      };
-      if (d.file && d.start !== undefined) {
-        const pos = d.file.getLineAndCharacterOfPosition(d.start);
-        result.line = pos.line + 1;
-        result.column = pos.character + 1;
-      }
-      return result;
-    });
-
-  if (diagnostics.length > 0) {
-    return { diagnostics };
+  const allTsErrors = Array.from(result.tsErrors.values()).flat();
+  if (allTsErrors.length > 0) {
+    return { diagnostics: allTsErrors };
   }
 
-  const sourceFile = tsProgram.getSourceFile("/user-code.ts");
-  if (!sourceFile) {
-    return {
-      diagnostics: [{ code: CompileDiagCode.SourceFileNotFound, message: "Internal error: source file not found" }],
-    };
-  }
-
-  const validationDiags = validateAst(sourceFile);
-  if (validationDiags.length > 0) {
-    return { diagnostics: validationDiags };
-  }
-
-  const extractionResult = extractDescriptor(sourceFile);
-  if (extractionResult.diagnostics.length > 0) {
-    return { diagnostics: extractionResult.diagnostics };
-  }
-
-  const descriptor = extractionResult.descriptor!;
-
-  const checker = tsProgram.getTypeChecker();
-  const programResult = lowerProgram(sourceFile, descriptor, checker);
-  if (programResult.diagnostics.length > 0) {
-    return { diagnostics: programResult.diagnostics };
-  }
-
-  const pool = new compiler.ConstantPool();
-  const emittedFunctions: ReturnType<typeof emitFunction>["bytecode"][] = [];
-
-  for (const func of programResult.functions) {
-    const emitResult = emitFunction(
-      func.ir,
-      func.numParams,
-      func.numLocals,
-      func.name,
-      pool,
-      programResult.functionTable,
-      func.injectCtxTypeId
-    );
-    if (emitResult.diagnostics.length > 0) {
-      return { diagnostics: emitResult.diagnostics };
-    }
-    emittedFunctions.push(emitResult.bytecode);
-  }
-
-  const callDef = buildCallDef(descriptor.name, descriptor.params);
-  const outputType = descriptor.outputType ? getBrainServices().types.resolveByName(descriptor.outputType) : undefined;
-  if (descriptor.outputType && !outputType) {
-    return {
-      diagnostics: [
-        { code: CompileDiagCode.UnknownOutputType, message: `Unknown output type: "${descriptor.outputType}"` },
-      ],
-    };
-  }
-
-  const program: UserAuthoredProgram = {
-    version: 1,
-    functions: List.from(emittedFunctions),
-    constants: pool.getConstants(),
-    variableNames: List.empty(),
-    entryPoint: programResult.entryFuncId,
-    kind: descriptor.kind,
-    name: descriptor.name,
-    callDef,
-    outputType,
-    numCallsiteVars: programResult.numCallsiteVars,
-    entryFuncId: programResult.entryFuncId,
-    initFuncId: programResult.initFuncId,
-    execIsAsync: descriptor.execIsAsync,
-    lifecycleFuncIds: {
-      onPageEntered: programResult.onPageEnteredWrapperId,
-    },
-    programRevisionId: generateRevisionId(),
-    params: descriptor.params,
+  return {
+    diagnostics: [
+      {
+        code: DescriptorDiagCode.MissingDefaultExport,
+        message: "Missing default export. Expected `export default Sensor({...})` or `export default Actuator({...})`.",
+        line: 1,
+        column: 1,
+      },
+    ],
   };
-
-  return { diagnostics: [], program, descriptor };
-}
-
-function generateRevisionId(): string {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }

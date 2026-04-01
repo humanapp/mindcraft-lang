@@ -100,6 +100,10 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
       addDiag(ValidatorDiagCode.DynamicImportNotSupported, node, "Dynamic `import()` is not supported");
     }
 
+    if (ts.isImportDeclaration(node)) {
+      return;
+    }
+
     if (ts.isIdentifier(node) && FORBIDDEN_GLOBALS.has(node.text)) {
       if (isForbiddenGlobalReference(node)) {
         addDiag(ValidatorDiagCode.ForbiddenGlobalAccess, node, `\`${node.text}\` is not allowed`);

@@ -32,6 +32,11 @@ export interface FunctionEntry {
   injectCtxTypeId?: TypeId;
 }
 
+export interface ImportedFunction {
+  localName: string;
+  node: ts.FunctionDeclaration;
+}
+
 export interface ProgramLoweringResult {
   functions: FunctionEntry[];
   entryFuncId: number;
@@ -123,7 +128,8 @@ function resolveOperatorWithExpansion(opId: string, argTypes: string[]): string 
 export function lowerProgram(
   sourceFile: ts.SourceFile,
   descriptor: ExtractedDescriptor,
-  checker: ts.TypeChecker
+  checker: ts.TypeChecker,
+  importedFunctions?: ImportedFunction[]
 ): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
@@ -145,6 +151,20 @@ export function lowerProgram(
         if (ts.isIdentifier(decl.name)) {
           callsiteVars.set(decl.name.text, nextCallsiteVar++);
         }
+      }
+    }
+  }
+
+  if (importedFunctions) {
+    for (const imp of importedFunctions) {
+      const declaredName = imp.node.name?.text;
+      if (!declaredName) continue;
+      if (!functionTable.has(declaredName)) {
+        functionTable.set(declaredName, funcIdCounter.value++);
+        helperNodes.push(imp.node);
+      }
+      if (imp.localName !== declaredName && !functionTable.has(imp.localName)) {
+        functionTable.set(imp.localName, functionTable.get(declaredName)!);
       }
     }
   }

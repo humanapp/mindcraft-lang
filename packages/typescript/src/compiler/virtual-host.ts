@@ -2,6 +2,19 @@ import ts from "typescript";
 
 const LIB_DIR = "/lib/";
 
+function resolvePath(base: string, relative: string): string {
+  const segments = base.split("/").filter((s) => s.length > 0);
+  for (const part of relative.split("/")) {
+    if (part === "." || part === "") continue;
+    if (part === "..") {
+      segments.pop();
+    } else {
+      segments.push(part);
+    }
+  }
+  return `/${segments.join("/")}`;
+}
+
 export function createVirtualCompilerHost(files: Map<string, string>, options: ts.CompilerOptions): ts.CompilerHost {
   return {
     getSourceFile(fileName, languageVersion) {
@@ -21,7 +34,14 @@ export function createVirtualCompilerHost(files: Map<string, string>, options: t
     resolveModuleNameLiterals(moduleLiterals, containingFile, _redirected, _options, _source, _reused) {
       return moduleLiterals.map((literal) => {
         const name = literal.text;
-        const candidates = [`/${name}.d.ts`, `/${name}.ts`, `/${name}/index.d.ts`, `/${name}/index.ts`];
+        let base: string;
+        if (name.startsWith("./") || name.startsWith("../")) {
+          const containingDir = containingFile.substring(0, containingFile.lastIndexOf("/"));
+          base = resolvePath(containingDir, name);
+        } else {
+          base = `/${name}`;
+        }
+        const candidates = [`${base}.d.ts`, `${base}.ts`, `${base}/index.d.ts`, `${base}/index.ts`];
         for (const candidate of candidates) {
           if (files.has(candidate)) {
             return {
