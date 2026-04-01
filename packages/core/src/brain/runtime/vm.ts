@@ -584,6 +584,8 @@ export class VM implements IVM {
           return this.execStructGet(fiber, ins, frame);
         case Op.STRUCT_SET:
           return this.execStructSet(fiber, ins, frame);
+        case Op.STRUCT_COPY_EXCEPT:
+          return this.execStructCopyExcept(fiber, ins, frame);
         case Op.GET_FIELD:
           return this.execGetField(fiber, frame);
         case Op.SET_FIELD:
@@ -1402,6 +1404,43 @@ export class VM implements IVM {
     // Mutate in place for performance
     struct.v?.set(fieldName.v, value);
     this.push(fiber, struct);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execStructCopyExcept(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const numExclude = ins.a ?? 0;
+    const exclude = new Dict<string, boolean>();
+    for (let i = 0; i < numExclude; i++) {
+      const key = this.pop(fiber);
+      if (!isStringValue(key)) {
+        throw new Error("STRUCT_COPY_EXCEPT: exclude key must be string");
+      }
+      exclude.set(key.v, true);
+    }
+    const source = this.pop(fiber);
+    if (!isStructValue(source)) {
+      throw new Error("STRUCT_COPY_EXCEPT: requires struct");
+    }
+
+    let typeId = "struct:<anonymous>";
+    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constants.size()) {
+      const typeIdVal = this.prog.constants.get(ins.b);
+      if (typeIdVal && isStringValue(typeIdVal)) {
+        typeId = typeIdVal.v;
+      }
+    }
+
+    const fields = new Dict<string, Value>();
+    if (source.v) {
+      source.v.forEach((val, key) => {
+        if (!exclude.has(key)) {
+          fields.set(key, val);
+        }
+      });
+    }
+
+    this.push(fiber, V.struct(fields, typeId));
     frame.pc++;
     return undefined;
   }

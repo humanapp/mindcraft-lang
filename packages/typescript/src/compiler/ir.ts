@@ -25,6 +25,7 @@ export type IrNode =
   | IrMapSet
   | IrStructNew
   | IrStructSet
+  | IrStructCopyExcept
   | IrListNew
   | IrListPush
   | IrListGet
@@ -144,6 +145,12 @@ export interface IrStructNew {
 
 export interface IrStructSet {
   kind: "StructSet";
+}
+
+export interface IrStructCopyExcept {
+  kind: "StructCopyExcept";
+  numExclude: number;
+  typeId: string;
 }
 
 export interface IrListNew {

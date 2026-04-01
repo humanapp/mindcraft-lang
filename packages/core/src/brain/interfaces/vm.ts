@@ -302,6 +302,7 @@ export enum Op {
   STRUCT_NEW = 110,
   STRUCT_GET,
   STRUCT_SET,
+  STRUCT_COPY_EXCEPT,
 
   // Generic field access (works with Struct, extensible for custom types)
   GET_FIELD = 120,

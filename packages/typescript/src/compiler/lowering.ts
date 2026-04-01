@@ -736,9 +736,13 @@ function lowerObjectDestructuring(
 function lowerObjectBindingPattern(pattern: ts.ObjectBindingPattern, srcLocal: number, ctx: LowerContext): void {
   for (const element of pattern.elements) {
     if (element.dotDotDotToken) {
-      ctx.diagnostics.push(
-        makeDiag(LoweringDiagCode.RestPatternsNotSupported, "Rest patterns in destructuring are not supported", element)
-      );
+      if (element !== pattern.elements[pattern.elements.length - 1]) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.RestElementMustBeLast, "Rest element must be last in object destructuring", element)
+        );
+        continue;
+      }
+      lowerObjectRestElement(element, pattern, srcLocal, ctx);
       continue;
     }
 
@@ -782,6 +786,45 @@ function lowerObjectBindingPattern(pattern: ts.ObjectBindingPattern, srcLocal: n
         lowerArrayBindingPattern(element.name, tempLocal, ctx);
       }
     }
+  }
+}
+
+function lowerObjectRestElement(
+  element: ts.BindingElement,
+  pattern: ts.ObjectBindingPattern,
+  srcLocal: number,
+  ctx: LowerContext
+): void {
+  const excludedKeys: string[] = [];
+  for (const other of pattern.elements) {
+    if (other === element) continue;
+    if (other.propertyName && ts.isIdentifier(other.propertyName)) {
+      excludedKeys.push(other.propertyName.text);
+    } else if (ts.isIdentifier(other.name)) {
+      excludedKeys.push(other.name.text);
+    }
+  }
+
+  const restType = ctx.checker.getTypeAtLocation(element.name);
+  const typeId = tsTypeToTypeId(restType, ctx.checker) ?? "struct:<anonymous>";
+
+  ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
+  for (const key of excludedKeys) {
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue(key) });
+  }
+  ctx.ir.push({ kind: "StructCopyExcept", numExclude: excludedKeys.length, typeId });
+
+  if (ts.isIdentifier(element.name)) {
+    const localIdx = ctx.scopeStack.declareLocal(element.name.text);
+    ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+  } else if (ts.isObjectBindingPattern(element.name)) {
+    const tempLocal = ctx.scopeStack.allocLocal();
+    ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+    lowerObjectBindingPattern(element.name, tempLocal, ctx);
+  } else if (ts.isArrayBindingPattern(element.name)) {
+    const tempLocal = ctx.scopeStack.allocLocal();
+    ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+    lowerArrayBindingPattern(element.name, tempLocal, ctx);
   }
 }
 
@@ -4328,6 +4371,14 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
       );
       return;
     }
+    lowerExpression(expr.expression, ctx);
+    ctx.ir.push({ kind: "GetField", fieldName });
+    return;
+  }
+
+  const fieldName = expr.name.text;
+  const tsProps = objType.getProperties();
+  if (tsProps.length > 0 && tsProps.some((p) => p.getName() === fieldName)) {
     lowerExpression(expr.expression, ctx);
     ctx.ir.push({ kind: "GetField", fieldName });
     return;

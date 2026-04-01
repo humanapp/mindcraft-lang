@@ -7405,7 +7405,7 @@ export default Sensor({
     }
   });
 
-  test("object rest pattern produces diagnostic (not yet implemented)", () => {
+  test("object rest pattern: const { x, ...rest } = obj extracts x", () => {
     const ambientSource = buildAmbientDeclarations();
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
@@ -7414,18 +7414,293 @@ export default Sensor({
   name: "obj-rest",
   output: "number",
   onExecute(ctx: Context): number {
-    const obj: Vector2 = { x: 1, y: 2 };
+    const obj: Vector2 = { x: 10, y: 20 };
     const { x, ...rest } = obj;
     return x;
   },
 });
 `;
     const result = compileUserTile(source, { ambientSource });
-    assert.ok(result.diagnostics.length > 0, "expected diagnostics for object rest pattern");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.RestPatternsNotSupported),
-      `expected rest pattern error, got: ${JSON.stringify(result.diagnostics)}`
-    );
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 10);
+    }
+  });
+
+  test("object rest pattern: rest contains remaining fields", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "obj-rest-remaining",
+  output: "Vector2",
+  onExecute(ctx: Context): Vector2 {
+    const obj: Vector2 = { x: 3, y: 7 };
+    const { x, ...rest } = obj;
+    return rest as unknown as Vector2;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isStructValue(runResult.result), "expected struct value for rest");
+      const rest = runResult.result as StructValue;
+      assert.equal((rest.v?.get("y") as NumberValue).v, 7, "rest should contain y=7");
+      assert.equal(rest.v?.get("x"), undefined, "rest should not contain x");
+    }
+  });
+
+  test("nested destructuring with rest on inner struct: const { pos: { x, ...posRest } } = entity", () => {
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
+    if (!types.get(entityTypeId)) {
+      types.addStructType("Entity", {
+        fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
+      });
+    }
+    const ambientSource = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+interface Entity {
+  pos: Vector2;
+}
+
+export default Sensor({
+  name: "nested-rest-inner",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const entity: Entity = { pos: { x: 5, y: 15 } };
+    const { pos: { x, ...posRest } } = entity;
+    return x;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 5);
+    }
+  });
+
+  test("rest on outer struct with 3 fields: const { name, ...rest } = player", () => {
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const strTypeId = mkTypeId(NativeType.String, "string");
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    const playerTypeId = mkTypeId(NativeType.Struct, "Player");
+    if (!types.get(playerTypeId)) {
+      types.addStructType("Player", {
+        fields: List.from([
+          { name: "name", typeId: strTypeId },
+          { name: "pos", typeId: vec2TypeId },
+          { name: "health", typeId: numTypeId },
+        ]),
+      });
+    }
+    const ambientSource = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
+
+export default Sensor({
+  name: "rest-outer-3-fields",
+  output: "Player",
+  onExecute(ctx: Context): Player {
+    const player: Player = { name: "alice", pos: { x: 1, y: 2 }, health: 100 };
+    const { name, ...rest } = player;
+    return rest as unknown as Player;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isStructValue(runResult.result), "expected struct for rest");
+      const rest = runResult.result as StructValue;
+      assert.equal(rest.v?.get("name"), undefined, "rest should not contain name");
+      const pos = rest.v?.get("pos");
+      assert.ok(pos && isStructValue(pos), "rest should contain pos as struct");
+      assert.equal((rest.v?.get("health") as NumberValue).v, 100, "rest should contain health=100");
+    }
+  });
+
+  test("nested destructure + rest at outer level: const { pos: { x }, ...rest } = player", () => {
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const strTypeId = mkTypeId(NativeType.String, "string");
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    const playerTypeId = mkTypeId(NativeType.Struct, "Player");
+    if (!types.get(playerTypeId)) {
+      types.addStructType("Player", {
+        fields: List.from([
+          { name: "name", typeId: strTypeId },
+          { name: "pos", typeId: vec2TypeId },
+          { name: "health", typeId: numTypeId },
+        ]),
+      });
+    }
+    const ambientSource = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
+
+export default Sensor({
+  name: "nested-plus-outer-rest",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const player: Player = { name: "bob", pos: { x: 42, y: 99 }, health: 75 };
+    const { pos: { x }, ...rest } = player;
+    return x;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 42);
+    }
+  });
+
+  test("property access on object rest variable: rest.y after const { x, ...rest } = obj", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "rest-prop-access",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const obj: Vector2 = { x: 10, y: 20 };
+    const { x, ...rest } = obj;
+    return rest.y;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 20);
+    }
+  });
+
+  test("property access on rest variable from 3-field struct: rest.health after const { name, ...rest } = player", () => {
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const strTypeId = mkTypeId(NativeType.String, "string");
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    const playerTypeId = mkTypeId(NativeType.Struct, "Player");
+    if (!types.get(playerTypeId)) {
+      types.addStructType("Player", {
+        fields: List.from([
+          { name: "name", typeId: strTypeId },
+          { name: "pos", typeId: vec2TypeId },
+          { name: "health", typeId: numTypeId },
+        ]),
+      });
+    }
+    const ambientSource = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
+
+export default Sensor({
+  name: "rest-prop-access-3-field",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const player: Player = { name: "alice", pos: { x: 1, y: 2 }, health: 100 };
+    const { name, ...rest } = player;
+    return rest.health;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.equal((runResult.result as NumberValue).v, 100);
+    }
   });
 
   test("object destructuring with default value uses default when field is present", () => {

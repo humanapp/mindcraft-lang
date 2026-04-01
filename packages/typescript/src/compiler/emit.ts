@@ -117,6 +117,11 @@ export function emitFunction(
       case "StructSet":
         emitter.structSet();
         break;
+      case "StructCopyExcept": {
+        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        emitter.structCopyExcept(node.numExclude, typeIdIdx);
+        break;
+      }
       case "ListNew": {
         const typeIdIdx = pool.add(mkStringValue(node.typeId));
         emitter.listNew(typeIdIdx);

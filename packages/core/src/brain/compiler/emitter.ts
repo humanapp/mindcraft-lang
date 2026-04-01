@@ -357,6 +357,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.STRUCT_SET });
   }
 
+  /** Copy struct excluding N keys. Keys are on stack, then source struct. typeIdConstIdx is constant pool index for typeId. */
+  structCopyExcept(numExclude: number, typeIdConstIdx: number): void {
+    this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude, b: typeIdConstIdx });
+  }
+
   // ==========================================
   // Generic field access
   // ==========================================
