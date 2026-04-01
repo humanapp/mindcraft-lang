@@ -320,6 +320,7 @@ export enum Op {
 
   // Indirect function calls
   CALL_INDIRECT = 160,
+  CALL_INDIRECT_ARGS,
 
   // Closure operations
   MAKE_CLOSURE = 170,

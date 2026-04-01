@@ -149,6 +149,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.CALL_INDIRECT, a: argc });
   }
 
+  /** Call function indirectly, adapting argc to callee's numParams (truncate or pad with nil). */
+  callIndirectArgs(argc: number): void {
+    this.emit({ op: Op.CALL_INDIRECT_ARGS, a: argc });
+  }
+
   /** Create a closure: pops captureCount values from the stack, creates a FunctionValue with captures. */
   makeClosure(funcId: number, captureCount: number): void {
     this.emit({ op: Op.MAKE_CLOSURE, a: funcId, b: captureCount });

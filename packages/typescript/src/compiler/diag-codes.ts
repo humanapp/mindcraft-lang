@@ -249,6 +249,12 @@ export enum LoweringDiagCode {
   ReduceRequiresOneOrTwoArgs = 3114,
   /** .toString() called with arguments */
   ArrayToStringTakesNoArgs = 3115,
+  /** Array.from() called with wrong number of arguments */
+  ArrayFromRequiresOneOrTwoArgs = 3116,
+  /** Array.from() called on a non-list type */
+  ArrayFromNonListSource = 3117,
+  /** Cannot determine result list type for Array.from() */
+  CannotDetermineArrayFromResultListType = 3118,
   /** Math method is not supported */
   UnsupportedMathMethod = 3120,
   /** Math.max()/Math.min() called with wrong number of arguments */

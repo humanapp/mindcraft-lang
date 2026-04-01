@@ -600,6 +600,8 @@ export class VM implements IVM {
           return this.execTypeCheck(fiber, ins, frame);
         case Op.CALL_INDIRECT:
           return this.execCallIndirect(fiber, ins, frame);
+        case Op.CALL_INDIRECT_ARGS:
+          return this.execCallIndirectArgs(fiber, ins, frame);
         case Op.MAKE_CLOSURE:
           return this.execMakeClosure(fiber, ins, frame);
         case Op.LOAD_CAPTURE:
@@ -791,6 +793,55 @@ export class VM implements IVM {
     const callee = this.prog.functions.get(calleeId)!;
     if (argc !== callee.numParams) {
       throw new Error(`CALL_INDIRECT: argc ${SU.toString(argc)} != numParams ${SU.toString(callee.numParams)}`);
+    }
+
+    const caller = this.topFrame(fiber);
+    if (caller) caller.pc++;
+
+    const base = fiber.vstack.size();
+    const locals = this.allocLocals(callee, args);
+
+    const newFrame: Frame = { funcId: calleeId, pc: 0, base, locals };
+    if (funcRef.captures) {
+      newFrame.captures = funcRef.captures;
+    }
+    fiber.frames.push(newFrame);
+    return undefined;
+  }
+
+  private execCallIndirectArgs(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const argc = ins.a ?? 0;
+
+    const args = List.empty<Value>();
+    for (let i = 0; i < argc; i++) {
+      args.push(V.nil());
+    }
+    for (let i = argc - 1; i >= 0; i--) {
+      args.set(i, this.pop(fiber));
+    }
+
+    const funcRef = this.pop(fiber);
+    if (!isFunctionValue(funcRef)) {
+      throw new Error(`CALL_INDIRECT_ARGS: expected FunctionValue on stack, got ${SU.toString(funcRef.t)}`);
+    }
+
+    const calleeId = funcRef.funcId;
+    if (calleeId < 0 || calleeId >= this.prog.functions.size()) {
+      throw new Error(`CALL_INDIRECT_ARGS: function ${SU.toString(calleeId)} out of bounds`);
+    }
+
+    if (fiber.frames.size() >= this.config.maxFrameDepth) {
+      throw new Error(`Stack overflow: frame depth limit ${SU.toString(this.config.maxFrameDepth)} exceeded`);
+    }
+
+    const callee = this.prog.functions.get(calleeId)!;
+    const needed = callee.numParams;
+
+    while (args.size() > needed) {
+      args.pop();
+    }
+    while (args.size() < needed) {
+      args.push(V.nil());
     }
 
     const caller = this.topFrame(fiber);

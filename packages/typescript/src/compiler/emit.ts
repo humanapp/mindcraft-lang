@@ -161,6 +161,9 @@ export function emitFunction(
       case "CallIndirect":
         emitter.callIndirect(node.argc);
         break;
+      case "CallIndirectArgs":
+        emitter.callIndirectArgs(node.argc);
+        break;
       case "PushFunctionRef": {
         const funcId = functionTable?.get(node.funcName);
         if (funcId === undefined) {

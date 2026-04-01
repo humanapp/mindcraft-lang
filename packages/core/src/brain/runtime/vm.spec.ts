@@ -1661,6 +1661,108 @@ describe("VM -- CALL_INDIRECT", () => {
   });
 });
 
+// ---- CALL_INDIRECT_ARGS ----
+
+describe("VM -- CALL_INDIRECT_ARGS", () => {
+  test("truncates extra args when callee has fewer params", () => {
+    // func 0: push FunctionValue(1), push 10, push 20, CALL_INDIRECT_ARGS argc=2, RET
+    // func 1 (1 param): LOAD_LOCAL 0, RET -- only uses first arg
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.CALL_INDIRECT_ARGS, a: 2 },
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([{ op: Op.LOAD_LOCAL, a: 0 }, { op: Op.RET }]),
+          numParams: 1,
+          numLocals: 1,
+          name: "callee",
+        },
+      ],
+      [mkFunctionValue(1), mkNumberValue(10), mkNumberValue(20)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 10);
+    }
+  });
+
+  test("pads with nil when callee has more params than provided", () => {
+    // func 0: push FunctionValue(1), push 10, CALL_INDIRECT_ARGS argc=1, RET
+    // func 1 (2 params): LOAD_LOCAL 1, RET -- returns second param (should be nil)
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.CALL_INDIRECT_ARGS, a: 1 },
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([{ op: Op.LOAD_LOCAL, a: 1 }, { op: Op.RET }]),
+          numParams: 2,
+          numLocals: 2,
+          name: "callee",
+        },
+      ],
+      [mkFunctionValue(1), mkNumberValue(10)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal(result.result!.t, NativeType.Nil);
+    }
+  });
+
+  test("exact match works like CALL_INDIRECT", () => {
+    // func 0: push FunctionValue(1), push 10, push 20, CALL_INDIRECT_ARGS argc=2, RET
+    // func 1 (2 params): LOAD_LOCAL 1, RET
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.CALL_INDIRECT_ARGS, a: 2 },
+          { op: Op.RET },
+        ]),
+        {
+          code: List.from([{ op: Op.LOAD_LOCAL, a: 1 }, { op: Op.RET }]),
+          numParams: 2,
+          numLocals: 2,
+          name: "callee",
+        },
+      ],
+      [mkFunctionValue(1), mkNumberValue(10), mkNumberValue(20)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as { v: number }).v, 20);
+    }
+  });
+});
+
 // ---- MAKE_CLOSURE / LOAD_CAPTURE ----
 
 describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {

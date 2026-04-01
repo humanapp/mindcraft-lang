@@ -1091,6 +1091,9 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
   }
 
   if (ts.isPropertyAccessExpression(expr.expression)) {
+    if (lowerArrayFromCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerMathCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -3892,6 +3895,142 @@ function isMathGlobal(expr: ts.Expression, ctx: LowerContext): boolean {
     }
   }
   return false;
+}
+
+function isArrayGlobal(expr: ts.Expression, ctx: LowerContext): boolean {
+  if (!ts.isIdentifier(expr) || expr.text !== "Array") return false;
+  const sym = ctx.checker.getSymbolAtLocation(expr);
+  if (!sym) return false;
+  const decls = sym.getDeclarations();
+  if (!decls || decls.length === 0) return false;
+  for (const d of decls) {
+    if (ts.isVariableDeclaration(d) || ts.isInterfaceDeclaration(d)) {
+      const sf = d.getSourceFile();
+      if (sf.isDeclarationFile || sf.fileName.includes("lib.")) return true;
+    }
+  }
+  return false;
+}
+
+function lowerArrayFromCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  if (!isArrayGlobal(propAccess.expression, ctx)) return false;
+  if (propAccess.name.text !== "from") return false;
+
+  if (expr.arguments.length < 1 || expr.arguments.length > 2) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ArrayFromRequiresOneOrTwoArgs, "Array.from() requires 1 or 2 arguments", expr)
+    );
+    return true;
+  }
+
+  const sourceType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
+  const sourceListTypeId = resolveListTypeId(sourceType, ctx);
+  if (!sourceListTypeId) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.ArrayFromNonListSource,
+        "Array.from() source must be an array/list type",
+        expr.arguments[0]
+      )
+    );
+    return true;
+  }
+
+  const returnType = ctx.checker.getTypeAtLocation(expr);
+  const resultListTypeId = resolveListTypeId(returnType, ctx);
+  if (!resultListTypeId) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotDetermineArrayFromResultListType,
+        "Cannot determine result list type for Array.from() (add a type annotation)",
+        expr
+      )
+    );
+    return true;
+  }
+
+  const hasMapFn = expr.arguments.length === 2;
+
+  const loopStart = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  const srcListLocal = ctx.scopeStack.allocLocal();
+  const resultListLocal = ctx.scopeStack.allocLocal();
+  const idxLocal = ctx.scopeStack.allocLocal();
+  const lenLocal = ctx.scopeStack.allocLocal();
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: srcListLocal });
+
+  ctx.ir.push({ kind: "ListNew", typeId: resultListTypeId });
+  ctx.ir.push({ kind: "StoreLocal", index: resultListLocal });
+
+  let callbackLocal: number | undefined;
+  if (hasMapFn) {
+    callbackLocal = ctx.scopeStack.allocLocal();
+    lowerExpression(expr.arguments[1], ctx);
+    ctx.ir.push({ kind: "StoreLocal", index: callbackLocal });
+  }
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  ctx.ir.push({ kind: "StoreLocal", index: lenLocal });
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for Array.from()", expr)
+    );
+    return true;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  if (hasMapFn) {
+    ctx.ir.push({ kind: "LoadLocal", index: callbackLocal! });
+    ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
+    ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+    ctx.ir.push({ kind: "ListGet" });
+    ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+    ctx.ir.push({ kind: "CallIndirectArgs", argc: 2 });
+  } else {
+    ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
+    ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+    ctx.ir.push({ kind: "ListGet" });
+  }
+
+  ctx.ir.push({ kind: "LoadLocal", index: resultListLocal });
+  ctx.ir.push({ kind: "Swap" });
+  ctx.ir.push({ kind: "ListPush" });
+  ctx.ir.push({ kind: "StoreLocal", index: resultListLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for Array.from()", expr)
+    );
+    return true;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+  ctx.ir.push({ kind: "LoadLocal", index: resultListLocal });
+  return true;
 }
 
 function lowerMathCall(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): boolean {

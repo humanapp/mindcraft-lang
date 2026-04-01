@@ -203,6 +203,8 @@ interface Array<T> {
 }
 
 interface ArrayConstructor {
+  from<T>(arrayLike: ArrayLike<T>): T[];
+  from<T, U>(arrayLike: ArrayLike<T>, mapfn: (v: T, k: number) => U): U[];
   isArray(arg: any): arg is any[];
   readonly prototype: any[];
 }

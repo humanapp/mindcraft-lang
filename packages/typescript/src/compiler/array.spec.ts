@@ -788,3 +788,55 @@ export default Sensor({
     assert.ok(result.diagnostics.length > 0);
   });
 });
+
+describe("Array.from", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("Array.from copies a list", () => {
+    const v = compileAndRunNumberList(`
+      const src: NumberList = [1, 2, 3];
+      const copy: NumberList = Array.from(src);
+      return copy;
+    `);
+    assert.deepStrictEqual(v, [1, 2, 3]);
+  });
+
+  test("Array.from with mapping function", () => {
+    const v = compileAndRunNumberList(`
+      const src: NumberList = [1, 2, 3];
+      const doubled: NumberList = Array.from(src, (x: number) => x * 2);
+      return doubled;
+    `);
+    assert.deepStrictEqual(v, [2, 4, 6]);
+  });
+
+  test("Array.from produces independent copy", () => {
+    const v = compileAndRunNumberList(`
+      const src: NumberList = [10, 20, 30];
+      const copy: NumberList = Array.from(src);
+      copy.push(40);
+      return src;
+    `);
+    assert.deepStrictEqual(v, [10, 20, 30]);
+  });
+
+  test("Array.from empty list", () => {
+    const v = compileAndRunNumberList(`
+      const src: NumberList = [];
+      const copy: NumberList = Array.from(src);
+      return copy;
+    `);
+    assert.deepStrictEqual(v, []);
+  });
+
+  test("Array.from with index in mapping function", () => {
+    const v = compileAndRunNumberList(`
+      const src: NumberList = [10, 20, 30];
+      const indices: NumberList = Array.from(src, (_val: number, idx: number) => idx);
+      return indices;
+    `);
+    assert.deepStrictEqual(v, [0, 1, 2]);
+  });
+});

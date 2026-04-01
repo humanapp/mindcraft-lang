@@ -12,6 +12,7 @@ export type IrNode =
   | IrSwap
   | IrCall
   | IrCallIndirect
+  | IrCallIndirectArgs
   | IrPushFunctionRef
   | IrMakeClosure
   | IrLoadCapture
@@ -193,6 +194,11 @@ export interface IrTypeCheck {
 
 export interface IrCallIndirect {
   kind: "CallIndirect";
+  argc: number;
+}
+
+export interface IrCallIndirectArgs {
+  kind: "CallIndirectArgs";
   argc: number;
 }
 
