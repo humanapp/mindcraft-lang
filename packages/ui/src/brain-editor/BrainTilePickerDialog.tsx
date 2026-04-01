@@ -98,6 +98,8 @@ export function BrainTilePickerDialog({
   React.useEffect(() => {
     if (isOpen) {
       setFilter("");
+      // Defer focus to the next animation frame so the dialog's DOM is fully
+      // rendered.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen]);

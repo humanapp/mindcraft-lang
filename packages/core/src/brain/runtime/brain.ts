@@ -152,7 +152,9 @@ export class Brain implements IBrain {
     }
 
     // Create shared execution context
-    // Use a closure-based object to satisfy Roblox-TS method requirements
+    // The getVariable/setVariable/clearVariable closures capture `brain` by reference
+    // instead of using method references (this.getVariable) because Roblox-TS
+    // doesn't support `this` binding with unbound method references.
     const brain = this;
     this.executionContext = {
       brain: this,
@@ -439,7 +441,7 @@ export class Brain implements IBrain {
     this.executionContext.dt = dt;
     this.executionContext.currentTick += 1;
 
-    // Check if any root rule fibers need respawning
+    // Respawn completed root-rule fibers so rules re-evaluate every frame.\n    // Each root rule runs as a fiber that executes WHEN/DO once, then completes.\n    // On the next frame, we detect the completed fiber and spawn a fresh one.
     for (let i = 0; i < this.activeRuleFiberIds.size(); i++) {
       const entry = this.activeRuleFiberIds.get(i)!;
       const needsRespawn = this.shouldRespawnFiber(entry.fiberId);

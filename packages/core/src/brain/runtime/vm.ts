@@ -108,6 +108,8 @@ export const DEFAULT_VM_CONFIG: VmConfig = {
 // Value Model
 ///////////////////////////
 
+// Short-hand value factory using pooled singletons (TRUE_VALUE, FALSE_VALUE, NIL_VALUE, etc.)
+// to avoid allocating new objects on every instruction.
 const V = {
   unknown(): Value {
     return UNKNOWN_VALUE;
@@ -724,6 +726,9 @@ export class VM implements IVM {
     const funcId = ins.a ?? 0;
     const captureCount = ins.b ?? 0;
 
+    // Captures were pushed left-to-right but must be popped right-to-left.
+    // Pre-fill with nil, then overwrite in reverse order to restore the
+    // original ordering in the captures list.
     const captures = List.empty<Value>();
     for (let i = 0; i < captureCount; i++) {
       captures.push(V.nil());
@@ -759,6 +764,8 @@ export class VM implements IVM {
   private execCallIndirect(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const argc = ins.a ?? 0;
 
+    // Arguments are on the stack above the function reference.
+    // Pop args first (right-to-left), then pop the function value.
     const args = List.empty<Value>();
     for (let i = 0; i < argc; i++) {
       args.push(V.nil());
@@ -892,6 +899,9 @@ export class VM implements IVM {
    * Pop `argc` raw values from the stack and wrap them into a MapValue
    * with 0-indexed numeric keys. Used by HOST_CALL_ARGS and HOST_CALL_ARGS_ASYNC
    * to avoid compiler-side map construction for operators and conversions.
+   *
+   * Pop order is reversed so that the first-pushed value (left operand)
+   * ends up at key 0 in the resulting map.
    */
   private collectArgsToMap(fiber: Fiber, argc: number): MapValue {
     const dict = new ValueDict();

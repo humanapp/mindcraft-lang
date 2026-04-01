@@ -10,6 +10,9 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
   private readonly _onDidChangeFileDecorations = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
   readonly onDidChangeFileDecorations = this._onDidChangeFileDecorations.event;
 
+  // Read and write can target different FileSystem instances. This enables
+  // routing reads from a local cache while writes go through the notifying FS
+  // that triggers bridge synchronization.
   private _readFs: IFileSystem | undefined;
   private _writeFs: IFileSystem | undefined;
 
@@ -99,6 +102,8 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
       fs.write(path, new TextDecoder().decode(content));
     } catch (e) {
       if (e instanceof ProtocolError) {
+        // Etag mismatch means another client modified the file since we last
+        // read it. Show a user-facing error message with an invitation to resync.
         if (e.code === ErrorCode.ETAG_MISMATCH) {
           vscode.window
             .showErrorMessage(

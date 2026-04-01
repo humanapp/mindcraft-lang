@@ -26,6 +26,8 @@ export function createUserTileExec(
   const { linkedEntryFuncId, linkedInitFuncId, linkedOnPageEnteredFuncId, program } = linkInfo;
   const { numCallsiteVars, execIsAsync } = program;
   const hasParams = linkedProgram.functions.get(linkedEntryFuncId).numParams > 1;
+  // Negative fiber IDs distinguish user-tile-wrapped fibers from brain-rule fibers
+  // (which use positive IDs), preventing ID collisions in the shared scheduler.
   let nextFiberId = -1;
 
   function spawnAndRun(
@@ -56,6 +58,9 @@ export function createUserTileExec(
     return undefined;
   }
 
+  // Callsite vars hold the module-level variable state. They're created once
+  // per call site (keyed by ExecutionContext.currentCallSiteId) and reused on
+  // subsequent invocations so top-level `let` declarations persist across calls.
   function getOrCreateCallsiteVars(ctx: ExecutionContext): List<Value> {
     let vars = getCallSiteState<List<Value>>(ctx);
     if (vars) return vars;
@@ -95,6 +100,9 @@ export function createUserTileExec(
     }
   }
 
+  // Await chain: when the fiber suspends on an async handle, subscribe to
+  // handle completion and resume the fiber. If the resumed fiber suspends
+  // again on a different handle, recurse to set up the next wait.
   function waitForHandle(fiber: Fiber, innerHandleId: HandleId, outerHandleId: HandleId): void {
     const unsub = vm.handles.events.on("completed", (completedId: HandleId) => {
       if (completedId !== innerHandleId) return;

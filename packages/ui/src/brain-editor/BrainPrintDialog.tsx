@@ -20,7 +20,8 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
   const printRootRef = useRef<HTMLDivElement | null>(null);
 
   const handlePrint = useCallback(() => {
-    // Ensure the print root exists
+    // Print uses a portal outside the React tree. The hidden root div is toggled
+    // visible before printing, then hidden again afterward.
     let printRoot = document.getElementById("brain-print-root");
     if (!printRoot) {
       printRoot = document.createElement("div");
@@ -34,7 +35,8 @@ export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintD
     // Force the root visible before printing
     printRoot.style.display = "block";
 
-    // Small delay to let React render the portal content
+    // Wait one frame for React to render the portal content into the visible root,
+    // then trigger the browser print dialog.
     requestAnimationFrame(() => {
       window.print();
       // Hide after print dialog closes

@@ -16,6 +16,8 @@ const connectionThrottle = new TokenBucketMap(10, 0.5);
 const messageBuckets = new Map<WSContext, TokenBucket>();
 const lastActivity = new Map<WSContext, number>();
 
+// Stale connection reaper: if a WebSocket hasn't sent any messages for
+// STALE_CONNECTION_MS, forcibly disconnect it.
 const staleSweepTimer = setInterval(() => {
   const now = Date.now();
   for (const [ws, lastAt] of lastActivity) {

@@ -159,6 +159,7 @@ export class WsClient {
     };
 
     ws.onmessage = (event: MessageEvent) => {
+      // Any received message counts as proof of life.
       this.missedHeartbeats = 0;
       let msg: WsMessage;
       try {
@@ -209,6 +210,8 @@ export class WsClient {
 
   private scheduleReconnect(): void {
     this.clearReconnectTimer();
+    // Apply random jitter (50-100% of base delay) to prevent thundering herd
+    // when many clients reconnect simultaneously after an outage/restart.
     const jitter = this.reconnectDelay * (0.5 + Math.random() * 0.5);
     this.reconnectTimer = setTimeout(() => {
       if (this.state !== "reconnecting") {
@@ -250,6 +253,8 @@ export class WsClient {
   }
 
   private enqueue(msg: WsMessage): void {
+    // Kill-switch: if the queue grows beyond the limit, the connection is
+    // unrecoverably behind. Drop all queued messages and force-close.
     if (this.queuedMessages.length >= this.maxQueueSize) {
       this.queuedMessages.length = 0;
       this.close();

@@ -28,6 +28,9 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
   const [pendingFactoryTile, setPendingFactoryTile] = useState<BrainTileFactoryDef | null>(null);
   const [pendingTileAction, setPendingTileAction] = useState<((tileDef: IBrainTileDef) => void) | null>(null);
 
+  // Store ruleDef in a ref so callbacks always access the latest value.
+  // Without this, callbacks capture a stale closure over the initial ruleDef
+  // and won't see subsequent prop updates.
   const ruleDefRef = useRef(ruleDef);
   useEffect(() => {
     ruleDefRef.current = ruleDef;

@@ -69,10 +69,9 @@ export class ConversionRegistry implements IConversionRegistry {
   /**
    * Finds the best (lowest cost) conversion path between two types using breadth-first search.
    * Returns an empty list if the types are the same, or undefined if no path exists.
-   * @param fromType - The source type ID to convert from
-   * @param toType - The target type ID to convert to
-   * @param maxDepth - Optional maximum path depth to limit the search
-   * @returns A list of conversions representing the optimal path, or undefined if no path exists
+   *
+   * This is a graph search where types are nodes and registered conversions are edges.
+   * Each edge has a cost; BFS explores all paths by cost to find the cheapest.
    */
   findBestPath(fromType: TypeId, toType: TypeId, maxDepth?: number): List<Conversion> | undefined {
     if (fromType === toType) {

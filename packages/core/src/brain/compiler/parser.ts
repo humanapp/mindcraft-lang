@@ -111,11 +111,11 @@ class BrainParser {
     /**
      * Register NUD handlers for tokens that can start expressions.
      * Using arrow functions instead of method references for Roblox-TS compatibility
-     * (Roblox-TS doesn't support this binding with method references in Map constructors).
+     * (Roblox-TS doesn't support `this` binding with method references in Map constructors).
      *
-     * Note: non-inline sensors and actuators are NOT in this map because they're handled
-     * separately by parseActionCall, not as general expressions.
-     * Inline sensors (TilePlacement.Inline) ARE handled here as expression primaries.
+     * Non-inline sensors and actuators are NOT in this map. They have structured
+     * call grammars and are handled by parseActionCall(), not as general expressions.
+     * Only inline sensors (TilePlacement.Inline) appear here as expression primaries.
      */
     this.nudHandlers = new Dict<BrainTileKind, NudHandler>([
       ["literal", (tok, startPos, opts) => this.parseNudLiteral(tok, startPos, opts)],

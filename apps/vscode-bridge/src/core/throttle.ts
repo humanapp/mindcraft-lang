@@ -40,7 +40,10 @@ export class TokenBucketMap {
     private readonly capacity: number,
     private readonly refillRate: number
   ) {
+    // Periodically remove buckets that haven't been accessed recently
+    // to prevent unbounded memory growth from many unique client IPs.
     this.sweepTimer = setInterval(() => this.sweep(), SWEEP_INTERVAL_MS);
+    // .unref() allows the Node process to exit even if this timer is pending
     this.sweepTimer.unref();
   }
 

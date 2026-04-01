@@ -19,6 +19,7 @@ export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserA
 
     for (let i = 0; i < userProg.constants.size(); i++) {
       const c = userProg.constants.get(i);
+      // FunctionValue constants embed a funcId that also needs offsetting
       if (isFunctionValue(c)) {
         linkedConstants.push({ t: NativeType.Function, funcId: c.funcId + funcOffset });
       } else {
@@ -67,6 +68,9 @@ export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserA
   return { linkedProgram, userLinks };
 }
 
+// Post-link instruction remapping: after merging a user program's functions and
+// constants into the brain program's tables, all references to function IDs and
+// constant indices must be offset by the merge point.
 function remapInstructions(code: List<Instr>, funcOffset: number, constOffset: number): List<Instr> {
   const remapped: Instr[] = [];
   for (let i = 0; i < code.size(); i++) {

@@ -56,9 +56,10 @@ class NodeByteArray implements IByteArray {
   }
 
   toStringLatin1(): string {
-    // Avoid TextDecoder to keep this target-simple.
     let out = "";
-    // Chunk to avoid call stack / perf issues for large arrays.
+    // String.fromCharCode(...largeArray) overflows the call stack for large arrays
+    // because spread expands into individual arguments. 0x8000 (32KB) chunks stay
+    // well under the engine's argument count limit.
     const CHUNK = 0x8000;
     for (let i = 0; i < this.data.length; i += CHUNK) {
       const sub = this.data.subarray(i, Math.min(i + CHUNK, this.data.length));
@@ -119,11 +120,16 @@ export class MemoryStream implements IReadStream, IWriteStream {
   private readonly encoder = new TextEncoder();
   private readonly decoder = new TextDecoder("utf-8", { fatal: true });
 
-  // Chunk support: stack of buffers for writing nested chunks
+  // Nested binary chunks use three cooperating stacks:
+  // - chunkStack: write-side stack; each open chunk writes to its own sub-stream,
+  //   then flushes length-prefixed data to the parent on endChunk().
+  // - readChunkStack: read-side stack; tracks the byte boundary (endPos) of each
+  //   open chunk so the reader knows where the chunk ends.
+  // - readPosStack: used by pushReadPos/popReadPos for speculative reads;
+  //   snapshots BOTH the read position AND the current readChunkStack so the
+  //   entire read state can be rewound atomically.
   private chunkStack: Array<{ tag: number; version: number; stream: MemoryStream }> = [];
-  // Read chunk stack: tracks chunk boundaries
   private readChunkStack: Array<{ tag: number; version: number; endPos: number }> = [];
-  // Read position stack - stores both rpos and chunk stack state
   private readPosStack: Array<{
     rpos: number;
     chunkStack: Array<{ tag: number; version: number; endPos: number }>;

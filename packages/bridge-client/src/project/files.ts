@@ -13,6 +13,10 @@ export interface ProjectFilesOptions {
 
 export class ProjectFiles {
   private _fs = new FileSystem();
+  // The same underlying FileSystem is wrapped twice with different notification
+  // callbacks. `_toRemote` fires when local code writes (outbound changes),
+  // while `_fromRemote` fires when the bridge applies remote changes (inbound).
+  // This lets the Project distinguish change direction.
   private _toRemote: NotifyingFileSystem;
   private _fromRemote: NotifyingFileSystem;
 

@@ -66,6 +66,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       ...tileGlass.containerStyle,
     };
 
+    // Measure the rendered text width by creating a temporary hidden span in the DOM.
     useLayoutEffect(() => {
       const tempSpan = document.createElement("span");
       tempSpan.style.visibility = "hidden";

@@ -32,6 +32,8 @@ export class NotifyingFileSystem implements IFileSystem {
   }
 
   write(path: string, content: string, isReadonly?: boolean, expectedEtag?: string): string {
+    // Capture the etag before writing so the notification carries the "old" etag.
+    // Receivers use this to detect concurrent modifications (optimistic concurrency).
     let preWriteEtag: string | undefined;
     try {
       const existing = this._fs.stat(path);

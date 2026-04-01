@@ -127,7 +127,10 @@ export type Value =
   | { t: "handle"; id: HandleId } // VM-internal type
   | { t: "err"; e: ErrorValue }; // VM-internal type
 
-// Pooled singleton values for common immutable values
+// Pooled singleton values for common immutable values.
+// Reuse these instead of allocating new objects to reduce GC pressure.
+// Boolean true/false, nil, void, and unknown are used frequently in the VM
+// and never mutated, so a single shared instance suffices.
 export const UNKNOWN_VALUE: UnknownValue = { t: NativeType.Unknown };
 export const VOID_VALUE: VoidValue = { t: NativeType.Void };
 export const NIL_VALUE: NilValue = { t: NativeType.Nil };

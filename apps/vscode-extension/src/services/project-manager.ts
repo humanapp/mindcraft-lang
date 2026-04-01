@@ -8,6 +8,9 @@ import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-pr
 
 const BINDING_TOKEN_KEY = "mindcraft.bindingToken";
 
+// Deduplication key for pending changes: same action + path overwrites the
+// previous pending entry so only the latest write/delete is sent after reconnect.
+// Import has no key (always appended) since imports are full-state snapshots.
 function pendingChangeKey(ev: FileSystemNotification): string | undefined {
   switch (ev.action) {
     case "write":

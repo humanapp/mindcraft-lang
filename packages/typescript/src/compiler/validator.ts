@@ -124,6 +124,10 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
   return diagnostics;
 }
 
+// An identifier matching a forbidden global is only actually forbidden when it
+// appears as a standalone reference (e.g. `eval(...)` or `const x = Promise`).
+// The same name is allowed in non-reference positions like property names,
+// parameter names, type references, import specifiers, etc.
 function isForbiddenGlobalReference(node: ts.Identifier): boolean {
   const parent = node.parent;
   if (!parent) return false;

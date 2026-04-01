@@ -82,6 +82,10 @@ function resolveOperator(opId: string, argTypes: string[]): string | undefined {
   return getBrainServices().operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
 }
 
+// Operator resolution with type expansion: if a direct overload lookup fails,
+// expand union/struct types into their constituent members and check whether
+// ALL members map to the same operator function. This allows e.g. (A | B) + Number
+// to resolve when both A + Number and B + Number use the same underlying function.
 function resolveOperatorWithExpansion(opId: string, argTypes: string[]): string | undefined {
   const direct = resolveOperator(opId, argTypes);
   if (direct) return direct;
@@ -146,6 +150,9 @@ export function lowerProgram(
   const funcIdCounter = { value: 0 };
   const closureFunctions = new Map<number, FunctionEntry>();
 
+  // Module-level variables (outside the descriptor's default export) are stored
+  // as "callsite variables" -- a separate namespace from function-local variables.
+  // Callsite vars are distinct per user tile instance, persist across invocations.
   let nextCallsiteVar = 0;
 
   const entryFuncId = funcIdCounter.value++;

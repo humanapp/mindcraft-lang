@@ -23,6 +23,7 @@ export function createBindingToken(bindingId: string): string {
   return `${bindingId}.${sig}`;
 }
 
+// Verify by recomputing the HMAC and comparing with timing-safe equality.
 export function verifyBindingToken(token: string): string | undefined {
   if (!secret) return undefined;
   const dotIndex = token.indexOf(".");

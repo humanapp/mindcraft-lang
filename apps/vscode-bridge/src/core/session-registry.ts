@@ -39,6 +39,10 @@ export interface ExtensionSession extends BaseSession {
   pendingBindingId: string | undefined;
 }
 
+// Active sessions are keyed by WebSocket; disconnected sessions are cached by ID
+// with a TTL. The cache allows seamless reconnection: when an app or extension
+// reconnects within the TTL window, it rebinds to its previous session state
+// instead of starting fresh.
 const appSessions = new Map<WSContext, AppSession>();
 const extensionSessions = new Map<WSContext, ExtensionSession>();
 const activeJoinCodes = new Set<string>();
@@ -47,6 +51,9 @@ const disconnectedExtensionSessions = new Map<string, { session: ExtensionSessio
 let joinCodeTimer: ReturnType<typeof setInterval> | undefined;
 let disconnectedSweepTimer: ReturnType<typeof setInterval> | undefined;
 
+// Collision-resistant code generation: try up to 100 random triplets.
+// If all collide (extremely unlikely with a small active set), fall back
+// to a triplet + UUID suffix that is virtually guaranteed unique.
 function generateUniqueJoinCode(): string {
   for (let attempt = 0; attempt < 100; attempt++) {
     const code = generateTriplet();

@@ -29,9 +29,12 @@ export interface ReadonlyBitSet {
 
 export class BitSet implements ReadonlyBitSet {
   static readonly WORD_LENGTH: number = 32;
+  // log2(32) = 5; used to convert bit index -> word index via right shift
   static readonly WORD_LOG: number = 5;
 
   data: List<number>;
+  // The "infinity fill" bit: when the set represents an infinite bit string,
+  // this value (0 or ~0) fills all words beyond the stored data length.
   _: number = 0;
 
   constructor(param?: string | BitSet | number) {
@@ -40,12 +43,17 @@ export class BitSet implements ReadonlyBitSet {
     this.data = List.from((this as unknown as BitSetData).data.toArray());
   }
 
+  // Hamming weight / population count: counts the number of set bits in a 32-bit word.
+  // Uses the classic parallel-addition bit-twiddling algorithm.
+  // See: https://en.wikipedia.org/wiki/Hamming_weight
   static popCount(v: number): number {
     v -= (v >>> 1) & 0x55555555;
     v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
     return (((v + (v >>> 4)) & 0xf0f0f0f) * 0x1010101) >>> 24;
   }
 
+  // Long division on a big-number represented as a List of 32-bit words (MSB first).
+  // Returns the remainder; mutates `arr` in place to hold the quotient.
   static divide(arr: List<number>, B: number): number {
     let r = 0;
     const len = arr.size();

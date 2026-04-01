@@ -9,6 +9,8 @@ export interface PendingRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
+// Bridge-owned timeout: if the app doesn't respond within REQUEST_TIMEOUT_MS,
+// the bridge auto-fails the request back to the extension.
 const REQUEST_TIMEOUT_MS = 30_000;
 
 const pendingRequests = new Map<string, PendingRequest>();

@@ -29,9 +29,8 @@ import { type CompilationDiag, ExprCompiler } from "./rule-compiler";
 import type { ActuatorExpr, Expr, SensorExpr, TypeEnv, TypeInfo } from "./types";
 import { acceptExprVisitor } from "./types";
 
-/**
- * Replace all "/" characters with "_" (for function naming)
- */
+// Manual character-by-character iteration instead of String.replace() for
+// Roblox-TS compatibility -- Roblox-TS doesn't support regex or string.replace.
 function replaceAllSlashes(str: string): string {
   let result = "";
   const len = SU.length(str);

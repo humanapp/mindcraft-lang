@@ -23,6 +23,10 @@ export interface ProjectOptions<TClient extends WsMessage = WsMessage, TServer e
 export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
   private _session: ProjectSession<TClient, TServer>;
   private _files: ProjectFiles;
+  // Sequence numbers for message deduplication. _outboundSeq increments on
+  // every local change sent to the bridge. _peerSeq tracks the highest seq
+  // received from the peer; incoming messages with seq <= _peerSeq are
+  // silently dropped to handle duplicate deliveries after reconnection.
   private _outboundSeq = 0;
   private _peerSeq = 0;
 
