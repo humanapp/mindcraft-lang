@@ -4995,6 +4995,53 @@ export default Sensor({
       assert.equal((struct.v?.get("y") as NumberValue).v, 10);
     }
   });
+
+  test("map with array value type: Record<string, number[]>", () => {
+    const types = getBrainServices().types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const numListTypeId = types.instantiate("List", List.from([numTypeId]));
+    const numListMapName = "NumberListMap";
+    const numListMapTypeId = mkTypeId(NativeType.Map, numListMapName);
+    if (!types.get(numListMapTypeId)) {
+      types.addMapType(numListMapName, { valueTypeId: numListTypeId });
+    }
+    const amb = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context, type NumberListMap } from "mindcraft";
+
+export default Sensor({
+  name: "map-arr-val",
+  output: "NumberListMap",
+  onExecute(ctx: Context): NumberListMap {
+    const m: NumberListMap = { scores: [10, 20], grades: [90, 95] };
+    return m;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource: amb });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isMapValue(runResult.result!), "expected map value");
+      const map = runResult.result as MapValue;
+      const scores = map.v.get("scores") as ListValue;
+      assert.ok(isListValue(scores), "expected list value for scores");
+      assert.equal(scores.v.size(), 2);
+      assert.equal((scores.v.get(0) as NumberValue).v, 10);
+      assert.equal((scores.v.get(1) as NumberValue).v, 20);
+    }
+  });
 });
 
 describe("enum value literals", () => {

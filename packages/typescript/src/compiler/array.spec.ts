@@ -929,3 +929,44 @@ describe("callback index parameter", () => {
     assert.deepStrictEqual(v, [10, 20, 30]);
   });
 });
+
+describe("nested array literal types", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("number[][] compiles and executes", () => {
+    const v = compileAndRunNumber(`
+      const nested: number[][] = [[1, 2], [3, 4]];
+      return nested[0][0] + nested[1][1];
+    `);
+    assert.equal(v, 5);
+  });
+
+  test("destructuring a number[][] directly", () => {
+    const v = compileAndRunNumber(`
+      const nested: number[][] = [[10, 20], [30, 40]];
+      const [first, second] = nested;
+      return first[0] + second[1];
+    `);
+    assert.equal(v, 50);
+  });
+
+  test("nested array as function return type", () => {
+    const v = compileAndRunNumber(`
+      const a: number[] = [1, 2];
+      const b: number[] = [3, 4];
+      const nested: number[][] = [a, b];
+      return nested[0][1] + nested[1][0];
+    `);
+    assert.equal(v, 5);
+  });
+
+  test("triple-nested number[][][] compiles", () => {
+    const v = compileAndRunNumber(`
+      const deep: number[][][] = [[[1, 2]], [[3, 4]]];
+      return deep[0][0][0] + deep[1][0][1];
+    `);
+    assert.equal(v, 5);
+  });
+});

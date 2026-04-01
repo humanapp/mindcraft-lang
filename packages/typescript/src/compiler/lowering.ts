@@ -4561,9 +4561,42 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
   const sym = type.getSymbol() ?? type.aliasSymbol;
   if (sym) {
     const registry = getBrainServices().types;
-    const typeId = registry.resolveByName(sym.getName());
+    const symName = sym.getName();
+
+    if (symName === "Array" && checker) {
+      const typeArgs = (type as ts.TypeReference).typeArguments ?? checker.getTypeArguments(type as ts.TypeReference);
+      if (typeArgs && typeArgs.length > 0) {
+        const elementTypeId = tsTypeToTypeId(typeArgs[0], checker);
+        if (elementTypeId) {
+          return registry.instantiate("List", List.from([elementTypeId]));
+        }
+      }
+    }
+
+    if (symName === "Map" && checker) {
+      const typeArgs = (type as ts.TypeReference).typeArguments ?? checker.getTypeArguments(type as ts.TypeReference);
+      if (typeArgs && typeArgs.length >= 2) {
+        const valueTypeId = tsTypeToTypeId(typeArgs[1], checker);
+        if (valueTypeId) {
+          return registry.instantiate("Map", List.from([valueTypeId]));
+        }
+      }
+    }
+
+    const typeId = registry.resolveByName(symName);
     if (typeId) return typeId;
   }
+
+  if (checker) {
+    const indexType = type.getStringIndexType();
+    if (indexType) {
+      const valueTypeId = tsTypeToTypeId(indexType, checker);
+      if (valueTypeId) {
+        return getBrainServices().types.instantiate("Map", List.from([valueTypeId]));
+      }
+    }
+  }
+
   return undefined;
 }
 
