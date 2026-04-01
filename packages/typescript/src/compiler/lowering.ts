@@ -1094,6 +1094,9 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
     if (lowerMathCall(expr, expr.expression, ctx)) {
       return;
     }
+    if (lowerStringMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerStructMethodCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -1776,10 +1779,20 @@ function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): bo
 
 function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext): void {
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
+  if (isStringType(objType)) {
+    lowerExpression(expr.expression, ctx);
+    lowerExpression(expr.argumentExpression, ctx);
+    ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_charAt", argc: 2 });
+    return;
+  }
   const listTypeId = resolveListTypeId(objType, ctx);
   if (!listTypeId) {
     ctx.diagnostics.push(
-      makeDiag(LoweringDiagCode.ElementAccessOnNonListType, "Element access is only supported on list types", expr)
+      makeDiag(
+        LoweringDiagCode.ElementAccessOnNonListType,
+        "Element access is only supported on list and string types",
+        expr
+      )
     );
     return;
   }
@@ -1806,6 +1819,196 @@ function lowerElementAccessAssignment(expr: ts.BinaryExpression, ctx: LowerConte
   lowerExpression(elemAccess.argumentExpression, ctx);
   lowerExpression(expr.right, ctx);
   ctx.ir.push({ kind: "ListSet" });
+}
+
+function isStringType(type: ts.Type): boolean {
+  return (type.flags & ts.TypeFlags.StringLike) !== 0;
+}
+
+function lowerStringMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const objType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  if (!isStringType(objType)) return false;
+
+  const methodName = propAccess.name.text;
+
+  switch (methodName) {
+    case "charAt": {
+      if (expr.arguments.length !== 1) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".charAt() requires exactly 1 argument", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_charAt", argc: 2 });
+      return true;
+    }
+    case "charCodeAt": {
+      if (expr.arguments.length !== 1) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".charCodeAt() requires exactly 1 argument", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_charCodeAt", argc: 2 });
+      return true;
+    }
+    case "indexOf": {
+      if (expr.arguments.length < 1 || expr.arguments.length > 2) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".indexOf() requires 1 or 2 arguments", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      if (expr.arguments.length === 2) {
+        lowerExpression(expr.arguments[1], ctx);
+      } else {
+        ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+      }
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_indexOf", argc: 3 });
+      return true;
+    }
+    case "lastIndexOf": {
+      if (expr.arguments.length < 1 || expr.arguments.length > 2) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".lastIndexOf() requires 1 or 2 arguments", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      if (expr.arguments.length === 2) {
+        lowerExpression(expr.arguments[1], ctx);
+      } else {
+        ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+      }
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_lastIndexOf", argc: 3 });
+      return true;
+    }
+    case "slice": {
+      if (expr.arguments.length > 2) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".slice() takes at most 2 arguments", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      if (expr.arguments.length >= 1) {
+        lowerExpression(expr.arguments[0], ctx);
+      } else {
+        ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+      }
+      if (expr.arguments.length >= 2) {
+        lowerExpression(expr.arguments[1], ctx);
+      } else {
+        ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+      }
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_slice", argc: 3 });
+      return true;
+    }
+    case "substring": {
+      if (expr.arguments.length < 1 || expr.arguments.length > 2) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".substring() requires 1 or 2 arguments", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      if (expr.arguments.length === 2) {
+        lowerExpression(expr.arguments[1], ctx);
+      } else {
+        ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+      }
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_substring", argc: 3 });
+      return true;
+    }
+    case "toLowerCase": {
+      if (expr.arguments.length !== 0) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".toLowerCase() takes no arguments", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_toLowerCase", argc: 1 });
+      return true;
+    }
+    case "toUpperCase": {
+      if (expr.arguments.length !== 0) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".toUpperCase() takes no arguments", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_toUpperCase", argc: 1 });
+      return true;
+    }
+    case "trim": {
+      if (expr.arguments.length !== 0) {
+        ctx.diagnostics.push(makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".trim() takes no arguments", expr));
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_trim", argc: 1 });
+      return true;
+    }
+    case "split": {
+      if (expr.arguments.length < 1 || expr.arguments.length > 2) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, ".split() requires 1 or 2 arguments", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      if (expr.arguments.length === 2) {
+        lowerExpression(expr.arguments[1], ctx);
+      } else {
+        ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+      }
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_split", argc: 3 });
+      return true;
+    }
+    case "concat": {
+      if (expr.arguments.length === 0) {
+        lowerExpression(propAccess.expression, ctx);
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      for (const arg of expr.arguments) {
+        lowerExpression(arg, ctx);
+      }
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_concat", argc: expr.arguments.length + 1 });
+      return true;
+    }
+    case "toString":
+    case "valueOf": {
+      if (expr.arguments.length !== 0) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.StringMethodWrongArgCount, `.${methodName}() takes no arguments`, expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      return true;
+    }
+    default:
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UnsupportedStringMethod, `Unsupported string method: .${methodName}()`, expr)
+      );
+      return true;
+  }
 }
 
 function lowerListMethodCall(
@@ -3482,6 +3685,11 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
 
   if (expr.name.text === "length") {
     const objType = ctx.checker.getTypeAtLocation(expr.expression);
+    if (isStringType(objType)) {
+      lowerExpression(expr.expression, ctx);
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_length", argc: 1 });
+      return;
+    }
     const listTypeId = resolveListTypeId(objType, ctx);
     if (listTypeId) {
       lowerExpression(expr.expression, ctx);

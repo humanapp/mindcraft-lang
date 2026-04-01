@@ -76,6 +76,64 @@ export namespace StringUtils {
   export declare function trim(str: string): string;
 
   /**
+   * Gets the character at the specified index in a string
+   * @param str The source string
+   * @param pos The index of the character (0-based)
+   * @returns The character at the specified index, or empty string if out of range
+   */
+  export declare function charAt(str: string, pos: number): string;
+
+  /**
+   * Returns the index of the first occurrence of a search string
+   * @param str The string to search within
+   * @param searchString The string to search for
+   * @param position Optional index to start searching from (default: 0)
+   * @returns The index of the first occurrence, or -1 if not found
+   */
+  export declare function indexOf(str: string, searchString: string, position?: number): number;
+
+  /**
+   * Returns the index of the last occurrence of a search string
+   * @param str The string to search within
+   * @param searchString The string to search for
+   * @param position Optional index to start searching backwards from
+   * @returns The index of the last occurrence, or -1 if not found
+   */
+  export declare function lastIndexOf(str: string, searchString: string, position?: number): number;
+
+  /**
+   * Extracts a section of a string, supporting negative indices
+   * @param str The source string
+   * @param start The start index (negative counts from end)
+   * @param end Optional end index (negative counts from end, exclusive)
+   * @returns The extracted section
+   */
+  export declare function slice(str: string, start?: number, end?: number): string;
+
+  /**
+   * Converts all characters in a string to lowercase
+   * @param str The string to convert
+   * @returns The lowercase string
+   */
+  export declare function toLowerCase(str: string): string;
+
+  /**
+   * Converts all characters in a string to uppercase
+   * @param str The string to convert
+   * @returns The uppercase string
+   */
+  export declare function toUpperCase(str: string): string;
+
+  /**
+   * Splits a string into an array of substrings using the specified separator
+   * @param str The string to split
+   * @param separator The string to use as a separator
+   * @param limit Optional maximum number of substrings to return
+   * @returns An array of substrings
+   */
+  export declare function split(str: string, separator: string, limit?: number): string[];
+
+  /**
    * Simple string hashing function.
    * @param str The string to hash
    * @returns A non-negative integer hash of the string

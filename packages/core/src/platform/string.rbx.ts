@@ -95,6 +95,75 @@ export namespace StringUtils {
     return result;
   }
 
+  export function charAt(str: string, pos: number): string {
+    if (pos < 0 || pos >= str.size()) return "";
+    return str.sub(pos + 1, pos + 1);
+  }
+
+  export function indexOf(str: string, searchString: string, position?: number): number {
+    const startPos = (position ?? 0) + 1;
+    if (searchString.size() === 0) return position ?? 0;
+    const [found] = str.find(searchString, startPos, true);
+    if (found === undefined) return -1;
+    return found - 1;
+  }
+
+  export function lastIndexOf(str: string, searchString: string, position?: number): number {
+    const maxPos = position !== undefined ? position : str.size() - 1;
+    if (searchString.size() === 0) return math.min(maxPos, str.size());
+    let lastFound = -1;
+    let searchStart = 1;
+    while (searchStart <= str.size()) {
+      const [found] = str.find(searchString, searchStart, true);
+      if (found === undefined) break;
+      const zeroIdx = found - 1;
+      if (zeroIdx > maxPos) break;
+      lastFound = zeroIdx;
+      searchStart = found + 1;
+    }
+    return lastFound;
+  }
+
+  export function slice(str: string, start?: number, endPos?: number): string {
+    const len = str.size();
+    let s = start ?? 0;
+    let e = endPos ?? len;
+    if (s < 0) s = math.max(len + s, 0);
+    if (e < 0) e = math.max(len + e, 0);
+    if (s >= e) return "";
+    return str.sub(s + 1, e);
+  }
+
+  export function toLowerCase(str: string): string {
+    return str.lower();
+  }
+
+  export function toUpperCase(str: string): string {
+    return str.upper();
+  }
+
+  export function split(str: string, separator: string, limit?: number): string[] {
+    const result: string[] = [];
+    if (separator.size() === 0) {
+      const max = limit !== undefined ? math.min(limit, str.size()) : str.size();
+      for (let i = 0; i < max; i++) {
+        result.push(str.sub(i + 1, i + 1));
+      }
+      return result;
+    }
+    let searchStart = 1;
+    while (limit === undefined || result.size() < limit) {
+      const [found, foundEnd] = str.find(separator, searchStart, true);
+      if (found === undefined || foundEnd === undefined) {
+        result.push(str.sub(searchStart));
+        return result;
+      }
+      result.push(str.sub(searchStart, found - 1));
+      searchStart = foundEnd + 1;
+    }
+    return result;
+  }
+
   export function hash(str: string): number {
     let hash = 0;
     for (let i = 0; i < str.size(); i++) {

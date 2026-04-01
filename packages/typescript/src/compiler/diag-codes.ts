@@ -247,6 +247,10 @@ export enum LoweringDiagCode {
   MathMinMaxRequiresTwoArgs = 3121,
   /** Math method called with wrong number of arguments */
   MathMethodWrongArgCount = 3122,
+  /** String method is not supported */
+  UnsupportedStringMethod = 3130,
+  /** String method called with wrong number of arguments */
+  StringMethodWrongArgCount = 3131,
 }
 
 /**
