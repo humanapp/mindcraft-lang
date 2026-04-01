@@ -7427,4 +7427,175 @@ export default Sensor({
       assert.equal((runResult.result as NumberValue).v, 50);
     }
   });
+
+  test("helper function with object destructuring in parameter: function f({ x, y }: Point)", () => {
+    const ambientSource = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+function sum({ x, y }: Vector2): number {
+  return x + y;
+}
+
+export default Sensor({
+  name: "param-obj-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const pos: Vector2 = { x: 10, y: 20 };
+    return sum(pos);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.ok(runResult2.result);
+      assert.equal((runResult2.result as NumberValue).v, 30);
+    }
+  });
+
+  test("helper function with array destructuring in parameter: function f([a, b]: number[])", () => {
+    const ambientSource = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function sum([a, b]: number[]): number {
+  return a + b;
+}
+
+export default Sensor({
+  name: "param-arr-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const nums: number[] = [3, 7];
+    return sum(nums);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.ok(runResult2.result);
+      assert.equal((runResult2.result as NumberValue).v, 10);
+    }
+  });
+
+  test("closure with object destructuring in parameter: ({ x }: Point) => x", () => {
+    const ambientSource = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+function apply(fn: (p: Vector2) => number, p: Vector2): number {
+  return fn(p);
+}
+
+export default Sensor({
+  name: "closure-param-destructure",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const pos: Vector2 = { x: 5, y: 15 };
+    return apply(({ x, y }: Vector2): number => x + y, pos);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.ok(runResult2.result);
+      assert.equal((runResult2.result as NumberValue).v, 20);
+    }
+  });
+
+  test("closure with destructured param that also captures an outer variable", () => {
+    const ambientSource = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+function apply(fn: (p: Vector2) => number, p: Vector2): number {
+  return fn(p);
+}
+
+export default Sensor({
+  name: "closure-destructure-capture",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const offset = 100;
+    const pos: Vector2 = { x: 3, y: 7 };
+    return apply(({ x, y }: Vector2): number => x + y + offset, pos);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult2 = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult2.status, VmStatus.DONE);
+    if (runResult2.status === VmStatus.DONE) {
+      assert.ok(runResult2.result);
+      assert.equal((runResult2.result as NumberValue).v, 110);
+    }
+  });
+
+  test("destructuring in onExecute parameter position produces diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations();
+
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "onexec-destructure",
+  output: "number",
+  onExecute({ time }: Context): number {
+    return time;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.ok(result.diagnostics.length > 0, "expected diagnostics for onExecute destructuring");
+    assert.ok(
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.DestructuringInOnExecuteNotSupported),
+      `expected onExecute destructuring error, got: ${JSON.stringify(result.diagnostics)}`
+    );
+  });
 });

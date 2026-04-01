@@ -402,6 +402,19 @@ function lowerOnExecuteBody(
   const funcNode = descriptor.onExecuteNode;
 
   const paramLocals = new Map<string, number>();
+
+  for (const param of funcNode.parameters) {
+    if (!ts.isIdentifier(param.name)) {
+      sharedDiagnostics.push(
+        makeDiag(
+          LoweringDiagCode.DestructuringInOnExecuteNotSupported,
+          "Destructuring in onExecute parameters is not supported",
+          param
+        )
+      );
+    }
+  }
+
   // Local 0 is always the injected context struct. When the tile has parameters,
   // local 1 holds the params as a Map<number, Value> (integer-keyed by param index).
   // The loop below unpacks each param into its own local so user code can reference
@@ -511,6 +524,15 @@ function lowerHelperFunction(
     funcIdCounter,
     closureFunctions,
   };
+
+  for (let i = 0; i < numParams; i++) {
+    const p = funcNode.parameters[i];
+    if (ts.isObjectBindingPattern(p.name)) {
+      lowerObjectBindingPattern(p.name, i, ctx);
+    } else if (ts.isArrayBindingPattern(p.name)) {
+      lowerArrayBindingPattern(p.name, i, ctx);
+    }
+  }
 
   const body = funcNode.body;
   if (!body) {
@@ -656,6 +678,19 @@ function lowerVariableDeclarationList(declList: ts.VariableDeclarationList, ctx:
       ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedBindingPattern, "Unsupported binding pattern", decl));
     }
   }
+}
+
+function collectBindingNames(pattern: ts.BindingPattern): string[] {
+  const names: string[] = [];
+  for (const element of pattern.elements) {
+    if (ts.isOmittedExpression(element)) continue;
+    if (ts.isIdentifier(element.name)) {
+      names.push(element.name.text);
+    } else if (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name)) {
+      names.push(...collectBindingNames(element.name));
+    }
+  }
+  return names;
 }
 
 function lowerDestructuringDefault(element: ts.BindingElement, localIdx: number, ctx: LowerContext): void {
@@ -1294,6 +1329,10 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     if (ts.isIdentifier(p.name)) {
       closureParamNames.add(p.name.text);
       closureParamLocals.set(p.name.text, i);
+    } else if (ts.isObjectBindingPattern(p.name) || ts.isArrayBindingPattern(p.name)) {
+      for (const name of collectBindingNames(p.name)) {
+        closureParamNames.add(name);
+      }
     }
   }
 
@@ -1344,6 +1383,15 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     funcIdCounter: ctx.funcIdCounter,
     closureFunctions: ctx.closureFunctions,
   };
+
+  for (let i = 0; i < numParams; i++) {
+    const p = expr.parameters[i];
+    if (ts.isObjectBindingPattern(p.name)) {
+      lowerObjectBindingPattern(p.name, i, closureCtx);
+    } else if (ts.isArrayBindingPattern(p.name)) {
+      lowerArrayBindingPattern(p.name, i, closureCtx);
+    }
+  }
 
   if (ts.isBlock(expr.body)) {
     lowerStatements(expr.body.statements, closureCtx);

@@ -131,6 +131,8 @@ export enum LoweringDiagCode {
   RestPatternsNotSupported = 3021,
   /** Computed keys in destructuring are not supported */
   ComputedDestructuringKeyNotSupported = 3023,
+  /** Destructuring in onExecute parameter position is not supported */
+  DestructuringInOnExecuteNotSupported = 3024,
   /** for...of is only supported on list-typed values */
   ForOfOnNonListType = 3030,
   /** for...of requires a variable declaration as its initializer */
