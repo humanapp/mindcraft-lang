@@ -241,6 +241,14 @@ export enum LoweringDiagCode {
   CannotResolveOperatorForArrayMethod = 3110,
   /** Cannot convert a list element to string for .join() */
   CannotConvertListElementToString = 3111,
+  /** .lastIndexOf() called with wrong number of arguments */
+  LastIndexOfRequiresOneArg = 3112,
+  /** .findIndex() called with wrong number of arguments */
+  FindIndexRequiresOneArg = 3113,
+  /** .reduce() called with wrong number of arguments */
+  ReduceRequiresOneOrTwoArgs = 3114,
+  /** .toString() called with arguments */
+  ArrayToStringTakesNoArgs = 3115,
   /** Math method is not supported */
   UnsupportedMathMethod = 3120,
   /** Math.max()/Math.min() called with wrong number of arguments */
