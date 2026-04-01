@@ -34,6 +34,12 @@ main plan's numbering.
   `const { items: [first, second] } = data`, mixed object/array nesting. Implemented
   via recursive `lowerObjectBindingPattern`/`lowerArrayBindingPattern` helpers.
 - Default values on intermediate nested patterns (e.g., `{ pos: { x } = defaultPos }`).
+- **Parameter-position destructuring** in helper functions and closures/arrow
+  functions: `function f({ x, y }: Point)`, `({ x }: Point) => x`. Implemented
+  by emitting destructuring IR after ctx creation, passing parameter slot directly
+  as `srcLocal`.
+- Capture analysis correctly excludes destructured param names from free-variable
+  detection in closures.
 
 ### What is rejected
 
@@ -41,7 +47,7 @@ main plan's numbering.
 |---|---|---|
 | Rest patterns (`...rest`) | `RestPatternsNotSupported` (3021) | `lowerObjectBindingPattern`, `lowerArrayBindingPattern` |
 | Computed property names | `ComputedDestructuringKeyNotSupported` (3023) | `lowerObjectBindingPattern` |
-| Parameter-position destructuring | Silent skip (no diagnostic) | `lowerHelperFunction`, `lowerClosureExpression` |
+| Destructuring in `onExecute` params | `DestructuringInOnExecuteNotSupported` (3024) | `lowerOnExecuteBody` |
 
 ### Key existing infrastructure
 
@@ -52,6 +58,9 @@ main plan's numbering.
 - `lowerListSlice` -- inline expansion of `.slice(start, end?)` using a loop with
   `ListNew`/`ListGet`/`ListPush`. Reusable for array rest patterns.
 - `allocLocal()` on `ScopeStack` -- anonymous temp locals.
+- `collectBindingNames(pattern)` -- recursively collects all leaf identifier names
+  from a binding pattern. Used for closure capture exclusion; reusable for D3b
+  object rest field exclusion.
 - `resolveStructType(type)` -- resolves a TS type to a `StructTypeDef` with
   compile-time field list (`StructTypeDef.fields: List<{ name, typeId }>`).
 - `StructNew`/`StructSet` IR nodes for struct construction.
@@ -574,3 +583,40 @@ arbitrarily nested binding patterns via recursion; remove
   so D2 can reuse it without modification for parameter-position destructuring.
 - The wrapper + core pattern is clean; D2 can call the core functions directly with
   the parameter's slot index as `srcLocal`.
+
+### D2: Parameter-Position Destructuring -- 2026-04-01
+
+**Planned:** Support destructuring patterns in helper function and closure/arrow
+function parameter positions; add `collectBindingNames` utility; add onExecute
+destructuring diagnostic.
+
+**Actual:**
+
+- Added `collectBindingNames(pattern)` utility that recursively collects leaf
+  identifier names from a binding pattern. Used in both `lowerClosureExpression`
+  (for `closureParamNames` capture exclusion) and available for future use.
+- `lowerHelperFunction`: after ctx creation, iterates parameters and calls
+  `lowerObjectBindingPattern`/`lowerArrayBindingPattern` for binding pattern params,
+  passing the parameter slot index `i` directly as `srcLocal`.
+- `lowerClosureExpression`: same destructuring IR emission in the closure body.
+  Capture analysis updated to add leaf binding names (via `collectBindingNames`)
+  to `closureParamNames` so they are excluded from free-variable detection.
+- `lowerOnExecuteBody`: emits `DestructuringInOnExecuteNotSupported` (3024) for
+  any non-identifier parameter.
+- 5 tests added. All 425 tests pass. Typecheck and lint clean.
+
+**Deviations from plan:**
+
+- The spec suggested allocating a temp local via `allocLocal()` and copying the
+  param value before calling the core helpers. The implementation passes the
+  parameter slot index directly as `srcLocal`, which is simpler and avoids an
+  unnecessary temp allocation. This was a D1 discovery propagated into D2.
+- No other deviations.
+
+**Discoveries for future phases:**
+
+- Passing parameter slot `i` directly to the core binding pattern helpers works
+  without issues -- no temp local needed. D3 can reuse the same approach if rest
+  patterns need parameter-position support.
+- `collectBindingNames` is available for any future code that needs to enumerate
+  the leaf names in a binding pattern (e.g., D3b object rest field exclusion).
