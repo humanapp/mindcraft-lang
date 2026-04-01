@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "composite": true,
+    "tsBuildInfoFile": "./tsconfig.esm.tsbuildinfo",
     "declaration": true,
     "declarationMap": true,
     "rootDir": "./src",

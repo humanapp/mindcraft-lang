@@ -362,7 +362,7 @@
     "build": "npm run build:docs && npm run build:rbx && npm run build:node && npm run build:esm",
     "build:docs": "node scripts/build-docs.js",
     "build:node": "tsc -p tsconfig.node.json && node scripts/post-build-node.js",
-    "build:esm": "tsc -p tsconfig.esm.json && node scripts/post-build-esm.js",
+    "build:esm": "tsc --build --force tsconfig.esm.json && node scripts/post-build-esm.js",
     "build:rbx": "rbxtsc --type package --project tsconfig.rbx.json && node scripts/post-build-rbx.js",
     "watch:rbx": "node scripts/watch-rbx.js",
     "clean": "rm -rf ./dist",
