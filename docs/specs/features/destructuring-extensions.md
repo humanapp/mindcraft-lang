@@ -20,7 +20,7 @@ main plan's numbering.
 
 ## Current State
 
-(As of 2026-04-01)
+(Updated 2026-04-01, after D1 completion)
 
 ### What works
 
@@ -30,14 +30,17 @@ main plan's numbering.
 - Omitted array elements: `const [, b] = arr`.
 - Default values: `const { x = 5 } = obj` with `TypeCheck(NativeType.Nil)` nil-check.
 - Source evaluated once into a temp local via `allocLocal()`.
+- **Nested destructuring** at arbitrary depth: `const { pos: { x, y } } = entity`,
+  `const { items: [first, second] } = data`, mixed object/array nesting. Implemented
+  via recursive `lowerObjectBindingPattern`/`lowerArrayBindingPattern` helpers.
+- Default values on intermediate nested patterns (e.g., `{ pos: { x } = defaultPos }`).
 
 ### What is rejected
 
 | Pattern | Diagnostic code | Location |
 |---|---|---|
-| Nested destructuring | `NestedDestructuringNotSupported` (3022) | `lowerObjectDestructuring`, `lowerArrayDestructuring` |
-| Rest patterns (`...rest`) | `RestPatternsNotSupported` (3021) | Both functions |
-| Computed property names | `ComputedDestructuringKeyNotSupported` (3023) | `lowerObjectDestructuring` |
+| Rest patterns (`...rest`) | `RestPatternsNotSupported` (3021) | `lowerObjectBindingPattern`, `lowerArrayBindingPattern` |
+| Computed property names | `ComputedDestructuringKeyNotSupported` (3023) | `lowerObjectBindingPattern` |
 | Parameter-position destructuring | Silent skip (no diagnostic) | `lowerHelperFunction`, `lowerClosureExpression` |
 
 ### Key existing infrastructure
@@ -177,8 +180,17 @@ function swap([a, b]: number[]): number[] {
 }
 ```
 
-**Prerequisites:** Phase D1 (nested destructuring) should be complete so the shared
-`lowerObjectBindingPattern`/`lowerArrayBindingPattern` helpers are available.
+**Prerequisites:** Phase D1 (nested destructuring) is complete. The shared
+`lowerObjectBindingPattern`/`lowerArrayBindingPattern` helpers accept
+`(pattern, srcLocal, ctx)` and are ready for direct reuse.
+
+**D1 discoveries relevant to D2:**
+- `lowerDestructuringDefault` works on any local index (named or temp), no
+  modification needed.
+- `types.instantiate("List", List.from([elementTypeId]))` is the API for list types
+  (not `getOrCreateListType`).
+- The core helpers can be called with the parameter slot index directly as `srcLocal`
+  (no need for an intermediate temp unless default-value handling requires it).
 
 **Packages/files touched:**
 
@@ -300,7 +312,6 @@ const { x, ...rest } = point3d;
   variable, this should match the source array's element type. Use
   `tsTypeToTypeId()` on the rest binding's type to resolve this. If the type
   cannot be resolved, fall back to `AnyList`.
-
 **Complexity:** Low. Direct reuse of the existing `.slice()` inline pattern.
 
 #### D3b: Object Rest
@@ -523,4 +534,43 @@ Recommended sequence based on dependencies and complexity:
 
 Completed phases are recorded here with dates, actual outcomes, and deviations.
 
-(No phases completed yet.)
+### D1: Nested Destructuring -- 2026-04-01
+
+**Planned:** Refactor object/array destructuring into wrapper + core pattern; support
+arbitrarily nested binding patterns via recursion; remove
+`NestedDestructuringNotSupported` diagnostic.
+
+**Actual:**
+
+- Refactored exactly as specified: `lowerObjectDestructuring`/`lowerArrayDestructuring`
+  are wrappers that eval the initializer into a temp local, then delegate to
+  `lowerObjectBindingPattern`/`lowerArrayBindingPattern` which accept
+  `(pattern, srcLocal, ctx)`.
+- Nested binding patterns (`isObjectBindingPattern` / `isArrayBindingPattern`) handled
+  by allocating a temp local, emitting GetField/ListGet into it, calling
+  `lowerDestructuringDefault` on the temp, then recursing into the appropriate core
+  function.
+- `NestedDestructuringNotSupported` (3022) removed from `LoweringDiagCode` enum and
+  all code paths. No depth limit added (deemed unnecessary given bounded practical
+  nesting).
+- 4 tests added; 1 rejection test removed. Net +3 tests (415 total).
+
+**Deviations from plan:**
+
+- The `const [[a, b], c] = nested` acceptance criterion was initially tested via
+  struct fields because nested array literal type resolution (`number[][]`) was not
+  supported at the time. This limitation was subsequently fixed (same day), so
+  direct nested array literal tests are now viable.
+- No dedicated test for default values at an inner nesting level. The mechanism works
+  (`lowerDestructuringDefault` is called on temp locals), but a focused test was not
+  written. Can be added later.
+- No depth limit diagnostic added (the spec marked this as optional).
+
+**Discoveries for future phases:**
+
+- `types.instantiate("List", List.from([elementTypeId]))` is the correct API for
+  creating parameterized list types. `getOrCreateListType` does not exist.
+- `lowerDestructuringDefault` works on any local index (named or anonymous temp),
+  so D2 can reuse it without modification for parameter-position destructuring.
+- The wrapper + core pattern is clean; D2 can call the core functions directly with
+  the parameter's slot index as `srcLocal`.
