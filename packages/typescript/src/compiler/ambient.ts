@@ -163,15 +163,6 @@ interface ReadonlyArray<T> {
     callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: readonly T[]) => U,
     initialValue: U
   ): U;
-  reduceRight(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: readonly T[]) => T): T;
-  reduceRight(
-    callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: readonly T[]) => T,
-    initialValue: T
-  ): T;
-  reduceRight<U>(
-    callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: readonly T[]) => U,
-    initialValue: U
-  ): U;
   find(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): T | undefined;
   findIndex(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): number;
   includes(searchElement: T, fromIndex?: number): boolean;
@@ -205,15 +196,6 @@ interface Array<T> {
   reduce(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T;
   reduce(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T, initialValue: T): T;
   reduce<U>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue: U): U;
-  reduceRight(callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T): T;
-  reduceRight(
-    callbackfn: (previousValue: T, currentValue: T, currentIndex: number, array: T[]) => T,
-    initialValue: T
-  ): T;
-  reduceRight<U>(
-    callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U,
-    initialValue: U
-  ): U;
   find(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): T | undefined;
   findIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): number;
   includes(searchElement: T, fromIndex?: number): boolean;
