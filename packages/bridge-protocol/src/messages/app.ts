@@ -1,3 +1,4 @@
+import type { CompileDiagnosticsMessage, CompileStatusMessage } from "./compile.js";
 import type {
   ControlPingMessage,
   ControlPongMessage,
@@ -25,7 +26,9 @@ export type AppClientMessage =
   | SessionErrorMessage
   | ControlPingMessage
   | FilesystemChangeMessage
-  | FilesystemSyncMessage;
+  | FilesystemSyncMessage
+  | CompileDiagnosticsMessage
+  | CompileStatusMessage;
 
 export interface AppSessionWelcomeMessage {
   type: "session:welcome";

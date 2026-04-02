@@ -1,3 +1,4 @@
+import type { CompileDiagnosticsMessage, CompileStatusMessage } from "./compile.js";
 import type {
   ControlPingMessage,
   ControlPongMessage,
@@ -47,4 +48,6 @@ export type ExtensionServerMessage =
   | ControlPongMessage
   | GeneralErrorMessage
   | FilesystemChangeMessage
-  | FilesystemSyncMessage;
+  | FilesystemSyncMessage
+  | CompileDiagnosticsMessage
+  | CompileStatusMessage;

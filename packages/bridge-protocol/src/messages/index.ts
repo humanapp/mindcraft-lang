@@ -7,6 +7,14 @@ export type {
   AppSessionWelcomePayload,
 } from "./app.js";
 export type {
+  CompileDiagnosticEntry,
+  CompileDiagnosticRange,
+  CompileDiagnosticsMessage,
+  CompileDiagnosticsPayload,
+  CompileStatusMessage,
+  CompileStatusPayload,
+} from "./compile.js";
+export type {
   ExtensionAppStatusMessage,
   ExtensionAppStatusPayload,
   ExtensionClientMessage,

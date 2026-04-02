@@ -74,12 +74,15 @@ Same loop as the compiler phased plan:
 
 - `messages/shared.ts` -- `FilesystemChangeMessage`, `FilesystemSyncMessage`,
   `SessionHelloMessage`, etc.
-- `messages/app.ts` -- `AppClientMessage` (union of all app-to-bridge messages),
-  `AppServerMessage` (union of all bridge-to-app messages).
-- `messages/extension.ts` -- `ExtensionClientMessage`, `ExtensionServerMessage`.
+- `messages/compile.ts` -- `CompileDiagnosticsMessage`,
+  `CompileStatusMessage`, and their payload/entry/range types (Phase D1).
+- `messages/app.ts` -- `AppClientMessage` (union of all app-to-bridge
+  messages, includes `CompileDiagnosticsMessage` and `CompileStatusMessage`).
+- `messages/extension.ts` -- `ExtensionClientMessage`,
+  `ExtensionServerMessage` (includes `CompileDiagnosticsMessage` and
+  `CompileStatusMessage`).
 - `notifications.ts` -- `FileSystemNotification` (write/delete/rename/mkdir/
   rmdir/import actions), `FilesystemSyncPayload`.
-- No compilation or diagnostic message types exist yet.
 
 ### VS Code extension (apps/vscode-extension)
 
@@ -416,4 +419,32 @@ alongside the existing connection status.
 
 ## Phase Log
 
-(Empty -- no phases completed yet.)
+### Phase D1 (2026-04-02)
+
+**Objective:** Define `compile:diagnostics` and `compile:status` message types
+in `bridge-protocol`.
+
+**Planned vs actual:** Delivered as specified. No deviations from the plan.
+Used a new `compile.ts` file rather than adding to `shared.ts`. Extracted
+`CompileDiagnosticRange` and `CompileDiagnosticEntry` as named interfaces
+rather than inlining in the payload (minor structural improvement).
+
+**Files created:**
+- `packages/bridge-protocol/src/messages/compile.ts`
+
+**Files modified:**
+- `packages/bridge-protocol/src/messages/app.ts` -- `AppClientMessage` union
+- `packages/bridge-protocol/src/messages/extension.ts` -- `ExtensionServerMessage` union
+- `packages/bridge-protocol/src/messages/index.ts` -- barrel exports
+- `packages/bridge-protocol/src/index.ts` -- top-level barrel exports
+
+**Discoveries:**
+- `ProjectSession.on<T>()` uses `Extract<TServer, { type: T }>` for type
+  narrowing -- adding to the union is sufficient for type-safe listeners.
+- `ProjectSession.send()` takes `TClient` -- adding to `AppClientMessage`
+  enables type-safe sending.
+- `bridge-protocol` requires `tsc --build` to produce `dist/` for downstream
+  consumers.
+- Risk "diagnostic range and severity -- back-propagated to compiler" is
+  already resolved: `CompileDiagnostic` has `endLine`, `endColumn`, `severity`.
+- Risk "file path namespace" deferred to D3.
