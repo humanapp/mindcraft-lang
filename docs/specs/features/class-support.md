@@ -494,6 +494,101 @@ pattern closely. The dispatch disambiguation is the main new logic.
 
 ---
 
+### Phase C3.5: Multi-File Symbol Isolation
+
+**Objective:** Prevent silent name collisions when multiple files in a compilation
+unit declare functions or variables with the same name. This is a pre-existing bug
+in the multi-file compiler pipeline (predates class support) that must be fixed
+before C4 builds multi-file class support on top. `apps/sim` already uses
+multi-file compilation, making this v1 scope.
+
+Type registry scoping (class name collisions, stale types across compilations) is
+covered by the companion spec
+[module-scoped-typeids.md](module-scoped-typeids.md).
+
+**Prerequisites:** None -- this is a cross-cutting fix that does not depend on C3.
+Listed here because it blocks C4 and was discovered during C3 investigation.
+
+**Packages/files touched:**
+
+- `packages/typescript/src/compiler/project.ts` -- `collectImports` filtering.
+- `packages/typescript/src/compiler/lowering.ts` -- `lowerProgram` symbol
+  registration, `resolveStructType`, `lowerNewExpression`,
+  `lowerStructMethodCall`, `lowerCallExpression`, `lowerIdentifier`,
+  `resolveVarTarget`, `registerClassStructType`.
+- `packages/typescript/src/compiler/diag-codes.ts` -- new diagnostic codes for
+  collisions.
+
+**Problem statement:**
+
+`collectImports` in project.ts collects ALL named function declarations and
+variable statements from imported files regardless of export visibility. These
+are registered into `functionTable` and `callsiteVars` with bare identifier
+names. The `!functionTable.has()` and `!callsiteVars.has()` guards silently
+drop the second declaration when names collide. Class types registered in
+`getBrainServices().types` are global and persistent across compilation units,
+keyed by bare class name.
+
+Full collision inventory (20 sites, all using bare identifier names):
+
+| Category | Key locations in lowering.ts | Guard behavior |
+|----------|------|------|
+| Helper functions | `functionTable.set(name, ...)` at L171, L209 | First wins, second silently dropped |
+| Module variables | `callsiteVars.set(name, ...)` at L190, L199 | First wins, second silently dropped |
+| Identifier resolution | `callsiteVars.get(name)`, `functionTable.has(name)` at L1352, L1358, L1703 | Returns first match |
+
+Type registry collisions (class struct types, type lookups) are addressed in
+[module-scoped-typeids.md](module-scoped-typeids.md), not in this phase.
+
+**Concrete deliverables:**
+
+1. **Export-only collection in `collectImports`.** Filter imported function
+   declarations and variable statements to only those with an `export` modifier.
+   Non-exported helper functions and variables in imported files should not leak
+   into the importing module's symbol tables.
+
+   Detection: check `ts.getCombinedModifierFlags(stmt) & ts.ModifierFlags.Export`
+   for function declarations. For variable statements, check
+   `ts.getCombinedModifierFlags(stmt.declarationList) & ts.ModifierFlags.Export`
+   or the statement-level modifiers.
+
+   This single change eliminates the majority of collision risk because most
+   collisions involve non-exported helpers (`function clamp()`, `let cache`, etc.)
+   that happen to share names across files.
+
+2. **Collision diagnostic for remaining duplicates.** After filtering to exports
+   only, add a diagnostic if two imported modules export the same symbol name.
+   This replaces the silent "first wins" behavior with an explicit error:
+   `"Duplicate imported symbol 'foo' from modules './a' and './b'"`.
+
+   For the entry file's own declarations vs imported declarations, the entry
+   file's declarations should take precedence (consistent with current behavior
+   and TS module semantics where local declarations shadow imports).
+
+3. ~~**Class type registry scoping.**~~ Moved to
+   [module-scoped-typeids.md](module-scoped-typeids.md) (phases M1-M3).
+
+**Acceptance criteria:**
+
+- Test: two imported files with same-named non-exported function -- only exported
+  functions are collected; non-exported ones are invisible to the importer.
+- Test: two imported files exporting same-named function -> collision diagnostic.
+- Test: entry file function with same name as imported function -> entry file
+  wins (no diagnostic).
+- Existing multi-file tests in `apps/sim` continue to pass.
+
+**Key risks:**
+
+- **Breaking implicit imports.** `apps/sim` may rely on non-exported functions
+  being visible across files. Those files need `export` added as part of this
+  phase.
+
+**Complexity:** Low-medium. Export filtering and collision diagnostics are
+well-scoped. Type registry concerns are handled separately in
+[module-scoped-typeids.md](module-scoped-typeids.md).
+
+---
+
 ### Phase C4: Integration, Ambient Generation, and Multi-File Support
 
 **Objective:** Ensure classes work end-to-end: ambient type generation for
@@ -667,12 +762,21 @@ Recommended sequence based on dependencies:
 3. **Phase C3 (Method compilation)** -- enables instance methods; introduces
    user-compiled method dispatch alongside existing host method dispatch.
 
-4. **Phase C4 (Integration)** -- ambient generation, multi-file support, and edge
+4. **Phase C3.5 (Multi-file symbol isolation)** -- fixes silent name collisions
+   for functions and variables across files. See also
+   [module-scoped-typeids.md](module-scoped-typeids.md) (M1-M3) for type
+   registry scoping.
+
+5. **Phases M1-M3 (Module-scoped TypeIds)** -- registry cleanup, module-qualified
+   type names, descriptor integration. See
+   [module-scoped-typeids.md](module-scoped-typeids.md).
+
+6. **Phase C4 (Integration)** -- ambient generation, multi-file support, and edge
    cases. Polishes the feature for production use.
 
-5. **Phase C5 (Inheritance)** -- deferred. Only pursued if the use case demands it.
+6. **Phase C5 (Inheritance)** -- deferred. Only pursued if the use case demands it.
 
-6. **Phase C6 (Static members)** -- deferred. Low complexity but low priority.
+7. **Phase C6 (Static members)** -- deferred. Low complexity but low priority.
 
 ---
 
