@@ -33,6 +33,37 @@ interface IArguments {}
 /** @deprecated Not supported in Mindcraft Runtime */
 interface RegExp {}
 
+interface SymbolConstructor {
+  readonly iterator: unique symbol;
+}
+declare var Symbol: SymbolConstructor;
+
+interface IteratorYieldResult<TYield> {
+  done?: false;
+  value: TYield;
+}
+
+interface IteratorReturnResult<TReturn> {
+  done: true;
+  value: TReturn;
+}
+
+type IteratorResult<T, TReturn = any> = IteratorYieldResult<T> | IteratorReturnResult<TReturn>;
+
+interface Iterator<T, TReturn = any, TNext = any> {
+  next(...[value]: [] | [TNext]): IteratorResult<T, TReturn>;
+  return?(value?: TReturn): IteratorResult<T, TReturn>;
+  throw?(e?: any): IteratorResult<T, TReturn>;
+}
+
+interface Iterable<T, TReturn = any, TNext = any> {
+  [Symbol.iterator](): Iterator<T, TReturn, TNext>;
+}
+
+interface IterableIterator<T, TReturn = any, TNext = any> extends Iterator<T, TReturn, TNext> {
+  [Symbol.iterator](): IterableIterator<T, TReturn, TNext>;
+}
+
 declare type PromiseConstructorLike = new <T>(
   executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void
 ) => PromiseLike<T>;
@@ -82,6 +113,7 @@ interface String {
   split(separator: string, limit?: number): string[];
   valueOf(): string;
   readonly length: number;
+  [Symbol.iterator](): IterableIterator<string>;
   readonly [index: number]: string;
 }
 
@@ -166,6 +198,7 @@ interface ReadonlyArray<T> {
   find(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): T | undefined;
   findIndex(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): number;
   includes(searchElement: T, fromIndex?: number): boolean;
+  [Symbol.iterator](): IterableIterator<T>;
   readonly [n: number]: T;
 }
 
@@ -199,6 +232,7 @@ interface Array<T> {
   find(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): T | undefined;
   findIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): number;
   includes(searchElement: T, fromIndex?: number): boolean;
+  [Symbol.iterator](): IterableIterator<T>;
   [n: number]: T;
 }
 

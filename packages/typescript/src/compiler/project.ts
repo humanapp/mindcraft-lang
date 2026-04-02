@@ -26,11 +26,12 @@ export interface ProjectCompileResult {
 const LIB_FILE = "/lib/lib.mindcraft.d.ts";
 
 const checkerOptions: ts.CompilerOptions = {
-  target: ts.ScriptTarget.ES5,
-  module: ts.ModuleKind.ES2015,
+  target: ts.ScriptTarget.ES2016,
+  module: ts.ModuleKind.ES2020,
+  moduleResolution: ts.ModuleResolutionKind.Bundler,
   strict: true,
   noEmit: true,
-  skipLibCheck: false,
+  skipLibCheck: true,
 };
 
 const TESTED_TS_VERSION = "5.9";

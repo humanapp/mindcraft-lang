@@ -20,10 +20,12 @@ let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
 const TS_CONFIG = `{
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
+    "target": "ES2016",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
     "strict": true,
-    "noLib": true
+    "noLib": true,
+    "skipLibCheck": true
   },
   "include": ["**/*.ts", "**/*.d.ts"]
 }`;
