@@ -40,45 +40,62 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-03-24) Phases 0-16 and 18-20 complete, plus Array method lowering
-detour, VM list mutation ops detour, and Array.sort detour. See the original doc's
-Current State and Phase Log for full history.
+(Updated 2026-04-02) Phases 0-16 and 18-20 complete, plus Array method lowering
+detour, VM list mutation ops detour, Array.sort detour, class declarations detour,
+destructuring extensions detour, string methods detour, Math methods detour, and
+multi-file compilation detour. See the original doc's Current State and Phase Log
+for full history.
 
 ### Compiler pipeline (`packages/typescript/src/compiler/`)
 
-- `compile.ts` -- `compileUserTile(source, options?)` entry point; runs virtual
-  TS host -> validate -> extract descriptor -> lower -> emit -> assemble program.
-  `initCompiler()` lazy-loads the ~230KB lib strings (async, chunked by Vite).
+- `compile.ts` -- `compileUserTile(source, options?)` single-file entry point;
+  wraps `UserTileProject` for backward compatibility. Re-exports
+  `CompileResult`, `ProjectCompileResult`, `UserTileProject`.
+- `project.ts` -- `UserTileProject` orchestration class. `setFiles()`,
+  `updateFile()`, `deleteFile()`, `renameFile()` manage a virtual file system.
+  `compileAll()` / `compileAffected()` return `ProjectCompileResult` with
+  per-file `CompileResult` entries. Shared TS program, single
+  `getPreEmitDiagnostics()` pass, `collectImports()` for cross-file symbols.
 - `virtual-host.ts` -- `createVirtualCompilerHost()`, zero Node.js APIs.
 - `validator.ts` -- rejects unsupported constructs with positioned diagnostics.
 - `descriptor.ts` -- extracts `ExtractedDescriptor` from `Sensor()`/`Actuator()`.
 - `scope.ts` -- `ScopeStack` block-scoping allocator; `allocLocal()` for temporaries.
-- `ir.ts` -- all IR node types (control flow, struct/list/map construction, list ops,
-  function refs/closures/indirect calls, type checking, async host calls, await).
+  No metadata tracking (no scope IDs, no start/end PCs, no parent tracking).
+- `ir.ts` -- 43 IR node kinds (control flow, struct/list/map construction, list
+  mutation ops, struct copy-except, function refs/closures/indirect calls, type
+  checking, async host calls, await).
 - `lowering.ts` -- `lowerProgram()` produces `ProgramLoweringResult` with multiple
-  `FunctionEntry` records (onExecute, onPageEntered wrapper, module init, helpers).
-- `emit.ts` -- `emitFunction()` produces `FunctionBytecode`. Assigns PCs.
-- `ambient.ts` -- `buildAmbientDeclarations()` generates the "mindcraft" ambient module.
+  `FunctionEntry` records (onExecute, onPageEntered wrapper, module init, helpers,
+  class constructors, class methods, closures).
+- `emit.ts` -- `emitFunction()` produces `EmitResult { bytecode, diagnostics }`.
+  No span tracking or debug metadata.
+- `ambient.ts` -- `buildAmbientDeclarations()` generates the "mindcraft" ambient
+  module (structs, branded numbers, enums, list types, function types).
 - `types.ts` -- `CompileDiagnostic`, `ExtractedDescriptor`, `ExtractedParam`,
-  `UserAuthoredProgram`, `UserTileLinkInfo`.
+  `UserAuthoredProgram`, `UserTileLinkInfo`, `CompileOptions`.
+- `diag-codes.ts` -- all diagnostic code enums (Validator, Descriptor, Lowering,
+  Emit, Compile).
+- `call-def-builder.ts` -- builds `BrainActionCallDef` from params.
 
 ### Linker (`packages/typescript/src/linker/linker.ts`)
 
 `linkUserPrograms(brainProgram, userPrograms[])` appends user functions to the brain
 program, remaps `CALL`, `PUSH_CONST`, `MAKE_CLOSURE` operands, remaps `FunctionValue`
 constants, merges constants, copies `injectCtxTypeId`. Returns `LinkResult` with
-`linkedEntryFuncId`, `linkedInitFuncId`, `linkedOnPageEnteredFuncId`.
+`linkedEntryFuncId`, `linkedInitFuncId`, `linkedOnPageEnteredFuncId`. No debug
+metadata remapping.
 
 ### Runtime (`packages/typescript/src/runtime/`)
 
 - `authored-function.ts` -- `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)`
   returns a `HostAsyncFn`. Sync tiles use `vm.spawnFiber()` + `vm.runFiber()` inline.
   Async tiles use event-driven dispatch: `execAsync` detects `VmStatus.WAITING`,
-  subscribes to handle completion events, resumes the fiber, and chains for
-  subsequent awaits. `execIsAsync` flag on `UserAuthoredProgram` selects the
-  dispatch path at wrapper creation time.
+  subscribes to `vm.handles.events.on("completed")`, resumes the fiber via
+  `vm.resumeFiberFromHandle()`, and chains for subsequent awaits via recursive
+  `waitForHandle()`. `execIsAsync` flag on `UserAuthoredProgram` selects the
+  dispatch path at wrapper creation time (static branch, not per-call).
 - `registration-bridge.ts` -- `registerUserTile(linkInfo, hostFn)` three-step
-  registration via `getBrainServices()`. Currently handles first-registration only;
+  registration via `getBrainServices()`. First-registration only;
   recompile-and-update path is planned for Phase 21.
 
 ### Language features implemented
@@ -100,12 +117,20 @@ Functions: user-defined helpers (`CALL`), closures/arrow functions with capture-
 (`MAKE_CLOSURE`, `LOAD_CAPTURE`, `CALL_INDIRECT`), function references
 (`IrPushFunctionRef`), `onPageEntered` lifecycle wrapper.
 
+Classes: `lowerClassDeclaration()` handles constructors, field initializers, methods.
+`new ClassName(...)` via `lowerNewExpression()`. `this` keyword inside
+constructors/methods (via `thisLocalIndex`). Method-to-method calls on `this`,
+compound assignment on `this.field`. Module-scoped `fileName::ClassName` TypeIds.
+Validator rejects: `extends`, `static`, private fields (`#`), getters/setters.
+
 Destructuring: object destructuring (`const { x, y } = pos`) via `GetField`, array
-destructuring (`const [a, b] = arr`) via `ListGet`, property rename
-(`{ x: posX }`), omitted elements (`[, b]`), default values with nil-check
-(`{ x = 5 }`). Nested destructuring, rest patterns, computed property names,
-and parameter-position destructuring are rejected. Source evaluated once into
-a temp local (`allocLocal()`).
+destructuring (`const [a, b] = arr`) via `ListGet`, property rename (`{ x: posX }`),
+omitted elements (`[, b]`), default values with nil-check (`{ x = 5 }`). Nested
+destructuring (arbitrary depth). Array rest patterns (`const [first, ...rest]`) via
+`LIST_SLICE`. Object rest patterns (`const { x, ...rest }`) via `STRUCT_COPY_EXCEPT`.
+Computed property names (`{ [key]: val }`). Parameter-position destructuring
+(`function f({ x, y }: Point)`). Source evaluated once into a temp local
+(`allocLocal()`).
 
 Literals: object -> `STRUCT_NEW`/`STRUCT_SET`, array -> `LIST_NEW`/`LIST_PUSH`,
 map -> `MAP_NEW`/`MAP_SET`, enum values via `tryResolveEnumValue()`.
@@ -113,12 +138,35 @@ map -> `MAP_NEW`/`MAP_SET`, enum values via `tryResolveEnumValue()`.
 Array/list ops:
 - Element access `arr[i]` / assignment `arr[i] = val` via `lowerElementAccess()`.
 - `.length` -> `LIST_LEN`.
-- Inline methods: `.push`, `.indexOf`, `.filter`, `.map`, `.forEach`, `.sort`
-  (insertion sort via `CALL_INDIRECT`), `.includes`, `.some`, `.every`, `.find`,
-  `.concat`, `.join`, `.reverse`, `.slice`.
+- Inline methods: `.push`, `.indexOf`, `.lastIndexOf`, `.filter`, `.map`,
+  `.forEach`, `.sort` (insertion sort via `CALL_INDIRECT`), `.includes`, `.some`,
+  `.every`, `.find`, `.findIndex`, `.reduce`, `.concat`, `.join`, `.reverse`,
+  `.slice`, `.toString`.
 - Mutation opcodes: `LIST_POP` (95), `LIST_SHIFT` (96), `LIST_REMOVE` (97),
   `LIST_INSERT` (98), `LIST_SWAP` (99) for `.pop`, `.shift`, `.splice`, `.unshift`.
+- Static: `Array.from()` with optional mapper.
 - Only `.fill` and `.copyWithin` produce compile-time diagnostics.
+
+String ops:
+- `.length` via `$$str_length` host call. Bracket access (`str[i]`).
+- Methods: `.charAt`, `.charCodeAt`, `.indexOf`, `.lastIndexOf`, `.slice`,
+  `.substring`, `.toLowerCase`, `.toUpperCase`, `.trim`, `.split`, `.concat`,
+  `.toString`, `.valueOf`.
+
+Math:
+- Constants: `E`, `LN10`, `LN2`, `LOG2E`, `LOG10E`, `PI`, `SQRT1_2`, `SQRT2`.
+- Unary: `abs`, `acos`, `asin`, `atan`, `ceil`, `cos`, `exp`, `floor`, `log`,
+  `round`, `sin`, `sqrt`, `tan`.
+- Binary: `atan2`, `max`, `min`, `pow`.
+- `Math.random()` (zero args).
+
+Async: `HOST_CALL_ARGS_ASYNC` + `AWAIT` emission for async host function calls.
+`execIsAsync` flag propagated through compilation, linking, and runtime dispatch.
+
+Multi-file: `UserTileProject` manages multiple source files with shared TS program.
+`collectImports()` resolves cross-file `ImportedFunction`, `ImportedVariable`,
+`ImportedClass`. Module-qualified TypeIds for cross-file class disambiguation.
+Diamond imports with correct init ordering and per-importer isolation.
 
 ### Type system
 
@@ -138,7 +186,8 @@ Array/list ops:
 
 `Context`, `SelfContext`, `EngineContext` are native-backed structs with field getters,
 registered in `packages/core/src/brain/runtime/context-types.ts`. Struct method
-dispatch via `lowerStructMethodCall()` emits `HOST_CALL_ARGS`.
+dispatch via `lowerStructMethodCall()` emits `HOST_CALL_ARGS` (sync) or
+`HOST_CALL_ARGS_ASYNC` (async, based on `BrainFunctionEntry.isAsync`).
 
 Ctx slot 0: `FunctionBytecode.injectCtxTypeId` set to `ContextTypeIds.Context` on
 `onExecute` and `onPageEntered-wrapper` entries. The VM auto-injects the ctx struct
@@ -416,74 +465,120 @@ resolution. The exec wrapper already receives `scheduler` as a parameter.
 
 ### Phase 21: Async end-to-end integration
 
-(Updated 2026-03-23: no structural changes needed. The core type system work does not
-affect the async integration test strategy. Note: the recompile-and-update pathway
-mentioned below may benefit from the expanded type system -- if a tile is updated and
-its function signatures change, the linker must re-resolve function type IDs. This is
-a minor concern for this phase.)
+(Updated 2026-04-02) The async compilation pipeline (Phases 18-20) is complete.
+The `authored-function.ts` exec wrapper handles async dispatch via event listeners
+(`waitForHandle` subscribing to `vm.handles.events.on("completed")`), but this
+bypasses the scheduler entirely. Research shows this is suboptimal:
 
-**Objective:** Full integration test: compile an async actuator from source, link it
-into a `BrainProgram`, register it via the registration bridge (Phase 8), invoke it
-from a brain rule with a WHEN condition, and verify the full lifecycle:
-spawn -> suspend -> resume -> complete -> handle resolve.
+- User-tile fibers are invisible to `scheduler.getStats()`, `scheduler.gc()`,
+  and `scheduler.cancel()`. Page deactivation orphans async user-tile fibers.
+- Budget is hardcoded to 10000 (10x the scheduler's default 1000) and user-tile
+  fibers run to completion/WAITING without yielding, potentially starving others.
+- Each `waitForHandle` listener fires for every handle completion globally and
+  checks `completedId !== innerHandleId` (O(n) per completion). The scheduler's
+  built-in path uses `handle.waiters` for O(1) dispatch.
+- The VM's AWAIT opcode already registers `fiber.id` in `handle.waiters`, and
+  `FiberScheduler.onHandleCompleted` already iterates waiters and calls
+  `vm.resumeFiberFromHandle()`. All the infrastructure exists.
+
+The registration bridge is first-registration only. The recompile-and-update
+pathway is still needed.
+
+**Objective:** (1) Migrate async user-tile dispatch from event-listener-based to
+scheduler-integrated, so user-tile fibers participate in the scheduler's budget,
+cancellation, and lifecycle tracking. (2) Implement recompile-and-update in the
+registration bridge. (3) Full end-to-end integration tests.
 
 **Packages/files touched:**
 
-- Integration test file(s) in `packages/typescript/src/runtime/`
-- May require test utilities for mock async host functions
+- `packages/typescript/src/runtime/authored-function.ts` -- replace `execAsync` /
+  `waitForHandle` event-listener dispatch with scheduler-integrated dispatch:
+  use `scheduler.addFiber()` (or equivalent) to register the spawned fiber,
+  remove manual `vm.runFiber()` calls and `events.on("completed")` listeners.
+  Add a mechanism to resolve the outer handle when the user-tile fiber reaches
+  DONE (e.g., fiber-to-outer-handle mapping with a scheduler callback or
+  `onHandleCompleted` hook).
+- `packages/typescript/src/runtime/registration-bridge.ts` -- add
+  recompile-and-update pathway.
+- Integration test file(s) in `packages/typescript/src/runtime/`.
+- May need minor additions to `FiberScheduler` in
+  `packages/core/src/brain/runtime/vm.ts` if a fiber-completion callback is
+  needed for outer handle resolution.
 
 **Concrete deliverables:**
 
-1. End-to-end test: brain rule with WHEN condition using a sync sensor -> DO action
-   using an async actuator -> actuator suspends at `await` -> handle resolves on next
-   tick -> rule completes
-2. Test verifies: correct fiber states (READY -> RUNNING -> WAITING -> RUNNING ->
+1. **Scheduler-integrated async dispatch.** `execAsync` spawns a fiber and adds
+   it to the scheduler via `scheduler.addFiber()` (or `scheduler.spawn()`).
+   The scheduler's `tick()` runs the fiber with its standard budget (1000).
+   When the fiber hits AWAIT, the VM's AWAIT opcode registers the fiber in
+   `handle.waiters` automatically. `FiberScheduler.onHandleCompleted` resumes
+   the fiber. When the fiber reaches DONE, the outer handle is resolved.
+   Remove `waitForHandle`, the global `events.on("completed")` listener, and
+   the hardcoded `instrBudget = 10000`.
+2. **Outer handle resolution.** When the scheduler-managed user-tile fiber
+   completes (DONE), the outer handle (the one the brain rule fiber is waiting
+   on) must be resolved with the fiber's return value. This requires a mapping
+   from the user-tile fiber's ID to the outer handle ID, triggered by a
+   fiber-completion callback. Options: extend `FiberScheduler` with an
+   `onFiberDone` hook, or use `fiber.metadata` to store the outer handle ID
+   and resolve it in the scheduler's `tick()` loop after detecting DONE status.
+3. **Sync dispatch unchanged.** `execSync` still uses inline `spawnFiber` +
+   `runFiber` for non-async tiles (no scheduler involvement needed since it
+   completes in one shot).
+4. End-to-end test: brain rule with WHEN condition using a sync sensor -> DO
+   action using an async actuator -> actuator suspends at `await` -> handle
+   resolves on next scheduler tick -> rule completes.
+5. Test verifies: correct fiber states (READY -> RUNNING -> WAITING -> RUNNING ->
    COMPLETED), handle lifecycle (PENDING -> RESOLVED), callsite var persistence
-   across suspension
+   across suspension.
+6. Recompile-and-update pathway: `registerUserTile` detects whether the tile is
+   already registered and updates the existing `BrainFunctionEntry.fn` closure
+   rather than re-registering. Tests for the update path.
 
 **Acceptance criteria:**
 
 - Test: async actuator invoked from brain rule -> completes after handle resolution
 - Test: sync sensor + async actuator in same rule -> correct interleaving
 - Test: cancellation (page deactivation) during suspended async fiber -> fiber
-  transitions to CANCELLED
-
-(Added 2026-03-21, from Phase 8 post-mortem) **Recompile-and-update pathway.** The
-registration bridge (`registerUserTile`) currently handles first-registration only.
-`FunctionRegistry.register()` and `TileCatalog.registerTileDef()` both throw on
-duplicate names. A stateless recompile-and-update pathway should be established in
-this phase (or an earlier one) so the caller does not need to track whether a prior
-registration exists. The bridge should detect whether the tile is already registered
-and update the existing `BrainFunctionEntry.fn` closure rather than re-registering.
-Include tests for the update path.
+  transitions to CANCELLED (scheduler.cancel() covers user-tile fibers)
+- Test: user-tile fiber visible in `scheduler.getStats()`
+- Test: user-tile fiber respects scheduler budget (yields after default budget)
+- Test: re-registering a tile with updated code -> existing entry updated
 
 **Key risks:**
 
+- **Outer handle resolution timing.** The brain rule fiber is WAITING on the outer
+  handle. The user-tile fiber runs on the scheduler and eventually reaches DONE.
+  The outer handle must be resolved at that point so the brain fiber can resume on
+  the next tick. If the scheduler's `tick()` loop doesn't have a hook for
+  fiber-completion, one must be added. This is the main new mechanism to design.
 - **Brain compilation integration.** The brain compiler emits `HOST_CALL_ASYNC` for
   tiles registered as async. Need to verify that the brain-level HOST_CALL_ASYNC
-  dispatches correctly to the user tile's exec wrapper (Phase 8), which spawns a
-  child fiber.
-- **Scheduler tick semantics.** Multiple fibers (brain rule fiber + user code fiber)
-  interleave within the scheduler. Need to verify budget accounting treats user fibers
-  the same as built-in fibers.
-- (Added 2026-03-24, from Phase 20 post-mortem) **Async dispatch uses event
-  listeners, not scheduler integration.** The Phase 20 exec wrapper subscribes to
-  `vm.handles.events.on("completed")` and resumes the fiber inline when the
-  inner handle resolves. This means user tile fibers are not tracked by the
-  scheduler's fiber dict -- they are private to the exec wrapper. Phase 21 should
-  verify this works correctly when the brain scheduler drives the outer rule fiber.
+  dispatches correctly to the user tile's exec wrapper, which now adds a child
+  fiber to the scheduler rather than running it inline.
+- **Scheduler tick ordering.** With both the brain rule fiber and the user-tile
+  fiber in the same scheduler, their relative execution order within a tick matters.
+  The user-tile fiber should be enqueued after the brain rule fiber yields/waits,
+  so it picks up on the same or next tick.
+- **Sync path must remain inline.** `execSync` must not be affected -- sync tiles
+  run to completion within the HOST_CALL_ASYNC handler and resolve the outer handle
+  immediately. Only async tiles go through the scheduler.
+- **Recompile-and-update.** `FunctionRegistry.register()` and
+  `TileCatalog.registerTileDef()` both throw on duplicate names. The bridge must
+  detect existing registrations and update in place rather than re-registering.
 
 ---
 
 ### Phase 22: Debug metadata types
 
-(Updated 2026-03-23: the expanded IR node set from the core type system work
-(IrListGet, IrListSet, IrListLen, IrSwap, IrTypeCheck, IrPushFunctionRef,
-IrCallIndirect, IrMakeClosure, IrLoadCapture, IrStructAssignCheck) does not affect
-the debug metadata type definitions -- these are bytecode-level concerns, and the
-debug metadata operates at the source-span and scope level. However, closure functions
-generate synthetic names like `<closure#N>` which should be reflected in
-`DebugFunctionInfo.name` when populating metadata in Phase 25.)
+(Updated 2026-04-02) No debug metadata work has been started. The `types.ts` file
+currently has no debug-related interfaces. `UserAuthoredProgram` has no
+`debugMetadata` field. The debugger spec (section 6) defines the full type hierarchy.
+
+The compiler now produces multi-file programs via `UserTileProject`, so
+`DebugFileInfo` may contain multiple entries (one per source file in the project).
+Class methods and constructors generate additional `FunctionBytecode` entries
+alongside closures -- all need `DebugFunctionInfo` records.
 
 **Objective:** Define the `DebugMetadata` type hierarchy in
 `@mindcraft-lang/typescript` (mirroring the structures defined in the
@@ -494,13 +589,24 @@ the `debugMetadata` field to `UserAuthoredProgram`.
 
 - `packages/typescript/src/compiler/types.ts` -- add `DebugMetadata`,
   `DebugFileInfo`, `DebugFunctionInfo`, `Span`, `ScopeInfo`, `LocalInfo`,
-  `CallSiteInfo`, `SuspendSiteInfo` interfaces
-- `packages/typescript/src/compiler/types.ts` -- add optional `debugMetadata` field
-  to `UserAuthoredProgram`
+  `CallSiteInfo`, `SuspendSiteInfo` interfaces; add optional `debugMetadata`
+  field to `UserAuthoredProgram`
 
 **Concrete deliverables:**
 
-1. All debug metadata interfaces defined per the debugger spec.
+1. All debug metadata interfaces defined per the debugger spec section 6:
+   - `DebugMetadata { files, functions }`
+   - `DebugFileInfo { fileIndex, path, sourceHash }`
+   - `DebugFunctionInfo { debugFunctionId, compiledFuncId, fileIndex, prettyName,
+     isGenerated, sourceSpan, spans, pcToSpanIndex, scopes, locals, callSites,
+     suspendSites }`
+   - `Span { spanId, startLine, startColumn, endLine, endColumn,
+     isStatementBoundary }`
+   - `ScopeInfo { scopeId, kind, parentScopeId, startPc, endPc, name }`
+   - `LocalInfo { name, slotIndex, storageKind, scopeId, lifetimeStartPc,
+     lifetimeEndPc, typeHint }`
+   - `CallSiteInfo { pc, callSiteId, targetDebugFunctionId, isAsync }`
+   - `SuspendSiteInfo { awaitPc, resumePc, sourceSpan }`
 2. `UserAuthoredProgram.debugMetadata?: DebugMetadata` field added.
 3. No functional changes -- metadata population is Phases 23-25.
 
@@ -512,39 +618,60 @@ the `debugMetadata` field to `UserAuthoredProgram`.
 **Key risks:**
 
 - Low risk. Type-only changes.
+- `ScopeInfo.kind` should include `"function" | "block" | "module" | "brain"` per
+  the debugger spec. The `"brain"` kind is for brain-variable scopes, which may not
+  be populated by the user-tile compiler but should be represented in the type.
+- `LocalInfo.storageKind` in the debugger spec is `"local" | "parameter"`. Closure
+  captures (`LOAD_CAPTURE`) have a different storage mechanism; consider adding
+  `"capture"` as a storage kind.
 
 ---
 
 ### Phase 23: Source span tracking
 
-(Updated 2026-03-23: the expanded IR node set from the core type system work adds
-new nodes that need source span annotations: `IrListGet`, `IrListSet`, `IrListLen`,
-`IrSwap`, `IrTypeCheck`, `IrPushFunctionRef`, `IrCallIndirect`, `IrMakeClosure`,
-`IrLoadCapture`, `IrStructAssignCheck`. All of these follow the same IR node base
-pattern and will naturally carry `sourceSpan` when the optional field is added.
-No structural changes to the span tracking approach are needed.)
+(Updated 2026-04-02) No source span work has been started. IR nodes (43 kinds in
+`ir.ts`) have no `sourceSpan` field. The emit pass (`emitFunction`) returns
+`EmitResult { bytecode, diagnostics }` with no span tracking. The lowering pass
+(5300+ lines in `lowering.ts`) would need annotation across all expression and
+statement lowering paths.
+
+The compiler now has substantially more lowering paths than when this phase was
+originally planned: class declarations (constructors, methods, field init),
+destructuring extensions (nested, rest, computed, parameter-position), string
+methods (14 methods), Math methods/constants (8 constants, 14 unary, 4 binary),
+and additional array methods (`.lastIndexOf`, `.findIndex`, `.reduce`, `.toString`,
+`Array.from()`). All of these generate IR nodes that would need source span
+annotation.
 
 **Objective:** Track source spans during lowering and build `pcToSpanIndex` during
 emission so every bytecode instruction maps back to a source location.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- annotate IR nodes with source
-  position info (TS AST node start/end positions)
 - `packages/typescript/src/compiler/ir.ts` -- add optional `sourceSpan` field to
-  IR node base
-- `packages/typescript/src/compiler/emit.ts` -- build `pcToSpanIndex` array and
-  `spans` list as instructions are emitted; set `isStatementBoundary` per the rules
-  in the spec (expression statements, conditions, variable declarations with init,
-  return statements, break/continue, await/resume)
+  a shared IR node base type (all 43 node kinds inherit it).
+- `packages/typescript/src/compiler/lowering.ts` -- annotate IR nodes with source
+  position info from the TS AST node (`node.getStart()`, `node.getEnd()`,
+  line/column from `sourceFile.getLineAndCharacterOfPosition()`).
+- `packages/typescript/src/compiler/emit.ts` -- extend `EmitResult` to include
+  `spans: Span[]` and `pcToSpanIndex: number[]`. Build these during emission.
+  Set `isStatementBoundary` per the debugger spec's rules.
+- `packages/typescript/src/compiler/project.ts` -- pass span data through from
+  `emitFunction` to the `CompileResult`.
+
+**Prerequisites:** Phase 22 (debug metadata types) must be complete so `Span` is
+defined.
 
 **Concrete deliverables:**
 
-1. Every IR node carries an optional `sourceSpan` with `{ start, end, line, column }`
-   from the TS AST node.
+1. Every IR node carries an optional `sourceSpan` with
+   `{ start, end, startLine, startColumn, endLine, endColumn }` from the TS AST
+   node.
 2. The emit pass builds `spans: Span[]` and `pcToSpanIndex: number[]` for each
    function.
-3. Statement boundary rules are applied per the debugger spec's table.
+3. Statement boundary rules are applied per the debugger spec's table
+   (expression statements, conditions, variable declarations with init, return
+   statements, break/continue, await/resume).
 4. `DebugFunctionInfo.spans` and `DebugFunctionInfo.pcToSpanIndex` are populated.
 
 **Acceptance criteria:**
@@ -557,9 +684,19 @@ emission so every bytecode instruction maps back to a source location.
 
 **Key risks:**
 
-- **IR node annotation overhead.** Adding source spans to every IR node increases
-  memory during compilation. Acceptable since compilation is not
-  performance-critical.
+- **Annotation scope.** With 5300+ lines in lowering.ts and 43 IR node kinds, the
+  annotation work is substantial. A practical approach is to annotate top-level
+  statement lowering calls (the TS AST node is always available there) and let
+  sub-expression nodes inherit the span of their parent statement, rather than
+  attempting per-sub-expression precision in the first pass.
+- **Multi-file spans.** With `UserTileProject` supporting multiple files, spans in
+  helper modules must reference the correct `fileIndex`. The lowering pass
+  currently works on a single file at a time (called per-file by `project.ts`),
+  so file index can be set at the per-file compilation boundary.
+- **Class-generated functions.** Constructor and method bodies are lowered as
+  separate `FunctionEntry` records. Each needs its own span set. The class
+  declaration node provides the outer span; method/constructor nodes provide
+  inner spans.
 - **Statement boundary completeness.** Missing a boundary type means the debugger
   cannot pause at that location. Must verify against the spec's table exhaustively.
 
@@ -567,31 +704,49 @@ emission so every bytecode instruction maps back to a source location.
 
 ### Phase 24: Scope and variable metadata
 
-(Updated 2026-03-23: closure functions introduce a new scope consideration. Captured
-variables (`LOAD_CAPTURE`) have a different storage kind than locals or parameters --
-the debug metadata's `LocalInfo.storageKind` should include a `"capture"` option for
-variables loaded from a closure's capture list. Additionally, hidden temporaries
-allocated via `allocLocal()` (used by list method inlining and for...of desugaring)
-should be excluded from debug metadata or marked as compiler-generated.)
+(Updated 2026-04-02) `ScopeStack` in `scope.ts` is currently minimal: a stack of
+`Map<string, number>` with `pushScope()`/`popScope()`/`declareLocal(name)`/
+`allocLocal()`/`resolveLocal(name)`. No scope IDs, no start/end PCs, no scope kind,
+no parent tracking. This phase requires significant extension.
+
+Hidden temporaries allocated via `allocLocal()` (used by list method inlining,
+for...of desugaring, destructuring source evaluation, class field init) should be
+excluded from debug metadata or marked as compiler-generated.
+
+Closure functions use `LOAD_CAPTURE` for captured variables -- the debug metadata's
+`LocalInfo.storageKind` should include `"capture"` for variables loaded from a
+closure's capture list.
+
+Class constructors and methods introduce `this` as a local variable (slot 0 after
+params). This should appear in the debug metadata as a special local.
 
 **Objective:** Emit `ScopeInfo` and `LocalInfo` metadata describing the scope tree
 and variable lifetimes for debugger inspection.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- track scope enter/exit PCs,
-  record variable declaration PCs and lifetimes
 - `packages/typescript/src/compiler/scope.ts` -- extend `ScopeStack` to record
-  scope metadata (kind, parent, start/end PC)
+  scope metadata: scope IDs, kind (`"function" | "block" | "module"`), parent
+  scope ID, start/end IR indices (mapped to PCs during emission).
+- `packages/typescript/src/compiler/lowering.ts` -- track scope enter/exit points,
+  record variable declaration IR indices and lifetimes. Mark `allocLocal()`
+  temporaries as compiler-generated.
+- `packages/typescript/src/compiler/emit.ts` -- map IR-index-based scope/variable
+  boundaries to final PCs.
+
+**Prerequisites:** Phase 23 (source span tracking) must be complete because scope
+start/end PCs share the same IR-index-to-PC mapping infrastructure.
 
 **Concrete deliverables:**
 
 1. Each function's `DebugFunctionInfo.scopes` contains a tree of `ScopeInfo` entries
    (function scope at root, block scopes nested).
-2. Each `LocalInfo` records name, slot index, storage kind (`"local"` or
-   `"parameter"`), scope ID, and lifetime PC range.
+2. Each `LocalInfo` records name, slot index, storage kind (`"local"`,
+   `"parameter"`, or `"capture"`), scope ID, and lifetime PC range.
 3. Module-level scope for callsite-persistent variables is represented as a
    `"module"` scope.
+4. `allocLocal()` temporaries are excluded from `LocalInfo` output.
+5. `this` in class methods/constructors appears as a local.
 
 **Acceptance criteria:**
 
@@ -600,63 +755,103 @@ and variable lifetimes for debugger inspection.
   the block's PC range
 - Test: parameters have `storageKind: "parameter"`
 - Test: callsite vars appear in a `"module"` scope
+- Test: closure captures have `storageKind: "capture"`
+- Test: compiler-generated temporaries are not in the `locals` list
 
 **Key risks:**
 
 - **PC range tracking.** Scope start/end PCs must be precisely tracked during emission,
   not just during lowering. The emit pass assigns final PCs; the lowering pass only
-  knows IR indices. Need a mapping from IR index to emitted PC.
+  knows IR indices. Phase 23's IR-index-to-PC mapping must support this.
+- **Class scope complexity.** Classes introduce a constructor function scope and
+  per-method function scopes. These are separate `FunctionEntry` records so each
+  gets its own scope tree. `this` occupies a local slot and must be represented.
+- **Destructuring scope.** Parameter-position destructuring injects locals at the
+  function scope level. Nested destructuring may produce intermediate temporaries
+  that should be hidden.
 
 ---
 
 ### Phase 25: DebugMetadata assembly
 
-(Updated 2026-03-23: closure functions (from core type system Phase 6) generate
-additional `FunctionBytecode` entries with synthetic names. The debug metadata assembly
-must account for these: (a) closure functions should have `isGenerated: false` since
-they correspond to user-written arrow function expressions, (b) `debugFunctionId`
-for closures should use a deterministic key like `filePath + "/" + parentFuncName +
-"/<closure#N>"`, (c) the linker remaps `MAKE_CLOSURE` function IDs, so
-`compiledFuncId` values in debug metadata must be remapped in the same pass.)
+(Updated 2026-04-02) The compiler orchestration is now in `project.ts`
+(`UserTileProject._compileEntryPoint()`), not `compile.ts`. Multi-file compilation
+means the assembly step must collect `DebugFileInfo` entries for each source file
+in the project and assign stable `fileIndex` values. Class declarations generate
+constructor and method `FunctionBytecode` entries alongside closures -- all need
+`DebugFunctionInfo` records. The linker remaps `CALL`, `MAKE_CLOSURE`, and
+`PUSH_CONST` operands but currently does not touch any debug metadata. Debug
+metadata remapping must be added to the linker or performed as a post-link step.
 
 **Objective:** Assemble the complete `DebugMetadata` structure from the per-function
-metadata collected in Phases 22-24 and attach it to `UserAuthoredProgram`.
+metadata collected in Phases 23-24 and attach it to `UserAuthoredProgram`.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/compile.ts` -- collect per-function debug info
+- `packages/typescript/src/compiler/project.ts` -- collect per-function debug info
   from lowering and emission, assemble `DebugMetadata`, set on
   `UserAuthoredProgram.debugMetadata`
-- `packages/typescript/src/compiler/emit.ts` -- return debug spans and metadata
-  alongside bytecode
+- `packages/typescript/src/compiler/emit.ts` -- return debug spans, scopes, and
+  local metadata alongside bytecode in `EmitResult`
+- `packages/typescript/src/linker/linker.ts` -- remap `compiledFuncId` values in
+  debug metadata by function base offset. Copy or merge `DebugFileInfo` entries.
+
+**Prerequisites:** Phases 23 and 24 must be complete (spans and scope metadata are
+populated per-function).
 
 **Concrete deliverables:**
 
-1. `DebugMetadata` is fully populated: `files` (single file for v1), `functions`
-   (one `DebugFunctionInfo` per `FunctionBytecode`).
-2. Generated functions (module init, `onPageEntered` wrapper) have `isGenerated: true`.
+1. `DebugMetadata` is fully populated: `files` (one `DebugFileInfo` per source file
+   in the project), `functions` (one `DebugFunctionInfo` per `FunctionBytecode`).
+2. Generated functions (module init, `onPageEntered` wrapper) have
+   `isGenerated: true`. Closures and class methods have `isGenerated: false`.
 3. `callSites` and `suspendSites` are populated (suspend sites only for async
-   functions, Phase 18+).
-4. The `programRevisionId` on `UserAuthoredProgram` acts as a revision key for
-   the debug metadata.
+   functions).
+4. `programRevisionId` on `UserAuthoredProgram` acts as a revision key.
+5. `debugFunctionId` uses deterministic keys:
+   - User functions: `filePath + "/" + functionName`
+   - Class methods: `filePath + "/" + className + "." + methodName`
+   - Class constructors: `filePath + "/" + className + ".constructor"`
+   - Closures: `filePath + "/" + parentFuncName + "/<closure#N>"`
+   - Generated: `filePath + "/<init>"`, `filePath + "/<onPageEntered-wrapper>"`
+6. Linker remaps `compiledFuncId` in debug metadata by function base offset.
 
 **Acceptance criteria:**
 
-- Test: compiled program's `debugMetadata` has correct file count (1) and function
-  count
+- Test: compiled program's `debugMetadata` has correct file count and function count
 - Test: `DebugFunctionInfo.compiledFuncId` matches the index in `Program.functions`
 - Test: generated functions have `isGenerated: true`
 - Test: user-authored functions have `isGenerated: false`
+- Test: class methods and constructors have distinct `debugFunctionId` values
+- Test: multi-file project has multiple `DebugFileInfo` entries
+- Test: linked program's debug metadata `compiledFuncId` values are correctly
+  offset
 
 **Key risks:**
 
 - **Metadata correctness across recompilation.** The `debugFunctionId` (stable
-  identity) must be deterministic across recompilations of the same source. Use
-  `filePath + "/" + functionName` as the format. The `compiledFuncId` (index into
-  `Program.functions`) may change on recompilation -- that is expected.
-- **Linker remapping of debug metadata.** After linking, `compiledFuncId` values in
-  the debug metadata need to be remapped (offset by function base). This may be a
-  concern for Phase 7's linker -- either handle it in a sub-phase or as part of 25.
+  identity) must be deterministic across recompilations of the same source. The
+  `compiledFuncId` (index into `Program.functions`) may change on recompilation --
+  that is expected.
+- **Linker remapping.** `linkUserPrograms` currently copies `FunctionBytecode`
+  fields `{ code, numParams, numLocals, name, maxStackDepth, injectCtxTypeId }`
+  and remaps instructions. It does not handle any debug metadata. If debug metadata
+  is stored on `UserAuthoredProgram` rather than per-`FunctionBytecode`, the linker
+  must offset all `compiledFuncId` values by `funcOffset` and merge `DebugFileInfo`
+  entries (adjusting `fileIndex` to avoid collisions across programs).
+- **Multi-file file identifier stability.** With multiple source files, the
+  per-file identifier must be stable across recompilations.
+  Alphabetical-sort-by-path is fragile: adding a single file can shift every
+  subsequent value, invalidating debug metadata for unchanged files. This matters
+  for incremental recompilation (`compileAffected()`), debugger caching, and the
+  recompile-and-update pathway (Phase 21). Preferred strategy: assign by
+  insertion order in `UserTileProject` -- existing files keep their value, new
+  files get the next available slot. Deletion can leave gaps (sparse) or compact
+  with a metadata generation counter that tells consumers to invalidate cached
+  mappings. Note: with this strategy the value is a stable opaque ID, not a
+  contiguous array index. Consider renaming the field from `fileIndex` to
+  `fileId` in Phase 22's type definitions (propagating to `DebugFileInfo` and
+  `DebugFunctionInfo`) to avoid implying dense indexing.
 
 ---
 
