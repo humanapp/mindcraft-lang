@@ -317,6 +317,8 @@ export enum CompileDiagCode {
   TypeScriptError = 5002,
   /** Helper module contains top-level variables (not yet supported) */
   HelperModuleHasVariables = 5003,
+  /** Two imported modules export the same symbol name */
+  DuplicateImportedSymbol = 5004,
 }
 
 /**

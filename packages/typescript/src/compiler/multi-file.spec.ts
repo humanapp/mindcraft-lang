@@ -17,6 +17,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { buildAmbientDeclarations } from "./ambient.js";
+import { CompileDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -835,5 +836,174 @@ export default Sensor({
 
     assert.equal(entry.program!.params[0].type, "number", "host type should stay bare");
     assert.ok(entry.program!.outputType, "output type should resolve");
+  });
+});
+
+describe("multi-file: export-only collection", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("non-exported functions in imported files are not collected", () => {
+    const result = compileProject({
+      "helpers/a.ts": `
+function internalA(): number { return 1; }
+export function publicA(): number { return 42; }
+`,
+      "helpers/b.ts": `
+function internalA(): number { return 99; }
+export function publicB(): number { return 7; }
+`,
+      "sensors/entry.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { publicA } from "../helpers/a";
+import { publicB } from "../helpers/b";
+
+export default Sensor({
+  name: "entry",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return publicA() + publicB();
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/entry.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+  });
+
+  test("non-exported variables in imported files are not collected", () => {
+    const result = compileProject({
+      "helpers/a.ts": `
+let cache = 0;
+export const VALUE_A = 10;
+`,
+      "helpers/b.ts": `
+let cache = 0;
+export const VALUE_B = 20;
+`,
+      "sensors/entry.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { VALUE_A } from "../helpers/a";
+import { VALUE_B } from "../helpers/b";
+
+export default Sensor({
+  name: "entry",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return VALUE_A + VALUE_B;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/entry.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+  });
+});
+
+describe("multi-file: collision diagnostics (C3.5 D2)", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("two imported files exporting same-named function -> collision diagnostic", () => {
+    const result = compileProject({
+      "helpers/a.ts": `
+export function compute(): number { return 1; }
+`,
+      "helpers/b.ts": `
+export function compute(): number { return 2; }
+`,
+      "sensors/entry.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { compute } from "../helpers/a";
+import {} from "../helpers/b";
+
+export default Sensor({
+  name: "entry",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return compute();
+  },
+});
+`,
+    });
+
+    const entry = result.results.get("sensors/entry.ts");
+    assert.ok(entry);
+    assert.ok(entry.diagnostics.length > 0, "expected collision diagnostic");
+    assert.ok(
+      entry.diagnostics.some((d) => d.code === CompileDiagCode.DuplicateImportedSymbol),
+      `expected DuplicateImportedSymbol, got: ${JSON.stringify(entry.diagnostics)}`
+    );
+  });
+
+  test("two imported files exporting same-named variable -> collision diagnostic", () => {
+    const result = compileProject({
+      "helpers/a.ts": `
+export const VALUE = 10;
+`,
+      "helpers/b.ts": `
+export const VALUE = 20;
+`,
+      "sensors/entry.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { VALUE } from "../helpers/a";
+import {} from "../helpers/b";
+
+export default Sensor({
+  name: "entry",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return VALUE;
+  },
+});
+`,
+    });
+
+    const entry = result.results.get("sensors/entry.ts");
+    assert.ok(entry);
+    assert.ok(entry.diagnostics.length > 0, "expected collision diagnostic");
+    assert.ok(
+      entry.diagnostics.some((d) => d.code === CompileDiagCode.DuplicateImportedSymbol),
+      `expected DuplicateImportedSymbol, got: ${JSON.stringify(entry.diagnostics)}`
+    );
+  });
+
+  test("entry file function with same name as transitively imported function -> entry wins, no diagnostic", () => {
+    const result = compileProject({
+      "helpers/a.ts": `
+export function compute(): number { return 99; }
+export function helperOnly(): number { return 1; }
+`,
+      "sensors/entry.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { helperOnly } from "../helpers/a";
+
+function compute(): number { return 42; }
+
+export default Sensor({
+  name: "entry",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return compute() + helperOnly();
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/entry.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
   });
 });

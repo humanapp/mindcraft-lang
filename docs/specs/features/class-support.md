@@ -18,7 +18,7 @@ main plan's numbering and the D-series (destructuring).
 
 ## Current State
 
-(As of 2026-04-01, after C3 completion)
+(As of 2026-04-01, after C3.5 completion)
 
 ### What exists
 
@@ -72,6 +72,15 @@ main plan's numbering and the D-series (destructuring).
   host function lookup (emits `HostCallArgs`/`HostCallArgsAsync`).
 - **Compound assignment on `this` fields (C3):** `this.x += value` expands to
   read-operate-write pattern with `StructSet` + `StoreLocal(this)` store-back.
+
+- **Export-only import collection (C3.5 D1):** `collectImports` in project.ts
+  filters imported function declarations and variable statements to only those
+  with an `export` modifier. Non-exported helpers do not leak into the importer's
+  symbol tables.
+- **Duplicate import diagnostics (C3.5 D2):** After collecting exports, scans for
+  duplicate symbol names across different source modules and emits
+  `DuplicateImportedSymbol` diagnostic. Entry file declarations shadow imported
+  ones (no diagnostic).
 
 ### What does not exist
 
@@ -1009,3 +1018,61 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
 - [x] Method returns a computed value
 - [x] Method with no explicit return returns nil
 - [x] Multiple methods on the same class
+
+### Phase C3.5 -- Multi-File Symbol Isolation
+
+**Date completed:** 2026-04-01
+
+**Files changed:**
+
+- `packages/typescript/src/compiler/diag-codes.ts` -- added
+  `CompileDiagCode.DuplicateImportedSymbol` (5004).
+- `packages/typescript/src/compiler/project.ts` -- added `hasExportModifier`
+  helper using `ts.canHaveModifiers` + `ts.getModifiers`. Updated `visitFile` in
+  `collectImports` to check `hasExportModifier(stmt)` before collecting function
+  declarations and variable statements. Added post-collection duplicate detection:
+  scans collected functions and variables for same-named symbols from different
+  source modules, emits `DuplicateImportedSymbol` diagnostic.
+- `packages/typescript/src/compiler/multi-file.spec.ts` -- added 5 C3.5 tests
+  across two new describe blocks.
+
+**Test results:** 478 typescript tests pass, 0 failures. Typecheck and lint clean.
+
+**Deviations from spec:**
+
+1. **Entry file shadowing test.** The spec's acceptance criterion called for an
+   entry file function with the same name as an imported function, with the entry
+   file winning. TS itself rejects `import { foo } from "./a"` alongside a local
+   `function foo()` (declaration conflict). The test was changed to verify that
+   an entry-file local function with the same name as a *transitively* imported
+   (but not directly imported) exported function compiles without collision
+   diagnostic, validating that entry-file declarations take precedence in
+   `lowerProgram`.
+2. **Collision tests use `import {} from "../helpers/b"`.** The collision tests
+   need both helper files to be visited by `collectImports` even though the entry
+   only names symbols from one. An empty `import {}` from the second file triggers
+   `visitFile` without importing any specific symbol, which is sufficient to cause
+   the exported declarations to be collected and detected as duplicates.
+
+**Discoveries:**
+
+- The `visitFile` function in `collectImports` is triggered by any import
+  declaration that resolves to a user source file, regardless of what symbols
+  are named. Even `import {} from "./b"` or `import type { Foo } from "./b"`
+  triggers the recursive visit, which collects all exported functions and
+  variables. This is intentional -- transitive imports need to be compiled
+  even if the importing file only uses types.
+- TS itself enforces that a direct named import (`import { foo }`) cannot
+  coexist with a local declaration of the same name. This means the "entry
+  shadows import" scenario from the spec only applies to transitively collected
+  symbols, not directly imported ones.
+
+**Actual acceptance criteria met:**
+
+- [x] Two imported files with same-named non-exported function -- only exported
+      functions collected; non-exported ones invisible to importer
+- [x] Non-exported variables in imported files not collected
+- [x] Two imported files exporting same-named function -> collision diagnostic
+- [x] Two imported files exporting same-named variable -> collision diagnostic
+- [x] Entry file function with same name as transitively imported function ->
+      entry wins (no diagnostic)

@@ -336,10 +336,10 @@ function collectImports(
     }
 
     for (const stmt of sourceFile.statements) {
-      if (ts.isFunctionDeclaration(stmt) && stmt.name) {
+      if (ts.isFunctionDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
         functions.push({ localName: stmt.name.text, node: stmt });
       }
-      if (ts.isVariableStatement(stmt)) {
+      if (ts.isVariableStatement(stmt) && hasExportModifier(stmt)) {
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name)) {
             variables.push({
@@ -389,7 +389,40 @@ function collectImports(
     }
   }
 
+  const funcSources = new Map<string, string>();
+  for (const fn of functions) {
+    const source = fn.node.getSourceFile().fileName;
+    const existing = funcSources.get(fn.localName);
+    if (existing && existing !== source) {
+      diagnostics.push({
+        code: CompileDiagCode.DuplicateImportedSymbol,
+        message: `Duplicate imported symbol '${fn.localName}' from '${existing}' and '${source}'`,
+      });
+    } else {
+      funcSources.set(fn.localName, source);
+    }
+  }
+
+  const varSources = new Map<string, string>();
+  for (const v of variables) {
+    const existing = varSources.get(v.name);
+    if (existing && existing !== v.sourceModule) {
+      diagnostics.push({
+        code: CompileDiagCode.DuplicateImportedSymbol,
+        message: `Duplicate imported symbol '${v.name}' from '${existing}' and '${v.sourceModule}'`,
+      });
+    } else {
+      varSources.set(v.name, v.sourceModule);
+    }
+  }
+
   return { functions, variables, moduleInitOrder, diagnostics };
+}
+
+function hasExportModifier(node: ts.Node): boolean {
+  if (!ts.canHaveModifiers(node)) return false;
+  const mods = ts.getModifiers(node);
+  return mods?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
 }
 
 function resolveImportedSourceFile(
