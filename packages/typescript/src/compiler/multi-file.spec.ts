@@ -1007,3 +1007,401 @@ export default Sensor({
     assert.ok(entry.program);
   });
 });
+
+describe("multi-file: cross-file class support (C4)", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("class defined in helper, instantiated in entry", () => {
+    const result = compileProject({
+      "helpers/point.ts": `
+export class Point {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+}
+`,
+      "sensors/use-point.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Point } from "../helpers/point";
+
+export default Sensor({
+  name: "use-point",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const p = new Point(3, 4);
+    return p.x + p.y;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/use-point.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 7);
+    }
+  });
+
+  test("class method called across files", () => {
+    const result = compileProject({
+      "helpers/counter.ts": `
+export class Counter {
+  value: number;
+  constructor(start: number) {
+    this.value = start;
+  }
+  increment(): number {
+    this.value = this.value + 1;
+    return this.value;
+  }
+}
+`,
+      "sensors/use-counter.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Counter } from "../helpers/counter";
+
+export default Sensor({
+  name: "use-counter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const c = new Counter(10);
+    c.increment();
+    c.increment();
+    return c.value;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/use-counter.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 12);
+    }
+  });
+
+  test("class-typed variable passed to a function across files", () => {
+    const result = compileProject({
+      "helpers/vec.ts": `
+export class Vec2 {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+}
+
+export function lengthSquared(v: Vec2): number {
+  return v.x * v.x + v.y * v.y;
+}
+`,
+      "sensors/use-vec.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Vec2, lengthSquared } from "../helpers/vec";
+
+export default Sensor({
+  name: "use-vec",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const v = new Vec2(3, 4);
+    return lengthSquared(v);
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/use-vec.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 25);
+    }
+  });
+
+  test("class with no explicit constructor imported from helper", () => {
+    const result = compileProject({
+      "helpers/config.ts": `
+export class Config {
+  threshold: number = 42;
+  label: string = "default";
+}
+`,
+      "sensors/use-config.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Config } from "../helpers/config";
+
+export default Sensor({
+  name: "use-config",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const c = new Config();
+    return c.threshold;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/use-config.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 42);
+    }
+  });
+
+  test("class destructured: const { x, y } = point", () => {
+    const result = compileProject({
+      "helpers/point.ts": `
+export class Point {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+}
+`,
+      "sensors/destruct.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Point } from "../helpers/point";
+
+export default Sensor({
+  name: "destruct",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const p = new Point(5, 12);
+    const { x, y } = p;
+    return x + y;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/destruct.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 17);
+    }
+  });
+
+  test("array of class instances", () => {
+    const result = compileProject({
+      "helpers/point.ts": `
+export class Point {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+}
+`,
+      "sensors/array-class.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Point } from "../helpers/point";
+
+export default Sensor({
+  name: "array-class",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const points: Point[] = [new Point(1, 2), new Point(3, 4)];
+    return points[0].x + points[1].y;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/array-class.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 5000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 5);
+    }
+  });
+
+  test("non-exported class not collected from helper", () => {
+    const result = compileProject({
+      "helpers/internal.ts": `
+class Internal {
+  x: number = 0;
+}
+
+export function create(): number {
+  return 42;
+}
+`,
+      "sensors/entry.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { create } from "../helpers/internal";
+
+export default Sensor({
+  name: "entry",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return create();
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/entry.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+  });
+
+  test("duplicate class names from different files produce diagnostic", () => {
+    const result = compileProject({
+      "helpers/a.ts": `
+export class Widget {
+  x: number = 1;
+}
+`,
+      "helpers/b.ts": `
+export class Widget {
+  y: number = 2;
+}
+`,
+      "sensors/entry.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Widget } from "../helpers/a";
+import {} from "../helpers/b";
+
+export default Sensor({
+  name: "entry",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const w = new Widget();
+    return w.x;
+  },
+});
+`,
+    });
+
+    const entry = result.results.get("sensors/entry.ts");
+    assert.ok(entry);
+    assert.ok(entry.diagnostics.length > 0, "expected collision diagnostic");
+    assert.ok(
+      entry.diagnostics.some((d) => d.code === CompileDiagCode.DuplicateImportedSymbol),
+      `expected DuplicateImportedSymbol, got: ${JSON.stringify(entry.diagnostics)}`
+    );
+  });
+
+  test("both files at root level: import class from sibling", () => {
+    const result = compileProject({
+      "point.ts": `
+export class Point {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+  sum(): number {
+    return this.x + this.y;
+  }
+}
+`,
+      "use-point.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Point } from "./point";
+
+export default Sensor({
+  name: "root-import",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const p = new Point(10, 20);
+    return p.sum();
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("use-point.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 30);
+    }
+  });
+});

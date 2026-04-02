@@ -6,7 +6,7 @@ import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { emitFunction } from "./emit.js";
-import type { ImportedFunction, ImportedVariable } from "./lowering.js";
+import type { ImportedClass, ImportedFunction, ImportedVariable } from "./lowering.js";
 import { lowerProgram, qualifiedClassName } from "./lowering.js";
 import type {
   CompileDiagnostic,
@@ -221,7 +221,8 @@ export class UserTileProject {
       checker,
       imported.functions,
       imported.variables,
-      imported.moduleInitOrder
+      imported.moduleInitOrder,
+      imported.classes
     );
     if (programResult.diagnostics.length > 0) {
       return { diagnostics: programResult.diagnostics };
@@ -305,6 +306,7 @@ function qualifyDescriptorParams(params: ExtractedParam[], sourceFile: ts.Source
 interface CollectResult {
   functions: ImportedFunction[];
   variables: ImportedVariable[];
+  classes: ImportedClass[];
   moduleInitOrder: string[];
   diagnostics: CompileDiagnostic[];
 }
@@ -317,6 +319,7 @@ function collectImports(
 ): CollectResult {
   const functions: ImportedFunction[] = [];
   const variables: ImportedVariable[] = [];
+  const classes: ImportedClass[] = [];
   const diagnostics: CompileDiagnostic[] = [];
   const visitedFiles = new Set<string>();
   const moduleInitOrder: string[] = [];
@@ -349,6 +352,9 @@ function collectImports(
             });
           }
         }
+      }
+      if (ts.isClassDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
+        classes.push({ node: stmt, name: stmt.name.text, sourceFile });
       }
     }
 
@@ -416,7 +422,21 @@ function collectImports(
     }
   }
 
-  return { functions, variables, moduleInitOrder, diagnostics };
+  const classSources = new Map<string, string>();
+  for (const c of classes) {
+    const source = c.sourceFile.fileName;
+    const existing = classSources.get(c.name);
+    if (existing && existing !== source) {
+      diagnostics.push({
+        code: CompileDiagCode.DuplicateImportedSymbol,
+        message: `Duplicate imported symbol '${c.name}' from '${existing}' and '${source}'`,
+      });
+    } else {
+      classSources.set(c.name, source);
+    }
+  }
+
+  return { functions, variables, classes, moduleInitOrder, diagnostics };
 }
 
 function hasExportModifier(node: ts.Node): boolean {

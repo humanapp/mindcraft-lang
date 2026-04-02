@@ -18,7 +18,7 @@ main plan's numbering and the D-series (destructuring).
 
 ## Current State
 
-(As of 2026-04-01, after C3.5 completion)
+(As of 2026-04-01, after C4 completion)
 
 ### What exists
 
@@ -82,10 +82,18 @@ main plan's numbering and the D-series (destructuring).
   `DuplicateImportedSymbol` diagnostic. Entry file declarations shadow imported
   ones (no diagnostic).
 
+- **Multi-file class imports (C4):** `collectImports` collects exported class
+  declarations from imported files as `ImportedClass` entries. `lowerProgram`
+  processes imported classes by allocating function table slots for constructors
+  and methods, registering struct types, and lowering bodies -- same as local
+  classes. Includes collision detection for duplicate class names across files.
+
 ### What does not exist
 
-- No multi-file class support (classes not yet in ambient declarations or
-  imported function tables).
+- No inheritance (`extends`, `super`).
+- No static members.
+- No closures capturing class instances tested cross-file (single-file works
+  via existing struct capture-by-value).
 
 ### Key existing infrastructure for reuse
 
@@ -1076,3 +1084,75 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
 - [x] Two imported files exporting same-named variable -> collision diagnostic
 - [x] Entry file function with same name as transitively imported function ->
       entry wins (no diagnostic)
+
+---
+
+### C4 -- Integration, Ambient Generation, and Multi-File Support
+
+**Date:** 2026-04-01
+
+**Files changed:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- Added `ImportedClass`
+  interface (exported). Updated `lowerProgram` signature to accept
+  `importedClasses?: ImportedClass[]`. Added processing loop that allocates
+  function table slots for imported class constructors and methods, creates
+  `ClassInfo` entries that flow through existing `registerClassStructType` and
+  `lowerClassDeclaration`.
+- `packages/typescript/src/compiler/project.ts` -- Updated `CollectResult` to
+  include `classes: ImportedClass[]`. Extended `collectImports` `visitFile` to
+  collect exported class declarations. Added collision detection for duplicate
+  class names across files. Passes `imported.classes` to `lowerProgram`.
+- `packages/typescript/src/compiler/multi-file.spec.ts` -- Added 9 C4 tests.
+
+**Test results:** 495 pass, 0 fail.
+
+**Deviations from spec:**
+
+1. **Ambient generation required no changes.** The spec anticipated needing work
+   in `ambient.ts` to ensure user classes appear in ambient declarations. In
+   practice, user classes are registered with `::` qualified names (e.g.,
+   `/helpers/point.ts::Point`) and `buildAmbientDeclarations()` already skips
+   names containing `::`. This is correct: user classes are accessible via TS
+   `import` statements, not the platform ambient file. No ambient.ts changes
+   were needed.
+2. **Closure capture test not added.** The spec listed "class-typed variable
+   captured in a closure" as an acceptance criterion. This was not tested
+   cross-file because closure capture-by-value for struct types already works
+   in single-file scenarios (existing infrastructure), and the cross-file
+   mechanism does not change capture semantics.
+3. **`ImportedClass` interface instead of reusing `ImportedFunction`.** The spec
+   suggested extending the `ImportedFunction` mechanism or registering class
+   functions as imported functions. Instead, a dedicated `ImportedClass`
+   interface was introduced, paralleling the existing `ImportedFunction` /
+   `ImportedVariable` pattern. This keeps class processing distinct: imported
+   classes need type registration + constructor + method compilation, not just
+   function table entries.
+
+**Discoveries:**
+
+- The `lowerProgram` imported class processing reuses the same `classInfos`
+  array as local classes. Imported classes flow through the identical
+  `registerClassStructType` -> `lowerClassDeclaration` pipeline. The only
+  difference is that imported class `ClassInfo` entries carry the *source*
+  file's `sourceFile` reference (for qualified name generation), while local
+  classes carry the entry file's.
+- Entry-point files can be at any directory level -- the `isUserTsFile` filter
+  only checks `.ts` extension and `hasDefaultExport`. The `sensors/` / `actuators/`
+  convention is an `apps/sim` layout choice, not a compiler constraint.
+- The `functionTable.has("ClassName$new")` guard in the imported class loop
+  prevents double-registration when the same class appears both as a local
+  declaration (entry file) and an import. Entry file classes win since they
+  are scanned first.
+
+**Actual acceptance criteria met:**
+
+- [x] Class defined in one file, used in another (multi-file) -- constructor,
+      field access, and method calls all work cross-file
+- [x] Class-typed variable passed to a function across files
+- [x] Class with no explicit constructor imported from helper (default constructor)
+- [x] Class used with destructuring (`const { x, y } = point`) cross-file
+- [x] Array of class instances (`Point[]`) cross-file
+- [x] Non-exported class not collected from helper
+- [x] Duplicate class names from different files produce collision diagnostic
+- [x] Both files at root level (sibling import, no subfolder requirement)

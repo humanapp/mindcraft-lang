@@ -43,6 +43,12 @@ export interface ImportedVariable {
   sourceModule: string;
 }
 
+export interface ImportedClass {
+  node: ts.ClassDeclaration;
+  name: string;
+  sourceFile: ts.SourceFile;
+}
+
 interface ClassInfo {
   node: ts.ClassDeclaration;
   name: string;
@@ -159,7 +165,8 @@ export function lowerProgram(
   checker: ts.TypeChecker,
   importedFunctions?: ImportedFunction[],
   importedVariables?: ImportedVariable[],
-  moduleInitOrder?: string[]
+  moduleInitOrder?: string[],
+  importedClasses?: ImportedClass[]
 ): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
@@ -222,6 +229,32 @@ export function lowerProgram(
       if (imp.localName !== declaredName && !functionTable.has(imp.localName)) {
         functionTable.set(imp.localName, functionTable.get(declaredName)!);
       }
+    }
+  }
+
+  if (importedClasses) {
+    for (const ic of importedClasses) {
+      const className = ic.name;
+      if (functionTable.has(`${className}$new`)) continue;
+
+      const constructorFuncId = funcIdCounter.value++;
+      functionTable.set(`${className}$new`, constructorFuncId);
+      const methodFuncIds = new Map<string, number>();
+      for (const member of ic.node.members) {
+        if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name)) {
+          const methodName = member.name.text;
+          const methodFuncId = funcIdCounter.value++;
+          functionTable.set(`${className}.${methodName}`, methodFuncId);
+          methodFuncIds.set(methodName, methodFuncId);
+        }
+      }
+      classInfos.push({
+        node: ic.node,
+        name: className,
+        sourceFile: ic.sourceFile,
+        constructorFuncId,
+        methodFuncIds,
+      });
     }
   }
 
