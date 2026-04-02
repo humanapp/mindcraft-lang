@@ -170,4 +170,5 @@ export interface ITypeRegistry {
   getOrCreateUnionType(memberTypeIds: List<TypeId>): TypeId;
   getOrCreateFunctionType(shape: FunctionTypeShape): TypeId;
   isStructurallyCompatible(sourceTypeId: TypeId, targetTypeId: TypeId): boolean;
+  removeUserTypes(): void;
 }

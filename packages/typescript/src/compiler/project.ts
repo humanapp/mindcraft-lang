@@ -162,6 +162,8 @@ export class UserTileProject {
     const checker = tsProgram.getTypeChecker();
     const results = new Map<string, CompileResult>();
 
+    getBrainServices().types.removeUserTypes();
+
     for (const compilerPath of userRootFiles) {
       const sourceFile = tsProgram.getSourceFile(compilerPath);
       if (!sourceFile) continue;

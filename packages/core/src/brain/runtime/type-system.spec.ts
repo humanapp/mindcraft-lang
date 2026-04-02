@@ -745,3 +745,64 @@ describe("isStructurallyCompatible", () => {
     assert.equal(registry.isStructurallyCompatible("nonexistent:a", "nonexistent:b"), false);
   });
 });
+
+describe("removeUserTypes", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("removes user struct types (no fieldGetter/nominal/snapshotNative)", () => {
+    const registry = getBrainServices().types;
+    const typeId = registry.addStructType("UserClassRM1", {
+      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
+    });
+    assert.ok(registry.get(typeId));
+    assert.ok(registry.resolveByName("UserClassRM1"));
+
+    registry.removeUserTypes();
+
+    assert.equal(registry.get(typeId), undefined);
+    assert.equal(registry.resolveByName("UserClassRM1"), undefined);
+  });
+
+  test("preserves host struct types with fieldGetter", () => {
+    const registry = getBrainServices().types;
+    const hostId = registry.addStructType("HostTypeRM1", {
+      fields: List.from([{ name: "v", typeId: CoreTypeIds.Number }]),
+      fieldGetter: () => ({ t: NativeType.Nil }) as never,
+    });
+    assert.ok(registry.get(hostId));
+
+    registry.removeUserTypes();
+
+    assert.ok(registry.get(hostId));
+    assert.ok(registry.resolveByName("HostTypeRM1"));
+  });
+
+  test("preserves host struct types with nominal flag", () => {
+    const registry = getBrainServices().types;
+    const hostId = registry.addStructType("HostNomRM1", {
+      fields: List.from([{ name: "v", typeId: CoreTypeIds.Number }]),
+      nominal: true,
+    });
+    assert.ok(registry.get(hostId));
+
+    registry.removeUserTypes();
+
+    assert.ok(registry.get(hostId));
+    assert.ok(registry.resolveByName("HostNomRM1"));
+  });
+
+  test("does not remove non-struct types", () => {
+    const registry = getBrainServices().types;
+    assert.ok(registry.get(CoreTypeIds.Number));
+    assert.ok(registry.get(CoreTypeIds.String));
+    assert.ok(registry.get(CoreTypeIds.Boolean));
+
+    registry.removeUserTypes();
+
+    assert.ok(registry.get(CoreTypeIds.Number));
+    assert.ok(registry.get(CoreTypeIds.String));
+    assert.ok(registry.get(CoreTypeIds.Boolean));
+  });
+});

@@ -432,6 +432,56 @@ depends on M1. M3 depends on M2.
 
 ---
 
+## Current State
+
+M1 complete. M2 next (depends on M1). C3.5 D1+D2 can proceed in parallel.
+
+---
+
 ## Phase Log
 
-(To be filled in during post-mortem after each phase.)
+### M1: Registry Cleanup (User Type Wipe)
+
+**Status:** Complete
+
+**What was delivered:**
+
+1. `removeUserTypes()` added to `ITypeRegistry` interface
+   (`packages/core/src/brain/interfaces/type-system.ts`).
+2. `removeUserTypes()` implemented on `TypeRegistry`
+   (`packages/core/src/brain/runtime/type-system.ts`). Iterates `defs`, collects
+   struct types lacking host markers (`fieldGetter`/`fieldSetter`/`snapshotNative`/
+   `nominal`), removes them from `defs` and `nameToId`, clears `compatCache`.
+3. Call site in `_compile()` (`packages/typescript/src/compiler/project.ts`) --
+   `getBrainServices().types.removeUserTypes()` before the per-file compilation
+   loop.
+4. 4 unit tests in `type-system.spec.ts` (user type removed, host with
+   `fieldGetter` preserved, host with `nominal` preserved, non-struct types
+   preserved).
+5. 1 integration test in `codegen.spec.ts` (compile class V1, recompile V2 with
+   changed shape, verify new shape is picked up).
+6. 18 test struct registrations in `codegen.spec.ts` updated with `nominal: true`
+   to mark them as simulated host types (they were being wiped by
+   `removeUserTypes()` during `compileUserTile()` calls).
+
+**Test results:** 531 core tests pass, 462 typescript tests pass. Typecheck and
+lint clean in both packages.
+
+**Decisions made:**
+
+- Per-batch wipe (in `compileAll()` -> `_compile()`) rather than per-file wipe.
+  Per-file wipe would break cross-file references within the same compilation
+  batch.
+- Keep the silent-return guard in `registerClassStructType` (`if (existing)
+  return`). After cleanup it deduplicates when multiple files in the same batch
+  reference the same class.
+- Test struct types that simulate host types get `nominal: true` rather than
+  `fieldGetter`, since `nominal` is the lightest-weight marker and semantically
+  correct (these are opaque host-like types in the test environment).
+
+**Follow-up items:**
+
+- User tile re-registration could theoretically accumulate stale entries (if you
+  recompile and re-register with the same `pgmId`, it throws because `register()`
+  rejects duplicates in `FunctionRegistry`). Not triggered by current compilation
+  paths but worth addressing when tile lifecycle management is revisited.

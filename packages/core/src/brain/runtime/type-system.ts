@@ -484,6 +484,26 @@ export class TypeRegistry implements ITypeRegistry {
     return this.defs.entries().toArray();
   }
 
+  removeUserTypes(): void {
+    const toRemove = new List<TypeId>();
+    this.defs.forEach((def) => {
+      if (def.coreType !== NativeType.Struct) return;
+      const s = def as StructTypeDef;
+      if (s.fieldGetter || s.fieldSetter || s.snapshotNative || s.nominal) return;
+      toRemove.push(def.typeId);
+    });
+    toRemove.forEach((typeId) => {
+      const def = this.defs.get(typeId);
+      if (def) {
+        this.nameToId.delete(def.name);
+      }
+      this.defs.delete(typeId);
+    });
+    if (toRemove.size() > 0) {
+      this.compatCache = new Dict<string, boolean>();
+    }
+  }
+
   isStructurallyCompatible(sourceTypeId: TypeId, targetTypeId: TypeId): boolean {
     if (sourceTypeId === targetTypeId) return true;
 
