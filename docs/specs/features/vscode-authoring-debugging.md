@@ -35,65 +35,93 @@ Depends on: [user-authored-sensors-actuators.md](user-authored-sensors-actuators
 
 ## Implementation Status
 
-**Last Updated:** 2026-03-24
+**Last Updated:** 2026-06-19
 
 This document describes the target architecture for TypeScript authoring and debugging in
 Mindcraft. The implementation is being completed in phases:
 
-### Phase 1: Foundation (In Progress/Partial)
+### Phase 1: Foundation (Complete)
 
 The following components are **implemented and working**:
 
 - **TypeScript Compiler Pipeline** (`packages/typescript`)
-  - Full TypeScript→bytecode compilation with type checking
+  - Full TypeScript-to-bytecode compilation with type checking
   - Virtual file system (in-memory, no disk I/O)
-  - Compilation diagnostics (errors, warnings)
+  - Compilation diagnostics (errors, warnings) with source positions
   - User tile registration (sensors, actuators, parameters)
   - Async/await support via `IrAwait` and `IrHostCallAsync` instructions
   - Descriptor extraction (name, params, output type, async flag)
+  - Multi-file compilation with cross-file function, variable, and class imports
+  - Class support (struct-backed, no inheritance)
+  - Closures with captured variables
+  - Destructuring (object, array, rest, defaults, nested)
+  - Linker for merging user bytecode into brain programs
 
 - **Runtime Infrastructure** (`packages/core`)
   - Stack-based bytecode VM with fiber (coroutine) execution
+  - Full opcode set including LOAD_LOCAL/STORE_LOCAL, LOAD_CALLSITE_VAR/STORE_CALLSITE_VAR,
+    MAKE_CLOSURE/LOAD_CAPTURE, CALL_INDIRECT/CALL_INDIRECT_ARGS, TYPE_CHECK,
+    STRUCT_COPY_EXCEPT, and expanded list operations (LIST_POP, LIST_SHIFT,
+    LIST_REMOVE, LIST_INSERT, LIST_SWAP)
   - Async operation handling via handles and suspending/resuming
   - Exception handling (TRY/THROW/FAULT)
   - Instruction budgets and fairness scheduling
-  - ErrorValue type with basic stack traces
-  - Frame inspection infrastructure (available at runtime, not exposed to debugger yet)
+  - ErrorValue type with stack traces (`site: { funcId, pc }` and `stackTrace` array)
+  - Frame inspection infrastructure (frames carry `locals` and `captures` lists)
+
+- **Bridge Infrastructure** (`apps/vscode-bridge`, `packages/bridge-*`)
+  - WebSocket relay server (Hono + Node.js) with `/app` and `/extension` endpoints
+  - Session management with join codes (three-word triplets, refreshed every 10 min)
+  - Binding token system (HMAC-SHA256 for session persistence across reconnects)
+  - Bidirectional filesystem change propagation (write, delete, rename, mkdir, rmdir)
+  - Filesystem sync (full state pull/push)
+  - Etag-based optimistic concurrency conflict detection
+  - Rate limiting (100 msg/sec burst, 50 sustained) and connection throttling
+  - Disconnected session cache with 5-minute TTL for seamless reconnection
+  - Graceful shutdown handling
+
+- **VS Code Extension** (`apps/vscode-extension`)
+  - `MindcraftFileSystemProvider` for `mindcraft://` URI scheme
+  - File decoration provider (readonly indicators)
+  - "Mindcraft Sessions" tree view with connect/disconnect/create commands
+  - Status bar with connection state indicators
+  - Join code-based connection flow
+  - Pending change queue with deduplication and retry on reconnect
+  - Workspace folder management (auto-add/rename on connection)
+  - Binding token persistence via globalState for auto-reconnect
+
+- **Bridge Client Library** (`packages/bridge-client`)
+  - WsClient with exponential backoff reconnection (500ms-30s)
+  - Heartbeat (15s interval, 2 missed tolerance)
+  - Request/response with 30s timeout
+  - Message queuing during reconnection
+  - ProjectSession for connection lifecycle management
+  - Project class with filesystem state and sequence-based deduplication
 
 ### Phase 2: Debug System (Planned)
 
 The following are described in this spec but **not yet implemented**:
 
-- **Debug Metadata Emission** — DebugMetadata types (DebugFileInfo, DebugFunctionInfo, Spans)
+- **Debug Metadata Emission** -- DebugMetadata types (DebugFileInfo, DebugFunctionInfo, Spans)
   are not yet collected/emitted by the compiler. The compiler must be extended to generate
   source-to-bytecode mappings, scope information, and callable sites.
 
-- **VM Debug Runtime API** — The `IVMDebugRuntime` interface and its implementation do not
+- **VM Debug Runtime API** -- The `IVMDebugRuntime` interface and its implementation do not
   exist. The VM must be extended to expose pause/resume, breakpoint checking, and fiber
   inspection methods.
 
-- **Debug Bridge Layer** — WebSocket-based message transport between VS Code and the
-  Mindcraft app does not exist. Only the in-app registration bridge exists.
+- **Compile/Debug Bridge Handlers** -- The bridge server has stub handlers for compile and
+  debug message categories. The filesystem and session transports work, but compile
+  diagnostics and debug protocol messages are not yet wired through the bridge.
 
-- **VS Code Extension** — The extension providing the FileSystemProvider, DAP client, and
-  bridge connection does not exist.
+- **DAP Integration** -- The VS Code extension does not yet include a debug adapter. No
+  breakpoint, stepping, or variable inspection support exists.
 
-- **Source Mapping and Stepping** — Breakpoint resolution, span boundary detection, and
+- **Source Mapping and Stepping** -- Breakpoint resolution, span boundary detection, and
   step execution are not yet implemented.
 
-### Architectural Changes Since Spec
-
-1. **Registration Bridge is Separate:** The spec describes a single "bridge layer" relaying
-   all messages (fs, compile, debug, session). The current implementation has a
-   `registration-bridge.ts` that integrates compiled user tiles into the brain's catalog.
-   The WebSocket bridge described in Section 2 is a future addition, not yet implemented.
-
-2. **Diagnostics Flow Works:** The compilation pipeline can emit diagnostics (TypeScript
-   + validator errors) with source positions. The flow described in Section 4 is accurate,
-   but the transport to VS Code (via the bridge) is not yet wired.
-
-3. **Async Execution Model is Finalized:** User-authored tiles can be `async` and use
-   `await`. The implementation is complete and working (Section F in user-authored-sensors-actuators.md).
+- **Diagnostics Transport** -- The compiler emits structured diagnostics with source
+  positions, but there is no bridge transport to surface them in VS Code's Problems panel.
 
 ---
 
@@ -106,30 +134,33 @@ The following are described in this spec but **not yet implemented**:
 |      VS Code        |          |  Mindcraft Browser   |
 |                     |          |       App             |
 |  +---------------+  |          |                     |
-|  | Extension     |  |  Bridge  |  +---------------+  |
-|  |  - FileSystem |<-|----------|->| Bridge Client |  |
-|  |    Provider   |  |  (WS)   |  +-------+-------+  |
-|  |  - DAP Client |  |          |          |          |
-|  |  - Diagnostics|  |          |  +-------v-------+  |
-|  +-------+-------+  |          |  | Project Store |  |
-|          |           |          |  | (world data)  |  |
-|  +-------v-------+  |          |  +-------+-------+  |
-|  | VS Code UI    |  |          |          |          |
-|  |  - Editor     |  |          |  +-------v-------+  |
-|  |  - Debug pane |  |          |  | TS Compiler   |  |
-|  |  - Problems   |  |          |  | (ts-compiler) |  |
-|  +---------------+  |          |  +-------+-------+  |
-|                     |          |          |          |
-+---------------------+          |  +-------v-------+  |
-                                 |  | VM + Scheduler|  |
-         +------------------+    |  | (per entity)  |  |
-         |   Bridge Layer   |    |  +-------+-------+  |
-         |                  |    |          |          |
-         |  Local: loopback |    |  +-------v-------+  |
-         |  Remote: relay   |    |  | Debug Runtime |  |
-         |                  |    |  | (per VM)      |  |
-         +------------------+    |  +---------------+  |
-                                 +---------------------+
+|  | Extension     |  |          |  +---------------+  |
+|  |  - FileSystem |  |          |  | Bridge Client |  |
+|  |    Provider   |  |          |  | (bridge-app)  |  |
+|  |  - Status Bar |  |  Bridge  |  +-------+-------+  |
+|  |  - Tree View  |<-| Server  |->|       |          |
+|  |  - DAP Client |  |  (WS)   |  +-------v-------+  |
+|  |    (planned)  |  |          |  | Project Store |  |
+|  +-------+-------+  |          |  | (world data)  |  |
+|          |           |          |  +-------+-------+  |
+|  +-------v-------+  |          |          |          |
+|  | VS Code UI    |  |          |  +-------v-------+  |
+|  |  - Editor     |  |          |  | TS Compiler   |  |
+|  |  - Debug pane |  |          |  | (packages/    |  |
+|  |    (planned)  |  |          |  |  typescript)  |  |
+|  |  - Problems   |  |          |  +-------+-------+  |
+|  |    (planned)  |  |          |          |          |
+|  +---------------+  |          |  +-------v-------+  |
+|                     |          |  | VM + Scheduler|  |
++---------------------+          |  | (per entity)  |  |
+                                 |  +-------+-------+  |
++---------------------+         |          |          |
+|   Bridge Server     |         |  +-------v-------+  |
+|  (apps/vscode-      |         |  | Debug Runtime |  |
+|   bridge)           |         |  | (planned)     |  |
+|  Hono + Node.js     |         |  +---------------+  |
+|  /app + /extension  |         +---------------------+
++---------------------+
 ```
 
 ### Component responsibilities
@@ -137,33 +168,37 @@ The following are described in this spec but **not yet implemented**:
 **Mindcraft browser app** (runtime host + canonical store):
 
 - Owns the world/project data, including all user-authored TypeScript source files
-- Runs the TypeScript compiler (from the user-authored-sensors-actuators spec) ✓ Implemented
-- Executes compiled bytecode in the VM (one VM per entity) ✓ Implemented
-- Exposes a debug runtime API on each VM instance ⚠ Planned (interface spec in section 7)
-- Hosts the bridge client that accepts connections from VS Code ⚠ Planned
+- Runs the TypeScript compiler (from the user-authored-sensors-actuators spec) [done]
+- Executes compiled bytecode in the VM (one VM per entity) [done]
+- Connects to the bridge server via WebSocket (`/app` endpoint) [done]
+- Propagates filesystem changes bidirectionally through the bridge [done]
+- Exposes a debug runtime API on each VM instance [planned] (interface spec in section 7)
 
-**VS Code extension** ⚠ Planned:
+**VS Code extension** (`apps/vscode-extension`) [done for file editing; debug planned]:
 
-- Provides a `FileSystemProvider` for the `mindcraft://` URI scheme
-- Presents TypeScript tile source files as editable documents
-- Receives and displays diagnostics (errors, warnings) in the Problems panel
-- Hosts a DAP client for debugging
-- Manages connection lifecycle to the bridge
+- Provides a `MindcraftFileSystemProvider` for the `mindcraft://` URI scheme [done]
+- Presents TypeScript tile source files as editable documents [done]
+- File decoration provider for readonly indicators [done]
+- Status bar with connection state (disconnected/connecting/connected) [done]
+- "Mindcraft Sessions" tree view with connect/disconnect/create commands [done]
+- Join code-based connection flow with binding token persistence [done]
+- Pending change queue with deduplication and retry on reconnect [done]
+- Receives and displays diagnostics (errors, warnings) in the Problems panel [planned]
+- Hosts a DAP client for debugging [planned]
 
-**Bridge layer** ⚠ Planned (WebSocket transport):
+**Bridge server** (`apps/vscode-bridge`) [done]:
 
-- Relays messages between VS Code and the Mindcraft app
-- v1: local companion process on localhost (see section 17 for deployment details)
-- Stateless relay -- does not cache, compile, or interpret messages
-- **Note:** The registration bridge (`registration-bridge.ts` in `packages/typescript`) already
+- Hono + Node.js WebSocket server with two endpoints: `/app` and `/extension`
+- Relays filesystem changes and sync messages between app and extension
+- Session management with join code pairing and HMAC-signed binding tokens
+- Disconnected session cache (5-min TTL) for seamless reconnection
+- Rate limiting and connection throttling
+- Stub handlers for compile, debug, and project message categories [planned]
+- **Note:** The registration bridge (`registration-bridge.ts` in `packages/typescript`)
   integrates compiled user tiles into the brain's catalog; this is separate from the
-  WebSocket bridge described here.
+  WebSocket bridge server.
 
-- Relays messages between VS Code and the Mindcraft app
-- v1: local companion process on localhost (see section 17 for deployment details)
-- Stateless relay -- does not cache, compile, or interpret messages
-
-**Debug adapter** ⚠ Planned:
+**Debug adapter** [planned]:
 
 - Lives inside the VS Code extension process (inline DA)
 - Translates DAP requests into Mindcraft debug protocol messages
@@ -174,17 +209,18 @@ The following are described in this spec but **not yet implemented**:
 
 ### Ownership summary
 
-| Concern                       | Owner                            |
-| ----------------------------- | -------------------------------- |
-| Source storage                | Mindcraft app (world)            |
-| Compilation + debug metadata  | Mindcraft app                    |
-| Runtime execution             | Mindcraft app (VM)               |
-| Execution control (VM-side)   | Mindcraft app (VM debug runtime) |
-| Source display/editing        | VS Code extension                |
-| Diagnostics display           | VS Code extension                |
-| DAP translation               | VS Code extension (DA)           |
-| Breakpoint source-level state | VS Code extension (DA)           |
-| Transport relay               | Bridge layer                     |
+| Concern                       | Owner                            | Status  |
+| ----------------------------- | -------------------------------- | ------- |
+| Source storage                | Mindcraft app (world)            | done    |
+| Compilation + debug metadata  | Mindcraft app                    | partial |
+| Runtime execution             | Mindcraft app (VM)               | done    |
+| Execution control (VM-side)   | Mindcraft app (VM debug runtime) | planned |
+| File sync transport           | Bridge server + clients          | done    |
+| Source display/editing        | VS Code extension                | done    |
+| Diagnostics display           | VS Code extension                | planned |
+| DAP translation               | VS Code extension (DA)           | planned |
+| Breakpoint source-level state | VS Code extension (DA)           | planned |
+| Transport relay               | Bridge server                    | done    |
 
 ---
 
@@ -193,7 +229,7 @@ The following are described in this spec but **not yet implemented**:
 ### Transport
 
 All communication between VS Code and the Mindcraft app uses WebSocket with
-JSON-encoded messages. WebSocket provides:
+JSON-encoded messages, relayed through the bridge server. WebSocket provides:
 
 - Bidirectional messaging (required for debug events, file change notifications)
 - Browser-compatible (the Mindcraft app is a web app)
@@ -202,107 +238,111 @@ JSON-encoded messages. WebSocket provides:
 
 ### Message framing
 
-Each WebSocket message is a JSON object with a fixed envelope:
+Each WebSocket message is a JSON object with a flat envelope:
 
 ```
 {
-  "id": <number | null>,
-  "type": "request" | "response" | "event",
-  "category": "fs" | "compile" | "debug" | "session",
-  "method": "<method-name>",
-  "body": { ... },
-  "error": { "code": <number>, "message": "<string>" } | null
+  "type": "<category>:<action>",
+  "id": "<string>" | undefined,
+  "payload": { ... } | undefined,
+  "seq": <number> | undefined
 }
 ```
 
-- `id`: Correlates requests with responses. Null for events.
-- `type`: `request` expects a `response` with the same `id`. `event` is fire-and-forget.
-- `category`: Groups methods by subsystem for routing.
-- `method`: The specific operation.
-- `body`: Method-specific payload.
-- `error`: Present only on error responses.
+- `type`: Colon-separated string combining category and action
+  (e.g., `"session:hello"`, `"filesystem:change"`, `"control:ping"`).
+- `id`: Correlates requests with responses. Absent for fire-and-forget events.
+- `payload`: Action-specific data.
+- `seq`: Sequence number for filesystem change ordering and deduplication.
+
+The bridge protocol types are defined in `packages/bridge-protocol`.
 
 ### Session model
 
 A **session** represents an active connection between one VS Code window and one
-Mindcraft world. The session lifecycle:
+Mindcraft project. The session lifecycle:
 
-1. **Connect.** VS Code extension connects to the bridge endpoint.
-2. **Handshake.** Extension sends `session/hello` with protocol version. App responds
-   with world metadata (name, entity list, available source files).
-3. **Active.** Extension can read/write files, request compilation, attach debugger.
-4. **Disconnect.** Either side closes the WebSocket. Extension cleans up virtual FS
-   and any active debug sessions.
+1. **App connects.** The Mindcraft app connects to the bridge server's `/app` endpoint
+   and sends `session:hello` with app metadata (`appName`, `projectId`, `projectName`).
+   The bridge responds with `session:welcome` containing a `sessionId`, `joinCode`
+   (three-word triplet), and `bindingToken`.
+2. **User enters join code.** The user enters the join code displayed in the app into
+   VS Code via the "Mindcraft: Connect" command.
+3. **Extension connects.** The VS Code extension connects to the bridge server's
+   `/extension` endpoint and sends `session:hello` with the join code. The bridge
+   validates the code, binds the extension to the app session, and responds with
+   `session:welcome` and `session:appStatus` (bound state, project metadata,
+   binding token).
+4. **Active.** Extension can sync files, propagate changes, and (in the future)
+   request compilation and attach the debugger.
+5. **Disconnect.** Either side disconnects. The bridge caches the disconnected session
+   for 5 minutes. If the client reconnects with a valid binding token, the session
+   is reclaimed without re-entering the join code.
 
-Sessions are scoped to a single world. If the user switches worlds in the Mindcraft
-app, the app sends a `session/worldChanged` event. The extension tears down the
-current virtual FS and debug sessions, then re-initializes for the new world.
-
-### Multi-target awareness
-
-A Mindcraft world contains multiple entities, each with its own brain and VM. The
-session provides visibility into all entities but debug attachment is per-entity
-(see section 6).
-
-The session handshake response includes an entity manifest:
-
-```
-{
-  "worldId": "abc123",
-  "worldName": "Ecosystem Demo",
-  "entities": [
-    { "entityId": "e1", "name": "Wolf", "archetype": "carnivore", "brainId": "b1" },
-    { "entityId": "e2", "name": "Rabbit", "archetype": "herbivore", "brainId": "b2" }
-  ],
-  "sourceFiles": [
-    { "path": "sensors/nearby-enemy.ts", "brainId": "b1" },
-    { "path": "actuators/flee.ts", "brainId": "b2" }
-  ]
-}
-```
+Join codes refresh every 10 minutes. Each app session receives a new join code,
+pushed via `session:joinCode` message.
 
 ### Connection lifecycle
 
 ```
-VS Code                      Bridge                     Mindcraft App
+VS Code                      Bridge Server              Mindcraft App
   |                            |                            |
-  |--- WS connect ----------->|--- WS connect ----------->|
+  |                            |<-- WS /app connect --------|
+  |                            |<-- session:hello -----------|
+  |                            |--- session:welcome -------->|
+  |                            |    (joinCode, bindingToken) |
   |                            |                            |
-  |--- session/hello -------->|--- session/hello -------->|
-  |<-- session/helloReply ----|<-- session/helloReply ----|
+  |--- WS /extension connect ->|                            |
+  |--- session:hello --------->|                            |
+  |    (joinCode)              |                            |
+  |<-- session:welcome --------|                            |
+  |<-- session:appStatus ------|                            |
+  |    (bound, projectName,    |                            |
+  |     bindingToken)          |                            |
   |                            |                            |
   |    (active session)        |    (relay active)          |
   |                            |                            |
-  |<-- session/entityChanged --|<-- session/entityChanged --|
-  |<-- fs/fileChanged --------|<-- fs/fileChanged ---------|
+  |<-- filesystem:sync --------|<-- filesystem:sync --------|
+  |<-- filesystem:change ------|<-- filesystem:change ------|
+  |--- filesystem:change ----->|--- filesystem:change ----->|
   |                            |                            |
-  |--- WS close ------------->|--- WS close ------------->|
+  |--- WS close ------------->|                            |
+  |    (session cached 5 min)  |                            |
+  |                            |                            |
+  |--- WS reconnect --------->|                            |
+  |--- session:hello --------->|                            |
+  |    (bindingToken)          |                            |
+  |<-- session:welcome --------|                            |
+  |<-- session:appStatus ------|                            |
   |                            |                            |
 ```
 
-### Local bridge mode (v1)
+### Bridge server architecture
 
-In local (desktop) mode, the Mindcraft app runs in a browser on the same machine
-as VS Code. A small **companion process** (Node.js, bundled with the VS Code
-extension) runs on localhost. Both the Mindcraft app (via browser WebSocket client)
-and VS Code connect to it. The companion relays messages.
+The bridge server (`apps/vscode-bridge`) is a standalone Hono + Node.js application:
 
-This is the only credible v1 approach because a browser app cannot natively listen
-on a server socket. The companion process handles port management, discovery, and
-reconnection, and ships as part of the extension -- no separate install.
+- Two WebSocket routes: `/app` for web app clients, `/extension` for VS Code
+- Session registry with `AppSession` and `ExtensionSession` types
+- Disconnected session cache with 5-minute TTL and LRU eviction (max 10k)
+- Rate limiting: token bucket (100 burst, 50/sec sustained) per client
+- Connection throttle: 10/sec per IP
+- Max message size: 1 MB
+- Stale connection reaper: closes idle sockets after 60 seconds
+- Graceful shutdown (SIGINT/SIGTERM) with 10-second forced exit
 
-Discovery: The companion writes its port to a well-known file
-(`~/.mindcraft/bridge.json`). The VS Code extension reads this on activation. The
-Mindcraft app discovers it via a user-entered URL or a query parameter.
+### Discovery and connection
+
+The extension discovers the bridge server via the `mindcraft.bridgeUrl` VS Code
+setting (configurable WebSocket URL). The Mindcraft app discovers it via a
+user-entered URL or query parameter.
 
 ### Remote bridge mode (future)
 
-A remote relay server could mediate the connection for VS Code for Web and
-institutional environments. Both endpoints would connect outbound to a hosted
-relay (WSS) and pair via a short code. This is deferred to a future phase because
-it requires relay server infrastructure, authentication, and session pairing --
-none of which are needed for the core local workflow. See section 17 for a
-comparison of deployment tradeoffs.
+The current bridge server can be deployed on a remote host to support VS Code for
+Web and institutional environments. This would require adding WSS transport,
+authentication, and endpoint pairing. The architecture already supports this
+(both sides connect outbound to the bridge), but the additional security and
+infrastructure work is deferred.
 
 ---
 
@@ -310,25 +350,26 @@ comparison of deployment tradeoffs.
 
 ### URI scheme
 
-VS Code sees Mindcraft source files through a `FileSystemProvider` registered for the
-`mindcraft` URI scheme:
+VS Code sees Mindcraft source files through a `MindcraftFileSystemProvider` registered
+for the `mindcraft` URI scheme. This is implemented in
+`apps/vscode-extension/src/services/mindcraft-fs-provider.ts`.
 
 ```
-mindcraft://worldId/sensors/nearby-enemy.ts
-mindcraft://worldId/actuators/flee.ts
-mindcraft://worldId/lib/helpers.ts
+mindcraft://projectId/sensors/nearby-enemy.ts
+mindcraft://projectId/actuators/flee.ts
+mindcraft://projectId/lib/helpers.ts
 ```
 
 Path structure:
 
 ```
-mindcraft://<worldId>/
+mindcraft://<projectId>/
   sensors/
     <name>.ts           -- one file per sensor
   actuators/
     <name>.ts           -- one file per actuator
   lib/
-    <name>.ts           -- shared helper modules (Phase 3+)
+    <name>.ts           -- shared helper modules
   mindcraft.d.ts        -- ambient type declarations (read-only, generated)
 ```
 
@@ -336,89 +377,77 @@ The `mindcraft.d.ts` file is synthesized by the extension from the app's ambient
 declarations. It is read-only and provides IntelliSense for the `mindcraft` module
 imports.
 
-### Read flow
+### Implementation details
 
-```
-User opens mindcraft://w1/sensors/nearby-enemy.ts in VS Code
-  |
-  v
-FileSystemProvider.readFile(uri)
-  |
-  v
-Extension sends: { category: "fs", method: "readFile", body: { path: "sensors/nearby-enemy.ts" } }
-  |
-  v
-Mindcraft app reads source from world/project store
-  |
-  v
-Response: { body: { content: "<base64-encoded source>" } }
-  |
-  v
-Extension decodes and returns Uint8Array to VS Code
-```
+The file system provider uses dual underlying filesystems from `packages/bridge-client`:
+
+- **Read filesystem** -- local cache used for reading file content
+- **Write filesystem** -- notifying filesystem that triggers bridge sync on writes
+
+All write operations go through the notifying filesystem, which sends
+`filesystem:change` messages to the bridge with sequence numbers for ordering.
+Reads are served from the local cache, which is updated by both local writes and
+incoming remote changes.
 
 ### Write flow
 
 ```
-User saves file in VS Code (Ctrl+S)
+User saves file in VS Code (Cmd+S)
   |
   v
-FileSystemProvider.writeFile(uri, content)
+MindcraftFileSystemProvider.writeFile(uri, content)
   |
   v
-Extension sends: { category: "fs", method: "writeFile", body: { path: "...", content: "<base64>" } }
+Write to notifying filesystem (triggers filesystem:change with seq number)
   |
   v
-Mindcraft app writes source to world/project store
+Bridge relays filesystem:change to app
   |
   v
-App triggers recompilation (see section 4)
+App stores source, optionally triggers recompilation
   |
   v
-Response: { body: { ok: true } }
+Bridge relays ACK (filesystem:change response) to extension
   |
   v
-Extension fires onDidChangeFile for the URI (confirms write)
+If ACK fails: change queued as pending (retried on reconnect)
 ```
 
 ### Change notifications
 
-The Mindcraft app sends `fs/fileChanged` events when source files change outside
-of VS Code (e.g., another user edits via a different client, or the app creates a
-new file from its UI):
+The Mindcraft app sends `filesystem:change` messages when source files change outside
+of VS Code. The bridge relays these to all bound extensions. The extension updates its
+local cache and fires `onDidChangeFile` events to refresh open editors.
 
-```
-Event: { category: "fs", method: "fileChanged", body: {
-  changes: [
-    { path: "sensors/nearby-enemy.ts", type: "changed" },
-    { path: "actuators/patrol.ts", type: "created" }
-  ]
-} }
-```
+Filesystem notifications support these actions:
+- `write` -- file content changed (includes content and etag)
+- `delete` -- file removed
+- `rename` -- file moved/renamed
+- `mkdir` -- directory created
+- `rmdir` -- directory removed
+- `import` -- bulk state sync (all entries)
 
-The extension translates these into `FileSystemProvider.onDidChangeFile` events, causing
-VS Code to refresh open editors and the file explorer.
+### Supported operations
 
-### Directory listing
+The virtual FS supports the operations needed by VS Code, implemented through the
+bridge client's `NotifyingFileSystem`:
 
-```
-FileSystemProvider.readDirectory(uri)
-  -> fs/readDirectory { path: "sensors" }
-  <- { entries: [{ name: "nearby-enemy.ts", type: "file" }, ...] }
-```
+| Operation         | Supported | Notes                                           |
+| ----------------- | --------- | ----------------------------------------------- |
+| `stat`            | Yes       | Returns size, mtime, type                       |
+| `readFile`        | Yes       | Returns file content from local cache           |
+| `writeFile`       | Yes       | Writes content, sends change via bridge         |
+| `readDirectory`   | Yes       | Lists directory entries                         |
+| `createDirectory` | Yes       | Creates sensor/actuator/lib folders             |
+| `delete`          | Yes       | Deletes a source file                           |
+| `rename`          | Yes       | Renames a source file                           |
+| `watch`           | Yes       | Subscribes to change notifications              |
 
-The virtual FS supports the minimal set of operations needed by VS Code:
+### Conflict detection
 
-| Operation         | Supported | Notes                               |
-| ----------------- | --------- | ----------------------------------- |
-| `stat`            | Yes       | Returns size, mtime, type           |
-| `readFile`        | Yes       | Returns file content                |
-| `writeFile`       | Yes       | Writes content, triggers recompile  |
-| `readDirectory`   | Yes       | Lists directory entries             |
-| `createDirectory` | Yes       | Creates sensor/actuator/lib folders |
-| `delete`          | Yes       | Deletes a source file               |
-| `rename`          | Yes       | Renames a source file               |
-| `watch`           | Yes       | Subscribes to change notifications  |
+Writes include etag-based optimistic concurrency. If the extension's etag does not
+match the server's (another client wrote in between), the write is rejected and the
+extension prompts the user to sync and retry.
 
 ### File metadata
 
@@ -438,9 +467,9 @@ external changes and prompt reload when needed.
 
 ### Multi-file support
 
-The virtual FS naturally supports multiple files. In Phase 1, each sensor/actuator
-is a single file. In Phase 3 (multi-file authoring), the `lib/` directory holds
-shared modules. The FS structure does not change -- it simply has more files.
+The virtual FS supports multiple files. Each sensor/actuator is a single file. The
+`lib/` directory holds shared modules for cross-file imports. Multi-file compilation
+is fully implemented -- the FS structure does not change when adding more files.
 
 ### TypeScript language support
 
@@ -479,7 +508,7 @@ for user code referencing the Mindcraft API -- without any additional language s
 Compilation runs **inside the Mindcraft browser app**. Reasons:
 
 1. The compiler (from the user-authored-sensors-actuators spec) is part of
-   `@mindcraft-lang/core`, which is already loaded in the app.
+   `@mindcraft-lang/typescript`, which is loaded in the app.
 2. The compiled bytecode must be immediately available to the VM instances running
    in the app.
 3. The compiler needs access to the app's function registry and type system to
@@ -495,9 +524,9 @@ but the authoritative compilation is the Mindcraft compiler in the app.
 
 | Trigger                   | Initiated by | Behavior                                |
 | ------------------------- | ------------ | --------------------------------------- |
-| File save from VS Code    | Extension    | `fs/writeFile` -> app stores + compiles |
+| File save from VS Code    | Extension    | `filesystem:change` -> app stores + compiles |
 | File edit in Mindcraft UI | App (future) | App stores + compiles directly          |
-| Explicit rebuild request  | Extension    | `compile/rebuild` -> app recompiles all |
+| Explicit rebuild request  | Extension    | `compile:rebuild` -> app recompiles all |
 | World load                | App          | App compiles all source files on load   |
 
 On save, the app:
@@ -505,36 +534,43 @@ On save, the app:
 1. Stores the updated source in the world/project data.
 2. Runs the TypeScript compiler pipeline (see Section B.2 of user-authored-sensors-actuators.md).
    - The compiler pipeline is **fully implemented** in `packages/typescript/src/compiler/`
-   - Stages: parse (TypeScript AST) → validate → lower to IR → emit bytecode
+   - Stages: parse (TypeScript AST) -> validate -> extract descriptor -> lower to IR ->
+     emit bytecode -> assemble program
+   - Multi-file: `UserTileProject` class manages file imports, `collectImports()` gathers
+     functions/variables/classes across files with module init ordering
    - Output: `UserAuthoredProgram` (bytecode, constants, metadata)
 3. If successful, updates the registered `BrainFunctionEntry` for the sensor/actuator.
-4. Sends diagnostics back to VS Code. ⚠ Currently only available during compilation; VS Code
-   bridge transport is not yet implemented. See "Compilation Status" subsection below.
+4. Sends diagnostics back to VS Code. [planned -- compiler emits structured diagnostics
+   but the bridge transport to VS Code is not yet wired]
 5. If the compiled tile is used in a running brain, the brain hot-reloads the updated
    bytecode (future -- see v1 scope).
 
 ### Diagnostics flow
 
-After compilation, the app sends diagnostics to VS Code:
+After compilation, the app sends diagnostics to VS Code (planned -- bridge transport
+not yet wired):
 
 ```
-Event: { category: "compile", method: "diagnostics", body: {
-  file: "sensors/nearby-enemy.ts",
-  diagnostics: [
-    {
-      severity: "error",
-      message: "Property 'queryFaraway' does not exist on type 'EngineContext'",
-      range: { startLine: 8, startCol: 20, endLine: 8, endCol: 32 },
-      code: "MC2001"
-    },
-    {
-      severity: "warning",
-      message: "Variable 'unused' is declared but never read",
-      range: { startLine: 5, startCol: 6, endLine: 5, endCol: 12 },
-      code: "MC1001"
-    }
-  ]
-} }
+{
+  "type": "compile:diagnostics",
+  "payload": {
+    "file": "sensors/nearby-enemy.ts",
+    "diagnostics": [
+      {
+        "severity": "error",
+        "message": "Property 'queryFaraway' does not exist on type 'EngineContext'",
+        "range": { "startLine": 8, "startCol": 20, "endLine": 8, "endCol": 32 },
+        "code": 3010
+      },
+      {
+        "severity": "warning",
+        "message": "Variable 'unused' is declared but never read",
+        "range": { "startLine": 5, "startCol": 6, "endLine": 5, "endCol": 12 },
+        "code": 5000
+      }
+    ]
+  }
+}
 ```
 
 The extension maintains a `DiagnosticCollection` for the `mindcraft` URI scheme and
@@ -542,18 +578,26 @@ updates it on each diagnostics event.
 
 Diagnostics come from two sources:
 
-1. **TypeScript checker diagnostics** (parse & type check) ✓ Implemented
+1. **TypeScript checker diagnostics** (parse & type check) [done]
    - Standard TS errors/warnings from the compiler's type system
-2. **Subset validator diagnostics** (validation) ✓ Implemented
-   - Mindcraft-specific restrictions (forbids classes, Promise type, eval, etc.)
+2. **Subset validator diagnostics** (validation) [done]
+   - Mindcraft-specific restrictions (forbids class inheritance, class
+     expressions, getters/setters, static members, `eval`, `with`, `for...in`,
+     etc.)
 
-Both are mapped to source ranges and available during compilation. ⚠ **Note:** The
-transport of diagnostics to VS Code via the bridge (shown in the example above) is not
-yet implemented. The compiler emits structured diagnostics with source positions, but
-they currently only exist on the app side. The extension does not distinguish between
-them.
+Both are mapped to source ranges and available during compilation. The compiler
+uses a comprehensive diagnostic code system organized by phase:
+- 1000-1099: Validator (forbidden syntax)
+- 2000-2099: Descriptor extraction
+- 3000-3199: Lowering (AST to IR)
+- 4000-4099: Emission (IR to bytecode)
+- 5000+: Orchestration (TypeScript errors, imports, types)
 
-**Debug metadata emission:** ⚠ **Not yet implemented.** Following successful compilation,
+**Note:** The transport of diagnostics to VS Code via the bridge is not yet
+implemented. The compiler emits structured diagnostics with source positions and
+diagnostic codes, but they currently only exist on the app side.
+
+**Debug metadata emission:** [planned] Following successful compilation,
 the compiler will emit `DebugMetadata` (Section 6) alongside the `UserAuthoredProgram`.
 This requires extending the compiler pipeline to track:
 - Source file identity and content hashes
@@ -573,14 +617,18 @@ reverse mapping from bytecode is needed for diagnostics.
 
 ### Compilation status
 
-The app sends a compilation status event after each compilation:
+The app sends a compilation status event after each compilation (planned -- bridge
+transport not yet wired):
 
 ```
-Event: { category: "compile", method: "status", body: {
-  file: "sensors/nearby-enemy.ts",
-  success: true,
-  diagnosticCount: { error: 0, warning: 1 }
-} }
+{
+  "type": "compile:status",
+  "payload": {
+    "file": "sensors/nearby-enemy.ts",
+    "success": true,
+    "diagnosticCount": { "error": 0, "warning": 1 }
+  }
+}
 ```
 
 The extension can display this in the status bar (e.g., "Mindcraft: compiled ok" or
@@ -648,7 +696,7 @@ Breakpoints are re-resolved against the new debug metadata.
 
 ## 6. Debug Metadata
 
-⚠ **Implementation Status:** The `DebugMetadata` structure and types are not yet
+**Implementation Status:** The `DebugMetadata` structure and types are not yet
 implemented in the compiler. This section describes the target design that will be
 required for Phase 2 debugger support. The compiler will be extended to emit these
 structures alongside each compiled `UserAuthoredProgram`.
@@ -862,10 +910,10 @@ sensor/actuator.
 
 ## 7. Debugging Architecture
 
-⚠ **Implementation Status:** The `IVMDebugRuntime` interface and its implementation do
+**Implementation Status:** The `IVMDebugRuntime` interface and its implementation do
 not yet exist. This section describes the target debug runtime API that the VM must
 expose. The underlying fiber execution infrastructure (FiberScheduler, fiber states,
-frame inspection) exists; the debug API wrapping is planned.
+frame inspection) is fully implemented; the debug API wrapping is planned.
 
 ### Overview
 
@@ -929,7 +977,7 @@ interface IVMDebugRuntime {
 }
 ```
 
-Key differences from the previous design:
+Design notes:
 
 - `pauseVM` / `resumeVM` operate on the **entire VM**, not individual fibers.
 - Stepping commands (`stepOver`, `stepInto`, `stepOut`) target a specific fiber
@@ -944,45 +992,54 @@ To implement the debug runtime described in this section, use the following exis
 codebase infrastructure:
 
 **1. Fiber and Execution State (`packages/core/src/brain/runtime/`)**
-- `Fiber` class tracks state (RUNNABLE, WAITING, DONE, FAULT, CANCELLED)
-- `FiberScheduler` manages the fiber queue and execution loop
-- `Frame` objects store PC, locals, and current function context
-- These structures are already sufficient for `listFibers()`, `getStackTrace()`, and
-  `getScopes()`. Extend with debug-aware queries (e.g., adding `getDebugInfo()` methods).
+- `Fiber` tracks state (RUNNABLE, WAITING, DONE, FAULT, CANCELLED) with validated
+  transitions
+- `FiberScheduler` manages the fiber queue and execution loop (`tick()`, `spawn()`,
+  `cancel()`, `gc()`, `getStats()`)
+- `Frame` objects store `funcId`, `pc`, `base`, `locals: List<Value>`, and
+  `captures?: List<Value>`
+- These structures are sufficient for `listFibers()`, `getStackTrace()`, and
+  `getScopes()`. Extend with debug-aware queries.
 
 **2. Error and Stack Trace Infrastructure**
-- `ErrorValue` type in VM contains `site: { funcId, pc }` and `stackTrace` array
+- `ErrorValue` type contains `tag` (Timeout, Cancelled, HostError, ScriptError,
+  StackOverflow, StackUnderflow), `message`, `site: { funcId, pc }`, and
+  `stackTrace: List<string>`
 - Frame inspection is already performed during error handling
 - Reuse this path for debugger stack reconstruction (map PC to span via debug metadata).
 
 **3. VM Execution Loop (`packages/core/src/brain/runtime/vm.ts`)**
-- The `VM.executeOnce()` method is the heart of the scheduler
-- Fiber stepping, budgets, and breakpoint checking must be integrated here
+- The `VM.runFiber()` method executes fibers with budget-limited instruction loops
+- `debugStackChecks` config option already provides stack leak detection
+- Fiber stepping, budgets, and breakpoint checking must be integrated into the
+  main execution loop
 - Current: fibers run until budget exhausted or handle suspension
-- Target: check for breakpoints/span boundaries at each VM instruction
+- Target: check for breakpoints/span boundaries at each statement boundary PC
 
 **4. Handle and Async Infrastructure**
 - The handle table (`HandleTable`) manages async operation identifiers
-- Fiber suspension/resumption is already automatic via `AWAIT` instructions
+- Fiber suspension/resumption is automatic via `AWAIT` instruction
+- `onHandleCompleted(handleId)` resumes waiting fibers
 - Debug pause/resume can layer on top: pause blocks the scheduler loop entry,
   resume un-blocks it.
 
 **5. Compiler Output**
 - `UserAuthoredProgram` is the target for debug metadata attachment
 - The compiler (`packages/typescript/src/compiler/compile.ts`) is the place to emit
-  `DebugMetadata` alongside bytecode.
-- Use `DebugFunctionInfo` and `Span` types (define in a new `packages/typescript/src/debug-metadata.ts`)
-  to track source positions and statement boundaries.
+  `DebugMetadata` alongside bytecode
+- The lowering pass (`lowering.ts`) has access to all scope, variable, and AST
+  position information needed to generate spans, scopes, and locals
 
 **Steps to implement:**
 1. Add `DebugMetadata` types and emission to the compiler pipeline
 2. Add `debugMetadata` field to `UserAuthoredProgram`
 3. Create `IVMDebugRuntime` interface as a facade on top of `VM` and `FiberScheduler`
 4. Implement pause/resume by adding a paused flag and checking it at fiber yield points
-5. Implement breakpoint checking: map source breakpoints to span boundaries, check at each instruction
+5. Implement breakpoint checking: map source breakpoints to span boundaries, check at
+   each instruction
 6. Implement step handlers by tracking target function/frame and span boundaries
-
-See `Acknowledgements` section for links to relevant source files.
+7. Wire compile/debug handlers in the bridge server (`apps/vscode-bridge`)
+8. Add DAP client in the VS Code extension
 
 ---
 
@@ -1108,10 +1165,10 @@ DebugTarget {
 
 **From VS Code:** The user launches a debug session via Run and Debug. The extension
 shows a quick-pick list of available targets (entity name + archetype + brain name).
-The user selects one, and the extension sends `debug/attach` for that entity.
+The user selects one, and the extension sends `debug:attach` for that entity.
 
 **From in-game:** The user selects an entity in the Mindcraft app. The app sends a
-`debug/targetSelected` event. The extension can prompt to attach or auto-attach if
+`debug:targetSelected` event. The extension can prompt to attach or auto-attach if
 configured.
 
 ### Attach/detach
@@ -1119,7 +1176,7 @@ configured.
 **Attach:**
 
 ```
-debug/attach { entityId: "e1" }
+debug:attach { entityId: "e1" }
 ->
 {
   sessionId: "ds-001",
@@ -1465,7 +1522,7 @@ with `isStatementBoundary: true`. Prefer the nearest span on a later line (forwa
 search) over an earlier line.
 
 If found: breakpoint is **moved** to that span's line. The adapter sends
-`debug/setBreakpoint` with the resolved `debugFuncId` and `pc`, and reports the
+`debug:setBreakpoint` with the resolved `debugFuncId` and `pc`, and reports the
 adjusted location to DAP.
 
 **Stage 3: Same file, nearest span**
@@ -1481,7 +1538,7 @@ falls between function boundaries (e.g., between two function declarations).
 No executable span found in the file at or near the requested line. The breakpoint
 is **unbound**. The adapter responds to DAP with `verified: false`.
 
-After resolution, the adapter sends `debug/setBreakpoint` to the app with the
+After resolution, the adapter sends `debug:setBreakpoint` to the app with the
 `debugFuncId` and `pc`, and responds to the DAP `setBreakpoints` request with
 the resolved locations.
 
@@ -1605,9 +1662,9 @@ adapter must not assume any relationship between `frameId` values across stops.
 DAP `scopes` and `variables` requests reference `frameId`; the adapter rejects
 requests with stale `frameId` values.
 
-For cross-file calls (Phase 3+), the stack trace naturally spans files because each
+For cross-file calls, the stack trace naturally spans files because each
 `DebugFunctionInfo` carries its own `fileIndex`. The adapter resolves each frame's
-source location independently.
+source location independently. Multi-file compilation is fully implemented.
 
 ### Generated function handling
 
@@ -1984,162 +2041,174 @@ fundamental design principle:
 
 When VS Code saves a file:
 
-1. The extension sends `fs/writeFile` to the app.
-2. The app stores the content in the world/project data.
-3. The app responds with success (or error if the write fails).
-4. The extension considers the file saved only after receiving the success response.
+1. The extension writes to the notifying filesystem, which sends a `filesystem:change`
+   message to the bridge with the new content and an etag.
+2. The bridge relays the change to the bound app.
+3. The app stores the content in the world/project data.
+4. The app responds with an ACK (or error if the write fails).
+5. If the ACK fails, the extension queues the change as pending and retries on reconnect.
 
-If the write fails (e.g., world is read-only, connection lost), VS Code shows the
-file as unsaved and displays an error.
+### Conflict handling (etag-based optimistic concurrency)
 
-### Conflict handling (v1: simple)
+The bridge client implements etag-based optimistic concurrency:
 
-For v1, the model is **last writer wins** with basic conflict detection:
+- Each file has an etag that changes on every write.
+- Write operations include the last-known etag.
+- If the etag does not match (another client wrote in between), the write is
+  rejected with a conflict error.
+- The extension detects etag mismatches and prompts the user to sync and retry.
 
-- Each file has a version counter (incremented on each write).
-- The `fs/writeFile` request includes the version the editor believes is current.
-- If the version does not match (another client wrote in between), the app rejects
-  the write with a `conflict` error.
-- The extension prompts the user to reload the file and retry.
-
-This is sufficient for v1 because:
-
-- Single-user editing is the expected workflow.
-- The Mindcraft app's own UI does not have a text editor for TypeScript (no embedded
-  Monaco). Conflicts can only arise from multiple VS Code windows or if the app
-  creates/modifies files programmatically.
+This is sufficient for the expected single-user editing workflow. Conflicts can
+arise from multiple VS Code windows or if the app creates/modifies files
+programmatically.
 
 ### Offline editing
 
 Offline editing is **not supported in v1**. VS Code cannot edit files without an active
 connection to the Mindcraft app. If the connection drops:
 
-- The virtual file system becomes read-only (cached content remains visible).
-- Saves are rejected with a connection error.
-- The extension shows a "disconnected" indicator in the status bar.
-- When the connection is restored, the extension refetches file metadata and refreshes
-  open editors if files changed while disconnected.
-
-Future phases could support offline editing with a local cache and sync-on-reconnect,
-but this adds significant complexity (merge conflicts, divergent state) that is not
-justified for v1.
+- The extension queues any pending changes with deduplication.
+- The status bar shows a disconnected indicator (orange if pending changes exist).
+- The extension attempts reconnection with exponential backoff (500ms-30s).
+- When the connection is restored using the saved binding token, the extension
+  sends pending changes and requests a filesystem sync to reconcile state.
 
 ### World lifecycle events
 
 The app notifies the extension of world-level changes:
 
-| Event                   | Behavior                                    |
-| ----------------------- | ------------------------------------------- |
-| `session/worldChanged`  | Extension tears down FS + debug, reinits    |
-| `session/worldClosed`   | Extension tears down FS + debug             |
-| `session/entityAdded`   | Extension refreshes target list             |
-| `session/entityRemoved` | Extension detaches if debugging that entity |
-| `session/brainChanged`  | Extension refreshes source files + targets  |
+| Event (planned)              | Behavior                                    |
+| ---------------------------- | ------------------------------------------- |
+| `session:worldChanged`       | Extension tears down FS + debug, reinits    |
+| `session:worldClosed`        | Extension tears down FS + debug             |
+| `session:entityAdded`        | Extension refreshes target list             |
+| `session:entityRemoved`      | Extension detaches if debugging that entity |
+| `session:brainChanged`       | Extension refreshes source files + targets  |
+
+**Note:** These world lifecycle events are planned. The message types follow the
+implemented `category:action` naming convention (colon-separated, not slash-separated).
 
 ---
 
 ## 16. Protocol Design
 
-### Message categories and methods
+### Implemented message types
 
-#### File system (`fs`)
+The following message types are defined in `packages/bridge-protocol` and implemented
+in the bridge server and clients:
 
-| Method          | Direction  | Purpose                                 |
-| --------------- | ---------- | --------------------------------------- |
-| `readFile`      | ext -> app | Read file content                       |
-| `writeFile`     | ext -> app | Write file content (with version check) |
-| `stat`          | ext -> app | Get file metadata (size, mtime, type)   |
-| `readDirectory` | ext -> app | List directory contents                 |
-| `createFile`    | ext -> app | Create a new source file                |
-| `deleteFile`    | ext -> app | Delete a source file                    |
-| `renameFile`    | ext -> app | Rename/move a source file               |
-| `fileChanged`   | app -> ext | Notify of external file changes (event) |
+#### Session (`session:*`) [done]
 
-#### Session management (`session`)
+| Type                   | Direction         | Purpose                                           |
+| ---------------------- | ----------------- | ------------------------------------------------- |
+| `session:hello`        | client -> server  | Handshake with app/extension metadata             |
+| `session:welcome`      | server -> client  | Session ID, join code, binding token              |
+| `session:goodbye`      | client -> server  | Graceful disconnect                               |
+| `session:error`        | server -> client  | Session-level error                               |
+| `session:appStatus`    | server -> ext     | Binding state, project metadata, client status    |
+| `session:joinCode`     | server -> app     | Refreshed join code (every 10 min)                |
 
-| Method          | Direction     | Purpose                                   |
-| --------------- | ------------- | ----------------------------------------- |
-| `hello`         | ext -> app    | Handshake with protocol version           |
-| `helloReply`    | app -> ext    | World metadata, entity list, capabilities |
-| `worldChanged`  | app -> ext    | Active world changed (event)              |
-| `worldClosed`   | app -> ext    | World closed (event)                      |
-| `entityAdded`   | app -> ext    | New entity in world (event)               |
-| `entityRemoved` | app -> ext    | Entity removed from world (event)         |
-| `brainChanged`  | app -> ext    | Entity's brain assignment changed (event) |
-| `ping`          | bidirectional | Keepalive                                 |
+#### Control (`control:*`) [done]
 
-#### Compilation (`compile`)
+| Type                   | Direction         | Purpose                                           |
+| ---------------------- | ----------------- | ------------------------------------------------- |
+| `control:ping`         | bidirectional     | Heartbeat (15s interval)                          |
+| `control:pong`         | bidirectional     | Heartbeat response                                |
 
-| Method          | Direction  | Purpose                                        |
-| --------------- | ---------- | ---------------------------------------------- |
-| `rebuild`       | ext -> app | Request full recompilation of all source files |
-| `diagnostics`   | app -> ext | Compilation diagnostics for a file (event)     |
-| `status`        | app -> ext | Compilation success/failure summary (event)    |
-| `debugMetadata` | app -> ext | Updated debug metadata after compile (event)   |
+#### Filesystem (`filesystem:*`) [done]
 
-#### Debug (`debug`)
+| Type                   | Direction         | Purpose                                           |
+| ---------------------- | ----------------- | ------------------------------------------------- |
+| `filesystem:change`    | bidirectional     | File change notification (write/delete/rename/    |
+|                        |                   | mkdir/rmdir) with seq number and etag             |
+| `filesystem:sync`      | bidirectional     | Full state sync (request/response with entries)   |
 
-| Method              | Direction  | Purpose                                             |
-| ------------------- | ---------- | --------------------------------------------------- |
-| `listTargets`       | ext -> app | Enumerate debuggable entities                       |
-| `targetListChanged` | app -> ext | Target list changed (event)                         |
-| `targetSelected`    | app -> ext | User selected entity in-game (event)                |
-| `attach`            | ext -> app | Attach debugger to an entity's VM                   |
-| `detach`            | ext -> app | Detach debugger from an entity's VM                 |
-| `setBreakpoint`     | ext -> app | Set breakpoint (debugFuncId + pc)                   |
-| `removeBreakpoint`  | ext -> app | Remove a breakpoint                                 |
-| `pauseVM`           | ext -> app | Pause the entire attached VM                        |
-| `resumeVM`          | ext -> app | Resume the entire attached VM                       |
-| `stepOver`          | ext -> app | Step over on a specific fiber                       |
-| `stepInto`          | ext -> app | Step into on a specific fiber                       |
-| `stepOut`           | ext -> app | Step out on a specific fiber                        |
-| `listFibers`        | ext -> app | Get all fibers and their states                     |
-| `getStackTrace`     | ext -> app | Get call stack for a fiber                          |
-| `getScopes`         | ext -> app | Get variable scopes for a stack frame               |
-| `getVariables`      | ext -> app | Get variables within a scope                        |
-| `evaluate`          | ext -> app | Look up a single identifier in a scope              |
-| `getExceptionInfo`  | ext -> app | Get fault details for a faulted fiber               |
-| `stopped`           | app -> ext | VM stopped (breakpoint, fault, step, pause) (event) |
-| `continued`         | app -> ext | VM resumed execution (event)                        |
-| `fiberCreated`      | app -> ext | New fiber spawned (event)                           |
-| `fiberDestroyed`    | app -> ext | Fiber completed or cancelled (event)                |
-| `output`            | app -> ext | Debug output message (event)                        |
+#### Error (`error`) [done]
+
+| Type                   | Direction         | Purpose                                           |
+| ---------------------- | ----------------- | ------------------------------------------------- |
+| `error`                | server -> client  | General protocol error                            |
+
+### Planned message types (for Phase 2)
+
+The bridge server has stub handlers for these categories. The message types below
+are the target design for compile, debug, and project operations.
+
+#### Compilation (`compile:*`) [planned]
+
+| Type                | Direction  | Purpose                                        |
+| ------------------- | ---------- | ---------------------------------------------- |
+| `compile:rebuild`   | ext -> app | Request full recompilation of all source files |
+| `compile:diagnostics` | app -> ext | Compilation diagnostics for a file (event)   |
+| `compile:status`    | app -> ext | Compilation success/failure summary (event)    |
+| `compile:debugMetadata` | app -> ext | Updated debug metadata after compile (event) |
+
+#### Debug (`debug:*`) [planned]
+
+| Type                     | Direction  | Purpose                                             |
+| ------------------------ | ---------- | --------------------------------------------------- |
+| `debug:listTargets`      | ext -> app | Enumerate debuggable entities                       |
+| `debug:targetListChanged`| app -> ext | Target list changed (event)                         |
+| `debug:targetSelected`   | app -> ext | User selected entity in-game (event)                |
+| `debug:attach`           | ext -> app | Attach debugger to an entity's VM                   |
+| `debug:detach`           | ext -> app | Detach debugger from an entity's VM                 |
+| `debug:setBreakpoint`    | ext -> app | Set breakpoint (debugFuncId + pc)                   |
+| `debug:removeBreakpoint` | ext -> app | Remove a breakpoint                                 |
+| `debug:pauseVM`          | ext -> app | Pause the entire attached VM                        |
+| `debug:resumeVM`         | ext -> app | Resume the entire attached VM                       |
+| `debug:stepOver`         | ext -> app | Step over on a specific fiber                       |
+| `debug:stepInto`         | ext -> app | Step into on a specific fiber                       |
+| `debug:stepOut`          | ext -> app | Step out on a specific fiber                        |
+| `debug:listFibers`       | ext -> app | Get all fibers and their states                     |
+| `debug:getStackTrace`    | ext -> app | Get call stack for a fiber                          |
+| `debug:getScopes`        | ext -> app | Get variable scopes for a stack frame               |
+| `debug:getVariables`     | ext -> app | Get variables within a scope                        |
+| `debug:evaluate`         | ext -> app | Look up a single identifier in a scope              |
+| `debug:getExceptionInfo` | ext -> app | Get fault details for a faulted fiber               |
+| `debug:stopped`          | app -> ext | VM stopped (breakpoint, fault, step, pause) (event) |
+| `debug:continued`        | app -> ext | VM resumed execution (event)                        |
+| `debug:fiberCreated`     | app -> ext | New fiber spawned (event)                           |
+| `debug:fiberDestroyed`   | app -> ext | Fiber completed or cancelled (event)                |
+| `debug:output`           | app -> ext | Debug output message (event)                        |
 
 ### Message structure examples
 
-**Request:**
+**Session handshake (actual):**
 
 ```json
 {
-  "id": 1,
-  "type": "request",
-  "category": "fs",
-  "method": "readFile",
-  "body": { "path": "sensors/nearby-enemy.ts" }
+  "type": "session:hello",
+  "id": "req-1",
+  "payload": {
+    "appName": "Mindcraft Sim",
+    "projectId": "proj-123",
+    "projectName": "Ecosystem Demo"
+  }
 }
 ```
 
-**Response:**
+**Filesystem change (actual):**
 
 ```json
 {
-  "id": 1,
-  "type": "response",
-  "category": "fs",
-  "method": "readFile",
-  "body": { "content": "aW1wb3J0IHsgU2Vuc29y...", "version": 3, "mtime": 1711036800000 }
+  "type": "filesystem:change",
+  "id": "req-2",
+  "seq": 42,
+  "payload": {
+    "action": "write",
+    "path": "sensors/nearby-enemy.ts",
+    "content": "aW1wb3J0IHsgU2Vuc29y...",
+    "newEtag": "abc123"
+  }
 }
 ```
 
-**Event:**
+**Debug stopped event (planned):**
 
 ```json
 {
-  "id": null,
-  "type": "event",
-  "category": "debug",
-  "method": "stopped",
-  "body": {
+  "type": "debug:stopped",
+  "payload": {
     "sessionId": "ds-001",
     "triggeringFiberId": 1,
     "reason": "breakpoint",
@@ -2151,7 +2220,7 @@ The app notifies the extension of world-level changes:
 
 ### Protocol versioning
 
-The `session/hello` message includes a `protocolVersion` field (semver string). The
+The `session:hello` message includes a `protocolVersion` field (semver string). The
 app responds with its supported version. If the major versions are incompatible, the
 connection is rejected with an error message directing the user to update the
 extension or app.
@@ -2160,48 +2229,57 @@ extension or app.
 
 ## 17. Deployment Models
 
-### Local-only (v1)
+### Current architecture
 
 ```
-+-----------+     localhost WS      +-------------------+
-|  VS Code  |<-------------------->| Companion Process  |
-| (desktop) |                      | (Node.js, bundled  |
-+-----------+                      |  with extension)   |
-                                   +--------+-----------+
-                                            |
-                                   localhost WS
-                                            |
-                                   +--------v-----------+
-                                   |   Mindcraft App    |
-                                   |   (browser tab)    |
-                                   +--------------------+
++-----------+         WS          +-------------------+
+|  VS Code  |<------------------->|  Bridge Server    |
+| Extension |    /extension       | (apps/vscode-     |
++-----------+                     |  bridge)          |
+                                  | Hono + Node.js    |
+                                  +--------+----------+
+                                           |
+                                      WS /app
+                                           |
+                                  +--------v----------+
+                                  |   Mindcraft App   |
+                                  |   (browser tab)   |
+                                  +-------------------+
 ```
 
-- Sub-millisecond latency (loopback WebSocket)
-- No internet connection required after initial install
-- Companion process auto-starts when the extension activates
-- Works behind firewalls and on restricted networks
-- Install: VS Code desktop + Mindcraft extension (bundles companion)
-- No authentication needed (localhost only, companion validates origin)
+The bridge server (`apps/vscode-bridge`) is a standalone Hono + Node.js server:
 
-### Remote-hosted (future)
+- Runs independently (not bundled with the extension)
+- Two WebSocket endpoints: `/app` and `/extension`
+- Join code pairing: app gets a three-word code, user enters it in VS Code
+- HMAC-signed binding tokens for session persistence across reconnects
+- Dockerized for deployment (`Dockerfile` included)
+- Rate limiting, connection throttling, graceful shutdown
+- Disconnected session cache (5-min TTL) for seamless reconnection
 
-A relay server could mediate the connection for VS Code for Web and institutional
-environments where localhost access is unavailable.
+In local development mode, the bridge server runs on localhost. Both the browser
+app and VS Code extension connect to it. The extension discovers the bridge via
+the `mindcraft.bridgeUrl` configuration setting.
 
-| Factor             | Local (v1)           | Remote (future)               |
+### Remote deployment (supported by architecture)
+
+The bridge server can be deployed to a remote host to support VS Code for Web and
+institutional environments. The architecture already supports this since both
+clients connect outbound to the bridge. Additional work needed for production
+remote deployment:
+
+- WSS (TLS) transport
+- Authentication and authorization
+- Deployment infrastructure
+
+| Factor             | Local                | Remote                        |
 | ------------------ | -------------------- | ----------------------------- |
 | Latency            | Sub-millisecond      | 10-100ms typical              |
-| Install required   | VS Code + extension  | None (web browser only)       |
-| Works offline      | Yes (after install)  | No                            |
-| School/IT friendly | Requires app install | Nothing to install            |
+| Install required   | Bridge server + ext  | Extension only                |
+| Works offline      | No (bridge required) | No                            |
+| School/IT friendly | Requires bridge      | Nothing to install locally    |
 | Security           | All data stays local | Messages transit relay server |
 | Reliability        | No server dependency | Depends on relay uptime       |
-
-Remote mode requires: relay server infrastructure, WSS transport, session pairing
-(short-lived codes), endpoint authentication, rate limiting. This is deferred because
-the local workflow is sufficient for initial users and the remote infrastructure
-is a significant standalone effort.
 
 ---
 
@@ -2209,29 +2287,31 @@ is a significant standalone effort.
 
 ### What v1 includes
 
-**File system:**
+**File system** [done]:
 
 - `mindcraft://` virtual file system provider
-- Read, write, stat, directory listing for sensor/actuator source files
-- Synthesized `mindcraft.d.ts` for IntelliSense
-- Synthesized `tsconfig.json` for TypeScript language service configuration
-- File change notifications from app to extension
+- Read, write, stat, directory listing for sensor/actuator/lib source files
+- Etag-based optimistic concurrency for conflict detection
+- File change notifications bidirectionally through the bridge
+- Pending change queue with deduplication and retry on reconnect
 
-**Connection:**
+**Connection** [done]:
 
-- Local bridge mode only (companion process on localhost)
-- Single session (one VS Code window to one Mindcraft app instance)
-- WebSocket transport with JSON messages
-- Session handshake with world metadata
+- Bridge server with `/app` and `/extension` WebSocket endpoints
+- Join code-based pairing (three-word triplets, refreshed every 10 min)
+- HMAC-signed binding tokens for session persistence across reconnects
+- Exponential backoff reconnection (500ms-30s)
+- Heartbeat with 15s interval
+- Session caching for seamless reconnection (5-min TTL)
 
-**Compilation:**
+**Compilation** [done locally; bridge transport planned]:
 
-- Compilation in the Mindcraft app (triggered on save)
-- Diagnostics pushed to VS Code (errors and warnings with source locations)
-- Debug metadata emitted alongside bytecode
-- Compilation status indicator
+- Full TypeScript-to-bytecode compilation in the Mindcraft app
+- Multi-file compilation with cross-file imports
+- Comprehensive diagnostics with source positions and diagnostic codes
+- Compilation status tracking
 
-**Debugging:**
+**Debugging** [planned]:
 
 - Inline debug adapter in the extension
 - Attach to a single entity's VM
@@ -2249,7 +2329,13 @@ is a significant standalone effort.
 - Loaded sources reporting
 - Canonical stop reasons: breakpoint, pause, step, await, exception, entry
 
-**Target selection:**
+**IntelliSense** [planned]:
+
+- Synthesized `mindcraft.d.ts` for IntelliSense
+- Synthesized `tsconfig.json` for TypeScript language service configuration
+- Diagnostics pushed to VS Code Problems panel
+
+**Target selection** [planned]:
 
 - Quick-pick target selector in VS Code
 - Entity selection from in-game pushes a suggestion to VS Code
@@ -2258,8 +2344,7 @@ is a significant standalone effort.
 
 | Feature                     | Reason                                           |
 | --------------------------- | ------------------------------------------------ |
-| Remote bridge mode          | Requires relay server infrastructure             |
-| Offline editing             | Requires local cache + sync/merge logic          |
+| Remote bridge with auth     | Requires WSS, authentication, deployment infra   |
 | Hot reload of running code  | Requires bytecode replacement in live VM         |
 | Multiple debug sessions     | Single-target is sufficient for initial use      |
 | Conditional breakpoints     | Requires expression compilation for conditions   |
@@ -2270,7 +2355,6 @@ is a significant standalone effort.
 | Per-thread resume           | VM pauses/resumes all fibers together            |
 | Step back                   | No reverse execution in VM                       |
 | Set variable                | Read-only inspection in v1                       |
-| Multi-file projects (lib/)  | Depends on Phase 3 of referenced spec            |
 | Code sharing between brains | Requires cross-brain module system               |
 | Collaborative editing       | Requires OT/CRDT infrastructure                  |
 
@@ -2278,36 +2362,40 @@ is a significant standalone effort.
 
 1. **VM-level pause only.** No per-fiber resume. All fibers stop and resume together.
 2. **Single debug target.** One attached VM at a time.
-3. **No offline mode.** Connection required for all operations.
-4. **Local bridge only.** No remote relay server.
-5. **Last-writer-wins conflict resolution.** Version check prevents silent overwrites.
-6. **No hot reload.** Recompilation triggers detach-reattach. New code takes effect
+3. **No hot reload.** Recompilation triggers detach-reattach. New code takes effect
    on brain restart or page re-entry.
-7. **Identifier-only evaluation.** Hover and watch support simple variable names.
+4. **Identifier-only evaluation.** Hover and watch support simple variable names.
    No arbitrary expressions, no function calls, no side effects.
-8. **Single world per session.** Switching worlds requires reconnecting.
-9. **One sensor/actuator per file.** Matches Phase 1 of the referenced spec.
-10. **All faults stop.** No exception filter configuration. Every fault pauses the VM.
-11. **Conservative async stepping.** Await suspension is reported as `"await"` rather
-    than hidden behind synchronous stepping illusions.
-12. **No conditional breakpoints or logpoints.** Requires expression compilation.
+5. **Single project per session.** Switching projects requires reconnecting.
+6. **All faults stop.** No exception filter configuration. Every fault pauses the VM.
+7. **Conservative async stepping.** Await suspension is reported as `"await"` rather
+   than hidden behind synchronous stepping illusions.
+8. **No conditional breakpoints or logpoints.** Requires expression compilation.
+9. **Etag-based conflict resolution.** Detects concurrent edits but does not merge.
+10. **Pending changes queued on disconnect.** Retried on reconnect, not persisted to
+    disk.
 
 ### Extension packaging
 
-The VS Code extension package includes:
+The VS Code extension package (`apps/vscode-extension`) includes:
 
-- `FileSystemProvider` implementation for `mindcraft://`
+- `MindcraftFileSystemProvider` implementation for `mindcraft://`
+- File decoration provider for readonly indicators
+- Bridge connection manager (WebSocket client via `packages/bridge-client`)
+- Status bar with connection state indicators
+- "Mindcraft Sessions" tree view with commands
+- Join code pairing and binding token persistence
+- Pending change queue with deduplication
+
+Planned additions for Phase 2:
 - Inline debug adapter (DAP)
-- Bridge connection manager (WebSocket client)
-- Companion process binary (Node.js, for local bridge mode)
-- Protocol message types and serialization
+- Diagnostics collection for Problems panel
 - Synthesized `mindcraft.d.ts` (embedded, updated with extension releases)
 
 The extension activates when:
 
 - A `mindcraft://` URI is opened
 - The user runs the "Mindcraft: Connect" command
-- The companion process is detected as running
 
 ### Launch configuration
 
@@ -2333,10 +2421,10 @@ is specified. An explicit target can be provided:
 }
 ```
 
-### Multi-file readiness
+### Multi-file support
 
-The architecture accommodates multi-file support (Phase 3) without structural
-changes. The debug metadata model already supports multiple files.
+Multi-file compilation is fully implemented. The architecture accommodates multi-file
+debugging without structural changes. The debug metadata model supports multiple files.
 
 **File and module identity:**
 
@@ -2346,9 +2434,9 @@ Each source file has a `DebugFileInfo` with a unique `fileIndex` and a `path`
 file identity used throughout the debugger -- breakpoint resolution, stack
 trace display, and loaded sources all key on `fileIndex`.
 
-When Phase 3 adds `lib/` modules, each module file gets its own `fileIndex`
-and its functions get their own `DebugFunctionInfo` entries. No new identity
-scheme is needed.
+Each `lib/` module file gets its own `fileIndex` and its functions get their
+own `DebugFunctionInfo` entries. No new identity scheme is needed. Multi-file
+compilation with cross-file imports is fully implemented.
 
 **Stack traces across files:**
 
@@ -2367,14 +2455,14 @@ algorithm changes.
 
 **Loaded sources:**
 
-The `loadedSources` DAP response enumerates all `DebugFileInfo` entries. In
-Phase 1 this is a single file. In Phase 3 it includes all sensor, actuator,
-and lib files in the compiled program. The adapter constructs a `mindcraft://`
-URI for each file.
+The `loadedSources` DAP response enumerates all `DebugFileInfo` entries.
+This includes all sensor, actuator, and lib files in the compiled program.
+The adapter constructs a `mindcraft://` URI for each file.
 
 No protocol, debug adapter, or metadata structural changes are needed for
-multi-file. The required work is the multi-file compiler support from Phase 3
-of the referenced spec.
+multi-file. The multi-file compiler support is already complete (see
+`packages/typescript/src/compiler/project.ts` for the `UserTileProject` class
+and `collectImports()` function).
 
 ---
 
@@ -2427,8 +2515,8 @@ total overhead is two constant-time checks per statement executed.
 
 ### Transfer strategy
 
-Debug metadata is sent as a single JSON payload in the `debug/attach` response
-and in `compile/debugMetadata` events. No streaming, compression, or lazy loading
+Debug metadata is sent as a single JSON payload in the `debug:attach` response
+and in `compile:debugMetadata` events. No streaming, compression, or lazy loading
 is needed in v1 given the small sizes involved.
 
 If future phases introduce large programs (many files, many functions), the
@@ -2579,7 +2667,7 @@ DebugMetadata:
 ### Attach and breakpoint placement
 
 1. User launches debug session, selects entity "Wolf".
-2. Adapter sends `debug/attach { entityId: "e1" }`.
+2. Adapter sends `debug:attach { entityId: "e1" }`.
 3. Response includes `programRevisionId: "rev-1"`, debug metadata above,
    and current fibers.
 4. User sets breakpoint at **line 18** (`incrementCount()`).
@@ -2750,26 +2838,45 @@ This document describes the integration points between the debugger and existing
 Mindcraft infrastructure. Implementation should reference the following files:
 
 **Compiler and Type System:**
-- `packages/typescript/src/compiler/compile.ts` — Main compilation entry point
-- `packages/typescript/src/compiler/emit.ts` — Bytecode emission (extend for debug metadata)
-- `packages/typescript/src/compiler/descriptor.ts` — Tile metadata extraction
-- `packages/typescript/src/index.ts` — Public API
+- `packages/typescript/src/compiler/compile.ts` -- Main compilation entry point
+- `packages/typescript/src/compiler/project.ts` -- Multi-file project orchestration
+- `packages/typescript/src/compiler/lowering.ts` -- TS AST to IR lowering (scope/variable info)
+- `packages/typescript/src/compiler/emit.ts` -- Bytecode emission (extend for debug metadata)
+- `packages/typescript/src/compiler/ir.ts` -- IR node type definitions (~40 kinds)
+- `packages/typescript/src/compiler/types.ts` -- `UserAuthoredProgram`, `ExtractedDescriptor`
+- `packages/typescript/src/compiler/descriptor.ts` -- Tile metadata extraction
+- `packages/typescript/src/compiler/scope.ts` -- Variable scope tracking
+- `packages/typescript/src/compiler/diag-codes.ts` -- Diagnostic code system
+- `packages/typescript/src/compiler/linker/linker.ts` -- User program linking
+- `packages/typescript/src/index.ts` -- Public API
 
 **VM and Fiber Execution:**
-- `packages/core/src/brain/runtime/vm.ts` — Stack-based VM, instruction execution
-- `packages/core/src/brain/runtime/fiber-scheduler.ts` — Fiber queue and scheduling
-- `packages/core/src/brain/interfaces/vm.ts` — Public VM interfaces
-- `packages/core/src/brain/runtime/brain.ts` — Brain orchestration (handles page, rule exec)
+- `packages/core/src/brain/runtime/vm.ts` -- Stack-based VM, instruction execution
+- `packages/core/src/brain/runtime/fiber-scheduler.ts` -- Fiber queue and scheduling
+- `packages/core/src/brain/interfaces/vm.ts` -- Public VM interfaces (Op, Frame, Fiber,
+  FiberState, ErrorValue, VmConfig)
+- `packages/core/src/brain/runtime/brain.ts` -- Brain orchestration (handles page, rule exec)
 
 **Type Definitions:**
-- `packages/core/src/brain/interfaces/program.ts` — `Program`, `FunctionBytecode` types
+- `packages/core/src/brain/interfaces/program.ts` -- `Program`, `FunctionBytecode` types
   (extend with `DebugMetadata` field)
-- `packages/core/src/brain/runtime/error.ts` — `ErrorValue` with stack trace support
 
 **User-Authored Tile Integration:**
-- `packages/typescript/src/runtime/authored-function.ts` — User tile execution wrapper
-- `packages/typescript/src/runtime/registration-bridge.ts` — Tile registration
+- `packages/typescript/src/runtime/authored-function.ts` -- User tile execution wrapper
+- `packages/typescript/src/runtime/registration-bridge.ts` -- Tile registration
+
+**Bridge Infrastructure:**
+- `apps/vscode-bridge/src/` -- Bridge server (Hono + Node.js WebSocket relay)
+- `packages/bridge-protocol/src/` -- Shared message types and Zod schemas
+- `packages/bridge-client/src/` -- Client SDK (WsClient, ProjectSession, Project)
+- `packages/bridge-app/src/` -- App-side bridge integration
+
+**VS Code Extension:**
+- `apps/vscode-extension/src/extension.ts` -- Extension activation
+- `apps/vscode-extension/src/services/project-manager.ts` -- Central state manager
+- `apps/vscode-extension/src/services/mindcraft-fs-provider.ts` -- FileSystemProvider
 
 **Supporting Documentation:**
-- `docs/specs/features/user-authored-sensors-actuators.md` — Compilation design
-- `.github/instructions/global.instructions.md` — Code style guidelines
+- `docs/specs/features/user-authored-sensors-actuators.md` -- Compilation design
+- `.github/instructions/global.instructions.md` -- Code style guidelines
+- `.github/instructions/vscode-bridge.instructions.md` -- Bridge server conventions
