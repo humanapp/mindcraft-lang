@@ -46,8 +46,18 @@ export interface ImportedVariable {
 interface ClassInfo {
   node: ts.ClassDeclaration;
   name: string;
+  sourceFile: ts.SourceFile;
   constructorFuncId: number;
   methodFuncIds: Map<string, number>;
+}
+
+function qualifiedClassName(fileName: string, className: string): string {
+  return `${fileName}::${className}`;
+}
+
+function isUserSourceDecl(decl: ts.Declaration): boolean {
+  const sf = decl.getSourceFile();
+  return !sf.fileName.endsWith(".d.ts");
 }
 
 export interface ProgramLoweringResult {
@@ -183,7 +193,7 @@ export function lowerProgram(
           methodFuncIds.set(methodName, methodFuncId);
         }
       }
-      classInfos.push({ node: stmt, name: className, constructorFuncId, methodFuncIds });
+      classInfos.push({ node: stmt, name: className, sourceFile, constructorFuncId, methodFuncIds });
     } else if (ts.isVariableStatement(stmt) && !isInsideDescriptor(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
@@ -1453,6 +1463,12 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedFunctionCall, "Unsupported function call", expr));
 }
 
+function bareClassName(qualOrBareName: string): string {
+  const sep = qualOrBareName.indexOf("::");
+  if (sep >= 0) return qualOrBareName.slice(sep + 2);
+  return qualOrBareName;
+}
+
 function lowerStructMethodCall(
   expr: ts.CallExpression,
   propAccess: ts.PropertyAccessExpression,
@@ -1469,7 +1485,8 @@ function lowerStructMethodCall(
   });
   if (!found) return false;
 
-  const fnName = `${structDef.name}.${methodName}`;
+  const bareName = bareClassName(structDef.name);
+  const fnName = `${bareName}.${methodName}`;
 
   const userFuncId = ctx.functionTable.get(fnName);
   if (userFuncId !== undefined) {
@@ -1485,11 +1502,7 @@ function lowerStructMethodCall(
   const fnEntry = getBrainServices().functions.get(fnName);
   if (!fnEntry) {
     ctx.diagnostics.push(
-      makeDiag(
-        LoweringDiagCode.UnknownStructMethod,
-        `Unknown struct method: '${structDef.name}.${methodName}'`,
-        propAccess
-      )
+      makeDiag(LoweringDiagCode.UnknownStructMethod, `Unknown struct method: '${bareName}.${methodName}'`, propAccess)
     );
     return true;
   }
@@ -4609,6 +4622,18 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedPropertyAccess, "Unsupported property access", expr));
 }
 
+function resolveRegistryName(sym: ts.Symbol): string {
+  const name = sym.getName();
+  const decls = sym.getDeclarations();
+  if (decls && decls.length > 0 && isUserSourceDecl(decls[0])) {
+    const qualName = qualifiedClassName(decls[0].getSourceFile().fileName, name);
+    if (getBrainServices().types.resolveByName(qualName)) {
+      return qualName;
+    }
+  }
+  return name;
+}
+
 function resolveStructType(type: ts.Type): StructTypeDef | undefined {
   const registry = getBrainServices().types;
   if (type.isUnion()) {
@@ -4620,8 +4645,8 @@ function resolveStructType(type: ts.Type): StructTypeDef | undefined {
   }
   const sym = type.getSymbol() ?? type.aliasSymbol;
   if (!sym) return undefined;
-  const name = sym.getName();
-  const typeId = registry.resolveByName(name);
+  const resolvedName = resolveRegistryName(sym);
+  const typeId = registry.resolveByName(resolvedName);
   if (!typeId) return undefined;
   const def = registry.get(typeId);
   if (!def || def.coreType !== NativeType.Struct) return undefined;
@@ -4987,7 +5012,7 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
       }
     }
 
-    const typeId = registry.resolveByName(symName);
+    const typeId = registry.resolveByName(resolveRegistryName(sym));
     if (typeId) return typeId;
   }
 
@@ -5102,7 +5127,8 @@ function extractClassMethodDecls(
 
 function registerClassStructType(ci: ClassInfo, checker: ts.TypeChecker, diagnostics: CompileDiagnostic[]): void {
   const registry = getBrainServices().types;
-  const existing = registry.resolveByName(ci.name);
+  const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
+  const existing = registry.resolveByName(qualName);
   if (existing) return;
 
   const fields = extractClassFields(ci.node, checker, diagnostics);
@@ -5110,7 +5136,7 @@ function registerClassStructType(ci: ClassInfo, checker: ts.TypeChecker, diagnos
 
   const methods = extractClassMethodDecls(ci.node, checker);
 
-  registry.addStructType(ci.name, { fields, methods });
+  registry.addStructType(qualName, { fields, methods });
 }
 
 function lowerClassDeclaration(
@@ -5125,7 +5151,8 @@ function lowerClassDeclaration(
   const entries: FunctionEntry[] = [];
 
   const registry = getBrainServices().types;
-  const typeId = registry.resolveByName(ci.name);
+  const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
+  const typeId = registry.resolveByName(qualName);
 
   const ctor = ci.node.members.find(ts.isConstructorDeclaration);
   const ctorParamCount = ctor ? ctor.parameters.length : 0;

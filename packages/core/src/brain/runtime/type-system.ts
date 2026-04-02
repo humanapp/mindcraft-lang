@@ -488,8 +488,7 @@ export class TypeRegistry implements ITypeRegistry {
     const toRemove = new List<TypeId>();
     this.defs.forEach((def) => {
       if (def.coreType !== NativeType.Struct) return;
-      const s = def as StructTypeDef;
-      if (s.fieldGetter || s.fieldSetter || s.snapshotNative || s.nominal) return;
+      if (SU.indexOf(def.name, "::") < 0) return;
       toRemove.push(def.typeId);
     });
     toRemove.forEach((typeId) => {

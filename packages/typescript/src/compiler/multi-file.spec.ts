@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import {
   type ExecutionContext,
+  getBrainServices,
   HandleTable,
   mkNumberValue,
   NativeType,
@@ -11,6 +12,7 @@ import {
   registerCoreBrainComponents,
   runtime,
   type Scheduler,
+  type StructTypeDef,
   type Value,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
@@ -599,5 +601,141 @@ export default Sensor({
     if (r.status === VmStatus.DONE) {
       assert.equal((r.result as NumberValue).v, 26, "5*5 + 1 = 26");
     }
+  });
+});
+
+describe("multi-file: module-qualified TypeIds (M2)", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("same-named classes in different files get distinct TypeIds", () => {
+    const result = compileProject({
+      "sensors/a.ts": `
+import { Sensor, type Context } from "mindcraft";
+
+class Foo {
+  x: number;
+  constructor(x: number) { this.x = x; }
+}
+
+export default Sensor({
+  name: "a-sensor",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const f = new Foo(10);
+    return f.x;
+  },
+});
+`,
+      "sensors/b.ts": `
+import { Sensor, type Context } from "mindcraft";
+
+class Foo {
+  name: string;
+  constructor(name: string) { this.name = name; }
+}
+
+export default Sensor({
+  name: "b-sensor",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const f = new Foo("hello");
+    return f.name;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+
+    const entryA = result.results.get("sensors/a.ts");
+    assert.ok(entryA, "expected result for a.ts");
+    assert.deepStrictEqual(entryA.diagnostics, [], `a.ts diagnostics: ${JSON.stringify(entryA.diagnostics)}`);
+    assert.ok(entryA.program);
+
+    const entryB = result.results.get("sensors/b.ts");
+    assert.ok(entryB, "expected result for b.ts");
+    assert.deepStrictEqual(entryB.diagnostics, [], `b.ts diagnostics: ${JSON.stringify(entryB.diagnostics)}`);
+    assert.ok(entryB.program);
+
+    const registry = getBrainServices().types;
+    const typeIdA = registry.resolveByName("/sensors/a.ts::Foo");
+    const typeIdB = registry.resolveByName("/sensors/b.ts::Foo");
+    assert.ok(typeIdA, "Foo from a.ts should be registered");
+    assert.ok(typeIdB, "Foo from b.ts should be registered");
+    assert.notEqual(typeIdA, typeIdB, "TypeIds should be distinct");
+
+    const defA = registry.get(typeIdA!) as StructTypeDef;
+    const defB = registry.get(typeIdB!) as StructTypeDef;
+    const fieldNamesA: string[] = [];
+    defA.fields.forEach((f) => {
+      fieldNamesA.push(f.name);
+    });
+    const fieldNamesB: string[] = [];
+    defB.fields.forEach((f) => {
+      fieldNamesB.push(f.name);
+    });
+    assert.ok(fieldNamesA.includes("x"), "Foo from a.ts should have field x");
+    assert.ok(fieldNamesB.includes("name"), "Foo from b.ts should have field name");
+  });
+
+  test("core types resolve with bare name after compilation", () => {
+    compileProject({
+      "sensors/test.ts": `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "host-check",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`,
+    });
+
+    const registry = getBrainServices().types;
+    const boolTypeId = registry.resolveByName("boolean");
+    assert.ok(boolTypeId, "boolean should still resolve with bare name");
+    const def = registry.get(boolTypeId!);
+    assert.ok(def, "boolean type def should exist");
+    assert.equal(def!.coreType, NativeType.Boolean);
+  });
+
+  test("single-file class gets module-qualified TypeId", () => {
+    const result = compileProject({
+      "sensors/single.ts": `
+import { Sensor, type Context } from "mindcraft";
+
+class Point {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) { this.x = x; this.y = y; }
+}
+
+export default Sensor({
+  name: "single-class",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const p = new Point(3, 4);
+    return p.x + p.y;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/single.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, []);
+    assert.ok(entry.program);
+
+    const registry = getBrainServices().types;
+    const typeId = registry.resolveByName("/sensors/single.ts::Point");
+    assert.ok(typeId, "Point should be registered with qualified name");
+
+    const bareTypeId = registry.resolveByName("Point");
+    assert.equal(bareTypeId, undefined, "Point should NOT be registered with bare name");
   });
 });

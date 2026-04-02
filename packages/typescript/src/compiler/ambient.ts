@@ -25,9 +25,9 @@ interface Object {}
 /** @deprecated Not supported in Mindcraft Runtime */
 interface Function {}
 /** @deprecated Not supported in Mindcraft Runtime */
-interface CallableFunction extends Function {}
+interface CallableFunction {}
 /** @deprecated Not supported in Mindcraft Runtime */
-interface NewableFunction extends Function {}
+interface NewableFunction {}
 /** @deprecated Not supported in Mindcraft Runtime */
 interface IArguments {}
 /** @deprecated Not supported in Mindcraft Runtime */
@@ -458,6 +458,7 @@ export function buildAmbientDeclarations(): string {
   for (const [, def] of registry.entries()) {
     if (CORE_TYPE_NAMES.has(def.name)) continue;
     if (def.autoInstantiated) continue;
+    if (def.name.includes("::")) continue;
 
     if (def.nullable) {
       const tsType = typeDefToTs(def);

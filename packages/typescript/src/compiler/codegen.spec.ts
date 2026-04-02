@@ -329,7 +329,6 @@ export default Sensor({
     if (!types.get(actorRefTypeId)) {
       types.addStructType("actorRef", {
         fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number") }]),
-        nominal: true,
       });
     }
     const appAmbient = buildAmbientDeclarations();
@@ -2421,7 +2420,6 @@ describe("struct literal compilation", () => {
           { name: "x", typeId: numTypeId },
           { name: "y", typeId: numTypeId },
         ]),
-        nominal: true,
       });
     }
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
@@ -2431,7 +2429,6 @@ describe("struct literal compilation", () => {
           { name: "name", typeId: strTypeId },
           { name: "position", typeId: vec2TypeId },
         ]),
-        nominal: true,
       });
     }
     const nativeTypeId = mkTypeId(NativeType.Struct, "NativeObj");
@@ -2621,7 +2618,6 @@ describe("array/list literal compilation", () => {
           { name: "x", typeId: numTypeId },
           { name: "y", typeId: numTypeId },
         ]),
-        nominal: true,
       });
     }
 
@@ -3001,7 +2997,6 @@ describe("auto-instantiated list types", () => {
           { name: "x", typeId: numTypeId },
           { name: "y", typeId: numTypeId },
         ]),
-        nominal: true,
       });
     }
   });
@@ -4796,7 +4791,6 @@ describe("map literal compilation", () => {
           { name: "x", typeId: numTypeId },
           { name: "y", typeId: numTypeId },
         ]),
-        nominal: true,
       });
     }
   });
@@ -5345,7 +5339,6 @@ describe("property access chains + host calls", () => {
           { name: "x", typeId: numTypeId },
           { name: "y", typeId: numTypeId },
         ]),
-        nominal: true,
       });
     }
 
@@ -5356,7 +5349,6 @@ describe("property access chains + host calls", () => {
           { name: "name", typeId: strTypeId },
           { name: "position", typeId: vec2TypeId },
         ]),
-        nominal: true,
       });
     }
 
@@ -6834,7 +6826,6 @@ describe("await expression", () => {
             returnTypeId: voidTypeId,
           },
         ]),
-        nominal: true,
       });
     }
 
@@ -7052,7 +7043,6 @@ describe("destructuring", () => {
           { name: "x", typeId: numTypeId },
           { name: "y", typeId: numTypeId },
         ]),
-        nominal: true,
       });
     }
   });
@@ -7132,7 +7122,6 @@ export default Sensor({
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
         fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
-        nominal: true,
       });
     }
 
@@ -7181,7 +7170,6 @@ export default Sensor({
     if (!types.get(coordTypeId)) {
       types.addStructType("Coord", {
         fields: List.from([{ name: "pos", typeId: numListTypeId }]),
-        nominal: true,
       });
     }
 
@@ -7230,7 +7218,6 @@ export default Sensor({
     if (!types.get(pairHolderTypeId)) {
       types.addStructType("PairHolder", {
         fields: List.from([{ name: "items", typeId: numListTypeId }]),
-        nominal: true,
       });
     }
 
@@ -7279,7 +7266,6 @@ export default Sensor({
     if (!types.get(wrapperTypeId)) {
       types.addStructType("Wrapper", {
         fields: List.from([{ name: "entity", typeId: entityTypeId }]),
-        nominal: true,
       });
     }
 
@@ -7497,7 +7483,6 @@ export default Sensor({
     if (!types.get(entityTypeId)) {
       types.addStructType("Entity", {
         fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
-        nominal: true,
       });
     }
     const ambientSource = buildAmbientDeclarations();
@@ -7550,7 +7535,6 @@ export default Sensor({
           { name: "pos", typeId: vec2TypeId },
           { name: "health", typeId: numTypeId },
         ]),
-        nominal: true,
       });
     }
     const ambientSource = buildAmbientDeclarations();
@@ -7604,7 +7588,6 @@ export default Sensor({
           { name: "pos", typeId: vec2TypeId },
           { name: "health", typeId: numTypeId },
         ]),
-        nominal: true,
       });
     }
     const ambientSource = buildAmbientDeclarations();
@@ -7686,7 +7669,6 @@ export default Sensor({
           { name: "pos", typeId: vec2TypeId },
           { name: "health", typeId: numTypeId },
         ]),
-        nominal: true,
       });
     }
     const ambientSource = buildAmbientDeclarations();
@@ -8154,7 +8136,7 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = getBrainServices().types;
-    const typeId = registry.resolveByName("Vec2");
+    const typeId = registry.resolveByName("/user-code.ts::Vec2");
     assert.ok(typeId, "Vec2 struct type should be registered");
     const def = registry.get(typeId!);
     assert.ok(def, "Vec2 type def should exist");
@@ -8199,7 +8181,7 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = getBrainServices().types;
-    const typeId = registry.resolveByName("Counter");
+    const typeId = registry.resolveByName("/user-code.ts::Counter");
     assert.ok(typeId, "Counter struct type should be registered");
     const def = registry.get(typeId!) as StructTypeDef;
     assert.ok(def.methods, "Counter should have methods");
@@ -9020,7 +9002,7 @@ export default Sensor({
     assert.ok(resultV1.program);
 
     const registryV1 = getBrainServices().types;
-    const typeIdV1 = registryV1.resolveByName("ShapeEvol");
+    const typeIdV1 = registryV1.resolveByName("/user-code.ts::ShapeEvol");
     assert.ok(typeIdV1, "ShapeEvol should be registered after V1");
     const defV1 = registryV1.get(typeIdV1!) as StructTypeDef;
     assert.equal(defV1.fields.size(), 1);
@@ -9047,7 +9029,7 @@ export default Sensor({
     assert.ok(resultV2.program);
 
     const registryV2 = getBrainServices().types;
-    const typeIdV2 = registryV2.resolveByName("ShapeEvol");
+    const typeIdV2 = registryV2.resolveByName("/user-code.ts::ShapeEvol");
     assert.ok(typeIdV2, "ShapeEvol should be registered after V2");
     const defV2 = registryV2.get(typeIdV2!) as StructTypeDef;
     assert.equal(defV2.fields.size(), 2, "V2 should have 2 fields (x and y)");

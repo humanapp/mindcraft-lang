@@ -434,7 +434,8 @@ depends on M1. M3 depends on M2.
 
 ## Current State
 
-M1 complete. M2 next (depends on M1). C3.5 D1+D2 can proceed in parallel.
+M1 and M2 complete. M3 next (descriptor qualified types). C3.5 D1+D2 can
+proceed in parallel.
 
 ---
 
@@ -449,9 +450,10 @@ M1 complete. M2 next (depends on M1). C3.5 D1+D2 can proceed in parallel.
 1. `removeUserTypes()` added to `ITypeRegistry` interface
    (`packages/core/src/brain/interfaces/type-system.ts`).
 2. `removeUserTypes()` implemented on `TypeRegistry`
-   (`packages/core/src/brain/runtime/type-system.ts`). Iterates `defs`, collects
-   struct types lacking host markers (`fieldGetter`/`fieldSetter`/`snapshotNative`/
-   `nominal`), removes them from `defs` and `nameToId`, clears `compatCache`.
+   (`packages/core/src/brain/runtime/type-system.ts`). Iterates `defs`, removes
+   struct types whose name contains `::` (module-qualified user types). Types
+   with bare names (no `::`) are preserved regardless of other properties.
+   Clears `nameToId` entries and `compatCache`.
 3. Call site in `_compile()` (`packages/typescript/src/compiler/project.ts`) --
    `getBrainServices().types.removeUserTypes()` before the per-file compilation
    loop.
@@ -460,11 +462,8 @@ M1 complete. M2 next (depends on M1). C3.5 D1+D2 can proceed in parallel.
    preserved).
 5. 1 integration test in `codegen.spec.ts` (compile class V1, recompile V2 with
    changed shape, verify new shape is picked up).
-6. 18 test struct registrations in `codegen.spec.ts` updated with `nominal: true`
-   to mark them as simulated host types (they were being wiped by
-   `removeUserTypes()` during `compileUserTile()` calls).
 
-**Test results:** 531 core tests pass, 462 typescript tests pass. Typecheck and
+**Test results:** 530 core tests pass, 470 typescript tests pass. Typecheck and
 lint clean in both packages.
 
 **Decisions made:**
@@ -475,9 +474,12 @@ lint clean in both packages.
 - Keep the silent-return guard in `registerClassStructType` (`if (existing)
   return`). After cleanup it deduplicates when multiple files in the same batch
   reference the same class.
-- Test struct types that simulate host types get `nominal: true` rather than
-  `fieldGetter`, since `nominal` is the lightest-weight marker and semantically
-  correct (these are opaque host-like types in the test environment).
+- `removeUserTypes()` heuristic changed during M2 from property-based
+  (`fieldGetter`/`nominal`/etc.) to name-based (`::` in name). This is simpler,
+  deterministic, and ensures app-registered types (e.g., sim's `Vector2`) with
+  bare names survive recompilation without needing artificial markers.
+- Test struct types that simulate host types no longer need `nominal: true`
+  since bare-named types are preserved by the `::` heuristic.
 
 **Follow-up items:**
 
@@ -485,3 +487,76 @@ lint clean in both packages.
   recompile and re-register with the same `pgmId`, it throws because `register()`
   rejects duplicates in `FunctionRegistry`). Not triggered by current compilation
   paths but worth addressing when tile lifecycle management is revisited.
+
+### M2: Module-Qualified TypeId Registration
+
+**Status:** Complete
+
+**What was delivered:**
+
+1. `qualifiedClassName(fileName, className)` helper in `lowering.ts` -- returns
+   `${fileName}::${className}` (e.g., `/sensors/a.ts::Foo`).
+2. `isUserSourceDecl(decl)` helper -- checks if a declaration is in a `.ts` file
+   (not `.d.ts`).
+3. `resolveRegistryName(sym)` helper -- tries qualified name first (if symbol is
+   from user source), falls back to bare name. This handles host types referenced
+   through user-source interface declarations.
+4. `bareClassName(qualOrBareName)` helper -- extracts bare name from qualified
+   (strips module prefix at `::`).
+5. `ClassInfo` extended with `sourceFile: ts.SourceFile`.
+6. `registerClassStructType` -- registers with qualified name.
+7. `lowerClassDeclaration` -- resolves type with qualified name.
+8. `resolveStructType` -- uses `resolveRegistryName` for lookup.
+9. `tsTypeToTypeId` -- uses `resolveRegistryName` for struct name fallback.
+10. `lowerStructMethodCall` -- uses `bareClassName` for `functionTable` lookups
+    (function table uses bare per-compilation keys).
+11. `buildAmbientDeclarations` in `ambient.ts` -- skips types with `::` in name
+    so module-qualified user types don't corrupt ambient `.d.ts` output.
+12. `removeUserTypes()` heuristic updated from property-based to name-based:
+    removes struct types whose name contains `::`, preserves bare-named types.
+13. 3 new multi-file tests in `multi-file.spec.ts`:
+    - Same-named classes in different files get distinct TypeIds
+    - Core types resolve with bare name after compilation
+    - Single-file class gets module-qualified TypeId (bare lookup returns undefined)
+14. 4 test assertions in `codegen.spec.ts` updated to use qualified names.
+15. 18 `nominal: true` markers removed from test struct registrations (no longer
+    needed with name-based heuristic).
+
+**Test results:** 530 core tests pass, 470 typescript tests pass. Typecheck and
+lint clean in both packages.
+
+**Packages/files changed:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- helpers + 6 function updates
+- `packages/typescript/src/compiler/ambient.ts` -- skip `::` types
+- `packages/core/src/brain/runtime/type-system.ts` -- `removeUserTypes()` heuristic
+- `packages/core/src/brain/runtime/type-system.spec.ts` -- updated tests
+- `packages/typescript/src/compiler/codegen.spec.ts` -- assertion updates, nominal cleanup
+- `packages/typescript/src/compiler/multi-file.spec.ts` -- 3 new M2 tests
+
+**Decisions made:**
+
+- Qualified-first, bare-fallback resolution (`resolveRegistryName`). When a
+  symbol is declared in user source, try the qualified name first. If not found
+  in the registry, fall back to bare name. This handles host types referenced
+  via user-source interface declarations (e.g., `interface Entity { pos: Vector2 }`
+  where `Vector2` is app-registered with a bare name).
+- `functionTable` keys stay bare (e.g., `Point.move`, `Point$new`). These are
+  per-compilation-unit and don't cross file boundaries. `lowerStructMethodCall`
+  uses `bareClassName()` to extract the bare name from the qualified
+  `structDef.name` for function table lookups.
+- Name-based `removeUserTypes()` heuristic (contains `::`) replaces
+  property-based heuristic. Simpler, deterministic, and ensures app-registered
+  bare-named types survive recompilation.
+- Ambient declarations skip `::` types. Module-qualified names like
+  `/a.ts::Foo` are invalid TypeScript identifiers and would corrupt the
+  ambient `.d.ts`. User class types are not surfaced in ambient declarations.
+
+**Follow-up items:**
+
+- M3 (Descriptor Qualified Types) is needed before class-typed parameters/outputs
+  work in the registration bridge.
+- C3.5 D1+D2 (export filtering + collision diagnostics) can proceed in parallel.
+- Ambient declaration generation for user classes will need revisiting in C4
+  (multi-file class support) -- if classes need to appear in ambient context
+  for cross-file references, a bare-name extraction strategy is needed.

@@ -751,46 +751,31 @@ describe("removeUserTypes", () => {
     registerCoreBrainComponents();
   });
 
-  test("removes user struct types (no fieldGetter/nominal/snapshotNative)", () => {
+  test("removes struct types with module-qualified names (contains ::)", () => {
     const registry = getBrainServices().types;
-    const typeId = registry.addStructType("UserClassRM1", {
+    const typeId = registry.addStructType("/user-code.ts::UserClass", {
       fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
     });
     assert.ok(registry.get(typeId));
-    assert.ok(registry.resolveByName("UserClassRM1"));
+    assert.ok(registry.resolveByName("/user-code.ts::UserClass"));
 
     registry.removeUserTypes();
 
     assert.equal(registry.get(typeId), undefined);
-    assert.equal(registry.resolveByName("UserClassRM1"), undefined);
+    assert.equal(registry.resolveByName("/user-code.ts::UserClass"), undefined);
   });
 
-  test("preserves host struct types with fieldGetter", () => {
+  test("preserves struct types with bare names (no ::)", () => {
     const registry = getBrainServices().types;
-    const hostId = registry.addStructType("HostTypeRM1", {
-      fields: List.from([{ name: "v", typeId: CoreTypeIds.Number }]),
-      fieldGetter: () => ({ t: NativeType.Nil }) as never,
+    const hostId = registry.addStructType("AppVector2RM", {
+      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
     });
     assert.ok(registry.get(hostId));
 
     registry.removeUserTypes();
 
     assert.ok(registry.get(hostId));
-    assert.ok(registry.resolveByName("HostTypeRM1"));
-  });
-
-  test("preserves host struct types with nominal flag", () => {
-    const registry = getBrainServices().types;
-    const hostId = registry.addStructType("HostNomRM1", {
-      fields: List.from([{ name: "v", typeId: CoreTypeIds.Number }]),
-      nominal: true,
-    });
-    assert.ok(registry.get(hostId));
-
-    registry.removeUserTypes();
-
-    assert.ok(registry.get(hostId));
-    assert.ok(registry.resolveByName("HostNomRM1"));
+    assert.ok(registry.resolveByName("AppVector2RM"));
   });
 
   test("does not remove non-struct types", () => {
