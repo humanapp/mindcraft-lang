@@ -23,6 +23,7 @@ export interface UserAuthoredProgram extends Program {
   };
   programRevisionId: string;
   params: ExtractedParam[];
+  debugMetadata?: DebugMetadata;
 }
 
 export interface UserTileLinkInfo {
@@ -52,4 +53,71 @@ export interface ExtractedParam {
   defaultValue?: number | string | boolean | null;
   required: boolean;
   anonymous: boolean;
+}
+
+export interface DebugMetadata {
+  files: DebugFileInfo[];
+  functions: DebugFunctionInfo[];
+}
+
+export interface DebugFileInfo {
+  fileIndex: number;
+  path: string;
+  sourceHash: string;
+}
+
+export interface DebugFunctionInfo {
+  debugFunctionId: string;
+  compiledFuncId: number;
+  fileIndex: number;
+  prettyName: string;
+  isGenerated: boolean;
+  sourceSpan: DebugSpan;
+  spans: DebugSpan[];
+  pcToSpanIndex: number[];
+  scopes: ScopeInfo[];
+  locals: LocalInfo[];
+  callSites: CallSiteInfo[];
+  suspendSites: SuspendSiteInfo[];
+}
+
+export interface DebugSpan {
+  spanId: number;
+  startLine: number;
+  startColumn: number;
+  endLine: number;
+  endColumn: number;
+  isStatementBoundary: boolean;
+}
+
+export interface ScopeInfo {
+  scopeId: number;
+  kind: "function" | "block" | "module" | "brain";
+  parentScopeId: number | null;
+  startPc: number;
+  endPc: number;
+  name: string | null;
+}
+
+export interface LocalInfo {
+  name: string;
+  slotIndex: number;
+  storageKind: "local" | "parameter" | "capture";
+  scopeId: number;
+  lifetimeStartPc: number;
+  lifetimeEndPc: number;
+  typeHint: string | null;
+}
+
+export interface CallSiteInfo {
+  pc: number;
+  callSiteId: number;
+  targetDebugFunctionId: string | null;
+  isAsync: boolean;
+}
+
+export interface SuspendSiteInfo {
+  awaitPc: number;
+  resumePc: number;
+  sourceSpan: DebugSpan;
 }

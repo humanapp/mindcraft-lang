@@ -40,11 +40,11 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-04-02) Phases 0-16, 18-21 complete, plus Array method lowering
+(Updated 2026-04-02) Phases 0-16, 18-22 complete, plus Array method lowering
 detour, VM list mutation ops detour, Array.sort detour, class declarations detour,
 destructuring extensions detour, string methods detour, Math methods detour, and
-multi-file compilation detour. See the original doc's Current State and Phase Log
-for full history.
+multi-file compilation detour. Phase 22 added debug metadata type definitions.
+See the original doc's Current State and Phase Log for full history.
 
 ### Compiler pipeline (`packages/typescript/src/compiler/`)
 
@@ -72,7 +72,13 @@ for full history.
 - `ambient.ts` -- `buildAmbientDeclarations()` generates the "mindcraft" ambient
   module (structs, branded numbers, enums, list types, function types).
 - `types.ts` -- `CompileDiagnostic`, `ExtractedDescriptor`, `ExtractedParam`,
-  `UserAuthoredProgram`, `UserTileLinkInfo`, `CompileOptions`.
+  `UserAuthoredProgram`, `UserTileLinkInfo`, `CompileOptions`, plus debug metadata
+  types: `DebugMetadata`, `DebugFileInfo`, `DebugFunctionInfo`, `DebugSpan`,
+  `ScopeInfo`, `LocalInfo`, `CallSiteInfo`, `SuspendSiteInfo` (Phase 22).
+  `UserAuthoredProgram.debugMetadata?: DebugMetadata` field added (optional,
+  populated in Phase 25). `LocalInfo.storageKind` includes `"capture"` for
+  closure variables. The debugger spec's `Span` and `SourceSpan` types are
+  unified as `DebugSpan`.
   `CompileDiagnostic` currently has `{ code, message, line?, column? }` -- start
   position only, no end position, no severity. Needs enhancement to carry full
   source ranges (`endLine`, `endColumn`) and `severity` so the diagnostics
@@ -585,9 +591,12 @@ registration bridge. (3) Full end-to-end integration tests.
 
 ### Phase 22: Debug metadata types
 
-(Updated 2026-04-02) No debug metadata work has been started. The `types.ts` file
-currently has no debug-related interfaces. `UserAuthoredProgram` has no
-`debugMetadata` field. The debugger spec (section 6) defines the full type hierarchy.
+(Updated 2026-04-02) Phase 22 is complete. All debug metadata types (`DebugMetadata`,
+`DebugFileInfo`, `DebugFunctionInfo`, `DebugSpan`, `ScopeInfo`, `LocalInfo`,
+`CallSiteInfo`, `SuspendSiteInfo`) are defined in `types.ts`.
+`UserAuthoredProgram.debugMetadata?: DebugMetadata` field is in place.
+The debugger spec's `Span`/`SourceSpan` types are unified as `DebugSpan`.
+`LocalInfo.storageKind` includes `"capture"` for closure variables.
 
 The compiler now produces multi-file programs via `UserTileProject`, so
 `DebugFileInfo` may contain multiple entries (one per source file in the project).
@@ -668,21 +677,22 @@ emission so every bytecode instruction maps back to a source location.
   position info from the TS AST node (`node.getStart()`, `node.getEnd()`,
   line/column from `sourceFile.getLineAndCharacterOfPosition()`).
 - `packages/typescript/src/compiler/emit.ts` -- extend `EmitResult` to include
-  `spans: Span[]` and `pcToSpanIndex: number[]`. Build these during emission.
+  `spans: DebugSpan[]` and `pcToSpanIndex: number[]`. Build these during emission.
   Set `isStatementBoundary` per the debugger spec's rules.
 - `packages/typescript/src/compiler/project.ts` -- pass span data through from
   `emitFunction` to the `CompileResult`.
 
-**Prerequisites:** Phase 22 (debug metadata types) must be complete so `Span` is
-defined.
+**Prerequisites:** Phase 22 (debug metadata types) must be complete so `DebugSpan` is
+defined. (Phase 22 is complete -- `DebugSpan` and all debug metadata types are in
+`types.ts`.)
 
 **Concrete deliverables:**
 
 1. Every IR node carries an optional `sourceSpan` with
    `{ start, end, startLine, startColumn, endLine, endColumn }` from the TS AST
    node.
-2. The emit pass builds `spans: Span[]` and `pcToSpanIndex: number[]` for each
-   function.
+2. The emit pass builds `spans: DebugSpan[]` and `pcToSpanIndex: number[]` for
+   each function.
 3. Statement boundary rules are applied per the debugger spec's table
    (expression statements, conditions, variable declarations with init, return
    statements, break/continue, await/resume).
@@ -723,13 +733,9 @@ defined.
 `allocLocal()`/`resolveLocal(name)`. No scope IDs, no start/end PCs, no scope kind,
 no parent tracking. This phase requires significant extension.
 
-Hidden temporaries allocated via `allocLocal()` (used by list method inlining,
-for...of desugaring, destructuring source evaluation, class field init) should be
-excluded from debug metadata or marked as compiler-generated.
-
-Closure functions use `LOAD_CAPTURE` for captured variables -- the debug metadata's
-`LocalInfo.storageKind` should include `"capture"` for variables loaded from a
-closure's capture list.
+Phase 22 is complete -- `ScopeInfo`, `LocalInfo`, and all debug metadata types are
+defined in `types.ts`. `LocalInfo.storageKind` already includes `"capture"` for
+closure variables.
 
 Class constructors and methods introduce `this` as a local variable (slot 0 after
 params). This should appear in the debug metadata as a special local.
@@ -796,6 +802,10 @@ constructor and method `FunctionBytecode` entries alongside closures -- all need
 `DebugFunctionInfo` records. The linker remaps `CALL`, `MAKE_CLOSURE`, and
 `PUSH_CONST` operands but currently does not touch any debug metadata. Debug
 metadata remapping must be added to the linker or performed as a post-link step.
+
+Phase 22 is complete -- all debug metadata types are defined in `types.ts`.
+`UserAuthoredProgram.debugMetadata?: DebugMetadata` field is in place. The
+debugger spec's `Span`/`SourceSpan` types are unified as `DebugSpan`.
 
 **Objective:** Assemble the complete `DebugMetadata` structure from the per-function
 metadata collected in Phases 23-24 and attach it to `UserAuthoredProgram`.
@@ -1128,3 +1138,37 @@ cancellation.
 tick() pattern, 3 new: scheduler stats, budget respect, cancellation; 1 new:
 recompile-and-update). All 499 tests pass (packages/typescript). All 530 core
 tests pass.
+
+### Phase 22 -- Debug metadata types (2026-04-02)
+
+**Planned:** Define the `DebugMetadata` type hierarchy in
+`packages/typescript/src/compiler/types.ts` per the debugger spec section 6.
+Add optional `debugMetadata` field to `UserAuthoredProgram`. Type-only changes,
+no functional behavior.
+
+**Actual:** All three deliverables implemented as spec'd:
+- `DebugMetadata`, `DebugFileInfo`, `DebugFunctionInfo`, `DebugSpan`, `ScopeInfo`,
+  `LocalInfo`, `CallSiteInfo`, `SuspendSiteInfo` interfaces added to `types.ts`.
+- `UserAuthoredProgram.debugMetadata?: DebugMetadata` field added.
+- No functional changes. Existing tests unaffected.
+
+**Deviations from spec:**
+- Spec called the span type `Span`. Implementation uses `DebugSpan` to avoid
+  potential naming collisions with other `Span` types (e.g., TS compiler's own
+  span utilities or future imports). The debugger spec's `SourceSpan` references
+  (used in `DebugFunctionInfo.sourceSpan` and `SuspendSiteInfo.sourceSpan`) are
+  also typed as `DebugSpan` since the fields are identical.
+- `LocalInfo.storageKind` includes `"capture"` in addition to `"local"` and
+  `"parameter"`, as recommended in the Phase 22 risk notes. The debugger spec
+  only listed `"local" | "parameter"` -- this is a deliberate extension to
+  support closure captures (`LOAD_CAPTURE`).
+
+**Risks resolved:**
+- Low risk confirmed. Type-only changes, no compile errors, no test failures.
+- `ScopeInfo.kind` includes `"brain"` per the spec. Not populated by the
+  user-tile compiler but available for future brain-variable scope support.
+
+**Observation:** The debugger spec uses two different terms (`Span` and
+`SourceSpan`) for essentially the same structure. The implementation unifies
+them under `DebugSpan`. Phase 23 (source span tracking) should use `DebugSpan`
+consistently when populating span data.
