@@ -10,7 +10,7 @@ type StatusListener = (status: ConnectionStatus) => void;
 
 type JoinCodeListener = (joinCode: string | undefined) => void;
 
-let project: AppProject | undefined;
+let project: AppProject;
 let currentJoinCode: string | undefined;
 const unsubs: (() => void)[] = [];
 const listeners = new Set<StatusListener>();
@@ -31,10 +31,8 @@ const TS_CONFIG = `{
 }`;
 
 function saveFilesystem(): void {
-  if (!project) return;
   if (saveTimer !== undefined) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    if (!project) return;
     const exported = project.files.raw.export();
     localStorage.setItem(LS_FS_KEY, JSON.stringify([...exported]));
   }, 500);
@@ -66,7 +64,6 @@ function notifyJoinCodeListeners(joinCode: string | undefined): void {
 function wireSession(): void {
   for (const unsub of unsubs) unsub();
   unsubs.length = 0;
-  if (!project) return;
 
   unsubs.push(project.session.addEventListener("status", notifyListeners));
   unsubs.push(project.onJoinCodeChange(notifyJoinCodeListeners));
@@ -98,8 +95,7 @@ function createProject(): AppProject {
   });
 }
 
-export function connectBridge(): void {
-  if (project) return;
+export function initProject(): void {
   project = createProject();
   project.fromRemoteFileChange = (ev) => {
     saveFilesystem();
@@ -118,26 +114,28 @@ export function connectBridge(): void {
         break;
     }
   };
+  userTileCompiler.fullSync(project.files.raw.export());
+}
+
+export function connectBridge(): void {
+  if (project.session.status !== "disconnected") return;
   wireSession();
   project.session.start();
 }
 
 export function disconnectBridge(): void {
-  if (!project) return;
   for (const unsub of unsubs) unsub();
   unsubs.length = 0;
   project.session.stop();
-  project = undefined;
   notifyJoinCodeListeners(undefined);
   notifyListeners("disconnected");
 }
 
 export function getBridgeStatus(): ConnectionStatus {
-  if (!project) return "disconnected";
   return project.session.status;
 }
 
-export function getProject(): AppProject | undefined {
+export function getProject(): AppProject {
   return project;
 }
 
@@ -160,7 +158,7 @@ export function onBridgeJoinCodeChange(fn: JoinCodeListener): () => void {
 }
 
 onAppSettingsChange((settings, prev) => {
-  if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl && project) {
+  if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl) {
     disconnectBridge();
     connectBridge();
   }

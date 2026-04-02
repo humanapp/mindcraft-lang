@@ -4,6 +4,7 @@ import { setTileVisualProvider } from "@mindcraft-lang/core/brain/tiles";
 import { enableClipboardLogging } from "@mindcraft-lang/ui";
 import { registerBrainComponents } from "@/brain";
 import { genVisualForTile } from "./brain/tiles/visual-provider";
+import { initProject } from "./services/vscode-bridge";
 
 enableClipboardLogging(true);
 
@@ -18,3 +19,8 @@ logger.level = LogLevel.DEBUG;
 setTileVisualProvider(genVisualForTile);
 registerCoreBrainComponents();
 registerBrainComponents();
+
+// ----------------------------------------------------
+// Initialize project and compile user tiles
+
+initProject();
