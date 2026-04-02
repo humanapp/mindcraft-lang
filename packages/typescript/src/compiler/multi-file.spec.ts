@@ -410,3 +410,194 @@ export default Sensor({
     }
   });
 });
+
+describe("multi-file: importing symbols across files", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("one file imports a function symbol from another file", () => {
+    const result = compileProject({
+      "lib/greet.ts": `
+export function add(a: number, b: number): number {
+  return a + b;
+}
+`,
+      "sensors/sum.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { add } from "../lib/greet";
+
+export default Sensor({
+  name: "sum",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return add(3, 7);
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/sum.ts");
+    assert.ok(entry, "expected entry-point result");
+    assert.deepStrictEqual(entry.diagnostics, [], `Diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 1000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 10);
+    }
+  });
+
+  test("import with alias: { foo as bar } resolves correctly", () => {
+    const result = compileProject({
+      "lib/math.ts": `
+export function triple(x: number): number {
+  return x * 3;
+}
+`,
+      "sensors/alias.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { triple as mul3 } from "../lib/math";
+
+export default Sensor({
+  name: "alias-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return mul3(4);
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/alias.ts");
+    assert.ok(entry, "expected entry-point result");
+    assert.deepStrictEqual(entry.diagnostics, [], `Diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 1000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 12);
+    }
+  });
+
+  test("files without default export are not included in results", () => {
+    const result = compileProject({
+      "lib/utils.ts": `
+export function noop(): void {}
+`,
+      "sensors/entry.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { noop } from "../lib/utils";
+
+export default Sensor({
+  name: "entry",
+  output: "number",
+  onExecute(ctx: Context): number {
+    noop();
+    return 1;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0);
+    assert.ok(!result.results.has("lib/utils.ts"), "helper without default export should not appear in results");
+    assert.ok(result.results.has("sensors/entry.ts"), "entry-point should appear in results");
+  });
+
+  test("TypeScript error in helper module is reported in tsErrors", () => {
+    const result = compileProject({
+      "lib/broken.ts": `
+export function bad(): number {
+  const x: number = "not a number";
+  return x;
+}
+`,
+      "sensors/use-broken.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { bad } from "../lib/broken";
+
+export default Sensor({
+  name: "use-broken",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return bad();
+  },
+});
+`,
+    });
+
+    assert.ok(result.tsErrors.size > 0, "expected TypeScript errors");
+    assert.ok(result.tsErrors.has("lib/broken.ts"), "error should be associated with the broken helper file");
+    assert.equal(result.results.size, 0, "no results when there are TS errors");
+  });
+
+  test("transitive import: A imports B which imports C", () => {
+    const result = compileProject({
+      "lib/base.ts": `
+export function square(x: number): number {
+  return x * x;
+}
+`,
+      "lib/mid.ts": `
+import { square } from "./base";
+
+export function squarePlusOne(x: number): number {
+  return square(x) + 1;
+}
+`,
+      "sensors/chain.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { squarePlusOne } from "../lib/mid";
+
+export default Sensor({
+  name: "chain",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return squarePlusOne(5);
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/chain.ts");
+    assert.ok(entry, "expected entry-point result");
+    assert.deepStrictEqual(entry.diagnostics, [], `Diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 1000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 26, "5*5 + 1 = 26");
+    }
+  });
+});
