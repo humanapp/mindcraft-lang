@@ -2,7 +2,7 @@
 applyTo: "apps/vscode-bridge/**"
 ---
 
-<!-- Last reviewed: 2026-03-27 -->
+<!-- Last reviewed: 2026-04-02 -->
 
 # VSCode Bridge -- Rules & Patterns
 
@@ -17,7 +17,7 @@ every resource as something that must eventually be reclaimed.
 ## Tech Stack
 
 Hono (HTTP + WS), @hono/node-ws, pino (logging), zod (env validation),
-`@mindcraft-lang/bridge-client` (shared message types), Biome.
+`@mindcraft-lang/bridge-protocol` (shared message types & schemas), Biome.
 
 ## Path Aliases (Node.js subpath imports)
 
@@ -43,7 +43,8 @@ npm run test       # tsx --test src/**/*.spec.ts
 
 ### Entry Point
 
-`src/index.ts` -> `createApp()` -> `startServer()`.
+`src/index.ts` -> `initBindingSecret()` -> `createApp()` -> `startServer()` ->
+`injectWebSocket()`. Starts a REPL in dev mode if TTY is present.
 
 ### WebSocket Routes
 
@@ -54,35 +55,70 @@ Two WS endpoints with independent upgrade, router, and handler layers:
 
 ### Message Protocol
 
-JSON shape: `{ type: string, id?: string, payload?: unknown }`.
+JSON shape: `{ type: string, id?: string, seq?: number, payload?: unknown }`.
 `type` routes to a handler. `id` correlates request/response pairs.
+Schema and types re-exported from `@mindcraft-lang/bridge-protocol` via
+`transport/ws/types.ts`.
 
 ### Handler Pattern
 
 Handlers live in `transport/ws/<side>/handlers/<domain>.handler.ts`.
 
 Each file exports a `WsHandlerMap` (`Record<string, WsHandler>`). The router spreads all
-maps into a single lookup. Signature: `(ws: WSContext, payload: unknown, id?: string) => void`.
+maps into a single lookup.
+Signature: `(ws: WSContext, payload: unknown, id?: string, seq?: number) => void`.
 
 To add a handler:
 1. Create/edit `transport/ws/<side>/handlers/<domain>.handler.ts`
 2. Export a `WsHandlerMap` with `"<domain>:<action>": handlerFn` entries
 3. Spread it into the router's `handlers` object in `router.ts`
 
+Current handler domains:
+- **app side:** session, control, filesystem
+- **extension side:** session, control, vfs (filesystem), compile, debug, project
+
 ### Session Registry
 
-`src/core/session-registry.ts` -- central in-memory session store keyed by `WSContext`.
+`src/core/session-registry.ts` -- central in-memory session store.
 
-- `AppSession` -- `id` (`app_<uuid>`), `ws`, `connectedAt`, `joinCode`
-- `ExtensionSession` -- `id` (`ext_<uuid>`), `ws`, `connectedAt`
+- `AppSession` -- `id`, `ws`, `connectedAt`, `joinCode`, `bindingId`, optional metadata
+  (`appName`, `projectId`, `projectName`)
+- `ExtensionSession` -- `id`, `ws`, `connectedAt`, `appSessionId` (bound app),
+  `pendingJoinCode`, `pendingBindingId`
 
-Registration on `session:hello`; removal on WebSocket close.
+Active sessions keyed by `WSContext`. Disconnected sessions cached by ID with a 5-minute
+TTL for seamless reconnection. Swept every 60s; hard cap at 10k disconnected entries.
+
+### Binding & Reconnection
+
+Extensions connect via join code or binding token. On `session:hello`:
+- Join code -> find matching app -> bind pair
+- Binding token -> HMAC-verify -> reclaim previous session
+- No match -> extension waits; auto-binds when a matching app arrives
+
+Binding tokens are HMAC-SHA256 signed with `BRIDGE_BINDING_SECRET` (required env var,
+validated by zod in `config/env.ts`). Verified with timing-safe comparison.
 
 ### Join Codes
 
-Each `AppSession` gets a unique three-word triplet (`src/triplet.ts`). Tracked in a Set for
-uniqueness, refreshed every 10 minutes via `setInterval`. On refresh, clients receive a
+Each `AppSession` gets a unique three-word fantasy slug (`src/triplet.ts`). Tracked in a
+Set for uniqueness, refreshed every 10 minutes. On refresh, clients receive a
 `session:joinCode` push.
+
+### Pending Requests
+
+`src/core/pending-requests.ts` -- tracks extension-to-app request/response pairs with a
+30-second timeout. If the app doesn't respond, the bridge auto-fails back to the extension.
+
+### Rate Limiting
+
+`src/core/throttle.ts` -- token-bucket rate limiter (`TokenBucket`, `TokenBucketMap`).
+Used on the `/health` HTTP endpoint. Stale buckets swept every 60s.
+
+### HTTP Layer
+
+- `GET /health` -- returns status, package name/version, uptime
+- Request logger middleware, global error handler middleware
 
 ### Sending Messages
 
@@ -91,9 +127,15 @@ Use `safeSend(ws, JSON.stringify({ type, id?, payload? }))` for all outbound mes
 ### Environment
 
 Validated by zod in `src/config/env.ts`: `NODE_ENV`, `PORT` (default 3000),
-`LOG_LEVEL` (default info).
+`LOG_LEVEL` (default info). `BRIDGE_BINDING_SECRET` read directly in
+`core/binding-token.ts` (not in the zod schema).
 
 ### Graceful Shutdown
 
 `src/server.ts` handles SIGINT/SIGTERM via `closeAllSessions()` then server close with
-10-second forced exit timeout.
+10-second forced exit timeout. Fatal logging on uncaught exceptions/rejections.
+
+### Dev REPL
+
+`src/repl.ts` -- interactive console in dev mode. Commands: `sessions` (list all),
+`disconnect <id>` (close WS, allow reclaim), `kill <id>` (purge session).
