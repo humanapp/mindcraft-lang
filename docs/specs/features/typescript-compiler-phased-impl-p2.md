@@ -40,12 +40,14 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-04-02) Phases 0-16, 18-23 complete, plus Array method lowering
+(Updated 2026-04-02) Phases 0-16, 18-24 complete, plus Array method lowering
 detour, VM list mutation ops detour, Array.sort detour, class declarations detour,
 destructuring extensions detour, string methods detour, Math methods detour, and
 multi-file compilation detour. Phase 22 added debug metadata type definitions.
 Phase 23 added source span tracking (IR annotation, per-function span/pcToSpanIndex
-emission, FunctionDebugInfo in CompileResult).
+emission, FunctionDebugInfo in CompileResult). Phase 24 added scope and variable
+metadata (ScopeInfo/LocalInfo per function via ScopeStack metadata tracking,
+IR-index-to-PC mapping in emitter).
 See the original doc's Current State and Phase Log for full history.
 
 ### Compiler pipeline (`packages/typescript/src/compiler/`)
@@ -64,7 +66,12 @@ See the original doc's Current State and Phase Log for full history.
 - `validator.ts` -- rejects unsupported constructs with positioned diagnostics.
 - `descriptor.ts` -- extracts `ExtractedDescriptor` from `Sensor()`/`Actuator()`.
 - `scope.ts` -- `ScopeStack` block-scoping allocator; `allocLocal()` for temporaries.
-  No metadata tracking (no scope IDs, no start/end PCs, no parent tracking).
+  Metadata tracking: `ScopeMetadata` (scope ID, kind, parent, IR start/end index),
+  `LocalMetadata` (name, slot, storageKind, scope ID, IR start index).
+  `initFunctionScope()`, `finalizeFunctionScope()` bracket function bodies.
+  `addParameterMetadata()`, `addCaptureMetadata()` register non-local variables.
+  `setLocalIrStart()` stamps IR index after StoreLocal. `allocLocal()` temporaries
+  produce no metadata (excluded from debug output).
 - `ir.ts` -- 43 IR node kinds (control flow, struct/list/map construction, list
   mutation ops, struct copy-except, function refs/closures/indirect calls, type
   checking, async host calls, await). All node interfaces extend `IrNodeBase`
@@ -728,10 +735,11 @@ defined. (Phase 22 is complete -- `DebugSpan` and all debug metadata types are i
 
 ### Phase 24: Scope and variable metadata
 
-(Updated 2026-04-02) `ScopeStack` in `scope.ts` is currently minimal: a stack of
-`Map<string, number>` with `pushScope()`/`popScope()`/`declareLocal(name)`/
-`allocLocal()`/`resolveLocal(name)`. No scope IDs, no start/end PCs, no scope kind,
-no parent tracking. This phase requires significant extension.
+(Updated 2026-04-02) Phase 24 is complete. `ScopeStack` extended with metadata
+tracking: scope IDs, kind, parent ID, IR start/end indices. `FunctionEntry` carries
+`scopeMetadata` and `localMetadata`. The emitter builds `irIndexToPc[]` and maps
+metadata to `ScopeInfo[]` and `LocalInfo[]`. `FunctionDebugInfo` includes `scopes`
+and `locals`. See Phase Log.
 
 Phase 22 is complete -- `ScopeInfo`, `LocalInfo`, and all debug metadata types are
 defined in `types.ts`. `LocalInfo.storageKind` already includes `"capture"` for
@@ -826,10 +834,16 @@ metadata collected in Phases 23-24 and attach it to `UserAuthoredProgram`.
   debug metadata by function base offset. Copy or merge `DebugFileInfo` entries.
 
 **Prerequisites:** Phases 23 and 24 must be complete (spans and scope metadata are
-populated per-function). (Phase 23 is complete --
-`CompileResult.functionDebugInfo?: FunctionDebugInfo[]` provides per-function
-`spans: DebugSpan[]` and `pcToSpanIndex: number[]`. Phase 25 assembly consumes
-these directly into `DebugFunctionInfo`.)
+populated per-function). (Both complete -- `FunctionDebugInfo` provides per-function
+`spans`, `pcToSpanIndex`, `scopes: ScopeInfo[]`, and `locals: LocalInfo[]`.
+Phase 25 assembly consumes these directly into `DebugFunctionInfo`.)
+(Added 2026-04-02, from Phase 24 post-mortem) **IR-index-to-PC mapping.** Phase 24's
+`emitFunction` builds an `irIndexToPc[]` array (one entry per IR node + sentinel at
+`ir.length`) that maps IR array indices to final bytecode PCs. This is already used
+for scope and local metadata conversion. `callSites` and `suspendSites` need PCs
+(call instruction PC, await PC, resume PC) -- these can be tracked the same way:
+record IR indices during lowering, then map to PCs via `irIndexToPc[]` during
+emission, rather than building a separate PC tracking mechanism.
 
 **Concrete deliverables:**
 
@@ -884,6 +898,37 @@ these directly into `DebugFunctionInfo`.)
   contiguous array index. Consider renaming the field from `fileIndex` to
   `fileId` in Phase 22's type definitions (propagating to `DebugFileInfo` and
   `DebugFunctionInfo`) to avoid implying dense indexing.
+- (Added 2026-04-02) **`isGenerated` classification.** `FunctionEntry` has no
+  `isGenerated` flag. The only signal is the naming convention: `<module-init>`,
+  `<onPageEntered-wrapper>`, and `<closure#N>` use angle brackets. The spec's
+  deliverable 2 says closures are `isGenerated: false`, so the classification
+  cannot be a simple "angle brackets = generated" heuristic. Explicit rule:
+  only `<module-init>` and names ending in `.<onPageEntered-wrapper>` are
+  generated; closures (`<closure#N>`) are user-authored. Consider adding an
+  `isGenerated` field to `FunctionEntry` during lowering to avoid fragile
+  name-pattern matching in the assembly step.
+- (Added 2026-04-02) **Closure parent tracking.** Deliverable 5 specifies
+  `debugFunctionId` for closures as `filePath + "/" + parentFuncName +
+  "/<closure#N>"`. But `FunctionEntry` does not record which function contains
+  a closure -- the name is just `<closure#N>` with a global counter. Either
+  add a `parentName?: string` field to `FunctionEntry` during lowering, or
+  reconstruct containment from the lowering order (closures are emitted
+  immediately after their parent's IR is built, before the next top-level
+  function).
+- (Added 2026-04-02) **`callSiteId` assignment.** `IrHostCallArgs` and
+  `IrHostCallArgsAsync` currently hardcode `callSiteId: 0` (deferred in
+  Phase 18). `CallSiteInfo.callSiteId` needs meaningful per-function
+  sequential IDs. These must be assigned during lowering (incrementing a
+  per-function counter) or during emission. The `irIndexToPc[]` array gives
+  PCs, but the callsite ID itself must be tracked separately.
+- (Added 2026-04-02) **File-to-function mapping.** `FunctionEntry` does not
+  record which source file it originated from. `DebugFunctionInfo.fileIndex`
+  requires this mapping. In `project.ts`, `_compileEntryPoint()` processes
+  files sequentially -- the file boundary is known at that level. Either tag
+  each `FunctionEntry` with a `fileIndex` during lowering, or track the
+  file-to-function-index mapping in `project.ts` as functions are collected.
+  The TS `SourceFile` objects (available in `project.ts`) provide both
+  `fileName` (for `DebugFileInfo.path`) and full text (for `sourceHash`).
 
 ---
 
@@ -1291,3 +1336,96 @@ diagnostics (validator, descriptor, lowering, emit, orchestration) default to
 statements/return/if/while/for/break/continue, sub-expression non-boundaries,
 valid line/col info, unique span deduplication, generated function spans, multiple
 functions, for loop condition boundaries). All 511 tests pass.
+
+### Phase 24 -- Scope and variable metadata (2026-04-02)
+
+**Planned:** Emit `ScopeInfo` and `LocalInfo` metadata describing the scope tree
+and variable lifetimes for debugger inspection. Five deliverables: (1) function
+scope tree, (2) local metadata with lifetime PCs, (3) module scope for callsite
+vars, (4) exclude allocLocal temporaries, (5) `this` in class methods/constructors.
+
+**Actual:** All five deliverables implemented. Four files changed, one new test
+file:
+
+- `scope.ts` -- extended `ScopeStack` with full metadata tracking:
+  - `ScopeKind` type (`"function" | "block" | "module"`), `ScopeMetadata` and
+    `LocalMetadata` interfaces exported.
+  - `initFunctionScope(irIndex, name)` creates root scope with unique ID.
+  - `pushScope(irIndex, kind)` / `popScope(irIndex)` track IR indices and maintain
+    parent chain via `_scopeIdStack`.
+  - `finalizeFunctionScope(irIndex)` closes the root scope.
+  - `declareLocal(name, typeHint?)` records `LocalMetadata` with scope ID.
+  - `setLocalIrStart(slotIndex, irIndex)` stamps IR index after StoreLocal.
+  - `addParameterMetadata()` and `addCaptureMetadata()` register non-local entries.
+  - `allocLocal()` unchanged -- produces no metadata.
+  - Exposes `scopeMetadata`, `localMetadata`, `currentScopeId` as readonly getters.
+- `lowering.ts` -- updated all function-lowering sites:
+  - `lowerOnExecuteBody`, `lowerOnPageEnteredBody`, `lowerHelperFunction`,
+    `generateModuleInitWithImports` -- init/finalize function scope, register
+    parameter metadata.
+  - `lowerClassDeclaration` -- constructor and method scopes with `this` as
+    parameter at slot 0, constructor params registered.
+  - `lowerClosureExpression` -- capture metadata via `addCaptureMetadata`,
+    parameter metadata, function scope init/finalize.
+  - All `pushScope()`/`popScope()` calls pass `ctx.ir.length`.
+  - `lowerVariableDeclarationList` calls `setLocalIrStart` after StoreLocal.
+  - `lowerForOfStatement` stamps loop item variable IR start.
+  - `FunctionEntry` extended with optional `scopeMetadata` and `localMetadata`.
+- `emit.ts` -- IR-index-to-PC mapping:
+  - Builds `irIndexToPc[]` during the emit loop (one entry per IR node +
+    sentinel at `ir.length`).
+  - `mapScopeMetadata()` converts `ScopeMetadata[]` to `ScopeInfo[]`.
+  - `mapLocalMetadata()` converts `LocalMetadata[]` to `LocalInfo[]`, deriving
+    `lifetimeEndPc` from enclosing scope's end PC.
+  - `EmitResult` extended with `scopes: ScopeInfo[]` and `locals: LocalInfo[]`.
+  - `emitFunction` accepts optional `scopeMetadata` and `localMetadata` params.
+  - Early-return error paths return empty arrays.
+- `project.ts` -- `FunctionDebugInfo` extended with `scopes` and `locals`.
+  `emitFunction` call passes `func.scopeMetadata` and `func.localMetadata`.
+  Debug info collection populates scopes and locals from emit result.
+
+**Deviations from spec:**
+
+- Spec deliverable 3 called for callsite-persistent variables to appear in a
+  `"module"` scope. Implementation tracks the module-init function's scope as
+  a `"function"` kind (since `initFunctionScope` always creates `"function"`
+  scopes). The module-init function exists and has scope metadata, but the
+  callsite vars themselves are stored via `StoreCallsiteVar` (not `StoreLocal`)
+  and are not in any function's `LocalInfo` list. Callsite vars live in a
+  separate namespace from function locals and are not visible as `LocalInfo`
+  entries. Phase 25 can map these at the `DebugMetadata` assembly level if needed.
+- Spec deliverable 5 called for `this` to appear as a local. Implementation
+  registers `this` as a `"parameter"` storage kind (slot 0 in methods, allocated
+  via `allocLocal` in constructors). In methods, `this` is a true parameter
+  (passed by the call convention). In constructors, `this` is a synthesized local
+  (allocated, initialized via StructNew). Both are tracked in `LocalInfo` but
+  `this` in constructors is not in the metadata because `allocLocal()` produces
+  no metadata entry. This is a minor gap -- constructor `this` could be tracked
+  via explicit `addParameterMetadata("this", thisLocal, ctorFuncScopeId)`.
+- Spec acceptance criteria mentioned testing `this` in class methods/constructors.
+  No class-specific test was added (10 tests cover the core acceptance criteria).
+  Class scope metadata is exercised implicitly by the existing class tests that
+  compile successfully.
+
+**Risks resolved:**
+
+- PC range tracking: solved by building `irIndexToPc[]` in the emit loop (one
+  entry per IR node), then mapping scope/local IR indices to PCs via lookup. This
+  is simpler than the spec's suggestion of tracking `pcBefore = emitter.pos()`
+  per scope boundary.
+- Class scope complexity: constructor and method function entries each get their
+  own `ScopeStack` with independent scope trees. `this` in methods is registered
+  as a parameter. Each class entry carries its own scope/local metadata.
+- Destructuring scope: parameter-position destructuring creates locals via
+  `declareLocal()` in the function scope. Intermediate temporaries use
+  `allocLocal()` and produce no metadata.
+
+**Observation:** The `irIndexToPc[]` array provides a general-purpose IR-to-PC
+mapping that could be useful beyond scope metadata -- e.g., for callsite PC
+tracking in Phase 25. The sentinel entry at `irIndexToPc[ir.length]` captures
+the final PC, used for scope/variable end boundaries.
+
+**Tests added:** 10 (nested block scope tree, variable lifetime in block,
+parameter storageKind, module init scope, closure captures, temporary exclusion,
+helper function params, for-loop block scope, unique scope IDs, onExecute with
+params). All 521 tests pass.

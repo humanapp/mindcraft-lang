@@ -8,13 +8,16 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { EmitDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
-import type { CompileDiagnostic, DebugSpan } from "./types.js";
+import type { LocalMetadata, ScopeMetadata } from "./scope.js";
+import type { CompileDiagnostic, DebugSpan, LocalInfo, ScopeInfo } from "./types.js";
 
 export interface EmitResult {
   bytecode: FunctionBytecode;
   diagnostics: CompileDiagnostic[];
   spans: DebugSpan[];
   pcToSpanIndex: number[];
+  scopes: ScopeInfo[];
+  locals: LocalInfo[];
 }
 
 export function emitFunction(
@@ -24,7 +27,9 @@ export function emitFunction(
   name: string,
   pool: compiler.ConstantPool,
   functionTable?: Map<string, number>,
-  injectCtxTypeId?: TypeId
+  injectCtxTypeId?: TypeId,
+  scopeMetadata?: readonly ScopeMetadata[],
+  localMetadata?: readonly LocalMetadata[]
 ): EmitResult {
   const emitter = new compiler.BytecodeEmitter();
   const diagnostics: CompileDiagnostic[] = [];
@@ -62,11 +67,15 @@ export function emitFunction(
     return emitterLabelId;
   }
 
-  for (const node of ir) {
+  const irIndexToPc: number[] = [];
+
+  for (let irIdx = 0; irIdx < ir.length; irIdx++) {
+    const node = ir[irIdx];
     if (node.span) {
       currentSpanIndex = getOrCreateSpanIndex(node.span, node.isStatementBoundary ?? false);
     }
     const pcBefore = emitter.pos();
+    irIndexToPc[irIdx] = pcBefore;
 
     switch (node.kind) {
       case "PushConst": {
@@ -109,7 +118,14 @@ export function emitFunction(
             message: `Cannot resolve host function: ${node.fnName}`,
             severity: "error",
           });
-          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics, spans: [], pcToSpanIndex: [] };
+          return {
+            bytecode: makeEmptyBytecode(numParams, numLocals, name),
+            diagnostics,
+            spans: [],
+            pcToSpanIndex: [],
+            scopes: [],
+            locals: [],
+          };
         }
         emitter.hostCallArgs(fnId, node.argc, 0);
         break;
@@ -122,7 +138,14 @@ export function emitFunction(
             message: `Cannot resolve host function: ${node.fnName}`,
             severity: "error",
           });
-          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics, spans: [], pcToSpanIndex: [] };
+          return {
+            bytecode: makeEmptyBytecode(numParams, numLocals, name),
+            diagnostics,
+            spans: [],
+            pcToSpanIndex: [],
+            scopes: [],
+            locals: [],
+          };
         }
         emitter.hostCallArgsAsync(fnId, node.argc, 0);
         break;
@@ -212,7 +235,14 @@ export function emitFunction(
             message: `Cannot resolve function: ${node.funcName}`,
             severity: "error",
           });
-          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics, spans: [], pcToSpanIndex: [] };
+          return {
+            bytecode: makeEmptyBytecode(numParams, numLocals, name),
+            diagnostics,
+            spans: [],
+            pcToSpanIndex: [],
+            scopes: [],
+            locals: [],
+          };
         }
         const idx = pool.add(mkFunctionValue(funcId));
         emitter.pushConst(idx);
@@ -226,7 +256,14 @@ export function emitFunction(
             message: `Cannot resolve closure function: ${node.funcName}`,
             severity: "error",
           });
-          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics, spans: [], pcToSpanIndex: [] };
+          return {
+            bytecode: makeEmptyBytecode(numParams, numLocals, name),
+            diagnostics,
+            spans: [],
+            pcToSpanIndex: [],
+            scopes: [],
+            locals: [],
+          };
         }
         emitter.makeClosure(closureFuncId, node.captureCount);
         break;
@@ -254,6 +291,9 @@ export function emitFunction(
     }
   }
 
+  const finalPc = emitter.pos();
+  irIndexToPc[ir.length] = finalPc;
+
   if (spans.length === 0) {
     spans.push({
       spanId: 0,
@@ -265,13 +305,61 @@ export function emitFunction(
     });
   }
 
+  const scopes = mapScopeMetadata(scopeMetadata, irIndexToPc, finalPc);
+  const locals = mapLocalMetadata(localMetadata, scopeMetadata, irIndexToPc, finalPc);
+
   const code = emitter.finalize();
   return {
     bytecode: { code, numParams, numLocals, name, injectCtxTypeId },
     diagnostics,
     spans,
     pcToSpanIndex,
+    scopes,
+    locals,
   };
+}
+
+function mapScopeMetadata(
+  scopeMetadata: readonly ScopeMetadata[] | undefined,
+  irIndexToPc: number[],
+  finalPc: number
+): ScopeInfo[] {
+  if (!scopeMetadata || scopeMetadata.length === 0) return [];
+  return scopeMetadata.map((s) => ({
+    scopeId: s.scopeId,
+    kind: s.kind,
+    parentScopeId: s.parentScopeId,
+    startPc: irIndexToPc[s.irStartIndex] ?? 0,
+    endPc: s.irEndIndex >= 0 ? (irIndexToPc[s.irEndIndex] ?? finalPc) : finalPc,
+    name: s.name,
+  }));
+}
+
+function mapLocalMetadata(
+  localMetadata: readonly LocalMetadata[] | undefined,
+  scopeMetadata: readonly ScopeMetadata[] | undefined,
+  irIndexToPc: number[],
+  finalPc: number
+): LocalInfo[] {
+  if (!localMetadata || localMetadata.length === 0) return [];
+
+  const scopeEndMap = new Map<number, number>();
+  if (scopeMetadata) {
+    for (const s of scopeMetadata) {
+      const endPc = s.irEndIndex >= 0 ? (irIndexToPc[s.irEndIndex] ?? finalPc) : finalPc;
+      scopeEndMap.set(s.scopeId, endPc);
+    }
+  }
+
+  return localMetadata.map((l) => ({
+    name: l.name,
+    slotIndex: l.slotIndex,
+    storageKind: l.storageKind,
+    scopeId: l.scopeId,
+    lifetimeStartPc: l.irStartIndex >= 0 ? (irIndexToPc[l.irStartIndex] ?? 0) : 0,
+    lifetimeEndPc: scopeEndMap.get(l.scopeId) ?? finalPc,
+    typeHint: l.typeHint,
+  }));
 }
 
 function makeEmptyBytecode(numParams: number, numLocals: number, name: string): FunctionBytecode {

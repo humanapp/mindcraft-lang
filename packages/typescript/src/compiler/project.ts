@@ -14,6 +14,8 @@ import type {
   DebugSpan,
   ExtractedDescriptor,
   ExtractedParam,
+  LocalInfo,
+  ScopeInfo,
   UserAuthoredProgram,
 } from "./types.js";
 import { validateAst } from "./validator.js";
@@ -24,6 +26,8 @@ export interface FunctionDebugInfo {
   name: string;
   spans: DebugSpan[];
   pcToSpanIndex: number[];
+  scopes: ScopeInfo[];
+  locals: LocalInfo[];
 }
 
 export interface CompileResult {
@@ -262,7 +266,9 @@ export class UserTileProject {
         func.name,
         pool,
         programResult.functionTable,
-        func.injectCtxTypeId
+        func.injectCtxTypeId,
+        func.scopeMetadata,
+        func.localMetadata
       );
       if (emitResult.diagnostics.length > 0) {
         return { diagnostics: emitResult.diagnostics };
@@ -273,6 +279,8 @@ export class UserTileProject {
         name: func.name,
         spans: emitResult.spans,
         pcToSpanIndex: emitResult.pcToSpanIndex,
+        scopes: emitResult.scopes,
+        locals: emitResult.locals,
       });
     }
 

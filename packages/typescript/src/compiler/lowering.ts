@@ -18,7 +18,7 @@ import {
 import ts from "typescript";
 import { LoweringDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
-import { ScopeStack } from "./scope.js";
+import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
 import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
 
 const TRUE_VALUE: Value = { t: 2, v: true };
@@ -30,6 +30,8 @@ export interface FunctionEntry {
   numLocals: number;
   name: string;
   injectCtxTypeId?: TypeId;
+  scopeMetadata?: ScopeMetadata[];
+  localMetadata?: LocalMetadata[];
 }
 
 export interface ImportedFunction {
@@ -381,6 +383,11 @@ function lowerOnPageEnteredBody(
   }
 
   const scopeStack = new ScopeStack(1);
+  const funcScopeId = scopeStack.initFunctionScope(0, `${descriptor.name}.onPageEntered`);
+
+  if (ctxParam && ts.isIdentifier(ctxParam.name)) {
+    scopeStack.addParameterMetadata(ctxParam.name.text, 0, funcScopeId);
+  }
 
   const ctx: LowerContext = {
     checker,
@@ -404,11 +411,14 @@ function lowerOnPageEnteredBody(
       message: "onPageEntered function has no body",
       severity: "error",
     });
+    scopeStack.finalizeFunctionScope(ir.length);
     return {
       ir,
       numParams: 1,
       numLocals: scopeStack.nextLocal,
       name: `${descriptor.name}.onPageEntered`,
+      scopeMetadata: [...scopeStack.scopeMetadata],
+      localMetadata: [...scopeStack.localMetadata],
     };
   }
 
@@ -417,11 +427,14 @@ function lowerOnPageEnteredBody(
   ir.push({ kind: "PushConst", value: NIL_VALUE });
   ir.push({ kind: "Return" });
 
+  scopeStack.finalizeFunctionScope(ir.length);
   return {
     ir,
     numParams: 1,
     numLocals: scopeStack.nextLocal,
     name: `${descriptor.name}.onPageEntered`,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
   };
 }
 
@@ -530,6 +543,20 @@ function lowerOnExecuteBody(
   }
 
   const scopeStack = new ScopeStack(nextLocal);
+  const funcScopeId = scopeStack.initFunctionScope(0, `${descriptor.name}.onExecute`);
+
+  if (ctxParam && ts.isIdentifier(ctxParam.name)) {
+    scopeStack.addParameterMetadata(ctxParam.name.text, 0, funcScopeId);
+  }
+  if (hasParams) {
+    for (let i = 0; i < descriptor.params.length; i++) {
+      const param = descriptor.params[i];
+      const idx = paramLocals.get(param.name);
+      if (idx !== undefined) {
+        scopeStack.addParameterMetadata(param.name, idx, funcScopeId);
+      }
+    }
+  }
 
   const ctx: LowerContext = {
     checker,
@@ -553,12 +580,15 @@ function lowerOnExecuteBody(
       message: "onExecute function has no body",
       severity: "error",
     });
+    scopeStack.finalizeFunctionScope(ir.length);
     return {
       ir,
       numParams: hasParams ? 2 : 1,
       numLocals: scopeStack.nextLocal,
       name: `${descriptor.name}.onExecute`,
       injectCtxTypeId: ContextTypeIds.Context,
+      scopeMetadata: [...scopeStack.scopeMetadata],
+      localMetadata: [...scopeStack.localMetadata],
     };
   }
 
@@ -567,12 +597,15 @@ function lowerOnExecuteBody(
   ir.push({ kind: "PushConst", value: NIL_VALUE });
   ir.push({ kind: "Return" });
 
+  scopeStack.finalizeFunctionScope(ir.length);
   return {
     ir,
     numParams: hasParams ? 2 : 1,
     numLocals: scopeStack.nextLocal,
     name: `${descriptor.name}.onExecute`,
     injectCtxTypeId: ContextTypeIds.Context,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
   };
 }
 
@@ -596,7 +629,16 @@ function lowerHelperFunction(
     }
   }
 
+  const funcName = funcNode.name?.text ?? "<anonymous>";
   const scopeStack = new ScopeStack(numParams);
+  const funcScopeId = scopeStack.initFunctionScope(0, funcName);
+
+  for (let i = 0; i < numParams; i++) {
+    const p = funcNode.parameters[i];
+    if (ts.isIdentifier(p.name)) {
+      scopeStack.addParameterMetadata(p.name.text, i, funcScopeId);
+    }
+  }
 
   const ctx: LowerContext = {
     checker,
@@ -625,7 +667,15 @@ function lowerHelperFunction(
   const body = funcNode.body;
   if (!body) {
     sharedDiagnostics.push(makeDiag(LoweringDiagCode.FunctionHasNoBody, "Function has no body", funcNode));
-    return { ir, numParams, numLocals: scopeStack.nextLocal, name: funcNode.name?.text ?? "<anonymous>" };
+    scopeStack.finalizeFunctionScope(ir.length);
+    return {
+      ir,
+      numParams,
+      numLocals: scopeStack.nextLocal,
+      name: funcName,
+      scopeMetadata: [...scopeStack.scopeMetadata],
+      localMetadata: [...scopeStack.localMetadata],
+    };
   }
 
   lowerStatements(body.statements, ctx);
@@ -633,11 +683,14 @@ function lowerHelperFunction(
   ir.push({ kind: "PushConst", value: NIL_VALUE });
   ir.push({ kind: "Return" });
 
+  scopeStack.finalizeFunctionScope(ir.length);
   return {
     ir,
     numParams,
     numLocals: scopeStack.nextLocal,
-    name: funcNode.name?.text ?? "<anonymous>",
+    name: funcName,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
   };
 }
 
@@ -654,6 +707,7 @@ function generateModuleInitWithImports(
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const scopeStack = new ScopeStack(0);
+  scopeStack.initFunctionScope(0, "<module-init>");
 
   const ctx: LowerContext = {
     checker,
@@ -699,11 +753,14 @@ function generateModuleInitWithImports(
   ir.push({ kind: "PushConst", value: NIL_VALUE });
   ir.push({ kind: "Return" });
 
+  scopeStack.finalizeFunctionScope(ir.length);
   return {
     ir,
     numParams: 0,
     numLocals: scopeStack.nextLocal,
     name: "<module-init>",
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
   };
 }
 
@@ -735,9 +792,9 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
   } else if (ts.isForOfStatement(stmt)) {
     lowerForOfStatement(stmt, ctx);
   } else if (ts.isBlock(stmt)) {
-    ctx.scopeStack.pushScope();
+    ctx.scopeStack.pushScope(ctx.ir.length);
     lowerStatements(stmt.statements, ctx);
-    ctx.scopeStack.popScope();
+    ctx.scopeStack.popScope(ctx.ir.length);
   } else if (ts.isBreakStatement(stmt)) {
     lowerBreakStatement(stmt, ctx);
   } else if (ts.isContinueStatement(stmt)) {
@@ -765,6 +822,9 @@ function lowerVariableDeclarationList(declList: ts.VariableDeclarationList, ctx:
         lowerExpression(decl.initializer, ctx);
         checkStructAssignmentCompat(decl.name, decl.initializer, decl, ctx);
         ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+        ctx.scopeStack.setLocalIrStart(localIdx, ctx.ir.length);
+      } else {
+        ctx.scopeStack.setLocalIrStart(localIdx, ctx.ir.length);
       }
     } else if (ts.isObjectBindingPattern(decl.name)) {
       lowerObjectDestructuring(decl.name, decl, ctx);
@@ -1147,7 +1207,7 @@ function lowerWhileStatement(stmt: ts.WhileStatement, ctx: LowerContext): void {
 }
 
 function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
-  ctx.scopeStack.pushScope();
+  ctx.scopeStack.pushScope(ctx.ir.length);
 
   if (stmt.initializer) {
     if (ts.isVariableDeclarationList(stmt.initializer)) {
@@ -1186,11 +1246,11 @@ function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "Label", labelId: loopEnd });
 
   ctx.loopStack.pop();
-  ctx.scopeStack.popScope();
+  ctx.scopeStack.popScope(ctx.ir.length);
 }
 
 function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
-  ctx.scopeStack.pushScope();
+  ctx.scopeStack.pushScope(ctx.ir.length);
 
   const iterableType = ctx.checker.getTypeAtLocation(stmt.expression);
   const listTypeId = resolveListTypeId(iterableType, ctx);
@@ -1202,7 +1262,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
         stmt.expression
       )
     );
-    ctx.scopeStack.popScope();
+    ctx.scopeStack.popScope(ctx.ir.length);
     return;
   }
 
@@ -1214,7 +1274,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
         stmt
       )
     );
-    ctx.scopeStack.popScope();
+    ctx.scopeStack.popScope(ctx.ir.length);
     return;
   }
 
@@ -1223,7 +1283,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForOfRequiresSingleIdentifier, "`for...of` requires a single identifier binding", stmt)
     );
-    ctx.scopeStack.popScope();
+    ctx.scopeStack.popScope(ctx.ir.length);
     return;
   }
 
@@ -1253,7 +1313,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
       makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve < operator for `for...of`", stmt)
     );
     ctx.loopStack.pop();
-    ctx.scopeStack.popScope();
+    ctx.scopeStack.popScope(ctx.ir.length);
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
@@ -1264,6 +1324,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "ListGet" });
   const itemLocal = ctx.scopeStack.declareLocal(decls[0].name.text);
   ctx.ir.push({ kind: "StoreLocal", index: itemLocal });
+  ctx.scopeStack.setLocalIrStart(itemLocal, ctx.ir.length);
 
   lowerStatement(stmt.statement, ctx);
 
@@ -1277,7 +1338,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
       makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve + operator for `for...of`", stmt)
     );
     ctx.loopStack.pop();
-    ctx.scopeStack.popScope();
+    ctx.scopeStack.popScope(ctx.ir.length);
     return;
   }
   ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
@@ -1287,7 +1348,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "Label", labelId: loopEnd });
 
   ctx.loopStack.pop();
-  ctx.scopeStack.popScope();
+  ctx.scopeStack.popScope(ctx.ir.length);
 }
 
 function lowerBreakStatement(stmt: ts.BreakStatement, ctx: LowerContext): void {
@@ -1699,6 +1760,17 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
 
   const closureIr: IrNode[] = [];
   const closureScopeStack = new ScopeStack(numParams);
+  const closureFuncScopeId = closureScopeStack.initFunctionScope(0, closureName);
+
+  for (let i = 0; i < numParams; i++) {
+    const p = expr.parameters[i];
+    if (ts.isIdentifier(p.name)) {
+      closureScopeStack.addParameterMetadata(p.name.text, i, closureFuncScopeId);
+    }
+  }
+  for (const info of captureInfos) {
+    closureScopeStack.addCaptureMetadata(info.name, capturedVars.get(info.name)!, closureFuncScopeId);
+  }
 
   const closureCtx: LowerContext = {
     checker: ctx.checker,
@@ -1734,11 +1806,14 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     closureIr.push({ kind: "Return" });
   }
 
+  closureScopeStack.finalizeFunctionScope(closureIr.length);
   ctx.closureFunctions.set(closureFuncId, {
     ir: closureIr,
     numParams,
     numLocals: closureScopeStack.nextLocal,
     name: closureName,
+    scopeMetadata: [...closureScopeStack.scopeMetadata],
+    localMetadata: [...closureScopeStack.localMetadata],
   });
 }
 
@@ -5220,7 +5295,15 @@ function lowerClassDeclaration(
   }
 
   const ctorScope = new ScopeStack(ctorParamCount);
+  const ctorFuncScopeId = ctorScope.initFunctionScope(0, `${ci.name}$new`);
   const thisLocal = ctorScope.allocLocal();
+
+  for (let i = 0; i < ctorParamCount; i++) {
+    const p = ctor!.parameters[i];
+    if (ts.isIdentifier(p.name)) {
+      ctorScope.addParameterMetadata(p.name.text, i, ctorFuncScopeId);
+    }
+  }
 
   const ctorCtx: LowerContext = {
     checker,
@@ -5265,11 +5348,14 @@ function lowerClassDeclaration(
   ctorIr.push({ kind: "LoadLocal", index: thisLocal });
   ctorIr.push({ kind: "Return" });
 
+  ctorScope.finalizeFunctionScope(ctorIr.length);
   entries.push({
     ir: ctorIr,
     numParams: ctorParamCount,
     numLocals: ctorScope.nextLocal,
     name: `${ci.name}$new`,
+    scopeMetadata: [...ctorScope.scopeMetadata],
+    localMetadata: [...ctorScope.localMetadata],
   });
 
   for (const member of ci.node.members) {
@@ -5291,6 +5377,15 @@ function lowerClassDeclaration(
     }
 
     const methodScope = new ScopeStack(totalParamCount);
+    const methodFuncScopeId = methodScope.initFunctionScope(0, `${ci.name}.${methodName}`);
+
+    methodScope.addParameterMetadata("this", 0, methodFuncScopeId);
+    for (let i = 0; i < userParamCount; i++) {
+      const p = member.parameters[i];
+      if (ts.isIdentifier(p.name)) {
+        methodScope.addParameterMetadata(p.name.text, i + 1, methodFuncScopeId);
+      }
+    }
 
     const methodCtx: LowerContext = {
       checker,
@@ -5324,11 +5419,14 @@ function lowerClassDeclaration(
     methodIr.push({ kind: "PushConst", value: NIL_VALUE });
     methodIr.push({ kind: "Return" });
 
+    methodScope.finalizeFunctionScope(methodIr.length);
     entries.push({
       ir: methodIr,
       numParams: totalParamCount,
       numLocals: methodScope.nextLocal,
       name: `${ci.name}.${methodName}`,
+      scopeMetadata: [...methodScope.scopeMetadata],
+      localMetadata: [...methodScope.localMetadata],
     });
   }
 
