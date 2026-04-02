@@ -73,6 +73,14 @@ for full history.
   module (structs, branded numbers, enums, list types, function types).
 - `types.ts` -- `CompileDiagnostic`, `ExtractedDescriptor`, `ExtractedParam`,
   `UserAuthoredProgram`, `UserTileLinkInfo`, `CompileOptions`.
+  `CompileDiagnostic` currently has `{ code, message, line?, column? }` -- start
+  position only, no end position, no severity. Needs enhancement to carry full
+  source ranges (`endLine`, `endColumn`) and `severity` so the diagnostics
+  bridge pipeline ([diagnostics-bridge-pipeline.md](diagnostics-bridge-pipeline.md))
+  can forward them to VS Code without lossy synthesis. All three creation sites
+  (`makeDiag` in lowering, `addDiag` in validator, TS diagnostic mapping in
+  project.ts) already have access to full span information from the TS AST; the
+  fields just need to be populated.
 - `diag-codes.ts` -- all diagnostic code enums (Validator, Descriptor, Lowering,
   Emit, Compile).
 - `call-def-builder.ts` -- builds `BrainActionCallDef` from params.
