@@ -1,16 +1,10 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { logger } from "#core/logging/logger.js";
+import { env } from "#config/env.js";
 
 let secret: string | undefined;
 
 export function initBindingSecret(): void {
-  const envSecret = process.env.BRIDGE_BINDING_SECRET;
-  if (envSecret) {
-    secret = envSecret;
-  } else {
-    secret = randomUUID();
-    logger.warn("BRIDGE_BINDING_SECRET not set; binding tokens will not survive bridge restart");
-  }
+  secret = env.BRIDGE_BINDING_SECRET;
 }
 
 export function generateBindingId(): string {
