@@ -622,6 +622,7 @@ export interface Scheduler {
   onFiberCancelled?: (fiberId: number) => void;
   enqueueRunnable: (fiberId: number) => void;
   getFiber: (fiberId: number) => Fiber | undefined;
+  addFiber?: (fiber: Fiber) => void;
 }
 
 ///////////////////////////

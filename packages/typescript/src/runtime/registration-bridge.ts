@@ -1,4 +1,10 @@
-import { getBrainServices, type HostAsyncFn, mkParameterTileId, tiles as tileDefs } from "@mindcraft-lang/core/brain";
+import {
+  type BrainAsyncFunctionEntry,
+  getBrainServices,
+  type HostAsyncFn,
+  mkParameterTileId,
+  tiles as tileDefs,
+} from "@mindcraft-lang/core/brain";
 import type { UserTileLinkInfo } from "../compiler/types.js";
 
 export function registerUserTile(linkInfo: UserTileLinkInfo, hostFn: HostAsyncFn): void {
@@ -18,6 +24,13 @@ export function registerUserTile(linkInfo: UserTileLinkInfo, hostFn: HostAsyncFn
   }
 
   const pgmId = `user.${program.kind === "sensor" ? "sensor" : "actuator"}.${program.name}`;
+  const existingEntry = functions.get(pgmId);
+
+  if (existingEntry) {
+    (existingEntry as BrainAsyncFunctionEntry).fn = hostFn;
+    return;
+  }
+
   const fnEntry = functions.register(pgmId, true, hostFn, program.callDef);
 
   if (program.kind === "sensor") {

@@ -5,6 +5,7 @@ import {
   type BrainProgram,
   BYTECODE_VERSION,
   type ExecutionContext,
+  FiberState,
   getBrainServices,
   HandleState,
   HandleTable,
@@ -452,7 +453,7 @@ export default Actuator({
     const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
     const handles = new HandleTable(100);
     const vm = new runtime.VM(linkedProgram, handles);
-    const scheduler = mkScheduler();
+    const scheduler = new runtime.FiberScheduler(vm, { defaultBudget: 10000, autoGcHandles: false });
     const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
 
     const outerHandleId = handles.createPending();
@@ -467,10 +468,14 @@ export default Actuator({
 
     wrapper.exec(ctx, argsMap, outerHandleId);
 
+    scheduler.tick();
+
     assert.equal(handles.get(outerHandleId)!.state, HandleState.PENDING, "outer handle should still be pending");
 
     const innerHandleId = outerHandleId + 1;
     handles.resolve(innerHandleId, mkStringValue("done"));
+
+    scheduler.tick();
 
     assert.equal(handles.get(outerHandleId)!.state, HandleState.RESOLVED, "outer handle should be resolved");
     assert.equal(handles.get(outerHandleId)!.result!.t, NativeType.Nil);
@@ -496,7 +501,7 @@ export default Sensor({
     const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
     const handles = new HandleTable(100);
     const vm = new runtime.VM(linkedProgram, handles);
-    const scheduler = mkScheduler();
+    const scheduler = new runtime.FiberScheduler(vm, { defaultBudget: 10000, autoGcHandles: false });
     const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
 
     const outerHandleId = handles.createPending();
@@ -511,10 +516,14 @@ export default Sensor({
 
     wrapper.exec(ctx, argsMap, outerHandleId);
 
+    scheduler.tick();
+
     assert.equal(handles.get(outerHandleId)!.state, HandleState.PENDING);
 
     const innerHandleId = outerHandleId + 1;
     handles.resolve(innerHandleId, mkStringValue("world"));
+
+    scheduler.tick();
 
     assert.equal(handles.get(outerHandleId)!.state, HandleState.RESOLVED);
     const result = handles.get(outerHandleId)!.result as StringValue;
@@ -543,7 +552,7 @@ export default Sensor({
     const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
     const handles = new HandleTable(100);
     const vm = new runtime.VM(linkedProgram, handles);
-    const scheduler = mkScheduler();
+    const scheduler = new runtime.FiberScheduler(vm, { defaultBudget: 10000, autoGcHandles: false });
     const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
 
     const callSiteState = new Dict<number, unknown>();
@@ -556,10 +565,14 @@ export default Sensor({
 
     wrapper.exec(ctx, argsMap, outerHandleId);
 
+    scheduler.tick();
+
     assert.equal(handles.get(outerHandleId)!.state, HandleState.PENDING);
 
     const innerHandleId = outerHandleId + 1;
     handles.resolve(innerHandleId, mkStringValue("done"));
+
+    scheduler.tick();
 
     assert.equal(handles.get(outerHandleId)!.state, HandleState.RESOLVED);
     const result = handles.get(outerHandleId)!.result as NumberValue;
@@ -585,7 +598,7 @@ export default Sensor({
     const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
     const handles = new HandleTable(100);
     const vm = new runtime.VM(linkedProgram, handles);
-    const scheduler = mkScheduler();
+    const scheduler = new runtime.FiberScheduler(vm, { defaultBudget: 10000, autoGcHandles: false });
     const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
 
     const outerHandleId = handles.createPending();
@@ -600,13 +613,230 @@ export default Sensor({
 
     wrapper.exec(ctx, argsMap, outerHandleId);
 
+    scheduler.tick();
+
     assert.equal(handles.get(outerHandleId)!.state, HandleState.PENDING);
 
     const innerHandleId = outerHandleId + 1;
     handles.resolve(innerHandleId, mkStringValue("fetched-value"));
 
+    scheduler.tick();
+
     assert.equal(handles.get(outerHandleId)!.state, HandleState.RESOLVED);
     const result = handles.get(outerHandleId)!.result as StringValue;
     assert.equal(result.v, "fetched-value");
+  });
+
+  test("user-tile fiber visible in scheduler stats", () => {
+    const source = `
+import { Actuator, type Context, type Widget } from "mindcraft";
+
+export default Actuator({
+  name: "stats-visible",
+  params: {
+    w: { type: "Widget" },
+  },
+  async onExecute(ctx: Context, params: { w: Widget }): Promise<void> {
+    await params.w.fetchData("url");
+  },
+});
+`;
+    const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(linkedProgram, handles);
+    const scheduler = new runtime.FiberScheduler(vm, { defaultBudget: 10000, autoGcHandles: false });
+    const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
+
+    const outerHandleId = handles.createPending();
+    const args = new ValueDict();
+    args.set(0, mkNativeStructValue("Widget", { id: 1 }));
+    const argsMap: MapValue = { t: NativeType.Map, typeId: "map:<args>", v: args };
+
+    const ctx = mkCtx({
+      currentCallSiteId: 1,
+      callSiteState: new Dict<number, unknown>(),
+    });
+
+    wrapper.exec(ctx, argsMap, outerHandleId);
+
+    const statsBeforeTick = scheduler.getStats();
+    assert.equal(statsBeforeTick.totalFibers, 1, "fiber should be tracked by scheduler");
+    assert.equal(statsBeforeTick.runnableFibers, 1, "fiber should be runnable before tick");
+
+    scheduler.tick();
+
+    const statsAfterTick = scheduler.getStats();
+    assert.equal(statsAfterTick.waitingFibers, 1, "fiber should be waiting after tick");
+  });
+
+  test("user-tile fiber respects scheduler budget (yields after default budget)", () => {
+    const source = `
+import { Sensor, type Context, type Widget } from "mindcraft";
+
+export default Sensor({
+  name: "budget-respect",
+  output: "number",
+  params: {
+    w: { type: "Widget" },
+  },
+  async onExecute(ctx: Context, params: { w: Widget }): Promise<number> {
+    let sum = 0;
+    for (let i = 0; i < 500; i++) {
+      sum = sum + i;
+    }
+    const fetched = await params.w.fetchData("url");
+    return sum;
+  },
+});
+`;
+    const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(linkedProgram, handles);
+    const scheduler = new runtime.FiberScheduler(vm, { defaultBudget: 100, autoGcHandles: false });
+    const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
+
+    const outerHandleId = handles.createPending();
+    const args = new ValueDict();
+    args.set(0, mkNativeStructValue("Widget", { id: 1 }));
+    const argsMap: MapValue = { t: NativeType.Map, typeId: "map:<args>", v: args };
+
+    const ctx = mkCtx({
+      currentCallSiteId: 1,
+      callSiteState: new Dict<number, unknown>(),
+    });
+
+    wrapper.exec(ctx, argsMap, outerHandleId);
+
+    scheduler.tick();
+    const stats = scheduler.getStats();
+    assert.equal(stats.runnableFibers, 1, "fiber should yield and be re-enqueued with low budget");
+
+    for (let i = 0; i < 100; i++) {
+      scheduler.tick();
+      const s = scheduler.getStats();
+      if (s.waitingFibers === 1) break;
+    }
+
+    const statsWaiting = scheduler.getStats();
+    assert.equal(statsWaiting.waitingFibers, 1, "fiber should eventually hit AWAIT");
+
+    const innerHandleId = outerHandleId + 1;
+    handles.resolve(innerHandleId, mkStringValue("done"));
+
+    for (let i = 0; i < 100; i++) {
+      scheduler.tick();
+      const s = scheduler.getStats();
+      if (s.doneFibers === 1) break;
+    }
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.RESOLVED);
+  });
+
+  test("cancellation during suspended async fiber -> fiber cancelled", () => {
+    const source = `
+import { Actuator, type Context, type Widget } from "mindcraft";
+
+export default Actuator({
+  name: "cancel-test",
+  params: {
+    w: { type: "Widget" },
+  },
+  async onExecute(ctx: Context, params: { w: Widget }): Promise<void> {
+    await params.w.fetchData("url");
+  },
+});
+`;
+    const { linkedProgram, linkInfo } = compileAndLinkAsync(source);
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(linkedProgram, handles);
+    const scheduler = new runtime.FiberScheduler(vm, { defaultBudget: 10000, autoGcHandles: false });
+    const wrapper = createUserTileExec(linkedProgram, linkInfo, vm, scheduler);
+
+    const outerHandleId = handles.createPending();
+    const args = new ValueDict();
+    args.set(0, mkNativeStructValue("Widget", { id: 1 }));
+    const argsMap: MapValue = { t: NativeType.Map, typeId: "map:<args>", v: args };
+
+    const ctx = mkCtx({
+      currentCallSiteId: 1,
+      callSiteState: new Dict<number, unknown>(),
+    });
+
+    wrapper.exec(ctx, argsMap, outerHandleId);
+    scheduler.tick();
+
+    const stats = scheduler.getStats();
+    assert.equal(stats.waitingFibers, 1, "fiber should be waiting");
+
+    scheduler.cancel(-1);
+
+    assert.equal(handles.get(outerHandleId)!.state, HandleState.CANCELLED, "outer handle should be cancelled");
+
+    const postCancelStats = scheduler.getStats();
+    assert.equal(postCancelStats.cancelledFibers, 1, "fiber should be cancelled");
+  });
+});
+
+describe("recompile-and-update", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("re-registering a tile with updated code -> existing entry updated", () => {
+    const sourceV1 = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "updatable-sensor",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`;
+    const sourceV2 = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "updatable-sensor",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 42;
+  },
+});
+`;
+    const { linkedProgram: lp1, linkInfo: li1 } = compileAndLink(sourceV1);
+    const { wrapper: w1 } = setupExecWrapper(lp1, li1);
+    registerUserTile(li1, w1);
+
+    const { functions, tiles } = getBrainServices();
+    const pgmId = "user.sensor.updatable-sensor";
+    const entryAfterV1 = functions.get(pgmId);
+    assert.ok(entryAfterV1, "function should be registered after v1");
+    assert.ok(tiles.get(mkSensorTileId(pgmId)), "tile should exist after v1");
+
+    const { linkedProgram: lp2, linkInfo: li2 } = compileAndLink(sourceV2);
+    const { wrapper: w2 } = setupExecWrapper(lp2, li2);
+    registerUserTile(li2, w2);
+
+    const entryAfterV2 = functions.get(pgmId);
+    assert.ok(entryAfterV2, "function should still be registered after v2");
+    assert.equal(entryAfterV2!.id, entryAfterV1!.id, "function ID should be unchanged");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(lp2, handles);
+    const scheduler = mkScheduler();
+    const wrapper = createUserTileExec(lp2, li2, vm, scheduler);
+
+    const handleId = handles.createPending();
+    const ctx = mkCtx({
+      currentCallSiteId: 99,
+      callSiteState: new Dict<number, unknown>(),
+    });
+
+    wrapper.exec(ctx, emptyArgs(), handleId);
+
+    assert.equal(handles.get(handleId)!.state, HandleState.RESOLVED);
+    assert.equal((handles.get(handleId)!.result as NumberValue).v, 42, "should return v2 value");
   });
 });

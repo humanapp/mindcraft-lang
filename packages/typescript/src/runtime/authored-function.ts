@@ -1,6 +1,7 @@
 import { List } from "@mindcraft-lang/core";
 import {
   type BrainProgram,
+  type ErrorValue,
   type ExecutionContext,
   type Fiber,
   getCallSiteState,
@@ -12,7 +13,6 @@ import {
   type Scheduler,
   setCallSiteState,
   type Value,
-  type VmRunResult,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import type { UserTileLinkInfo } from "../compiler/types.js";
@@ -26,41 +26,59 @@ export function createUserTileExec(
   const { linkedEntryFuncId, linkedInitFuncId, linkedOnPageEnteredFuncId, program } = linkInfo;
   const { numCallsiteVars, execIsAsync } = program;
   const hasParams = linkedProgram.functions.get(linkedEntryFuncId).numParams > 1;
-  // Negative fiber IDs distinguish user-tile-wrapped fibers from brain-rule fibers
-  // (which use positive IDs), preventing ID collisions in the shared scheduler.
   let nextFiberId = -1;
 
-  function spawnAndRun(
-    funcId: number,
-    args: List<Value>,
-    ctx: ExecutionContext,
-    callsiteVars: List<Value>
-  ): { fiber: Fiber; result: VmRunResult } {
-    const fiberId = nextFiberId--;
-    const fiberCtx: ExecutionContext = { ...ctx };
-    const fiber = vm.spawnFiber(fiberId, funcId, args, fiberCtx);
-    fiber.callsiteVars = callsiteVars;
-    fiber.instrBudget = 10000;
-    const result = vm.runFiber(fiber, scheduler);
-    return { fiber, result };
+  const pendingAsyncFibers = new Map<number, HandleId>();
+
+  if (execIsAsync) {
+    const prevOnFiberDone = scheduler.onFiberDone;
+    scheduler.onFiberDone = (fiberId: number, result?: Value) => {
+      prevOnFiberDone?.(fiberId, result);
+      const outerHandleId = pendingAsyncFibers.get(fiberId);
+      if (outerHandleId !== undefined) {
+        pendingAsyncFibers.delete(fiberId);
+        vm.handles.resolve(outerHandleId, result ?? NIL_VALUE);
+      }
+    };
+
+    const prevOnFiberFault = scheduler.onFiberFault;
+    scheduler.onFiberFault = (fiberId: number, error: ErrorValue) => {
+      prevOnFiberFault?.(fiberId, error);
+      const outerHandleId = pendingAsyncFibers.get(fiberId);
+      if (outerHandleId !== undefined) {
+        pendingAsyncFibers.delete(fiberId);
+        vm.handles.reject(outerHandleId, error);
+      }
+    };
+
+    const prevOnFiberCancelled = scheduler.onFiberCancelled;
+    scheduler.onFiberCancelled = (fiberId: number) => {
+      prevOnFiberCancelled?.(fiberId);
+      const outerHandleId = pendingAsyncFibers.get(fiberId);
+      if (outerHandleId !== undefined) {
+        pendingAsyncFibers.delete(fiberId);
+        vm.handles.cancel(outerHandleId);
+      }
+    };
   }
 
-  function runFiberToCompletion(
+  function runFiberInline(
     funcId: number,
     args: List<Value>,
     ctx: ExecutionContext,
     callsiteVars: List<Value>
   ): Value | undefined {
-    const { result } = spawnAndRun(funcId, args, ctx, callsiteVars);
+    const fiberId = nextFiberId--;
+    const fiber = vm.spawnFiber(fiberId, funcId, args, { ...ctx });
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 10000;
+    const result = vm.runFiber(fiber, scheduler);
     if (result.status === VmStatus.DONE) {
       return result.result;
     }
     return undefined;
   }
 
-  // Callsite vars hold the module-level variable state. They're created once
-  // per call site (keyed by ExecutionContext.currentCallSiteId) and reused on
-  // subsequent invocations so top-level `let` declarations persist across calls.
   function getOrCreateCallsiteVars(ctx: ExecutionContext): List<Value> {
     let vars = getCallSiteState<List<Value>>(ctx);
     if (vars) return vars;
@@ -72,7 +90,7 @@ export function createUserTileExec(
     setCallSiteState(ctx, vars);
 
     if (linkedInitFuncId !== undefined) {
-      runFiberToCompletion(linkedInitFuncId, List.empty(), ctx, vars);
+      runFiberInline(linkedInitFuncId, List.empty(), ctx, vars);
     }
 
     return vars;
@@ -81,43 +99,20 @@ export function createUserTileExec(
   function execSync(ctx: ExecutionContext, args: MapValue, handleId: HandleId): void {
     const callsiteVars = getOrCreateCallsiteVars(ctx);
     const fiberArgs = hasParams ? List.from<Value>([args]) : List.empty<Value>();
-    const result = runFiberToCompletion(linkedEntryFuncId, fiberArgs, ctx, callsiteVars);
+    const result = runFiberInline(linkedEntryFuncId, fiberArgs, ctx, callsiteVars);
     vm.handles.resolve(handleId, result ?? NIL_VALUE);
   }
 
   function execAsync(ctx: ExecutionContext, args: MapValue, outerHandleId: HandleId): void {
     const callsiteVars = getOrCreateCallsiteVars(ctx);
     const fiberArgs = hasParams ? List.from<Value>([args]) : List.empty<Value>();
-    const { fiber, result } = spawnAndRun(linkedEntryFuncId, fiberArgs, ctx, callsiteVars);
 
-    if (result.status === VmStatus.DONE) {
-      vm.handles.resolve(outerHandleId, result.result ?? NIL_VALUE);
-      return;
-    }
+    const fiberId = nextFiberId--;
+    const fiber = vm.spawnFiber(fiberId, linkedEntryFuncId, fiberArgs, { ...ctx });
+    fiber.callsiteVars = callsiteVars;
 
-    if (result.status === VmStatus.WAITING) {
-      waitForHandle(fiber, result.handleId!, outerHandleId);
-    }
-  }
-
-  // Await chain: when the fiber suspends on an async handle, subscribe to
-  // handle completion and resume the fiber. If the resumed fiber suspends
-  // again on a different handle, recurse to set up the next wait.
-  function waitForHandle(fiber: Fiber, innerHandleId: HandleId, outerHandleId: HandleId): void {
-    const unsub = vm.handles.events.on("completed", (completedId: HandleId) => {
-      if (completedId !== innerHandleId) return;
-      unsub();
-
-      vm.resumeFiberFromHandle(fiber, innerHandleId, scheduler);
-      fiber.instrBudget = 10000;
-      const result = vm.runFiber(fiber, scheduler);
-
-      if (result.status === VmStatus.DONE) {
-        vm.handles.resolve(outerHandleId, result.result ?? NIL_VALUE);
-      } else if (result.status === VmStatus.WAITING) {
-        waitForHandle(fiber, result.handleId!, outerHandleId);
-      }
-    });
+    pendingAsyncFibers.set(fiberId, outerHandleId);
+    scheduler.addFiber!(fiber);
   }
 
   return {
@@ -127,7 +122,7 @@ export function createUserTileExec(
       if (linkedOnPageEnteredFuncId === undefined) return;
       const callsiteVars = getCallSiteState<List<Value>>(ctx);
       if (!callsiteVars) return;
-      runFiberToCompletion(linkedOnPageEnteredFuncId, List.empty<Value>(), ctx, callsiteVars);
+      runFiberInline(linkedOnPageEnteredFuncId, List.empty<Value>(), ctx, callsiteVars);
     },
   };
 }
