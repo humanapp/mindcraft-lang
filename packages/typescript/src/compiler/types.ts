@@ -2,11 +2,16 @@ import type { BrainActionCallDef, Program, TypeId } from "@mindcraft-lang/core/b
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 
+export type DiagnosticSeverity = "error" | "warning" | "info";
+
 export interface CompileDiagnostic {
   code: TsDiagCode;
   message: string;
+  severity: DiagnosticSeverity;
   line?: number;
   column?: number;
+  endLine?: number;
+  endColumn?: number;
 }
 
 export interface UserAuthoredProgram extends Program {

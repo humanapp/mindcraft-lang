@@ -2,9 +2,15 @@ import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
 import type { CompileOptions } from "./types.js";
 
-export type { CompileResult, ProjectCompileResult } from "./project.js";
+export type { CompileResult, FunctionDebugInfo, ProjectCompileResult } from "./project.js";
 export { UserTileProject } from "./project.js";
-export type { CompileDiagnostic, CompileOptions, ExtractedDescriptor, ExtractedParam } from "./types.js";
+export type {
+  CompileDiagnostic,
+  CompileOptions,
+  DiagnosticSeverity,
+  ExtractedDescriptor,
+  ExtractedParam,
+} from "./types.js";
 
 export function compileUserTile(source: string, options?: CompileOptions) {
   const project = new UserTileProject(options);
@@ -23,6 +29,7 @@ export function compileUserTile(source: string, options?: CompileOptions) {
       {
         code: DescriptorDiagCode.MissingDefaultExport,
         message: "Missing default export. Expected `export default Sensor({...})` or `export default Actuator({...})`.",
+        severity: "error" as const,
         line: 1,
         column: 1,
       },

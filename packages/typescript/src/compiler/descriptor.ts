@@ -11,12 +11,16 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   const diagnostics: CompileDiagnostic[] = [];
 
   function addDiag(code: DescriptorDiagCode, node: ts.Node, message: string): void {
-    const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
     diagnostics.push({
       code,
       message,
-      line: pos.line + 1,
-      column: pos.character + 1,
+      severity: "error",
+      line: start.line + 1,
+      column: start.character + 1,
+      endLine: end.line + 1,
+      endColumn: end.character + 1,
     });
   }
 
@@ -32,6 +36,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
     diagnostics.push({
       code: DescriptorDiagCode.MissingDefaultExport,
       message: "Missing default export. Expected `export default Sensor({...})` or `export default Actuator({...})`.",
+      severity: "error",
       line: 1,
       column: 1,
     });

@@ -34,12 +34,16 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
   const diagnostics: CompileDiagnostic[] = [];
 
   function addDiag(code: ValidatorDiagCode, node: ts.Node, message: string): void {
-    const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
     diagnostics.push({
       code,
       message,
-      line: pos.line + 1,
-      column: pos.character + 1,
+      severity: "error",
+      line: start.line + 1,
+      column: start.character + 1,
+      endLine: end.line + 1,
+      endColumn: end.character + 1,
     });
   }
 

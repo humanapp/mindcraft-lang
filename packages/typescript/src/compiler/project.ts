@@ -11,6 +11,7 @@ import { lowerProgram, qualifiedClassName } from "./lowering.js";
 import type {
   CompileDiagnostic,
   CompileOptions,
+  DebugSpan,
   ExtractedDescriptor,
   ExtractedParam,
   UserAuthoredProgram,
@@ -18,10 +19,18 @@ import type {
 import { validateAst } from "./validator.js";
 import { createVirtualCompilerHost } from "./virtual-host.js";
 
+export interface FunctionDebugInfo {
+  funcIndex: number;
+  name: string;
+  spans: DebugSpan[];
+  pcToSpanIndex: number[];
+}
+
 export interface CompileResult {
   diagnostics: CompileDiagnostic[];
   program?: UserAuthoredProgram;
   descriptor?: ExtractedDescriptor;
+  functionDebugInfo?: FunctionDebugInfo[];
 }
 
 export interface ProjectCompileResult {
@@ -145,14 +154,26 @@ export class UserTileProject {
       const fileName = d.file?.fileName;
       if (fileName === LIB_FILE) continue;
       const vfsKey = fileName ? toVfsPath(fileName) : "<global>";
+      const severity =
+        d.category === ts.DiagnosticCategory.Warning
+          ? ("warning" as const)
+          : d.category === ts.DiagnosticCategory.Message || d.category === ts.DiagnosticCategory.Suggestion
+            ? ("info" as const)
+            : ("error" as const);
       const diag: CompileDiagnostic = {
         code: CompileDiagCode.TypeScriptError,
         message: ts.flattenDiagnosticMessageText(d.messageText, "\n"),
+        severity,
       };
       if (d.file && d.start !== undefined) {
-        const pos = d.file.getLineAndCharacterOfPosition(d.start);
-        diag.line = pos.line + 1;
-        diag.column = pos.character + 1;
+        const start = d.file.getLineAndCharacterOfPosition(d.start);
+        diag.line = start.line + 1;
+        diag.column = start.character + 1;
+        if (d.length !== undefined) {
+          const end = d.file.getLineAndCharacterOfPosition(d.start + d.length);
+          diag.endLine = end.line + 1;
+          diag.endColumn = end.character + 1;
+        }
       }
       let arr = tsErrors.get(vfsKey);
       if (!arr) {
@@ -230,8 +251,10 @@ export class UserTileProject {
 
     const pool = new compiler.ConstantPool();
     const emittedFunctions: ReturnType<typeof emitFunction>["bytecode"][] = [];
+    const functionDebugInfo: FunctionDebugInfo[] = [];
 
-    for (const func of programResult.functions) {
+    for (let funcIdx = 0; funcIdx < programResult.functions.length; funcIdx++) {
+      const func = programResult.functions[funcIdx];
       const emitResult = emitFunction(
         func.ir,
         func.numParams,
@@ -245,6 +268,12 @@ export class UserTileProject {
         return { diagnostics: emitResult.diagnostics };
       }
       emittedFunctions.push(emitResult.bytecode);
+      functionDebugInfo.push({
+        funcIndex: funcIdx,
+        name: func.name,
+        spans: emitResult.spans,
+        pcToSpanIndex: emitResult.pcToSpanIndex,
+      });
     }
 
     const qualifiedParams = qualifyDescriptorParams(descriptor.params, sourceFile);
@@ -257,7 +286,11 @@ export class UserTileProject {
     if (qualifiedOutputType && !outputType) {
       return {
         diagnostics: [
-          { code: CompileDiagCode.UnknownOutputType, message: `Unknown output type: "${descriptor.outputType}"` },
+          {
+            code: CompileDiagCode.UnknownOutputType,
+            message: `Unknown output type: "${descriptor.outputType}"`,
+            severity: "error",
+          },
         ],
       };
     }
@@ -283,7 +316,7 @@ export class UserTileProject {
       params: qualifiedParams,
     };
 
-    return { diagnostics: [], program, descriptor };
+    return { diagnostics: [], program, descriptor, functionDebugInfo };
   }
 }
 
@@ -403,6 +436,7 @@ function collectImports(
       diagnostics.push({
         code: CompileDiagCode.DuplicateImportedSymbol,
         message: `Duplicate imported symbol '${fn.localName}' from '${existing}' and '${source}'`,
+        severity: "error",
       });
     } else {
       funcSources.set(fn.localName, source);
@@ -416,6 +450,7 @@ function collectImports(
       diagnostics.push({
         code: CompileDiagCode.DuplicateImportedSymbol,
         message: `Duplicate imported symbol '${v.name}' from '${existing}' and '${v.sourceModule}'`,
+        severity: "error",
       });
     } else {
       varSources.set(v.name, v.sourceModule);
@@ -430,6 +465,7 @@ function collectImports(
       diagnostics.push({
         code: CompileDiagCode.DuplicateImportedSymbol,
         message: `Duplicate imported symbol '${c.name}' from '${existing}' and '${source}'`,
+        severity: "error",
       });
     } else {
       classSources.set(c.name, source);

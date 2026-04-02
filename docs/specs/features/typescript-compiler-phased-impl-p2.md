@@ -40,22 +40,26 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-04-02) Phases 0-16, 18-22 complete, plus Array method lowering
+(Updated 2026-04-02) Phases 0-16, 18-23 complete, plus Array method lowering
 detour, VM list mutation ops detour, Array.sort detour, class declarations detour,
 destructuring extensions detour, string methods detour, Math methods detour, and
 multi-file compilation detour. Phase 22 added debug metadata type definitions.
+Phase 23 added source span tracking (IR annotation, per-function span/pcToSpanIndex
+emission, FunctionDebugInfo in CompileResult).
 See the original doc's Current State and Phase Log for full history.
 
 ### Compiler pipeline (`packages/typescript/src/compiler/`)
 
 - `compile.ts` -- `compileUserTile(source, options?)` single-file entry point;
   wraps `UserTileProject` for backward compatibility. Re-exports
-  `CompileResult`, `ProjectCompileResult`, `UserTileProject`.
+  `CompileResult`, `ProjectCompileResult`, `UserTileProject`, `FunctionDebugInfo`.
 - `project.ts` -- `UserTileProject` orchestration class. `setFiles()`,
   `updateFile()`, `deleteFile()`, `renameFile()` manage a virtual file system.
   `compileAll()` / `compileAffected()` return `ProjectCompileResult` with
   per-file `CompileResult` entries. Shared TS program, single
   `getPreEmitDiagnostics()` pass, `collectImports()` for cross-file symbols.
+  `CompileResult.functionDebugInfo?: FunctionDebugInfo[]` collects per-function
+  span data (`funcIndex`, `name`, `spans`, `pcToSpanIndex`) for Phase 25 assembly.
 - `virtual-host.ts` -- `createVirtualCompilerHost()`, zero Node.js APIs.
 - `validator.ts` -- rejects unsupported constructs with positioned diagnostics.
 - `descriptor.ts` -- extracts `ExtractedDescriptor` from `Sensor()`/`Actuator()`.
@@ -63,12 +67,17 @@ See the original doc's Current State and Phase Log for full history.
   No metadata tracking (no scope IDs, no start/end PCs, no parent tracking).
 - `ir.ts` -- 43 IR node kinds (control flow, struct/list/map construction, list
   mutation ops, struct copy-except, function refs/closures/indirect calls, type
-  checking, async host calls, await).
+  checking, async host calls, await). All node interfaces extend `IrNodeBase`
+  with optional `span?: IrSourceSpan` and `isStatementBoundary?: boolean`.
 - `lowering.ts` -- `lowerProgram()` produces `ProgramLoweringResult` with multiple
   `FunctionEntry` records (onExecute, onPageEntered wrapper, module init, helpers,
-  class constructors, class methods, closures).
-- `emit.ts` -- `emitFunction()` produces `EmitResult { bytecode, diagnostics }`.
-  No span tracking or debug metadata.
+  class constructors, class methods, closures). `spanFromNode()` extracts 1-based
+  line/column from TS AST nodes. `annotateFirstNode()` stamps first real IR node
+  (skipping Labels) with span and statement boundary flag.
+- `emit.ts` -- `emitFunction()` produces `EmitResult { bytecode, diagnostics,
+  spans, pcToSpanIndex }`. Span deduplication via keyed string map. Statement
+  boundary annotations propagated to `DebugSpan.isStatementBoundary`. Fallback
+  empty span for generated functions with no annotated IR nodes.
 - `ambient.ts` -- `buildAmbientDeclarations()` generates the "mindcraft" ambient
   module (structs, branded numbers, enums, list types, function types).
 - `types.ts` -- `CompileDiagnostic`, `ExtractedDescriptor`, `ExtractedParam`,
@@ -79,14 +88,13 @@ See the original doc's Current State and Phase Log for full history.
   populated in Phase 25). `LocalInfo.storageKind` includes `"capture"` for
   closure variables. The debugger spec's `Span` and `SourceSpan` types are
   unified as `DebugSpan`.
-  `CompileDiagnostic` currently has `{ code, message, line?, column? }` -- start
-  position only, no end position, no severity. Needs enhancement to carry full
-  source ranges (`endLine`, `endColumn`) and `severity` so the diagnostics
-  bridge pipeline ([diagnostics-bridge-pipeline.md](diagnostics-bridge-pipeline.md))
-  can forward them to VS Code without lossy synthesis. All three creation sites
-  (`makeDiag` in lowering, `addDiag` in validator, TS diagnostic mapping in
-  project.ts) already have access to full span information from the TS AST; the
-  fields just need to be populated.
+  `CompileDiagnostic` has `{ code, message, severity, line?, column?, endLine?,
+  endColumn? }`. `severity` is required (`DiagnosticSeverity` = `"error" |
+  "warning" | "info"`). All diagnostic creation sites populate full source
+  ranges and severity. TS checker diagnostics map severity from
+  `ts.DiagnosticCategory`; all compiler-emitted diagnostics use `"error"`.
+  This satisfies the prerequisite for
+  [diagnostics-bridge-pipeline.md](diagnostics-bridge-pipeline.md) Phase D1.
 - `diag-codes.ts` -- all diagnostic code enums (Validator, Descriptor, Lowering,
   Emit, Compile).
 - `call-def-builder.ts` -- builds `BrainActionCallDef` from params.
@@ -652,19 +660,11 @@ the `debugMetadata` field to `UserAuthoredProgram`.
 
 ### Phase 23: Source span tracking
 
-(Updated 2026-04-02) No source span work has been started. IR nodes (43 kinds in
-`ir.ts`) have no `sourceSpan` field. The emit pass (`emitFunction`) returns
-`EmitResult { bytecode, diagnostics }` with no span tracking. The lowering pass
-(5300+ lines in `lowering.ts`) would need annotation across all expression and
-statement lowering paths.
-
-The compiler now has substantially more lowering paths than when this phase was
-originally planned: class declarations (constructors, methods, field init),
-destructuring extensions (nested, rest, computed, parameter-position), string
-methods (14 methods), Math methods/constants (8 constants, 14 unary, 4 binary),
-and additional array methods (`.lastIndexOf`, `.findIndex`, `.reduce`, `.toString`,
-`Array.from()`). All of these generate IR nodes that would need source span
-annotation.
+(Updated 2026-04-02) Phase 23 is complete. IR nodes carry `IrSourceSpan` via
+`IrNodeBase`. The emit pass builds `spans: DebugSpan[]` and `pcToSpanIndex: number[]`
+per function. Statement boundary rules are applied at the `lowerStatement`/
+`lowerExpression` dispatch level via `annotateFirstNode`. Per-function debug info is
+collected in `CompileResult.functionDebugInfo` for Phase 25 assembly. See Phase Log.
 
 **Objective:** Track source spans during lowering and build `pcToSpanIndex` during
 emission so every bytecode instruction maps back to a source location.
@@ -755,7 +755,10 @@ and variable lifetimes for debugger inspection.
   boundaries to final PCs.
 
 **Prerequisites:** Phase 23 (source span tracking) must be complete because scope
-start/end PCs share the same IR-index-to-PC mapping infrastructure.
+start/end PCs share the same IR-index-to-PC mapping infrastructure. (Phase 23 is
+complete -- `emitFunction` tracks `emitter.pos()` per IR node and builds
+`pcToSpanIndex`. Phase 24 can use the same `pcBefore = emitter.pos()` technique to
+record scope enter/exit PCs during emission.)
 
 **Concrete deliverables:**
 
@@ -782,7 +785,9 @@ start/end PCs share the same IR-index-to-PC mapping infrastructure.
 
 - **PC range tracking.** Scope start/end PCs must be precisely tracked during emission,
   not just during lowering. The emit pass assigns final PCs; the lowering pass only
-  knows IR indices. Phase 23's IR-index-to-PC mapping must support this.
+  knows IR indices. Phase 23's `emitter.pos()` tracking pattern (used for
+  `pcToSpanIndex`) provides the model: track `pcBefore = emitter.pos()` before
+  emitting an IR node, and use the delta to map IR indices to PC ranges.
 - **Class scope complexity.** Classes introduce a constructor function scope and
   per-method function scopes. These are separate `FunctionEntry` records so each
   gets its own scope tree. `this` occupies a local slot and must be represented.
@@ -821,7 +826,10 @@ metadata collected in Phases 23-24 and attach it to `UserAuthoredProgram`.
   debug metadata by function base offset. Copy or merge `DebugFileInfo` entries.
 
 **Prerequisites:** Phases 23 and 24 must be complete (spans and scope metadata are
-populated per-function).
+populated per-function). (Phase 23 is complete --
+`CompileResult.functionDebugInfo?: FunctionDebugInfo[]` provides per-function
+`spans: DebugSpan[]` and `pcToSpanIndex: number[]`. Phase 25 assembly consumes
+these directly into `DebugFunctionInfo`.)
 
 **Concrete deliverables:**
 
@@ -1172,3 +1180,114 @@ no functional behavior.
 `SourceSpan`) for essentially the same structure. The implementation unifies
 them under `DebugSpan`. Phase 23 (source span tracking) should use `DebugSpan`
 consistently when populating span data.
+
+### Phase 23 -- Source span tracking (2026-04-02)
+
+**Planned:** Track source spans during lowering and build `pcToSpanIndex` during
+emission so every bytecode instruction maps back to a source location. Four
+deliverables: (1) IR nodes carry optional `sourceSpan`, (2) emit builds
+`spans: DebugSpan[]` and `pcToSpanIndex: number[]`, (3) statement boundary rules
+applied per debugger spec, (4) `DebugFunctionInfo.spans` and `pcToSpanIndex`
+populated.
+
+**Actual:** All four deliverables implemented. Six files changed for span
+tracking, plus a follow-on enhancement to `CompileDiagnostic` across seven files:
+
+- `ir.ts` -- added `IrSourceSpan` interface (`startLine, startColumn, endLine,
+  endColumn`) and `IrNodeBase` interface with optional `span?: IrSourceSpan` and
+  `isStatementBoundary?: boolean`. All 43 IR node interfaces now extend
+  `IrNodeBase`.
+- `lowering.ts` -- added `spanFromNode(node: ts.Node)` helper that extracts
+  1-based line/column from the TS AST. Added `annotateFirstNode(ir, irStart,
+  node, isStatementBoundary)` helper that stamps the first real IR node after
+  `irStart`, skipping Labels (which emit zero instructions). Modified
+  `lowerStatement()` and `lowerExpression()` to capture `irStart` and call
+  `annotateFirstNode`. Special-cased `lowerWhileStatement` and
+  `lowerForStatement` to mark condition nodes as statement boundaries.
+  `lowerAwaitExpression` explicitly marks the `IrAwait` node with span and
+  `isStatementBoundary: true`. Also updated `makeDiag()` to populate
+  `endLine`/`endColumn`/`severity` on `CompileDiagnostic`, and added
+  `severity: "error"` to two inline no-body diagnostic pushes.
+- `emit.ts` -- extended `EmitResult` with `spans: DebugSpan[]` and
+  `pcToSpanIndex: number[]`. Added span deduplication via keyed map
+  (`line:col:endLine:endCol:boundary`). In the emission loop, tracks
+  `pcBefore = emitter.pos()` and fills `pcToSpanIndex[pc]` for each emitted PC.
+  Fallback empty span (all zeros) for generated functions with no annotated nodes.
+  Updated four early-return error paths to include `spans: [], pcToSpanIndex: []`
+  and `severity: "error"` on their diagnostics.
+- `project.ts` -- added `FunctionDebugInfo` interface (`funcIndex, name, spans,
+  pcToSpanIndex`). Added optional `functionDebugInfo?: FunctionDebugInfo[]` to
+  `CompileResult`. Collects debug info for each emitted function in
+  `_compileEntryPoint()`. Also updated TS diagnostic mapping to populate
+  `endLine`/`endColumn` (from `d.start + d.length`) and `severity` (mapped
+  from `ts.DiagnosticCategory`). Added `severity: "error"` to orchestration
+  diagnostics (duplicate import, unknown output type).
+- `types.ts` -- added `DiagnosticSeverity` type (`"error" | "warning" | "info"`).
+  `CompileDiagnostic` now has required `severity: DiagnosticSeverity` and optional
+  `endLine?: number`, `endColumn?: number`.
+- `compile.ts` -- added `FunctionDebugInfo` and `DiagnosticSeverity` to type
+  re-exports. Added `severity: "error"` to fallback diagnostic literal.
+- `validator.ts` -- updated `addDiag()` to populate `endLine`/`endColumn`
+  (from `node.getEnd()`) and `severity: "error"`.
+- `descriptor.ts` -- updated `addDiag()` to populate `endLine`/`endColumn`
+  and `severity: "error"`. Added `severity: "error"` to inline missing-export
+  diagnostic.
+- `source-spans.spec.ts` -- 12 new tests.
+
+**Deviations from spec:**
+
+- Spec deliverable 1 called for `sourceSpan` with `{ start, end, startLine,
+  startColumn, endLine, endColumn }` (offset + line/col). Implementation uses
+  `IrSourceSpan` with line/column only (`startLine, startColumn, endLine,
+  endColumn`), omitting byte offsets. Byte offsets are not needed for the debugger
+  use case (VS Code works with line/column), and omitting them simplifies the IR
+  and avoids carrying redundant data.
+- Spec suggested annotating IR nodes individually across all expression and
+  statement lowering paths. Implementation annotates at the dispatch level: the
+  top of `lowerStatement()` and `lowerExpression()` capture an `irStart` index,
+  and `annotateFirstNode` stamps the first emitted node after lowering completes.
+  This covers all 43 node kinds with two annotation sites (plus special cases for
+  loop conditions and await) rather than modifying each lowering function.
+- Spec deliverable 4 referenced `DebugFunctionInfo.spans` and
+  `DebugFunctionInfo.pcToSpanIndex`. Implementation populates a separate
+  `FunctionDebugInfo` in `CompileResult` rather than `DebugFunctionInfo` directly,
+  because the full `DebugFunctionInfo` assembly (with scopes, locals, call sites)
+  is deferred to Phase 25. The per-function span data is available for Phase 25
+  to consume.
+- Spec acceptance criteria called for testing `isGenerated: true` on generated
+  functions. Implementation tests that generated function spans exist (with
+  fallback empty span) but `isGenerated` is a `DebugFunctionInfo` field populated
+  in Phase 25, not a span-level concern. Generated functions are identifiable by
+  name (`"<init>"`, `"<onPageEntered-wrapper>"`) and their spans are all-zero.
+
+**Risks resolved:**
+
+- Annotation scope: the dispatch-level annotation strategy (annotate at
+  `lowerStatement`/`lowerExpression`) dramatically reduced the annotation work
+  compared to the per-lowering-function approach the spec anticipated. Two
+  annotation sites plus three special cases cover all paths.
+- Label IR nodes: `Label` nodes emit zero bytecode instructions via `mark()`.
+  `annotateFirstNode` skips past Labels to find the first instruction-emitting
+  node. Without this, the annotation would be lost.
+- Generated functions: wrapper and init functions have no TS AST nodes to
+  annotate. A fallback empty span (all zeros, `isStatementBoundary: false`) is
+  created when no annotations exist, ensuring `pcToSpanIndex` has full coverage.
+- Multi-file spans: not yet exercised (Phase 25 concern). The per-file lowering
+  boundary in `project.ts` means each file's functions get independent span sets.
+  `fileIndex` assignment is deferred to Phase 25.
+
+**Observation:** The `CompileDiagnostic` enhancement (adding `endLine`,
+`endColumn`, `severity`) was done as a follow-on to span tracking since the
+`spanFromNode` helper established the pattern. This resolves the prerequisite
+noted in [diagnostics-bridge-pipeline.md](diagnostics-bridge-pipeline.md)
+Phase D1 -- the `CompileDiagnostic` -> `CompileDiagnosticsPayload` mapping
+is now a direct passthrough with no synthesis needed. TS diagnostic severity
+is mapped from `ts.DiagnosticCategory` (`Warning` -> `"warning"`,
+`Message`/`Suggestion` -> `"info"`, default -> `"error"`). All compiler-emitted
+diagnostics (validator, descriptor, lowering, emit, orchestration) default to
+`severity: "error"`.
+
+**Tests added:** 12 (pcToSpanIndex coverage, statement boundaries for expression
+statements/return/if/while/for/break/continue, sub-expression non-boundaries,
+valid line/col info, unique span deduplication, generated function spans, multiple
+functions, for loop condition boundaries). All 511 tests pass.

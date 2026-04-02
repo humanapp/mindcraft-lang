@@ -7,12 +7,14 @@ import {
   type TypeId,
 } from "@mindcraft-lang/core/brain";
 import { EmitDiagCode } from "./diag-codes.js";
-import type { IrNode } from "./ir.js";
-import type { CompileDiagnostic } from "./types.js";
+import type { IrNode, IrSourceSpan } from "./ir.js";
+import type { CompileDiagnostic, DebugSpan } from "./types.js";
 
 export interface EmitResult {
   bytecode: FunctionBytecode;
   diagnostics: CompileDiagnostic[];
+  spans: DebugSpan[];
+  pcToSpanIndex: number[];
 }
 
 export function emitFunction(
@@ -28,6 +30,29 @@ export function emitFunction(
   const diagnostics: CompileDiagnostic[] = [];
   const labelMap = new Map<number, number>();
 
+  const spans: DebugSpan[] = [];
+  const pcToSpanIndex: number[] = [];
+  const spanMap = new Map<string, number>();
+  let currentSpanIndex = -1;
+  let nextSpanId = 0;
+
+  function getOrCreateSpanIndex(irSpan: IrSourceSpan, isStatementBoundary: boolean): number {
+    const key = `${irSpan.startLine}:${irSpan.startColumn}:${irSpan.endLine}:${irSpan.endColumn}:${isStatementBoundary ? 1 : 0}`;
+    let idx = spanMap.get(key);
+    if (idx !== undefined) return idx;
+    idx = spans.length;
+    spans.push({
+      spanId: nextSpanId++,
+      startLine: irSpan.startLine,
+      startColumn: irSpan.startColumn,
+      endLine: irSpan.endLine,
+      endColumn: irSpan.endColumn,
+      isStatementBoundary,
+    });
+    spanMap.set(key, idx);
+    return idx;
+  }
+
   function getOrAllocLabel(irLabelId: number): number {
     let emitterLabelId = labelMap.get(irLabelId);
     if (emitterLabelId === undefined) {
@@ -38,6 +63,11 @@ export function emitFunction(
   }
 
   for (const node of ir) {
+    if (node.span) {
+      currentSpanIndex = getOrCreateSpanIndex(node.span, node.isStatementBoundary ?? false);
+    }
+    const pcBefore = emitter.pos();
+
     switch (node.kind) {
       case "PushConst": {
         const idx = pool.add(node.value);
@@ -77,8 +107,9 @@ export function emitFunction(
           diagnostics.push({
             code: EmitDiagCode.CannotResolveHostFunction,
             message: `Cannot resolve host function: ${node.fnName}`,
+            severity: "error",
           });
-          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
+          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics, spans: [], pcToSpanIndex: [] };
         }
         emitter.hostCallArgs(fnId, node.argc, 0);
         break;
@@ -89,8 +120,9 @@ export function emitFunction(
           diagnostics.push({
             code: EmitDiagCode.CannotResolveHostFunction,
             message: `Cannot resolve host function: ${node.fnName}`,
+            severity: "error",
           });
-          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
+          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics, spans: [], pcToSpanIndex: [] };
         }
         emitter.hostCallArgsAsync(fnId, node.argc, 0);
         break;
@@ -178,8 +210,9 @@ export function emitFunction(
           diagnostics.push({
             code: EmitDiagCode.CannotResolveFunction,
             message: `Cannot resolve function: ${node.funcName}`,
+            severity: "error",
           });
-          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
+          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics, spans: [], pcToSpanIndex: [] };
         }
         const idx = pool.add(mkFunctionValue(funcId));
         emitter.pushConst(idx);
@@ -191,8 +224,9 @@ export function emitFunction(
           diagnostics.push({
             code: EmitDiagCode.CannotResolveClosureFunction,
             message: `Cannot resolve closure function: ${node.funcName}`,
+            severity: "error",
           });
-          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics };
+          return { bytecode: makeEmptyBytecode(numParams, numLocals, name), diagnostics, spans: [], pcToSpanIndex: [] };
         }
         emitter.makeClosure(closureFuncId, node.captureCount);
         break;
@@ -213,12 +247,30 @@ export function emitFunction(
         emitter.jmpIfTrue(getOrAllocLabel(node.labelId));
         break;
     }
+
+    const pcAfter = emitter.pos();
+    for (let pc = pcBefore; pc < pcAfter; pc++) {
+      pcToSpanIndex[pc] = currentSpanIndex >= 0 ? currentSpanIndex : 0;
+    }
+  }
+
+  if (spans.length === 0) {
+    spans.push({
+      spanId: 0,
+      startLine: 0,
+      startColumn: 0,
+      endLine: 0,
+      endColumn: 0,
+      isStatementBoundary: false,
+    });
   }
 
   const code = emitter.finalize();
   return {
     bytecode: { code, numParams, numLocals, name, injectCtxTypeId },
     diagnostics,
+    spans,
+    pcToSpanIndex,
   };
 }
 

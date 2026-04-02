@@ -42,14 +42,15 @@ Same loop as the compiler phased plan:
     program.
   - `tsErrors: Map<string, CompileDiagnostic[]>` -- TypeScript checker errors
     (shared across files in the project).
-- `CompileDiagnostic { code, message, line?, column? }` -- no end position, no
-  severity field. `line` and `column` are 1-indexed. All three creation sites
-  (`makeDiag` in `lowering.ts`, `addDiag` in `validator.ts`, TS diagnostic
-  mapping in `project.ts`) have access to full span information from the TS
-  AST node or `ts.Diagnostic` (which carries `start` + `length`). Enhancement
-  to add `endLine?`, `endColumn?`, and `severity?` is a prerequisite for this
-  pipeline and is tracked in
-  [typescript-compiler-phased-impl-p2.md](typescript-compiler-phased-impl-p2.md).
+- `CompileDiagnostic { code, message, severity, line?, column?, endLine?,
+  endColumn? }` -- full source ranges and severity. `severity` is
+  `"error" | "warning" | "info"` (required). `line` and `column` are 1-indexed.
+  All diagnostic creation sites (`makeDiag` in `lowering.ts`, `addDiag` in
+  `validator.ts` and `descriptor.ts`, TS diagnostic mapping in `project.ts`,
+  emit-phase errors in `emit.ts`) populate these fields. TS checker diagnostics
+  map severity from `ts.DiagnosticCategory`; all compiler-emitted diagnostics
+  use `"error"`. The `CompileDiagnostic` -> `CompileDiagnosticsPayload` mapping
+  in Phase D3 is a direct passthrough with no synthesis needed.
 - `user-tile-compiler.ts` exposes `onCompilation(fn)` and `onRemoval(fn)`
   listener hooks. Currently only consumed by `console.log`-style logging.
   No subscriber sends diagnostics to the bridge.

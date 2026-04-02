@@ -17,7 +17,7 @@ import {
 } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
 import { LoweringDiagCode } from "./diag-codes.js";
-import type { IrNode } from "./ir.js";
+import type { IrNode, IrSourceSpan } from "./ir.js";
 import { ScopeStack } from "./scope.js";
 import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
 
@@ -402,6 +402,7 @@ function lowerOnPageEnteredBody(
     sharedDiagnostics.push({
       code: LoweringDiagCode.OnPageEnteredHasNoBody,
       message: "onPageEntered function has no body",
+      severity: "error",
     });
     return {
       ir,
@@ -547,7 +548,11 @@ function lowerOnExecuteBody(
 
   const body = funcNode.body;
   if (!body || !ts.isBlock(body)) {
-    sharedDiagnostics.push({ code: LoweringDiagCode.OnExecuteHasNoBody, message: "onExecute function has no body" });
+    sharedDiagnostics.push({
+      code: LoweringDiagCode.OnExecuteHasNoBody,
+      message: "onExecute function has no body",
+      severity: "error",
+    });
     return {
       ir,
       numParams: hasParams ? 2 : 1,
@@ -709,6 +714,8 @@ function lowerStatements(stmts: ts.NodeArray<ts.Statement>, ctx: LowerContext): 
 }
 
 function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
+  const irStart = ctx.ir.length;
+
   if (ts.isReturnStatement(stmt)) {
     if (stmt.expression) {
       lowerExpression(stmt.expression, ctx);
@@ -743,6 +750,10 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.UnsupportedStatement, `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`, stmt)
     );
+  }
+
+  if (!ts.isBlock(stmt) && stmt.kind !== ts.SyntaxKind.EmptyStatement && !ts.isClassDeclaration(stmt)) {
+    annotateFirstNode(ctx.ir, irStart, stmt, true);
   }
 }
 
@@ -1124,7 +1135,9 @@ function lowerWhileStatement(stmt: ts.WhileStatement, ctx: LowerContext): void {
   ctx.loopStack.push({ continueLabel: loopStart, breakLabel: loopEnd });
 
   ctx.ir.push({ kind: "Label", labelId: loopStart });
+  const condStart = ctx.ir.length;
   lowerExpression(stmt.expression, ctx);
+  annotateFirstNode(ctx.ir, condStart, stmt.expression, true);
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
   lowerStatement(stmt.statement, ctx);
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
@@ -1154,7 +1167,9 @@ function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "Label", labelId: loopStart });
 
   if (stmt.condition) {
+    const condStart = ctx.ir.length;
     lowerExpression(stmt.condition, ctx);
+    annotateFirstNode(ctx.ir, condStart, stmt.condition, true);
     ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
   }
 
@@ -1294,6 +1309,8 @@ function lowerContinueStatement(stmt: ts.ContinueStatement, ctx: LowerContext): 
 }
 
 function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
+  const irStart = ctx.ir.length;
+
   if (ts.isNumericLiteral(expr)) {
     ctx.ir.push({ kind: "PushConst", value: mkNumberValue(Number(expr.text)) });
   } else if (expr.kind === ts.SyntaxKind.TrueKeyword) {
@@ -1364,6 +1381,8 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
       makeDiag(LoweringDiagCode.UnsupportedExpression, `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr)
     );
   }
+
+  annotateFirstNode(ctx.ir, irStart, expr, false);
 }
 
 function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
@@ -1416,7 +1435,7 @@ function lowerAwaitExpression(expr: ts.AwaitExpression, ctx: LowerContext): void
     );
     return;
   }
-  ctx.ir.push({ kind: "Await" });
+  ctx.ir.push({ kind: "Await", span: spanFromNode(expr), isStatementBoundary: true });
 }
 
 function lowerNewExpression(expr: ts.NewExpression, ctx: LowerContext): void {
@@ -5318,11 +5337,48 @@ function lowerClassDeclaration(
 
 function makeDiag(code: LoweringDiagCode, message: string, node: ts.Node): CompileDiagnostic {
   const sourceFile = node.getSourceFile();
-  const diag: CompileDiagnostic = { code, message };
+  const diag: CompileDiagnostic = { code, message, severity: "error" };
   if (sourceFile) {
-    const pos = sourceFile.getLineAndCharacterOfPosition(node.getStart());
-    diag.line = pos.line + 1;
-    diag.column = pos.character + 1;
+    const start = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+    const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
+    diag.line = start.line + 1;
+    diag.column = start.character + 1;
+    diag.endLine = end.line + 1;
+    diag.endColumn = end.character + 1;
   }
   return diag;
+}
+
+function spanFromNode(node: ts.Node): IrSourceSpan | undefined {
+  const sf = node.getSourceFile();
+  if (!sf) return undefined;
+  const start = sf.getLineAndCharacterOfPosition(node.getStart());
+  const end = sf.getLineAndCharacterOfPosition(node.getEnd());
+  return {
+    startLine: start.line + 1,
+    startColumn: start.character + 1,
+    endLine: end.line + 1,
+    endColumn: end.character + 1,
+  };
+}
+
+function annotateFirstNode(ir: IrNode[], irStart: number, node: ts.Node, isStatementBoundary: boolean): void {
+  if (ir.length <= irStart) return;
+  const first = ir[irStart];
+  if (first.kind === "Label" && ir.length > irStart + 1) {
+    const next = ir[irStart + 1];
+    if (!next.span) {
+      next.span = spanFromNode(node);
+      if (isStatementBoundary) next.isStatementBoundary = true;
+    } else if (isStatementBoundary) {
+      next.isStatementBoundary = true;
+    }
+    return;
+  }
+  if (!first.span) {
+    first.span = spanFromNode(node);
+    if (isStatementBoundary) first.isStatementBoundary = true;
+  } else if (isStatementBoundary) {
+    first.isStatementBoundary = true;
+  }
 }
