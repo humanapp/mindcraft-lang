@@ -43,6 +43,13 @@ export interface ImportedVariable {
   sourceModule: string;
 }
 
+interface ClassInfo {
+  node: ts.ClassDeclaration;
+  name: string;
+  constructorFuncId: number;
+  methodFuncIds: Map<string, number>;
+}
+
 export interface ProgramLoweringResult {
   functions: FunctionEntry[];
   entryFuncId: number;
@@ -72,6 +79,7 @@ interface LowerContext {
   capturedVars?: Map<string, number>;
   funcIdCounter: { value: number };
   closureFunctions: Map<number, FunctionEntry>;
+  thisLocalIndex?: number;
 }
 
 function allocLabel(ctx: LowerContext): number {
@@ -147,6 +155,7 @@ export function lowerProgram(
   const callsiteVars = new Map<string, number>();
   const functionTable = new Map<string, number>();
   const helperNodes: ts.FunctionDeclaration[] = [];
+  const classInfos: ClassInfo[] = [];
   const funcIdCounter = { value: 0 };
   const closureFunctions = new Map<number, FunctionEntry>();
 
@@ -161,6 +170,20 @@ export function lowerProgram(
     if (ts.isFunctionDeclaration(stmt) && stmt.name) {
       functionTable.set(stmt.name.text, funcIdCounter.value++);
       helperNodes.push(stmt);
+    } else if (ts.isClassDeclaration(stmt) && stmt.name) {
+      const className = stmt.name.text;
+      const constructorFuncId = funcIdCounter.value++;
+      functionTable.set(`${className}$new`, constructorFuncId);
+      const methodFuncIds = new Map<string, number>();
+      for (const member of stmt.members) {
+        if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name)) {
+          const methodName = member.name.text;
+          const methodFuncId = funcIdCounter.value++;
+          functionTable.set(`${className}.${methodName}`, methodFuncId);
+          methodFuncIds.set(methodName, methodFuncId);
+        }
+      }
+      classInfos.push({ node: stmt, name: className, constructorFuncId, methodFuncIds });
     } else if (ts.isVariableStatement(stmt) && !isInsideDescriptor(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
@@ -208,6 +231,10 @@ export function lowerProgram(
 
   const functions: FunctionEntry[] = [];
 
+  for (const ci of classInfos) {
+    registerClassStructType(ci, checker, diagnostics);
+  }
+
   const onExecEntry = lowerOnExecuteBody(
     descriptor,
     checker,
@@ -230,6 +257,19 @@ export function lowerProgram(
       closureFunctions
     );
     functions.push(entry);
+  }
+
+  for (const ci of classInfos) {
+    const classEntries = lowerClassDeclaration(
+      ci,
+      checker,
+      callsiteVars,
+      functionTable,
+      diagnostics,
+      funcIdCounter,
+      closureFunctions
+    );
+    functions.push(...classEntries);
   }
 
   if (descriptor.onPageEnteredNode) {
@@ -654,6 +694,8 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     lowerContinueStatement(stmt, ctx);
   } else if (stmt.kind === ts.SyntaxKind.EmptyStatement) {
     // no-op
+  } else if (ts.isClassDeclaration(stmt)) {
+    // no-op: class declarations are pre-processed in lowerProgram
   } else {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.UnsupportedStatement, `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`, stmt)
@@ -1260,6 +1302,20 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
     lowerExpression(expr.expression, ctx);
   } else if (ts.isAwaitExpression(expr)) {
     lowerAwaitExpression(expr, ctx);
+  } else if (expr.kind === ts.SyntaxKind.ThisKeyword) {
+    if (ctx.thisLocalIndex === undefined) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ThisOutsideClassContext,
+          "'this' can only be used inside a class constructor or method",
+          expr
+        )
+      );
+      return;
+    }
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+  } else if (ts.isNewExpression(expr)) {
+    lowerNewExpression(expr, ctx);
   } else {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.UnsupportedExpression, `Unsupported expression: ${ts.SyntaxKind[expr.kind]}`, expr)
@@ -1318,6 +1374,35 @@ function lowerAwaitExpression(expr: ts.AwaitExpression, ctx: LowerContext): void
     return;
   }
   ctx.ir.push({ kind: "Await" });
+}
+
+function lowerNewExpression(expr: ts.NewExpression, ctx: LowerContext): void {
+  if (!ts.isIdentifier(expr.expression)) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NewExpressionNotIdentifier,
+        "new expression target must be an identifier",
+        expr.expression
+      )
+    );
+    return;
+  }
+
+  const className = expr.expression.text;
+  const ctorKey = `${className}$new`;
+  const funcId = ctx.functionTable.get(ctorKey);
+  if (funcId === undefined) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.NewExpressionUnknownClass, `Unknown class '${className}'`, expr.expression)
+    );
+    return;
+  }
+
+  const args = expr.arguments ?? [];
+  for (const arg of args) {
+    lowerExpression(arg, ctx);
+  }
+  ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: args.length });
 }
 
 function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
@@ -1385,6 +1470,18 @@ function lowerStructMethodCall(
   if (!found) return false;
 
   const fnName = `${structDef.name}.${methodName}`;
+
+  const userFuncId = ctx.functionTable.get(fnName);
+  if (userFuncId !== undefined) {
+    lowerExpression(propAccess.expression, ctx);
+    for (const arg of expr.arguments) {
+      lowerExpression(arg, ctx);
+    }
+    const argc = expr.arguments.length + 1;
+    ctx.ir.push({ kind: "Call", funcIndex: userFuncId, argc });
+    return true;
+  }
+
   const fnEntry = getBrainServices().functions.get(fnName);
   if (!fnEntry) {
     ctx.diagnostics.push(
@@ -1661,6 +1758,11 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
     return;
   }
 
+  if (ts.isPropertyAccessExpression(expr.left) && expr.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    lowerThisFieldAssignment(expr, ctx);
+    return;
+  }
+
   if (!ts.isIdentifier(expr.left)) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.AssignmentTargetNotVariable, "Assignment target must be a variable", expr.left)
@@ -1727,6 +1829,82 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
   ctx.ir.push({ kind: "Dup" });
   emitStore(target, ctx);
+}
+
+function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
+  const propAccess = expr.left as ts.PropertyAccessExpression;
+  const fieldName = propAccess.name.text;
+
+  if (ctx.thisLocalIndex === undefined) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.ThisOutsideClassContext,
+        "'this' can only be used inside a class constructor or method",
+        propAccess.expression
+      )
+    );
+    return;
+  }
+
+  if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+    const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
+    if (!opId) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnsupportedCompoundAssignOperator,
+          "Unsupported compound assignment operator",
+          expr.operatorToken
+        )
+      );
+      return;
+    }
+
+    const lhsType = ctx.checker.getTypeAtLocation(expr.left);
+    const rhsType = ctx.checker.getTypeAtLocation(expr.right);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
+
+    if (!lhsTypeId || !rhsTypeId) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.CannotDetermineTypesForCompoundAssign,
+          "Cannot determine types for compound assignment",
+          expr
+        )
+      );
+      return;
+    }
+
+    const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
+    if (!fnName) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.NoOperatorOverload,
+          `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+          expr
+        )
+      );
+      return;
+    }
+
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+    ctx.ir.push({ kind: "GetField", fieldName });
+    lowerExpression(expr.right, ctx);
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "StructSet" });
+    ctx.ir.push({ kind: "Dup" });
+    ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
+    return;
+  }
+
+  ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+  ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+  lowerExpression(expr.right, ctx);
+  ctx.ir.push({ kind: "StructSet" });
+  ctx.ir.push({ kind: "Dup" });
+  ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
 }
 
 function compoundAssignmentToOpId(kind: ts.SyntaxKind): string | undefined {
@@ -4824,6 +5002,258 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
   }
 
   return undefined;
+}
+
+function extractClassFields(
+  classNode: ts.ClassDeclaration,
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[]
+): List<{ name: string; typeId: TypeId }> | undefined {
+  const fields = new List<{ name: string; typeId: TypeId }>();
+  const seen = new Set<string>();
+
+  for (const member of classNode.members) {
+    if (!ts.isPropertyDeclaration(member)) continue;
+    if (!ts.isIdentifier(member.name)) continue;
+    const fieldName = member.name.text;
+    if (seen.has(fieldName)) continue;
+    seen.add(fieldName);
+
+    const memberType = checker.getTypeAtLocation(member);
+    const fieldTypeId = tsTypeToTypeId(memberType, checker);
+    if (!fieldTypeId) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnresolvableClassFieldType,
+          `Cannot resolve type of class field '${fieldName}'`,
+          member
+        )
+      );
+      return undefined;
+    }
+    fields.push({ name: fieldName, typeId: fieldTypeId });
+  }
+
+  const ctor = classNode.members.find(ts.isConstructorDeclaration);
+  if (ctor?.body) {
+    for (const stmt of ctor.body.statements) {
+      if (!ts.isExpressionStatement(stmt)) continue;
+      const expr = stmt.expression;
+      if (!ts.isBinaryExpression(expr)) continue;
+      if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) continue;
+      if (!ts.isPropertyAccessExpression(expr.left)) continue;
+      if (expr.left.expression.kind !== ts.SyntaxKind.ThisKeyword) continue;
+
+      const fieldName = expr.left.name.text;
+      if (seen.has(fieldName)) continue;
+      seen.add(fieldName);
+
+      const assignType = checker.getTypeAtLocation(expr.left);
+      const fieldTypeId = tsTypeToTypeId(assignType, checker);
+      if (!fieldTypeId) {
+        diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.UnresolvableClassFieldType,
+            `Cannot resolve type of class field '${fieldName}'`,
+            expr.left
+          )
+        );
+        return undefined;
+      }
+      fields.push({ name: fieldName, typeId: fieldTypeId });
+    }
+  }
+
+  return fields;
+}
+
+function extractClassMethodDecls(
+  classNode: ts.ClassDeclaration,
+  checker: ts.TypeChecker
+): List<{ name: string; params: List<{ name: string; typeId: TypeId }>; returnTypeId: TypeId }> {
+  const methods = new List<{
+    name: string;
+    params: List<{ name: string; typeId: TypeId }>;
+    returnTypeId: TypeId;
+  }>();
+
+  for (const member of classNode.members) {
+    if (!ts.isMethodDeclaration(member)) continue;
+    if (!ts.isIdentifier(member.name)) continue;
+
+    const sig = checker.getSignatureFromDeclaration(member);
+    if (!sig) continue;
+
+    const params = new List<{ name: string; typeId: TypeId }>();
+    for (const param of sig.parameters) {
+      const paramType = checker.getTypeOfSymbol(param);
+      const paramTypeId = tsTypeToTypeId(paramType, checker) ?? CoreTypeIds.Any;
+      params.push({ name: param.getName(), typeId: paramTypeId });
+    }
+
+    const retType = sig.getReturnType();
+    const returnTypeId = tsTypeToTypeId(retType, checker) ?? CoreTypeIds.Void;
+
+    methods.push({ name: member.name.text, params, returnTypeId });
+  }
+
+  return methods;
+}
+
+function registerClassStructType(ci: ClassInfo, checker: ts.TypeChecker, diagnostics: CompileDiagnostic[]): void {
+  const registry = getBrainServices().types;
+  const existing = registry.resolveByName(ci.name);
+  if (existing) return;
+
+  const fields = extractClassFields(ci.node, checker, diagnostics);
+  if (!fields) return;
+
+  const methods = extractClassMethodDecls(ci.node, checker);
+
+  registry.addStructType(ci.name, { fields, methods });
+}
+
+function lowerClassDeclaration(
+  ci: ClassInfo,
+  checker: ts.TypeChecker,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  diagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>
+): FunctionEntry[] {
+  const entries: FunctionEntry[] = [];
+
+  const registry = getBrainServices().types;
+  const typeId = registry.resolveByName(ci.name);
+
+  const ctor = ci.node.members.find(ts.isConstructorDeclaration);
+  const ctorParamCount = ctor ? ctor.parameters.length : 0;
+
+  const ctorIr: IrNode[] = [];
+  const ctorParamLocals = new Map<string, number>();
+
+  for (let i = 0; i < ctorParamCount; i++) {
+    const p = ctor!.parameters[i];
+    if (ts.isIdentifier(p.name)) {
+      ctorParamLocals.set(p.name.text, i);
+    }
+  }
+
+  const ctorScope = new ScopeStack(ctorParamCount);
+  const thisLocal = ctorScope.allocLocal();
+
+  const ctorCtx: LowerContext = {
+    checker,
+    paramsSymbol: undefined,
+    paramLocals: ctorParamLocals,
+    scopeStack: ctorScope,
+    ir: ctorIr,
+    diagnostics,
+    loopStack: [],
+    nextLabelId: 0,
+    callsiteVars,
+    functionTable,
+    funcIdCounter,
+    closureFunctions,
+    thisLocalIndex: thisLocal,
+  };
+
+  if (typeId) {
+    ctorIr.push({ kind: "StructNew", typeId });
+  } else {
+    ctorIr.push({ kind: "PushConst", value: NIL_VALUE });
+  }
+  ctorIr.push({ kind: "StoreLocal", index: thisLocal });
+
+  for (const member of ci.node.members) {
+    if (!ts.isPropertyDeclaration(member)) continue;
+    if (!ts.isIdentifier(member.name)) continue;
+    if (!member.initializer) continue;
+
+    const fieldName = member.name.text;
+    ctorIr.push({ kind: "LoadLocal", index: thisLocal });
+    ctorIr.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    lowerExpression(member.initializer, ctorCtx);
+    ctorIr.push({ kind: "StructSet" });
+    ctorIr.push({ kind: "StoreLocal", index: thisLocal });
+  }
+
+  if (ctor?.body) {
+    lowerStatements(ctor.body.statements, ctorCtx);
+  }
+
+  ctorIr.push({ kind: "LoadLocal", index: thisLocal });
+  ctorIr.push({ kind: "Return" });
+
+  entries.push({
+    ir: ctorIr,
+    numParams: ctorParamCount,
+    numLocals: ctorScope.nextLocal,
+    name: `${ci.name}$new`,
+  });
+
+  for (const member of ci.node.members) {
+    if (!ts.isMethodDeclaration(member)) continue;
+    if (!ts.isIdentifier(member.name)) continue;
+
+    const methodName = member.name.text;
+    const userParamCount = member.parameters.length;
+    const totalParamCount = userParamCount + 1;
+
+    const methodIr: IrNode[] = [];
+    const methodParamLocals = new Map<string, number>();
+
+    for (let i = 0; i < userParamCount; i++) {
+      const p = member.parameters[i];
+      if (ts.isIdentifier(p.name)) {
+        methodParamLocals.set(p.name.text, i + 1);
+      }
+    }
+
+    const methodScope = new ScopeStack(totalParamCount);
+
+    const methodCtx: LowerContext = {
+      checker,
+      paramsSymbol: undefined,
+      paramLocals: methodParamLocals,
+      scopeStack: methodScope,
+      ir: methodIr,
+      diagnostics,
+      loopStack: [],
+      nextLabelId: 0,
+      callsiteVars,
+      functionTable,
+      funcIdCounter,
+      closureFunctions,
+      thisLocalIndex: 0,
+    };
+
+    for (let i = 0; i < userParamCount; i++) {
+      const p = member.parameters[i];
+      if (ts.isObjectBindingPattern(p.name)) {
+        lowerObjectBindingPattern(p.name, i + 1, methodCtx);
+      } else if (ts.isArrayBindingPattern(p.name)) {
+        lowerArrayBindingPattern(p.name, i + 1, methodCtx);
+      }
+    }
+
+    if (member.body) {
+      lowerStatements(member.body.statements, methodCtx);
+    }
+
+    methodIr.push({ kind: "PushConst", value: NIL_VALUE });
+    methodIr.push({ kind: "Return" });
+
+    entries.push({
+      ir: methodIr,
+      numParams: totalParamCount,
+      numLocals: methodScope.nextLocal,
+      name: `${ci.name}.${methodName}`,
+    });
+  }
+
+  return entries;
 }
 
 function makeDiag(code: LoweringDiagCode, message: string, node: ts.Node): CompileDiagnostic {

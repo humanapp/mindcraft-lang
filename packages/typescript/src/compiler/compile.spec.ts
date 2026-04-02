@@ -84,13 +84,13 @@ describe("AST validation", () => {
     registerCoreBrainComponents();
   });
 
-  test("class declaration produces diagnostic", () => {
+  test("class expression produces diagnostic", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
-class Foo {
+const Foo = class {
   bar(): number { return 42; }
-}
+};
 
 export default Sensor({
   name: "test",
@@ -101,7 +101,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.ClassesNotSupported));
+    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.ClassExpressionsNotSupported));
   });
 
   test("var declaration produces diagnostic", () => {

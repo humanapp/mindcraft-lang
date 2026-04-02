@@ -17,8 +17,8 @@
  * supported by the user-tile runtime.
  */
 export enum ValidatorDiagCode {
-  /** Class declarations and expressions are not supported */
-  ClassesNotSupported = 1000,
+  /** Class expressions (inline) are not supported */
+  ClassExpressionsNotSupported = 1000,
   /** Enum declarations are not supported */
   EnumsNotSupported = 1001,
   /** for...in loops are not supported */
@@ -47,6 +47,16 @@ export enum ValidatorDiagCode {
   ForbiddenGlobalAccess = 1013,
   /** Decorators are not supported */
   DecoratorsNotSupported = 1014,
+  /** Class declaration must have a name */
+  ClassMustBeNamed = 1015,
+  /** Class inheritance (extends) is not supported */
+  ClassInheritanceNotSupported = 1016,
+  /** Static class members are not supported */
+  StaticMembersNotSupported = 1017,
+  /** Private fields (#name) are not supported */
+  PrivateFieldsNotSupported = 1018,
+  /** Class getters/setters are not supported */
+  ClassGettersSettersNotSupported = 1019,
 }
 
 /**
@@ -265,6 +275,16 @@ export enum LoweringDiagCode {
   UnsupportedStringMethod = 3130,
   /** String method called with wrong number of arguments */
   StringMethodWrongArgCount = 3131,
+  /** Class declaration has no name */
+  ClassDeclarationMissingName = 3140,
+  /** Cannot resolve the type of a class field */
+  UnresolvableClassFieldType = 3141,
+  /** `this` keyword used outside of a class constructor or method */
+  ThisOutsideClassContext = 3142,
+  /** `new` expression target is not a known class */
+  NewExpressionUnknownClass = 3143,
+  /** `new` expression target is not an identifier */
+  NewExpressionNotIdentifier = 3144,
 }
 
 /**

@@ -18,7 +18,7 @@ main plan's numbering and the D-series (destructuring).
 
 ## Current State
 
-(As of 2026-04-01, before implementation)
+(As of 2026-04-01, after C2 completion)
 
 ### What exists
 
@@ -43,17 +43,34 @@ main plan's numbering and the D-series (destructuring).
   signatures. Used for cross-file type checking.
 - **Type registry:** `ITypeRegistry` in packages/core provides `addStructType`,
   `addStructMethods`, `resolveByName`, `get`, `isStructurallyCompatible`.
+- **Class validation (C1):** `validateClassDeclaration()` in validator.ts allows
+  class declarations through with targeted rejections for `extends`, `static`,
+  `#private`, getters/setters, and unnamed classes. Class expressions remain
+  rejected.
+- **Class type registration (C1):** `lowerProgram` top-level scan detects class
+  declarations, allocates function table slots for constructors (`ClassName$new`)
+  and methods (`ClassName.methodName`), and registers `StructTypeDef` with fields
+  and method declarations via `registerClassStructType`.
+- **Constructor compilation (C2):** `lowerClassDeclaration` compiles real
+  constructor bodies: `StructNew(typeId)` + property initializers + constructor
+  body statements + `LoadLocal(this)` + `Return`. Uses `ScopeStack` with
+  `thisLocal` allocated after constructor parameters.
+- **`this` keyword (C2):** `LowerContext.thisLocalIndex` tracks the `this` local.
+  `lowerExpression` handles `ThisKeyword` via `LoadLocal(thisLocalIndex)` with
+  diagnostic if used outside a class context.
+- **`this.field = value` (C2):** `lowerThisFieldAssignment` in `lowerAssignment`
+  handles property writes on `this`: `LoadLocal(this)`, `PushConst(fieldName)`,
+  evaluate RHS, `StructSet`, `Dup`, `StoreLocal(this)`.
+- **`new ClassName(args)` (C2):** `lowerNewExpression` looks up `ClassName$new`
+  in the function table, lowers arguments, emits `Call(funcIndex, argc)`.
 
 ### What does not exist
 
-- No `ClassDeclaration` or `ClassExpression` handling in lowering.ts.
-- No `NewExpression` handling (`new Foo(...)` syntax).
-- No `this` keyword support (no `ThisKeyword` handling in expression lowering).
-- No `this.field = value` assignment support.
-- Validator explicitly rejects `ClassDeclaration` and `ClassExpression` with
-  `"Classes are not supported"` (validator.ts line 42).
-- No mechanism for user-compiled method dispatch (struct methods currently dispatch
-  to host functions via `HostCallArgs`, not to compiled function-table entries).
+- No method body compilation (methods return nil stubs).
+- No user-compiled method dispatch (struct methods dispatch to host functions
+  only; user-compiled class methods are stubbed).
+- No multi-file class support (classes not yet in ambient declarations or
+  imported function tables).
 
 ### Key existing infrastructure for reuse
 
@@ -413,7 +430,16 @@ variables.
    mutation (struct values are passed by value in the VM), but the rest of the
    method body will see the updated field.
 
-4. **Method call dispatch.** Modify `lowerStructMethodCall` (or add a parallel
+4. **Compound assignment on `this` fields.** Replace the
+   `UnsupportedCompoundAssignOperator` diagnostic (added as a safety net in C2)
+   with a real expansion: `this.x += value` compiles as
+   `this.x = this.x + value` -- i.e., `LoadLocal(this)`, `GetField("x")`,
+   evaluate RHS, emit the binary op, then the standard `this.field = value`
+   store-back pattern (`LoadLocal(this)`, `PushConst("x")`, push result,
+   `StructSet`, `Dup`, `StoreLocal(this)`). Applies to `+=`, `-=`, `*=`, `/=`.
+   This also works in constructors (same `lowerThisFieldAssignment` path).
+
+5. **Method call dispatch.** Modify `lowerStructMethodCall` (or add a parallel
    path) to distinguish between:
    - **Host-registered methods** (existing): dispatched via
      `HostCallArgs("StructType.methodName", argc)`.
@@ -425,7 +451,7 @@ variables.
    is a user-compiled method and uses `Call`. Otherwise, fall back to the existing
    host function lookup via `getBrainServices().functions.get(fnName)`.
 
-5. **`this.method(args)` calls.** When `this.methodName(args)` is used inside a
+6. **`this.method(args)` calls.** When `this.methodName(args)` is used inside a
    method body, the receiver is `this` (LoadLocal 0). The dispatch follows the
    same user-compiled path: push `this`, push args, `Call(funcIndex, argc)`.
 
@@ -433,6 +459,7 @@ variables.
 
 - Test: method body reads `this.x` correctly.
 - Test: method body writes `this.x = value` (store-back pattern).
+- Test: compound assignment `this.x += value` reads, computes, and writes back.
 - Test: `obj.method(args)` calls a user-compiled method.
 - Test: method calls another method on `this` (`this.someMethod()`).
 - Test: method returns a computed value.
@@ -447,14 +474,17 @@ variables.
   etc.) are registered by the runtime and user classes are registered by the
   compiler, name collisions are unlikely but should be guarded against (diagnostic
   if a user class name matches a host struct name).
-- **Struct value semantics in method calls.** Since structs are values (not
-  references), mutations to `this` inside a method are local to that method
-  invocation. The caller's copy of the struct is unchanged. This is a fundamental
-  semantic difference from JS classes. Users must use return values to propagate
-  state changes: `p = p.move(1, 2)` instead of `p.move(1, 2)`. This may be
-  surprising and should be documented. Alternatively, the initial pass could
-  defer mutable field writes in methods to a later phase and focus on read-only
-  methods first.
+- **~~Struct value semantics in method calls.~~** *(Corrected after C3.)* The
+  spec originally stated structs use value semantics (immutable, copy-on-write).
+  Investigation revealed the VM uses **reference semantics**: `STRUCT_SET`
+  mutates the struct in place (comment: "Mutate in place for performance"),
+  `STORE_LOCAL`/`LOAD_LOCAL` pass references without deep copy, and `Call`
+  passes arguments by reference. This means mutations to `this` inside a
+  method ARE visible to the caller -- matching JS class semantics. The
+  `StoreLocal(this)` after `StructSet` in the store-back pattern is harmless
+  but redundant. The VM spec should be updated to document this distinction:
+  `STORE_VAR` deep-copies values (brain variable semantics) but `STORE_LOCAL`
+  does not (reference semantics for locals/parameters).
 - **Recursive method calls.** `this.methodName()` inside a method body should
   work naturally -- `this` (local 0) is pushed as the receiver, and the method
   is a compiled function. No special handling needed.
@@ -491,6 +521,29 @@ destructuring, callsite variables), and comprehensive edge case handling.
    - The generated interface is usable as a type annotation in other files.
 
 2. **Multi-file class usage.** When a class is defined in an imported module:
+
+   > **Name collision risk -- broader than classes (identified during C3).**
+   > This is a pre-existing problem in the multi-file compiler, not specific
+   > to classes. `collectImports` collects ALL named function declarations and
+   > variable statements from imported files regardless of export status.
+   > Collisions are silently resolved by "first wins":
+   >
+   > | Symbol kind | Collision scope | Guard |
+   > |---|---|---|
+   > | Helper functions | `functionTable` (name -> funcId) | `!functionTable.has()` -- first wins |
+   > | Module-level variables | `callsiteVars` (name -> index) | `!callsiteVars.has()` -- first wins |
+   > | Class struct types | `getBrainServices().types` global | `resolveByName` -- if exists, skip |
+   > | Class constructors | `functionTable` (`Name$new`) | same as functions |
+   > | Class methods | `functionTable` (`Name.method`) | same as functions |
+   >
+   > The type registry collision is the most dangerous: it is **global and
+   > persistent** across compilation units (not reset between compilations).
+   > Function table and callsite var collisions are per-compilation-unit but
+   > still silent.
+   >
+   > Since `apps/sim` already uses multi-file compilation, this is v1 scope.
+   > Options: module-qualified names (`"path/module::Symbol"`),
+   > per-compilation-unit type scope, or at minimum a diagnostic on collision.
    - The class type must be registered before the importing module is compiled.
    - The constructor function (`"ClassName$new"`) and methods
      (`"ClassName.methodName"`) must be in the function table of the importing
@@ -627,4 +680,154 @@ Recommended sequence based on dependencies:
 
 Completed phases are recorded here with dates, actual outcomes, and deviations.
 
-(No phases completed yet.)
+### Phase C1 -- Class Declaration Scaffolding and Type Registration
+
+**Date completed:** 2026-04-01
+
+**Files changed:**
+
+- `packages/typescript/src/compiler/diag-codes.ts` -- renamed `ClassesNotSupported`
+  to `ClassExpressionsNotSupported` (1000); added validator codes `ClassMustBeNamed`
+  (1015), `ClassInheritanceNotSupported` (1016), `StaticMembersNotSupported`
+  (1017), `PrivateFieldsNotSupported` (1018), `ClassGettersSettersNotSupported`
+  (1019); added lowering codes `ClassDeclarationMissingName` (3140),
+  `UnresolvableClassFieldType` (3141).
+- `packages/typescript/src/compiler/validator.ts` -- removed blanket
+  `ClassDeclaration` rejection. Added `validateClassDeclaration()` with targeted
+  checks: unnamed class, `extends` clause, getter/setter accessors, `static`
+  modifier (via `canHaveModifiers` guard), `#private` identifiers on properties
+  and methods. `ClassExpression` still rejected. Child nodes visited recursively
+  after validation.
+- `packages/typescript/src/compiler/lowering.ts` -- added `ClassInfo` interface,
+  class scanning in `lowerProgram` top-level loop (allocates function table slots
+  for `ClassName$new` and `ClassName.methodName`), `registerClassStructType`
+  (delegates to `extractClassFields` and `extractClassMethodDecls`, calls
+  `registry.addStructType`), `extractClassFields` (two-pass: property
+  declarations then constructor `this.field = value` assignments, with
+  `tsTypeToTypeId` resolution and diagnostic on failure),
+  `extractClassMethodDecls` (extracts signatures via
+  `checker.getSignatureFromDeclaration`), `lowerClassDeclaration` (emits stub
+  `FunctionEntry` objects with `PushConst(NIL_VALUE)` + `Return`),
+  `lowerStatement` no-op branch for `ClassDeclaration`. Type registration runs
+  before function body compilation; stubs generated after helper functions.
+- `packages/typescript/src/compiler/compile.spec.ts` -- renamed test from "class
+  declaration produces diagnostic" to "class expression produces diagnostic";
+  changed source to use `const Foo = class { ... }` and assert
+  `ClassExpressionsNotSupported`.
+- `packages/typescript/src/compiler/codegen.spec.ts` -- added `ValidatorDiagCode`
+  and `StructTypeDef` to imports; added "class declarations" describe block with
+  9 tests.
+
+**Test results:** 250 tests pass (227 codegen + 23 compile), 0 failures.
+
+**Deviations from spec:**
+
+1. **Private field test changed scope.** The spec called for testing `#private`
+   identifiers producing a validator diagnostic. However, TypeScript itself rejects
+   `#private` syntax with error 5002 ("Private identifiers are only available when
+   targeting ECMAScript 2015 and higher") before the validator runs, since the
+   compiler host targets ES5. The test was changed to verify that `private` keyword
+   fields (which TS accepts) compile without errors, since `private` is purely a
+   compile-time TS check and has no runtime effect.
+2. **Added getter diagnostic test.** The spec acceptance criteria did not list a
+   getter/setter test, but one was added since `ClassGettersSettersNotSupported`
+   is a new validator code.
+3. **`List` vs native Array.** `prog.functions.map()` returns a `List` (from
+   `@mindcraft-lang/core`), not a native Array. Tests that need `.includes()`
+   collect via `forEach` into a plain `string[]` instead.
+4. **Field type `string | undefined`.** `FunctionEntry.name` is typed
+   `string | undefined`, requiring a guard before pushing into `string[]`.
+
+**Discoveries:**
+
+- `ts.getModifiers(member)` requires a `ts.HasModifiers` argument, but
+  `ts.ClassElement` does not always satisfy that constraint. Must guard with
+  `ts.canHaveModifiers(member)` before calling `ts.getModifiers()`.
+- The compiler host targets ES5, which causes TypeScript to reject `#private`
+  identifiers at the parser level. If `#private` support is later desired,
+  the compiler host target would need to be raised to ES2015+.
+- `extractClassFields` uses a `seen` set to deduplicate fields that appear both
+  as property declarations and in constructor `this.field = value` assignments.
+  Property declarations take precedence (scanned first).
+
+**Actual acceptance criteria met:**
+
+- [x] Class with constructor and method compiles (stub bodies)
+- [x] Class with `extends` -> diagnostic
+- [x] Class with `static` member -> diagnostic
+- [x] Private field handling verified (TS-level rejection for `#`, compile-time
+      `private` keyword accepted)
+- [x] Registered struct type has correct fields
+- [x] Method declarations registered on struct type
+- [x] Function table contains `ClassName$new` and `ClassName.methodName`
+- [x] Class with no constructor compiles (zero-arg stub)
+- [x] Class with getter -> diagnostic
+
+### Phase C2 -- Constructor Compilation
+
+**Date completed:** 2026-04-01
+
+**Files changed:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- added `thisLocalIndex?:
+  number` to `LowerContext`; replaced stub constructor in `lowerClassDeclaration`
+  with real compilation: parameter locals, `ScopeStack` with `thisLocal` allocated
+  after params, `StructNew(typeId)` + `StoreLocal(this)`, property initializer
+  loop, `lowerStatements(ctor.body)`, `LoadLocal(this)` + `Return`; added
+  `ThisKeyword` case in `lowerExpression` (`LoadLocal(thisLocalIndex)` with
+  diagnostic if undefined); added `NewExpression` case dispatching to
+  `lowerNewExpression`; added `lowerNewExpression` (resolves `ClassName$new` in
+  function table, lowers args, emits `Call`); added `PropertyAccessExpression` on
+  `this` branch in `lowerAssignment` dispatching to `lowerThisFieldAssignment`;
+  added `lowerThisFieldAssignment` (`LoadLocal(this)`, `PushConst(fieldName)`,
+  evaluate RHS, `StructSet`, `Dup`, `StoreLocal(this)`). Method entries remain as
+  stubs (C3 scope).
+- `packages/typescript/src/compiler/diag-codes.ts` -- added lowering codes
+  `ThisOutsideClassContext` (3142), `NewExpressionUnknownClass` (3143),
+  `NewExpressionNotIdentifier` (3144).
+- `packages/typescript/src/compiler/codegen.spec.ts` -- added 7 new tests to the
+  "class declarations" describe block (total now 16).
+
+**Test results:** 257 tests pass (234 codegen + 23 compile), 0 failures.
+
+**Deviations from spec:**
+
+1. **`this` outside class context test.** The spec called for testing
+   `ThisOutsideClassContext` diagnostic. However, TS strict mode rejects `this`
+   in non-class contexts at the type-checker level ("'this' implicitly has type
+   'any'") before lowering runs. The test was changed to verify that any
+   diagnostic is produced, rather than asserting the specific lowering code.
+2. **`lowerThisFieldAssignment` stack behavior.** The spec noted `this.x = value`
+   as a statement-only pattern for MVP. The implementation uses `Dup` +
+   `StoreLocal` to leave the updated struct on the stack, making it work as both
+   a statement (value popped by `lowerStatement`) and an expression.
+3. **Compound assignment on `this` fields.** Not in the spec but proactively
+   handled: `this.x += value` produces an
+   `UnsupportedCompoundAssignOperator` diagnostic rather than silent failure.
+
+**Discoveries:**
+
+- TS strict mode catches most `this`-outside-class usage at type-check time
+  (error 5002), so the `ThisOutsideClassContext` lowering diagnostic is a
+  safety net for edge cases where TS doesn't catch it.
+- Constructor parameter locals occupy indices 0..N-1, and `thisLocal` is
+  allocated by `ScopeStack.allocLocal()` at index N. The constructor does NOT
+  receive `this` as a parameter -- it creates the instance.
+- Property initializers must run before the constructor body to match TS/JS
+  semantics. The implementation emits them inline in the constructor IR between
+  `StructNew` + `StoreLocal(this)` and `lowerStatements(ctor.body)`.
+- The `Dup` in `lowerThisFieldAssignment` is needed because `lowerAssignment`
+  is called from `lowerExpression`, and expression statements in
+  `lowerStatement` emit `Pop` to discard the expression result. Without `Dup`,
+  the `StoreLocal` would consume the only stack copy and `Pop` would underflow.
+
+**Actual acceptance criteria met:**
+
+- [x] `new Point(3, 4)` creates a struct with `x: 3, y: 4`
+- [x] Property initializer (`x: number = 0`) sets default before constructor body
+- [x] Constructor body with `this.x = value` assignments
+- [x] Constructor with multiple parameters
+- [x] `new` with unknown class name -> diagnostic
+- [x] `this` outside class context -> diagnostic (caught by TS type-checker)
+- [x] Constructor returns struct value directly
+- [x] Class with no explicit constructor uses property initializers via `new`

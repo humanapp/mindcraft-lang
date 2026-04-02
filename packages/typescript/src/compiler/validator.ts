@@ -36,9 +36,12 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
 
   function visit(node: ts.Node): void {
     switch (node.kind) {
-      case ts.SyntaxKind.ClassDeclaration:
       case ts.SyntaxKind.ClassExpression:
-        addDiag(ValidatorDiagCode.ClassesNotSupported, node, "Classes are not supported");
+        addDiag(ValidatorDiagCode.ClassExpressionsNotSupported, node, "Class expressions are not supported");
+        return;
+
+      case ts.SyntaxKind.ClassDeclaration:
+        validateClassDeclaration(node as ts.ClassDeclaration);
         return;
 
       case ts.SyntaxKind.EnumDeclaration:
@@ -115,6 +118,43 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
       const decorators = ts.getDecorators(node);
       if (decorators && decorators.length > 0) {
         addDiag(ValidatorDiagCode.DecoratorsNotSupported, decorators[0], "Decorators are not supported");
+      }
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  function validateClassDeclaration(node: ts.ClassDeclaration): void {
+    if (!node.name) {
+      addDiag(ValidatorDiagCode.ClassMustBeNamed, node, "Class declarations must have a name");
+    }
+
+    for (const clause of node.heritageClauses ?? []) {
+      if (clause.token === ts.SyntaxKind.ExtendsKeyword) {
+        addDiag(ValidatorDiagCode.ClassInheritanceNotSupported, clause, "Class inheritance is not supported");
+      }
+    }
+
+    for (const member of node.members) {
+      if (ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) {
+        addDiag(ValidatorDiagCode.ClassGettersSettersNotSupported, member, "Class getters/setters are not supported");
+      }
+
+      if (ts.canHaveModifiers(member)) {
+        const modifiers = ts.getModifiers(member);
+        if (modifiers) {
+          for (const mod of modifiers) {
+            if (mod.kind === ts.SyntaxKind.StaticKeyword) {
+              addDiag(ValidatorDiagCode.StaticMembersNotSupported, member, "Static class members are not supported");
+            }
+          }
+        }
+      }
+
+      if (ts.isPropertyDeclaration(member) || ts.isMethodDeclaration(member)) {
+        if (ts.isPrivateIdentifier(member.name)) {
+          addDiag(ValidatorDiagCode.PrivateFieldsNotSupported, member, "Private fields (#name) are not supported");
+        }
       }
     }
 
