@@ -5,11 +5,19 @@ import type { CompileOptions } from "./types.js";
 export type { CompileResult, FunctionDebugInfo, ProjectCompileResult } from "./project.js";
 export { UserTileProject } from "./project.js";
 export type {
+  CallSiteInfo,
   CompileDiagnostic,
   CompileOptions,
+  DebugFileInfo,
+  DebugFunctionInfo,
+  DebugMetadata,
+  DebugSpan,
   DiagnosticSeverity,
   ExtractedDescriptor,
   ExtractedParam,
+  LocalInfo,
+  ScopeInfo,
+  SuspendSiteInfo,
 } from "./types.js";
 
 export function compileUserTile(source: string, options?: CompileOptions) {

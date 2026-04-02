@@ -40,28 +40,35 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-04-02) Phases 0-16, 18-24 complete, plus Array method lowering
+(Updated 2026-04-02) Phases 0-16, 18-25 complete, plus Array method lowering
 detour, VM list mutation ops detour, Array.sort detour, class declarations detour,
 destructuring extensions detour, string methods detour, Math methods detour, and
 multi-file compilation detour. Phase 22 added debug metadata type definitions.
 Phase 23 added source span tracking (IR annotation, per-function span/pcToSpanIndex
 emission, FunctionDebugInfo in CompileResult). Phase 24 added scope and variable
 metadata (ScopeInfo/LocalInfo per function via ScopeStack metadata tracking,
-IR-index-to-PC mapping in emitter).
+IR-index-to-PC mapping in emitter). Phase 25 assembled DebugMetadata from
+per-function data (files, functions, callSites, suspendSites, debugFunctionId)
+and added linker remapping of compiledFuncId.
 See the original doc's Current State and Phase Log for full history.
 
 ### Compiler pipeline (`packages/typescript/src/compiler/`)
 
 - `compile.ts` -- `compileUserTile(source, options?)` single-file entry point;
   wraps `UserTileProject` for backward compatibility. Re-exports
-  `CompileResult`, `ProjectCompileResult`, `UserTileProject`, `FunctionDebugInfo`.
+  `CompileResult`, `ProjectCompileResult`, `UserTileProject`, `FunctionDebugInfo`,
+  and all debug metadata types (`DebugMetadata`, `DebugFileInfo`,
+  `DebugFunctionInfo`, `DebugSpan`, `ScopeInfo`, `LocalInfo`, `CallSiteInfo`,
+  `SuspendSiteInfo`).
 - `project.ts` -- `UserTileProject` orchestration class. `setFiles()`,
   `updateFile()`, `deleteFile()`, `renameFile()` manage a virtual file system.
   `compileAll()` / `compileAffected()` return `ProjectCompileResult` with
   per-file `CompileResult` entries. Shared TS program, single
   `getPreEmitDiagnostics()` pass, `collectImports()` for cross-file symbols.
   `CompileResult.functionDebugInfo?: FunctionDebugInfo[]` collects per-function
-  span data (`funcIndex`, `name`, `spans`, `pcToSpanIndex`) for Phase 25 assembly.
+  debug data (`funcIndex`, `name`, `spans`, `pcToSpanIndex`, `scopes`, `locals`,
+  `callSites`, `suspendSites`). `assembleDebugMetadata()` builds the final
+  `DebugMetadata` from these records and sets `program.debugMetadata`.
 - `virtual-host.ts` -- `createVirtualCompilerHost()`, zero Node.js APIs.
 - `validator.ts` -- rejects unsupported constructs with positioned diagnostics.
 - `descriptor.ts` -- extracts `ExtractedDescriptor` from `Sensor()`/`Actuator()`.
@@ -78,21 +85,28 @@ See the original doc's Current State and Phase Log for full history.
   with optional `span?: IrSourceSpan` and `isStatementBoundary?: boolean`.
 - `lowering.ts` -- `lowerProgram()` produces `ProgramLoweringResult` with multiple
   `FunctionEntry` records (onExecute, onPageEntered wrapper, module init, helpers,
-  class constructors, class methods, closures). `spanFromNode()` extracts 1-based
-  line/column from TS AST nodes. `annotateFirstNode()` stamps first real IR node
-  (skipping Labels) with span and statement boundary flag.
+  class constructors, class methods, closures). `FunctionEntry` carries
+  `isGenerated`, `parentName`, `sourceFileName`, `functionSpan` for debug metadata
+  assembly. `LowerContext.currentFunctionName` tracks the enclosing function name
+  for closure parent tracking. `spanFromNode()` extracts 1-based line/column from
+  TS AST nodes. `annotateFirstNode()` stamps first real IR node (skipping Labels)
+  with span and statement boundary flag.
 - `emit.ts` -- `emitFunction()` produces `EmitResult { bytecode, diagnostics,
-  spans, pcToSpanIndex }`. Span deduplication via keyed string map. Statement
-  boundary annotations propagated to `DebugSpan.isStatementBoundary`. Fallback
-  empty span for generated functions with no annotated IR nodes.
+  spans, pcToSpanIndex, scopes, locals, callSites, suspendSites }`. Span
+  deduplication via keyed string map. Statement boundary annotations propagated
+  to `DebugSpan.isStatementBoundary`. Fallback empty span for generated functions
+  with no annotated IR nodes. Sequential `callSiteId` assignment for host calls;
+  `SuspendSiteInfo` records for await instructions with `awaitPc`/`resumePc`.
 - `ambient.ts` -- `buildAmbientDeclarations()` generates the "mindcraft" ambient
   module (structs, branded numbers, enums, list types, function types).
 - `types.ts` -- `CompileDiagnostic`, `ExtractedDescriptor`, `ExtractedParam`,
   `UserAuthoredProgram`, `UserTileLinkInfo`, `CompileOptions`, plus debug metadata
   types: `DebugMetadata`, `DebugFileInfo`, `DebugFunctionInfo`, `DebugSpan`,
   `ScopeInfo`, `LocalInfo`, `CallSiteInfo`, `SuspendSiteInfo` (Phase 22).
-  `UserAuthoredProgram.debugMetadata?: DebugMetadata` field added (optional,
-  populated in Phase 25). `LocalInfo.storageKind` includes `"capture"` for
+  `UserAuthoredProgram.debugMetadata?: DebugMetadata` field (populated by
+  `assembleDebugMetadata()` in Phase 25). `UserTileLinkInfo.linkedDebugMetadata?:
+  DebugMetadata` carries linker-remapped metadata. `LocalInfo.storageKind`
+  includes `"capture"` for
   closure variables. The debugger spec's `Span` and `SourceSpan` types are
   unified as `DebugSpan`.
   `CompileDiagnostic` has `{ code, message, severity, line?, column?, endLine?,
@@ -111,8 +125,9 @@ See the original doc's Current State and Phase Log for full history.
 `linkUserPrograms(brainProgram, userPrograms[])` appends user functions to the brain
 program, remaps `CALL`, `PUSH_CONST`, `MAKE_CLOSURE` operands, remaps `FunctionValue`
 constants, merges constants, copies `injectCtxTypeId`. Returns `LinkResult` with
-`linkedEntryFuncId`, `linkedInitFuncId`, `linkedOnPageEnteredFuncId`. No debug
-metadata remapping.
+`linkedEntryFuncId`, `linkedInitFuncId`, `linkedOnPageEnteredFuncId`.
+`remapDebugMetadata()` offsets `compiledFuncId` values by the function base offset;
+`linkedDebugMetadata` is included in `UserTileLinkInfo`.
 
 ### Runtime (`packages/typescript/src/runtime/`)
 
@@ -1429,3 +1444,85 @@ the final PC, used for scope/variable end boundaries.
 parameter storageKind, module init scope, closure captures, temporary exclusion,
 helper function params, for-loop block scope, unique scope IDs, onExecute with
 params). All 521 tests pass.
+
+### Phase 25 -- DebugMetadata assembly (2026-04-02)
+
+**Planned:** Assemble the complete `DebugMetadata` structure from per-function
+metadata collected in Phases 23-24 and attach it to `UserAuthoredProgram`. Six
+deliverables: (1) `DebugMetadata` fully populated with files and functions, (2)
+generated functions marked `isGenerated: true`, (3) callSites and suspendSites
+populated, (4) programRevisionId already present, (5) deterministic
+`debugFunctionId` keys, (6) linker remaps `compiledFuncId` by function offset.
+
+**Actual:** All six deliverables implemented. Six files changed, one new test
+file:
+
+- `lowering.ts` -- Extended `FunctionEntry` interface with four new optional
+  fields: `isGenerated`, `parentName`, `sourceFileName`, `functionSpan`. Added
+  `currentFunctionName` to `LowerContext`. Updated all seven `LowerContext`
+  creation sites (onExecute, onPageEntered, helper, module-init, wrapper,
+  class constructor, class method) and twelve `FunctionEntry` return sites.
+  Module-init and onPageEntered-wrapper are `isGenerated: true`. Closures set
+  `parentName` to `ctx.currentFunctionName`. All user functions set
+  `sourceFileName` from `getSourceFile().fileName` and `functionSpan` from
+  `spanFromNode()`.
+- `emit.ts` -- Extended `EmitResult` with `callSites: CallSiteInfo[]` and
+  `suspendSites: SuspendSiteInfo[]`. Added `nextCallSiteId` counter for
+  sequential callsite IDs (replacing hardcoded `0`). Host call emission records
+  `CallSiteInfo` with `callSiteId` and `callPc`. Await emission records
+  `SuspendSiteInfo` with `awaitPc` and `resumePc = awaitPc + 1`. All
+  early-return error paths updated with empty arrays.
+- `project.ts` -- Extended `FunctionDebugInfo` with `callSites` and
+  `suspendSites`. Added `assembleDebugMetadata()` function that builds
+  `DebugFileInfo[]` (deduped by source file name, with djb2 `sourceHash`) and
+  `DebugFunctionInfo[]` (one per function). Added `buildDebugFunctionId()`
+  with deterministic ID patterns: `filePath/<init>` for module-init,
+  `filePath/<onPageEntered-wrapper>` for wrapper,
+  `filePath/parentName/<closure#N>` for closures,
+  `filePath/ClassName.constructor` for constructors (extracted from
+  `ClassName$new`), `filePath/funcName` for helpers/methods. Added
+  `functionSourceSpan()` and `simpleHash()` helpers. `_compileEntryPoint()`
+  now backfills missing `sourceFileName` on functions and calls
+  `assembleDebugMetadata()` to set `program.debugMetadata`.
+- `linker.ts` -- Added `remapDebugMetadata()` function that clones the
+  metadata and offsets `compiledFuncId` values by the function base offset.
+  Files array is passed through unchanged. `linkUserPrograms` now includes
+  `linkedDebugMetadata` in `UserTileLinkInfo`.
+- `types.ts` -- Added `linkedDebugMetadata?: DebugMetadata` to
+  `UserTileLinkInfo`.
+- `compile.ts` -- Expanded type re-exports to include `CallSiteInfo`,
+  `DebugFileInfo`, `DebugFunctionInfo`, `DebugMetadata`, `DebugSpan`,
+  `LocalInfo`, `ScopeInfo`, `SuspendSiteInfo`.
+
+**Deviations from spec:** None. All six deliverables matched the spec. The
+spec's note about using `irIndexToPc[]` for callsite/suspendsite PCs was
+considered but the implementation tracks PCs directly during emission (the
+emitter already has the current PC available at each instruction), which is
+simpler than recording IR indices and mapping post-hoc.
+
+**Risks resolved:**
+
+- Metadata correctness: per-function debug info flows through the existing
+  `FunctionDebugInfo` pipeline, keeping the data path simple.
+- Linker remapping: `remapDebugMetadata()` clones and offsets `compiledFuncId`;
+  file entries pass through unchanged since file indices are project-local.
+- Closure parent tracking: `currentFunctionName` on `LowerContext` is set at
+  each function-lowering entry point and read by `lowerClosureExpression` to
+  populate `parentName`.
+- `callSiteId` assignment: sequential counter in `emitFunction` ensures unique
+  IDs within each function. Cross-function uniqueness is not required.
+- Constructor ID extraction: string parsing of `ClassName$new` to produce
+  `ClassName.constructor` handled by `buildDebugFunctionId()`.
+
+**Observation:** The `sourceFileName` backfill in `_compileEntryPoint()` is
+needed because module-init and wrapper functions are generated without access
+to the TS source file node. Rather than threading source file info through the
+generation functions, the orchestration layer fills it in after lowering. This
+is acceptable since these are generated functions with no user-authored source
+spans.
+
+**Tests added:** 12 (correct file/function counts, compiledFuncId matching,
+isGenerated true/false, class method/constructor distinct IDs, multi-file
+DebugFileInfo, linker compiledFuncId offset, closure parentName in
+debugFunctionId, unique debugFunctionIds, programRevisionId, function
+sourceSpan, callSites present, suspendSites present). All 533 tests pass.

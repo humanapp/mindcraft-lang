@@ -1,7 +1,7 @@
 import { List } from "@mindcraft-lang/core";
 import type { BrainProgram, FunctionBytecode, Instr, Value } from "@mindcraft-lang/core/brain";
 import { isFunctionValue, NativeType, Op } from "@mindcraft-lang/core/brain";
-import type { UserAuthoredProgram, UserTileLinkInfo } from "../compiler/types.js";
+import type { DebugMetadata, UserAuthoredProgram, UserTileLinkInfo } from "../compiler/types.js";
 
 export interface LinkResult {
   linkedProgram: BrainProgram;
@@ -52,6 +52,7 @@ export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserA
       linkedEntryFuncId,
       linkedInitFuncId,
       linkedOnPageEnteredFuncId: linkedOnPageEntered,
+      linkedDebugMetadata: remapDebugMetadata(userProg.debugMetadata, funcOffset),
     });
   }
 
@@ -86,4 +87,15 @@ function remapInstructions(code: List<Instr>, funcOffset: number, constOffset: n
     }
   }
   return List.from(remapped);
+}
+
+function remapDebugMetadata(metadata: DebugMetadata | undefined, funcOffset: number): DebugMetadata | undefined {
+  if (!metadata) return undefined;
+  return {
+    files: metadata.files,
+    functions: metadata.functions.map((fn) => ({
+      ...fn,
+      compiledFuncId: fn.compiledFuncId + funcOffset,
+    })),
+  };
 }

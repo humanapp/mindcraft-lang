@@ -6,16 +6,21 @@ import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { emitFunction } from "./emit.js";
-import type { ImportedClass, ImportedFunction, ImportedVariable } from "./lowering.js";
+import type { FunctionEntry, ImportedClass, ImportedFunction, ImportedVariable } from "./lowering.js";
 import { lowerProgram, qualifiedClassName } from "./lowering.js";
 import type {
+  CallSiteInfo,
   CompileDiagnostic,
   CompileOptions,
+  DebugFileInfo,
+  DebugFunctionInfo,
+  DebugMetadata,
   DebugSpan,
   ExtractedDescriptor,
   ExtractedParam,
   LocalInfo,
   ScopeInfo,
+  SuspendSiteInfo,
   UserAuthoredProgram,
 } from "./types.js";
 import { validateAst } from "./validator.js";
@@ -28,6 +33,8 @@ export interface FunctionDebugInfo {
   pcToSpanIndex: number[];
   scopes: ScopeInfo[];
   locals: LocalInfo[];
+  callSites: CallSiteInfo[];
+  suspendSites: SuspendSiteInfo[];
 }
 
 export interface CompileResult {
@@ -281,6 +288,8 @@ export class UserTileProject {
         pcToSpanIndex: emitResult.pcToSpanIndex,
         scopes: emitResult.scopes,
         locals: emitResult.locals,
+        callSites: emitResult.callSites,
+        suspendSites: emitResult.suspendSites,
       });
     }
 
@@ -303,6 +312,15 @@ export class UserTileProject {
       };
     }
 
+    const funcs = programResult.functions;
+    for (const func of funcs) {
+      if (!func.sourceFileName) {
+        func.sourceFileName = sourceFile.fileName;
+      }
+    }
+
+    const debugMetadata = assembleDebugMetadata(funcs, functionDebugInfo, compilerFiles);
+
     const program: UserAuthoredProgram = {
       version: 1,
       functions: List.from(emittedFunctions),
@@ -322,6 +340,7 @@ export class UserTileProject {
       },
       programRevisionId: generateRevisionId(),
       params: qualifiedParams,
+      debugMetadata,
     };
 
     return { diagnostics: [], program, descriptor, functionDebugInfo };
@@ -342,6 +361,98 @@ function qualifyDescriptorParams(params: ExtractedParam[], sourceFile: ts.Source
     if (qualifiedType === p.type) return p;
     return { ...p, type: qualifiedType };
   });
+}
+
+function assembleDebugMetadata(
+  functions: FunctionEntry[],
+  debugInfos: FunctionDebugInfo[],
+  compilerFiles: Map<string, string>
+): DebugMetadata {
+  const fileMap = new Map<string, number>();
+  const debugFiles: DebugFileInfo[] = [];
+
+  for (const func of functions) {
+    const fn = func.sourceFileName;
+    if (fn && !fileMap.has(fn)) {
+      const fileIndex = fileMap.size;
+      fileMap.set(fn, fileIndex);
+      const content = compilerFiles.get(fn) ?? "";
+      debugFiles.push({
+        fileIndex,
+        path: toVfsPath(fn),
+        sourceHash: simpleHash(content),
+      });
+    }
+  }
+
+  const debugFunctions: DebugFunctionInfo[] = [];
+  for (let i = 0; i < functions.length; i++) {
+    const func = functions[i];
+    const fdi = debugInfos[i];
+    const fileIndex = func.sourceFileName ? (fileMap.get(func.sourceFileName) ?? 0) : 0;
+    const filePath = func.sourceFileName ? toVfsPath(func.sourceFileName) : "";
+    const debugFunctionId = buildDebugFunctionId(filePath, func);
+    const sourceSpan = functionSourceSpan(func, fdi);
+
+    debugFunctions.push({
+      debugFunctionId,
+      compiledFuncId: i,
+      fileIndex,
+      prettyName: func.name,
+      isGenerated: func.isGenerated ?? false,
+      sourceSpan,
+      spans: fdi.spans,
+      pcToSpanIndex: fdi.pcToSpanIndex,
+      scopes: fdi.scopes,
+      locals: fdi.locals,
+      callSites: fdi.callSites,
+      suspendSites: fdi.suspendSites,
+    });
+  }
+
+  return { files: debugFiles, functions: debugFunctions };
+}
+
+function buildDebugFunctionId(filePath: string, func: FunctionEntry): string {
+  const name = func.name;
+  if (name === "<module-init>") return `${filePath}/<init>`;
+  if (name.endsWith(".<onPageEntered-wrapper>")) return `${filePath}/<onPageEntered-wrapper>`;
+  if (name.startsWith("<closure#")) {
+    if (func.parentName) {
+      return `${filePath}/${func.parentName}/${name}`;
+    }
+    return `${filePath}/${name}`;
+  }
+  if (name.endsWith("$new")) {
+    const className = name.slice(0, -4);
+    return `${filePath}/${className}.constructor`;
+  }
+  return `${filePath}/${name}`;
+}
+
+function functionSourceSpan(func: FunctionEntry, fdi: FunctionDebugInfo): DebugSpan {
+  if (func.functionSpan) {
+    return {
+      spanId: 0,
+      startLine: func.functionSpan.startLine,
+      startColumn: func.functionSpan.startColumn,
+      endLine: func.functionSpan.endLine,
+      endColumn: func.functionSpan.endColumn,
+      isStatementBoundary: false,
+    };
+  }
+  if (fdi.spans.length > 0) {
+    return fdi.spans[0];
+  }
+  return { spanId: 0, startLine: 0, startColumn: 0, endLine: 0, endColumn: 0, isStatementBoundary: false };
+}
+
+function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
+  }
+  return (hash >>> 0).toString(16);
 }
 
 interface CollectResult {

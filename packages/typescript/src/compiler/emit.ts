@@ -9,7 +9,7 @@ import {
 import { EmitDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import type { LocalMetadata, ScopeMetadata } from "./scope.js";
-import type { CompileDiagnostic, DebugSpan, LocalInfo, ScopeInfo } from "./types.js";
+import type { CallSiteInfo, CompileDiagnostic, DebugSpan, LocalInfo, ScopeInfo, SuspendSiteInfo } from "./types.js";
 
 export interface EmitResult {
   bytecode: FunctionBytecode;
@@ -18,6 +18,8 @@ export interface EmitResult {
   pcToSpanIndex: number[];
   scopes: ScopeInfo[];
   locals: LocalInfo[];
+  callSites: CallSiteInfo[];
+  suspendSites: SuspendSiteInfo[];
 }
 
 export function emitFunction(
@@ -40,6 +42,10 @@ export function emitFunction(
   const spanMap = new Map<string, number>();
   let currentSpanIndex = -1;
   let nextSpanId = 0;
+
+  const callSites: CallSiteInfo[] = [];
+  const suspendSites: SuspendSiteInfo[] = [];
+  let nextCallSiteId = 0;
 
   function getOrCreateSpanIndex(irSpan: IrSourceSpan, isStatementBoundary: boolean): number {
     const key = `${irSpan.startLine}:${irSpan.startColumn}:${irSpan.endLine}:${irSpan.endColumn}:${isStatementBoundary ? 1 : 0}`;
@@ -125,9 +131,13 @@ export function emitFunction(
             pcToSpanIndex: [],
             scopes: [],
             locals: [],
+            callSites: [],
+            suspendSites: [],
           };
         }
-        emitter.hostCallArgs(fnId, node.argc, 0);
+        const csId = nextCallSiteId++;
+        emitter.hostCallArgs(fnId, node.argc, csId);
+        callSites.push({ pc: pcBefore, callSiteId: csId, targetDebugFunctionId: null, isAsync: false });
         break;
       }
       case "HostCallArgsAsync": {
@@ -145,14 +155,27 @@ export function emitFunction(
             pcToSpanIndex: [],
             scopes: [],
             locals: [],
+            callSites: [],
+            suspendSites: [],
           };
         }
-        emitter.hostCallArgsAsync(fnId, node.argc, 0);
+        const csId = nextCallSiteId++;
+        emitter.hostCallArgsAsync(fnId, node.argc, csId);
+        callSites.push({ pc: pcBefore, callSiteId: csId, targetDebugFunctionId: null, isAsync: true });
         break;
       }
-      case "Await":
+      case "Await": {
         emitter.await();
+        if (node.span) {
+          const spanIdx = getOrCreateSpanIndex(node.span, false);
+          suspendSites.push({
+            awaitPc: pcBefore,
+            resumePc: pcBefore + 1,
+            sourceSpan: spans[spanIdx],
+          });
+        }
         break;
+      }
       case "MapGet":
         emitter.mapGet();
         break;
@@ -242,6 +265,8 @@ export function emitFunction(
             pcToSpanIndex: [],
             scopes: [],
             locals: [],
+            callSites: [],
+            suspendSites: [],
           };
         }
         const idx = pool.add(mkFunctionValue(funcId));
@@ -263,6 +288,8 @@ export function emitFunction(
             pcToSpanIndex: [],
             scopes: [],
             locals: [],
+            callSites: [],
+            suspendSites: [],
           };
         }
         emitter.makeClosure(closureFuncId, node.captureCount);
@@ -316,6 +343,8 @@ export function emitFunction(
     pcToSpanIndex,
     scopes,
     locals,
+    callSites,
+    suspendSites,
   };
 }
 

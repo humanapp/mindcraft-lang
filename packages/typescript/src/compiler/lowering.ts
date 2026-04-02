@@ -32,6 +32,10 @@ export interface FunctionEntry {
   injectCtxTypeId?: TypeId;
   scopeMetadata?: ScopeMetadata[];
   localMetadata?: LocalMetadata[];
+  isGenerated?: boolean;
+  parentName?: string;
+  sourceFileName?: string;
+  functionSpan?: IrSourceSpan;
 }
 
 export interface ImportedFunction {
@@ -98,6 +102,7 @@ interface LowerContext {
   funcIdCounter: { value: number };
   closureFunctions: Map<number, FunctionEntry>;
   thisLocalIndex?: number;
+  currentFunctionName: string;
 }
 
 function allocLabel(ctx: LowerContext): number {
@@ -402,6 +407,7 @@ function lowerOnPageEnteredBody(
     functionTable,
     funcIdCounter,
     closureFunctions,
+    currentFunctionName: `${descriptor.name}.onPageEntered`,
   };
 
   const body = funcNode.body;
@@ -419,6 +425,9 @@ function lowerOnPageEnteredBody(
       name: `${descriptor.name}.onPageEntered`,
       scopeMetadata: [...scopeStack.scopeMetadata],
       localMetadata: [...scopeStack.localMetadata],
+      isGenerated: false,
+      sourceFileName: funcNode.getSourceFile()?.fileName,
+      functionSpan: spanFromNode(funcNode),
     };
   }
 
@@ -435,6 +444,9 @@ function lowerOnPageEnteredBody(
     name: `${descriptor.name}.onPageEntered`,
     scopeMetadata: [...scopeStack.scopeMetadata],
     localMetadata: [...scopeStack.localMetadata],
+    isGenerated: false,
+    sourceFileName: funcNode.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(funcNode),
   };
 }
 
@@ -465,6 +477,7 @@ function generateOnPageEnteredWrapper(
     numLocals: 1,
     name: `${name}.<onPageEntered-wrapper>`,
     injectCtxTypeId: ContextTypeIds.Context,
+    isGenerated: true,
   };
 }
 
@@ -571,6 +584,7 @@ function lowerOnExecuteBody(
     functionTable,
     funcIdCounter,
     closureFunctions,
+    currentFunctionName: `${descriptor.name}.onExecute`,
   };
 
   const body = funcNode.body;
@@ -589,6 +603,9 @@ function lowerOnExecuteBody(
       injectCtxTypeId: ContextTypeIds.Context,
       scopeMetadata: [...scopeStack.scopeMetadata],
       localMetadata: [...scopeStack.localMetadata],
+      isGenerated: false,
+      sourceFileName: funcNode.getSourceFile()?.fileName,
+      functionSpan: spanFromNode(funcNode),
     };
   }
 
@@ -606,6 +623,9 @@ function lowerOnExecuteBody(
     injectCtxTypeId: ContextTypeIds.Context,
     scopeMetadata: [...scopeStack.scopeMetadata],
     localMetadata: [...scopeStack.localMetadata],
+    isGenerated: false,
+    sourceFileName: funcNode.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(funcNode),
   };
 }
 
@@ -653,6 +673,7 @@ function lowerHelperFunction(
     functionTable,
     funcIdCounter,
     closureFunctions,
+    currentFunctionName: funcName,
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -675,6 +696,9 @@ function lowerHelperFunction(
       name: funcName,
       scopeMetadata: [...scopeStack.scopeMetadata],
       localMetadata: [...scopeStack.localMetadata],
+      isGenerated: false,
+      sourceFileName: funcNode.getSourceFile()?.fileName,
+      functionSpan: spanFromNode(funcNode),
     };
   }
 
@@ -691,6 +715,9 @@ function lowerHelperFunction(
     name: funcName,
     scopeMetadata: [...scopeStack.scopeMetadata],
     localMetadata: [...scopeStack.localMetadata],
+    isGenerated: false,
+    sourceFileName: funcNode.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(funcNode),
   };
 }
 
@@ -722,6 +749,7 @@ function generateModuleInitWithImports(
     functionTable,
     funcIdCounter,
     closureFunctions,
+    currentFunctionName: "<module-init>",
   };
 
   for (const moduleName of moduleInitOrder) {
@@ -761,6 +789,8 @@ function generateModuleInitWithImports(
     name: "<module-init>",
     scopeMetadata: [...scopeStack.scopeMetadata],
     localMetadata: [...scopeStack.localMetadata],
+    isGenerated: true,
+    sourceFileName: sourceFile.fileName,
   };
 }
 
@@ -1786,6 +1816,7 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     capturedVars: capturedVars.size > 0 ? capturedVars : undefined,
     funcIdCounter: ctx.funcIdCounter,
     closureFunctions: ctx.closureFunctions,
+    currentFunctionName: closureName,
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -1814,6 +1845,10 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     name: closureName,
     scopeMetadata: [...closureScopeStack.scopeMetadata],
     localMetadata: [...closureScopeStack.localMetadata],
+    isGenerated: false,
+    parentName: ctx.currentFunctionName,
+    sourceFileName: expr.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(expr),
   });
 }
 
@@ -5319,6 +5354,7 @@ function lowerClassDeclaration(
     funcIdCounter,
     closureFunctions,
     thisLocalIndex: thisLocal,
+    currentFunctionName: `${ci.name}$new`,
   };
 
   if (typeId) {
@@ -5356,6 +5392,9 @@ function lowerClassDeclaration(
     name: `${ci.name}$new`,
     scopeMetadata: [...ctorScope.scopeMetadata],
     localMetadata: [...ctorScope.localMetadata],
+    isGenerated: false,
+    sourceFileName: ci.sourceFile.fileName,
+    functionSpan: ctor ? spanFromNode(ctor) : spanFromNode(ci.node),
   });
 
   for (const member of ci.node.members) {
@@ -5401,6 +5440,7 @@ function lowerClassDeclaration(
       funcIdCounter,
       closureFunctions,
       thisLocalIndex: 0,
+      currentFunctionName: `${ci.name}.${methodName}`,
     };
 
     for (let i = 0; i < userParamCount; i++) {
@@ -5427,6 +5467,9 @@ function lowerClassDeclaration(
       name: `${ci.name}.${methodName}`,
       scopeMetadata: [...methodScope.scopeMetadata],
       localMetadata: [...methodScope.localMetadata],
+      isGenerated: false,
+      sourceFileName: ci.sourceFile.fileName,
+      functionSpan: spanFromNode(member),
     });
   }
 

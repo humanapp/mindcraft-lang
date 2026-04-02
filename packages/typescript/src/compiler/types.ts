@@ -36,6 +36,7 @@ export interface UserTileLinkInfo {
   linkedEntryFuncId: number;
   linkedInitFuncId?: number;
   linkedOnPageEnteredFuncId?: number;
+  linkedDebugMetadata?: DebugMetadata;
 }
 
 export interface CompileOptions {
