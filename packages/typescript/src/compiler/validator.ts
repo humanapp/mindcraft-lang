@@ -21,6 +21,15 @@ const FORBIDDEN_GLOBALS = new Set([
   "arguments",
 ]);
 
+const UNSUPPORTED_TYPES = new Set([
+  "Object",
+  "Function",
+  "CallableFunction",
+  "NewableFunction",
+  "IArguments",
+  "RegExp",
+]);
+
 export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
   const diagnostics: CompileDiagnostic[] = [];
 
@@ -114,6 +123,16 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
       }
     }
 
+    if (ts.isIdentifier(node) && UNSUPPORTED_TYPES.has(node.text)) {
+      if (isUnsupportedTypeReference(node)) {
+        addDiag(
+          ValidatorDiagCode.UnsupportedTypeReference,
+          node,
+          `\`${node.text}\` is not supported in the Mindcraft Runtime`
+        );
+      }
+    }
+
     if (ts.canHaveDecorators(node)) {
       const decorators = ts.getDecorators(node);
       if (decorators && decorators.length > 0) {
@@ -163,6 +182,14 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
 
   visit(sourceFile);
   return diagnostics;
+}
+
+function isUnsupportedTypeReference(node: ts.Identifier): boolean {
+  const parent = node.parent;
+  if (!parent) return false;
+  if (ts.isTypeReferenceNode(parent) && parent.typeName === node) return true;
+  if (ts.isExpressionWithTypeArguments(parent) && parent.expression === node) return true;
+  return false;
 }
 
 // An identifier matching a forbidden global is only actually forbidden when it

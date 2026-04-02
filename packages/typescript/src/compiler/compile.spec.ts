@@ -203,6 +203,63 @@ export default Sensor({
     const result = compileUserTile(VALID_SENSOR_SOURCE);
     assert.deepStrictEqual(result.diagnostics, []);
   });
+
+  test("unsupported type reference in annotation produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function foo(x: Object): void {}
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.UnsupportedTypeReference));
+  });
+
+  for (const typeName of ["Object", "Function", "CallableFunction", "NewableFunction", "IArguments", "RegExp"]) {
+    test(`type reference to ${typeName} produces diagnostic`, () => {
+      const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let x: ${typeName};
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+      const result = compileUserTile(source);
+      assert.ok(
+        result.diagnostics.some((d) => d.code === ValidatorDiagCode.UnsupportedTypeReference),
+        `expected UnsupportedTypeReference for ${typeName}`
+      );
+    });
+  }
+
+  test("unsupported type name used as variable name does not produce UnsupportedTypeReference", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+const IArguments = 42;
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean { return true; },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(!result.diagnostics.some((d) => d.code === ValidatorDiagCode.UnsupportedTypeReference));
+  });
 });
 
 describe("descriptor extraction", () => {

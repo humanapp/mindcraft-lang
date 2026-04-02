@@ -57,6 +57,8 @@ export enum ValidatorDiagCode {
   PrivateFieldsNotSupported = 1018,
   /** Class getters/setters are not supported */
   ClassGettersSettersNotSupported = 1019,
+  /** Reference to an unsupported built-in type */
+  UnsupportedTypeReference = 1020,
 }
 
 /**
