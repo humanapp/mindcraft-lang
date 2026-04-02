@@ -739,3 +739,101 @@ export default Sensor({
     assert.equal(bareTypeId, undefined, "Point should NOT be registered with bare name");
   });
 });
+
+describe("multi-file: descriptor qualified types (M3)", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("sensor output type resolves to qualified class name", () => {
+    const result = compileProject({
+      "sensors/detect.ts": `
+import { Sensor, type Context } from "mindcraft";
+
+class Result {
+  value: number;
+  constructor(value: number) { this.value = value; }
+}
+
+export default Sensor({
+  name: "detect",
+  output: "Result",
+  onExecute(ctx: Context): Result {
+    return new Result(1);
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/detect.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const registry = getBrainServices().types;
+    const qualifiedTypeId = registry.resolveByName("/sensors/detect.ts::Result");
+    assert.ok(qualifiedTypeId, "Result should be registered with qualified name");
+    assert.equal(entry.program!.outputType, qualifiedTypeId, "program outputType should use qualified TypeId");
+  });
+
+  test("param type resolves to qualified class name", () => {
+    const result = compileProject({
+      "actuators/move.ts": `
+import { Actuator, type Context } from "mindcraft";
+
+class Vec2 {
+  x: number;
+  y: number;
+  constructor(x: number, y: number) { this.x = x; this.y = y; }
+}
+
+export default Actuator({
+  name: "move",
+  params: {
+    target: { type: "Vec2" },
+  },
+  onExecute(ctx: Context, params: { target: Vec2 }): void {
+    const v = params.target;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("actuators/move.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    assert.equal(entry.program!.params[0].type, "/actuators/move.ts::Vec2", "param type should carry qualified name");
+  });
+
+  test("host type param stays bare", () => {
+    const result = compileProject({
+      "sensors/simple.ts": `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "simple",
+  output: "number",
+  params: {
+    range: { type: "number", default: 5 },
+  },
+  onExecute(ctx: Context, params: { range: number }): number {
+    return params.range;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/simple.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    assert.equal(entry.program!.params[0].type, "number", "host type should stay bare");
+    assert.ok(entry.program!.outputType, "output type should resolve");
+  });
+});

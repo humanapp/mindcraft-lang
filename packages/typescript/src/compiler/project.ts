@@ -7,8 +7,14 @@ import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { emitFunction } from "./emit.js";
 import type { ImportedFunction, ImportedVariable } from "./lowering.js";
-import { lowerProgram } from "./lowering.js";
-import type { CompileDiagnostic, CompileOptions, ExtractedDescriptor, UserAuthoredProgram } from "./types.js";
+import { lowerProgram, qualifiedClassName } from "./lowering.js";
+import type {
+  CompileDiagnostic,
+  CompileOptions,
+  ExtractedDescriptor,
+  ExtractedParam,
+  UserAuthoredProgram,
+} from "./types.js";
 import { validateAst } from "./validator.js";
 import { createVirtualCompilerHost } from "./virtual-host.js";
 
@@ -240,11 +246,14 @@ export class UserTileProject {
       emittedFunctions.push(emitResult.bytecode);
     }
 
-    const callDef = buildCallDef(descriptor.name, descriptor.params);
-    const outputType = descriptor.outputType
-      ? getBrainServices().types.resolveByName(descriptor.outputType)
+    const qualifiedParams = qualifyDescriptorParams(descriptor.params, sourceFile);
+    const qualifiedOutputType = descriptor.outputType
+      ? qualifyDescriptorType(descriptor.outputType, sourceFile)
       : undefined;
-    if (descriptor.outputType && !outputType) {
+
+    const callDef = buildCallDef(descriptor.name, qualifiedParams);
+    const outputType = qualifiedOutputType ? getBrainServices().types.resolveByName(qualifiedOutputType) : undefined;
+    if (qualifiedOutputType && !outputType) {
       return {
         diagnostics: [
           { code: CompileDiagCode.UnknownOutputType, message: `Unknown output type: "${descriptor.outputType}"` },
@@ -270,11 +279,27 @@ export class UserTileProject {
         onPageEntered: programResult.onPageEnteredWrapperId,
       },
       programRevisionId: generateRevisionId(),
-      params: descriptor.params,
+      params: qualifiedParams,
     };
 
     return { diagnostics: [], program, descriptor };
   }
+}
+
+function qualifyDescriptorType(typeName: string, sourceFile: ts.SourceFile): string {
+  const types = getBrainServices().types;
+  if (types.resolveByName(typeName)) return typeName;
+  const qualified = qualifiedClassName(sourceFile.fileName, typeName);
+  if (types.resolveByName(qualified)) return qualified;
+  return typeName;
+}
+
+function qualifyDescriptorParams(params: ExtractedParam[], sourceFile: ts.SourceFile): ExtractedParam[] {
+  return params.map((p) => {
+    const qualifiedType = qualifyDescriptorType(p.type, sourceFile);
+    if (qualifiedType === p.type) return p;
+    return { ...p, type: qualifiedType };
+  });
 }
 
 interface CollectResult {

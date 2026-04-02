@@ -434,8 +434,7 @@ depends on M1. M3 depends on M2.
 
 ## Current State
 
-M1 and M2 complete. M3 next (descriptor qualified types). C3.5 D1+D2 can
-proceed in parallel.
+M1, M2, and M3 complete. C3.5 D1+D2 can proceed independently.
 
 ---
 
@@ -560,3 +559,63 @@ lint clean in both packages.
 - Ambient declaration generation for user classes will need revisiting in C4
   (multi-file class support) -- if classes need to appear in ambient context
   for cross-file references, a bare-name extraction strategy is needed.
+
+### M3: Descriptor Qualified Types
+
+**Status:** Complete
+
+**What was delivered:**
+
+1. `qualifiedClassName` exported from `lowering.ts` (was file-private).
+2. `qualifyDescriptorType(typeName, sourceFile)` helper in `project.ts` --
+   tries bare name first (host/built-in types), then qualified name via
+   `qualifiedClassName(sourceFile.fileName, typeName)`, falls back to bare.
+3. `qualifyDescriptorParams(params, sourceFile)` helper in `project.ts` --
+   maps params through `qualifyDescriptorType`, returning new param objects
+   only when the type changes.
+4. `_compileEntryPoint` updated to qualify `descriptor.outputType` and
+   `descriptor.params` before `resolveByName` and `buildCallDef`. The
+   `UserAuthoredProgram.params` now carry qualified type names, so
+   `registration-bridge.ts` receives them without any changes.
+5. `MindcraftType` in ambient declarations changed from
+   `keyof MindcraftTypeMap` to `keyof MindcraftTypeMap | (string & {})` so
+   the TS checker accepts user-defined class names as descriptor type strings
+   while preserving autocomplete for known types.
+6. 3 new tests in `multi-file.spec.ts`:
+   - Sensor output type resolves to qualified class name
+   - Param type resolves to qualified class name
+   - Host type param stays bare
+
+**Test results:** 473 typescript tests pass. Typecheck and lint clean.
+
+**Packages/files changed:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- export `qualifiedClassName`
+- `packages/typescript/src/compiler/project.ts` -- 2 helpers + qualification in
+  `_compileEntryPoint`
+- `packages/typescript/src/compiler/ambient.ts` -- `MindcraftType` widened
+- `packages/typescript/src/compiler/multi-file.spec.ts` -- 3 new M3 tests
+
+**Decisions made:**
+
+- Bare-first, qualified-fallback resolution for descriptor types. The inverse of
+  `resolveRegistryName` (which is qualified-first, bare-fallback). Descriptor
+  strings are user-authored bare names; a host type like `"number"` should
+  resolve directly. Only if bare lookup fails do we try qualifying with the
+  entry file name.
+- `MindcraftType` widened to `keyof MindcraftTypeMap | (string & {})` rather
+  than requiring users to extend `MindcraftTypeMap` for their classes. The
+  `(string & {})` idiom preserves autocomplete for known types while accepting
+  arbitrary strings. User class names are validated at compile time by
+  `resolveByName`, not by the TS type system.
+- No changes needed to `registration-bridge.ts`. It calls
+  `types.resolveByName(p.type)`, which now receives qualified names via
+  `program.params`.
+
+**Follow-up items:**
+
+- C3.5 D1+D2 (export filtering + collision diagnostics) can proceed.
+- If classes from imported files are used as descriptor types, the current
+  approach qualifies with the entry file name, which won't match. Cross-file
+  class-typed params will need `resolveRegistryName`-style resolution or
+  a scan of all registered qualified names. Deferred to C4.

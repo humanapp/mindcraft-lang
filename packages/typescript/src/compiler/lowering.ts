@@ -51,7 +51,7 @@ interface ClassInfo {
   methodFuncIds: Map<string, number>;
 }
 
-function qualifiedClassName(fileName: string, className: string): string {
+export function qualifiedClassName(fileName: string, className: string): string {
   return `${fileName}::${className}`;
 }
 

@@ -309,7 +309,7 @@ declare module "mindcraft" {
 `;
 
 const AMBIENT_MODULE_END = `
-  type MindcraftType = keyof MindcraftTypeMap;
+  type MindcraftType = keyof MindcraftTypeMap | (string & {});
 
   export interface ParamDef {
     type: MindcraftType;
