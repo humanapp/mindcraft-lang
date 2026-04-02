@@ -18,7 +18,7 @@ main plan's numbering and the D-series (destructuring).
 
 ## Current State
 
-(As of 2026-04-01, after C2 completion)
+(As of 2026-04-01, after C3 completion)
 
 ### What exists
 
@@ -64,11 +64,17 @@ main plan's numbering and the D-series (destructuring).
 - **`new ClassName(args)` (C2):** `lowerNewExpression` looks up `ClassName$new`
   in the function table, lowers arguments, emits `Call(funcIndex, argc)`.
 
+- **Method body compilation (C3):** `lowerClassDeclaration` compiles real method
+  bodies: `this` is local 0 (implicit first parameter), user params start at
+  local 1, body statements lowered, default nil return appended.
+- **User-compiled method dispatch (C3):** `lowerStructMethodCall` checks
+  `functionTable` first for user-compiled methods (emits `Call`), falls back to
+  host function lookup (emits `HostCallArgs`/`HostCallArgsAsync`).
+- **Compound assignment on `this` fields (C3):** `this.x += value` expands to
+  read-operate-write pattern with `StructSet` + `StoreLocal(this)` store-back.
+
 ### What does not exist
 
-- No method body compilation (methods return nil stubs).
-- No user-compiled method dispatch (struct methods dispatch to host functions
-  only; user-compiled class methods are stubbed).
 - No multi-file class support (classes not yet in ambient declarations or
   imported function tables).
 
@@ -935,3 +941,71 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
 - [x] `this` outside class context -> diagnostic (caught by TS type-checker)
 - [x] Constructor returns struct value directly
 - [x] Class with no explicit constructor uses property initializers via `new`
+
+### Phase C3 -- Method Compilation
+
+**Date completed:** 2026-04-01
+
+**Files changed:**
+
+- `packages/typescript/src/compiler/lowering.ts` -- replaced method stub bodies
+  in `lowerClassDeclaration` with real compilation: `this` at local 0 (implicit
+  first param), user params at local 1+, destructuring pattern support for
+  method params, `lowerStatements(member.body)`, default nil+return tail.
+  Updated `lowerStructMethodCall` to check `functionTable` for user-compiled
+  methods (emits `Call`) before falling back to host function lookup (emits
+  `HostCallArgs`/`HostCallArgsAsync`). Uses `bareClassName` to extract bare
+  name from qualified `structDef.name` for function table lookups.
+  `lowerThisFieldAssignment` updated to support compound assignment operators
+  (`+=`, `-=`, `*=`, `/=`): reads field, evaluates RHS, resolves operator via
+  `resolveOperatorWithExpansion`, emits `HostCallArgs`, then standard
+  `StructSet` + `StoreLocal(this)` store-back.
+- `packages/typescript/src/compiler/codegen.spec.ts` -- added 7 C3 tests to
+  the "class declarations" describe block.
+
+**Test results:** 473 typescript tests pass, 0 failures. Typecheck and lint clean.
+
+**Deviations from spec:**
+
+1. **Method body lowering pattern.** The spec suggested reusing
+   `lowerHelperFunction`'s pattern. The implementation inlines the method body
+   lowering directly in `lowerClassDeclaration` rather than delegating to a
+   shared helper, because the `this` local setup and parameter offset differ
+   from top-level helper functions.
+2. **Destructuring in method parameters.** Not in the spec, but the
+   implementation supports `ObjectBindingPattern` and `ArrayBindingPattern`
+   in method parameters, reusing existing `lowerObjectBindingPattern` /
+   `lowerArrayBindingPattern` helpers.
+3. **VM reference semantics.** The spec warned about struct value semantics
+   making method mutations invisible to callers. Investigation revealed the VM
+   uses reference semantics: `STRUCT_SET` mutates in place, `STORE_LOCAL` /
+   `LOAD_LOCAL` pass references. Mutations to `this` inside a method ARE
+   visible to the caller. The `StoreLocal(this)` after `StructSet` in the
+   store-back pattern is harmless but redundant. The spec was updated in-place
+   with this correction.
+
+**Discoveries:**
+
+- The VM uses reference semantics for struct locals/parameters: `STRUCT_SET`
+  mutates in place, `Call` passes arguments by reference. Only `STORE_VAR`
+  (brain variable storage) deep-copies values. This means class method
+  mutations are visible to callers -- matching JS class behavior.
+- `this.double() + this.double()` inside a method works naturally because
+  `this` (local 0) is just a regular local reference pushed before each call.
+- The compound assignment expansion `this.x += n` requires careful stack
+  ordering: `LoadLocal(this)`, `PushConst(fieldName)`, `LoadLocal(this)`,
+  `GetField(fieldName)`, evaluate RHS, `HostCallArgs(op, 2)`, `StructSet`,
+  `Dup`, `StoreLocal(this)` -- the first `LoadLocal(this)` + `PushConst` set
+  up the `StructSet` target, the second `LoadLocal(this)` + `GetField` reads
+  the current value.
+
+**Actual acceptance criteria met:**
+
+- [x] Method body reads `this.x` correctly
+- [x] Method body writes `this.x = value` (store-back pattern)
+- [x] Compound assignment `this.x += value` reads, computes, and writes back
+- [x] `obj.method(args)` calls a user-compiled method
+- [x] Method calls another method on `this` (`this.someMethod()`)
+- [x] Method returns a computed value
+- [x] Method with no explicit return returns nil
+- [x] Multiple methods on the same class
