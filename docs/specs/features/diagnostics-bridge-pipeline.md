@@ -36,28 +36,31 @@ Same loop as the compiler phased plan:
 
 - Compilation runs **in the Mindcraft browser app** (`apps/sim/`).
 - `apps/sim/src/services/user-tile-compiler.ts` wraps `UserTileProject` from
-  `@mindcraft-lang/typescript`. Calls `compileAll()` on every file change.
-- `apps/sim/src/services/vscode-bridge.ts` manually wires
-  `fromRemoteFileChange` to dispatch to `user-tile-compiler`. Phase D3
-  will migrate this to use the `CompilationProvider` interface from
-  `bridge-app`.
+  `@mindcraft-lang/typescript`. Exports `createCompilationProvider()` which
+  returns a `CompilationProvider` adapter (Phase D3). The adapter's
+  `compileAll()` calls `UserTileProject.compileAll()` and maps
+  `ProjectCompileResult` into `CompilationResult` with protocol-shaped
+  `CompileDiagnosticEntry[]` per file. Numeric diagnostic codes are
+  formatted as `"MC{code}"` (e.g., `"MC5002"`). Optional line/column
+  fields fall back to 1 when absent.
+- `apps/sim/src/services/vscode-bridge.ts` passes the adapter as
+  `compilationProvider` to `AppProject` (Phase D3). Uses
+  `onRemoteFileChange()` for filesystem persistence and
+  `compilation.onCompilation()` for the sim runtime cache. Seeds the
+  compiler on startup via `handleFileChange({ action: "import", ... })`.
 - `ProjectCompileResult` contains:
   - `results: Map<string, CompileResult>` -- per-file diagnostics + compiled
     program.
   - `tsErrors: Map<string, CompileDiagnostic[]>` -- TypeScript checker errors
     (shared across files in the project).
+- `tsErrors` and `results` are **mutually exclusive**: when TS errors exist,
+  `results` is an empty Map (compiler returns early). No deduplication needed.
 - `CompileDiagnostic { code, message, severity, line?, column?, endLine?,
   endColumn? }` -- full source ranges and severity. `severity` is
   `"error" | "warning" | "info"` (required). `line` and `column` are 1-indexed.
-  All diagnostic creation sites (`makeDiag` in `lowering.ts`, `addDiag` in
-  `validator.ts` and `descriptor.ts`, TS diagnostic mapping in `project.ts`,
-  emit-phase errors in `emit.ts`) populate these fields. TS checker diagnostics
-  map severity from `ts.DiagnosticCategory`; all compiler-emitted diagnostics
-  use `"error"`. The `CompileDiagnostic` -> `CompileDiagnosticsPayload` mapping
-  in Phase D3 is a direct passthrough with no synthesis needed.
-- `user-tile-compiler.ts` exposes `onCompilation(fn)` and `onRemoval(fn)`
-  listener hooks. Currently only consumed by `console.log`-style logging.
-  No subscriber sends diagnostics to the bridge.
+- `user-tile-compiler.ts` exports `handleCompilationResult()` which the sim
+  subscribes to via `CompilationManager.onCompilation()`. Updates the internal
+  `CompileResult` cache and logs diagnostics.
 
 ### bridge-app (packages/bridge-app)
 
@@ -129,20 +132,15 @@ Same loop as the compiler phased plan:
 ### Data flow gap
 
 ```
-sim compiles tile
+sim compiles tile (via CompilationProvider adapter, Phase D3)
   |
   v
-CompileResult with diagnostics (in-memory, sim only)
-  |
-  X -- sim not yet wired to CompilationProvider (Phase D3)
-  |
-bridge-app (AppProject + CompilationManager) -- ready to drive compile +
-  emit diagnostics when given a CompilationProvider (Phase D2.5 done)
+CompilationManager maps result, emits compile:diagnostics (Phase D2.5)
   |
   v
 vscode-bridge -- compile handlers relay to extensions (Phase D2 done)
   |
-  v (messages flow, but no sender yet until D3)
+  v (messages flow end-to-end when bridge is connected)
   |
 vscode-extension -- no diagnostic display (Phase D4)
 ```
@@ -674,3 +672,81 @@ since the status bar can rely on receiving status messages.
 - `bridge-app` depends only on `bridge-protocol` for diagnostic types
   (`CompileDiagnosticEntry`, `AppClientMessage`), not on
   `@mindcraft-lang/typescript`. The decoupling is clean.
+
+### Phase D3 (2026-04-02)
+
+**Objective:** Sim provides a `CompilationProvider` adapter to `AppProject`,
+replacing the manual file-change dispatch in `vscode-bridge.ts`.
+
+**Planned vs actual:** Delivered as specified with these deviations:
+
+1. **No `onRemoval()` subscription.** The spec called for
+   `project.compilation.onRemoval()` to clear removed files from the sim
+   cache. Instead, `handleCompilationResult()` detects removed files by
+   diffing `cache.keys()` against the raw `ProjectCompileResult.results`
+   keys, replicating the old `recompileAll()` logic. The
+   `CompilationManager.onRemoval()` fires for bridge-level clearing (empty
+   diagnostics array), but the sim cache cleanup is handled internally.
+
+2. **`lastRawResult` side-channel.** The `CompilationProvider.compileAll()`
+   returns protocol-shaped `CompilationResult`, but the sim also needs the
+   raw `ProjectCompileResult` (with `CompileResult` objects containing
+   `program` fields) for its runtime cache. Rather than extending the
+   `CompilationProvider` interface, `compileAll()` stashes the raw result
+   in a module-level `lastRawResult` variable that
+   `handleCompilationResult()` reads. This keeps the `bridge-app` interface
+   unchanged.
+
+3. **Initial filesystem seeding.** The spec did not explicitly call for
+   seeding the compiler with existing files at startup. The old code had
+   `userTileCompiler.fullSync(project.files.raw.export())` at the end of
+   `initProject()`. This was replaced with
+   `compilation.handleFileChange({ action: "import", entries: [...] })` to
+   go through the `CompilationManager` path, which triggers compilation
+   and fires the `onCompilation` listener to populate the sim cache.
+
+4. **Avoided `bridge-protocol` dependency.** The sim depends on
+   `bridge-app` but not `bridge-protocol`. Rather than adding a new
+   dependency, the `DiagnosticEntry` type is derived from
+   `CompilationResult` using conditional type inference
+   (`CompilationResult["files"] extends Map<string, infer E> ? ...`).
+
+5. **Diagnostic code formatting.** All compiler diagnostic codes (both TS
+   checker errors mapped via `CompileDiagCode.TypeScriptError = 5002` and
+   Mindcraft compiler codes 1000-4099) are formatted as `"MC{code}"` (e.g.,
+   `"MC5002"`, `"MC1001"`). The spec example showed `"TS2339"` for TS errors,
+   but the compiler doesn't preserve the original TS error code -- it maps
+   all TS errors to `CompileDiagCode.TypeScriptError`. Using a uniform
+   `"MC"` prefix avoids confusion.
+
+**Files modified:**
+- `apps/sim/src/services/user-tile-compiler.ts` -- refactored to export
+  `createCompilationProvider()` and `handleCompilationResult()`. Removed
+  `fileWritten`, `fileDeleted`, `fileRenamed`, `fullSync`,
+  `onCompilation`, `onRemoval` exports. Added `mapDiagnostic()` and
+  `mapProjectResult()` for the diagnostic mapping.
+- `apps/sim/src/services/vscode-bridge.ts` -- passes `compilationProvider`
+  to `AppProject`, replaced `fromRemoteFileChange` override with
+  `onRemoteFileChange` for filesystem persistence and
+  `compilation.onCompilation` for the runtime cache. Added initial
+  filesystem seeding via `handleFileChange`.
+
+**Discoveries:**
+- `tsErrors` and `results` in `ProjectCompileResult` are mutually exclusive.
+  When `tsErrors.size > 0`, the compiler returns early with
+  `results: new Map()`. No deduplication is needed in `mapProjectResult`.
+- `Project` imports filesystem entries directly in the constructor (via
+  `FileSystem.import()`) without triggering `fromRemoteFileChange`. Initial
+  seeding must be done explicitly after construction.
+- The `ExportedFileSystem` Map must be spread to an array for the
+  `FileSystemNotification` import action (Zod schema expects array of
+  tuples, not a Map).
+- `CompileDiagnostic.line` and `.column` are optional (undefined when the
+  diagnostic has no source location). The mapping falls back to line 1,
+  column 1 for these cases -- the protocol's `CompileDiagnosticRange`
+  requires all four fields.
+- File path alignment risk (D3 key risk) is a non-issue at the provider
+  level: `UserTileProject` uses VFS paths like `sensors/foo.ts` (no leading
+  slash), which match the protocol's project-relative path convention.
+  The extension will need to prepend `/` when constructing `mindcraft://`
+  URIs in Phase D4.
