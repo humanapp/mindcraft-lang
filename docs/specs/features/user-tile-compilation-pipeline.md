@@ -41,14 +41,30 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-03-31) Phase 1 complete and reworked. `user-tile-compiler.ts`
-maintains a persistent `UserTileProject` instance that mirrors the bridge
-filesystem. Any file mutation (`updateFile`, `deleteFile`, `renameFile`,
-`setFiles`) triggers `compileAll()`, which type-checks the whole project as a
-single `ts.createProgram` and produces `CompileResult` per entry-point file.
-Cross-file imports are resolved automatically. Full-sync on reconnect is
-handled via `setFiles()`. Results are cached with listener hooks for future
-phases. No tile registration yet.
+(Updated 2026-04-02) Phase 1 complete and reworked. The compilation pipeline
+uses a three-layer architecture:
+
+1. `CompilationProvider` (interface, `bridge-app`) -- file mutation + compile
+   methods implemented by `user-tile-compiler.ts`.
+2. `CompilationManager` (class, `bridge-app`) -- dispatches
+   `FileSystemNotification` actions to the provider, calls `compileAll()`,
+   fires `onCompilation`/`onRemoval` listeners, and emits diagnostics over
+   the bridge when connected.
+3. `AppProject` (class, `bridge-app`) -- owns the `CompilationManager`,
+   wires `fromRemoteFileChange` to it, and exposes listeners for the sim.
+
+`user-tile-compiler.ts` maintains a persistent `UserTileProject` instance
+that mirrors the filesystem. Any file mutation triggers `compileAll()`, which
+type-checks the whole project as a single `ts.createProgram` and produces
+`CompileResult` per entry-point file. Cross-file imports are resolved
+automatically.
+
+`initProject()` in `vscode-bridge.ts` fires a synthetic `import` action at
+startup to compile all `.ts` files persisted in localStorage. This runs
+synchronously during bootstrap, before React renders, so compile results are
+available before brains load (though tiles are not yet registered).
+
+No tile registration yet.
 
 ---
 
@@ -59,20 +75,29 @@ phases. No tile registration yet.
 ```
 VS Code edit -> extension -> bridge server -> sim app
                                                |
-                          project.fromRemoteFileChange(notification)
+                          AppProject.fromRemoteFileChange(notification)
                                                |
-                          saveFilesystem() + userTileCompiler.*()
-                                               |
-                          UserTileProject.compileAll()
-                                               |
-                          onCompilation / onRemoval listeners
+               +-------------------------------+-------------------------------+
+               |                                                               |
+  CompilationManager.handleFileChange(ev)                    onRemoteFileChange listeners
+               |                                              (e.g. saveFilesystem())
+  CompilationProvider.fileWritten/Deleted/Renamed/fullSync
+               |
+  CompilationProvider.compileAll()
+               |
+  CompilationManager fires onCompilation / onRemoval listeners
+  CompilationManager emits diagnostics over bridge (if connected)
 ```
 
-`fromRemoteFileChange` fires on every remote mutation with a `FileSystemNotification`:
-- `action: "write"` -- `path`, `content`, `newEtag`
-- `action: "delete"` -- `path`
-- `action: "rename"` -- `oldPath`, `newPath`
+`FileSystemNotification` (from `bridge-protocol`) supports these actions:
+- `action: "write"` -- `path`, `content`, `newEtag`, optional `isReadonly`, `expectedEtag`
+- `action: "delete"` -- `path`, optional `expectedEtag`
+- `action: "rename"` -- `oldPath`, `newPath`, optional `expectedEtag`
+- `action: "mkdir"` -- `path`
+- `action: "rmdir"` -- `path`
 - `action: "import"` -- `entries` (full sync)
+
+`CompilationManager` ignores `mkdir` and `rmdir` actions.
 
 ### Compilation pipeline (packages/typescript)
 
@@ -82,15 +107,15 @@ all project files and compiles them as a unit:
 | Method / Class | Input | Output |
 |---|---|---|
 | `new UserTileProject(options?)` | optional `CompileOptions` | project instance |
-| `project.setFiles(files)` | `Map<string, string>` (full sync) | replaces all files |
+| `project.setFiles(files)` | `ReadonlyMap<string, string>` (full sync) | replaces all files |
 | `project.updateFile(path, content)` | path + source | adds or updates one file |
 | `project.deleteFile(path)` | path | removes one file |
 | `project.renameFile(old, new)` | old + new path | moves a file |
 | `project.compileAll()` | (uses internal file map) | `ProjectCompileResult` |
 | `project.compileAffected()` | (uses internal file map) | `ProjectCompileResult` (currently same as `compileAll`) |
-| `linkUserPrograms(brainProgram, userPrograms)` | base program + compiled tiles | `LinkResult` with `linkedProgram` + `UserTileLinkInfo[]` |
-| `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)` | linked program + VM | `HostAsyncFn` |
-| `registerUserTile(linkInfo, hostFn)` | link info + host fn | registers tiles in brain services |
+| `linkUserPrograms(brainProgram, userPrograms)` | `BrainProgram` + `UserAuthoredProgram[]` | `LinkResult` with `linkedProgram` + `userLinks: UserTileLinkInfo[]` |
+| `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)` | `BrainProgram` + `UserTileLinkInfo` + `VM` + `Scheduler` | `HostAsyncFn` |
+| `registerUserTile(linkInfo, hostFn)` | `UserTileLinkInfo` + `HostAsyncFn` | registers tile + params in brain services |
 
 `ProjectCompileResult` contains:
 - `results: Map<string, CompileResult>` -- one entry per file that has
@@ -99,16 +124,49 @@ all project files and compiles them as a unit:
 - `tsErrors: Map<string, CompileDiagnostic[]>` -- TypeScript type errors by file.
   When tsErrors is non-empty, results is empty (type errors block compilation).
 
+`CompileResult` contains:
+- `diagnostics: CompileDiagnostic[]` -- compile-time diagnostics
+- `program?: UserAuthoredProgram` -- the compiled program (present on success)
+- `descriptor?: ExtractedDescriptor` -- extracted tile metadata
+- `functionDebugInfo?: FunctionDebugInfo[]` -- debug info for bytecode functions
+
 Cross-file imports are resolved automatically. When a utility file changes,
 `compileAll()` recompiles all entry points that (transitively) import it.
 
+### Compilation abstraction (packages/bridge-app)
+
+The `CompilationProvider` interface decouples the compilation engine from the
+bridge protocol layer:
+
+```
+interface CompilationProvider {
+  fileWritten(path, content): void
+  fileDeleted(path): void
+  fileRenamed(oldPath, newPath): void
+  fullSync(files): void
+  compileAll(): CompilationResult
+}
+```
+
+`CompilationManager` accepts a `CompilationProvider` and a send function,
+dispatches `FileSystemNotification` actions to the provider, calls
+`compileAll()`, fires `onCompilation`/`onRemoval` listeners, and emits
+`compile:diagnostics` and `compile:status` messages over the bridge when
+connected.
+
+`AppProject` extends `Project` with optional compilation support. When
+`compilationProvider` is passed in constructor options, it creates a
+`CompilationManager` and wires `fromRemoteFileChange` to it.
+
 ### Registration constraints
 
-- **TileCatalog**: supports `add()`, `delete(tileId)`, `registerTileDef()` -- fully dynamic.
-- **FunctionRegistry**: append-only (`register()`). No delete/replace. Functions are
-  stored in a `List` where index = numeric ID; removal would break VM references.
-  Workaround: register a stable wrapper `HostAsyncFn` that delegates to a mutable
-  inner function, allowing hot-swap without touching the registry.
+- **TileCatalog**: supports `add()`, `delete(tileId)`, `registerTileDef()`,
+  `has()`, `get()`, `clear()`, `getAll()` -- fully dynamic.
+- **FunctionRegistry**: `register()` is append-only and throws on duplicate
+  names. Functions are stored in a `List` where index = numeric ID; removal
+  would break VM references. However, `registerUserTile()` works around this
+  by directly mutating `existingEntry.fn` when re-registering a tile with the
+  same ID -- no indirection wrapper needed for hot-swap.
 
 ---
 
@@ -121,20 +179,26 @@ change. No tile registration yet -- just compilation and diagnostic reporting.
 ### Deliverables
 
 1. New module `apps/sim/src/services/user-tile-compiler.ts`:
+   - Implements `CompilationProvider` interface from `bridge-app`.
    - Maintains a `UserTileProject` instance that mirrors the bridge filesystem.
    - Maintains a `Map<path, CompileResult>` cache of compilation results.
-   - `fileWritten(path, content)` -- calls `project.updateFile()`, recompiles.
-   - `fileDeleted(path)` -- calls `project.deleteFile()`, recompiles.
-   - `fileRenamed(oldPath, newPath)` -- calls `project.renameFile()`, recompiles.
+   - `fileWritten(path, content)` -- calls `project.updateFile()`.
+   - `fileDeleted(path)` -- calls `project.deleteFile()`.
+   - `fileRenamed(oldPath, newPath)` -- calls `project.renameFile()`.
    - `fullSync(files)` -- filters for `.ts`/`.d.ts` files, calls
-     `project.setFiles()`, recompiles.
-   - `recompileAll()` -- calls `project.compileAll()`, diffs results against
-     cache, fires `onCompilation` for new/changed entries and `onRemoval` for
-     disappeared entries.
-   - Exposes `onCompilation(fn)` and `onRemoval(fn)` listener hooks.
+     `project.setFiles()`.
+   - `compileAll()` -- calls `project.compileAll()`, returns
+     `CompilationResult` with diagnostics mapped to bridge-protocol format.
+   - Exports `createCompilationProvider()` factory,
+     `handleCompilationResult()` listener, `getCompileResult()`,
+     `getAllCompileResults()`.
 2. Wire into `vscode-bridge.ts`:
-   - `fromRemoteFileChange` callback dispatches to `fileWritten`, `fileDeleted`,
-     `fileRenamed`, or `fullSync` based on `ev.action`.
+   - `createProject()` passes `createCompilationProvider()` to `AppProject`.
+   - `initProject()` registers `handleCompilationResult` on
+     `CompilationManager.onCompilation` and fires a synthetic `import`
+     action to compile persisted files at startup.
+   - Dispatch from `FileSystemNotification` to provider methods happens in
+     `CompilationManager` (bridge-app), not in `vscode-bridge.ts`.
 3. Logging of compile results (diagnostics or success) via `logger` from
    `@mindcraft-lang/core`.
 
@@ -149,23 +213,19 @@ change. No tile registration yet -- just compilation and diagnostic reporting.
 - Originally built with per-file `compileUserTile()` calls. Reworked same day
   to use `UserTileProject` after the compiler was updated to support multi-file
   project compilation.
-- API uses separate `fileWritten`, `fileDeleted`, `fileRenamed`, `fullSync`
-  functions dispatched from `vscode-bridge.ts` -- compiler module has no
-  bridge-protocol dependency.
+- API implements the `CompilationProvider` interface from `bridge-app`.
+  Dispatch from `FileSystemNotification` to provider methods happens in
+  `CompilationManager` (bridge-app), not in `vscode-bridge.ts`.
 - Uses `logger` from `@mindcraft-lang/core` instead of `console`.
-- `recompileAll()` diffs the new result set against the cache to detect both
-  new/changed entries and removed entries (e.g., when a file loses its default
-  export or is deleted). This also covers full-sync on reconnect.
-- **Gap identified post-phase:** `createProject()` loads the filesystem from
-  localStorage but does not compile `.ts` files at that point. User tiles
-  from the persisted filesystem are not compiled until a remote file change
-  arrives. Phase 2 addresses the startup case via a metadata cache for tile
-  registration, and Phase 3 handles initial compilation once the bridge
-  connects and delivers the filesystem.
+- Result diffing and listener dispatch (`onCompilation`, `onRemoval`) are
+  handled by `CompilationManager`, not the compiler module itself.
+- **Startup gap closed (2026-04-02):** `initProject()` fires a synthetic
+  `import` action over the `CompilationManager` at startup, which compiles
+  all `.ts` files persisted in localStorage before React renders.
 
 ---
 
-## Phase 2: Tile metadata cache and startup stub registration
+## Phase 2: Tile registration at startup
 
 ### Problem
 
@@ -175,53 +235,60 @@ is not registered, deserialization throws. The sim's `loadBrainFromLocalStorage`
 catches the error and silently falls back to the default brain -- the user's
 saved brain is discarded without warning.
 
-The startup ordering makes this unavoidable:
+The current startup ordering is:
 
-1. `registerCoreBrainComponents()` + `registerBrainComponents()` -- sync, module eval
-2. React renders, Phaser boots
-3. **Engine loads brains from localStorage** -- sync, calls `deserialize()`
-4. `connectBridge()` -- after first React render
-5. Bridge connects, filesystem arrives, `.ts` files compiled
+1. `registerCoreBrainComponents()` + `registerBrainComponents()` -- sync
+2. `initProject()` -- compiles persisted `.ts` files (sync), results cached
+3. React renders, Phaser boots
+4. **Engine loads brains from localStorage** -- sync, calls `deserialize()`
+5. `connectBridge()` -- user-initiated from sidebar
 
-User tile compilation cannot run before brain loading (step 3) because the
-`.ts` source files only arrive via the bridge (step 5). Without pre-registered
-tile stubs, any brain referencing a user tile will fail to deserialize.
+Compilation results are available after step 2, but tiles are not yet
+registered in the catalog. Step 4 will fail for any brain referencing a
+user tile.
 
 ### Solution
 
-Cache tile registration metadata (name, kind, callDef, params, outputType) in
-localStorage alongside the filesystem. On startup, synchronously re-register
-stub tiles from this cache before brains are loaded. After the bridge
-connects and `.ts` files are compiled, upgrade the stubs with real host
-functions via the Phase 3 indirection wrappers.
+After `initProject()` compiles the persisted `.ts` files, register the
+successfully compiled tiles immediately. This can use the same
+`registerUserTile()` path planned for Phase 3 (with a no-op `HostAsyncFn`
+since no VM exists yet). The key insight is that `registerUserTile()` already
+handles in-place function replacement -- when Phase 3/4 creates the real
+exec function, it can swap it into the same function registry entry.
+
+If compilation fails at startup (e.g., stale `.ts` files with type errors),
+a metadata cache fallback is needed to ensure brain deserialization still
+succeeds. Cache tile metadata (kind, name, callDef, params, outputType)
+to localStorage when compilation succeeds, and use it as a fallback when
+compilation fails.
 
 ### Deliverables
 
-1. **Metadata type**: define a serializable `UserTileMetadata` shape containing
-   everything needed by `registerUserTile` except the actual `HostAsyncFn`:
-   tile ID, kind, name, callDef, params, outputType.
-2. **Persist metadata**: when Phase 1's `onCompilation` fires with a successful
-   result, extract metadata from the `UserAuthoredProgram` and save a
-   `Map<path, UserTileMetadata>` to localStorage (e.g., key
-   `sim:user-tile-metadata`). Remove entries on file deletion.
-3. **Startup stub registration**: in `bootstrap.ts` (or a new module called from
-   it), read the metadata cache from localStorage and register each entry as a
-   tile with a no-op `HostAsyncFn`. This runs synchronously before React/Phaser,
-   so tiles exist in the catalog when brains deserialize.
-4. **Upgrade path**: when real compilation finishes (Phase 3), the indirection
-   wrapper swaps in the real host function. The stub entry's function registry
-   slot is reused.
+1. **Register tiles from startup compile results**: after `initProject()`
+   triggers compilation, iterate over `getAllCompileResults()` and call
+   `registerUserTile()` for each successful result with a no-op
+   `HostAsyncFn`. This requires linking each `UserAuthoredProgram` against
+   a minimal empty `BrainProgram` to produce `UserTileLinkInfo`.
+2. **Metadata cache fallback**: define a serializable `UserTileMetadata`
+   shape (tile ID, kind, name, callDef, params, outputType). Persist to
+   localStorage (key `sim:user-tile-metadata`) when compilation succeeds.
+   On startup, if compilation fails or produces no results, read the cache
+   and register stub tiles from it.
+3. **Wiring**: the registration must happen in `bootstrap.ts` after
+   `initProject()` and before React renders, so tiles exist in the catalog
+   when brains deserialize.
 
 ### Startup sequence after this phase
 
 | Step | What |
 |---|---|
 | 1 | `registerCoreBrainComponents()`, `registerBrainComponents()` |
-| 2 | **Load user tile metadata cache, register stubs** (sync) |
-| 3 | React renders, Phaser boots |
-| 4 | Engine loads brains from localStorage (stubs exist -- deser succeeds) |
-| 5 | `connectBridge()` starts, filesystem arrives |
-| 6 | Compile `.ts` files, upgrade stubs with real host functions |
+| 2 | `initProject()` -- compiles persisted `.ts` files |
+| 3 | **Register tiles from compile results (or metadata cache fallback)** |
+| 4 | React renders, Phaser boots |
+| 5 | Engine loads brains from localStorage (tiles exist -- deser succeeds) |
+| 6 | `connectBridge()` -- user-initiated, filesystem may update |
+| 7 | Recompile, swap host functions in-place |
 
 ### Risks
 
@@ -229,20 +296,20 @@ functions via the Phase 3 indirection wrappers.
   bridge (unlikely in practice -- the bridge is the editing path).
 - If the cached callDef doesn't match the tile usage in a saved brain
   (e.g., user changed params and re-saved), the brain will load but may
-  fail at compile/runtime. This is the same behavior as changing any tile's
-  contract -- acceptable.
-- Need to ensure the stub's function registry name matches what
-  `registerUserTile` would produce (e.g., `user.sensor.MyThing`) so that
-  Phase 3 can find and reuse the entry.
+  fail at compile/runtime. Same as changing any tile's contract -- acceptable.
+- `linkUserPrograms` needs a `BrainProgram` to link against. For
+  registration-only purposes, a minimal empty program should suffice.
+  Need to verify this works.
 
 ---
 
-## Phase 3: Tile registration and hot-swap
+## Phase 3: Tile registration and hot-swap on recompile
 
-On successful compile, register sensor/actuator tiles in the brain services
-using indirection wrappers so the underlying function can be hot-swapped on
-recompile. If Phase 2 already registered a stub for a tile, reuse that
-function registry entry.
+On successful compile (both startup and subsequent file changes), register
+sensor/actuator tiles in the brain services. `registerUserTile()` already
+supports in-place function replacement -- when a tile is recompiled with the
+same ID, the function entry's `fn` property is mutated directly. No
+indirection wrapper is needed.
 
 Since `compileAll()` returns the full set of compiled tiles on every mutation
 (not just the changed file), the registration layer always receives the
@@ -251,71 +318,90 @@ what to add, update, or remove.
 
 ### Prerequisites
 
-- Phase 1's `onCompilation` and `onRemoval` listeners are the integration points.
-- Phase 2's stub registration establishes the function registry entries and
-  tile catalog entries. Phase 3 upgrades them in-place.
+- Phase 2's startup registration ensures tiles exist before brains load.
+- `CompilationManager.onCompilation` listener is the integration point for
+  recompile events.
+- `registerUserTile()` handles both first-registration and re-registration.
 
 ### Deliverables
 
-1. Indirection wrapper factory -- creates a stable `HostAsyncFn` that delegates
-   to a mutable inner function reference. Exposes a `swap(newFn)` method.
-2. On first successful compile of a tile:
-   - Call `registerUserTile(linkInfo, wrapperFn)` to register tile + params.
-   - Store the mapping: `filePath -> { tileId, wrapper }`.
-3. On recompile with same name/kind: recompile, re-link,
-   `createUserTileExec` with new linked program, swap the wrapper's inner
-   function. No re-registration needed.
-4. On recompile with changed name/kind/params: delete old tile from
-   `TileCatalog`, register new tile. The old `FunctionRegistry` entry becomes
-   orphaned (acceptable).
-5. On `.ts` file deletion: remove tile from `TileCatalog`, remove from cache.
-6. Notify the brain editor UI that tile definitions have changed so the palette
-   updates.
-7. Linking strategy: `linkUserPrograms` needs a `BrainProgram`. For registration
-   purposes, create a minimal empty brain program to link against. The real
-   linking happens at brain-run time (Phase 4).
-8. Handle the `createUserTileExec` dependency on VM + Scheduler -- defer actual
-   exec creation. The wrapper starts as a no-op until a VM is available.
+1. On each successful compile of a tile (startup or file change):
+   - Link the `UserAuthoredProgram` against a minimal empty `BrainProgram`
+     via `linkUserPrograms()` to produce `UserTileLinkInfo`.
+   - Call `registerUserTile(linkInfo, hostFn)` with a no-op `HostAsyncFn`
+     (since no VM exists at registration time). If the tile already exists
+     in the function registry, `registerUserTile` replaces `fn` in-place.
+   - Store the mapping: `filePath -> { tileId, linkInfo }`.
+2. On recompile with same name/kind: re-link, call `registerUserTile`
+   again -- it replaces the function in-place. No catalog changes needed.
+3. On recompile with changed name/kind/params: delete old tile from
+   `TileCatalog`, register new tile. The old `FunctionRegistry` entry
+   becomes orphaned (acceptable -- its `fn` is a no-op).
+4. On `.ts` file deletion: remove tile from `TileCatalog`, remove from cache.
+5. Notify the brain editor UI that tile definitions have changed so the
+   palette updates.
 
 ### Risks
 
-- `registerUserTile` calls `functions.register()` which throws on duplicate names.
-  Must guard against re-registration. On recompile with same name, only the
-  wrapper's inner function changes -- no re-registration needed.
-- If a tile's signature changes (params, kind, name), need to `tiles.delete()`
-  the old tile and re-register. The function registry entry cannot be removed,
-  so the old entry becomes dead weight. Acceptable for now.
+- If a tile's signature changes (params, kind, name), need to
+  `tiles.delete()` the old tile and re-register. The old function registry
+  entry cannot be removed, so it becomes dead weight. Acceptable for now.
 - Running brains that reference a tile mid-swap could see inconsistent state.
-  Assume brains are not running during authoring, or that a stale reference is
-  acceptable.
+  Assume brains are not running during authoring, or that a stale reference
+  is acceptable.
 - Need to understand how the brain editor discovers available tiles (likely
-  reads from `TileCatalog` on render). If it caches, it needs a refresh signal.
+  reads from `TileCatalog` on render). If it caches, it needs a refresh
+  signal.
 
 ---
 
 ## Phase 4: Integration with brain execution
 
 Connect the compiled user tiles to actual brain program execution so they
-run in the simulation.
+run in the simulation. Up to this point, registered tiles have no-op host
+functions. This phase creates real execution wrappers via `createUserTileExec`.
+
+### Brain lifecycle context
+
+`Brain.initialize(contextData?)` performs these steps in order:
+1. `compileBrain(brainDef, catalogs)` -> `BrainProgram`
+2. `new VM(program, handles)`
+3. `new FiberScheduler(vm, options)`
+4. Assign function IDs, build page index, create execution context.
+
+The linking hook must run between step 1 (program compiled) and step 2
+(VM created), because `linkUserPrograms` merges user tile bytecode into
+the `BrainProgram` and the VM must receive the linked program.
 
 ### Deliverables
 
-1. At brain-compile time (when a brain program is built for an actor):
-   - Gather all successfully compiled `UserAuthoredProgram`s.
+1. At brain-compile time (`Brain.initialize`):
+   - After `compileBrain()`, gather all successfully compiled
+     `UserAuthoredProgram`s.
    - Call `linkUserPrograms(brainProgram, userPrograms)` to produce the
-     linked program.
-   - For each `UserTileLinkInfo`, call `createUserTileExec(linkedProgram,
-     linkInfo, vm, scheduler)` and swap into the corresponding wrapper.
-2. The wrappers registered in Phase 3 now delegate to real exec functions.
+     linked program with `userLinks: UserTileLinkInfo[]`.
+   - Create the VM with the linked program (not the original).
+   - After the scheduler is created, for each `UserTileLinkInfo`, call
+     `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)` and
+     swap the result into the corresponding function registry entry via
+     `registerUserTile(linkInfo, execFn)`.
+2. The function registry entries now delegate to real exec functions.
 3. When user tiles are recompiled while a brain is running, re-link and
    re-swap. Define when this takes effect (next tick? next brain restart?).
 
 ### Risks
 
-- Linking must happen after the base brain program is compiled but before
-  execution begins. Need to find the right hook in the sim's brain lifecycle.
-- Multiple actors may share the same brain program. Linked programs should
-  be shared, not duplicated per actor.
+- Linking modifies the `BrainProgram` (merges function tables). The VM must
+  be created with the linked program, not the original. This means the
+  linking step must be injected into `Brain.initialize()`.
+- Multiple actors may share the same `BrainDef` but each gets its own
+  `Brain` instance with its own VM/Scheduler. Each needs its own linked
+  program and exec functions.
+- Hot-swap during execution: if a user tile is recompiled while a brain is
+  running, the function entry's `fn` is replaced. Any fiber that calls the
+  tile on the next tick will use the new code. In-progress fibers on the old
+  code run to completion or the next yield point. This should be safe for
+  most cases.
 
 ---
 
