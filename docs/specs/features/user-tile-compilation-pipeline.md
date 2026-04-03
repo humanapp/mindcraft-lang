@@ -41,7 +41,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-04-02) Phases 1 and 2 complete. The compilation pipeline
+(Updated 2026-04-03) Phases 1, 2, and 3 complete. The compilation pipeline
 uses a three-layer architecture:
 
 1. `CompilationProvider` (interface, `bridge-app`) -- file mutation + compile
@@ -72,7 +72,17 @@ available before brains load (though tiles are not yet registered).
    files), falls back to the cache and registers stubs from it. Called from
    `bootstrap.ts` after `initProject()` and before React renders.
 
-No hot-swap on recompile yet -- that is Phase 3.
+5. `handleRecompilation()` in `user-tile-registration.ts` -- wired via
+   `CompilationManager.onCompilation` in `vscode-bridge.ts`. Diffs new
+   compile results against a tracking map (`registeredTiles`), deletes old
+   tiles from `TileCatalog` when name/kind changes or file is deleted,
+   re-registers via `registerUserTile()` (in-place swap for same identity),
+   updates the metadata cache, and fires `onUserTilesChanged` listeners.
+   If TS errors block compilation, existing registrations are preserved.
+
+No real execution yet -- all registered tiles have no-op `HostAsyncFn`.
+Phase 4 will inject linking into `Brain.initialize()` to produce real
+exec functions via `createUserTileExec`.
 
 
 ---
@@ -489,3 +499,75 @@ needs to wire the `CompilationManager.onCompilation` listener for the
 recompile-on-file-change path and handle tile add/update/remove diffing. The
 `saveMetadataCache()` export is ready for Phase 3 to update the cache after
 each successful recompilation.
+
+### Phase 3 (2026-04-03)
+
+**Planned:** Five deliverables: (1) link and register tiles on each successful
+compile with filePath->tileId tracking, (2) re-link/re-register on same
+name/kind recompile (in-place swap), (3) delete old tile from `TileCatalog` and
+re-register when name/kind/params change, (4) remove tile from catalog on `.ts`
+file deletion, (5) notify brain editor UI of tile definition changes.
+
+**Built:** `handleRecompilation()` function in `user-tile-registration.ts`,
+wired via a second `onCompilation` listener in `vscode-bridge.ts`.
+
+- **Tracking map** (`registeredTiles: Map<filePath, RegisteredTileInfo>`) tracks
+  `{ tileId, kind, name }` per file. `populateTrackingMap()` seeds it from the
+  startup compile. `handleRecompilation()` maintains it on every recompile.
+- **Diffing logic**: on each recompile, builds `newFileToProgram` from results.
+  For each previously-registered path: if the file no longer produces a tile, or
+  its tileId changed, deletes the old tile from `TileCatalog` via
+  `tiles.delete(catalogId)` using `mkSensorTileId`/`mkActuatorTileId` to
+  reconstruct the catalog tile ID. Then calls `registerPrograms()` (link +
+  `registerUserTile`) for all current programs -- `registerUserTile` handles
+  both first-time and in-place updates.
+- **File deletion**: when a path disappears from results, the tile is removed
+  from the catalog and the tracking map.
+- **TS errors guard**: if results are empty due to TypeScript errors
+  (`hasTypeErrors`), does nothing -- keeps existing registrations intact.
+- **Metadata cache update**: calls `saveMetadataCache()` after each successful
+  recompile. Clears the cache only when results are empty without TS errors
+  (all files deleted).
+- **Change notification**: `onUserTilesChanged(fn)` event emitter exported for
+  UI consumption. Fires after any add/update/remove. The brain editor tile
+  picker reads from `TileCatalog` on each open -- no explicit subscription
+  needed, but the event is available for proactive refresh.
+- **`lastCompilationHadTsErrors()`**: new export from `user-tile-compiler.ts`
+  to distinguish "no results due to TS errors" from "no tile files."
+
+**Deviations:**
+- Spec said to store `filePath -> { tileId, linkInfo }`. Built with
+  `filePath -> { tileId, kind, name }` -- `linkInfo` is not stored because
+  it is regenerated on each recompile via `linkUserPrograms()`. Storing
+  `linkInfo` would be unnecessary state.
+- Spec described startup registration as part of Phase 3 deliverable 1 ("on
+  each successful compile, startup or file change"). Startup registration was
+  already built in Phase 2. Phase 3 only added the file-change path and
+  seeded the tracking map from startup results.
+- Spec mentioned "notify the brain editor UI" -- built as an event emitter
+  (`onUserTilesChanged`). The tile picker already reads fresh catalog state
+  on each open, so no UI wiring was needed beyond providing the event.
+
+**Risk resolved:** "Need to understand how the brain editor discovers available
+tiles (likely reads from TileCatalog on render). If it caches, it needs a
+refresh signal." -- Confirmed: the tile picker reads `getBrainServices().tiles`
+via `suggestTiles()` on every render. No caching issue. The `onUserTilesChanged`
+event is available if proactive refresh is needed later.
+
+**Risk confirmed:** "If a tile's signature changes (params, kind, name), need to
+tiles.delete() the old tile and re-register. The old function registry entry
+cannot be removed, so it becomes dead weight." -- This is the case. When
+name/kind changes, the old `FunctionRegistry` entry is orphaned. Also confirmed:
+when params/outputType change but name/kind stay the same, `registerUserTile`
+only swaps `fn` in-place -- the `callDef` on the `BrainFunctionEntry` is not
+updated. This is cosmetic (affects tile picker display but not execution
+correctness) and acceptable for now.
+
+**No upstream spec amendments needed.**
+
+**Propagation to Phase 4:** The `handleRecompilation` function and
+`onUserTilesChanged` event are ready for Phase 4 to hook into. Phase 4 needs
+to inject linking into `Brain.initialize()` (between `compileBrain` and VM
+creation) and call `createUserTileExec` to produce real exec functions. The
+no-op `HostAsyncFn` registered by `registerPrograms` will be swapped out by
+`registerUserTile(linkInfo, realExecFn)` when a brain initializes.

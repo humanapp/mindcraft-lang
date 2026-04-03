@@ -105,6 +105,10 @@ export function handleCompilationResult(result: CompilationResult): void {
 
 let lastRawResult: ProjectCompileResult | undefined;
 
+export function lastCompilationHadTsErrors(): boolean {
+  return lastRawResult !== undefined && lastRawResult.tsErrors.size > 0;
+}
+
 export function createCompilationProvider(): CompilationProvider {
   return {
     fileWritten(path: string, content: string): void {

@@ -1,7 +1,13 @@
 import { AppProject, type AppProjectOptions } from "@mindcraft-lang/bridge-app";
 import { buildAmbientDeclarations } from "@mindcraft-lang/typescript";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
-import { createCompilationProvider, handleCompilationResult } from "./user-tile-compiler";
+import {
+  createCompilationProvider,
+  getAllCompileResults,
+  handleCompilationResult,
+  lastCompilationHadTsErrors,
+} from "./user-tile-compiler";
+import { handleRecompilation } from "./user-tile-registration";
 
 const LS_FS_KEY = "sim:vscode-bridge:filesystem";
 
@@ -105,6 +111,10 @@ export function initProject(): void {
   project.compilation?.handleFileChange({
     action: "import",
     entries: [...project.files.raw.export()],
+  });
+  project.compilation?.onCompilation((result) => {
+    const compileResults = getAllCompileResults();
+    handleRecompilation(compileResults, lastCompilationHadTsErrors());
   });
 }
 
