@@ -129,7 +129,6 @@ package uses standard Node module resolution and does not need path mappings.
     "jsx": "react-jsx",
     "strict": true,
     "noEmit": true,
-    "baseUrl": ".",
     "paths": {
       "@mindcraft-lang/ui": ["./node_modules/@mindcraft-lang/ui/src/index.ts"],
       "@mindcraft-lang/ui/*": ["./node_modules/@mindcraft-lang/ui/src/*"],
