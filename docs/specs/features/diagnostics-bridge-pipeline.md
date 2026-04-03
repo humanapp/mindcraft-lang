@@ -573,6 +573,18 @@ alongside the existing connection status.
 
 ---
 
+## Current State
+
+(2026-04-02, updated after Phase D5)
+
+All phases complete. The full pipeline is live:
+
+- Compiler emits diagnostics -> `CompilationManager` maps and emits `compile:diagnostics`
+  via bridge -> `DiagnosticsManager` displays in Problems panel -> status bar reflects
+  aggregate counts.
+
+---
+
 ## Phase Log
 
 ### Phase D1 (2026-04-02)
@@ -829,3 +841,37 @@ displays them in the Problems panel using a `DiagnosticCollection`.
 - Version tracking uses strict less-than (`version < lastVersion`) so that
   resent diagnostics (same version) are accepted. This is correct because
   `sendDiagnostics()` increments the version counter via `emitDiagnostics()`.
+
+### Phase D5 (2026-04-02)
+
+**Objective:** Show compilation status in the VS Code status bar item alongside
+the existing connection status.
+
+**Planned vs actual:** Delivered as specified. No deviations from the plan.
+
+**Files modified:**
+- `apps/vscode-extension/src/services/diagnostics-manager.ts` -- added
+  `_fileCounts` map, `_totalErrors`/`_totalWarnings` accumulators,
+  `_onDidChangeCounts` emitter, `onDidChangeCounts` event, `compileCounts`
+  getter, `_updateFileCounts()` private method. `clear()` fires
+  `onDidChangeCounts` only when counts were non-zero. `dispose()` now
+  also disposes the emitter.
+- `apps/vscode-extension/src/services/project-manager.ts` -- added
+  `diagnosticsManager` public getter.
+- `apps/vscode-extension/src/ui/statusBar.ts` -- in the
+  `connected + bound + clientConnected` branch, reads `compileCounts` and
+  shows `$(error)` / `$(warning)` / `$(pass-filled)` icons with counts.
+  Added `onDidChangeCounts` subscription.
+
+**Discoveries:**
+- `_updateFileCounts` uses incremental delta arithmetic (`newErrors - old.errors`)
+  rather than recomputing totals from scratch across all files. This keeps
+  the update O(1) rather than O(files).
+- `onDidChangeCounts` fires only when totals actually change (guarded by
+  prev/new comparison), avoiding unnecessary status bar redraws.
+- `clear()` guards the `onDidChangeCounts.fire()` call with `hadCounts` so
+  disconnect does not fire spuriously when there were zero diagnostics.
+- The `diagnosticsManager` getter on `ProjectManager` is the minimal surface
+  needed -- `statusBar.ts` reads `compileCounts` synchronously on each
+  `update()` call and subscribes to `onDidChangeCounts` for reactive updates.
+  No separate count event on `ProjectManager` was needed.

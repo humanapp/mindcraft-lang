@@ -33,9 +33,20 @@ export function createStatusBarItem(
         break;
       case "connected":
         if (appBound && appClientConnected) {
-          item.text = "$(pass-filled) Mindcraft: Connected";
-          item.tooltip = "Connected to bridge and bound to app";
-          item.backgroundColor = undefined;
+          const counts = projectManager.diagnosticsManager.compileCounts;
+          if (counts.errors > 0) {
+            item.text = `$(error) Mindcraft: ${counts.errors} error(s)`;
+            item.tooltip = `${counts.errors} compilation error(s)`;
+            item.backgroundColor = new vscode.ThemeColor("statusBarItem.errorBackground");
+          } else if (counts.warnings > 0) {
+            item.text = `$(warning) Mindcraft: ${counts.warnings} warning(s)`;
+            item.tooltip = `${counts.warnings} compilation warning(s)`;
+            item.backgroundColor = undefined;
+          } else {
+            item.text = "$(pass-filled) Mindcraft: Connected";
+            item.tooltip = "Connected to bridge and bound to app";
+            item.backgroundColor = undefined;
+          }
         } else if (appBound) {
           const pending = pendingChanges > 0 ? ` (${pendingChanges} pending)` : "";
           item.text = `$(warning) Mindcraft: App Offline${pending}`;
@@ -61,6 +72,7 @@ export function createStatusBarItem(
     projectManager.onDidChangeAppBound(update),
     projectManager.onDidChangeAppClientConnected(update),
     projectManager.onDidChangePendingChanges(update),
+    projectManager.diagnosticsManager.onDidChangeCounts(update),
     item
   );
 

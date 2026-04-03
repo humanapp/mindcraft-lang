@@ -11,9 +11,18 @@ const SEVERITY_MAP: Record<string, vscode.DiagnosticSeverity> = {
 export class DiagnosticsManager implements vscode.Disposable {
   private readonly _collection: vscode.DiagnosticCollection;
   private readonly _versions = new Map<string, number>();
+  private readonly _fileCounts = new Map<string, { errors: number; warnings: number }>();
+  private _totalErrors = 0;
+  private _totalWarnings = 0;
+  private readonly _onDidChangeCounts = new vscode.EventEmitter<{ errors: number; warnings: number }>();
+  readonly onDidChangeCounts = this._onDidChangeCounts.event;
 
   constructor() {
     this._collection = vscode.languages.createDiagnosticCollection("mindcraft");
+  }
+
+  get compileCounts(): { errors: number; warnings: number } {
+    return { errors: this._totalErrors, warnings: this._totalWarnings };
   }
 
   handleDiagnostics(payload: CompileDiagnosticsPayload): void {
@@ -42,14 +51,39 @@ export class DiagnosticsManager implements vscode.Disposable {
     });
 
     this._collection.set(uri, mapped);
+    this._updateFileCounts(file, diagnostics);
+  }
+
+  private _updateFileCounts(file: string, diagnostics: CompileDiagnosticsPayload["diagnostics"]): void {
+    const old = this._fileCounts.get(file) ?? { errors: 0, warnings: 0 };
+    const newErrors = diagnostics.filter((d) => d.severity === "error").length;
+    const newWarnings = diagnostics.filter((d) => d.severity === "warning").length;
+
+    const prevTotalErrors = this._totalErrors;
+    const prevTotalWarnings = this._totalWarnings;
+    this._totalErrors += newErrors - old.errors;
+    this._totalWarnings += newWarnings - old.warnings;
+    this._fileCounts.set(file, { errors: newErrors, warnings: newWarnings });
+
+    if (this._totalErrors !== prevTotalErrors || this._totalWarnings !== prevTotalWarnings) {
+      this._onDidChangeCounts.fire({ errors: this._totalErrors, warnings: this._totalWarnings });
+    }
   }
 
   clear(): void {
+    const hadCounts = this._totalErrors > 0 || this._totalWarnings > 0;
     this._collection.clear();
     this._versions.clear();
+    this._fileCounts.clear();
+    this._totalErrors = 0;
+    this._totalWarnings = 0;
+    if (hadCounts) {
+      this._onDidChangeCounts.fire({ errors: 0, warnings: 0 });
+    }
   }
 
   dispose(): void {
     this._collection.dispose();
+    this._onDidChangeCounts.dispose();
   }
 }

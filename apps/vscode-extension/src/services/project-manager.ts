@@ -57,6 +57,10 @@ export class ProjectManager implements vscode.Disposable {
     return this._fsProvider;
   }
 
+  get diagnosticsManager(): DiagnosticsManager {
+    return this._diagnosticsManager;
+  }
+
   get project(): ExtensionProject | undefined {
     return this._project;
   }
