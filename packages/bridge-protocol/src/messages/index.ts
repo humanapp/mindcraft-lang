@@ -14,6 +14,7 @@ export type {
   CompileStatusMessage,
   CompileStatusPayload,
 } from "./compile.js";
+export { compileDiagnosticsPayloadSchema, compileStatusPayloadSchema } from "./compile.js";
 export type {
   ExtensionAppStatusMessage,
   ExtensionAppStatusPayload,

@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 export interface CompileDiagnosticRange {
   startLine: number;
   startColumn: number;
@@ -35,3 +37,32 @@ export interface CompileStatusMessage {
   id?: string;
   payload: CompileStatusPayload;
 }
+
+const compileDiagnosticRangeSchema = z.object({
+  startLine: z.number(),
+  startColumn: z.number(),
+  endLine: z.number(),
+  endColumn: z.number(),
+});
+
+const compileDiagnosticEntrySchema = z.object({
+  severity: z.enum(["error", "warning", "info"]),
+  message: z.string(),
+  code: z.string(),
+  range: compileDiagnosticRangeSchema,
+});
+
+export const compileDiagnosticsPayloadSchema = z.object({
+  file: z.string(),
+  version: z.number(),
+  diagnostics: z.array(compileDiagnosticEntrySchema),
+});
+
+export const compileStatusPayloadSchema = z.object({
+  file: z.string(),
+  success: z.boolean(),
+  diagnosticCount: z.object({
+    error: z.number(),
+    warning: z.number(),
+  }),
+});

@@ -57,13 +57,17 @@ Same loop as the compiler phased plan:
 
 ### Bridge (apps/vscode-bridge)
 
+- App-side compile handlers relay `compile:diagnostics` and
+  `compile:status` messages to all paired extensions (Phase D2).
+- `compile.handler.ts` validates payloads with Zod schemas from
+  `bridge-protocol`, looks up the `AppSession`, and broadcasts to
+  extensions via `getExtensionsByAppSessionId()` + `safeSend()`.
 - Three empty handler stubs exist on the extension side:
   - `compile.handler.ts` -- exports `compileHandlers: WsHandlerMap = {}`
   - `debug.handler.ts` -- exports `debugHandlers: WsHandlerMap = {}`
   - `project.handler.ts` -- exports `projectHandlers: WsHandlerMap = {}`
 - The extension router spreads these into the handler lookup, so adding entries
   to them is sufficient to activate new message types.
-- App-side has no compile/debug handlers at all -- only filesystem and session.
 - Message forwarding pattern: app router checks `pendingRequests` for response
   correlation, then dispatches to handler map. Extension router dispatches
   directly to handler map.
@@ -76,6 +80,8 @@ Same loop as the compiler phased plan:
   `SessionHelloMessage`, etc.
 - `messages/compile.ts` -- `CompileDiagnosticsMessage`,
   `CompileStatusMessage`, and their payload/entry/range types (Phase D1).
+  Zod validation schemas `compileDiagnosticsPayloadSchema` and
+  `compileStatusPayloadSchema` added in Phase D2.
 - `messages/app.ts` -- `AppClientMessage` (union of all app-to-bridge
   messages, includes `CompileDiagnosticsMessage` and `CompileStatusMessage`).
 - `messages/extension.ts` -- `ExtensionClientMessage`,
@@ -107,9 +113,9 @@ CompileResult with diagnostics (in-memory, sim only)
   |
   X -- no bridge message sent
   |
-vscode-bridge -- no compile handlers
+vscode-bridge -- compile handlers relay to extensions (Phase D2)
   |
-  X -- no message relayed
+  X -- no message relayed (no sender yet)
   |
 vscode-extension -- no diagnostic display
 ```
@@ -448,3 +454,38 @@ rather than inlining in the payload (minor structural improvement).
 - Risk "diagnostic range and severity -- back-propagated to compiler" is
   already resolved: `CompileDiagnostic` has `endLine`, `endColumn`, `severity`.
 - Risk "file path namespace" deferred to D3.
+
+### Phase D2 (2026-04-02)
+
+**Objective:** Add handlers to the vscode-bridge that relay
+`compile:diagnostics` and `compile:status` messages from the app to all
+paired extensions.
+
+**Planned vs actual:** Delivered as specified, with one addition: Zod
+validation schemas (`compileDiagnosticsPayloadSchema`,
+`compileStatusPayloadSchema`) were added to `bridge-protocol` since D1
+only defined TypeScript interfaces. The spec's "Key risks" section called
+for Zod validation before relay, but there were no schemas to reference.
+Adding them to `bridge-protocol` (not the bridge itself) follows the
+project convention that validation schemas live alongside their types.
+
+**Files created:**
+- `apps/vscode-bridge/src/transport/ws/app/handlers/compile.handler.ts`
+
+**Files modified:**
+- `apps/vscode-bridge/src/transport/ws/app/router.ts` -- spread
+  `compileHandlers` into handler map
+- `packages/bridge-protocol/src/messages/compile.ts` -- added Zod schemas
+- `packages/bridge-protocol/src/messages/index.ts` -- barrel re-exports
+- `packages/bridge-protocol/src/index.ts` -- top-level barrel re-exports
+
+**Discoveries:**
+- D1 defined types only; Zod schemas were missing. The bridge handler
+  pattern requires Zod validation (see `filesystem.handler.ts`), so
+  schemas were back-filled into `bridge-protocol` as part of D2.
+- Biome auto-sorted the import in `router.ts` (compile before control)
+  and consolidated the schema exports in `index.ts` into a single
+  export block rather than a separate line. Formatter-driven, not manual.
+- The handler pattern is identical for all relay-style handlers:
+  validate -> lookup app session -> get paired extensions -> broadcast.
+  No special handling needed for compile messages vs filesystem messages.

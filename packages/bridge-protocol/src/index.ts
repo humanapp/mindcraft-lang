@@ -28,7 +28,11 @@ export type {
   SessionHelloMessage,
   SessionHelloPayload,
 } from "./messages/index.js";
-export { sessionHelloPayloadSchema } from "./messages/index.js";
+export {
+  compileDiagnosticsPayloadSchema,
+  compileStatusPayloadSchema,
+  sessionHelloPayloadSchema,
+} from "./messages/index.js";
 export type { FileSystemNotification, FilesystemSyncPayload } from "./notifications.js";
 export { fileSystemNotificationSchema, filesystemSyncPayloadSchema } from "./notifications.js";
 

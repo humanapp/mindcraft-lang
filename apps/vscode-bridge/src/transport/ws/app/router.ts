@@ -10,6 +10,7 @@ import { getExtensionsByAppSessionId } from "#core/session-registry.js";
 import { safeSend } from "#transport/ws/safe-send.js";
 import type { WsHandlerMap } from "#transport/ws/types.js";
 import { wsMessageSchema } from "#transport/ws/types.js";
+import { compileHandlers } from "./handlers/compile.handler.js";
 import { controlHandlers } from "./handlers/control.handler.js";
 import { filesystemHandlers } from "./handlers/filesystem.handler.js";
 import { sessionHandlers } from "./handlers/session.handler.js";
@@ -18,6 +19,7 @@ const handlers: WsHandlerMap = {
   ...sessionHandlers,
   ...controlHandlers,
   ...filesystemHandlers,
+  ...compileHandlers,
 };
 
 function broadcastToOtherExtensions(appSessionId: string, senderWs: WSContext, payload: FileSystemNotification): void {
