@@ -38,9 +38,9 @@ Same loop as the compiler phased plan:
 - `apps/sim/src/services/user-tile-compiler.ts` wraps `UserTileProject` from
   `@mindcraft-lang/typescript`. Calls `compileAll()` on every file change.
 - `apps/sim/src/services/vscode-bridge.ts` manually wires
-  `fromRemoteFileChange` to dispatch to `user-tile-compiler`. This wiring
-  should move to `bridge-app` via a `CompilationProvider` interface
-  (Phase D2.5) so other apps get it automatically.
+  `fromRemoteFileChange` to dispatch to `user-tile-compiler`. Phase D3
+  will migrate this to use the `CompilationProvider` interface from
+  `bridge-app`.
 - `ProjectCompileResult` contains:
   - `results: Map<string, CompileResult>` -- per-file diagnostics + compiled
     program.
@@ -58,6 +58,25 @@ Same loop as the compiler phased plan:
 - `user-tile-compiler.ts` exposes `onCompilation(fn)` and `onRemoval(fn)`
   listener hooks. Currently only consumed by `console.log`-style logging.
   No subscriber sends diagnostics to the bridge.
+
+### bridge-app (packages/bridge-app)
+
+- `compilation.ts` (Phase D2.5) defines `CompilationProvider` interface and
+  `CompilationManager` class. `CompilationProvider` is the seam between the
+  app's compiler and the bridge diagnostic pipeline -- the app provides an
+  adapter that maps compiler output to `CompileDiagnosticEntry[]`.
+- `CompilationManager` drives compile-on-change: dispatches file
+  notifications to the provider, calls `compileAll()`, emits
+  `compile:diagnostics` and `compile:status` messages per file when
+  connected. Tracks per-file version counters and previous-diagnostic
+  state for correct clearing.
+- `AppProject` accepts optional `compilationProvider` in options. When
+  provided, creates a `CompilationManager` and wires it into
+  `fromRemoteFileChange`. Exposes `compilation` getter and
+  `onRemoteFileChange(fn)` listener for app-level side effects.
+- `onRemoteFileChange(fn)` replaces direct `fromRemoteFileChange` override
+  for app-level hooks (e.g., localStorage persistence). Listeners fire on
+  every inbound file change regardless of compilation.
 
 ### Bridge (apps/vscode-bridge)
 
@@ -115,17 +134,17 @@ sim compiles tile
   v
 CompileResult with diagnostics (in-memory, sim only)
   |
-  X -- no CompilationProvider wired in bridge-app
+  X -- sim not yet wired to CompilationProvider (Phase D3)
   |
-bridge-app (AppProject) -- would drive compile + emit diagnostics (Phase D2.5)
+bridge-app (AppProject + CompilationManager) -- ready to drive compile +
+  emit diagnostics when given a CompilationProvider (Phase D2.5 done)
   |
-  X -- no provider connected yet
+  v
+vscode-bridge -- compile handlers relay to extensions (Phase D2 done)
   |
-vscode-bridge -- compile handlers relay to extensions (Phase D2)
+  v (messages flow, but no sender yet until D3)
   |
-  X -- no message relayed (no sender yet)
-  |
-vscode-extension -- no diagnostic display
+vscode-extension -- no diagnostic display (Phase D4)
 ```
 
 ---
@@ -605,3 +624,53 @@ project convention that validation schemas live alongside their types.
 - The handler pattern is identical for all relay-style handlers:
   validate -> lookup app session -> get paired extensions -> broadcast.
   No special handling needed for compile messages vs filesystem messages.
+
+### Phase D2.5 (2026-04-02)
+
+**Objective:** Move the file-change -> compile -> diagnostic-emission loop
+into `bridge-app` via `CompilationProvider` / `CompilationManager`.
+
+**Planned vs actual:** Delivered as specified. The `fromRemoteFileChange`
+composition risk was resolved by always overriding `fromRemoteFileChange`
+in the `AppProject` constructor (not conditionally) and exposing an
+`onRemoteFileChange(fn)` listener pattern for app-level side effects.
+The spec suggested "use a listener pattern (e.g., `onRemoteFileChange`) or
+chain the override" -- the listener pattern was chosen.
+
+One minor addition vs spec: `CompilationManager` constructor takes an
+`isConnected: () => boolean` callback rather than holding a reference to
+the session directly. This keeps `CompilationManager` decoupled from
+`ProjectSession` and testable in isolation.
+
+`compile:status` is always emitted alongside `compile:diagnostics` (the
+spec said "optionally sends"). Making it unconditional simplifies D5
+since the status bar can rely on receiving status messages.
+
+**Files created:**
+- `packages/bridge-app/src/compilation.ts`
+
+**Files modified:**
+- `packages/bridge-app/src/app-project.ts` -- `AppProjectOptions` gains
+  `compilationProvider?`; `AppProject` creates `CompilationManager`,
+  overrides `fromRemoteFileChange`, exposes `compilation` getter and
+  `onRemoteFileChange(fn)` subscriber.
+- `packages/bridge-app/src/index.ts` -- exports `CompilationManager`,
+  `CompilationProvider`, `CompilationResult`.
+
+**Discoveries:**
+- `Project.fromRemoteFileChange` is a public property (arrow function
+  assignment, not a method), so overriding it in the subclass constructor
+  is clean -- just reassign `this.fromRemoteFileChange`.
+- `Project` always invokes `fromRemoteFileChange` from two sites:
+  `filesystem:change` handler after `applyNotification`, and
+  `filesystem:sync` handler after import. Both paths feed through
+  `CompilationManager.handleFileChange` seamlessly.
+- `mkdir` and `rmdir` filesystem notifications are irrelevant to
+  compilation and are early-returned without triggering a compile.
+- The `_previousFiles` tracking set in `CompilationManager` enables
+  correct clearing: files that had diagnostics in the previous compilation
+  but have none now get an empty array emitted. Files that disappear
+  entirely from the result (e.g., deleted) get empty array + `onRemoval`.
+- `bridge-app` depends only on `bridge-protocol` for diagnostic types
+  (`CompileDiagnosticEntry`, `AppClientMessage`), not on
+  `@mindcraft-lang/typescript`. The decoupling is clean.
