@@ -72,7 +72,9 @@ Same loop as the compiler phased plan:
   notifications to the provider, calls `compileAll()`, emits
   `compile:diagnostics` and `compile:status` messages per file when
   connected. Tracks per-file version counters and previous-diagnostic
-  state for correct clearing.
+  state for correct clearing. Caches the last `CompilationResult` and
+  exposes `sendDiagnostics()` to re-emit cached diagnostics (used
+  when an extension pairs after compilation has already run).
 - `AppProject` accepts optional `compilationProvider` in options. When
   provided, creates a `CompilationManager` and wires it into
   `fromRemoteFileChange`. Exposes `compilation` getter and
@@ -125,9 +127,14 @@ Same loop as the compiler phased plan:
   pending changes queue.
 - Listens for `session:appStatus` (bound, clientConnected, bindingToken).
 - Handles `filesystem:change` from bridge (fires VS Code `FileChangeEvent`).
-- **No `DiagnosticCollection` exists.** No compilation feedback is displayed.
-- **No listener for compile messages.** The extension does not subscribe to
-  any `compile:*` or `diagnostics` message types.
+- `DiagnosticsManager` (Phase D4) creates a
+  `vscode.DiagnosticCollection("mindcraft")`, receives
+  `compile:diagnostics` messages via `session.on()`, maps payloads to
+  `vscode.Diagnostic` objects with 0-based range conversion and severity
+  mapping. Tracks per-file version to ignore stale messages. Clears all
+  diagnostics on disconnect. Disposed via `ProjectManager.dispose()`.
+- `tsconfig.json` includes `"WebWorker"` in `lib` (this is a web
+  extension with a `"browser"` entry point, not Node.js).
 
 ### Data flow gap
 
@@ -140,9 +147,19 @@ CompilationManager maps result, emits compile:diagnostics (Phase D2.5)
   v
 vscode-bridge -- compile handlers relay to extensions (Phase D2 done)
   |
-  v (messages flow end-to-end when bridge is connected)
+  v
+vscode-extension -- DiagnosticsManager displays in Problems panel (Phase D4 done)
+```
+
+Extension pairing flow:
+```
+extension connects, requests filesystem:sync
   |
-vscode-extension -- no diagnostic display (Phase D4)
+  v
+AppProject receives filesystem:sync, calls CompilationManager.sendDiagnostics()
+  |
+  v
+cached diagnostics re-emitted through bridge to extension
 ```
 
 ---
@@ -750,3 +767,65 @@ replacing the manual file-change dispatch in `vscode-bridge.ts`.
   slash), which match the protocol's project-relative path convention.
   The extension will need to prepend `/` when constructing `mindcraft://`
   URIs in Phase D4.
+
+### Phase D4 (2026-04-02)
+
+**Objective:** VS Code extension receives `compile:diagnostics` messages and
+displays them in the Problems panel using a `DiagnosticCollection`.
+
+**Planned vs actual:** Delivered as specified with these additions:
+
+1. **No changes to `extension.ts`.** The spec listed `extension.ts` as a
+   file to touch for registering the diagnostic collection. In practice,
+   `DiagnosticsManager` is owned by `ProjectManager`, which is already in
+   `context.subscriptions`. No separate registration was needed.
+
+2. **Initial diagnostics on extension pairing.** The spec's "Reconnection"
+   risk noted that fullSync triggers recompilation which emits diagnostics.
+   However, if the project was already compiled before the extension
+   connected, no recompilation occurs -- the sync just sends files. To
+   ensure the extension receives current diagnostics immediately:
+   - `CompilationManager` now caches `_lastResult` and exposes
+     `sendDiagnostics()`, which re-emits all non-empty cached diagnostics.
+   - `AppProject` subscribes to `filesystem:sync` (the request the
+     extension sends after pairing) and calls `sendDiagnostics()`.
+   This required changes to `bridge-app` (not listed in the D4 spec).
+
+3. **`WebWorker` lib in tsconfig.** The extension is a web extension
+   (`"browser"` entry point), but `tsconfig.json` only had `"ES2022"` in
+   `lib`, leaving `setTimeout` unresolved. Added `"WebWorker"` to provide
+   correct global types for the web worker runtime.
+
+**Files created:**
+- `apps/vscode-extension/src/services/diagnostics-manager.ts`
+
+**Files modified:**
+- `apps/vscode-extension/src/services/project-manager.ts` -- imports
+  `DiagnosticsManager`, creates instance, subscribes to
+  `compile:diagnostics` via `session.on()`, clears on disconnect, disposes
+  in `dispose()`.
+- `apps/vscode-extension/tsconfig.json` -- added `"WebWorker"` to `lib`.
+- `packages/bridge-app/src/compilation.ts` -- added `_lastResult` cache
+  and `sendDiagnostics()` method.
+- `packages/bridge-app/src/app-project.ts` -- subscribes to
+  `filesystem:sync` to call `sendDiagnostics()` when an extension pairs.
+
+**Discoveries:**
+- The extension is a **web extension** (uses `"browser"` entry point in
+  `package.json`, no `"main"`). The runtime is a web worker, not Node.js.
+  `@types/node` would be incorrect; `"WebWorker"` in `lib` is the right
+  type source.
+- `filesystem:sync` is the correct hook for resending diagnostics on
+  extension pairing. It fires when the extension connects and requests the
+  file listing, which happens after `session:appStatus` reports
+  `bound && clientConnected`.
+- URI construction for diagnostics uses the same pattern as filesystem
+  notifications: `vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: "/" + file })`.
+  The leading `/` is required for the URI path to match the
+  `mindcraft:///` authority-less form.
+- `DiagnosticsManager.handleDiagnostics` maps the full payload each time
+  (not incrementally). Empty diagnostics arrays naturally clear a file's
+  problems via `collection.set(uri, [])`.
+- Version tracking uses strict less-than (`version < lastVersion`) so that
+  resent diagnostics (same version) are accepted. This is correct because
+  `sendDiagnostics()` increments the version counter via `emitDiagnostics()`.

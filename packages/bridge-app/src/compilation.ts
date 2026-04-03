@@ -19,6 +19,7 @@ export class CompilationManager {
   private readonly _versions = new Map<string, number>();
   private readonly _previousFiles = new Set<string>();
   private readonly _compilationListeners = new Set<(result: CompilationResult) => void>();
+  private _lastResult: CompilationResult | undefined;
   private readonly _removalListeners = new Set<(path: string) => void>();
 
   constructor(provider: CompilationProvider, send: (msg: AppClientMessage) => void, isConnected: () => boolean) {
@@ -63,8 +64,19 @@ export class CompilationManager {
     };
   }
 
+  sendDiagnostics(): void {
+    if (!this._lastResult || !this._isConnected()) return;
+
+    for (const [file, diagnostics] of this._lastResult.files) {
+      if (diagnostics.length > 0) {
+        this.emitDiagnostics(file, diagnostics);
+      }
+    }
+  }
+
   private compileAndEmit(): void {
     const result = this._provider.compileAll();
+    this._lastResult = result;
 
     for (const fn of this._compilationListeners) {
       fn(result);

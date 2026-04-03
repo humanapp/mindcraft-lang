@@ -4,6 +4,7 @@ import type { ExtensionClientMessage, ExtensionServerMessage } from "@mindcraft-
 type ExtensionProject = Project<ExtensionClientMessage, ExtensionServerMessage>;
 
 import * as vscode from "vscode";
+import { DiagnosticsManager } from "./diagnostics-manager";
 import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
 
 const BINDING_TOKEN_KEY = "mindcraft.bindingToken";
@@ -33,6 +34,7 @@ export class ProjectManager implements vscode.Disposable {
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _fsProvider = new MindcraftFileSystemProvider();
+  private readonly _diagnosticsManager = new DiagnosticsManager();
   private _globalState: vscode.Memento | undefined;
   private _workspaceFolderName = "Mindcraft";
 
@@ -163,6 +165,12 @@ export class ProjectManager implements vscode.Disposable {
       })
     );
 
+    this._unsubs.push(
+      project.session.on("compile:diagnostics", (msg) => {
+        this._diagnosticsManager.handleDiagnostics(msg.payload);
+      })
+    );
+
     project.toRemoteFileChange = (ev) => this.sendChangeWithAck(project, ev);
     project.fromRemoteFileChange = (ev) => this.handleFilesystemNotification(ev);
 
@@ -271,6 +279,7 @@ export class ProjectManager implements vscode.Disposable {
     this._project.session.stop();
     this._project = undefined;
     this._fsProvider.setFileSystems(undefined, undefined);
+    this._diagnosticsManager.clear();
     this._onDidChangeProject.fire();
     this._onDidChangeStatus.fire("disconnected");
     if (this._appBound) {
@@ -373,6 +382,7 @@ export class ProjectManager implements vscode.Disposable {
   dispose(): void {
     this.disconnectActive();
     this._fsProvider.dispose();
+    this._diagnosticsManager.dispose();
     this._onDidChangeProject.dispose();
     this._onDidChangeStatus.dispose();
     this._onDidChangeAppBound.dispose();

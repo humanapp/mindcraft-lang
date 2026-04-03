@@ -33,6 +33,12 @@ export class AppProject extends Project<AppClientMessage, AppServerMessage> {
         (msg) => this.session.send(msg),
         () => this.session.status === "connected"
       );
+
+      this._sessionUnsubs.push(
+        this.session.on("filesystem:sync", () => {
+          this._compilation?.sendDiagnostics();
+        })
+      );
     }
 
     this.fromRemoteFileChange = (ev: FileSystemNotification) => {
