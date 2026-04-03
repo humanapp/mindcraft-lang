@@ -52,9 +52,9 @@ temp/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
-
-# Optional — uncomment if you want to commit launch configs:
-# !.vscode/launch.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json
 
 # ------------------------------------------------------------------
 # Coverage reports

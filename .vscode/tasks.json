@@ -1,0 +1,45 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "mindcraft-ext: build",
+			"type": "shell",
+			"command": "npm run build",
+			"options": {
+				"cwd": "${workspaceFolder}/apps/vscode-extension"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "mindcraft-ext: dev",
+			"type": "shell",
+			"command": "npm run dev",
+			"options": {
+				"cwd": "${workspaceFolder}/apps/vscode-extension"
+			},
+			"isBackground": true,
+			"problemMatcher": {
+				"pattern": {
+					"regexp": "^never$"
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": ".",
+					"endsPattern": "build finished"
+				}
+			},
+			"group": "build"
+		},
+		{
+			"label": "vscode-bridge: build",
+			"type": "shell",
+			"command": "npm run build",
+			"options": {
+				"cwd": "${workspaceFolder}/apps/vscode-bridge"
+			},
+			"group": "build",
+			"problemMatcher": []
+		}
+	]
+}
