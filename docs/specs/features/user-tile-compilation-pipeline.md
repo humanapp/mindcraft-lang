@@ -41,7 +41,7 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-04-02) Phase 1 complete and reworked. The compilation pipeline
+(Updated 2026-04-02) Phases 1 and 2 complete. The compilation pipeline
 uses a three-layer architecture:
 
 1. `CompilationProvider` (interface, `bridge-app`) -- file mutation + compile
@@ -64,7 +64,16 @@ startup to compile all `.ts` files persisted in localStorage. This runs
 synchronously during bootstrap, before React renders, so compile results are
 available before brains load (though tiles are not yet registered).
 
-No tile registration yet.
+4. `user-tile-registration.ts` -- `registerUserTilesAtStartup()` links
+   compiled programs against an empty `BrainProgram` and registers tiles
+   via `registerUserTile()` with a no-op `HostAsyncFn`. Persists a
+   `UserTileMetadata[]` cache to `sim:user-tile-metadata` in localStorage.
+   On startup, if compilation produces no results (type errors, no `.ts`
+   files), falls back to the cache and registers stubs from it. Called from
+   `bootstrap.ts` after `initProject()` and before React renders.
+
+No hot-swap on recompile yet -- that is Phase 3.
+
 
 ---
 
@@ -225,7 +234,7 @@ change. No tile registration yet -- just compilation and diagnostic reporting.
 
 ---
 
-## Phase 2: Tile registration at startup
+## Phase 2: Tile registration at startup (complete)
 
 ### Problem
 
@@ -436,3 +445,47 @@ entries. Full-sync and multi-file imports are handled implicitly.
   (full-sync) and Phase 7 (multi-file imports).
 
 **No upstream spec amendments needed.** No new risks discovered.
+
+### Phase 2 (2026-04-02)
+
+**Planned:** Three deliverables: (1) register tiles from startup compile
+results via `linkUserPrograms` + `registerUserTile` with a no-op `HostAsyncFn`,
+(2) metadata cache fallback in localStorage (`sim:user-tile-metadata`), and
+(3) wire into `bootstrap.ts` after `initProject()`.
+
+**Built:** New module `apps/sim/src/services/user-tile-registration.ts` with
+`registerUserTilesAtStartup()` called from `bootstrap.ts`.
+
+- `registerPrograms()` links all compiled `UserAuthoredProgram`s against an
+  empty `BrainProgram` via `linkUserPrograms()`, then calls `registerUserTile()`
+  for each with a shared no-op `HostAsyncFn`.
+- `saveMetadataCache()` persists `UserTileMetadata[]` (kind, name, callSpec,
+  params, outputType) to `sim:user-tile-metadata`. Only `callSpec` is stored --
+  `argSlots` are deterministically recomputed by `mkCallDef()`.
+- `registerFromCache()` reconstructs minimal `UserAuthoredProgram` stubs from
+  cached metadata and registers directly via `registerUserTile()` (no linking
+  needed since stubs have empty bytecode).
+- `saveMetadataCache()` is exported for Phase 3 to call on recompilation.
+
+**Deviations:**
+- Spec said "tile ID, kind, name, callDef, params, outputType" for the cache
+  shape. Built without an explicit tile ID field -- the tile ID is derived by
+  `registerUserTile()` from `kind` + `name` (e.g., `user.sensor.MyThing`).
+- Spec said to link against a minimal empty `BrainProgram` for registration.
+  Confirmed this works: `linkUserPrograms` with empty function/constant lists
+  produces identity offsets (funcOffset=0, constOffset=0).
+- Cache fallback path skips `linkUserPrograms` entirely -- constructs
+  `UserTileLinkInfo` directly with `linkedEntryFuncId: 0` since the stub
+  programs have no bytecode to offset.
+
+**Risk resolved:** "linkUserPrograms needs a BrainProgram to link against. For
+registration-only purposes, a minimal empty program should suffice. Need to
+verify this works." -- Confirmed: works correctly, offsets are identity.
+
+**No upstream spec amendments needed.**
+
+**Propagation to Phase 3:** Startup registration is now handled. Phase 3 only
+needs to wire the `CompilationManager.onCompilation` listener for the
+recompile-on-file-change path and handle tile add/update/remove diffing. The
+`saveMetadataCache()` export is ready for Phase 3 to update the cache after
+each successful recompilation.
