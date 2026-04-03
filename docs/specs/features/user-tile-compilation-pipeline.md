@@ -374,7 +374,7 @@ what to add, update, or remove.
 
 ---
 
-## Phase 4: Integration with brain execution
+## Phase 4: Integration with brain execution (ABANDONED -- DO NOT IMPLEMENT)
 
 Connect the compiled user tiles to actual brain program execution so they
 run in the simulation. Up to this point, registered tiles have no-op host
@@ -383,44 +383,163 @@ functions. This phase creates real execution wrappers via `createUserTileExec`.
 ### Brain lifecycle context
 
 `Brain.initialize(contextData?)` performs these steps in order:
-1. `compileBrain(brainDef, catalogs)` -> `BrainProgram`
-2. `new VM(program, handles)`
-3. `new FiberScheduler(vm, options)`
-4. Assign function IDs, build page index, create execution context.
 
-The linking hook must run between step 1 (program compiled) and step 2
-(VM created), because `linkUserPrograms` merges user tile bytecode into
-the `BrainProgram` and the VM must receive the linked program.
+1. `compileBrain(brainDef, catalogs)` -> `BrainProgram`
+2. `new VM(program, handles)` -- bytecode verifier runs here
+3. `new FiberScheduler(vm, options)`
+4. Assign function IDs to runtime rule objects, build page indices,
+   create `ExecutionContext`.
+
+The linking hook must run between step 1 and step 2.
+`linkUserPrograms(brainProgram, userPrograms)` returns a **new**
+`BrainProgram` with user tile bytecode appended to the function and
+constant lists. The VM must be created with this linked program so that
+function IDs in `createUserTileExec`-spawned fibers resolve correctly.
+
+### Host function dispatch architecture
+
+All VM instances share the **global `FunctionRegistry`** from
+`getBrainServices().functions`. HOST_CALL instructions reference tiles by
+numeric ID into this global registry:
+
+```
+VM.execHostCallAsync(fnId) -> this.fns.getAsyncById(fnId)!.fn.exec(ctx, args, hid)
+                              ^^^^^
+                              getBrainServices().functions (global)
+```
+
+Core sensors/actuators work because their `HostAsyncFn` implementations
+are stateless -- they only use the `ExecutionContext` argument. User tile
+exec functions are different: `createUserTileExec` captures a specific
+`vm` and `scheduler` to spawn fibers that execute user tile bytecode.
+
+This creates a **multi-actor conflict**: multiple actors of the same
+archetype each get their own Brain/VM/Scheduler, but the
+`FunctionRegistry` has only one `.fn` slot per tile ID. If we naively
+swap in each Brain's exec function, only the last Brain to initialize
+would work; all other Brains would spawn fibers on the wrong VM.
+
+### Solution: per-brain exec routing
+
+Register a single routing `HostAsyncFn` per user tile that dispatches to
+the correct brain-specific exec function based on `ctx.brain`:
+
+```
+routing HostAsyncFn.exec(ctx, args, hid)
+   |
+   ctx.brain -> lookup brain-specific HostAsyncFn
+   |
+   brainExecFn.exec(ctx, args, hid)  // bound to this brain's vm/scheduler
+```
+
+Each Brain.initialize registers its own exec function with the router.
+On Brain.shutdown, it unregisters. The router falls back to a no-op for
+unregistered brains (stale references during transitions).
+
+`ExecutionContext.brain` (type `IBrain`) is always set by Brain before
+calling think, so the routing key is available in every HOST_CALL.
+
+### Integration point
+
+`Brain.initialize()` is in `packages/core`. It has no knowledge of user
+tiles or `packages/typescript`. The sim app calls
+`brainDef.compile()` then `brain.initialize(contextData)` in
+`Actor.constructor` and `Actor.replaceBrain()`.
+
+Since `Brain.initialize` does compileBrain + VM creation + scheduler
+creation as a monolithic sequence, the linking step requires a hook.
+
+**Option A -- programTransform callback:** Add an optional
+`programTransform?: (program: BrainProgram) => BrainProgram` callback
+to `Brain` (set before `initialize()` or passed as an option). If
+present, `initialize()` calls it between `compileBrain()` and
+`new VM()`. The sim app sets this callback to perform
+`linkUserPrograms()` and stash the `userLinks` for later use.
+
+A second optional callback
+`afterVmCreated?: (vm: IVM, scheduler: IFiberScheduler) => void`
+runs after step 3. The sim app uses it to call
+`createUserTileExec()` for each `UserTileLinkInfo` and register the
+exec functions with the per-tile routing HostAsyncFn.
+
+**Option B -- external orchestration:** Break `Brain.initialize()` into
+separable steps (`compile()`, `createVm()`, `finalize()`) so the sim
+app can insert linking between steps. More invasive change to core.
+
+Option A is recommended -- minimal invasion, keeps Brain in control of
+its lifecycle, and the callbacks are opaque to core.
 
 ### Deliverables
 
-1. At brain-compile time (`Brain.initialize`):
-   - After `compileBrain()`, gather all successfully compiled
-     `UserAuthoredProgram`s.
-   - Call `linkUserPrograms(brainProgram, userPrograms)` to produce the
-     linked program with `userLinks: UserTileLinkInfo[]`.
-   - Create the VM with the linked program (not the original).
-   - After the scheduler is created, for each `UserTileLinkInfo`, call
-     `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)` and
-     swap the result into the corresponding function registry entry via
-     `registerUserTile(linkInfo, execFn)`.
-2. The function registry entries now delegate to real exec functions.
-3. When user tiles are recompiled while a brain is running, re-link and
-   re-swap. Define when this takes effect (next tick? next brain restart?).
+1. **Core changes** (packages/core):
+   - Add optional `programTransform` and `afterVmCreated` callbacks to
+     `Brain` (either constructor options or setter methods). Update
+     `initialize()` to call them at the appropriate points.
+   - `programTransform` runs after `compileBrain()`, before `new VM()`.
+   - `afterVmCreated` runs after `FiberScheduler` creation, before
+     function ID assignment.
+   - Expose `vm` and `scheduler` references to the callbacks via
+     parameters (using interface types `IVM` and `IFiberScheduler`).
+2. **Routing layer** (apps/sim):
+   - Create a per-tile routing `HostAsyncFn` that dispatches based on
+     `ctx.brain`. Maintain a `Map<IBrain, HostAsyncFn>` per tile.
+   - During Phase 3's `registerPrograms()`, register the routing
+     HostAsyncFn instead of the no-op. (Or upgrade existing no-op
+     entries on first Brain.initialize.)
+3. **Wire into Actor** (apps/sim):
+   - Before `brain.initialize()`, set `programTransform` to call
+     `linkUserPrograms(program, getAllCompiledPrograms())`.
+   - Set `afterVmCreated` to call `createUserTileExec()` for each
+     `UserTileLinkInfo` and register the result with the routing layer.
+   - On `Brain.shutdown` / `replaceBrain`, unregister the brain-specific
+     exec from the router.
+4. **Hot-swap on recompile:**
+   - When user tiles are recompiled while brains are running, each
+     active Brain needs to re-link and re-create exec functions. This
+     can be driven by `onUserTilesChanged` from Phase 3.
+   - Approach: iterate all active actors, re-initialize their brains
+     (calling `replaceBrain` with the same BrainDef). This is heavy but
+     correct. A lighter approach (surgical re-link without full
+     reinitialize) can be explored later.
+
+### `createUserTileExec` API
+
+```
+createUserTileExec(
+  linkedProgram: BrainProgram,
+  linkInfo: UserTileLinkInfo,
+  vm: runtime.VM,           -- the concrete VM class
+  scheduler: Scheduler       -- the Scheduler interface (not FiberScheduler)
+): HostAsyncFn
+```
+
+The returned `HostAsyncFn` has an `exec` method and an optional
+`onPageEntered` method. Sync tiles run inline fibers; async tiles use
+`scheduler.addFiber!()` and track pending fibers for handle resolution.
 
 ### Risks
 
-- Linking modifies the `BrainProgram` (merges function tables). The VM must
-  be created with the linked program, not the original. This means the
-  linking step must be injected into `Brain.initialize()`.
-- Multiple actors may share the same `BrainDef` but each gets its own
-  `Brain` instance with its own VM/Scheduler. Each needs its own linked
-  program and exec functions.
-- Hot-swap during execution: if a user tile is recompiled while a brain is
-  running, the function entry's `fn` is replaced. Any fiber that calls the
-  tile on the next tick will use the new code. In-progress fibers on the old
-  code run to completion or the next yield point. This should be safe for
-  most cases.
+- **Core API change**: adding callbacks to `Brain` is a cross-cutting
+  change. Must ensure the Roblox target (`tsconfig.rbx.json`) is
+  unaffected. The callbacks are optional and only used by the sim app.
+- **Multi-actor routing overhead**: the per-call Map lookup on
+  `ctx.brain` adds a small per-HOST_CALL cost. Should be negligible
+  compared to fiber execution.
+- **Hot-swap complexity**: re-initializing all brains on recompile
+  resets their state (page, variables, fibers). Users will lose
+  in-progress brain state on edit. This is acceptable during authoring
+  but should be documented.
+- **Multiple brains per BrainDef**: `Engine.updateBrainDef()` calls
+  `actor.replaceBrain()` for every actor of that archetype. Each
+  `replaceBrain` calls `compile()` + `initialize()`, so the linking
+  callback runs once per actor. This is correct but means N link
+  operations for N actors of the same archetype. The linking is cheap
+  (array concat + remap), so this is acceptable.
+- **Fiber ID collisions**: `createUserTileExec` uses negative
+  decrementing fiber IDs (`nextFiberId = -1, -2, ...`). If two actors
+  share a routing layer but have separate VMs, each VM's
+  `createUserTileExec` tracks its own `nextFiberId`. No collision since
+  fibers are per-VM.
 
 ---
 
