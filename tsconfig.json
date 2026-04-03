@@ -1,0 +1,19 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core/tsconfig.json" },
+    { "path": "packages/core/tsconfig.esm.json" },
+    { "path": "packages/typescript/tsconfig.json" },
+    { "path": "packages/typescript/tsconfig.spec.json" },
+    { "path": "packages/bridge-protocol/tsconfig.json" },
+    { "path": "packages/bridge-client/tsconfig.json" },
+    { "path": "packages/bridge-client/tsconfig.spec.json" },
+    { "path": "packages/bridge-app/tsconfig.json" },
+    { "path": "packages/docs/tsconfig.json" },
+    { "path": "packages/ui/tsconfig.json" },
+    { "path": "apps/sim/tsconfig.json" },
+    { "path": "apps/vscode-bridge/tsconfig.json" },
+    { "path": "apps/vscode-bridge/tsconfig.spec.json" },
+    { "path": "apps/vscode-extension/tsconfig.json" }
+  ]
+}

@@ -37,6 +37,7 @@
     },
     "[markdown]": {
       "editor.defaultFormatter": "esbenp.prettier-vscode"
-    }
+    },
+    "js/ts.tsdk.path": "packages/typescript/node_modules/typescript/lib"
   }
 }
