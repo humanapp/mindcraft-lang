@@ -54,7 +54,6 @@ temp/
 !.vscode/extensions.json
 !.vscode/launch.json
 !.vscode/tasks.json
-!.vscode/extensions.json
 
 # ------------------------------------------------------------------
 # Coverage reports
