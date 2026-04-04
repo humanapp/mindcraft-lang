@@ -16,8 +16,7 @@ export {
   LoweringDiagCode,
   ValidatorDiagCode,
 } from "./compiler/diag-codes.js";
-export type { UserAuthoredProgram, UserTileLinkInfo } from "./compiler/types.js";
+export type { LinkedUserProgram, UserAuthoredProgram } from "./compiler/types.js";
 export type { LinkResult } from "./linker/linker.js";
 export { linkUserPrograms } from "./linker/linker.js";
-export { createUserTileExec } from "./runtime/authored-function.js";
 export { registerUserTile } from "./runtime/registration-bridge.js";

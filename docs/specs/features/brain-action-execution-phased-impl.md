@@ -172,9 +172,9 @@ These are hard boundaries, not suggestions.
 
 ## Current State
 
-As of 2026-04-03 after Phase 5, the action execution stack now reaches unified
-action-instance state in core plus limited downstream contract alignment, but
-direct user-action artifact adoption and sim integration are still pending:
+As of 2026-04-03 after Phase 6, the action execution stack now reaches direct
+user-action artifacts in `packages/typescript`, while sim-side resolver wiring
+and executable-brain rebuild behavior are still pending:
 
 1. Sensor and actuator tile defs store `ActionDescriptor` metadata instead of
    `BrainFunctionEntry`.
@@ -218,21 +218,17 @@ direct user-action artifact adoption and sim integration are still pending:
 12. Page activation now resets each action callsite deterministically and
    dispatches the correct activation hook once per activation for both host
    `onPageEntered` handlers and bytecode `activationFuncId` hooks.
-13. `packages/typescript` has partial Phase 5 alignment only: runtime-facing
-   state-slot naming now uses `numStateSlots`, the wrapper runtime binds the
-   current action instance, `linkUserPrograms()` preserves the current
-   `BrainProgram` shape, and user-tile registration now constructs
-   `ActionDescriptor`-based tiles. User-authored tiles are still wrapped back
-   into host-function closures instead of being published as direct action
-   artifacts.
-14. Downstream sim integration still targets older registration/runtime
-   contracts. `apps/sim/src/brain/tiles/sensors.ts` /
-   `apps/sim/src/brain/tiles/actuators.ts` still build built-in tiles from
-   `BrainFunctionEntry`, and
-   `apps/sim/src/services/user-tile-registration.ts` still fabricates
-   metadata-only program/link stubs plus no-op host functions. That synthetic
-   program path now lags the core unlinked-program shape and must be replaced,
-   not patched forward.
+13. `packages/typescript` now emits `UserActionArtifact`-shaped user programs
+   with stable `ActionKey`s, artifact-local `entryFuncId` /
+   `activationFuncId`, direct `isAsync`, and `revisionId` fields instead of
+   wrapper-era runtime metadata.
+14. `packages/typescript` no longer exports a VM/scheduler-capturing wrapper
+   runtime for user tiles. `linkUserPrograms()` now remains only as a pure
+   bytecode merge/remap helper returning artifact offsets and remapped debug
+   metadata.
+15. `packages/typescript` runtime registration now publishes parameter tiles,
+   tile metadata, and direct `BytecodeResolvedAction` artifacts into the core
+   action registry without mutating `FunctionRegistry` entries in place.
 
 The codebase already contains the raw capabilities needed for the new design:
 
@@ -906,11 +902,24 @@ Current branch note:
    `apps/sim/src/brain/tiles/actuators.ts` still build built-in tiles from
    `FunctionRegistry` entries using the old constructor shape.
 - `apps/sim/src/services/user-tile-registration.ts` still reconstructs fake
-   metadata-only programs, links them against an empty program, and registers
-   no-op or swapped host functions.
-- That synthetic metadata/bootstrap path now lags the core
-   `UnlinkedBrainProgram` shape (`actionRefs` missing). Phase 7 should delete or
-   replace it, not keep it alive with padded fake fields.
+   metadata-only programs, imports removed pre-Phase-6 TypeScript APIs
+   (`UserTileLinkInfo`, `linkUserPrograms(...).userLinks`,
+   `registerUserTile(linkInfo, noOpHostFn)`), and still fabricates
+   wrapper-era artifact fields such as `numCallsiteVars`, `execIsAsync`,
+   `lifecycleFuncIds`, and `programRevisionId`.
+- After Phase 6, `packages/typescript` now publishes direct bytecode actions
+   and `registerUserTile(program)` metadata registration instead. Phase 7 must
+   switch the sim to that artifact model rather than adapt the old wrapper API.
+- That synthetic metadata/bootstrap path still lags the core
+   `UnlinkedBrainProgram` shape (`actionRefs` missing) and the current
+   `UserActionArtifact` shape (`key`, `isAsync`, `numStateSlots`,
+   `revisionId`). Phase 7 should delete or replace it, not keep it alive with
+   padded fake fields.
+- `apps/sim/src/brain/actor.ts`, `apps/sim/src/brain/engine.ts`, and
+   `apps/sim/src/services/brain-persistence.ts` still call `brainDef.compile()`
+   directly, and user-tile recompilation currently only refreshes tile
+   registration state plus listeners. There is no dependency-scoped executable
+   program invalidation or active-brain rebuild path yet.
 
 ### In scope
 
@@ -956,6 +965,7 @@ Current branch note:
 - `apps/sim/src/services/user-tile-registration.ts`
 - `apps/sim/src/services/user-tile-compiler.ts`
 - `apps/sim/src/services/vscode-bridge.ts`
+- `apps/sim/src/services/brain-persistence.ts`
 - `apps/sim/src/brain/actor.ts`
 - `apps/sim/src/brain/engine.ts`
 
@@ -1428,3 +1438,63 @@ the phase.
 - Updated Phase 6 current-branch notes to reflect the limited TypeScript
    contract alignment already landed in Phase 5 and narrow the remaining
    wrapper-removal work.
+
+### Phase 6 (2026-04-03)
+
+**Planned vs actual:**
+
+Ordered tasks 1 through 7 landed within the intended `packages/typescript`
+scope.
+
+- `UserAuthoredProgram` now extends the core `UserActionArtifact` contract.
+   Wrapper-era runtime fields were removed in favor of `key`, `isAsync`,
+   artifact-local `activationFuncId`, and `revisionId`.
+- TypeScript lowering and project assembly now expose one optional activation
+   hook instead of separate `initFuncId` plus lifecycle-wrapper fields. The
+   compiler still keeps `<module-init>` as an internal helper when needed, but
+   only `activationFuncId` escapes in the emitted artifact.
+- `linkUserPrograms()` now stays in the package only as a pure bytecode
+   merge/remap helper. It returns artifact offsets plus remapped debug metadata
+   instead of wrapper-oriented linked runtime IDs.
+- `packages/typescript/src/runtime/authored-function.ts` and its wrapper-runtime
+   tests were deleted from the intended runtime path and public exports.
+- `registerUserTile()` now registers parameter tiles plus tile metadata and
+   publishes direct `BytecodeResolvedAction` artifacts into the core action
+   registry instead of mutating `FunctionRegistry` entries in place.
+- Compiler, linker, debug-metadata, multi-file, and runtime registration tests
+   were updated to assert activation semantics and direct artifact publication.
+
+**Deviation from planned phase boundary:**
+
+- No material deviation. Phase 6 stayed inside `packages/typescript`, reused
+   the Phase 5 core contract as-is, and left sim integration unchanged for
+   Phase 7.
+
+**Deviations and discoveries:**
+
+- The runtime-facing lifecycle surface can collapse to one
+   `activationFuncId` without removing the internal module-init helper. Keeping
+   `<module-init>` as a compiler-private detail preserves lowering structure
+   while exposing the cleaner artifact contract from the architecture spec.
+- The pure merge/remap helper also has to rewrite variable-name indexes and
+   constant-pool-bearing collection/struct instructions, not just direct
+   function or constant references.
+- The main stale integration point is now `apps/sim` user-tile registration,
+   which still expects `userLinks`, no-op host wrappers, and metadata-only fake
+   programs. Phase 7 must replace that path with catalog metadata plus direct
+   artifact-registry updates.
+- Generated activation debug names now use `<activation>`. Downstream tooling
+   and specs should not keep assuming the old `<onPageEntered-wrapper>` naming.
+
+**Verification:**
+
+- Ran `cd packages/typescript && npm run typecheck && npm run check && npm test`
+- Final result: pass. TypeScript typecheck, check, and test passed with 520
+   tests passing.
+
+**Spec updates from this post-mortem:**
+
+- Updated `Current State` to reflect the Phase 6 baseline instead of the
+   post-Phase-5 model.
+- Updated Phase 7 current-branch notes to reflect the direct artifact
+   registration API that the sim app now needs to consume.

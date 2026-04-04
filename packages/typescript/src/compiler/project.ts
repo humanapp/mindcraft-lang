@@ -87,6 +87,10 @@ function toVfsPath(compilerPath: string): string {
   return compilerPath;
 }
 
+function buildUserActionKey(kind: "sensor" | "actuator", name: string): string {
+  return `user.${kind}.${name}`;
+}
+
 function isUserTsFile(path: string): boolean {
   return path.endsWith(".ts") && !path.endsWith(".d.ts");
 }
@@ -327,18 +331,16 @@ export class UserTileProject {
       constants: pool.getConstants(),
       variableNames: List.empty(),
       entryPoint: programResult.entryFuncId,
+      key: buildUserActionKey(descriptor.kind, descriptor.name),
       kind: descriptor.kind,
       name: descriptor.name,
       callDef,
       outputType,
+      isAsync: descriptor.execIsAsync,
       numStateSlots: programResult.numStateSlots,
       entryFuncId: programResult.entryFuncId,
-      initFuncId: programResult.initFuncId,
-      execIsAsync: descriptor.execIsAsync,
-      lifecycleFuncIds: {
-        onPageEntered: programResult.onPageEnteredWrapperId,
-      },
-      programRevisionId: generateRevisionId(),
+      activationFuncId: programResult.activationFuncId,
+      revisionId: generateRevisionId(),
       params: qualifiedParams,
       debugMetadata,
     };
@@ -416,7 +418,7 @@ function assembleDebugMetadata(
 function buildDebugFunctionId(filePath: string, func: FunctionEntry): string {
   const name = func.name;
   if (name === "<module-init>") return `${filePath}/<init>`;
-  if (name.endsWith(".<onPageEntered-wrapper>")) return `${filePath}/<onPageEntered-wrapper>`;
+  if (name.endsWith(".<activation>")) return `${filePath}/<activation>`;
   if (name.startsWith("<closure#")) {
     if (func.parentName) {
       return `${filePath}/${func.parentName}/${name}`;

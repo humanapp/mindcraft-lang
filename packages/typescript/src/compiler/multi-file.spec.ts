@@ -19,6 +19,7 @@ import {
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
+import type { UserAuthoredProgram } from "./types.js";
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
@@ -46,6 +47,20 @@ function compileProject(files: Record<string, string>) {
   const project = new UserTileProject({ ambientSource });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
+}
+
+function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars: List<Value>): void {
+  if (prog.activationFuncId === undefined) {
+    return;
+  }
+
+  const vm = new runtime.VM(prog, handles);
+  const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
+  fiber.callsiteVars = callsiteVars;
+  fiber.instrBudget = 1000;
+
+  const result = vm.runFiber(fiber, mkScheduler());
+  assert.equal(result.status, VmStatus.DONE);
 }
 
 describe("multi-file: helper module variables", () => {
@@ -84,13 +99,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    {
-      const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
-      fiber.callsiteVars = callsiteVars;
-      fiber.instrBudget = 1000;
-      vm.runFiber(fiber, mkScheduler());
-    }
+    runActivation(prog, handles, callsiteVars);
 
     {
       const vm = new runtime.VM(prog, handles);
@@ -139,13 +148,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    {
-      const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
-      fiber.callsiteVars = callsiteVars;
-      fiber.instrBudget = 1000;
-      vm.runFiber(fiber, mkScheduler());
-    }
+    runActivation(prog, handles, callsiteVars);
 
     for (let expected = 1; expected <= 3; expected++) {
       const vm = new runtime.VM(prog, handles);
@@ -210,13 +213,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    {
-      const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
-      fiber.callsiteVars = callsiteVars;
-      fiber.instrBudget = 1000;
-      vm.runFiber(fiber, mkScheduler());
-    }
+    runActivation(prog, handles, callsiteVars);
 
     {
       const vm = new runtime.VM(prog, handles);
@@ -265,13 +262,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    {
-      const vm = new runtime.VM(prog, handles);
-      const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
-      fiber.callsiteVars = callsiteVars;
-      fiber.instrBudget = 1000;
-      vm.runFiber(fiber, mkScheduler());
-    }
+    runActivation(prog, handles, callsiteVars);
 
     {
       const vm = new runtime.VM(prog, handles);
@@ -362,23 +353,11 @@ export default Sensor({
 
     const progA = entryA.program!;
     const varsA = List.from<Value>(Array.from({ length: progA.numStateSlots }, () => NIL_VALUE));
-    {
-      const vm = new runtime.VM(progA, handles);
-      const fiber = vm.spawnFiber(1, progA.initFuncId!, List.empty(), mkCtx());
-      fiber.callsiteVars = varsA;
-      fiber.instrBudget = 1000;
-      vm.runFiber(fiber, mkScheduler());
-    }
+    runActivation(progA, handles, varsA);
 
     const progB = entryB.program!;
     const varsB = List.from<Value>(Array.from({ length: progB.numStateSlots }, () => NIL_VALUE));
-    {
-      const vm = new runtime.VM(progB, handles);
-      const fiber = vm.spawnFiber(1, progB.initFuncId!, List.empty(), mkCtx());
-      fiber.callsiteVars = varsB;
-      fiber.instrBudget = 1000;
-      vm.runFiber(fiber, mkScheduler());
-    }
+    runActivation(progB, handles, varsB);
 
     {
       const vm = new runtime.VM(progA, handles);

@@ -75,8 +75,7 @@ function isUserSourceDecl(decl: ts.Declaration): boolean {
 export interface ProgramLoweringResult {
   functions: FunctionEntry[];
   entryFuncId: number;
-  initFuncId?: number;
-  onPageEnteredWrapperId: number;
+  activationFuncId?: number;
   numStateSlots: number;
   functionTable: Map<string, number>;
   diagnostics: CompileDiagnostic[];
@@ -277,7 +276,11 @@ export function lowerProgram(
     initFuncId = funcIdCounter.value++;
   }
 
-  const onPageEnteredWrapperId = funcIdCounter.value++;
+  const needsActivation = initFuncId !== undefined || userOnPageEnteredFuncId !== undefined;
+  let activationFuncId: number | undefined;
+  if (needsActivation) {
+    activationFuncId = funcIdCounter.value++;
+  }
 
   const functions: FunctionEntry[] = [];
 
@@ -350,8 +353,10 @@ export function lowerProgram(
     functions.push(initEntry);
   }
 
-  const wrapperEntry = generateOnPageEnteredWrapper(descriptor.name, initFuncId, userOnPageEnteredFuncId);
-  functions.push(wrapperEntry);
+  if (activationFuncId !== undefined) {
+    const activationEntry = generateActivationFunction(descriptor.name, initFuncId, userOnPageEnteredFuncId);
+    functions.push(activationEntry);
+  }
 
   const closureEntries = Array.from(closureFunctions.entries())
     .sort(([a], [b]) => a - b)
@@ -361,8 +366,7 @@ export function lowerProgram(
   return {
     functions,
     entryFuncId,
-    initFuncId,
-    onPageEnteredWrapperId,
+    activationFuncId,
     numStateSlots: nextCallsiteVar,
     functionTable,
     diagnostics,
@@ -450,7 +454,7 @@ function lowerOnPageEnteredBody(
   };
 }
 
-function generateOnPageEnteredWrapper(
+function generateActivationFunction(
   name: string,
   initFuncId: number | undefined,
   userOnPageEnteredFuncId: number | undefined
@@ -475,7 +479,7 @@ function generateOnPageEnteredWrapper(
     ir,
     numParams: 1,
     numLocals: 1,
-    name: `${name}.<onPageEntered-wrapper>`,
+    name: `${name}.<activation>`,
     injectCtxTypeId: ContextTypeIds.Context,
     isGenerated: true,
   };

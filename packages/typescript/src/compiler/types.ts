@@ -1,4 +1,4 @@
-import type { BrainActionCallDef, Program, TypeId } from "@mindcraft-lang/core/brain";
+import type { UserActionArtifact } from "@mindcraft-lang/core/brain";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 
@@ -14,28 +14,17 @@ export interface CompileDiagnostic {
   endColumn?: number;
 }
 
-export interface UserAuthoredProgram extends Program {
-  kind: "sensor" | "actuator";
+export interface UserAuthoredProgram extends UserActionArtifact {
   name: string;
-  callDef: BrainActionCallDef;
-  outputType?: TypeId;
-  numStateSlots: number;
-  entryFuncId: number;
-  initFuncId?: number;
-  execIsAsync: boolean;
-  lifecycleFuncIds: {
-    onPageEntered?: number;
-  };
-  programRevisionId: string;
   params: ExtractedParam[];
   debugMetadata?: DebugMetadata;
 }
 
-export interface UserTileLinkInfo {
+export interface LinkedUserProgram {
   program: UserAuthoredProgram;
-  linkedEntryFuncId: number;
-  linkedInitFuncId?: number;
-  linkedOnPageEnteredFuncId?: number;
+  functionOffset: number;
+  constantOffset: number;
+  variableOffset: number;
   linkedDebugMetadata?: DebugMetadata;
 }
 

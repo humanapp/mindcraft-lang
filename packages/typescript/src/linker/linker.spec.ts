@@ -106,6 +106,10 @@ function mkBrainProgramWithStubFunction(): BrainProgram {
   };
 }
 
+function resolveLinkedFuncId(linkInfo: { functionOffset: number }, localFuncId: number): number {
+  return linkInfo.functionOffset + localFuncId;
+}
+
 describe("linker", () => {
   before(() => {
     registerCoreBrainComponents();
@@ -134,13 +138,13 @@ export default Sensor({
     const userConstCount = userProg.constants.size();
     assert.ok(userConstCount > 0, "user program should have constants");
 
-    const { linkedProgram, userLinks } = linkUserPrograms(brainProg, [userProg]);
+    const { linkedProgram, linkedArtifacts } = linkUserPrograms(brainProg, [userProg]);
 
     assert.equal(linkedProgram.constants.size(), 1 + userConstCount);
     assert.equal((linkedProgram.constants.get(0) as NumberValue).v, 99);
 
-    assert.equal(userLinks.length, 1);
-    assert.equal(userLinks[0].linkedEntryFuncId, userProg.entryFuncId + 1);
+    assert.equal(linkedArtifacts.length, 1);
+    assert.equal(resolveLinkedFuncId(linkedArtifacts[0], userProg.entryFuncId), userProg.entryFuncId + 1);
   });
 
   test("CALL to a user helper function resolves correctly in the linked program", () => {
@@ -171,11 +175,11 @@ export default Sensor({
     const userProg = result.program!;
     const funcOffset = brainProg.functions.size();
 
-    const { linkedProgram, userLinks } = linkUserPrograms(brainProg, [userProg]);
+    const { linkedProgram, linkedArtifacts } = linkUserPrograms(brainProg, [userProg]);
 
     assert.equal(linkedProgram.functions.size(), brainProg.functions.size() + userProg.functions.size());
 
-    const linkedEntryFuncId = userLinks[0].linkedEntryFuncId;
+    const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], userProg.entryFuncId);
     const entryFn = linkedProgram.functions.get(linkedEntryFuncId);
     const hasRemappedCall = entryFn.code.toArray().some((instr) => instr.op === Op.CALL && instr.a! >= funcOffset);
     assert.ok(hasRemappedCall, "entry function should have a CALL instruction with remapped funcId");
@@ -198,9 +202,9 @@ export default Sensor({
     assert.ok(result.program);
 
     const brainProg = mkEmptyBrainProgram();
-    const { linkedProgram, userLinks } = linkUserPrograms(brainProg, [result.program!]);
+    const { linkedProgram, linkedArtifacts } = linkUserPrograms(brainProg, [result.program!]);
 
-    const linkedEntryFuncId = userLinks[0].linkedEntryFuncId;
+    const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], result.program!.entryFuncId);
     const handles = new HandleTable(100);
     const vm = new runtime.VM(linkedProgram, handles);
 
@@ -240,9 +244,9 @@ export default Sensor({
     assert.ok(result.program);
 
     const brainProg = mkBrainProgramWithStubFunction();
-    const { linkedProgram, userLinks } = linkUserPrograms(brainProg, [result.program!]);
+    const { linkedProgram, linkedArtifacts } = linkUserPrograms(brainProg, [result.program!]);
 
-    const linkedEntryFuncId = userLinks[0].linkedEntryFuncId;
+    const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], result.program!.entryFuncId);
     const handles = new HandleTable(100);
     const vm = new runtime.VM(linkedProgram, handles);
 
@@ -290,15 +294,23 @@ export default Sensor({
     assert.ok(result2.program);
 
     const brainProg = mkBrainProgramWithStubFunction();
-    const { linkedProgram, userLinks } = linkUserPrograms(brainProg, [result1.program!, result2.program!]);
+    const { linkedProgram, linkedArtifacts } = linkUserPrograms(brainProg, [result1.program!, result2.program!]);
 
-    assert.equal(userLinks.length, 2);
-    assert.ok(userLinks[0].linkedEntryFuncId < userLinks[1].linkedEntryFuncId);
+    assert.equal(linkedArtifacts.length, 2);
+    assert.ok(
+      resolveLinkedFuncId(linkedArtifacts[0], result1.program!.entryFuncId) <
+        resolveLinkedFuncId(linkedArtifacts[1], result2.program!.entryFuncId)
+    );
 
     const handles = new HandleTable(100);
     const vm = new runtime.VM(linkedProgram, handles);
 
-    const fiber1 = vm.spawnFiber(1, userLinks[0].linkedEntryFuncId, List.empty<Value>(), mkCtx());
+    const fiber1 = vm.spawnFiber(
+      1,
+      resolveLinkedFuncId(linkedArtifacts[0], result1.program!.entryFuncId),
+      List.empty<Value>(),
+      mkCtx()
+    );
     fiber1.instrBudget = 1000;
     const run1 = vm.runFiber(fiber1, mkScheduler());
     assert.equal(run1.status, VmStatus.DONE);
@@ -306,7 +318,12 @@ export default Sensor({
       assert.equal((run1.result as NumberValue).v, 10);
     }
 
-    const fiber2 = vm.spawnFiber(2, userLinks[1].linkedEntryFuncId, List.empty<Value>(), mkCtx());
+    const fiber2 = vm.spawnFiber(
+      2,
+      resolveLinkedFuncId(linkedArtifacts[1], result2.program!.entryFuncId),
+      List.empty<Value>(),
+      mkCtx()
+    );
     fiber2.instrBudget = 1000;
     const run2 = vm.runFiber(fiber2, mkScheduler());
     assert.equal(run2.status, VmStatus.DONE);
@@ -315,7 +332,7 @@ export default Sensor({
     }
   });
 
-  test("onPageEntered funcId is remapped after linking", () => {
+  test("activationFuncId is remapped after linking", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -334,17 +351,17 @@ export default Sensor({
     assert.ok(result.program);
 
     const userProg = result.program!;
-    assert.ok(
-      userProg.lifecycleFuncIds.onPageEntered !== undefined,
-      "user program should have onPageEntered wrapper funcId"
-    );
+    assert.ok(userProg.activationFuncId !== undefined, "user program should have activationFuncId");
 
     const brainProg = mkBrainProgramWithStubFunction();
     const funcOffset = brainProg.functions.size();
 
-    const { userLinks } = linkUserPrograms(brainProg, [userProg]);
+    const { linkedArtifacts } = linkUserPrograms(brainProg, [userProg]);
 
-    assert.equal(userLinks[0].linkedOnPageEnteredFuncId, userProg.lifecycleFuncIds.onPageEntered! + funcOffset);
+    assert.equal(
+      resolveLinkedFuncId(linkedArtifacts[0], userProg.activationFuncId!),
+      userProg.activationFuncId! + funcOffset
+    );
   });
 
   test("brain program's original functions are preserved after linking", () => {
@@ -419,7 +436,7 @@ export default Sensor({
       .filter((c): c is { t: NativeType.Function; funcId: number } => c.t === NativeType.Function);
     assert.ok(originalFuncConsts.length > 0, "user program should have at least one FunctionValue constant");
 
-    const { linkedProgram, userLinks } = linkUserPrograms(brainProg, [userProg]);
+    const { linkedProgram, linkedArtifacts } = linkUserPrograms(brainProg, [userProg]);
 
     const constOffset = brainProg.constants.size();
     for (const origFc of originalFuncConsts) {
@@ -433,7 +450,7 @@ export default Sensor({
       );
     }
 
-    const linkedEntryFuncId = userLinks[0].linkedEntryFuncId;
+    const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], userProg.entryFuncId);
     const handles = new HandleTable(100);
     const vm = new runtime.VM(linkedProgram, handles);
     const args = mkArgsMap({ 0: mkNumberValue(5) });

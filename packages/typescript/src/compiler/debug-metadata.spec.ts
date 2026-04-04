@@ -129,9 +129,9 @@ export default Sensor({
     assert.ok(initFn, "expected module-init function");
     assert.equal(initFn!.isGenerated, true, "module-init should be generated");
 
-    const wrapperFn = dm.functions.find((f) => f.debugFunctionId.endsWith("/<onPageEntered-wrapper>"));
-    assert.ok(wrapperFn, "expected onPageEntered wrapper function");
-    assert.equal(wrapperFn!.isGenerated, true, "onPageEntered-wrapper should be generated");
+    const activationFn = dm.functions.find((f) => f.debugFunctionId.endsWith("/<activation>"));
+    assert.ok(activationFn, "expected activation function");
+    assert.equal(activationFn!.isGenerated, true, "activation function should be generated");
   });
 
   test("user-authored functions have isGenerated false", () => {
@@ -277,9 +277,9 @@ export default Sensor({
     };
 
     const linkResult = linkUserPrograms(brainWithStub, [result.program!]);
-    assert.equal(linkResult.userLinks.length, 1);
+    assert.equal(linkResult.linkedArtifacts.length, 1);
 
-    const link = linkResult.userLinks[0];
+    const link = linkResult.linkedArtifacts[0];
     assert.ok(link.linkedDebugMetadata);
 
     const funcOffset = 3;
@@ -354,7 +354,7 @@ export default Sensor({
     assert.equal(uniqueIds.size, ids.length, `debugFunctionId values should be unique: ${JSON.stringify(ids)}`);
   });
 
-  test("programRevisionId is populated", () => {
+  test("revisionId is populated", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -368,8 +368,8 @@ export default Sensor({
 `;
     const result = compileUserTile(source);
     assert.deepStrictEqual(result.diagnostics, []);
-    assert.ok(result.program!.programRevisionId);
-    assert.ok(result.program!.programRevisionId.length > 0);
+    assert.ok(result.program!.revisionId);
+    assert.ok(result.program!.revisionId.length > 0);
   });
 
   test("function sourceSpan is populated for user functions", () => {
