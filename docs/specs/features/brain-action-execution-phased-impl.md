@@ -231,6 +231,10 @@ tiles no longer store `BrainFunctionEntry`.
    host-function entries.
 3. Update sensor and actuator registration code to construct descriptors from the
    existing host-function registrations.
+   This is a Phase 1 bridge only, not the permanent architecture. By the end of
+   Phase 3, the long-term resolver/binding path should no longer depend on
+   `BrainFunctionEntry -> ActionDescriptor` derivation as the source of truth
+   for built-in actions.
 4. Keep operator and conversion interfaces on the host-function path.
 5. Rename the host-function subsystem if the rename can be completed cleanly in
    this phase. If not, keep names stable but ensure the tile model is already
@@ -285,12 +289,37 @@ instead of global host-function IDs for sensors and actuators.
 - Architecture spec sections D.3, E.1, E.5, F
 - Current brain compiler, emitter, runtime interfaces, and verifier logic
 
+### Phase 2 precondition
+
+Do not start Phase 2 until the Phase 1 tile-model split is present on the
+current branch.
+
+At the start of Phase 2, assume this baseline:
+
+- `ActionDescriptor` exists in core interfaces
+- sensor and actuator tile defs already store `action` metadata
+- parser, type inference, and editor-facing paths may already read
+   `action.callDef` and `action.outputType`
+- `mkActionDescriptor()` may still derive descriptors from
+   `BrainFunctionEntry`; that is acceptable at the start of Phase 2 but remains
+   transitional only and must not survive as the permanent built-in action model
+   past Phase 3
+
+If that baseline is not present on the current branch, stop and regenerate or
+complete Phase 1 first.
+
+What remains for Phase 2 is not more tile metadata refactoring. Phase 2 starts
+at the compiler boundary and removes the remaining sensor/actuator dependency on
+compiler-side lookups back into the global `FunctionRegistry`.
+
 ### In scope
 
 - add action-slot metadata to compiled brain programs
 - add action-call opcodes or equivalent dedicated instruction forms
-- replace `hostCallSites` with `actionCallSites`
+- replace `PageMetadata.hostCallSites` with `PageMetadata.actionCallSites`
 - emit action calls for sensors and actuators
+- remove compiler-side resolution from `ActionDescriptor` back to
+   `BrainFunctionEntry` for sensor/actuator invocation
 
 ### Out of scope
 
@@ -303,10 +332,11 @@ instead of global host-function IDs for sensors and actuators.
 
 1. Extend runtime interfaces with `ActionRef` and `ActionCallSiteEntry`.
 2. Extend the program metadata emitted by `BrainCompiler` to store `actionRefs`
-   and `actionCallSites`.
+   at program scope and `actionCallSites` inside each `PageMetadata` entry.
 3. Extend the bytecode emitter with action-call emission helpers.
 4. Update the rule compiler so sensors and actuators intern action keys into
-   local slots and emit action-call instructions.
+   local slots, stop resolving them through `getBrainServices().functions`, and
+   emit action-call instructions.
 5. Leave `HOST_CALL*` in place for operators, conversions, and other host
    intrinsics.
 6. Update verifier types if needed, but do not implement runtime dispatch yet.
@@ -340,6 +370,10 @@ cd packages/core && npm run check && npm run build && npm test
 
 - converting operators or conversions to action calls by accident
 - keeping both host and action callsites for the same sensor/actuator path
+- leaving a fallback `ActionDescriptor -> FunctionRegistry` lookup in the
+   compiler path after action slots have been introduced
+- introducing a separate top-level `actionCallSites` list instead of replacing
+   the field inside `PageMetadata`
 
 ---
 
@@ -347,8 +381,9 @@ cd packages/core && npm run check && npm run build && npm test
 
 ### Goal
 
-Add a formal link step that resolves action descriptors into executable action
-bindings and produces the runtime artifact used by `Brain`.
+Add a formal link step that resolves action descriptors into host bindings or
+bytecode artifacts, then produces the executable runtime artifact used by
+`Brain`.
 
 ### Read first
 
@@ -357,6 +392,7 @@ bindings and produces the runtime artifact used by `Brain`.
 
 ### In scope
 
+- define a resolver return type distinct from final bytecode executable entries
 - define `ExecutableAction`
 - define `ExecutableBrainProgram`
 - define `BrainActionResolver` or equivalent resolver interface
@@ -371,12 +407,17 @@ bindings and produces the runtime artifact used by `Brain`.
 
 ### Ordered tasks
 
-1. Add executable action and executable program interfaces to core.
+1. Add resolved-action, executable-action, and executable-program interfaces to
+   core.
 2. Define the resolver/environment interface core will use to resolve actions.
+   For bytecode actions, the resolver must return an artifact with
+   artifact-local function IDs, not a pre-remapped executable entry.
 3. Refactor the brain lifecycle so `Brain` no longer instantiates the VM from a
    raw compiled program.
-4. Thread the resolver/environment through `BrainDef.compile()` / `Brain`
-   construction in the cleanest way available.
+4. Thread the resolver/environment through an explicit link step and into
+   `Brain` construction/initialization in the cleanest way available.
+   `BrainDef.compile()` must remain the compile step that produces the
+   unlinked program, not a combined compile-and-link entry point.
 5. Keep the link step interface-only. Do not make core depend on
    `packages/typescript`.
 
@@ -393,6 +434,8 @@ bindings and produces the runtime artifact used by `Brain`.
 - `Brain` instantiation now consumes an executable program artifact
 - core no longer assumes action dispatch comes from `getBrainServices().functions`
 - resolver boundary is interface-only
+- the resolver boundary does not assume final merged program layout for
+   bytecode action function IDs
 
 Run:
 
@@ -410,6 +453,14 @@ cd packages/core && npm run check && npm run build && npm test
 
 - implementing app-specific resolver logic inside core
 - leaving a hidden fallback from action dispatch to the global host registry
+- making the resolver fabricate final `entryFuncId` values before bytecode
+   artifacts have been merged into the executable brain program
+- collapsing compile and link back into a single `BrainDef.compile()` path and
+   losing the explicit `UnlinkedBrainProgram -> ExecutableBrainProgram`
+   boundary
+- leaving Phase 1 `BrainFunctionEntry -> ActionDescriptor` derivation in place
+  as the permanent built-in action source of truth after the explicit resolver
+  and link-step boundary has been introduced
 
 ---
 
@@ -430,6 +481,8 @@ executable action table.
 - sync action dispatch
 - async action dispatch
 - verifier bounds checks for action slots
+- static rejection of suspension paths inside sync bytecode actions where
+   knowable
 - binding `currentCallSiteId` and `rule` through the action path
 
 ### Out of scope
@@ -443,11 +496,19 @@ executable action table.
 1. Implement `ACTION_CALL` in the VM.
 2. Implement `ACTION_CALL_ASYNC` in the VM.
 3. Dispatch host-backed actions directly from the executable action table.
-4. Dispatch bytecode-backed sync actions inside the current VM.
+4. Dispatch bytecode-backed sync actions by pushing an action-root frame onto
+   the current fiber and returning through ordinary `RET` semantics. Do not use
+   `spawnFiber()` plus an inline blocking run for sync dispatch.
 5. Dispatch bytecode-backed async actions using child fibers and handle
    completion.
-6. Add verifier checks for action slots.
-7. Add or update VM tests covering host-backed and bytecode-backed action paths.
+6. Add static verifier and compiler checks that reject suspension paths inside
+   sync bytecode actions where they are knowable, including `YIELD`, `AWAIT`,
+   `HOST_CALL_ASYNC`, and `ACTION_CALL_ASYNC`.
+7. Fault the fiber at runtime if a sync bytecode action still reaches a
+   suspension point through a path that was not rejected statically.
+8. Add verifier checks for action slots.
+9. Add or update VM tests covering host-backed and bytecode-backed action
+   paths.
 
 ### Likely files
 
@@ -459,7 +520,13 @@ executable action table.
 
 - sync host-backed actions execute without the old sensor/actuator host registry
   path
-- sync bytecode-backed actions execute in the current VM
+- sync bytecode-backed actions execute on the current fiber's frame stack and
+   return through `RET`
+- sync bytecode-backed action faults propagate through the caller's normal
+   handler chain
+- statically invalid sync bytecode actions are rejected before runtime where
+   knowable
+- sync bytecode-backed actions cannot suspend
 - async bytecode-backed actions execute in child fibers and resolve handles
   correctly
 
@@ -477,6 +544,12 @@ cd packages/core && npm run check && npm run build && npm test
 ### Common failure modes
 
 - using externally captured VM wrappers instead of the executable action table
+- implementing sync bytecode dispatch as child-fiber execution instead of
+   current-fiber frame entry
+- allowing sync bytecode actions to suspend and implicitly block the parent
+   fiber
+- relying only on runtime faults and skipping the static verifier/compiler
+   rejection for knowable suspension paths
 - breaking `AWAIT` / handle semantics for host async execution
 
 ---
@@ -486,7 +559,8 @@ cd packages/core && npm run check && npm run build && npm test
 ### Goal
 
 Move persistent action state from a fiber-global slot to explicit
-action-instance state bound to the current action frame chain.
+action-instance state bound to the current action frame chain and current host
+action context.
 
 ### Read first
 
@@ -499,30 +573,40 @@ action-instance state bound to the current action frame chain.
 - action-state storage model
 - frame/action binding model
 - page activation state reset semantics
+- host-side `getCallSiteState()` / `setCallSiteState()` rebinding
 - compiler/runtime contract rename if appropriate
 
 ### Out of scope
 
 - sim integration
 - removal of user wrapper artifacts from `packages/typescript`
+- any `packages/typescript` edits in this phase must stay limited to field
+   renames and contract alignment needed by the new action-state model, not
+   artifact-shape redesign or runtime-path replacement
 
 ### Ordered tasks
 
 1. Replace or redefine `fiber.callsiteVars` so state is bound to the current
    action frame chain, not to the whole fiber.
-2. Ensure helper `CALL`s inside an action inherit the same action-state binding.
-3. Update page activation so each action callsite gets deterministic state
+2. Redefine `ExecutionContext` host-state helpers so host-backed actions read
+   and write the current action instance, not an ExecutionContext-owned global
+   map keyed only by call-site ID.
+3. Ensure helper `CALL`s inside an action inherit the same action-state binding.
+4. Update page activation so each action callsite gets deterministic state
    creation/reset.
-4. Rename runtime/compiler-facing concepts from legacy terms like
+5. Rename runtime/compiler-facing concepts from legacy terms like
    `numCallsiteVars` to `numStateSlots` if the rename can be completed cleanly in
    this phase.
-5. Update tests to cover multiple action callsites within one rule fiber.
+6. Update tests to cover multiple action callsites within one rule fiber and
+   host-backed action state reset/access behavior.
 
 ### Likely files
 
 - `packages/core/src/brain/interfaces/vm.ts`
+- `packages/core/src/brain/interfaces/runtime.ts`
 - `packages/core/src/brain/runtime/vm.ts`
 - `packages/core/src/brain/runtime/brain.ts`
+- `packages/core/src/brain/runtime/sensors/*.ts`
 - `packages/typescript/src/compiler/types.ts`
 - `packages/typescript/src/compiler/lowering.ts`
 - `packages/typescript/src/compiler/project.ts`
@@ -532,6 +616,8 @@ action-instance state bound to the current action frame chain.
 
 - two distinct action callsites in the same rule fiber do not overwrite each
   other's persistent state binding
+- host-backed actions using `getCallSiteState()` / `setCallSiteState()` now
+   read and write action-instance-scoped state
 - persistent state survives across ticks and root-rule respawns
 - page activation resets action state deterministically
 
@@ -553,6 +639,8 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
 - storing persistent state on the fiber object in a different field name
 - resetting state only for bytecode-backed actions but not uniformly by
   action-callsite lifecycle
+- preserving `ExecutionContext.callSiteState` as an independent parallel store
+   outside the unified action-instance model
 
 ---
 
@@ -587,10 +675,12 @@ action artifacts that the core linker can bind directly.
    artifact shape aligned with the architecture spec.
 2. Collapse `initFuncId` plus lifecycle wrapper semantics into a direct
    `activationFuncId` export if possible.
-3. Remove `createUserTileExec` from the intended runtime path.
-4. Change the registration bridge so it publishes tile metadata plus compiled
+3. Keep `entryFuncId` and `activationFuncId` artifact-local. Do not precompute
+   merged-program function indexes inside `packages/typescript`.
+4. Remove `createUserTileExec` from the intended runtime path.
+5. Change the registration bridge so it publishes tile metadata plus compiled
    action artifacts, not host-function closures.
-5. Update compiler and linker tests accordingly.
+6. Update compiler and linker tests accordingly.
 
 ### Likely files
 
@@ -606,6 +696,8 @@ action artifacts that the core linker can bind directly.
 - no compiled user tile is converted into a VM-capturing host-function wrapper
 - the TypeScript package emits artifacts suitable for direct core action linking
 - activation behavior is represented directly in the emitted artifact shape
+- emitted bytecode artifact function IDs are still artifact-local and are left
+   for the core brain link step to remap
 
 Run:
 
@@ -628,6 +720,8 @@ cd packages/core && npm run check && npm run build && npm test
 
 - keeping wrappers in place "for now" and calling the phase complete
 - encoding app-specific resolver assumptions into the TypeScript package
+- treating artifact-local function IDs as if they were final executable-program
+   indexes
 
 ---
 
@@ -640,7 +734,7 @@ mutation with executable-brain invalidation and rebuild.
 
 ### Read first
 
-- Architecture spec sections D.5 and J
+- Architecture spec sections D.5, J, and K
 - current sim-side tile registration, compilation, actor brain lifecycle, and
   engine update flow
 
@@ -650,6 +744,7 @@ mutation with executable-brain invalidation and rebuild.
 - sim-side `BrainActionResolver`
 - active brain rebuild/invalidation on user action changes
 - optional executable-brain artifact caching
+- failed-compile behavior that preserves the last successful live runtime
 
 ### Out of scope
 
@@ -663,8 +758,15 @@ mutation with executable-brain invalidation and rebuild.
 2. Implement a sim-side resolver that resolves both built-in and user-authored
    action keys.
 3. Update actor/engine brain creation to use the new resolver path.
-4. Rebuild affected active brains when user action artifacts change.
-5. Add executable-brain caching only if it reduces clear repeated work without
+4. On successful user action recompilation, invalidate executable-brain cache
+   entries whose linked action revisions include the changed key at an older
+   revision.
+5. Replace every active Brain instance using an invalidated executable program.
+   Restart the Brain from the same `BrainDef` and same host object; do not
+   patch the live VM or scheduler in place.
+6. On failed recompilation, keep the last successful action artifacts and keep
+   existing active brains running.
+7. Add executable-brain caching only if it reduces clear repeated work without
    obscuring correctness.
 
 ### Likely files
@@ -678,7 +780,11 @@ mutation with executable-brain invalidation and rebuild.
 ### Verification
 
 - recompiling a user tile no longer mutates a global host-function entry
-- active actors rebuild their executable brains from current compiled artifacts
+- active actors depending on the changed action rebuild from current compiled
+   artifacts
+- actors whose executable brains do not depend on the changed action are not
+   rebuilt
+- failed recompilation leaves the last successful live brains running
 - multiple actors sharing one `BrainDef` execute without cross-Brain leakage
 
 Run:
@@ -697,7 +803,12 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
 
 ### Common failure modes
 
-- rebuilding only some actors for a changed action key
+- rebuilding only some active Brain instances for a changed action key
+- patching the executable action table or VM in place instead of restarting the
+   affected Brain instances
+- tearing down live brains on compile failure before a replacement executable
+   program exists
+- caching VM instances instead of caching immutable executable programs
 - leaving a hidden global-registry fallback for user-authored actions
 
 ---

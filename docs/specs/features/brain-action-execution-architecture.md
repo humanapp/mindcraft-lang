@@ -22,6 +22,7 @@ Related:
 - [H. Catalog and Editor Model](#h-catalog-and-editor-model)
 - [I. Rejected Alternatives](#i-rejected-alternatives)
 - [J. Migration Notes](#j-migration-notes)
+- [K. Live Reload Workflow](#k-live-reload-workflow)
 
 ---
 
@@ -179,20 +180,29 @@ interface PageMetadata {
 The compiler owns slot assignment exactly the way it owns constant-pool indexes.
 The slot index is brain-program-local, not global.
 
-### 4. Executable brain program
+### 4. Resolved actions and executable brain program
 
-The linker resolves `actionRefs` into executable action bindings.
+The link step first resolves `actionRefs` into action inputs, then materializes
+the final executable action table.
 
 ```ts
-type ExecutableAction = HostExecutableAction | BytecodeExecutableAction;
-
-interface HostExecutableAction {
+interface HostActionBinding {
   binding: "host";
   descriptor: ActionDescriptor;
   onPageEntered?: (ctx: ExecutionContext) => void;
   execSync?: (ctx: ExecutionContext, args: MapValue) => Value;
   execAsync?: (ctx: ExecutionContext, args: MapValue, handleId: HandleId) => void;
 }
+
+interface BytecodeResolvedAction {
+  binding: "bytecode";
+  descriptor: ActionDescriptor;
+  artifact: UserActionArtifact;
+}
+
+type ResolvedAction = HostActionBinding | BytecodeResolvedAction;
+
+type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
 
 interface BytecodeExecutableAction {
   binding: "bytecode";
@@ -209,6 +219,17 @@ interface ExecutableBrainProgram extends Program {
 }
 ```
 
+`HostActionBinding` intentionally does not declare `numStateSlots`.
+Host-backed actions do participate in the same action-instance lifetime model,
+but they access persistent state through `ExecutionContext` helpers rather than
+through compiler-addressed bytecode slots.
+
+For bytecode-backed actions, `BytecodeResolvedAction.artifact.entryFuncId` and
+`activationFuncId` are artifact-local function indexes. The brain link step is
+responsible for merging those functions into the final program and producing the
+remapped `BytecodeExecutableAction` entries stored in
+`ExecutableBrainProgram.actions`.
+
 `ExecutableBrainProgram` is the artifact the runtime actually instantiates.
 
 ### 5. Execution environment
@@ -218,7 +239,7 @@ implementation for user-authored actions.
 
 ```ts
 interface BrainActionResolver {
-  resolveAction(descriptor: ActionDescriptor): ExecutableAction | undefined;
+  resolveAction(descriptor: ActionDescriptor): ResolvedAction | undefined;
 }
 ```
 
@@ -226,7 +247,7 @@ Resolution sources:
 
 - core runtime registration resolves built-in actions to host-backed bindings
 - app-side compiled user action registry resolves user-authored tiles to
-  bytecode-backed bindings
+  bytecode action artifacts
 
 Core must not depend on `packages/typescript`; it only depends on the resolver
 interface.
@@ -302,6 +323,35 @@ If the action is bytecode-backed:
 - bind the action-instance state to the called frame chain
 - push the returned value
 
+Mechanically, sync bytecode action dispatch should behave like entering a
+specialized call frame on the current fiber, not like `spawnFiber()` plus a
+blocking inline run.
+
+- advance the caller PC before entering the action body
+- allocate callee locals using the normal bytecode call convention
+- inject `ctx` into local slot 0 when `injectCtxTypeId` is present
+- pass the action args `MapValue` as the remaining explicit argument when the
+  entry function declares one
+- push an action-root frame onto the current fiber and continue the interpreter
+  loop in that frame
+- on `RET`, pop the action-root frame and push the return value onto the
+  caller's operand stack exactly like ordinary `CALL`
+
+Error and control-flow semantics follow from that model:
+
+- exceptions propagate through the current fiber's handler stack
+- a surrounding `TRY` in the caller may catch faults from the sync action body
+- helper `CALL`s inside the action remain ordinary descendant frames under the
+  same action-root frame
+
+Sync bytecode actions must not suspend.
+
+- `YIELD`, `AWAIT`, `HOST_CALL_ASYNC`, or `ACTION_CALL_ASYNC` reached from a
+  sync action frame are invalid
+- the compiler and verifier should reject this where it is statically knowable
+- the VM must still fault the fiber if a sync action attempts to suspend at
+  runtime
+
 ### 3. Async dispatch semantics
 
 `ACTION_CALL_ASYNC(actionSlot, callSiteId)` executes as follows:
@@ -324,13 +374,16 @@ If the action is bytecode-backed:
 - bind the same action-instance state to that fiber's action frame
 - resolve, reject, or cancel the outer handle from child-fiber completion
 
+This child-fiber mechanism is async-only. Sync bytecode action dispatch uses
+the current fiber's frame stack.
+
 The important property is that async bytecode actions run on the owning Brain's
 VM and scheduler, not in an externally captured wrapper.
 
 ### 4. Action-instance state model
 
-User-authored persistent state should be modeled as **action-instance state**,
-not fiber-global state.
+Persistent action state should be modeled as **action-instance state**, not
+fiber-global state.
 
 The current `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` concept is valid, but the
 state must belong to the current action frame chain, not to `fiber.callsiteVars`
@@ -338,12 +391,20 @@ as a single mutable slot for the whole fiber.
 
 Clean model:
 
-- each action callsite has a state vector of `numStateSlots`
-- state vector is created and owned by the Brain runtime
-- the current action frame references that state vector
-- helper calls inside the action inherit the same state vector
+- each action callsite has a runtime-owned action-instance record
+- bytecode-backed actions use a `numStateSlots` value vector inside that record
+- host-backed actions may store one opaque host-state payload inside that same
+  record
+- the current action frame or host-action execution context references that
+  record
+- helper calls inside the action inherit the same bound action instance
 - sequential action calls in the same rule fiber do not overwrite each other's
   active state binding
+
+For host-backed actions, the existing `getCallSiteState()` /
+`setCallSiteState()` helpers remain the convenience API, but they are
+redefined to resolve against the current action instance instead of an
+ExecutionContext-owned global map keyed only by call-site ID.
 
 This can be implemented either by:
 
@@ -407,11 +468,13 @@ Verifier responsibilities split cleanly:
 
 ### 3. Link step
 
-The link step is responsible for two independent tasks:
+The link step is responsible for three independent tasks:
 
-1. resolve action descriptors into executable action bindings
+1. resolve action descriptors into host bindings or bytecode artifacts
 2. merge linked bytecode artifacts into the final executable program where
-   necessary
+  necessary
+3. materialize final executable action bindings with remapped program-global
+  function IDs
 
 For user-authored actions, the current `linkUserPrograms()` logic is still the
 right lower-level mechanism. What changes is where it sits in the architecture:
@@ -454,6 +517,11 @@ interface UserActionArtifact extends Program {
 ```
 
 This is a cleaner version of the current `UserAuthoredProgram` shape.
+
+`entryFuncId` and `activationFuncId` in this artifact are local to the
+artifact's own `functions` list. They are not final indexes into a merged
+brain program. The brain link step remaps them when producing
+`BytecodeExecutableAction`.
 
 Notable simplifications:
 
@@ -562,3 +630,76 @@ The migration should therefore optimize for architectural cleanliness:
 
 This is an opportunity to remove the flawed model, not to preserve it behind
 compatibility adapters.
+
+---
+
+## K. Live Reload Workflow
+
+Hot reload is a live workflow requirement. It is not the same thing as
+backward compatibility.
+
+The replacement for in-place `entry.fn = newHostFn` mutation is explicit
+executable-brain invalidation and rebuild.
+
+### 1. Successful user action recompilation
+
+When a user-authored action compiles successfully:
+
+1. update the app-side action artifact registry for that `ActionKey`
+2. record the new artifact `revisionId`
+3. invalidate any cached `ExecutableBrainProgram` whose linked action revisions
+   include that key at an older revision
+4. replace every active `Brain` instance whose executable program was
+   invalidated
+
+Replacement here means:
+
+- keep the owning actor or host object alive
+- call `Brain.shutdown()` on the active instance
+- create a new `Brain` from the same `BrainDef`
+- run compile -> link -> instantiate against the current action registry
+- initialize and start the new Brain with the same host context object
+
+The VM and scheduler are therefore recreated for affected Brain instances. This
+is the clean baseline. The system should not patch live fibers, frame stacks,
+or action tables in place.
+
+### 2. Scope of rebuild
+
+The rebuild scope is not "all brains in the process".
+
+The correct scope is:
+
+- every active `Brain` instance whose executable program depends on a changed
+  action key or revision
+- every actor sharing a `BrainDef` whose linked action set includes that
+  changed action
+
+If multiple active Brain instances share the same `BrainDef` and the same
+resolved action revisions, they may reuse one newly linked immutable
+`ExecutableBrainProgram`. They still must not share VM, scheduler, fiber, or
+action-instance state.
+
+### 3. Runtime state semantics
+
+Hot reload resets Brain-local execution state for affected instances:
+
+- current VM and scheduler
+- live fibers and call stacks
+- current page activation state
+- action-instance persistent state
+
+It does not reset the owning simulation object unless the app chooses to do so.
+For the sim app, the actor remains alive; its Brain is restarted.
+
+### 4. Failed recompilation
+
+When recompilation fails:
+
+- keep the last successful action artifact in the registry
+- keep existing active Brain instances running on their current executable
+  programs
+- surface the compile errors separately
+
+Failed recompilation should not tear down active brains just because a newer
+artifact was not produced.
