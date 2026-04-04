@@ -204,6 +204,27 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, []);
   });
 
+  test("switch statement passes validation", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    switch (1) {
+      case 1:
+        return 10;
+      default:
+        return 20;
+    }
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+  });
+
   test("unsupported type reference in annotation produces diagnostic", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";

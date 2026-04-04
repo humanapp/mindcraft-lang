@@ -69,10 +69,6 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
         addDiag(ValidatorDiagCode.WithNotSupported, node, "`with` is not supported");
         return;
 
-      case ts.SyntaxKind.SwitchStatement:
-        addDiag(ValidatorDiagCode.SwitchNotSupported, node, "`switch` is not supported");
-        break;
-
       case ts.SyntaxKind.YieldExpression:
         addDiag(ValidatorDiagCode.GeneratorsNotSupported, node, "Generators are not supported");
         break;

@@ -788,6 +788,204 @@ export default Sensor({
     }
   });
 
+  test("switch executes matching case", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-switch-match",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const x: number = 2;
+    switch (x) {
+      case 1:
+        return 10;
+      case 2:
+        return 20;
+      default:
+        return 30;
+    }
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 20);
+    }
+  });
+
+  test("switch can match a case after default", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-switch-case-after-default",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const x: number = 3;
+    switch (x) {
+      case 1:
+        return 10;
+      default:
+        return 30;
+      case 3:
+        return 40;
+    }
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 40);
+    }
+  });
+
+  test("switch default can fall through to later cases", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-switch-default-fallthrough",
+  output: "number",
+  onExecute(ctx: Context): number {
+    let sum = 0;
+    const x: number = 9;
+    switch (x) {
+      case 1:
+        sum = sum + 1;
+        break;
+      default:
+        sum = sum + 10;
+      case 2:
+        sum = sum + 100;
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 110);
+    }
+  });
+
+  test("break exits switch without breaking the loop", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-switch-break",
+  output: "number",
+  onExecute(ctx: Context): number {
+    let total = 0;
+    for (let i = 0; i < 3; i = i + 1) {
+      switch (i) {
+        case 1:
+          total = total + 10;
+          break;
+        default:
+          total = total + 1;
+          break;
+      }
+      total = total + 100;
+    }
+    return total;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 312);
+    }
+  });
+
+  test("continue inside switch continues the enclosing loop", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-switch-continue",
+  output: "number",
+  onExecute(ctx: Context): number {
+    let sum = 0;
+    for (let i = 0; i < 5; i = i + 1) {
+      switch (i) {
+        case 2:
+          continue;
+        default:
+          sum = sum + i;
+      }
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 8);
+    }
+  });
+
   test("nested blocks produce correct variable indices", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";

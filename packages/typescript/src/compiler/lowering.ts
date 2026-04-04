@@ -94,6 +94,7 @@ interface LowerContext {
   ir: IrNode[];
   diagnostics: CompileDiagnostic[];
   loopStack: LoopContext[];
+  breakStack: number[];
   nextLabelId: number;
   callsiteVars: Map<string, number>;
   functionTable: Map<string, number>;
@@ -106,6 +107,16 @@ interface LowerContext {
 
 function allocLabel(ctx: LowerContext): number {
   return ctx.nextLabelId++;
+}
+
+function pushLoopContext(continueLabel: number, breakLabel: number, ctx: LowerContext): void {
+  ctx.loopStack.push({ continueLabel, breakLabel });
+  ctx.breakStack.push(breakLabel);
+}
+
+function popLoopContext(ctx: LowerContext): void {
+  ctx.loopStack.pop();
+  ctx.breakStack.pop();
 }
 
 function resolveOperator(opId: string, argTypes: string[]): string | undefined {
@@ -163,6 +174,47 @@ function resolveOperatorWithExpansion(opId: string, argTypes: string[]): string 
   }
 
   return undefined;
+}
+
+function emitBinaryOperatorForNodes(
+  opId: string,
+  leftNode: ts.Node,
+  rightNode: ts.Node,
+  diagNode: ts.Node,
+  ctx: LowerContext
+): boolean {
+  const lhsType = ctx.checker.getTypeAtLocation(leftNode);
+  const rhsType = ctx.checker.getTypeAtLocation(rightNode);
+
+  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
+  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
+
+  if (!lhsTypeId || !rhsTypeId) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotDetermineTypesForBinaryOp, "Cannot determine types for binary operator", diagNode)
+    );
+    return false;
+  }
+
+  const fnName = resolveOperator(opId, [lhsTypeId, rhsTypeId]);
+  if (!fnName) {
+    const fallbackFn = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
+    if (fallbackFn) {
+      ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 2 });
+      return true;
+    }
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NoOperatorOverload,
+        `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+        diagNode
+      )
+    );
+    return false;
+  }
+
+  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  return true;
 }
 
 export function lowerProgram(
@@ -406,6 +458,7 @@ function lowerOnPageEnteredBody(
     ir,
     diagnostics: sharedDiagnostics,
     loopStack: [],
+    breakStack: [],
     nextLabelId: 0,
     callsiteVars,
     functionTable,
@@ -583,6 +636,7 @@ function lowerOnExecuteBody(
     ir,
     diagnostics: sharedDiagnostics,
     loopStack: [],
+    breakStack: [],
     nextLabelId: 0,
     callsiteVars,
     functionTable,
@@ -672,6 +726,7 @@ function lowerHelperFunction(
     ir,
     diagnostics: sharedDiagnostics,
     loopStack: [],
+    breakStack: [],
     nextLabelId: 0,
     callsiteVars,
     functionTable,
@@ -748,6 +803,7 @@ function generateModuleInitWithImports(
     ir,
     diagnostics: sharedDiagnostics,
     loopStack: [],
+    breakStack: [],
     nextLabelId: 0,
     callsiteVars,
     functionTable,
@@ -825,6 +881,8 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     lowerForStatement(stmt, ctx);
   } else if (ts.isForOfStatement(stmt)) {
     lowerForOfStatement(stmt, ctx);
+  } else if (ts.isSwitchStatement(stmt)) {
+    lowerSwitchStatement(stmt, ctx);
   } else if (ts.isBlock(stmt)) {
     ctx.scopeStack.pushScope(ctx.ir.length);
     lowerStatements(stmt.statements, ctx);
@@ -1226,7 +1284,7 @@ function lowerWhileStatement(stmt: ts.WhileStatement, ctx: LowerContext): void {
   const loopStart = allocLabel(ctx);
   const loopEnd = allocLabel(ctx);
 
-  ctx.loopStack.push({ continueLabel: loopStart, breakLabel: loopEnd });
+  pushLoopContext(loopStart, loopEnd, ctx);
 
   ctx.ir.push({ kind: "Label", labelId: loopStart });
   const condStart = ctx.ir.length;
@@ -1237,7 +1295,7 @@ function lowerWhileStatement(stmt: ts.WhileStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
   ctx.ir.push({ kind: "Label", labelId: loopEnd });
 
-  ctx.loopStack.pop();
+  popLoopContext(ctx);
 }
 
 function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
@@ -1256,7 +1314,7 @@ function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
   const continueTarget = allocLabel(ctx);
   const loopEnd = allocLabel(ctx);
 
-  ctx.loopStack.push({ continueLabel: continueTarget, breakLabel: loopEnd });
+  pushLoopContext(continueTarget, loopEnd, ctx);
 
   ctx.ir.push({ kind: "Label", labelId: loopStart });
 
@@ -1279,7 +1337,7 @@ function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
   ctx.ir.push({ kind: "Label", labelId: loopEnd });
 
-  ctx.loopStack.pop();
+  popLoopContext(ctx);
   ctx.scopeStack.popScope(ctx.ir.length);
 }
 
@@ -1334,7 +1392,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
   const continueTarget = allocLabel(ctx);
   const loopEnd = allocLabel(ctx);
 
-  ctx.loopStack.push({ continueLabel: continueTarget, breakLabel: loopEnd });
+  pushLoopContext(continueTarget, loopEnd, ctx);
 
   ctx.ir.push({ kind: "Label", labelId: loopStart });
 
@@ -1346,7 +1404,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve < operator for `for...of`", stmt)
     );
-    ctx.loopStack.pop();
+    popLoopContext(ctx);
     ctx.scopeStack.popScope(ctx.ir.length);
     return;
   }
@@ -1371,7 +1429,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve + operator for `for...of`", stmt)
     );
-    ctx.loopStack.pop();
+    popLoopContext(ctx);
     ctx.scopeStack.popScope(ctx.ir.length);
     return;
   }
@@ -1381,17 +1439,69 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
   ctx.ir.push({ kind: "Label", labelId: loopEnd });
 
-  ctx.loopStack.pop();
+  popLoopContext(ctx);
+  ctx.scopeStack.popScope(ctx.ir.length);
+}
+
+function lowerSwitchStatement(stmt: ts.SwitchStatement, ctx: LowerContext): void {
+  ctx.scopeStack.pushScope(ctx.ir.length);
+
+  const discriminantLocal = ctx.scopeStack.allocLocal();
+  const endLabel = allocLabel(ctx);
+  const clauseLabels = stmt.caseBlock.clauses.map(() => allocLabel(ctx));
+  let defaultClauseIndex = -1;
+
+  const discriminantStart = ctx.ir.length;
+  lowerExpression(stmt.expression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: discriminantLocal });
+  annotateFirstNode(ctx.ir, discriminantStart, stmt.expression, true);
+
+  ctx.breakStack.push(endLabel);
+
+  for (let i = 0; i < stmt.caseBlock.clauses.length; i++) {
+    const clause = stmt.caseBlock.clauses[i];
+    if (ts.isDefaultClause(clause)) {
+      defaultClauseIndex = i;
+      continue;
+    }
+
+    ctx.ir.push({ kind: "LoadLocal", index: discriminantLocal });
+    lowerExpression(clause.expression, ctx);
+
+    if (!emitBinaryOperatorForNodes(CoreOpId.EqualTo, stmt.expression, clause.expression, clause.expression, ctx)) {
+      ctx.breakStack.pop();
+      ctx.scopeStack.popScope(ctx.ir.length);
+      return;
+    }
+
+    ctx.ir.push({ kind: "JumpIfTrue", labelId: clauseLabels[i] });
+  }
+
+  if (defaultClauseIndex >= 0) {
+    ctx.ir.push({ kind: "Jump", labelId: clauseLabels[defaultClauseIndex] });
+  } else {
+    ctx.ir.push({ kind: "Jump", labelId: endLabel });
+  }
+
+  for (let i = 0; i < stmt.caseBlock.clauses.length; i++) {
+    const clause = stmt.caseBlock.clauses[i];
+    ctx.ir.push({ kind: "Label", labelId: clauseLabels[i] });
+    lowerStatements(clause.statements, ctx);
+  }
+
+  ctx.ir.push({ kind: "Label", labelId: endLabel });
+
+  ctx.breakStack.pop();
   ctx.scopeStack.popScope(ctx.ir.length);
 }
 
 function lowerBreakStatement(stmt: ts.BreakStatement, ctx: LowerContext): void {
-  if (ctx.loopStack.length === 0) {
-    ctx.diagnostics.push(makeDiag(LoweringDiagCode.BreakOutsideLoop, "`break` outside of loop", stmt));
+  if (ctx.breakStack.length === 0) {
+    ctx.diagnostics.push(makeDiag(LoweringDiagCode.BreakOutsideLoop, "`break` outside of loop or switch", stmt));
     return;
   }
-  const loop = ctx.loopStack[ctx.loopStack.length - 1];
-  ctx.ir.push({ kind: "Jump", labelId: loop.breakLabel });
+  const breakLabel = ctx.breakStack[ctx.breakStack.length - 1];
+  ctx.ir.push({ kind: "Jump", labelId: breakLabel });
 }
 
 function lowerContinueStatement(stmt: ts.ContinueStatement, ctx: LowerContext): void {
@@ -1814,6 +1924,7 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     ir: closureIr,
     diagnostics: ctx.diagnostics,
     loopStack: [],
+    breakStack: [],
     nextLabelId: 0,
     callsiteVars: ctx.callsiteVars,
     functionTable: ctx.functionTable,
@@ -4445,36 +4556,7 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
   lowerExpression(expr.left, ctx);
   lowerExpression(expr.right, ctx);
 
-  const lhsType = ctx.checker.getTypeAtLocation(expr.left);
-  const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-
-  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
-  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
-
-  if (!lhsTypeId || !rhsTypeId) {
-    ctx.diagnostics.push(
-      makeDiag(LoweringDiagCode.CannotDetermineTypesForBinaryOp, "Cannot determine types for binary operator", expr)
-    );
-    return;
-  }
-
-  const fnName = resolveOperator(opId, [lhsTypeId, rhsTypeId]);
-  if (!fnName) {
-    const fallbackFn = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
-    if (fallbackFn) {
-      ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 2 });
-      return;
-    }
-    ctx.diagnostics.push(
-      makeDiag(
-        LoweringDiagCode.NoOperatorOverload,
-        `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
-        expr
-      )
-    );
-    return;
-  }
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  emitBinaryOperatorForNodes(opId, expr.left, expr.right, expr, ctx);
 }
 
 const MATH_CONSTANTS = new Map<string, number>([
@@ -5352,6 +5434,7 @@ function lowerClassDeclaration(
     ir: ctorIr,
     diagnostics,
     loopStack: [],
+    breakStack: [],
     nextLabelId: 0,
     callsiteVars,
     functionTable,
@@ -5438,6 +5521,7 @@ function lowerClassDeclaration(
       ir: methodIr,
       diagnostics,
       loopStack: [],
+      breakStack: [],
       nextLabelId: 0,
       callsiteVars,
       functionTable,

@@ -276,6 +276,47 @@ export default Sensor({
     assert.equal(forScope!.kind, "block");
   });
 
+  test("switch cases share one block scope", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const x: number = 1;
+    switch (x) {
+      case 1:
+        const a = 10;
+        break;
+      case 2:
+        const b = 20;
+        break;
+      default:
+        break;
+    }
+    return x;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.functionDebugInfo);
+
+    const entryDebug = result.functionDebugInfo!.find((f) => f.name === "test.onExecute");
+    assert.ok(entryDebug);
+
+    const aLocal = entryDebug!.locals.find((l) => l.name === "a");
+    const bLocal = entryDebug!.locals.find((l) => l.name === "b");
+    assert.ok(aLocal, "expected 'a' local");
+    assert.ok(bLocal, "expected 'b' local");
+    assert.equal(aLocal!.scopeId, bLocal!.scopeId, "switch case locals should share one scope");
+
+    const switchScope = entryDebug!.scopes.find((s) => s.scopeId === aLocal!.scopeId);
+    assert.ok(switchScope, "expected switch scope");
+    assert.equal(switchScope!.kind, "block");
+  });
+
   test("scope IDs are unique within a function", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
