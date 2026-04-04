@@ -25,8 +25,10 @@ import {
   getBrainServices,
   HandleState,
   HandleTable,
+  type IBrainRule,
   type Instr,
   isFunctionValue,
+  type MapValue,
   mkBooleanValue,
   mkCallDef,
   mkFunctionValue,
@@ -902,6 +904,295 @@ describe("VM -- action calls", () => {
 
     const handles = new HandleTable(100);
     assert.throws(() => new VM(prog, handles), /ACTION_CALL actionSlot 1 out of bounds/);
+  });
+
+  test("ACTION_CALL_ASYNC preserves host-backed handle behavior", () => {
+    const handles = new HandleTable(100);
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
+    const descriptor = {
+      key: "test-vm-action-call-async-host",
+      kind: "actuator" as const,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: true,
+    };
+    const prog = {
+      ...mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST, a: 0 },
+            { op: Op.ACTION_CALL_ASYNC, a: 0, c: 7 },
+            { op: Op.AWAIT },
+            { op: Op.RET },
+          ]),
+        ],
+        [args]
+      ),
+      actions: List.from([
+        {
+          binding: "host" as const,
+          descriptor,
+          execAsync: (_ctx: ExecutionContext, _args: MapValue, handleId: number) => {
+            handles.resolve(handleId, mkNumberValue(654));
+          },
+        },
+      ]),
+    };
+
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 654);
+    }
+  });
+
+  test("ACTION_CALL routes sync bytecode actions through the current fiber and caller TRY handlers", () => {
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
+    const errVal: Value = { t: "err", e: { tag: "ScriptError", message: "bytecode boom" } };
+    const descriptor = {
+      key: "test-vm-action-call-bytecode-throw",
+      kind: "actuator" as const,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+    };
+    const prog = {
+      ...mkProgram(
+        [
+          mkFunc(
+            [
+              { op: Op.TRY, a: 6 },
+              { op: Op.PUSH_CONST, a: 0 },
+              { op: Op.ACTION_CALL, a: 0, c: 5 },
+              { op: Op.END_TRY },
+              { op: Op.PUSH_CONST, a: 2 },
+              { op: Op.RET },
+              { op: Op.POP },
+              { op: Op.PUSH_CONST, a: 1 },
+              { op: Op.RET },
+            ],
+            0,
+            "root"
+          ),
+          mkFunc([{ op: Op.PUSH_CONST, a: 3 }, { op: Op.THROW }], 0, "action-entry"),
+        ],
+        [args, mkNumberValue(77), mkNumberValue(999), errVal]
+      ),
+      actions: List.from([
+        {
+          binding: "bytecode" as const,
+          descriptor,
+          entryFuncId: 1,
+          numStateSlots: 0,
+        },
+      ]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 77);
+    }
+  });
+
+  test("ACTION_CALL bytecode actions preserve the caller rule for host calls", () => {
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
+    const fakeRule = { name: "caller-rule" } as unknown as IBrainRule;
+    let seenRule: unknown;
+
+    const hostFnEntry = getBrainServices().functions.register(
+      "test-vm-bytecode-action-rule-host",
+      false,
+      {
+        exec: (ctx: ExecutionContext) => {
+          seenRule = ctx.rule;
+          return mkNumberValue(7);
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+
+    const descriptor = {
+      key: "test-vm-action-call-bytecode-rule",
+      kind: "actuator" as const,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+    };
+    const prog = {
+      ...mkProgram(
+        [
+          mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 5 }, { op: Op.RET }], 0, "root"),
+          mkFunc(
+            [{ op: Op.PUSH_CONST, a: 0 }, { op: Op.HOST_CALL, a: hostFnEntry.id, c: 11 }, { op: Op.RET }],
+            0,
+            "action-entry"
+          ),
+        ],
+        [args]
+      ),
+      actions: List.from([
+        {
+          binding: "bytecode" as const,
+          descriptor,
+          entryFuncId: 1,
+          numStateSlots: 0,
+        },
+      ]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(
+      1,
+      0,
+      List.empty(),
+      mkCtx({
+        funcIdToRule: new Dict<number, IBrainRule>([[0, fakeRule]]),
+      })
+    );
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 7);
+    }
+    assert.equal(seenRule, fakeRule);
+  });
+
+  test("sync bytecode actions with reachable YIELD are rejected by the verifier", () => {
+    const descriptor = {
+      key: "test-vm-action-sync-yield-verifier",
+      kind: "actuator" as const,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+    };
+    const prog = {
+      ...mkProgram(
+        [
+          mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }], 0, "root"),
+          mkFunc([{ op: Op.CALL, a: 2, b: 0 }, { op: Op.RET }], 0, "action-entry"),
+          mkFunc([{ op: Op.YIELD }, { op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }], 0, "action-helper"),
+        ],
+        [NIL_VALUE]
+      ),
+      actions: List.from([
+        {
+          binding: "bytecode" as const,
+          descriptor,
+          entryFuncId: 1,
+          numStateSlots: 0,
+        },
+      ]),
+    };
+
+    const handles = new HandleTable(100);
+    assert.throws(() => new VM(prog, handles), /sync bytecode action cannot suspend via YIELD/);
+  });
+
+  test("sync bytecode actions fault if an indirect call reaches a suspension point at runtime", () => {
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
+    const descriptor = {
+      key: "test-vm-action-sync-indirect-yield",
+      kind: "actuator" as const,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+    };
+    const prog = {
+      ...mkProgram(
+        [
+          mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 4 }, { op: Op.RET }], 0, "root"),
+          mkFunc([{ op: Op.PUSH_CONST, a: 1 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }], 0, "action-entry"),
+          mkFunc([{ op: Op.YIELD }, { op: Op.PUSH_CONST, a: 2 }, { op: Op.RET }], 0, "indirect-helper"),
+        ],
+        [args, mkFunctionValue(2), mkNumberValue(5)]
+      ),
+      actions: List.from([
+        {
+          binding: "bytecode" as const,
+          descriptor,
+          entryFuncId: 1,
+          numStateSlots: 0,
+        },
+      ]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.FAULT);
+    assert.equal(fiber.state, FiberState.FAULT);
+  });
+
+  test("ACTION_CALL_ASYNC runs bytecode actions on child fibers and resolves the returned handle", () => {
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
+    const descriptor = {
+      key: "test-vm-action-call-async-bytecode",
+      kind: "actuator" as const,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: true,
+    };
+    const prog = {
+      ...mkProgram(
+        [
+          mkFunc(
+            [{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL_ASYNC, a: 0, c: 3 }, { op: Op.AWAIT }, { op: Op.RET }],
+            0,
+            "root"
+          ),
+          mkFunc([{ op: Op.PUSH_CONST, a: 1 }, { op: Op.YIELD }, { op: Op.RET }], 0, "action-entry"),
+        ],
+        [args, mkNumberValue(42)]
+      ),
+      actions: List.from([
+        {
+          binding: "bytecode" as const,
+          descriptor,
+          entryFuncId: 1,
+          numStateSlots: 0,
+        },
+      ]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const scheduler = new FiberScheduler(vm, {
+      maxFibersPerTick: 64,
+      defaultBudget: 100,
+      autoGcHandles: true,
+    });
+    const rootFiberId = scheduler.spawn(0, List.empty(), mkCtx());
+
+    let rootResult: Value | undefined;
+    const previousOnFiberDone = scheduler.onFiberDone;
+    scheduler.onFiberDone = (fiberId: number, result?: Value) => {
+      previousOnFiberDone(fiberId, result);
+      if (fiberId === rootFiberId) {
+        rootResult = result;
+      }
+    };
+
+    scheduler.tick();
+
+    const rootFiber = scheduler.getFiber(rootFiberId);
+    assert.ok(rootFiber !== undefined, "root fiber should still be tracked until gc");
+    assert.equal(rootFiber!.state, FiberState.DONE);
+    assert.ok(rootResult !== undefined, "async bytecode action should resolve the outer handle");
+    assert.equal((rootResult as NumberValue).v, 42);
   });
 });
 

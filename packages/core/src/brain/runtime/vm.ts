@@ -273,7 +273,95 @@ class BytecodeVerifier {
       this.verifyFunction(fn, i, errors);
     }
 
+    if ((this.prog as ExecutableBrainProgram).actions !== undefined) {
+      this.verifyExecutableActions(this.prog as ExecutableBrainProgram, errors);
+    }
+
     return { ok: errors.size() === 0, errors };
+  }
+
+  private verifyExecutableActions(program: ExecutableBrainProgram, errors: List<string>): void {
+    for (let i = 0; i < program.actions.size(); i++) {
+      const action = program.actions.get(i)!;
+      if (action.binding !== "bytecode") {
+        continue;
+      }
+
+      if (action.entryFuncId < 0 || action.entryFuncId >= this.prog.functions.size()) {
+        errors.push(
+          `action '${action.descriptor.key}' entryFuncId ${action.entryFuncId} out of bounds [0, ${this.prog.functions.size()})`
+        );
+        continue;
+      }
+
+      if (
+        action.activationFuncId !== undefined &&
+        (action.activationFuncId < 0 || action.activationFuncId >= this.prog.functions.size())
+      ) {
+        errors.push(
+          `action '${action.descriptor.key}' activationFuncId ${action.activationFuncId} out of bounds [0, ${this.prog.functions.size()})`
+        );
+      }
+
+      if (action.descriptor.isAsync) {
+        continue;
+      }
+
+      this.verifySyncActionFunction(program, action, action.entryFuncId, new Dict<number, boolean>(), errors);
+    }
+  }
+
+  private verifySyncActionFunction(
+    program: ExecutableBrainProgram,
+    action: Extract<ExecutableAction, { binding: "bytecode" }>,
+    funcId: number,
+    visited: Dict<number, boolean>,
+    errors: List<string>
+  ): void {
+    if (visited.has(funcId)) {
+      return;
+    }
+    visited.set(funcId, true);
+
+    const fn = this.prog.functions.get(funcId);
+    if (!fn) {
+      errors.push(`action '${action.descriptor.key}' references missing function ${funcId}`);
+      return;
+    }
+
+    const funcName = fn.name ?? `func[${funcId}]`;
+
+    for (let pc = 0; pc < fn.code.size(); pc++) {
+      const ins = fn.code.get(pc)!;
+      const site = `${action.descriptor.key}:${funcName}@${pc}`;
+
+      switch (ins.op) {
+        case Op.YIELD:
+        case Op.AWAIT:
+        case Op.HOST_CALL_ASYNC:
+        case Op.HOST_CALL_ARGS_ASYNC:
+        case Op.ACTION_CALL_ASYNC:
+          errors.push(`${site}: sync bytecode action cannot suspend via ${Op[ins.op]}`);
+          break;
+        case Op.ACTION_CALL: {
+          const actionSlot = ins.a ?? 0;
+          if (actionSlot >= 0 && actionSlot < program.actions.size()) {
+            const target = program.actions.get(actionSlot)!;
+            if (target.descriptor.isAsync) {
+              errors.push(
+                `${site}: sync bytecode action cannot invoke async action '${target.descriptor.key}' with ACTION_CALL`
+              );
+            }
+          }
+          break;
+        }
+        case Op.CALL:
+          if (ins.a !== undefined) {
+            this.verifySyncActionFunction(program, action, ins.a, visited, errors);
+          }
+          break;
+      }
+    }
   }
 
   private verifyFunction(fn: FunctionBytecode, funcId: number, errors: List<string>): void {
@@ -374,6 +462,7 @@ export class VM implements IVM {
   private verifier: BytecodeVerifier;
   private services = getBrainServices();
   private fns = this.services.functions;
+  private nextInternalFiberId = -1;
 
   constructor(
     private prog: Program,
@@ -402,38 +491,28 @@ export class VM implements IVM {
     }
 
     const fn = this.prog.functions.get(funcId)!;
-
-    let effectiveArgs = args;
-    if (fn.injectCtxTypeId !== undefined) {
-      const expectedArgs = fn.numParams - 1;
-      if (args.size() !== expectedArgs) {
-        throw new Error(
-          `Argument count mismatch for ${fn.name ?? `func[${funcId}]`}: expected ${expectedArgs} (ctx injected), got ${args.size()}`
-        );
-      }
-      const ctxStruct = mkNativeStructValue(fn.injectCtxTypeId, executionContext);
-      effectiveArgs = List.empty<Value>();
-      effectiveArgs.push(ctxStruct);
-      for (let i = 0; i < args.size(); i++) {
-        effectiveArgs.push(args.get(i)!);
-      }
-    } else if (args.size() !== fn.numParams) {
-      throw new Error(
-        `Argument count mismatch for ${fn.name ?? `func[${funcId}]`}: expected ${fn.numParams}, got ${args.size()}`
-      );
-    }
+    const effectiveArgs = this.prepareArgsForFunction(fn, args, executionContext, fn.name ?? `func[${funcId}]`);
 
     const vstack = List.empty<Value>();
     const base = 0;
 
     const locals = this.allocLocals(fn, effectiveArgs);
+    const ruleFuncId = this.resolveDirectRuleFuncId(executionContext, funcId);
 
     const now = Time.nowMs();
     const fiber: Fiber = {
       id: fiberId,
       state: FiberState.RUNNABLE,
       vstack,
-      frames: List.from([{ funcId, pc: 0, base, locals }]),
+      frames: List.from([
+        {
+          funcId,
+          pc: 0,
+          base,
+          locals,
+          ruleFuncId,
+        },
+      ]),
       handlers: List.empty<Handler>(),
       instrBudget: 0,
       createdAt: now,
@@ -469,6 +548,7 @@ export class VM implements IVM {
         const caught = this.throwValue(fiber, err);
         if (!caught) {
           this.transitionState(fiber, FiberState.FAULT);
+          this.rejectAsyncActionHandle(fiber, err);
           scheduler.onFiberFault?.(fiber.id, err);
           return { status: VmStatus.FAULT, error: err };
         }
@@ -547,6 +627,7 @@ export class VM implements IVM {
         case Op.AWAIT:
           return this.execAwait(fiber, frame, scheduler);
         case Op.YIELD:
+          this.assertCanSuspend(fiber, Op.YIELD);
           frame.pc++;
           return { status: VmStatus.YIELDED };
         case Op.TRY:
@@ -818,7 +899,13 @@ export class VM implements IVM {
     const base = fiber.vstack.size();
     const locals = this.allocLocals(callee, args);
 
-    const newFrame: Frame = { funcId: calleeId, pc: 0, base, locals };
+    const newFrame: Frame = {
+      funcId: calleeId,
+      pc: 0,
+      base,
+      locals,
+      ruleFuncId: this.resolveCalleeRuleFuncId(fiber.executionContext, caller, calleeId),
+    };
     if (funcRef.captures) {
       newFrame.captures = funcRef.captures;
     }
@@ -867,7 +954,13 @@ export class VM implements IVM {
     const base = fiber.vstack.size();
     const locals = this.allocLocals(callee, args);
 
-    const newFrame: Frame = { funcId: calleeId, pc: 0, base, locals };
+    const newFrame: Frame = {
+      funcId: calleeId,
+      pc: 0,
+      base,
+      locals,
+      ruleFuncId: this.resolveCalleeRuleFuncId(fiber.executionContext, caller, calleeId),
+    };
     if (funcRef.captures) {
       newFrame.captures = funcRef.captures;
     }
@@ -907,6 +1000,7 @@ export class VM implements IVM {
     const done = this.doRet(fiber, retv);
     if (done) {
       this.transitionState(fiber, FiberState.DONE);
+      this.resolveAsyncActionHandle(fiber, retv);
       scheduler.onFiberDone?.(fiber.id, retv);
       return { status: VmStatus.DONE, result: retv };
     }
@@ -927,17 +1021,18 @@ export class VM implements IVM {
       throw new Error(`HOST_CALL: function index ${fnId} out of bounds`);
     }
 
-    // Set current call-site ID so host function can access per-call-site state
-    fiber.executionContext.currentCallSiteId = callSiteId;
-    fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
+    this.bindExecutionContext(fiber, frame, callSiteId);
 
     const result = this.fns.getSyncById(fnId)!.fn.exec(fiber.executionContext, args);
     this.push(fiber, result);
     frame.pc++;
+    this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
   }
 
   private execHostCallAsync(fiber: Fiber, ins: Instr, frame: Frame, scheduler: Scheduler): VmRunResult | undefined {
+    this.assertCanSuspend(fiber, Op.HOST_CALL_ASYNC);
+
     const fnId = ins.a ?? 0;
     const callSiteId = ins.c ?? 0;
 
@@ -954,12 +1049,11 @@ export class VM implements IVM {
     const hid = this.handles.createPending();
     this.push(fiber, V.handle(hid));
 
-    // Set current call-site ID so host function can access per-call-site state
-    fiber.executionContext.currentCallSiteId = callSiteId;
-    fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
+    this.bindExecutionContext(fiber, frame, callSiteId);
 
     this.fns.getAsyncById(fnId)!.fn.exec(fiber.executionContext, args, hid);
     frame.pc++;
+    this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
   }
 
@@ -987,26 +1081,31 @@ export class VM implements IVM {
 
     const action = this.getExecutableAction(actionSlot, "ACTION_CALL");
     const actionKey = action.descriptor.key;
-    if (action.binding !== "host") {
-      throw new Error(`ACTION_CALL: bytecode action dispatch is not implemented for ${actionKey}`);
-    }
     if (action.descriptor.isAsync) {
       throw new Error(`ACTION_CALL: action ${actionKey} requires ACTION_CALL_ASYNC`);
     }
-    if (!action.execSync) {
-      throw new Error(`ACTION_CALL: host action ${actionKey} is missing execSync`);
+
+    if (action.binding === "host") {
+      if (!action.execSync) {
+        throw new Error(`ACTION_CALL: host action ${actionKey} is missing execSync`);
+      }
+
+      this.bindExecutionContext(fiber, frame, callSiteId);
+
+      const result = action.execSync(fiber.executionContext, args);
+      this.push(fiber, result);
+      frame.pc++;
+      this.syncExecutionContextFromTopFrame(fiber);
+      return undefined;
     }
 
-    fiber.executionContext.currentCallSiteId = callSiteId;
-    fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
-
-    const result = action.execSync(fiber.executionContext, args);
-    this.push(fiber, result);
-    frame.pc++;
+    this.enterBytecodeActionFrame(fiber, frame, action, args, callSiteId);
     return undefined;
   }
 
   private execActionCallAsync(fiber: Fiber, ins: Instr, frame: Frame, scheduler: Scheduler): VmRunResult | undefined {
+    this.assertCanSuspend(fiber, Op.ACTION_CALL_ASYNC);
+
     const actionSlot = ins.a ?? 0;
     const callSiteId = ins.c ?? 0;
 
@@ -1018,24 +1117,45 @@ export class VM implements IVM {
 
     const action = this.getExecutableAction(actionSlot, "ACTION_CALL_ASYNC");
     const actionKey = action.descriptor.key;
-    if (action.binding !== "host") {
-      throw new Error(`ACTION_CALL_ASYNC: bytecode action dispatch is not implemented for ${actionKey}`);
-    }
     if (!action.descriptor.isAsync) {
       throw new Error(`ACTION_CALL_ASYNC: action ${actionKey} must use ACTION_CALL`);
     }
-    if (!action.execAsync) {
-      throw new Error(`ACTION_CALL_ASYNC: host action ${actionKey} is missing execAsync`);
+
+    if (action.binding === "host") {
+      if (!action.execAsync) {
+        throw new Error(`ACTION_CALL_ASYNC: host action ${actionKey} is missing execAsync`);
+      }
+
+      const hid = this.handles.createPending();
+      this.push(fiber, V.handle(hid));
+
+      this.bindExecutionContext(fiber, frame, callSiteId);
+
+      action.execAsync(fiber.executionContext, args, hid);
+      frame.pc++;
+      this.syncExecutionContextFromTopFrame(fiber);
+      return undefined;
+    }
+
+    const childFiber = this.spawnBytecodeActionFiber(fiber, action, args, callSiteId);
+    if (!scheduler.addFiber) {
+      throw new Error(`ACTION_CALL_ASYNC: scheduler cannot add child fibers for ${actionKey}`);
     }
 
     const hid = this.handles.createPending();
+    childFiber.asyncResultHandleId = hid;
+
+    try {
+      scheduler.addFiber(childFiber);
+    } catch (error) {
+      this.handles.delete(hid);
+      throw error;
+    }
+
     this.push(fiber, V.handle(hid));
-
-    fiber.executionContext.currentCallSiteId = callSiteId;
-    fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
-
-    action.execAsync(fiber.executionContext, args, hid);
+    this.bindExecutionContext(fiber, frame, callSiteId);
     frame.pc++;
+    this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
   }
 
@@ -1067,16 +1187,18 @@ export class VM implements IVM {
       throw new Error(`HOST_CALL_ARGS: function index ${fnId} out of bounds`);
     }
 
-    fiber.executionContext.currentCallSiteId = callSiteId;
-    fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
+    this.bindExecutionContext(fiber, frame, callSiteId);
 
     const result = this.fns.getSyncById(fnId)!.fn.exec(fiber.executionContext, args);
     this.push(fiber, result);
     frame.pc++;
+    this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
   }
 
   private execHostCallArgsAsync(fiber: Fiber, ins: Instr, frame: Frame, scheduler: Scheduler): VmRunResult | undefined {
+    this.assertCanSuspend(fiber, Op.HOST_CALL_ARGS_ASYNC);
+
     const fnId = ins.a ?? 0;
     const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
@@ -1090,15 +1212,17 @@ export class VM implements IVM {
     const hid = this.handles.createPending();
     this.push(fiber, V.handle(hid));
 
-    fiber.executionContext.currentCallSiteId = callSiteId;
-    fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
+    this.bindExecutionContext(fiber, frame, callSiteId);
 
     this.fns.getAsyncById(fnId)!.fn.exec(fiber.executionContext, args, hid);
     frame.pc++;
+    this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
   }
 
   private execAwait(fiber: Fiber, frame: Frame, scheduler: Scheduler): VmRunResult | undefined {
+    this.assertCanSuspend(fiber, Op.AWAIT);
+
     const hv = this.pop(fiber);
     if (!isHandleValue(hv)) {
       throw new Error("AWAIT: expected handle value");
@@ -1123,6 +1247,7 @@ export class VM implements IVM {
       const caught = this.throwValue(fiber, err);
       if (!caught) {
         this.transitionState(fiber, FiberState.FAULT);
+        this.rejectAsyncActionHandle(fiber, err);
         scheduler.onFiberFault?.(fiber.id, err);
         return { status: VmStatus.FAULT, error: err };
       }
@@ -1181,6 +1306,7 @@ export class VM implements IVM {
     const caught = this.throwValue(fiber, err);
     if (!caught) {
       this.transitionState(fiber, FiberState.FAULT);
+      this.rejectAsyncActionHandle(fiber, err);
       scheduler.onFiberFault?.(fiber.id, err);
       return { status: VmStatus.FAULT, error: err };
     }
@@ -1593,6 +1719,271 @@ export class VM implements IVM {
     return undefined;
   }
 
+  private prepareArgsForFunction(
+    fn: FunctionBytecode,
+    args: List<Value>,
+    executionContext: ExecutionContext,
+    label: string
+  ): List<Value> {
+    let effectiveArgs = args;
+    if (fn.injectCtxTypeId !== undefined) {
+      const expectedArgs = fn.numParams - 1;
+      if (args.size() !== expectedArgs) {
+        throw new Error(
+          `Argument count mismatch for ${label}: expected ${expectedArgs} (ctx injected), got ${args.size()}`
+        );
+      }
+
+      const ctxStruct = mkNativeStructValue(fn.injectCtxTypeId, executionContext);
+      effectiveArgs = List.empty<Value>();
+      effectiveArgs.push(ctxStruct);
+      for (let i = 0; i < args.size(); i++) {
+        effectiveArgs.push(args.get(i)!);
+      }
+      return effectiveArgs;
+    }
+
+    if (args.size() !== fn.numParams) {
+      throw new Error(`Argument count mismatch for ${label}: expected ${fn.numParams}, got ${args.size()}`);
+    }
+
+    return effectiveArgs;
+  }
+
+  private resolveDirectRuleFuncId(executionContext: ExecutionContext, funcId: number): number | undefined {
+    if (executionContext.funcIdToRule?.has(funcId)) {
+      return funcId;
+    }
+    return undefined;
+  }
+
+  private resolveFrameRuleFuncId(executionContext: ExecutionContext, frame: Frame | undefined): number | undefined {
+    if (!frame) {
+      return undefined;
+    }
+    if (frame.ruleFuncId !== undefined) {
+      return frame.ruleFuncId;
+    }
+    return this.resolveDirectRuleFuncId(executionContext, frame.funcId);
+  }
+
+  private resolveCalleeRuleFuncId(
+    executionContext: ExecutionContext,
+    caller: Frame | undefined,
+    calleeId: number
+  ): number | undefined {
+    return (
+      this.resolveDirectRuleFuncId(executionContext, calleeId) ?? this.resolveFrameRuleFuncId(executionContext, caller)
+    );
+  }
+
+  private resolveRuleForFrame(executionContext: ExecutionContext, frame: Frame | undefined) {
+    const ruleFuncId = this.resolveFrameRuleFuncId(executionContext, frame);
+    if (ruleFuncId === undefined) {
+      return undefined;
+    }
+    return executionContext.funcIdToRule?.get(ruleFuncId);
+  }
+
+  private bindExecutionContext(fiber: Fiber, frame: Frame, callSiteId: number): void {
+    fiber.executionContext.currentCallSiteId = callSiteId;
+    fiber.executionContext.rule = this.resolveRuleForFrame(fiber.executionContext, frame);
+  }
+
+  private syncExecutionContextFromTopFrame(fiber: Fiber): void {
+    const topFrame = this.topFrame(fiber);
+    if (!topFrame) {
+      fiber.executionContext.currentCallSiteId = undefined;
+      fiber.executionContext.rule = undefined;
+      return;
+    }
+
+    const actionBinding = this.getCurrentActionBinding(fiber);
+    fiber.executionContext.currentCallSiteId = actionBinding?.callSiteId;
+    fiber.executionContext.rule = this.resolveRuleForFrame(fiber.executionContext, topFrame);
+  }
+
+  private getCurrentActionBinding(fiber: Fiber) {
+    for (let i = fiber.frames.size() - 1; i >= 0; i--) {
+      const frame = fiber.frames.get(i)!;
+      if (frame.actionBinding) {
+        return frame.actionBinding;
+      }
+    }
+    return undefined;
+  }
+
+  private assertCanSuspend(fiber: Fiber, op: Op): void {
+    const actionBinding = this.getCurrentActionBinding(fiber);
+    if (actionBinding && !actionBinding.isAsync) {
+      throw new Error(`${Op[op]}: sync bytecode action '${actionBinding.actionKey}' cannot suspend`);
+    }
+  }
+
+  private getActionExplicitArgs(fn: FunctionBytecode, args: MapValue, opName: string, actionKey: string): List<Value> {
+    const explicitParamCount = fn.injectCtxTypeId !== undefined ? fn.numParams - 1 : fn.numParams;
+    if (explicitParamCount < 0 || explicitParamCount > 1) {
+      throw new Error(
+        `${opName}: bytecode action ${actionKey} requires 0 or 1 explicit args, got ${explicitParamCount}`
+      );
+    }
+
+    const explicitArgs = List.empty<Value>();
+    if (explicitParamCount === 1) {
+      explicitArgs.push(args);
+    }
+    return explicitArgs;
+  }
+
+  private getOrCreateActionStateVars(
+    executionContext: ExecutionContext,
+    callSiteId: number,
+    numStateSlots: number
+  ): List<Value> {
+    if (!executionContext.callSiteState) {
+      executionContext.callSiteState = new Dict<number, unknown>();
+    }
+
+    const existing = executionContext.callSiteState.get(callSiteId);
+    if (existing !== undefined) {
+      return existing as List<Value>;
+    }
+
+    const vars = List.empty<Value>();
+    for (let i = 0; i < numStateSlots; i++) {
+      vars.push(NIL_VALUE);
+    }
+
+    executionContext.callSiteState.set(callSiteId, vars);
+    return vars;
+  }
+
+  private enterBytecodeActionFrame(
+    fiber: Fiber,
+    callerFrame: Frame,
+    action: Extract<ExecutableAction, { binding: "bytecode" }>,
+    args: MapValue,
+    callSiteId: number
+  ): void {
+    if (fiber.frames.size() >= this.config.maxFrameDepth) {
+      throw new Error(`Stack overflow: frame depth limit ${this.config.maxFrameDepth} exceeded`);
+    }
+
+    const fn = this.prog.functions.get(action.entryFuncId)!;
+    const explicitArgs = this.getActionExplicitArgs(fn, args, "ACTION_CALL", action.descriptor.key);
+    const effectiveArgs = this.prepareArgsForFunction(
+      fn,
+      explicitArgs,
+      fiber.executionContext,
+      `ACTION_CALL:${action.descriptor.key}`
+    );
+    const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, callerFrame);
+    const base = fiber.vstack.size();
+    const locals = this.allocLocals(fn, effectiveArgs);
+    const previousCallSiteId = fiber.executionContext.currentCallSiteId;
+    const previousCallsiteVars = fiber.callsiteVars;
+
+    callerFrame.pc++;
+    fiber.callsiteVars = this.getOrCreateActionStateVars(fiber.executionContext, callSiteId, action.numStateSlots);
+    fiber.executionContext.currentCallSiteId = callSiteId;
+    fiber.executionContext.rule =
+      ruleFuncId !== undefined ? fiber.executionContext.funcIdToRule?.get(ruleFuncId) : undefined;
+    fiber.frames.push({
+      funcId: action.entryFuncId,
+      pc: 0,
+      base,
+      locals,
+      ruleFuncId,
+      actionBinding: {
+        actionKey: action.descriptor.key,
+        callSiteId,
+        isAsync: false,
+        previousCallSiteId,
+        previousCallsiteVars,
+      },
+    });
+  }
+
+  private spawnBytecodeActionFiber(
+    parentFiber: Fiber,
+    action: Extract<ExecutableAction, { binding: "bytecode" }>,
+    args: MapValue,
+    callSiteId: number
+  ): Fiber {
+    const childContext: ExecutionContext = { ...parentFiber.executionContext };
+    const entryFn = this.prog.functions.get(action.entryFuncId)!;
+    const explicitArgs = this.getActionExplicitArgs(entryFn, args, "ACTION_CALL_ASYNC", action.descriptor.key);
+    const childFiber = this.spawnFiber(this.nextInternalFiberId--, action.entryFuncId, explicitArgs, childContext);
+    const ruleFuncId = this.resolveFrameRuleFuncId(parentFiber.executionContext, this.topFrame(parentFiber));
+    const childFrame = this.topFrame(childFiber)!;
+
+    childFiber.callsiteVars = this.getOrCreateActionStateVars(childContext, callSiteId, action.numStateSlots);
+    childContext.currentCallSiteId = callSiteId;
+    childContext.rule = ruleFuncId !== undefined ? childContext.funcIdToRule?.get(ruleFuncId) : undefined;
+    childFrame.ruleFuncId = ruleFuncId;
+    childFrame.actionBinding = {
+      actionKey: action.descriptor.key,
+      callSiteId,
+      isAsync: true,
+    };
+
+    return childFiber;
+  }
+
+  private onFrameExited(fiber: Fiber, frame: Frame): void {
+    if (frame.actionBinding) {
+      fiber.callsiteVars = frame.actionBinding.previousCallsiteVars;
+      fiber.executionContext.currentCallSiteId = frame.actionBinding.previousCallSiteId;
+    }
+
+    this.syncExecutionContextFromTopFrame(fiber);
+  }
+
+  private resolveAsyncActionHandle(fiber: Fiber, result: Value): void {
+    const handleId = fiber.asyncResultHandleId;
+    if (handleId === undefined) {
+      return;
+    }
+
+    fiber.asyncResultHandleId = undefined;
+    const handle = this.handles.get(handleId);
+    if (!handle || handle.state !== HandleState.PENDING) {
+      return;
+    }
+
+    this.handles.resolve(handleId, result);
+  }
+
+  private rejectAsyncActionHandle(fiber: Fiber, err: ErrorValue): void {
+    const handleId = fiber.asyncResultHandleId;
+    if (handleId === undefined) {
+      return;
+    }
+
+    fiber.asyncResultHandleId = undefined;
+    const handle = this.handles.get(handleId);
+    if (!handle || handle.state !== HandleState.PENDING) {
+      return;
+    }
+
+    this.handles.reject(handleId, err);
+  }
+
+  private cancelAsyncActionHandle(fiber: Fiber): void {
+    const handleId = fiber.asyncResultHandleId;
+    if (handleId === undefined) {
+      return;
+    }
+
+    fiber.asyncResultHandleId = undefined;
+    const handle = this.handles.get(handleId);
+    if (!handle || handle.state !== HandleState.PENDING) {
+      return;
+    }
+
+    this.handles.cancel(handleId);
+  }
+
   resumeFiberFromHandle(fiber: Fiber, handleId: HandleId, scheduler: Scheduler): void {
     if (fiber.state !== FiberState.WAITING) {
       return;
@@ -1659,6 +2050,7 @@ export class VM implements IVM {
 
     this.transitionState(fiber, FiberState.CANCELLED);
     fiber.lastError = { tag: "Cancelled", message: "Fiber cancelled" };
+    this.cancelAsyncActionHandle(fiber);
     scheduler.onFiberCancelled?.(fiber.id);
   }
 
@@ -1783,7 +2175,13 @@ export class VM implements IVM {
     const base = fiber.vstack.size();
     const locals = this.allocLocals(callee, args);
 
-    fiber.frames.push({ funcId: calleeId, pc: 0, base, locals });
+    fiber.frames.push({
+      funcId: calleeId,
+      pc: 0,
+      base,
+      locals,
+      ruleFuncId: this.resolveCalleeRuleFuncId(fiber.executionContext, caller, calleeId),
+    });
   }
 
   private doRet(fiber: Fiber, retv: Value): boolean {
@@ -1792,6 +2190,8 @@ export class VM implements IVM {
       this.push(fiber, retv);
       return true;
     }
+
+    this.onFrameExited(fiber, frame);
 
     // Debug mode: check for stack leaks before cleanup
     if (this.config.debugStackChecks) {
@@ -1827,7 +2227,10 @@ export class VM implements IVM {
       const h = fiber.handlers.pop()!;
 
       while (fiber.frames.size() > h.frameDepth) {
-        fiber.frames.pop();
+        const exited = fiber.frames.pop();
+        if (exited) {
+          this.onFrameExited(fiber, exited);
+        }
       }
       while (fiber.vstack.size() > h.stackHeight) {
         fiber.vstack.pop();
@@ -1858,6 +2261,7 @@ export class VM implements IVM {
   private faultFiber(fiber: Fiber, err: ErrorValue, scheduler: Scheduler): void {
     fiber.lastError = err;
     this.transitionState(fiber, FiberState.FAULT);
+    this.rejectAsyncActionHandle(fiber, err);
     scheduler.onFiberFault?.(fiber.id, err);
   }
 }

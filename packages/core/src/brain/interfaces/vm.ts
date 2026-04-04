@@ -450,12 +450,22 @@ export enum FiberState {
   CANCELLED = "CANCELLED",
 }
 
+export interface ActionFrameBinding {
+  actionKey: string;
+  callSiteId: number;
+  isAsync: boolean;
+  previousCallSiteId?: number;
+  previousCallsiteVars?: List<Value>;
+}
+
 export interface Frame {
   funcId: number;
   pc: number;
   base: number;
   locals: List<Value>;
   captures?: List<Value>;
+  ruleFuncId?: number;
+  actionBinding?: ActionFrameBinding;
 }
 
 export interface Handler {
@@ -494,6 +504,7 @@ export interface Fiber {
    * Accessed by LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR opcodes.
    */
   callsiteVars?: List<Value>;
+  asyncResultHandleId?: HandleId;
 }
 
 ///////////////////////////

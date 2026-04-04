@@ -172,9 +172,9 @@ These are hard boundaries, not suggestions.
 
 ## Current State
 
-As of 2026-04-03 after Phase 3, the action execution stack has crossed the
-explicit compile/link boundary but still stops short of bytecode-backed action
-execution:
+As of 2026-04-03 after Phase 4, the action execution stack now reaches
+bytecode-backed action dispatch in core, but still stops short of unified
+action-instance state and downstream artifact adoption:
 
 1. Sensor and actuator tile defs store `ActionDescriptor` metadata instead of
    `BrainFunctionEntry`.
@@ -198,12 +198,26 @@ execution:
    the explicit executable action table for host-backed actions. Operators and
    conversions still compile and execute through the host intrinsic path using
    `HOST_CALL*`.
-8. Bytecode action linking and dispatch are still not implemented. The Phase 3
-   linker throws for bytecode bindings, and the VM only executes host-backed
-   executable actions.
-9. User-authored tiles are still compiled as ordinary bytecode programs, then
+8. `linkBrainProgram()` now merges bytecode resolved actions into the
+   executable program and materializes `BytecodeExecutableAction` entries with
+   remapped function IDs, constants, and variable-name indexes. If present,
+   `activationFuncId` is linked as executable metadata, but bytecode page
+   activation dispatch is still deferred.
+9. VM `ACTION_CALL` now executes sync bytecode-backed actions on the current
+   fiber by entering an action-root frame, while `ACTION_CALL_ASYNC` runs async
+   bytecode-backed actions on child fibers and resolves the returned handle
+   from child-fiber completion.
+10. The bytecode verifier now checks executable-program action entries and
+   rejects statically knowable sync suspension paths. The VM still faults the
+   fiber if a sync bytecode action reaches suspension through an indirect or
+   otherwise runtime-only path.
+11. Action dispatch now threads `currentCallSiteId` and caller rule metadata
+   through bytecode action frames, but persistent action state still relies on
+   a temporary `ExecutionContext.callSiteState` / `fiber.callsiteVars` bridge
+   rather than the final action-instance model.
+12. User-authored tiles are still compiled as ordinary bytecode programs, then
    wrapped back into host-function closures in downstream packages.
-10. Downstream registration code in `packages/typescript` and `apps/sim` still
+13. Downstream registration code in `packages/typescript` and `apps/sim` still
     targets the pre-Phase-1 action tile constructors and/or pre-link-step
     runtime contracts. In particular,
     `packages/typescript/src/runtime/registration-bridge.ts` still registers
@@ -653,16 +667,24 @@ action context.
 ### Read first
 
 - Architecture spec sections E.4, E.5, E.6, G.3
-- current `fiber.callsiteVars` usage and TS compiler assumptions around
-  `numCallsiteVars`
+- current `fiber.callsiteVars`, `ExecutionContext.callSiteState`, and
+   action-frame binding usage plus TS compiler assumptions around
+   `numCallsiteVars`
 
 Current branch note:
 
 - Host-backed actions already execute through `ExecutableBrainProgram.actions`
    and still rely on `ExecutionContext.currentCallSiteId` plus
    `getCallSiteState()` / `setCallSiteState()`.
-- Bytecode-backed actions are still not linked or executed yet, but the Phase 5
-   state model must be designed so it works uniformly for both binding kinds.
+- Bytecode-backed actions now link into `ExecutableBrainProgram.actions` and
+   execute through current-fiber action-root frames or async child fibers.
+- Phase 4 intentionally kept persistent state on the temporary
+   `ExecutionContext.callSiteState` / `fiber.callsiteVars` bridge, and
+   `activationFuncId` is linked but not yet used for unified page-entry
+   dispatch.
+- Phase 4 already introduced action-frame metadata for bytecode dispatch.
+   Phase 5 should refine that binding model around a unified action-instance
+   record rather than add a second parallel frame/action binding path.
 - Phase 5 should unify lifetime and scoping, not force host-backed actions onto
    a `numStateSlots`-style binding contract.
 
@@ -684,14 +706,16 @@ Current branch note:
 
 ### Ordered tasks
 
-1. Replace or redefine `fiber.callsiteVars` so state is bound to the current
-   action frame chain, not to the whole fiber.
+1. Replace or redefine the temporary `fiber.callsiteVars` /
+   `ExecutionContext.callSiteState` bridge so state is bound to the current
+   action frame chain, not to the whole fiber or an execution-context global
+   map keyed only by call-site ID.
 2. Redefine `ExecutionContext` host-state helpers so host-backed actions read
    and write the current action instance, not an ExecutionContext-owned global
    map keyed only by call-site ID.
 3. Ensure helper `CALL`s inside an action inherit the same action-state binding.
 4. Update page activation so each action callsite gets deterministic state
-   creation/reset.
+   creation/reset and unified activation dispatch.
 5. Rename runtime/compiler-facing concepts from legacy terms like
    `numCallsiteVars` to `numStateSlots` if the rename can be completed cleanly in
    this phase.
@@ -717,7 +741,8 @@ Current branch note:
 - host-backed actions using `getCallSiteState()` / `setCallSiteState()` now
    read and write action-instance-scoped state
 - persistent state survives across ticks and root-rule respawns
-- page activation resets action state deterministically
+- page activation resets action state deterministically and invokes the correct
+   activation hook once per activation
 
 Run:
 
@@ -1254,3 +1279,66 @@ small forward step into the next runtime phase boundary.
    post-Phase-2 model.
 - Updated Phase 4 to start from the current host-backed executable-action-table
    dispatch path instead of the removed registry bridge.
+
+### Phase 4 (2026-04-03)
+
+**Planned vs actual:**
+
+Ordered tasks 1 through 8 landed within the intended core-side scope.
+
+- `linkBrainProgram()` now merges bytecode-backed resolved actions into the
+   executable program tables and materializes `BytecodeExecutableAction`
+   entries with remapped function, constant, and variable-name indexes.
+- `ACTION_CALL` now preserves the existing host-backed executable-action-table
+   path and also executes sync bytecode-backed actions on the current fiber by
+   pushing an action-root frame that returns through ordinary `RET` semantics.
+- `ACTION_CALL_ASYNC` now preserves existing host-backed handle behavior and
+   also executes async bytecode-backed actions on child fibers whose completion,
+   fault, and cancellation resolve the outer handle.
+- The verifier now checks executable-program bytecode action entries and
+   rejects statically knowable sync suspension paths including `YIELD`,
+   `AWAIT`, `HOST_CALL_ASYNC`, `HOST_CALL_ARGS_ASYNC`, and
+   `ACTION_CALL_ASYNC`.
+- The VM now faults the fiber if a sync bytecode action still reaches a
+   suspension point through an indirect path that was not rejected statically.
+- Added linker and VM regression coverage for host-backed behavior, sync
+   bytecode dispatch, async bytecode dispatch, caller `TRY` propagation, and
+   caller rule binding.
+
+**Deviation from planned phase boundary:**
+
+- No material deviation. Phase 4 stopped short of the Phase 5 action-state
+   redesign and did not add unified bytecode page-activation dispatch.
+
+**Deviations and discoveries:**
+
+- Preserving caller `TRY` behavior, caller rule binding, and async handle
+   completion semantics required explicit frame/fiber metadata
+   (`ruleFuncId`, `actionBinding`, and `asyncResultHandleId`) rather than
+   treating bytecode action dispatch as a thin wrapper around existing call
+   paths.
+- Sync-suspension rejection needs both static and runtime enforcement. Direct
+   `CALL` reachability is verifier-visible, but indirect calls can still reach
+   suspension points only discoverable at runtime.
+- Link-time bytecode remapping must rewrite nested `FunctionValue` constants,
+   constant-pool-bearing instructions, and variable-name references, not just
+   direct `CALL` targets.
+- `activationFuncId` is now linked through executable bytecode actions, but
+   page activation still does not invoke bytecode activation hooks. Later
+   phases must not assume activation dispatch is already uniform.
+- Persistent action state still flows through the temporary
+   `ExecutionContext.callSiteState` / `fiber.callsiteVars` bridge. That remains
+   the next phase boundary, not a Phase 4 regression.
+
+**Verification:**
+
+- Ran `cd packages/core && npm run check && npm run build && npm test`
+- Final result: pass. Core check passed, build passed, and 541 tests passed.
+
+**Spec updates from this post-mortem:**
+
+- Updated `Current State` to reflect the Phase 4 baseline instead of the
+   post-Phase-3 model.
+- Updated Phase 5 to start from the new bytecode-action dispatch baseline and
+   call out the temporary state bridge plus deferred bytecode activation
+   dispatch.
