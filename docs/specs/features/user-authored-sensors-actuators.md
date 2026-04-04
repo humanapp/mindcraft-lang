@@ -3,6 +3,19 @@
 Design spec for compiling user-authored TypeScript into Mindcraft bytecode,
 enabling custom Sensors and Actuators that execute inside the Mindcraft VM.
 
+## Status
+
+As of 2026-04-03, the authoring surface, TypeScript front-end guidance, and
+debug-metadata discussion in this document remain useful. The wrapper-based
+runtime design that routed user tiles through `BrainFunctionEntry`,
+`FunctionRegistry`, `UserTileLinkInfo`, and `createUserTileExec()` is obsolete.
+
+Current execution semantics are defined by
+[brain-action-execution-architecture.md](brain-action-execution-architecture.md)
+and its phased implementation plan. User-authored tiles now compile to direct
+bytecode action artifacts that are linked into Brain-local executable action
+tables through the explicit compile -> link -> instantiate path.
+
 ---
 
 ## Table of Contents
@@ -64,10 +77,10 @@ object**, not as class subclasses. Reasons:
    with inheritance requires vtable dispatch, constructor chaining, prototype chains, and
    `this` binding -- all features the VM does not have and does not need.
 
-2. **VM alignment.** The existing runtime model treats sensors and actuators as
-   `BrainFunctionEntry` objects containing an `exec` function plus metadata. User-authored
-   code should produce the same shape: a callable entry point with a declared call
-   signature.
+2. **VM alignment.** The runtime treats sensors and actuators as action
+  descriptors plus executable bindings. User-authored code should therefore
+  compile to a direct action artifact with a callable entry point and declared
+  call signature, not to a special-purpose wrapper runtime.
 
 3. **Inspectability.** A function with explicitly typed parameters and a return type is
    trivially analyzable at compile time. A class hierarchy requires instantiation analysis,
@@ -745,28 +758,21 @@ can load. The core fields (`version`, `functions`, `constants`, `variableNames`,
 `entryPoint`) match the existing `Program` interface in `interfaces/vm.ts`.
 
 ```typescript
-interface UserAuthoredProgram extends Program {
-  kind: "sensor" | "actuator";
+interface UserAuthoredProgram extends UserActionArtifact {
   name: string;
-  callDef: BrainActionCallDef;
-  outputType?: TypeId;
-  numCallsiteVars: number;
-  entryFuncId: number;
-  initFuncId?: number;
-  execIsAsync: boolean;
-  lifecycleFuncIds: {
-    onPageEntered?: number;
-  };
-  programRevisionId: string;
   params: ExtractedParam[];
+  debugMetadata?: DebugMetadata;
 }
 ```
 
-The `lifecycleFuncIds` object holds function indices (not booleans). `entryFuncId` and
-`initFuncId` are the unlinked function indices within the user program's function table.
-`params` is stored so the registration bridge can resolve TypeIds for parameter tile defs
-without parsing callDef. See `packages/typescript/src/compiler/types.ts` for the
-current shape.
+The current emitted artifact keeps debug metadata alongside the action-artifact
+shape described in
+[brain-action-execution-architecture.md](brain-action-execution-architecture.md).
+`entryFuncId` and `activationFuncId` remain artifact-local function indexes and
+are remapped during the core brain link step. `params` is still stored so the
+registration bridge can resolve parameter tile defs without reparsing the
+call spec. See `packages/typescript/src/compiler/types.ts` for the current
+shape.
 
 #### Debug metadata emission
 
@@ -811,9 +817,10 @@ The compiler populates this metadata during lowering and bytecode emission:
 The metadata is stored alongside the `UserAuthoredProgram` in the world/project data and
 sent to the debug adapter on attach. It is refreshed on each successful recompilation.
 
-This program is stored alongside the brain definition. When the brain compiles, it
-integrates user-authored programs by registering them as `BrainFunctionEntry` objects
-whose `exec` function dispatches into the VM rather than calling native TypeScript.
+This program is published as a direct bytecode action artifact. Brain
+compilation references its `ActionDescriptor.key`, and the explicit brain link
+step resolves that key into an executable action entry before VM
+instantiation.
 
 ### Stage 8: Bytecode Verification
 
@@ -824,10 +831,12 @@ the new opcodes.)
 
 ### Where this code lives
 
-The compiler and runtime wrapper live in the `@mindcraft-lang/typescript` package, not in
-`packages/core`. Core must remain free of TypeScript compiler API dependencies to
-preserve roblox-ts compatibility. Core provides the VM, bytecode interfaces, and
-FunctionRegistry -- the TypeScript package consumes those to compile and link user code.
+The compiler and metadata publication bridge live in the
+`@mindcraft-lang/typescript` package, not in `packages/core`. Core must remain
+free of TypeScript compiler API dependencies to preserve roblox-ts
+compatibility. Core provides the VM, bytecode interfaces, action-descriptor
+contracts, and the explicit brain link/runtime path; the TypeScript package
+consumes those to compile and publish user action artifacts.
 
 ```
 packages/typescript/src/
@@ -845,12 +854,13 @@ packages/typescript/src/
     call-def-builder.ts     -- builds BrainActionCallDef from ExtractedParam[]
     virtual-host.ts         -- in-memory ts.CompilerHost
     diag-codes.ts           -- all diagnostic code enums
-  linker/
-    linker.ts               -- merges UserAuthoredProgram into BrainProgram
   runtime/
-    authored-function.ts    -- VM-callable wrapper for user bytecode
-    registration-bridge.ts  -- registers user tiles in FunctionRegistry + TileCatalog
+    registration-bridge.ts  -- publishes tile metadata + direct bytecode action artifacts
 ```
+
+Final brain linking and executable-action materialization now happen in core's
+brain link step and the sim's resolver-backed runtime wiring, not in a
+TypeScript-side VM wrapper.
 
 The ambient declarations are generated dynamically from the type registry via
 `buildAmbientDeclarations()` rather than maintained as a static `.d.ts` file.
@@ -863,34 +873,21 @@ list with funcIds starting at 0. These two function ID spaces must be unified fo
 single-VM model to work. (HOST_CALL IDs are a separate namespace -- global
 FunctionRegistry -- and have no conflict.)
 
-The linking step is a pure data transformation that happens after `compileBrain()`
-produces the `BrainProgram` and before `new VM(program, handles)`:
+The linking step is now part of the brain-runtime compile -> link -> instantiate
+pipeline. After `compileBrain()` produces the unlinked brain program, the link
+step:
 
-1. `compileBrain()` produces a `BrainProgram` with N rule functions at funcIds `0..N-1`.
-2. For each user-authored tile referenced in the brain (discoverable from page metadata's
-   sensor/actuator tile sets), retrieve its `UserAuthoredProgram`.
-3. Append its `FunctionBytecode` entries to `BrainProgram.functions` -- the first entry
-   gets funcId `N`, the next `N+1`, etc.
-4. Merge its constants into `BrainProgram.constants`, recording old-to-new index mapping.
-5. Rewrite the copied user bytecode: remap `CALL` funcId operands (+offset),
-   `MAKE_CLOSURE` funcId operands (+offset), `PUSH_CONST` index operands (per constant
-   mapping), and `FunctionValue` constants in the constant pool (+funcId offset).
-6. Record the remapped entry point funcId for each user tile.
+1. resolves each referenced `ActionDescriptor.key` to either a host-backed or
+  bytecode-backed action artifact
+2. merges bytecode action functions and constants into the executable brain
+  program when needed
+3. remaps artifact-local `entryFuncId` and `activationFuncId` values into the
+  final executable program layout
+4. materializes executable action entries for `ACTION_CALL` /
+  `ACTION_CALL_ASYNC` dispatch
 
-The linker produces a `LinkResult` containing `linkedProgram: BrainProgram` and
-`userLinks: UserTileLinkInfo[]`. Each `UserTileLinkInfo` contains the remapped
-`linkedEntryFuncId`, `linkedInitFuncId`, and `linkedOnPageEnteredFuncId`.
-
-The HOST_CALL exec wrapper for user tiles is created by `createUserTileExec()`:
-
-The exec wrapper takes the resolved `linkedProgram` and `linkInfo` and uses
-`vm.spawnFiber()` + `vm.runFiber()` for inline execution. The VM's `injectCtxTypeId`
-mechanism on the entry function's `FunctionBytecode` causes the VM to automatically
-create a `StructValue` from the `ExecutionContext` when spawning the fiber -- the
-exec wrapper only passes the `MapValue` args. On first allocation, only the module
-init function (`linkedInitFuncId`) runs -- not the full `onPageEntered` wrapper --
-matching native built-in tile behavior. See
-`packages/typescript/src/runtime/authored-function.ts`.
+The resulting executable brain program is then instantiated by the VM. User
+actions are not invoked through a `HOST_CALL` wrapper path anymore.
 
 The linker is ~100 lines: iterate user programs, compute offset, copy+remap
 bytecode instructions, merge constants. It lives in `@mindcraft-lang/typescript`, not
@@ -901,399 +898,34 @@ the `BrainProgram` before passing it to the VM constructor.
 
 ## C. Runtime Model
 
-### What a compiled user-authored tile becomes
-
-A compiled user-authored sensor or actuator becomes a `BrainFunctionEntry` registered in
-the `FunctionRegistry`, indistinguishable from a built-in tile at runtime. The difference
-is in the `exec` implementation.
-
-Built-in tiles have native TypeScript `exec` functions:
-
-```typescript
-{
-  exec: (ctx, args) => {
-    // native TypeScript logic
-    return someValue;
-  };
-}
-```
-
-User-authored tiles have a **VM-dispatch exec** that spawns a fiber to run the user's
-bytecode. The entry function ID used here is the **linked** ID (remapped after merging
-user bytecode into the brain program). The VM automatically creates the ctx `StructValue`
-via the `injectCtxTypeId` mechanism on the `FunctionBytecode` -- the exec wrapper only
-passes the `MapValue` args. See
-`packages/typescript/src/runtime/authored-function.ts` for the current implementation.
-
-```typescript
-{
-  exec: (ctx, args, handleId) => {
-    let vars = getOrCreateCallsiteVars(ctx); // keyed by ctx.currentCallSiteId
-    // On first access: allocate List<Value>, run module init function
-    const fiberArgs = hasParams ? List.from<Value>([args]) : List.empty<Value>();
-    const fiberId = nextFiberId--; // negative IDs avoid collision with brain fibers
-    const fiber = vm.spawnFiber(fiberId, linkedEntryFuncId, fiberArgs, { ...ctx });
-    // VM's injectCtxTypeId creates the StructValue and prepends it to fiber args
-    fiber.callsiteVars = vars;
-    fiber.instrBudget = 10000;
-    const result = vm.runFiber(fiber, scheduler);
-    if (result.status === VmStatus.DONE) {
-      vm.handles.resolve(handleId, result.result ?? NIL_VALUE);
-    } else if (result.status === VmStatus.WAITING) {
-      // Set up async await chain via handle completion events
-      waitForHandle(fiber, result.handleId, handleId);
-    }
-  };
-}
-```
-
-Every invocation of a user-authored tile:
-
-1. Spawns a fiber from the user program's entry point function
-2. Pushes arguments onto the fiber's stack
-3. Returns a handle to the calling fiber
-4. The calling fiber suspends at AWAIT until the handle resolves
-5. When the spawned fiber completes, the handle resolves with its return value
-
-If the user's `exec` function contains no AWAIT instructions (i.e., it calls no async
-host functions), the spawned fiber runs to completion within the current tick and the
-handle resolves immediately. The calling fiber resumes in the same tick -- no scheduling
-delay occurs. This means a synchronous sensor executes with no observable overhead
-compared to a hypothetical inline path, while using the same code path as an async
-actuator that suspends across multiple ticks.
-
-For sync tiles (`execIsAsync === false`), `createUserTileExec` returns `execSync` which
-calls `runFiberToCompletion` -- the fiber runs to completion within the current tick and
-the handle resolves immediately. For async tiles (`execIsAsync === true`), it returns
-`execAsync` which calls `spawnAndRun` and checks the result: if `VmStatus.DONE`, resolves
-immediately; if `VmStatus.WAITING`, calls `waitForHandle` to subscribe to
-`vm.handles.events.on("completed")` and resume the fiber when each inner handle resolves.
-Multiple await points chain via recursive `waitForHandle` calls. Negative fiber IDs
-(decrementing from -1) prevent collision with positive brain-rule fiber IDs from the
-`FiberScheduler`. See `authored-function.ts` for the implementation.
-
-### Entry functions, callsites, and fibers
-
-This section defines the relationship between a user's source file, its compiled entry
-function, callsites in the brain, and runtime fibers.
-
-**Source file to entry function.** Each user-authored source file (one per sensor or
-actuator) compiles to a single `UserAuthoredProgram`. The program's entry point is the
-`onExecute` function from the descriptor. The program may contain additional
-`FunctionBytecode` entries for helper functions, class methods, imported module
-functions, and compiler-generated functions.
-
-**Callsites.** A single authored tile may appear in multiple rules within a brain, or
-multiple times within the same rule. Each usage is a distinct **callsite** identified by
-a `callSiteId`. The brain compiler assigns callsite IDs when it compiles rules containing
-HOST_CALL_ASYNC instructions that reference user-authored tiles. Multiple callsites may
-reference the same `UserAuthoredProgram` (same bytecode, same entry function). Each
-callsite gets its own independent copy of callsite-persistent top-level state
-(`callsiteVars`).
-
-**Fibers.** Each brain rule executes as a fiber. When a rule's fiber reaches a
-HOST_CALL_ASYNC that dispatches to a user-authored tile (sensor or actuator), the
-`createUserTileExec` wrapper spawns a new fiber via the scheduler. The calling rule fiber
-suspends at AWAIT until the spawned fiber completes and resolves the handle. If the user
-function completes without hitting any AWAIT instruction, the spawned fiber finishes
-within the current tick and the handle resolves immediately -- the calling fiber resumes
-in the same tick with no scheduling delay.
-
-In all cases, the entry function (`onExecute`) is invoked within a fiber via
-`createUserTileExec`. The fiber is a standard VM fiber -- the same type used by
-tile-compiled rule fibers. The user-authored bytecode runs under the same scheduler,
-same budget limits, and same `FiberState` lifecycle as any built-in code.
-
-### WHEN clause evaluation semantics
-
-Condition evaluation in a WHEN clause is not required to resolve in the same tick. When a
-WHEN clause invokes a user-authored sensor, the sensor's fiber is spawned and the rule
-fiber suspends at AWAIT. The semantics are:
-
-- **Immediate resolution.** If the sensor's `onExecute` contains no AWAIT instructions, the
-  fiber completes within the current tick. The handle resolves with the sensor's return
-  value, and the rule fiber resumes in the same tick. This is the common case for sensors
-  that compute a boolean from current world state.
-
-- **Deferred resolution.** If the sensor's `onExecute` contains AWAIT instructions (e.g., it
-  queries an async host API), the fiber suspends and the condition remains **pending**
-  until the fiber completes in a later tick. The rule does not evaluate the DO clause
-  while the condition is pending.
-
-- **Truthy resolution.** When the condition fiber completes and the return value is
-  truthy, the rule proceeds to evaluate the DO clause.
-
-- **Falsy resolution.** When the condition fiber completes and the return value is falsy,
-  the rule does not execute the DO clause. The WHEN clause may be re-evaluated on the
-  next tick (per normal rule scheduling).
-
-This model means that a sensor does not need to answer "is this condition true right
-now?" synchronously. It is free to perform async work if needed. In practice, most
-sensors will complete immediately, but the runtime imposes no restriction.
-
-**Debugger mapping.** In the debugger, each fiber is a DAP thread (see
-[debugger spec, section 8](vscode-authoring-debugging.md#8-debug-target-and-thread-model)).
-When a user-authored function is executing inside a fiber, its stack frames appear in the
-fiber's call stack alongside any tile-compiled frames that invoked it via HOST_CALL.
-
-### Per-instance state
-
-This spec uses the term **callsite-persistent top-level state** for variables declared
-at the top level of a user's source file. These variables persist across fiber lifetimes
-(surviving between ticks) and are scoped per callsite (each usage of the tile in a brain
-rule gets independent state). The opcodes are `LOAD_CALLSITE_VAR` /
-`STORE_CALLSITE_VAR` and the runtime storage is the `callsiteVars` array on the `Fiber`.
-The debugger spec presents these as "Callsite State" in the DAP Scopes pane.
-
-User-authored code has two scopes of variable storage:
-
-- **Frame-local variables** (`LOAD_LOCAL` / `STORE_LOCAL`) live on the fiber's frame.
-  They survive across await points because the fiber preserves its full execution state,
-  but they are lost when the fiber completes or is cancelled.
-- **Callsite-persistent top-level variables** (`LOAD_CALLSITE_VAR` /
-  `STORE_CALLSITE_VAR`) persist across ticks and across fiber lifetimes. These are the
-  right place for state that must survive between invocations -- cooldown timers,
-  remembered targets, accumulated counts, etc.
-
-#### Per-callsite scoping
-
-Callsite-persistent top-level variables are **distinct per callsite**, not per module. If
-the same user-authored sensor is used as a tile in two different rules (or twice in the
-same rule), each usage gets its own independent copy of the variables. This matches
-how built-in sensors work: the `Timeout` sensor stores `{ fireTime, lastTick }` via
-`getCallSiteState()` / `setCallSiteState()`, and each callsite has independent state.
-
-Note the distinction between the three variable scopes:
-
-| Scope               | Opcodes                                    | Lifetime               | Sharing                           |
-| ------------------- | ------------------------------------------ | ---------------------- | --------------------------------- |
-| Frame-local         | `LOAD_LOCAL` / `STORE_LOCAL`               | Single fiber execution | None -- private to the call frame |
-| Callsite-persistent | `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` | Persists across ticks  | Independent per callsite          |
-| Brain               | `LOAD_VAR` / `STORE_VAR`                   | Persists across ticks  | Shared across all rules           |
-
-Brain variables (`LOAD_VAR` / `STORE_VAR`) are visible to all rules in the brain and
-correspond to variables the user creates in the tile editor. Callsite-persistent
-variables are invisible outside their callsite -- they are implementation-private state
-of a particular sensor/actuator invocation.
-
-Callsite-persistent top-level variables correspond to top-level `let` / `const`
-declarations in the user's source file. From the user's perspective they are ordinary
-module globals:
-
-```typescript
-import { Sensor, type Context } from "mindcraft";
-
-let lastFireTime = 0;
-let fireCount = 0;
-
-export default Sensor({
-  name: "cooldown-ready",
-  output: "boolean",
-  params: { cooldown: { type: "number", default: 2 } },
-  onExecute(ctx: Context, params: { cooldown: number }): boolean {
-    if (ctx.time - lastFireTime >= params.cooldown * 1000) {
-      lastFireTime = ctx.time;
-      fireCount += 1;
-      return true;
-    }
-    return false;
-  },
-});
-```
-
-If this sensor is placed in two different WHEN clauses, each callsite tracks its own
-`lastFireTime` and `fireCount` independently. The user does not need to think about
-this -- the scoping is automatic.
-
-#### VM support: LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR
-
-Two new opcodes:
-
-| Opcode               | Operands     | Behavior                                                   |
-| -------------------- | ------------ | ---------------------------------------------------------- |
-| `LOAD_CALLSITE_VAR`  | a = varIndex | Push `callsiteVars[varIndex]` onto stack                   |
-| `STORE_CALLSITE_VAR` | a = varIndex | Pop value from stack and store in `callsiteVars[varIndex]` |
-
-The `callsiteVars` storage is a `List<Value>` allocated **per callsite**. The size is
-known at compile time (the compiler counts the number of callsite-persistent top-level
-variables in the source file). Each callsite that uses the user-authored sensor/actuator
-gets its own independent `callsiteVars` array.
-
-The `callsiteVars` reference is stored on the `Fiber` (not on `ExecutionContext`,
-because `ExecutionContext` is shared across all fibers in a brain -- two concurrent
-user-authored fibers from different callsites need different var arrays). The backing
-`List<Value>` is persisted in call-site state so it survives fiber destruction.
-
-This piggybacks on the existing call-site state mechanism. Built-in sensors already
-store per-callsite state via `getCallSiteState()` / `setCallSiteState()` keyed by
-`callSiteId`. For user-authored code, the `callsiteVars` array is stored as the
-call-site state for that callsite:
-
-```
-HOST_CALL_ASYNC (user-authored tile, callSiteId = N)
-  -> look up callSiteState[N]
-  -> if absent, allocate List<Value> of length numCallsiteVars and run init function
-  -> store callsiteVars in callSiteState[N]
-  -> spawn fiber for user bytecode
-  -> attach callsiteVars to the spawned Fiber
-  -> LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR index into fiber.callsiteVars
-```
-
-On first allocation, only the module init function (`linkedInitFuncId`) runs -- not
-the full `onPageEntered` wrapper. This matches native built-in tile behavior where
-`onPageEntered` is a page-entry lifecycle event, not a construction-time concern. The
-linker remaps `initFuncId` into `linkedInitFuncId` on `UserTileLinkInfo`.
-
-The `callsiteVars` reference is attached to the `Fiber` before executing the user's
-bytecode. When the fiber runs `LOAD_CALLSITE_VAR(i)`, the VM reads
-`fiber.callsiteVars[i]`. When it runs `STORE_CALLSITE_VAR(i)`, it writes
-`fiber.callsiteVars[i]`. Because the backing `List<Value>` is stored in call-site
-state (not on the fiber), it survives fiber destruction and persists across ticks.
-
-#### Callsite-persistent variable initialization
-
-Callsite-persistent variable initializers (e.g., `let lastFireTime = 0`) compile to a
-compiler-generated **module init function**. This function evaluates initializer
-expressions in source order and stores results via `STORE_CALLSITE_VAR`.
-
-The module init function runs:
-
-1. **On first allocation** -- when a callsite's `callsiteVars` array is created for the
-   first time (the callsite has never been invoked before).
-2. **On every page entry** -- via the generated `onPageEntered` wrapper (see
-   "Compiler-generated functions" below), resetting callsite-persistent state to
-   initial values. This matches how built-in sensors reset their call-site state in
-   `onPageEntered`.
-
-If the descriptor also includes an authored `onPageEntered` method, the generated
-wrapper calls the module init first (to reset state), then calls the user's
-`onPageEntered` body. The user function runs with freshly-reset `callsiteVars`. If no
-authored `onPageEntered` exists, the wrapper calls only the module init.
-
-This means top-level initializers always re-run on page entry. Authors who want to
-perform additional setup (clearing external state, logging, etc.) declare
-`onPageEntered` as a method on the descriptor object.
-
-#### Helper function state access
-
-Helper functions declared in the same file as the `exec` entry point share access to
-the callsite-persistent top-level state of their containing module. State access is
-resolved **lexically** -- a helper function that references a top-level variable compiles
-to the same `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` instructions as the `exec`
-function itself. No new state instances are created when a helper is called.
-
-The same rule applies to `onPageEntered` when declared as a method on the descriptor
-object: it is compiled as a regular user-authored function in the same file, and its
-references to top-level variables resolve against the same callsite-persistent state
-instance.
-
-```typescript
-let hitCount = 0; // callsite-persistent (STORE_CALLSITE_VAR index 0)
-
-function incrementHits(): void {
-  hitCount += 1; // LOAD_CALLSITE_VAR 0, add 1, STORE_CALLSITE_VAR 0
-}
-
-export default Sensor({
-  name: "hit-tracker",
-  output: "number",
-  onExecute(ctx: Context): number {
-    incrementHits(); // CALL -- shares the same callsiteVars array
-    return hitCount; // LOAD_CALLSITE_VAR 0
-  },
-  onPageEntered(ctx: Context): void {
-    // Module init already reset hitCount to 0 before this runs.
-    // Additional setup could go here.
-  },
-});
-```
-
-In the compiled bytecode, `incrementHits` and `onPageEntered` are separate
-`FunctionBytecode` entries invoked via CALL. They run in new frames on the same fiber,
-and the `callsiteVars` array is attached to the `Fiber`, not to the frame. All
-frames within the same fiber invocation read and write the same `callsiteVars`. This is
-the standard behavior for module-level variables in any language with module scope.
-
-The semantic rule: **`onExecute`, `onPageEntered`, and all helper functions in the same
-source file resolve top-level bindings against the same callsite-persistent state
-instance for that tile usage.** No function in the file gets a separate copy of
-`callsiteVars`.
-
-Helper functions do not get their own callsite-persistent state. Only top-level
-declarations in the source file produce `callsiteVars` slots.
-
-#### Future: variable storage annotations
-
-Out of scope for v1. Captured here to preserve the idea for future iteration.
-
-The v1 defaults (per-callsite scoping, reset on page re-entry) are intentional --
-they are simple, match CS intuition for module-level `let`, and align with how
-built-in sensors manage call-site state. However, future versions may allow authors
-to opt into non-default storage semantics for individual variables, such as:
-
-- **Shared across callsites** -- a single variable instance shared by all uses of the
-  sensor/actuator within the same brain, rather than independent per callsite.
-- **Persistent across page re-entry** -- the variable retains its value when a page
-  is re-entered instead of resetting to the initializer.
-
-Possible expression forms (none committed):
-
-- Decorators: `@shared let totalCount = 0;`, `@persistent let highScore = 0;`
-- JSDoc/comment tags: `/** @shared */ let totalCount = 0;`
-
-The design of this feature, including syntax, semantics, and interaction with the
-multi-file module system, is deferred to a future phase.
-
-- **Parameters** are received as function arguments, mapped from the `MapValue` that
-  the tile system constructs.
-
-### Lifecycle
-
-- **On page enter:** The generated `onPageEntered` wrapper runs the module init function
-  (resetting callsite-persistent state), then calls the user's authored `onPageEntered`
-  function if one exists. The wrapper is registered as the `BrainFunctionEntry`'s
-  `onPageEntered` hook and dispatches into compiled bytecode -- it is not an inline JS
-  callback.
-- **On page exit:** Fibers spawned by user code are cancelled when the page deactivates,
-  same as built-in fibers.
-- **Per tick:** Rules containing user sensors/actuators execute their fibers via the
-  normal scheduler. Budget limits apply equally to user code.
-
-### Compiler-generated functions
-
-The compiler produces `FunctionBytecode` entries beyond the user's explicitly declared
-functions. Each generated function has `isGenerated: true` in its `DebugFunctionInfo`.
-
-| Generated function      | Purpose                                                         | Has debug spans | Breakpoint target (v1) | Appears in stack traces                                   |
-| ----------------------- | --------------------------------------------------------------- | --------------- | ---------------------- | --------------------------------------------------------- |
-| Module init             | Evaluates top-level variable initializers                       | Yes             | No                     | Yes (with `isGenerated` flag, displayed as subtle/dimmed) |
-| `onPageEntered` wrapper | Calls module init, then authored `onPageEntered` (if it exists) | No              | No                     | Yes (with `isGenerated` flag)                             |
-
-**Module init function:** Compiled from top-level `let`/`const` initializer expressions.
-Runs on first callsite allocation and again on every page entry. Contains
-`STORE_CALLSITE_VAR` instructions for each declared top-level variable. The compiler
-emits debug spans for the initializer expressions so that stack traces through the init
-function show meaningful source locations. However, the init function is not a valid
-breakpoint target in v1 -- users cannot set breakpoints on top-level initializer lines.
-
-**`onPageEntered` wrapper:** Always generated, regardless of whether the user declares
-an authored `onPageEntered`. The wrapper is a small generated function that:
-
-1. Calls the module init function (resets all callsite-persistent variables to their
-   declared initial values).
-2. If the user's file exports `onPageEntered`, calls it. The user's function runs with
-   freshly-reset `callsiteVars`, so it can perform additional setup or override
-   specific variable values.
-
-The authored `onPageEntered` (if present) is a regular user-authored `FunctionBytecode`
-entry -- it is **not** generated. It is a valid breakpoint target and appears in stack
-traces with its authored name, not dimmed.
-
-Generated functions are always included in stack traces but marked with `isGenerated: true`
-in the debug metadata. The debugger presents them as subtle/dimmed frames (see
-[debugger spec, section 12](vscode-authoring-debugging.md#12-stack-scopes-and-variable-inspection)).
-Step-into on a CALL to a generated function behaves normally -- the debugger enters the
-function. Step-over skips past it.
+The active runtime model is the resolver-based action architecture described in
+[brain-action-execution-architecture.md](brain-action-execution-architecture.md)
+and implemented by the phased plan in
+[brain-action-execution-phased-impl.md](brain-action-execution-phased-impl.md).
+
+In the current design:
+
+1. A user-authored tile compiles to a direct bytecode action artifact with
+   artifact-local `entryFuncId`, optional `activationFuncId`, `numStateSlots`,
+   `isAsync`, and debug metadata.
+2. Publication registers tile metadata in `TileCatalog`, registers any needed
+   parameter tiles, and publishes a direct bytecode action artifact to the
+   action registry. No user tile is registered in `FunctionRegistry`, and no
+   VM-capturing host wrapper is created.
+3. Brain compilation interns `ActionDescriptor.key` values. The explicit brain
+   link step resolves those keys to host-backed or bytecode-backed actions and
+   materializes the executable action table before VM instantiation.
+4. `ACTION_CALL` executes sync bytecode-backed actions on the current fiber.
+   `ACTION_CALL_ASYNC` executes async bytecode-backed actions on child fibers.
+   Page activation, activation hooks, and persistent state bind through the
+   action-instance model rather than through wrapper-managed fiber globals.
+5. Live recompilation updates the user action artifact registry, keeps the last
+   successful artifact on compile failure, and recreates only the active Brain
+   instances whose linked action revisions are stale.
+
+Use the architecture spec for detailed runtime semantics. This document's
+remaining sections focus on authoring, compiler lowering, debug metadata, and
+the TypeScript surface area rather than the superseded wrapper runtime.
 
 ### Integration with tile system
 
@@ -1352,102 +984,48 @@ For each param declared in the descriptor:
   the app pre-registered anonymous tile defs for a given type. Novel anonymous param
   types work as long as the type can be resolved to a `TypeId`.
 
-#### Step 1 -- Register in `FunctionRegistry`
+#### Step 1 -- Publish metadata and the action artifact
 
-The compiled user program produces a `BrainFunctionEntry` whose `exec` function
-dispatches into the VM instead of running native TypeScript. This entry is registered
-via `getBrainServices().functions.register()` with the `BrainActionCallDef` from the
-compiled program:
+Successful compilation now publishes a `UserAuthoredProgram` as two linked
+pieces of data:
 
-```typescript
-const { functions, tiles, types } = getBrainServices();
+1. tile metadata for `TileCatalog`
+2. a direct bytecode action artifact for the sim's action registry
 
-// Register parameter tiles
-for (const p of program.params) {
-  const parameterId = p.anonymous ? `anon.${p.type}` : `user.${program.name}.${p.name}`;
-  const paramTileId = mkParameterTileId(parameterId);
-  if (!tiles.has(paramTileId)) {
-    const typeId = types.resolveByName(p.type);
-    if (typeId) {
-      tiles.registerTileDef(new BrainTileParameterDef(parameterId, typeId));
-    }
-  }
-}
+`packages/typescript/src/runtime/registration-bridge.ts` builds an
+`ActionDescriptor`, registers any needed parameter tiles, and publishes a
+`BytecodeResolvedAction` to the brain action registry. No user-authored tile is
+registered in `FunctionRegistry`, and no VM-capturing host wrapper is created.
 
-// Register function entry (always async -- unified invocation model)
-const pgmId = `user.${program.kind}.${program.name}`;
-const fnEntry = functions.register(pgmId, true, hostFn, program.callDef);
+#### Step 2 -- Resolve through the brain link step
 
-// Register tile definition
-if (program.kind === "sensor") {
-  tiles.registerTileDef(new BrainTileSensorDef(pgmId, fnEntry, program.outputType!));
-} else {
-  tiles.registerTileDef(new BrainTileActuatorDef(pgmId, fnEntry));
-}
-```
-
-This is identical to how the sim app registers built-in sensors/actuators (e.g.,
-`fns.register(fnBump.tileId, fnBump.isAsync, fnBump.fn, fnBump.callDef)`). The only
-difference is that the `exec` callback dispatches into user bytecode rather than calling
-native code.
-All user-authored tiles register as async (`isAsync: true`) and use
-`createUserTileExec` to produce the `HostAsyncFn`. If the user's code completes without
-hitting any AWAIT instruction, the handle resolves immediately within the same tick.
-
-#### Step 2 -- Add to `TileCatalog`
-
-A `BrainTileSensorDef` or `BrainTileActuatorDef` is created from the
-`BrainFunctionEntry` and added to the catalog via `tiles.registerTileDef()`:
-
-```typescript
-if (userProgram.kind === "sensor") {
-  tiles.registerTileDef(
-    new BrainTileSensorDef(userId, fnEntry, userProgram.outputType, {
-      visual: userProgram.visual,
-    }),
-  );
-} else {
-  tiles.registerTileDef(
-    new BrainTileActuatorDef(userId, fnEntry, {
-      visual: userProgram.visual,
-    }),
-  );
-}
-```
-
-This mirrors how the sim app creates tile definitions (e.g.,
-`new BrainTileSensorDef(fnDef.tileId, fn, fnDef.returnType, { visual: fnDef.visual })`).
-
-After all three steps, the user-authored tile is indistinguishable from a built-in one
-in the catalog. The brain compiler discovers it the same way it discovers built-in tiles:
-by looking up tile defs from the catalogs passed to `compileBrain()`. The rule compiler
-emits `HOST_CALL` / `HOST_CALL_ASYNC` with the `fnEntry.id`, and the VM dispatches to
-the registered exec function -- which happens to run user bytecode.
-
-The user sees their custom sensor/actuator as a tile alongside built-in ones.
+The tile catalog exposes the `ActionDescriptor` to the parser, typechecker, and
+compiler. Brain compilation interns `ActionDescriptor.key`, the explicit brain
+link step resolves that key to either a host-backed or bytecode-backed action,
+and runtime dispatch executes through the executable action table described in
+[brain-action-execution-architecture.md](brain-action-execution-architecture.md).
 
 ### Revision and recompilation semantics
 
-Each successful compilation produces a new `UserAuthoredProgram` with a unique
-`programRevisionId`. The revision ID changes on every successful compile, regardless of
-whether the source changed semantically.
+Each successful compilation produces a new `UserAuthoredProgram` with a
+compiler-emitted `revisionId`, but the sim derives a deterministic content-based
+revision before deciding whether active brains need rebuild invalidation.
 
 **What happens after a successful compile:**
 
-1. The new `UserAuthoredProgram` (bytecode + debug metadata) replaces the previous
-   version in the world/project store.
-2. The registered `BrainFunctionEntry` is updated: its `exec` closure now dispatches
-   into the new bytecode.
-3. VMs that have **not yet loaded** the function entry will pick up the new bytecode
-   on the next HOST_CALL to that sensor/actuator.
-4. VMs that have already loaded the old bytecode into a running fiber continue executing
-   the old code until that fiber completes or is cancelled. There is no in-flight
-   bytecode replacement.
-5. Callsite-persistent state (`callsiteVars`) is **not** automatically cleared on
-   recompilation. If the new revision changes the number or meaning of callsite-persistent
-   variables, the init function runs on the next page entry to re-initialize them. Between recompile
-   and page re-entry, stale state may be read by the new bytecode -- this is acceptable
-   for v1 because the typical workflow is recompile-then-restart.
+1. The new `UserAuthoredProgram` (bytecode + debug metadata) replaces the
+   previous artifact for that `ActionKey`.
+2. The sim updates the tile catalog metadata and the startup metadata cache for
+   that tile.
+3. Any active Brain whose linked action revisions include the changed key at an
+   older revision is recreated from the same `BrainDef` and host object.
+4. Active brains whose executable programs do not depend on the changed action
+   are left running.
+5. Failed recompilation keeps the last successful artifact and currently running
+   brains in place.
+
+This is explicit executable-brain invalidation and rebuild, not in-place
+mutation of a global host-function entry.
 
 **Interaction with the debugger:**
 

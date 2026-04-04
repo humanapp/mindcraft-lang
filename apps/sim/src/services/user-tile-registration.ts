@@ -16,6 +16,7 @@ import {
 } from "./brain-runtime";
 
 const LS_METADATA_KEY = "sim:user-tile-metadata";
+const METADATA_CACHE_VERSION = 1 as const;
 
 interface RegisteredTileMetadata {
   key: string;
@@ -38,10 +39,149 @@ interface UserTileMetadata {
   isAsync: boolean;
 }
 
+interface UserTileMetadataCache {
+  version: typeof METADATA_CACHE_VERSION;
+  tiles: UserTileMetadata[];
+}
+
 const registeredTiles = new Map<string, RegisteredTileMetadata>();
 const fileToActionKey = new Map<string, string>();
 const parameterTileRefCounts = new Map<string, number>();
 const userOwnedParameterTileIds = new Set<string>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+function isOptionalBoolean(value: unknown): value is boolean | undefined {
+  return value === undefined || typeof value === "boolean";
+}
+
+function isOptionalNumber(value: unknown): value is number | undefined {
+  return value === undefined || typeof value === "number";
+}
+
+function isDefaultValue(value: unknown): value is ExtractedParam["defaultValue"] {
+  return (
+    value === undefined ||
+    value === null ||
+    typeof value === "boolean" ||
+    typeof value === "number" ||
+    typeof value === "string"
+  );
+}
+
+function isExtractedParam(value: unknown): value is ExtractedParam {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.type === "string" &&
+    typeof value.required === "boolean" &&
+    typeof value.anonymous === "boolean" &&
+    isDefaultValue(value.defaultValue)
+  );
+}
+
+function isCallSpec(value: unknown): value is BrainActionCallSpec {
+  if (!isRecord(value) || typeof value.type !== "string" || !isOptionalString(value.name)) {
+    return false;
+  }
+
+  switch (value.type) {
+    case "arg":
+      return (
+        typeof value.tileId === "string" && isOptionalBoolean(value.required) && isOptionalBoolean(value.anonymous)
+      );
+    case "seq":
+    case "bag":
+      return Array.isArray(value.items) && value.items.every(isCallSpec);
+    case "choice":
+      return Array.isArray(value.options) && value.options.every(isCallSpec);
+    case "optional":
+      return isCallSpec(value.item);
+    case "repeat":
+      return isCallSpec(value.item) && isOptionalNumber(value.min) && isOptionalNumber(value.max);
+    case "conditional":
+      return (
+        typeof value.condition === "string" &&
+        isCallSpec(value.then) &&
+        (value.else === undefined || isCallSpec(value.else))
+      );
+    default:
+      return false;
+  }
+}
+
+function isUserTileMetadata(value: unknown): value is UserTileMetadata {
+  return (
+    isRecord(value) &&
+    typeof value.key === "string" &&
+    (value.kind === "sensor" || value.kind === "actuator") &&
+    typeof value.name === "string" &&
+    isCallSpec(value.callSpec) &&
+    Array.isArray(value.params) &&
+    value.params.every(isExtractedParam) &&
+    isOptionalString(value.outputType) &&
+    typeof value.isAsync === "boolean"
+  );
+}
+
+function persistMetadataCache(metadata: readonly UserTileMetadata[]): void {
+  if (metadata.length === 0) {
+    localStorage.removeItem(LS_METADATA_KEY);
+    return;
+  }
+
+  const cache: UserTileMetadataCache = {
+    version: METADATA_CACHE_VERSION,
+    tiles: [...metadata],
+  };
+  localStorage.setItem(LS_METADATA_KEY, JSON.stringify(cache));
+}
+
+function collectCachedEntries(entries: readonly unknown[]): { metadata: UserTileMetadata[]; droppedEntries: number } {
+  const metadata: UserTileMetadata[] = [];
+  let droppedEntries = 0;
+
+  for (const entry of entries) {
+    if (isUserTileMetadata(entry)) {
+      metadata.push(entry);
+      continue;
+    }
+
+    droppedEntries++;
+  }
+
+  return { metadata, droppedEntries };
+}
+
+function parseMetadataCache(
+  raw: unknown
+): { metadata: UserTileMetadata[]; migrated: boolean; droppedEntries: number } | undefined {
+  if (Array.isArray(raw)) {
+    const { metadata, droppedEntries } = collectCachedEntries(raw);
+    return {
+      metadata,
+      migrated: true,
+      droppedEntries,
+    };
+  }
+
+  if (!isRecord(raw) || raw.version !== METADATA_CACHE_VERSION || !Array.isArray(raw.tiles)) {
+    return undefined;
+  }
+
+  const { metadata, droppedEntries } = collectCachedEntries(raw.tiles);
+  return {
+    metadata,
+    migrated: droppedEntries > 0,
+    droppedEntries,
+  };
+}
 
 function getActionTileId(kind: "sensor" | "actuator", key: string): string {
   return kind === "sensor" ? mkSensorTileId(key) : mkActuatorTileId(key);
@@ -183,7 +323,7 @@ function saveMetadataCache(): void {
   }));
 
   try {
-    localStorage.setItem(LS_METADATA_KEY, JSON.stringify(metadata));
+    persistMetadataCache(metadata);
   } catch {
     logger.warn("[user-tile-registration] failed to save metadata cache");
   }
@@ -192,9 +332,32 @@ function saveMetadataCache(): void {
 function loadMetadataCache(): UserTileMetadata[] | undefined {
   const json = localStorage.getItem(LS_METADATA_KEY);
   if (!json) return undefined;
+
   try {
-    return JSON.parse(json);
+    const parsed = parseMetadataCache(JSON.parse(json) as unknown);
+    if (!parsed) {
+      localStorage.removeItem(LS_METADATA_KEY);
+      logger.warn("[user-tile-registration] cleared incompatible metadata cache");
+      return undefined;
+    }
+
+    if (parsed.migrated) {
+      persistMetadataCache(parsed.metadata);
+      if (parsed.droppedEntries > 0) {
+        logger.warn(
+          `[user-tile-registration] dropped ${parsed.droppedEntries} incompatible metadata cache entr${parsed.droppedEntries === 1 ? "y" : "ies"}`
+        );
+      }
+    }
+
+    if (parsed.metadata.length === 0) {
+      return undefined;
+    }
+
+    return parsed.metadata;
   } catch {
+    localStorage.removeItem(LS_METADATA_KEY);
+    logger.warn("[user-tile-registration] cleared unreadable metadata cache");
     return undefined;
   }
 }

@@ -2,7 +2,7 @@
 
 Created: 2026-04-03
 Audience: Copilot-style implementation agents
-Status: Proposed
+Status: Implemented
 
 Rearchitect brain action execution so that sensors and actuators compile against
 an executable Brain-local action table instead of the global `FunctionRegistry`.
@@ -172,9 +172,9 @@ These are hard boundaries, not suggestions.
 
 ## Current State
 
-As of 2026-04-03 after Phase 7, the action execution stack now reaches the
-resolver-backed sim runtime path end to end, while the remaining work is
-cleanup, persistence policy, and documentation alignment:
+As of 2026-04-03 after Phase 8, the resolver-backed action execution
+architecture is in place end to end, and the cleanup/persistence work is
+complete:
 
 1. Sensor and actuator tile defs store `ActionDescriptor` metadata instead of
    `BrainFunctionEntry`.
@@ -247,6 +247,17 @@ cleanup, persistence policy, and documentation alignment:
    rebuild invalidation because compiler-emitted `revisionId` values are
    build-ephemeral. No executable-brain cache has been added yet, so affected
    actor brains are recreated individually from current artifacts.
+21. `sim:user-tile-metadata` remains a startup metadata cache, but it now uses
+   an explicit versioned and structurally validated contract. Legacy array-form
+   entries are migrated forward, and unreadable or incompatible cache entries
+   are cleared explicitly.
+22. Persisted `BrainDef`s remain loadable because startup still hydrates
+   user-tile metadata early enough for tile-ID deserialization and
+   resolver-based compilation. No blanket `BrainDef` invalidation or migration
+   was required.
+23. Wrapper-era user-tile runtime docs now point to the resolver-based action
+   execution architecture as the runtime source of truth, and remaining old-path
+   descriptions are marked historical rather than active design guidance.
 
 The codebase already contains the raw capabilities needed for the new design:
 
@@ -257,8 +268,9 @@ The codebase already contains the raw capabilities needed for the new design:
 - the brain compiler already manages program-local tables for functions and
   constants
 
-No backward compatibility constraints apply. Existing serialized brains may be
-discarded or recreated.
+No compatibility layer was preserved for the obsolete wrapper-era runtime
+path. Existing persisted `BrainDef`s remain loadable, while incompatible local
+metadata cache entries are migrated or cleared explicitly.
 
 ---
 
@@ -1662,3 +1674,60 @@ introduced, and ordered task 11 was intentionally left unimplemented.
 - Updated Phase 8 current-branch notes to reflect the resolver-based sim
    baseline, the remaining metadata-cache decision, and the absence of an
    executable-brain cache.
+
+### Phase 8 (2026-04-03)
+
+**Planned vs actual:**
+
+Ordered tasks 1 through 5 landed within the intended cleanup-only scope.
+
+- Confirmed no active sim runtime path still depends on registering user tiles
+   as host functions or mutating global host-function entries in place.
+- `apps/sim/src/services/user-tile-registration.ts` now treats
+   `sim:user-tile-metadata` as an explicit versioned cache contract, migrates
+   legacy array-form entries, preserves structurally valid metadata, and clears
+   unreadable or incompatible cache data explicitly.
+- Existing persisted `BrainDef`s were retained. The startup path still hydrates
+   user-tile metadata before compilation/deserialization, so tile-ID-based
+   loads continue to work without fabricating compiled-program stubs.
+- Wrapper-era execution docs in `user-tile-compilation-pipeline.md` and
+   `user-authored-sensors-actuators.md` now point to the resolver-based brain
+   action execution architecture as the runtime source of truth.
+- No remaining sim-side compatibility helpers or host-function swap-in-place
+   branches needed removal in the active source path; the remaining Phase 8
+   work was making persistence invalidation explicit and bringing docs into
+   alignment.
+
+**Deviation from planned phase boundary:**
+
+- No material deviation. Phase 8 stayed within cleanup, persistence policy, and
+   documentation alignment. It did not add migration tooling or a new
+   executable-brain cache.
+
+**Deviations and discoveries:**
+
+- `sim:user-tile-metadata` did not need blanket invalidation. The sound final
+   contract is a versioned, structurally validated startup metadata cache that
+   keeps compatible entries, migrates the older array form, and clears only
+   unreadable or incompatible data.
+- The persisted `BrainDef` format itself was not broken by the new action
+   architecture because deserialization still keys off tile IDs and early
+   metadata hydration remains in place.
+- By the time Phase 8 started, the wrapper runtime had already been removed by
+   Phases 6 and 7. The real remaining cleanup surface was persistence policy
+   and documentation, not additional runtime surgery.
+
+**Verification:**
+
+- Reused the Phase 8 implementation verification:
+- Ran `cd apps/sim && npm run typecheck && npm run check`
+- Ran `cd packages/core && npm run check && npm run build && npm test`
+- Ran `cd packages/typescript && npm run typecheck && npm run check && npm test`
+- Final result: pass. Sim typecheck and check passed; core check, build, and
+   test passed with 544 tests passing; TypeScript typecheck, check, and test
+   passed with 520 tests passing.
+
+**Spec updates from this post-mortem:**
+
+- Updated `Status` and `Current State` to reflect post-Phase-8 completion.
+- No later phase propagation was needed because Phase 8 closes the plan.

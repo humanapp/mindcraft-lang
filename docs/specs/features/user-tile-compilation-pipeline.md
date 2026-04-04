@@ -1,15 +1,35 @@
 # User Tile Compilation Pipeline -- Phased Implementation Plan
 
 Wire filesystem changes from the VS Code bridge into the TypeScript compilation
-pipeline so that user-authored `.ts` sensors and actuators are compiled and
-registered as tiles in the sim app. Multi-file imports across `.ts` files are
-supported -- the compiler resolves relative imports automatically.
+pipeline so that user-authored `.ts` sensors and actuators are compiled,
+startup tile metadata can be hydrated early enough for persisted-brain loads,
+and live action artifacts can be published into the sim's resolver-backed brain
+runtime. Multi-file imports across `.ts` files are supported -- the compiler
+resolves relative imports automatically.
 
 Depends on infrastructure from:
 - [user-authored-sensors-actuators.md](user-authored-sensors-actuators.md) (compiler pipeline)
+- [brain-action-execution-architecture.md](brain-action-execution-architecture.md) (runtime/link architecture)
 - [vscode-authoring-debugging.md](vscode-authoring-debugging.md) (bridge architecture)
-- `packages/typescript` (UserTileProject, linkUserPrograms, createUserTileExec, registerUserTile)
+- `packages/typescript` (UserTileProject, compiled user action artifacts, ambient declarations)
 - `packages/bridge-client` (Project, ProjectFiles, FileSystemNotification)
+
+---
+
+## Status
+
+As of 2026-04-03, the bridge/file mutation and TypeScript project compilation
+flow in this document is still relevant, but the wrapper-era runtime plan is
+not. User tile execution no longer goes through `FunctionRegistry`,
+`UserTileLinkInfo`, `linkUserPrograms(...)`, or `createUserTileExec()`.
+
+The runtime source of truth is now:
+- [brain-action-execution-architecture.md](brain-action-execution-architecture.md)
+- [brain-action-execution-phased-impl.md](brain-action-execution-phased-impl.md)
+
+Use this document for the VS Code bridge -> compile-result flow and the sim's
+metadata hydration behavior. Any remaining wrapper-oriented notes below are
+historical context, not the active runtime contract.
 
 ---
 
@@ -41,8 +61,8 @@ not survive. Keep this doc current.
 
 ## Current State
 
-(Updated 2026-04-03) Phases 1, 2, and 3 complete. The compilation pipeline
-uses a three-layer architecture:
+(Updated 2026-04-03) The bridge compilation pipeline and the resolver-backed
+runtime path are both in place. The active flow is:
 
 1. `CompilationProvider` (interface, `bridge-app`) -- file mutation + compile
    methods implemented by `user-tile-compiler.ts`.
@@ -62,27 +82,23 @@ automatically.
 `initProject()` in `vscode-bridge.ts` fires a synthetic `import` action at
 startup to compile all `.ts` files persisted in localStorage. This runs
 synchronously during bootstrap, before React renders, so compile results are
-available before brains load (though tiles are not yet registered).
+available before brains load.
 
-4. `user-tile-registration.ts` -- `registerUserTilesAtStartup()` links
-   compiled programs against an empty `BrainProgram` and registers tiles
-   via `registerUserTile()` with a no-op `HostAsyncFn`. Persists a
-   `UserTileMetadata[]` cache to `sim:user-tile-metadata` in localStorage.
-   On startup, if compilation produces no results (type errors, no `.ts`
-   files), falls back to the cache and registers stubs from it. Called from
-   `bootstrap.ts` after `initProject()` and before React renders.
+4. `registerUserTilesAtStartup()` in `user-tile-registration.ts` hydrates the
+  user-tile metadata cache from `sim:user-tile-metadata` before the first live
+  compile so persisted `BrainDef`s can deserialize by tile ID.
 
 5. `handleRecompilation()` in `user-tile-registration.ts` -- wired via
    `CompilationManager.onCompilation` in `vscode-bridge.ts`. Diffs new
-   compile results against a tracking map (`registeredTiles`), deletes old
-   tiles from `TileCatalog` when name/kind changes or file is deleted,
-   re-registers via `registerUserTile()` (in-place swap for same identity),
-   updates the metadata cache, and fires `onUserTilesChanged` listeners.
-   If TS errors block compilation, existing registrations are preserved.
+  compile results against a tracking map (`registeredTiles`), updates the
+  `TileCatalog` metadata, publishes direct bytecode action artifacts into the
+  sim runtime registry, updates the metadata cache, and rebuilds only the
+  active brains whose linked action revisions changed.
 
-No real execution yet -- all registered tiles have no-op `HostAsyncFn`.
-Phase 4 will inject linking into `Brain.initialize()` to produce real
-exec functions via `createUserTileExec`.
+6. User tile execution now follows the explicit compile -> link -> instantiate
+  path from [brain-action-execution-architecture.md](brain-action-execution-architecture.md).
+  Host-function wrappers and global-registry swap-in-place behavior are no
+  longer part of the runtime model.
 
 
 ---
@@ -132,9 +148,7 @@ all project files and compiles them as a unit:
 | `project.renameFile(old, new)` | old + new path | moves a file |
 | `project.compileAll()` | (uses internal file map) | `ProjectCompileResult` |
 | `project.compileAffected()` | (uses internal file map) | `ProjectCompileResult` (currently same as `compileAll`) |
-| `linkUserPrograms(brainProgram, userPrograms)` | `BrainProgram` + `UserAuthoredProgram[]` | `LinkResult` with `linkedProgram` + `userLinks: UserTileLinkInfo[]` |
-| `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)` | `BrainProgram` + `UserTileLinkInfo` + `VM` + `Scheduler` | `HostAsyncFn` |
-| `registerUserTile(linkInfo, hostFn)` | `UserTileLinkInfo` + `HostAsyncFn` | registers tile + params in brain services |
+| `buildAmbientDeclarations()` | none | ambient `.d.ts` source for the bridge-backed TS project |
 
 `ProjectCompileResult` contains:
 - `results: Map<string, CompileResult>` -- one entry per file that has
@@ -181,11 +195,17 @@ connected.
 
 - **TileCatalog**: supports `add()`, `delete(tileId)`, `registerTileDef()`,
   `has()`, `get()`, `clear()`, `getAll()` -- fully dynamic.
-- **FunctionRegistry**: `register()` is append-only and throws on duplicate
-  names. Functions are stored in a `List` where index = numeric ID; removal
-  would break VM references. However, `registerUserTile()` works around this
-  by directly mutating `existingEntry.fn` when re-registering a tile with the
-  same ID -- no indirection wrapper needed for hot-swap.
+- **Action publication**: successful recompilation updates tile metadata and
+  publishes direct bytecode action artifacts into the sim runtime registry.
+- **FunctionRegistry**: no longer participates in the user-tile runtime path.
+  It remains the host-intrinsic namespace used by core VM intrinsics only.
+
+## Historical Notes
+
+The phase notes below are kept as implementation history for the bridge-side
+file and compile flow. Where they mention wrapper-era registration or runtime
+execution, treat those references as historical only; the current runtime
+contract lives in the brain action execution specs linked above.
 
 ---
 
