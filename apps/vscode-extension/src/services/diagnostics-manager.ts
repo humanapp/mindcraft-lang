@@ -8,6 +8,8 @@ const SEVERITY_MAP: Record<string, vscode.DiagnosticSeverity> = {
   info: vscode.DiagnosticSeverity.Information,
 };
 
+const SUPPRESSED_DIAGNOSTIC_CODES = new Set(["MC5002"]);
+
 export class DiagnosticsManager implements vscode.Disposable {
   private readonly _collection: vscode.DiagnosticCollection;
   private readonly _versions = new Map<string, number>();
@@ -33,7 +35,8 @@ export class DiagnosticsManager implements vscode.Disposable {
     this._versions.set(file, version);
 
     const uri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${file}` });
-    const mapped = diagnostics.map((entry) => {
+    const visibleDiagnostics = diagnostics.filter((entry) => !SUPPRESSED_DIAGNOSTIC_CODES.has(entry.code));
+    const mapped = visibleDiagnostics.map((entry) => {
       const range = new vscode.Range(
         entry.range.startLine - 1,
         entry.range.startColumn - 1,
@@ -51,7 +54,7 @@ export class DiagnosticsManager implements vscode.Disposable {
     });
 
     this._collection.set(uri, mapped);
-    this._updateFileCounts(file, diagnostics);
+    this._updateFileCounts(file, visibleDiagnostics);
   }
 
   private _updateFileCounts(file: string, diagnostics: CompileDiagnosticsPayload["diagnostics"]): void {

@@ -346,7 +346,11 @@ export class ProjectManager implements vscode.Disposable {
       uri,
       name: this._workspaceFolderName,
     });
-    vscode.commands.executeCommand("typescript.restartTsServer");
+    this.restartTypeScriptServer();
+  }
+
+  private restartTypeScriptServer(): void {
+    void vscode.commands.executeCommand("typescript.restartTsServer");
   }
 
   private renameWorkspaceFolder(name: string): void {

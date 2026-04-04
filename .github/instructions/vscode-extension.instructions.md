@@ -55,8 +55,11 @@ Central orchestrator (`src/services/project-manager.ts`). Owns the `Project` ins
 - Creates `Project<ExtensionClientMessage, ExtensionServerMessage>` with `wsPath: "extension"`.
 - Reads `mindcraft.bridgeUrl` from VS Code configuration for the bridge hostname.
 - Saves/restores the HMAC binding token via `context.globalState` key `"mindcraft.bindingToken"`.
-- After a successful sync, adds `mindcraft://` to `workspace.workspaceFolders` and
-  calls `typescript.restartTsServer`.
+- After a successful sync, adds `mindcraft://` to `workspace.workspaceFolders`
+  and calls `typescript.restartTsServer`.
+- `DiagnosticsManager` suppresses Mindcraft's relayed `MC5002`
+  TypeScript-checker diagnostics so the Problems panel shows the built-in
+  TypeScript diagnostics once instead of duplicates.
 - **Pending changes:** file writes that fail (app offline) go into a deduplication queue.
   On reconnect, the queue is replayed and then a full sync runs.
   - `write` / `delete` / `mkdir` / `rmdir` / `rename`: deduplicate by `action:path` (last wins)
