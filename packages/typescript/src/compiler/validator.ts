@@ -61,10 +61,6 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
         addDiag(ValidatorDiagCode.EnumsNotSupported, node, "Enums are not supported");
         return;
 
-      case ts.SyntaxKind.ForInStatement:
-        addDiag(ValidatorDiagCode.ForInNotSupported, node, "`for...in` is not supported, use `for...of` instead");
-        break;
-
       case ts.SyntaxKind.WithStatement:
         addDiag(ValidatorDiagCode.WithNotSupported, node, "`with` is not supported");
         return;

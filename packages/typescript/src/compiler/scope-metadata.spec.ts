@@ -276,6 +276,39 @@ export default Sensor({
     assert.equal(forScope!.kind, "block");
   });
 
+  test("for...in creates a block scope for its variables", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const items: number[] = [10, 20, 30];
+    let sum = 0;
+    for (const key in items) {
+      sum = sum + items[key];
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.functionDebugInfo);
+
+    const entryDebug = result.functionDebugInfo!.find((f) => f.name === "test.onExecute");
+    assert.ok(entryDebug);
+
+    const keyLocal = entryDebug!.locals.find((l) => l.name === "key");
+    assert.ok(keyLocal, "expected 'key' local");
+    assert.equal(keyLocal!.storageKind, "local");
+
+    const forInScope = entryDebug!.scopes.find((s) => s.scopeId === keyLocal!.scopeId);
+    assert.ok(forInScope, "expected scope for for-in loop variable");
+    assert.equal(forInScope!.kind, "block");
+  });
+
   test("switch cases share one block scope", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";

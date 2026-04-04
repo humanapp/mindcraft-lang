@@ -3839,6 +3839,130 @@ export default Sensor({
     }
   });
 
+  test("element access on list supports stringified indexes", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-elem-string-idx",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const nums: NumberList = [10, 20, 30];
+    return nums["1"];
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 20);
+    }
+  });
+
+  test('element access on list supports "length" like JS', () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-elem-length",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const nums: NumberList = [10, 20, 30];
+    return nums["length"];
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 3);
+    }
+  });
+
+  test("element access on string supports stringified indexes", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-str-elem-string-idx",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const word = "hello";
+    return word["1"];
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as StringValue).v, "e");
+    }
+  });
+
+  test('element access on string supports "length" like JS', () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-str-elem-length",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const word = "hello";
+    return word["length"];
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 5);
+    }
+  });
+
   test("element assignment sets value at index", () => {
     const ambientSource = buildAmbientDeclarations();
     const source = `
@@ -4192,6 +4316,41 @@ export default Sensor({
     assert.equal(runResult2.status, VmStatus.DONE);
     if (runResult2.status === VmStatus.DONE) {
       assert.equal((runResult2.result as NumberValue).v, 6);
+    }
+  });
+
+  test("for...in iterates over list keys", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+export default Sensor({
+  name: "test-for-in-list",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const nums: NumberList = [1, 2, 3];
+    let sum = 0;
+    for (const key in nums) {
+      sum = sum + nums[key];
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 6);
     }
   });
 
@@ -4933,6 +5092,77 @@ export default Sensor({
       assert.equal(map.typeId, mkTypeId(NativeType.Map, "NumberMap"));
       assert.equal((map.v.get("foo") as NumberValue).v, 1);
       assert.equal((map.v.get("bar") as NumberValue).v, 2);
+    }
+  });
+
+  test("for...in iterates over map keys", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type NumberMap } from "mindcraft";
+
+export default Sensor({
+  name: "for-in-map",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const m: NumberMap = { foo: 1, bar: 2, baz: 3 };
+    let sum = 0;
+    for (const key in m) {
+      sum = sum + m[key];
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 6);
+    }
+  });
+
+  test("for...in iterates over registered struct keys", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "for-in-struct",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const v: Vector2 = { x: 4, y: 7 };
+    let sum = 0;
+    for (const key in v) {
+      const field = key as keyof Vector2;
+      sum = sum + v[field];
+    }
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 11);
     }
   });
 

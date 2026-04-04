@@ -879,6 +879,8 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     lowerWhileStatement(stmt, ctx);
   } else if (ts.isForStatement(stmt)) {
     lowerForStatement(stmt, ctx);
+  } else if (ts.isForInStatement(stmt)) {
+    lowerForInStatement(stmt, ctx);
   } else if (ts.isForOfStatement(stmt)) {
     lowerForOfStatement(stmt, ctx);
   } else if (ts.isSwitchStatement(stmt)) {
@@ -1339,6 +1341,214 @@ function lowerForStatement(stmt: ts.ForStatement, ctx: LowerContext): void {
 
   popLoopContext(ctx);
   ctx.scopeStack.popScope(ctx.ir.length);
+}
+
+function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
+  ctx.scopeStack.pushScope(ctx.ir.length);
+
+  if (!ts.isVariableDeclarationList(stmt.initializer)) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.ForInRequiresVariableDeclaration,
+        "`for...in` requires a variable declaration (e.g. `const key in obj`)",
+        stmt
+      )
+    );
+    ctx.scopeStack.popScope(ctx.ir.length);
+    return;
+  }
+
+  const decls = stmt.initializer.declarations;
+  if (decls.length !== 1 || !ts.isIdentifier(decls[0].name)) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForInRequiresSingleIdentifier, "`for...in` requires a single identifier binding", stmt)
+    );
+    ctx.scopeStack.popScope(ctx.ir.length);
+    return;
+  }
+
+  const bindingName = decls[0].name.text;
+  const iteratedType = ctx.checker.getTypeAtLocation(stmt.expression);
+
+  if (resolveListTypeId(iteratedType, ctx)) {
+    lowerForInOverList(stmt, bindingName, ctx);
+    ctx.scopeStack.popScope(ctx.ir.length);
+    return;
+  }
+
+  if (resolveMapTypeId(iteratedType, ctx)) {
+    lowerForInOverKeyList(
+      stmt,
+      bindingName,
+      () => {
+        lowerExpression(stmt.expression, ctx);
+        ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_keys", argc: 1 });
+      },
+      ctx
+    );
+    ctx.scopeStack.popScope(ctx.ir.length);
+    return;
+  }
+
+  const structDef = resolveStructType(iteratedType);
+  if (structDef) {
+    lowerForInOverKeyList(
+      stmt,
+      bindingName,
+      () => {
+        const keyListTypeId = getBrainServices().types.instantiate("List", List.from([CoreTypeIds.String]));
+        ctx.ir.push({ kind: "ListNew", typeId: keyListTypeId });
+        for (const field of structDef.fields.toArray()) {
+          ctx.ir.push({ kind: "PushConst", value: mkStringValue(field.name) });
+          ctx.ir.push({ kind: "ListPush" });
+        }
+      },
+      ctx
+    );
+    ctx.scopeStack.popScope(ctx.ir.length);
+    return;
+  }
+
+  ctx.diagnostics.push(
+    makeDiag(
+      LoweringDiagCode.ForInOnUnsupportedType,
+      "`for...in` is only supported on list, map, and registered struct values",
+      stmt.expression
+    )
+  );
+  ctx.scopeStack.popScope(ctx.ir.length);
+}
+
+function lowerForInOverList(stmt: ts.ForInStatement, bindingName: string, ctx: LowerContext): void {
+  const listLocal = ctx.scopeStack.allocLocal();
+  const indexLocal = ctx.scopeStack.allocLocal();
+  const bindingLocal = ctx.scopeStack.declareLocal(bindingName);
+
+  lowerExpression(stmt.expression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: listLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: indexLocal });
+
+  const loopStart = allocLabel(ctx);
+  const continueTarget = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  pushLoopContext(continueTarget, loopEnd, ctx);
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: listLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForInCannotResolveOperator, "Cannot resolve < operator for `for...in`", stmt)
+    );
+    popLoopContext(ctx);
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
+  ctx.ir.push({
+    kind: "HostCallArgs",
+    fnName: runtime.conversionFnName(CoreTypeIds.Number, CoreTypeIds.String),
+    argc: 1,
+  });
+  ctx.ir.push({ kind: "StoreLocal", index: bindingLocal });
+  ctx.scopeStack.setLocalIrStart(bindingLocal, ctx.ir.length);
+
+  lowerStatement(stmt.statement, ctx);
+
+  ctx.ir.push({ kind: "Label", labelId: continueTarget });
+
+  ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForInCannotResolveOperator, "Cannot resolve + operator for `for...in`", stmt)
+    );
+    popLoopContext(ctx);
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: indexLocal });
+
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+
+  popLoopContext(ctx);
+}
+
+function lowerForInOverKeyList(
+  stmt: ts.ForInStatement,
+  bindingName: string,
+  emitKeyList: () => void,
+  ctx: LowerContext
+): void {
+  const keyListLocal = ctx.scopeStack.allocLocal();
+  const indexLocal = ctx.scopeStack.allocLocal();
+  const bindingLocal = ctx.scopeStack.declareLocal(bindingName);
+
+  emitKeyList();
+  ctx.ir.push({ kind: "StoreLocal", index: keyListLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: indexLocal });
+
+  const loopStart = allocLabel(ctx);
+  const continueTarget = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  pushLoopContext(continueTarget, loopEnd, ctx);
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: keyListLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!ltFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForInCannotResolveOperator, "Cannot resolve < operator for `for...in`", stmt)
+    );
+    popLoopContext(ctx);
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: keyListLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
+  ctx.ir.push({ kind: "ListGet" });
+  ctx.ir.push({ kind: "StoreLocal", index: bindingLocal });
+  ctx.scopeStack.setLocalIrStart(bindingLocal, ctx.ir.length);
+
+  lowerStatement(stmt.statement, ctx);
+
+  ctx.ir.push({ kind: "Label", labelId: continueTarget });
+
+  ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  if (!addFn) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.ForInCannotResolveOperator, "Cannot resolve + operator for `for...in`", stmt)
+    );
+    popLoopContext(ctx);
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: indexLocal });
+
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+
+  popLoopContext(ctx);
 }
 
 function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
@@ -2525,15 +2735,27 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
   if (isStringType(objType)) {
     lowerExpression(expr.expression, ctx);
     lowerExpression(expr.argumentExpression, ctx);
-    ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_charAt", argc: 2 });
+    ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_get_js", argc: 2 });
     return;
   }
-  const listTypeId = resolveListTypeId(objType, ctx);
-  if (!listTypeId) {
+  if (resolveMapTypeId(objType, ctx)) {
+    lowerExpression(expr.expression, ctx);
+    lowerExpression(expr.argumentExpression, ctx);
+    ctx.ir.push({ kind: "MapGet" });
+    return;
+  }
+  if (resolveStructType(objType)) {
+    lowerExpression(expr.expression, ctx);
+    lowerExpression(expr.argumentExpression, ctx);
+    emitToStringIfNeeded(expr.argumentExpression, ctx);
+    ctx.ir.push({ kind: "GetFieldDynamic" });
+    return;
+  }
+  if (!resolveListTypeId(objType, ctx)) {
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.ElementAccessOnNonListType,
-        "Element access is only supported on list and string types",
+        "Element access is only supported on list, map, struct, and string types",
         expr
       )
     );
@@ -2541,7 +2763,7 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
   }
   lowerExpression(expr.expression, ctx);
   lowerExpression(expr.argumentExpression, ctx);
-  ctx.ir.push({ kind: "ListGet" });
+  ctx.ir.push({ kind: "HostCallArgs", fnName: "$$list_get_js", argc: 2 });
 }
 
 function lowerElementAccessAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {

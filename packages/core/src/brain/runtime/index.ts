@@ -2,8 +2,10 @@ export * from "./action-registry";
 export * from "./brain";
 export * from "./context-types";
 export * from "./conversions";
+export * from "./element-access-builtins";
 export * from "./functions";
 export * from "./linker";
+export * from "./map-builtins";
 export * from "./math-builtins";
 export * from "./operators";
 export * from "./page";
@@ -14,6 +16,8 @@ export * from "./vm";
 import { registerCoreActuators } from "./actuators";
 import { registerContextTypes } from "./context-types";
 import { registerCoreConversions } from "./conversions";
+import { registerElementAccessBuiltins } from "./element-access-builtins";
+import { registerMapBuiltins } from "./map-builtins";
 import { registerMathBuiltins } from "./math-builtins";
 import { registerCoreOperators } from "./operators";
 import { registerCoreSensors } from "./sensors";
@@ -27,6 +31,8 @@ export function registerCoreRuntimeComponents() {
   registerCoreSensors();
   registerCoreConversions();
   registerCoreOperators();
+  registerElementAccessBuiltins();
+  registerMapBuiltins();
   registerMathBuiltins();
   registerStringBuiltins();
 }

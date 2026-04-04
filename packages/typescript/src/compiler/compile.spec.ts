@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
 import { compileUserTile } from "./compile.js";
-import { CompileDiagCode, DescriptorDiagCode, ValidatorDiagCode } from "./diag-codes.js";
+import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
 
 const VALID_SENSOR_SOURCE = `
 import { Sensor, type Context } from "mindcraft";
@@ -122,24 +122,26 @@ export default Sensor({
     assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.VarNotAllowed));
   });
 
-  test("for...in produces diagnostic", () => {
+  test("for...in over anonymous object type produces lowering diagnostic", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
+
+function visit(obj: { a: number }): void {
+  for (const k in obj) {}
+}
 
 export default Sensor({
   name: "test",
   output: "boolean",
   params: {},
   onExecute(ctx: Context): boolean {
-    const obj = { a: 1 };
-    for (const k in obj) {}
     return true;
   },
 });
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.ForInNotSupported));
+    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.ForInOnUnsupportedType));
   });
 
   test("eval reference produces diagnostic", () => {

@@ -21,7 +21,7 @@ export enum ValidatorDiagCode {
   ClassExpressionsNotSupported = 1000,
   /** Enum declarations are not supported */
   EnumsNotSupported = 1001,
-  /** for...in loops are not supported */
+  /** Reserved legacy validator code for validator-level for...in rejection */
   ForInNotSupported = 1002,
   /** with statements are not supported */
   WithNotSupported = 1003,
@@ -153,6 +153,14 @@ export enum LoweringDiagCode {
   ForOfRequiresSingleIdentifier = 3032,
   /** Cannot resolve an operator needed to implement for...of iteration */
   ForOfCannotResolveOperator = 3033,
+  /** for...in is only supported on list, map, and registered struct values */
+  ForInOnUnsupportedType = 3034,
+  /** for...in requires a variable declaration as its initializer */
+  ForInRequiresVariableDeclaration = 3035,
+  /** for...in binding must be a single identifier */
+  ForInRequiresSingleIdentifier = 3036,
+  /** Cannot resolve an operator needed to implement for...in iteration */
+  ForInCannotResolveOperator = 3037,
   /** Binary operator is not supported */
   UnsupportedOperator = 3040,
   /** Cannot determine operand types for binary operator */
