@@ -9,6 +9,8 @@ import {
   CoreOpId,
   CoreTypeIds,
   CoreTypeNames,
+  type EnumPrimitiveValue,
+  type EnumSymbolDef,
   type EnumTypeDef,
   type EnumTypeShape,
   type EnumValue,
@@ -60,6 +62,14 @@ export class TypeRegistry implements ITypeRegistry {
     if (this.defs.has(typeId)) {
       throw new Error(`Type with id ${typeId} is already registered`);
     }
+  }
+
+  getEnumSymbol(typeId: TypeId, key: string): EnumSymbolDef | undefined {
+    const def = this.defs.get(typeId);
+    if (!def || def.coreType !== NativeType.Enum) {
+      return undefined;
+    }
+    return (def as EnumTypeDef).symbols.find((symbol) => symbol.key === key);
   }
 
   addVoidType(name: string): TypeId {
@@ -131,25 +141,19 @@ export class TypeRegistry implements ITypeRegistry {
     this.validateTypeName(name);
     const typeId = mkTypeId(NativeType.Enum, name);
     this.validateTypeNotRegistered(typeId);
-    // Verify no duplicate keys
-    const keySet = new UniqueSet<string>();
-    shape.symbols.forEach((sym) => {
-      if (keySet.has(sym.key)) {
-        throw new Error(`Enum type ${typeId} has duplicate key: ${sym.key}`);
-      }
-      keySet.add(sym.key);
-    });
+    const symbols = normalizeEnumSymbols(typeId, shape.symbols);
     // Verify defaultKey exists
-    if (!keySet.has(shape.defaultKey)) {
+    if (!symbols.find((symbol) => symbol.key === shape.defaultKey)) {
       throw new Error(`Enum type ${typeId} has invalid defaultKey: ${shape.defaultKey}`);
     }
     // Register
     const enumTypeDef: EnumTypeDef = {
       coreType: NativeType.Enum,
       typeId,
-      codec: new EnumCodec(shape),
+      codec: new EnumCodec(symbols),
       name,
-      ...shape,
+      symbols,
+      defaultKey: shape.defaultKey,
     };
     this.add(enumTypeDef);
     this.registerEnumOperators(typeId);
@@ -168,7 +172,15 @@ export class TypeRegistry implements ITypeRegistry {
         exec: (_ctx: ExecutionContext, args: MapValue) => {
           const a = args.v.get(0) as EnumValue;
           const b = args.v.get(1) as EnumValue;
-          return mkBooleanValue(a.v === b.v);
+          if (a.typeId !== typeId || b.typeId !== typeId) {
+            return mkBooleanValue(false);
+          }
+          const lhs = this.getEnumSymbol(typeId, a.v);
+          const rhs = this.getEnumSymbol(typeId, b.v);
+          if (!lhs || !rhs) {
+            return mkBooleanValue(false);
+          }
+          return mkBooleanValue(lhs.value === rhs.value);
         },
       },
       false
@@ -182,7 +194,15 @@ export class TypeRegistry implements ITypeRegistry {
         exec: (_ctx: ExecutionContext, args: MapValue) => {
           const a = args.v.get(0) as EnumValue;
           const b = args.v.get(1) as EnumValue;
-          return mkBooleanValue(a.v !== b.v);
+          if (a.typeId !== typeId || b.typeId !== typeId) {
+            return mkBooleanValue(false);
+          }
+          const lhs = this.getEnumSymbol(typeId, a.v);
+          const rhs = this.getEnumSymbol(typeId, b.v);
+          if (!lhs || !rhs) {
+            return mkBooleanValue(false);
+          }
+          return mkBooleanValue(lhs.value !== rhs.value);
         },
       },
       false
@@ -705,24 +725,75 @@ class FunctionCodec implements TypeCodec {
 }
 
 class EnumCodec implements TypeCodec {
-  private shape: EnumTypeShape;
-  constructor(shape: EnumTypeShape) {
-    this.shape = shape;
-  }
+  constructor(private readonly symbols: List<EnumSymbolDef>) {}
   encode(w: IWriteStream, value: string): void {
     w.writeString(value);
   }
   decode(r: IReadStream): string {
     const key = r.readString();
-    const symbol = this.shape.symbols.find((s) => s.key === key);
+    const symbol = findEnumSymbol(this.symbols, key);
     if (!symbol) {
       throw new Error(`Unknown enum key: ${key}`);
     }
     return key;
   }
   stringify(value: string): string {
+    const symbol = findEnumSymbol(this.symbols, value);
+    if (!symbol) {
+      return value;
+    }
+    return stringifyEnumPrimitiveValue(symbol.value);
+  }
+}
+
+function normalizeEnumSymbols(typeId: TypeId, rawSymbols: List<EnumSymbolDef>): List<EnumSymbolDef> {
+  const keySet = new UniqueSet<string>();
+  const symbols = new List<EnumSymbolDef>();
+  let expectedValueType: NativeType.String | NativeType.Number | undefined;
+
+  rawSymbols.forEach((rawSymbol) => {
+    if (keySet.has(rawSymbol.key)) {
+      throw new Error(`Enum type ${typeId} has duplicate key: ${rawSymbol.key}`);
+    }
+    keySet.add(rawSymbol.key);
+
+    const valueType = enumPrimitiveType(typeId, rawSymbol.key, rawSymbol.value);
+    if (expectedValueType === undefined) {
+      expectedValueType = valueType;
+    } else if (expectedValueType !== valueType) {
+      throw new Error(`Enum type ${typeId} mixes string and number values`);
+    }
+
+    symbols.push({
+      key: rawSymbol.key,
+      label: rawSymbol.label,
+      value: rawSymbol.value,
+      deprecated: rawSymbol.deprecated,
+    });
+  });
+
+  return symbols;
+}
+
+function enumPrimitiveType(typeId: TypeId, key: string, value: unknown): NativeType.String | NativeType.Number {
+  if (TypeUtils.isString(value)) {
+    return NativeType.String;
+  }
+  if (TypeUtils.isNumber(value)) {
+    return NativeType.Number;
+  }
+  throw new Error(`Enum type ${typeId} has unsupported value for key ${key}`);
+}
+
+function findEnumSymbol(symbols: List<EnumSymbolDef>, key: string): EnumSymbolDef | undefined {
+  return symbols.find((symbol) => symbol.key === key);
+}
+
+function stringifyEnumPrimitiveValue(value: EnumPrimitiveValue): string {
+  if (TypeUtils.isString(value)) {
     return value;
   }
+  return SU.toString(value);
 }
 
 class ListCodec implements TypeCodec {

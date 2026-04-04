@@ -137,9 +137,9 @@ export default Sensor({
     if (!types.get(dirId)) {
       types.addEnumType("Direction", {
         symbols: List.from([
-          { key: "north", label: "North" },
-          { key: "south", label: "South" },
-          { key: "east", label: "East" },
+          { key: "north", label: "North", value: "north" },
+          { key: "south", label: "South", value: "south" },
+          { key: "east", label: "East", value: "east" },
         ]),
         defaultKey: "north",
       });

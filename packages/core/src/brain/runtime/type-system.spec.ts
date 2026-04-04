@@ -3,12 +3,19 @@ import { before, describe, test } from "node:test";
 
 import { List, stream } from "@mindcraft-lang/core";
 import {
+  type BooleanValue,
+  type BrainSyncFunctionEntry,
+  CoreOpId,
   CoreTypeIds,
   CoreTypeNames,
+  type EnumSymbolDef,
+  type EnumTypeDef,
+  type ExecutionContext,
   type FunctionTypeDef,
   getBrainServices,
   type ListTypeDef,
   type MapTypeDef,
+  type MapValue,
   mkTypeId,
   NativeType,
   type NullableTypeDef,
@@ -16,9 +23,58 @@ import {
   registerCoreBrainComponents,
   type StructTypeDef,
   type UnionTypeDef,
+  ValueDict,
 } from "@mindcraft-lang/core/brain";
 
 const { MemoryStream } = stream;
+
+function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey: string): string {
+  const registry = getBrainServices().types;
+  const existing = registry.resolveByName(name);
+  if (existing) {
+    return existing;
+  }
+  return registry.addEnumType(name, { symbols, defaultKey });
+}
+
+function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+  return {
+    brain: undefined as never,
+    getVariable: () => undefined,
+    setVariable: () => {},
+    clearVariable: () => {},
+    time: 0,
+    dt: 0,
+    currentTick: 0,
+    ...overrides,
+  };
+}
+
+function mkBinaryArgs(
+  left: { t: NativeType.Enum; typeId: string; v: string },
+  right: { t: NativeType.Enum; typeId: string; v: string }
+): MapValue {
+  const values = new ValueDict();
+  values.set(0, left);
+  values.set(1, right);
+  return { t: NativeType.Map, typeId: "", v: values };
+}
+
+function callEnumEqualityOperator(opId: string, typeId: string, leftKey: string, rightKey: string): boolean {
+  const resolution = getBrainServices().operatorOverloads.resolve(opId, [typeId, typeId]);
+  assert.ok(resolution, `operator ${opId} for ${typeId} was not registered`);
+
+  const entry = resolution.overload.fnEntry;
+  assert.equal(entry.isAsync, false);
+
+  const result = (entry as BrainSyncFunctionEntry).fn.exec(
+    mkCtx(),
+    mkBinaryArgs({ t: NativeType.Enum, typeId, v: leftKey }, { t: NativeType.Enum, typeId, v: rightKey })
+  );
+
+  assert.equal(result.t, NativeType.Boolean);
+  return (result as BooleanValue).v;
+}
 
 describe("NativeType.Any", () => {
   test("NativeType.Any has value 9", () => {
@@ -122,6 +178,89 @@ describe("registerCoreTypes registers Any and AnyList", () => {
     assert.ok(def);
     assert.equal(def.coreType, NativeType.List);
     assert.equal(def.typeId, mkTypeId(NativeType.List, "AnyList"));
+  });
+});
+
+describe("enum type registration", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("string enum preserves explicit underlying values", () => {
+    const typeId = ensureEnumType(
+      "TypeSystemSpecStringEnum",
+      List.from([
+        { key: "On", label: "On", value: "on" },
+        { key: "Off", label: "Off", value: "off" },
+      ]),
+      "On"
+    );
+
+    const registry = getBrainServices().types;
+    const symbol = registry.getEnumSymbol(typeId, "On");
+    assert.ok(symbol);
+    assert.equal(symbol.value, "on");
+
+    const def = registry.get(typeId) as EnumTypeDef;
+    assert.equal(def.codec.stringify("On"), "on");
+  });
+
+  test("numeric enum preserves explicit underlying values", () => {
+    const typeId = ensureEnumType(
+      "TypeSystemSpecNumericEnum",
+      List.from([
+        { key: "Up", label: "Up", value: 0 },
+        { key: "Down", label: "Down", value: 1 },
+      ]),
+      "Up"
+    );
+
+    const registry = getBrainServices().types;
+    const symbol = registry.getEnumSymbol(typeId, "Up");
+    assert.ok(symbol);
+    assert.equal(symbol.value, 0);
+
+    const def = registry.get(typeId) as EnumTypeDef;
+    assert.equal(def.codec.stringify("Up"), "0");
+  });
+
+  test("enum values are required", () => {
+    const registry = getBrainServices().types;
+    const malformedSymbol = { key: "North", label: "North" } as EnumSymbolDef;
+
+    assert.throws(() => {
+      registry.addEnumType("TypeSystemSpecMissingEnumValue", {
+        symbols: List.from([malformedSymbol]),
+        defaultKey: "North",
+      });
+    }, /unsupported value/);
+  });
+
+  test("heterogeneous enum values are rejected", () => {
+    const registry = getBrainServices().types;
+    assert.throws(() => {
+      registry.addEnumType("TypeSystemSpecHeterogeneousEnum", {
+        symbols: List.from([
+          { key: "Zero", label: "Zero", value: 0 },
+          { key: "One", label: "One", value: "one" },
+        ]),
+        defaultKey: "Zero",
+      });
+    }, /mixes string and number values/);
+  });
+
+  test("duplicate numeric values are allowed and compare equal", () => {
+    const typeId = ensureEnumType(
+      "TypeSystemSpecAliasNumericEnum",
+      List.from([
+        { key: "A", label: "A", value: 0 },
+        { key: "B", label: "B", value: 0 },
+      ]),
+      "A"
+    );
+
+    assert.equal(callEnumEqualityOperator(CoreOpId.EqualTo, typeId, "A", "B"), true);
+    assert.equal(callEnumEqualityOperator(CoreOpId.NotEqualTo, typeId, "A", "B"), false);
   });
 });
 

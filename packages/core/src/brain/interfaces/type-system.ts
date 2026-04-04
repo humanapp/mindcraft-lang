@@ -73,8 +73,17 @@ export interface TypeDef {
   autoInstantiated?: boolean;
 }
 
+export type EnumPrimitiveValue = string | number;
+
+export interface EnumSymbolDef {
+  key: string;
+  label: string;
+  value: EnumPrimitiveValue;
+  deprecated?: boolean;
+}
+
 export interface EnumTypeShape {
-  symbols: List<{ key: string; label: string; deprecated?: boolean }>;
+  symbols: List<EnumSymbolDef>;
   defaultKey: string;
 }
 
@@ -150,6 +159,7 @@ export interface TypeConstructor {
 
 export interface ITypeRegistry {
   get(id: TypeId): TypeDef | undefined;
+  getEnumSymbol(typeId: TypeId, key: string): EnumSymbolDef | undefined;
   resolveByName(name: string): TypeId | undefined;
   entries(): Iterable<[TypeId, TypeDef]>;
   addVoidType(name: string): TypeId;

@@ -5386,10 +5386,10 @@ describe("enum value literals", () => {
     if (!types.get(dirTypeId)) {
       types.addEnumType("Direction", {
         symbols: List.from([
-          { key: "north", label: "North" },
-          { key: "south", label: "South" },
-          { key: "east", label: "East" },
-          { key: "west", label: "West" },
+          { key: "north", label: "North", value: "north" },
+          { key: "south", label: "South", value: "south" },
+          { key: "east", label: "East", value: "east" },
+          { key: "west", label: "West", value: "west" },
         ]),
         defaultKey: "north",
       });

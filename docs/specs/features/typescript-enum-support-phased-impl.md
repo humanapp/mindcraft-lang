@@ -1,6 +1,6 @@
 # TypeScript Enum Support -- Phased Implementation Plan
 
-**Status:** Draft
+**Status:** E1 complete, E2 pending
 **Created:** 2026-04-04
 **Related:**
 
@@ -46,12 +46,19 @@ survive. Keep this doc current.
 
 ## Current State
 
-- `EnumValue` in `packages/core` stores only `typeId` plus the enum member key.
-- `EnumTypeShape.symbols` stores `key`, `label`, and `deprecated?`, but not the
-  declared underlying runtime value for the member.
-- `TypeRegistry.addEnumType()` auto-registers `EqualTo` and `NotEqualTo` overloads,
-  but they compare enum keys, not declared underlying values.
-- `EnumCodec.stringify()` returns the enum key, not the underlying value.
+- (Updated 2026-04-04) Phase E1 is complete. `EnumTypeShape.symbols` and
+  `EnumTypeDef.symbols` now carry explicit declared primitive values for each
+  enum member.
+- `EnumValue` in `packages/core` still stores `typeId` plus the enum member key.
+  `ITypeRegistry.getEnumSymbol(typeId, key)` resolves the normalized enum-member
+  metadata.
+- `TypeRegistry.addEnumType()` requires explicit member values, rejects
+  heterogeneous enums, and allows duplicate underlying values.
+- `TypeRegistry.addEnumType()` still auto-registers `EqualTo` and `NotEqualTo`
+  overloads, but they now compare underlying primitive values within the same enum
+  type.
+- `EnumCodec.stringify()` now returns the underlying primitive value, not the
+  symbolic key.
 - Core conversions only cover primitive boolean/number/string conversions.
 - The tile-language compiler already uses conversion search for operator inference in
   `packages/core/src/brain/compiler/inferred-types.ts`.
@@ -131,8 +138,8 @@ for numeric enums before any coercion or TypeScript syntax work lands.
 **Concrete deliverables:**
 
 1. `EnumTypeShape` carries the declared underlying primitive for each member.
-2. `TypeRegistry.addEnumType()` validates homogeneous member values and still permits
-   duplicate primitive values.
+2. `TypeRegistry.addEnumType()` requires explicit member values, validates
+  homogeneous member values, and still permits duplicate primitive values.
 3. A helper exists to resolve enum-member metadata from `typeId + key`.
 4. Enum `EqualTo` / `NotEqualTo` overloads use underlying primitive semantics.
 5. `EnumCodec.stringify()` reflects the underlying primitive semantics.
@@ -141,6 +148,7 @@ for numeric enums before any coercion or TypeScript syntax work lands.
 
 - Test: string enum type can be registered with explicit string member values.
 - Test: numeric enum type can be registered with explicit numeric member values.
+- Test: enum registration rejects a member with no declared primitive value.
 - Test: heterogeneous enum registration is rejected.
 - Test: duplicate numeric values are allowed and compare equal.
 - Test: enum stringification returns `"on"` for a string enum member and `"0"` for
@@ -176,6 +184,9 @@ enum values into primitive `string` or `number` values where the type system all
 - Auto-register conversions when an enum type is registered.
 - All enums get an enum-to-string conversion that stringifies the underlying primitive.
 - Numeric enums also get an enum-to-number conversion.
+- Conversion host functions will need to resolve `EnumValue.v` through
+  `getEnumSymbol(typeId, key)` because E1 kept `EnumValue` keyed by symbolic member
+  name.
 - Do not register implicit primitive-to-enum conversions in this phase.
 - Keep conversion search single-step for implicit coercion. Do not rely on chained
   implicit conversions such as enum -> number -> string.
@@ -334,6 +345,9 @@ infrastructure established by E1-E4.
 - Remove the blanket validator rejection for enum declarations.
 - Support top-level enum declarations whose member values are compile-time constants
   recoverable from the TS checker via `checker.getConstantValue(member)`.
+- For numeric enums, the TypeScript compiler must compute and pass explicit member
+  values into `addEnumType()`. The core registry does not infer TS auto-increment
+  behavior from omitted values.
 - Register user-authored enums before lowering function bodies, using file-qualified
   names where needed to avoid cross-module collisions.
 - Extend import collection to include exported enums and aliased enum imports.
@@ -390,4 +404,63 @@ to settle before the TypeScript syntax support is reviewed.
 
 ## Phase Log
 
-Post-mortem entries go here. Do not write them during implementation.
+### Phase E1 -- 2026-04-04
+
+**Planned vs actual:**
+
+All 5 concrete deliverables were implemented.
+
+- `EnumTypeShape` now carries declared primitive values through `EnumSymbolDef`
+  member data.
+- `TypeRegistry.addEnumType()` validates homogeneous member values and still permits
+  duplicate primitive values.
+- A helper exists to resolve enum-member metadata from `typeId + key` via
+  `ITypeRegistry.getEnumSymbol()`.
+- Enum `EqualTo` / `NotEqualTo` overloads now use underlying primitive semantics.
+- `EnumCodec.stringify()` now reflects the underlying primitive semantics.
+
+Two planned files did not need changes:
+
+- `packages/core/src/brain/interfaces/vm.ts` stayed unchanged because the existing
+  key-based `EnumValue` shape was sufficient for E1.
+- `packages/core/src/brain/tiles/literals.ts` stayed unchanged because it already
+  delegates display text to `TypeCodec.stringify()`.
+
+**Unplanned additions:**
+
+1. `TypeRegistry.getEnumSymbol()` was added as shared lookup infrastructure. This will
+   also be the natural hook for E2 enum conversions.
+
+**Follow-up cleanup:**
+
+- Removed the temporary omitted-value fallback after confirming backward
+  compatibility is not a concern.
+- Enum registrations now require explicit `value` fields for every member.
+
+**Design decisions:**
+
+- Kept `EnumValue` unchanged as `{ typeId, key }`, avoiding VM and constant-pool churn
+  in E1.
+- Equality remains exact by enum type. Different enum types do not compare equal even
+  if their underlying primitive values match.
+- Duplicate underlying values are allowed and compare equal within the same enum type,
+  while serialization still preserves the original symbolic key.
+
+**Files changed:**
+
+- `packages/core/src/brain/interfaces/type-system.ts`
+- `packages/core/src/brain/runtime/type-system.ts`
+- `packages/core/src/brain/runtime/type-system.spec.ts`
+
+**Verification:**
+
+- `npm run typecheck`
+- `npm run check`
+- `npm run build`
+- `npm test`
+
+**Acceptance criteria result:**
+
+All acceptance criteria passed. Added runtime tests for explicit string and numeric
+enum values, missing-value rejection, heterogeneous rejection, duplicate numeric
+aliases comparing equal, and underlying-value stringification.
