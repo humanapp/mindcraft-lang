@@ -218,15 +218,22 @@ and executable-brain rebuild behavior are still pending:
 12. Page activation now resets each action callsite deterministically and
    dispatches the correct activation hook once per activation for both host
    `onPageEntered` handlers and bytecode `activationFuncId` hooks.
-13. `packages/typescript` now emits `UserActionArtifact`-shaped user programs
+13. `packages/typescript` now typechecks cleanly against the direct artifact
+   contract, but `apps/sim` is still on stale pre-Phase-6 integration code:
+   built-in sim tile registration still derives actions from
+   `FunctionRegistry`, and `user-tile-registration.ts` still imports removed
+   TypeScript symbols and fabricates metadata-only compiled-program stubs.
+   Phase 7 starts by making sim compile against the new API surface instead of
+   restoring compatibility exports.
+14. `packages/typescript` now emits `UserActionArtifact`-shaped user programs
    with stable `ActionKey`s, artifact-local `entryFuncId` /
    `activationFuncId`, direct `isAsync`, and `revisionId` fields instead of
    wrapper-era runtime metadata.
-14. `packages/typescript` no longer exports a VM/scheduler-capturing wrapper
+15. `packages/typescript` no longer exports a VM/scheduler-capturing wrapper
    runtime for user tiles. `linkUserPrograms()` now remains only as a pure
    bytecode merge/remap helper returning artifact offsets and remapped debug
    metadata.
-15. `packages/typescript` runtime registration now publishes parameter tiles,
+16. `packages/typescript` runtime registration now publishes parameter tiles,
    tile metadata, and direct `BytecodeResolvedAction` artifacts into the core
    action registry without mutating `FunctionRegistry` entries in place.
 
@@ -915,11 +922,18 @@ Current branch note:
    `UserActionArtifact` shape (`key`, `isAsync`, `numStateSlots`,
    `revisionId`). Phase 7 should delete or replace it, not keep it alive with
    padded fake fields.
+- Startup still depends on early user-tile catalog hydration so persisted
+   brains can deserialize before the first live compile finishes. Phase 7 must
+   preserve that startup guarantee without pretending cached metadata is a
+   compiled action artifact.
 - `apps/sim/src/brain/actor.ts`, `apps/sim/src/brain/engine.ts`, and
    `apps/sim/src/services/brain-persistence.ts` still call `brainDef.compile()`
    directly, and user-tile recompilation currently only refreshes tile
    registration state plus listeners. There is no dependency-scoped executable
    program invalidation or active-brain rebuild path yet.
+- `apps/sim/src/services/vscode-bridge.ts` still routes compilation updates to
+   `handleRecompilation()` only. Phase 7 needs a rebuild coordinator, not just
+   catalog refresh notifications.
 
 ### In scope
 
@@ -939,27 +953,36 @@ Current branch note:
 1. Update sim-side built-in sensor and actuator tile registration to construct
    `ActionDescriptor` metadata instead of passing `BrainFunctionEntry`
    directly.
-2. Split user tile registration into catalog metadata registration and compiled
-   action artifact registration.
+2. Split user tile registration into two explicit responsibilities:
+   metadata-only catalog hydration for startup/deserialization and compiled
+   action-artifact publication for live execution.
 3. Delete the synthetic empty-program/user-link bootstrap path used only to
-   register cached metadata, and replace it with metadata-only registration
-   that does not fabricate compiled programs.
-4. Implement a sim-side resolver that resolves both built-in and user-authored
+   register cached metadata, and replace it with metadata-only registration or
+   last-successful artifact hydration that does not fabricate compiled
+   programs.
+4. Ensure startup still registers user-tile metadata early enough for cached
+   brain deserialization before any actor or engine path compiles a `BrainDef`.
+5. Implement a sim-side resolver that resolves both built-in and user-authored
    action keys.
-5. Update actor/engine brain creation to use the new resolver path.
-6. On successful user action recompilation, invalidate executable-brain cache
+6. Thread that resolver through every sim brain creation path, including actor
+   construction, brain replacement, startup brain loads, and persisted-brain
+   deserialization.
+7. Replace the current recompilation listener flow with a coordinator that
+   compares changed action revisions against executable-brain dependencies.
+8. On successful user action recompilation, invalidate executable-brain cache
    entries whose linked action revisions include the changed key at an older
    revision.
-7. Replace every active Brain instance using an invalidated executable program.
+9. Replace every active Brain instance using an invalidated executable program.
    Restart the Brain from the same `BrainDef` and same host object; do not
    patch the live VM or scheduler in place.
-8. On failed recompilation, keep the last successful action artifacts and keep
+10. On failed recompilation, keep the last successful action artifacts and keep
    existing active brains running.
-9. Add executable-brain caching only if it reduces clear repeated work without
+11. Add executable-brain caching only if it reduces clear repeated work without
    obscuring correctness.
 
 ### Likely files
 
+- `apps/sim/src/bootstrap.ts`
 - `apps/sim/src/brain/tiles/sensors.ts`
 - `apps/sim/src/brain/tiles/actuators.ts`
 - `apps/sim/src/services/user-tile-registration.ts`
@@ -971,6 +994,10 @@ Current branch note:
 
 ### Verification
 
+- `apps/sim` typechecks again without restoring removed wrapper-era exports in
+   `packages/typescript`
+- cold startup can hydrate user-tile catalogs early enough for persisted-brain
+   deserialization without fabricating empty compiled-program stubs
 - recompiling a user tile no longer mutates a global host-function entry
 - sim no longer fabricates empty unlinked-program stubs just to register cached
   user-tile metadata
@@ -997,11 +1024,17 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
 
 ### Common failure modes
 
+- reintroducing `UserTileLinkInfo` or other removed compatibility exports in
+   `packages/typescript` instead of rewriting sim against the new artifact API
 - fixing only user-tile registration and forgetting the built-in sim
    sensor/actuator tile registration that now needs `ActionDescriptor`
    construction
+- moving startup metadata registration behind engine or actor creation and
+   breaking persisted brains that reference user tiles
 - padding fake `actionRefs` or other compiled-program fields onto metadata-only
   stubs instead of removing the synthetic-program path
+- treating tile-catalog refresh notifications as sufficient and never
+   rebuilding executable brains after action revision changes
 - rebuilding only some active Brain instances for a changed action key
 - patching the executable action table or VM in place instead of restarting the
    affected Brain instances
@@ -1016,20 +1049,38 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
 
 ### Goal
 
-Delete the obsolete wrapper-oriented path and remove persistence assumptions tied
-to the old architecture.
+Delete the obsolete wrapper-oriented path and remove only the persistence
+assumptions that are actually incompatible with the final resolver-based
+startup/runtime path.
 
 ### Read first
 
 - Architecture spec section J
 - current sim persistence and user tile registration code
 
+Current branch note:
+
+- By the end of Phase 6, most wrapper-oriented runtime code has already been
+   removed from `packages/typescript`. The remaining cleanup is concentrated in
+   sim-side startup and persistence shims plus docs that still describe
+   host-function registration.
+- The persisted `BrainDef` format itself is still tile-ID based and has not
+   been version-bumped by the action execution redesign. The real persistence
+   risk is startup tile resolution for user-authored tiles, especially the
+   wrapper-era `sim:user-tile-metadata` cache and any startup flow that depends
+   on it.
+- Phase 8 should delete dead compatibility paths only after Phase 7 proves the
+   resolver and rebuild flow end-to-end. It is not the phase to invent another
+   transition layer.
+
 ### In scope
 
-- delete no-op host registration for user tiles
-- delete swap-in-place host-function behavior
+- delete sim-side compatibility helpers that only exist to mimic user-tile
+   host-function registration
+- delete remaining swap-in-place host-function behavior
 - remove outdated wrapper-oriented docs
-- reset or version-bump local persistence
+- reset or version-bump only the local persistence entries that are genuinely
+   incompatible with the final startup/runtime path
 
 ### Out of scope
 
@@ -1038,22 +1089,39 @@ to the old architecture.
 
 ### Ordered tasks
 
-1. Delete no-op host-function registration for user tiles.
-2. Delete host-function swap-in-place behavior for user-authored tiles.
-3. Remove outdated wrapper-based execution documentation.
-4. Reset or version-bump local persistence for brains and user tile metadata.
+1. Delete any remaining sim-side compatibility helpers kept only to emulate
+   wrapper-era user-tile registration, including no-op host bindings or stale
+   metadata bootstrap shapes.
+2. Delete any remaining host-function swap-in-place behavior or compatibility
+   branches for user-authored tiles.
+3. Evaluate persistence item by item. Keep existing saved `BrainDef`s if the
+   Phase 7 startup path still lets them deserialize and compile by tile ID.
+   Version-bump or clear only the entries that no longer have a sound load
+   path, such as wrapper-era user-tile metadata caches if they cannot be read
+   by the final startup contract.
+4. Remove outdated wrapper-based execution documentation.
+5. Make any required persistence invalidation explicit in code and docs rather
+   than relying on accidental incompatibility.
 
 ### Likely files
 
 - `apps/sim/src/services/user-tile-registration.ts`
 - `apps/sim/src/services/brain-persistence.ts`
+- `apps/sim/src/services/vscode-bridge.ts`
 - `docs/specs/features/user-tile-compilation-pipeline.md`
 - `docs/specs/features/user-authored-sensors-actuators.md`
 
 ### Verification
 
 - no runtime path depends on user tiles being registered as host functions
-- local persisted brains from the old model are deliberately invalidated
+- existing saved brains that reference still-registered built-in tiles remain
+   deserializable and compilable after startup
+- only genuinely incompatible local storage state is cleared or versioned out
+   explicitly, with user-tile metadata cache being the primary expected target
+- if any persisted brain keys must be invalidated, the exact incompatibility is
+   identified and documented instead of assuming all saved brains are stale
+- a clean sim startup after any required reset repopulates tile metadata and
+   compiles brains through the resolver path
 - docs point to the new action execution architecture as the source of truth
 
 Run:
@@ -1067,13 +1135,19 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
 ### Stop when
 
 - the old wrapper-oriented runtime path is gone
-- persistence has been explicitly reset or invalidated
+- any persistence reset or invalidation is limited to entries that are actually
+   incompatible with the final load path
 
 ### Common failure modes
 
 - leaving dead compatibility code behind because it seems harmless
 - invalidating persistence implicitly instead of making the reset explicit in
-  code and docs
+   code and docs
+- clearing all saved brains just because runtime internals changed, without a
+   concrete deserialization or tile-resolution incompatibility
+- conflating wrapper-era user-tile metadata cache invalidation with a
+   `BrainDef` serialization-format break
+- treating Phase 8 as a place to finish unresolved Phase 7 resolver wiring
 
 ---
 
