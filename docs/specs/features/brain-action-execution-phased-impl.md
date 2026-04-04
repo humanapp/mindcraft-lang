@@ -172,16 +172,22 @@ These are hard boundaries, not suggestions.
 
 ## Current State
 
-As of 2026-04-03, the action execution stack is split across incompatible
-models:
+As of 2026-04-03 after Phase 1, the action execution stack is split across a
+partially migrated model:
 
-1. Brain tiles compile against `BrainFunctionEntry.id` and emit `HOST_CALL` /
-   `HOST_CALL_ASYNC`.
-2. The VM resolves those IDs through the global `FunctionRegistry`.
-3. User-authored tiles are compiled as ordinary bytecode programs, then wrapped
-   back into host-function closures so the brain runtime can invoke them.
-4. Recompilation updates user tile behavior by mutating global function entries
-   in place.
+1. Sensor and actuator tile defs now store `ActionDescriptor` metadata instead
+   of `BrainFunctionEntry`.
+2. Built-in core action registration still derives those descriptors from
+   `FunctionRegistry` entries via `mkActionDescriptor()`. This is the intended
+   Phase 1 bridge, not the permanent built-in binding model.
+3. Brain compilation and runtime dispatch still emit and execute `HOST_CALL` /
+   `HOST_CALL_ASYNC` through the global `FunctionRegistry`.
+4. User-authored tiles are still compiled as ordinary bytecode programs, then
+   wrapped back into host-function closures so the brain runtime can invoke
+   them.
+5. Downstream registration code in `packages/typescript` and `apps/sim` still
+   targets the pre-Phase-1 action tile constructors and is expected to remain
+   broken until the later integration phases update those paths.
 
 The codebase already contains the raw capabilities needed for the new design:
 
@@ -298,12 +304,20 @@ At the start of Phase 2, assume this baseline:
 
 - `ActionDescriptor` exists in core interfaces
 - sensor and actuator tile defs already store `action` metadata
-- parser, type inference, and editor-facing paths may already read
+- parser, type inference, and editor-facing paths already read
    `action.callDef` and `action.outputType`
+- `BrainCompiler` and the runtime interfaces still use
+   `PageMetadata.hostCallSites`; no `actionRefs` or `actionCallSites` exist yet
+- `ExprCompiler` still resolves `action.key` through
+   `getBrainServices().functions` and still emits `HOST_CALL` /
+   `HOST_CALL_ASYNC` for sensors and actuators
 - `mkActionDescriptor()` may still derive descriptors from
    `BrainFunctionEntry`; that is acceptable at the start of Phase 2 but remains
    transitional only and must not survive as the permanent built-in action model
    past Phase 3
+- downstream registration code in `packages/typescript` and `apps/sim` may
+   still target the pre-Phase-1 action tile constructors; that breakage is
+   expected and remains out of scope for Phase 2
 
 If that baseline is not present on the current branch, stop and regenerate or
 complete Phase 1 first.
@@ -327,6 +341,8 @@ compiler-side lookups back into the global `FunctionRegistry`.
 - actual VM action execution
 - user-authored artifact format changes
 - sim integration
+- repairing stale app-side or `packages/typescript` action-tile constructor
+   call sites left behind by the Phase 1 contract change
 
 ### Ordered tasks
 
@@ -374,6 +390,8 @@ cd packages/core && npm run check && npm run build && npm test
    compiler path after action slots have been introduced
 - introducing a separate top-level `actionCallSites` list instead of replacing
    the field inside `PageMetadata`
+- spending Phase 2 effort on downstream registration fixes in `apps/sim` or
+   `packages/typescript` instead of completing the core compiler boundary
 
 ---
 
@@ -753,24 +771,29 @@ mutation with executable-brain invalidation and rebuild.
 
 ### Ordered tasks
 
-1. Split user tile registration into catalog metadata registration and compiled
+1. Update sim-side built-in sensor and actuator tile registration to construct
+   `ActionDescriptor` metadata instead of passing `BrainFunctionEntry`
+   directly.
+2. Split user tile registration into catalog metadata registration and compiled
    action artifact registration.
-2. Implement a sim-side resolver that resolves both built-in and user-authored
+3. Implement a sim-side resolver that resolves both built-in and user-authored
    action keys.
-3. Update actor/engine brain creation to use the new resolver path.
-4. On successful user action recompilation, invalidate executable-brain cache
+4. Update actor/engine brain creation to use the new resolver path.
+5. On successful user action recompilation, invalidate executable-brain cache
    entries whose linked action revisions include the changed key at an older
    revision.
-5. Replace every active Brain instance using an invalidated executable program.
+6. Replace every active Brain instance using an invalidated executable program.
    Restart the Brain from the same `BrainDef` and same host object; do not
    patch the live VM or scheduler in place.
-6. On failed recompilation, keep the last successful action artifacts and keep
+7. On failed recompilation, keep the last successful action artifacts and keep
    existing active brains running.
-7. Add executable-brain caching only if it reduces clear repeated work without
+8. Add executable-brain caching only if it reduces clear repeated work without
    obscuring correctness.
 
 ### Likely files
 
+- `apps/sim/src/brain/tiles/sensors.ts`
+- `apps/sim/src/brain/tiles/actuators.ts`
 - `apps/sim/src/services/user-tile-registration.ts`
 - `apps/sim/src/services/user-tile-compiler.ts`
 - `apps/sim/src/services/vscode-bridge.ts`
@@ -803,6 +826,9 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
 
 ### Common failure modes
 
+- fixing only user-tile registration and forgetting the built-in sim
+   sensor/actuator tile registration that now needs `ActionDescriptor`
+   construction
 - rebuilding only some active Brain instances for a changed action key
 - patching the executable action table or VM in place instead of restarting the
    affected Brain instances
@@ -919,3 +945,59 @@ boundary on purpose.
 ## Phase Log
 
 (Written during post-mortem only. Do not edit during implementation.)
+
+### Phase 1 (2026-04-03)
+
+**Planned vs actual:**
+
+All 5 ordered tasks were delivered within the intended core-only scope.
+
+- `ActionDescriptor`, `ActionKey`, `ActionKind`, and `mkActionDescriptor()`
+   were added in core interfaces.
+- `IBrainActionTileDef` and `BrainActionTileBase` now store `action`
+   metadata instead of `fnEntry`.
+- Built-in core sensor and actuator registration now constructs tile metadata
+   from existing host-function registrations through `mkActionDescriptor()`.
+- Parser, type inference, and tile-suggestion paths now read
+   `tileDef.action.callDef` and `tileDef.action.outputType` instead of reaching
+   through `BrainFunctionEntry`.
+- Operators and conversions stayed on the host-function path unchanged.
+
+One planned item was intentionally left as "keep names stable": the
+host-function subsystem was not renamed in Phase 1.
+
+**Bridge left in place on purpose:**
+
+- `packages/core/src/brain/compiler/rule-compiler.ts` still resolves
+   `action.key -> getBrainServices().functions.get(...)` for sensor and
+   actuator invocation. This is the Phase 1 bridge and matches the plan's stop
+   condition. Phase 2 must remove compiler-side action dispatch lookups back
+   into the global `FunctionRegistry`.
+
+**Deviations and discoveries:**
+
+- The core package needed a Roblox-safe adjustment during verification:
+   `BrainTileSensorDef.outputType` had to remain a plain readonly property, not
+   a getter.
+- The constructor contract change immediately breaks downstream registration
+   code that still passes `BrainFunctionEntry` directly into
+   `BrainTileSensorDef` / `BrainTileActuatorDef`. Confirmed stale call sites:
+   `packages/typescript/src/runtime/registration-bridge.ts`,
+   `apps/sim/src/brain/tiles/sensors.ts`, and
+   `apps/sim/src/brain/tiles/actuators.ts`.
+- Those downstream breakages are acceptable for this phase. They should not be
+   repaired piecemeal before the planned TypeScript and sim integration phases.
+
+**Verification:**
+
+- Ran `cd packages/core && npm run typecheck && npm run check && npm run build && npm test`
+- Final result: pass. Core typecheck passed, check passed, build passed, and
+   530 tests passed.
+
+**Spec updates from this post-mortem:**
+
+- Updated `Current State` to reflect the Phase 1 baseline instead of the
+   pre-implementation model.
+- Updated Phase 7 to explicitly include the sim-side built-in action tile
+   registration files that now need `ActionDescriptor` construction when app
+   integration resumes.

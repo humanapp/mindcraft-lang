@@ -2,7 +2,7 @@ import { MathOps } from "../../platform/math";
 import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
-import type { BrainFunctionEntry } from "./functions";
+import type { ActionDescriptor } from "./functions";
 import type { TypeId } from "./type-system";
 
 // ----------------------------------------------------
@@ -138,7 +138,7 @@ export interface IBrainTileDef {
 }
 
 export interface IBrainActionTileDef extends IBrainTileDef {
-  readonly fnEntry: BrainFunctionEntry;
+  readonly action: ActionDescriptor;
 }
 
 // ----------------------------------------------------

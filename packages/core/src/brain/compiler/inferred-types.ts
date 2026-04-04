@@ -310,8 +310,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
   visitActuator(expr: ActuatorExpr): void {
     const typeInfo = this.ensureTypeInfo(expr.nodeId);
     typeInfo.inferred = CoreTypeNames.Void;
-    const fnEntry = expr.tileDef.fnEntry;
-    const callDef = fnEntry.callDef;
+    const callDef = expr.tileDef.action.callDef;
     const argSlots = callDef.argSlots;
     expr.anons.forEach((e) => {
       acceptExprVisitor(e.expr, this);
@@ -332,9 +331,8 @@ class InferredTypeVisitor implements ExprVisitor<void> {
 
   visitSensor(expr: SensorExpr): void {
     const typeInfo = this.ensureTypeInfo(expr.nodeId);
-    typeInfo.inferred = expr.tileDef.outputType;
-    const fnEntry = expr.tileDef.fnEntry;
-    const callDef = fnEntry.callDef;
+    typeInfo.inferred = expr.tileDef.action.outputType ?? CoreTypeNames.Unknown;
+    const callDef = expr.tileDef.action.callDef;
     const argSlots = callDef.argSlots;
     expr.anons.forEach((e) => {
       acceptExprVisitor(e.expr, this);

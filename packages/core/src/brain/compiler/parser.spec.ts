@@ -16,6 +16,7 @@ import {
   choice,
   getBrainServices,
   type IBrainTileDef,
+  mkActionDescriptor,
   mkCallDef,
   mkModifierTileId,
   mkParameterTileId,
@@ -110,7 +111,7 @@ before(() => {
     mkCallDef(kEverySensorCallSpec)
   );
 
-  everySensor = new BrainTileSensorDef(kSensorId_Every, everyFnEntry, CoreTypeIds.Void);
+  everySensor = new BrainTileSensorDef(kSensorId_Every, mkActionDescriptor("sensor", everyFnEntry, CoreTypeIds.Void));
   modTimeMs = new BrainTileModifierDef(kModifierId_TimeMs);
   modTimeSecs = new BrainTileModifierDef(kModifierId_TimeSecs);
   paramDelayMs = new BrainTileParameterDef(kParameterId_DelayMs, CoreTypeIds.Number);
@@ -476,7 +477,7 @@ describe("Conditional call specs", () => {
       mkCallDef(callSpec)
     );
 
-    const sensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    const sensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
     const modReq = new BrainTileModifierDef(kModRequired);
     const paramOpt = new BrainTileParameterDef(kParamOptional, CoreTypeIds.Number);
 
@@ -507,7 +508,7 @@ describe("Conditional call specs", () => {
       mkCallDef(callSpec)
     );
 
-    const sensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    const sensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
     const modReq = new BrainTileModifierDef(kModRequired);
     const paramOpt = new BrainTileParameterDef(kParamOptional, CoreTypeIds.Number);
 
@@ -542,7 +543,7 @@ describe("Conditional call specs", () => {
       mkCallDef(callSpec)
     );
 
-    const sensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    const sensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
     const paramOpt = new BrainTileParameterDef(kParamOptional, CoreTypeIds.Number);
 
     runParseTest({
@@ -568,7 +569,7 @@ describe("Conditional call specs", () => {
       mkCallDef(callSpec)
     );
 
-    const sensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    const sensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
 
     runParseTest({ name: "missing required mod", tiles: [sensor], shouldPass: false });
   });
@@ -608,7 +609,7 @@ describe("Conditional with else branch", () => {
       mkCallDef(callSpec)
     );
 
-    condElseSensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    condElseSensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
     modToggle = new BrainTileModifierDef(kModToggle);
     paramWhenPresent = new BrainTileParameterDef(kParamPresent, CoreTypeIds.Number);
     paramWhenAbsent = new BrainTileParameterDef(kParamAbsent, CoreTypeIds.Number);
@@ -856,7 +857,7 @@ describe("Bag repeat interleaving", () => {
       )
     );
     const fnEntry = getBrainServices().functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
-    const actuator = new BrainTileActuatorDef(kActId, fnEntry);
+    const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
 
@@ -885,7 +886,7 @@ describe("Bag repeat interleaving", () => {
       )
     );
     const fnEntry = getBrainServices().functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
-    const actuator = new BrainTileActuatorDef(kActId, fnEntry);
+    const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
 
@@ -909,7 +910,7 @@ describe("Bag repeat interleaving", () => {
       )
     );
     const fnEntry = getBrainServices().functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
-    const actuator = new BrainTileActuatorDef(kActId, fnEntry);
+    const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
 

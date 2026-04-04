@@ -26,6 +26,7 @@ import {
   type HostAsyncFn,
   type IBrain,
   type MapValue,
+  mkActionDescriptor,
   mkCallDef,
   mkVariableTileId,
   NativeType,
@@ -338,7 +339,9 @@ describe("Brain behavioral -- sensors and actuators", () => {
       mkCallDef({ type: "bag", items: [] })
     );
 
-    const sensor = new BrainTileSensorDef(sensorId, fnEntry, CoreTypeIds.Number, { placement: TilePlacement.Inline });
+    const sensor = new BrainTileSensorDef(sensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Number), {
+      placement: TilePlacement.Inline,
+    });
 
     const v = mkVar("sensor-v");
     const brainDef = buildBrain([], [v, opAssign, sensor]);
@@ -378,7 +381,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
       callDef
     );
 
-    const actuator = new BrainTileActuatorDef(actuatorId, fnEntry);
+    const actuator = new BrainTileActuatorDef(actuatorId, mkActionDescriptor("actuator", fnEntry));
 
     const brainDef = buildBrain([], [actuator, mkLiteral(42)]);
     const brain = runBrain(brainDef);
@@ -432,9 +435,13 @@ describe("Brain behavioral -- page sensors", () => {
     const v = mkVar("cp", CoreTypeIds.String);
     const fnEntry = getBrainServices().functions.get(CoreSensorId.CurrentPage);
     assert.ok(fnEntry, "current-page function should be registered");
-    const cpSensor = new BrainTileSensorDef(CoreSensorId.CurrentPage, fnEntry!, CoreTypeIds.String, {
-      placement: TilePlacement.EitherSide | TilePlacement.Inline,
-    });
+    const cpSensor = new BrainTileSensorDef(
+      CoreSensorId.CurrentPage,
+      mkActionDescriptor("sensor", fnEntry!, CoreTypeIds.String),
+      {
+        placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      }
+    );
 
     const brainDef = buildBrain([], [v, opAssign, cpSensor]);
     const brain = runBrain(brainDef);
@@ -453,9 +460,13 @@ describe("Brain behavioral -- page sensors", () => {
     const v = mkVar("pp-no-switch", CoreTypeIds.String);
     const fnEntry = getBrainServices().functions.get(CoreSensorId.PreviousPage);
     assert.ok(fnEntry, "previous-page function should be registered");
-    const ppSensor = new BrainTileSensorDef(CoreSensorId.PreviousPage, fnEntry!, CoreTypeIds.String, {
-      placement: TilePlacement.EitherSide | TilePlacement.Inline,
-    });
+    const ppSensor = new BrainTileSensorDef(
+      CoreSensorId.PreviousPage,
+      mkActionDescriptor("sensor", fnEntry!, CoreTypeIds.String),
+      {
+        placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      }
+    );
 
     const brainDef = buildBrain([], [v, opAssign, ppSensor]);
     const brain = runBrain(brainDef);
@@ -474,9 +485,13 @@ describe("Brain behavioral -- page sensors", () => {
     const v = mkVar("pp-after-switch", CoreTypeIds.String);
     const fnEntry = getBrainServices().functions.get(CoreSensorId.PreviousPage);
     assert.ok(fnEntry);
-    const ppSensor = new BrainTileSensorDef(CoreSensorId.PreviousPage, fnEntry!, CoreTypeIds.String, {
-      placement: TilePlacement.EitherSide | TilePlacement.Inline,
-    });
+    const ppSensor = new BrainTileSensorDef(
+      CoreSensorId.PreviousPage,
+      mkActionDescriptor("sensor", fnEntry!, CoreTypeIds.String),
+      {
+        placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      }
+    );
 
     const brainDef = new BrainDef();
 
@@ -517,9 +532,13 @@ describe("Brain behavioral -- page sensors", () => {
     const v = mkVar("pp-multi", CoreTypeIds.String);
     const fnEntry = getBrainServices().functions.get(CoreSensorId.PreviousPage);
     assert.ok(fnEntry);
-    const ppSensor = new BrainTileSensorDef(CoreSensorId.PreviousPage, fnEntry!, CoreTypeIds.String, {
-      placement: TilePlacement.EitherSide | TilePlacement.Inline,
-    });
+    const ppSensor = new BrainTileSensorDef(
+      CoreSensorId.PreviousPage,
+      mkActionDescriptor("sensor", fnEntry!, CoreTypeIds.String),
+      {
+        placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      }
+    );
 
     const brainDef = new BrainDef();
 

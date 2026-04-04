@@ -618,7 +618,7 @@ function hasStructValuePendingAccessor(
   }
 
   // Check anonymous slots
-  const callDef = actionExpr.tileDef.fnEntry.callDef;
+  const callDef = actionExpr.tileDef.action.callDef;
   for (let i = 0; i < actionExpr.anons.size(); i++) {
     if (actionExpr.anons.get(i).slotId === excludeSlotId) continue;
     const anonExpr = actionExpr.anons.get(i).expr;
@@ -663,7 +663,7 @@ function collectActionCallExpectedTypes(
   actionExpr: ActuatorExpr | SensorExpr,
   catalogs: ReadonlyList<ITileCatalog>
 ): List<TypeId> {
-  const callDef = actionExpr.tileDef.fnEntry.callDef;
+  const callDef = actionExpr.tileDef.action.callDef;
   const filledSlotIds = collectFilledSlotIds(actionExpr);
   const availableSlots = List.empty<BrainActionArgSlot>();
   collectAvailableArgSlots(callDef.callSpec, callDef.argSlots, filledSlotIds, availableSlots, 1, callDef.callSpec);
@@ -1363,7 +1363,7 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
 
     case "actuator":
     case "sensor": {
-      const callDef = expr.tileDef.fnEntry.callDef;
+      const callDef = expr.tileDef.action.callDef;
       const filledSlotIds = collectFilledSlotIds(expr);
       const availableArgSlots = List.empty<BrainActionArgSlot>();
       collectAvailableArgSlots(
@@ -1425,7 +1425,7 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
         // Handle similarly to the top-level sensor/actuator case: check for
         // unfilled call spec slots and offer call spec tiles when needed.
         const innerExpr = expr.operand as SensorExpr | ActuatorExpr;
-        const callDef = innerExpr.tileDef.fnEntry.callDef;
+        const callDef = innerExpr.tileDef.action.callDef;
         const filledSlotIds = collectFilledSlotIds(innerExpr);
         const availableArgSlots = List.empty<BrainActionArgSlot>();
         collectAvailableArgSlots(
@@ -2069,7 +2069,7 @@ function suggestActionCallTiles(
   availableCapabilities?: ReadonlyBitSet,
   unclosedParenDepth?: number
 ): void {
-  const callDef = actionExpr.tileDef.fnEntry.callDef;
+  const callDef = actionExpr.tileDef.action.callDef;
   const filledSlotIds = collectFilledSlotIds(actionExpr, excludeSlotId);
 
   // Walk the call spec tree to find available arg slots

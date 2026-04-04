@@ -253,12 +253,12 @@ class BrainParser {
     }
 
     const actionCall = actionTok as unknown as IBrainActionTileDef;
-    const callSpec = actionCall.fnEntry.callDef.callSpec;
+    const callSpec = actionCall.action.callDef.callSpec;
 
     // Build lookup map from argSpec to slotId for O(1) access during parsing
     const argSpecToSlotId = new Dict<BrainActionCallArgSpec, number>();
-    for (let i = 0; i < actionCall.fnEntry.callDef.argSlots.size(); i++) {
-      const slot = actionCall.fnEntry.callDef.argSlots.get(i);
+    for (let i = 0; i < actionCall.action.callDef.argSlots.size(); i++) {
+      const slot = actionCall.action.callDef.argSlots.get(i);
       argSpecToSlotId.set(slot.argSpec, slot.slotId);
     }
 

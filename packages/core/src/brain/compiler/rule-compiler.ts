@@ -4,9 +4,10 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { logger } from "../../platform/logger";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
-import type { Instr, Value } from "../interfaces";
+import type { BrainFunctionEntry, Instr, Value } from "../interfaces";
 import { type BrainActionArgSlot, CoreOpId, NativeType, NIL_VALUE, TRUE_VALUE } from "../interfaces";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
+import { getBrainServices } from "../services";
 import type { ConstantPool } from "./constant-pool";
 import { CompilationDiagCode } from "./diag-codes";
 import type {
@@ -81,6 +82,14 @@ export class ExprCompiler implements ExprVisitor<void> {
    */
   private nextCallSiteId(): number {
     return this.context.nextCallSiteId.value++;
+  }
+
+  private getActionHostFunction(actionKey: string): BrainFunctionEntry {
+    const fnEntry = getBrainServices().functions.get(actionKey);
+    if (!fnEntry) {
+      throw new Error(`ExprCompiler: missing host action binding for ${actionKey}`);
+    }
+    return fnEntry;
   }
 
   // ==========================================
@@ -381,20 +390,16 @@ export class ExprCompiler implements ExprVisitor<void> {
   // ==========================================
 
   visitActuator(expr: ActuatorExpr): void {
-    const actuatorId = expr.tileDef.actuatorId;
-    const actuatorFn = expr.tileDef.fnEntry;
-    const argSlots = actuatorFn.callDef.argSlots;
+    const action = expr.tileDef.action;
+    const actuatorFn = this.getActionHostFunction(action.key);
+    const argSlots = action.callDef.argSlots;
 
     // Emit arguments as a single Map value
     // Map contains: { "slotId": value } for args, { "slotId": true } for modifiers
     const argCount = this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
 
-    // Use the host function ID from the tile definition's function entry The
-    // FunctionRegistry assigns this ID when the function is registered Host
-    // function receives: fn(args: List<Value>) where args[0] is the Map
     if (actuatorFn.isAsync) {
       this.emitter.hostCallAsync(actuatorFn.id, argCount, this.nextCallSiteId());
-      // Await the actuator call to ensure it completes before DO finishes This allows async actuators to work correctly in multi-step action sequences
       this.emitter.await();
     } else {
       this.emitter.hostCall(actuatorFn.id, argCount, this.nextCallSiteId());
@@ -408,20 +413,16 @@ export class ExprCompiler implements ExprVisitor<void> {
   // ==========================================
 
   visitSensor(expr: SensorExpr): void {
-    const sensorId = expr.tileDef.sensorId;
-    const sensorFn = expr.tileDef.fnEntry;
-    const argSlots = sensorFn.callDef.argSlots;
+    const action = expr.tileDef.action;
+    const sensorFn = this.getActionHostFunction(action.key);
+    const argSlots = action.callDef.argSlots;
 
     // Emit arguments as a single Map value
     // Map contains: { "slotId": value } for args, { "slotId": true } for modifiers
     const argCount = this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
 
-    // Use the host function ID from the tile definition's function entry The
-    // FunctionRegistry assigns this ID when the function is registered Host
-    // function receives: fn(args: List<Value>) where args[0] is the Map
     if (sensorFn.isAsync) {
       this.emitter.hostCallAsync(sensorFn.id, argCount, this.nextCallSiteId());
-      // Await the sensor call to ensure it completes before DO finishes This allows async sensors to work correctly in multi-step action sequences
       this.emitter.await();
     } else {
       this.emitter.hostCall(sensorFn.id, argCount, this.nextCallSiteId());

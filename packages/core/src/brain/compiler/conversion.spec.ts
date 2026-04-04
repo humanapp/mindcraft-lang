@@ -11,6 +11,7 @@ import {
   CoreParameterId,
   CoreTypeIds,
   getBrainServices,
+  mkActionDescriptor,
   mkCallDef,
   param,
   registerCoreBrainComponents,
@@ -40,7 +41,7 @@ function testConversion(
       actuatorCallDef
     );
 
-    const sayTile = new BrainTileActuatorDef(actuatorId, fnEntry, {});
+    const sayTile = new BrainTileActuatorDef(actuatorId, mkActionDescriptor("actuator", fnEntry), {});
     const literal = new BrainTileLiteralDef(literalType, literalValue);
 
     const tiles = List.from([sayTile as unknown, literal as unknown]) as List<never>;

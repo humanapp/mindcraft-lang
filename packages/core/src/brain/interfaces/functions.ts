@@ -1,6 +1,7 @@
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { TypeUtils } from "../../platform/types";
+import type { TypeId } from "./type-system";
 import type { HostAsyncFn, HostFn, HostSyncFn } from "./vm";
 
 // ----------------------------------------------------
@@ -103,6 +104,18 @@ export type BrainActionCallDef = {
   argSlots: ReadonlyList<BrainActionArgSlot>;
 };
 
+export type ActionKey = string;
+
+export type ActionKind = "sensor" | "actuator";
+
+export type ActionDescriptor = {
+  key: ActionKey;
+  kind: ActionKind;
+  callDef: BrainActionCallDef;
+  isAsync: boolean;
+  outputType?: TypeId;
+};
+
 export function mkCallDef(callSpec: BrainActionCallSpec): BrainActionCallDef {
   const argSlots = callSpecToArgSlots(callSpec);
   return {
@@ -199,6 +212,20 @@ export type BrainAsyncFunctionEntry = BrainFunctionCommon & {
 };
 
 export type BrainFunctionEntry = BrainSyncFunctionEntry | BrainAsyncFunctionEntry;
+
+export function mkActionDescriptor(
+  kind: ActionKind,
+  fnEntry: BrainFunctionEntry,
+  outputType?: TypeId
+): ActionDescriptor {
+  return {
+    key: fnEntry.name,
+    kind,
+    callDef: fnEntry.callDef,
+    isAsync: fnEntry.isAsync,
+    outputType,
+  };
+}
 
 export interface IFunctionRegistry {
   register(name: string, isAsync: boolean, fn: HostFn, callDef: BrainActionCallDef): BrainFunctionEntry;

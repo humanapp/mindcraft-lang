@@ -3,7 +3,7 @@ import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { fourCC } from "../../primitives";
 import { BitSet, type ReadonlyBitSet } from "../../util/bitset";
 import type {
-  BrainFunctionEntry,
+  ActionDescriptor,
   BrainTileDefCreateOptions,
   BrainTileKind,
   IBrainActionTileDef,
@@ -71,11 +71,11 @@ export abstract class BrainTileDefBase implements IBrainTileDef {
 }
 
 export abstract class BrainActionTileBase extends BrainTileDefBase implements IBrainActionTileDef {
-  readonly fnEntry: BrainFunctionEntry;
+  readonly action: ActionDescriptor;
 
-  constructor(tileId: TileId, fnEntry: BrainFunctionEntry, opts: BrainTileDefCreateOptions) {
+  constructor(tileId: TileId, action: ActionDescriptor, opts: BrainTileDefCreateOptions) {
     super(tileId, opts);
-    this.fnEntry = fnEntry;
+    this.action = action;
   }
 }
 

@@ -1,14 +1,12 @@
 import { Error } from "../../platform/error";
 import {
-  type BrainFunctionEntry,
+  type ActionDescriptor,
   type BrainTileDefCreateOptions,
-  CoreActuatorId,
-  CoreParameterId,
+  mkActionDescriptor,
   mkActuatorTileId,
-  mkParameterTileId,
   TilePlacement,
 } from "../interfaces";
-import { BrainActionTileBase, BrainTileDefBase } from "../model/tiledef";
+import { BrainActionTileBase } from "../model/tiledef";
 import fnRestartPage from "../runtime/actuators/restart-page";
 import fnSwitchPage from "../runtime/actuators/switch-page";
 import fnYield from "../runtime/actuators/yield";
@@ -18,9 +16,12 @@ export class BrainTileActuatorDef extends BrainActionTileBase {
   readonly kind = "actuator";
   readonly actuatorId: string;
 
-  constructor(actuatorId: string, fnEntry: BrainFunctionEntry, opts: BrainTileDefCreateOptions = {}) {
+  constructor(actuatorId: string, action: ActionDescriptor, opts: BrainTileDefCreateOptions = {}) {
+    if (action.kind !== "actuator") {
+      throw new Error(`BrainTileActuatorDef: expected actuator action for ${actuatorId}`);
+    }
     if (opts.placement === undefined) opts.placement = TilePlacement.DoSide;
-    super(mkActuatorTileId(actuatorId), fnEntry, opts);
+    super(mkActuatorTileId(actuatorId), action, opts);
     this.actuatorId = actuatorId;
   }
 }
@@ -28,13 +29,13 @@ export class BrainTileActuatorDef extends BrainActionTileBase {
 export function registerCoreActuatorTileDefs() {
   const tiles = getBrainServices().tiles;
   const register = (actuatorId: string, opts: BrainTileDefCreateOptions = {}) => {
-    const getFn = (fnId: string): BrainFunctionEntry => {
+    const getFn = (fnId: string) => {
       const fnEntry = getBrainServices().functions.get(fnId);
       if (!fnEntry) throw new Error(`getFunctionEntryOrThrow: missing function entry for ${fnId}`);
       return fnEntry;
     };
     const fnEntry = getFn(actuatorId);
-    const tileDef = new BrainTileActuatorDef(actuatorId, fnEntry, opts);
+    const tileDef = new BrainTileActuatorDef(actuatorId, mkActionDescriptor("actuator", fnEntry), opts);
     tiles.registerTileDef(tileDef);
   };
   register(fnSwitchPage.fnId);
