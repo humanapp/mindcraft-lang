@@ -1,11 +1,5 @@
 import { Error } from "../../platform/error";
-import {
-  type ActionDescriptor,
-  type BrainTileDefCreateOptions,
-  mkActionDescriptor,
-  mkActuatorTileId,
-  TilePlacement,
-} from "../interfaces";
+import { type ActionDescriptor, type BrainTileDefCreateOptions, mkActuatorTileId, TilePlacement } from "../interfaces";
 import { BrainActionTileBase } from "../model/tiledef";
 import fnRestartPage from "../runtime/actuators/restart-page";
 import fnSwitchPage from "../runtime/actuators/switch-page";
@@ -28,17 +22,15 @@ export class BrainTileActuatorDef extends BrainActionTileBase {
 
 export function registerCoreActuatorTileDefs() {
   const tiles = getBrainServices().tiles;
-  const register = (actuatorId: string, opts: BrainTileDefCreateOptions = {}) => {
-    const getFn = (fnId: string) => {
-      const fnEntry = getBrainServices().functions.get(fnId);
-      if (!fnEntry) throw new Error(`getFunctionEntryOrThrow: missing function entry for ${fnId}`);
-      return fnEntry;
-    };
-    const fnEntry = getFn(actuatorId);
-    const tileDef = new BrainTileActuatorDef(actuatorId, mkActionDescriptor("actuator", fnEntry), opts);
+  const register = (
+    actuatorId: string,
+    action: typeof fnSwitchPage.descriptor,
+    opts: BrainTileDefCreateOptions = {}
+  ) => {
+    const tileDef = new BrainTileActuatorDef(actuatorId, action, opts);
     tiles.registerTileDef(tileDef);
   };
-  register(fnSwitchPage.fnId);
-  register(fnRestartPage.fnId, { deprecated: true });
+  register(fnSwitchPage.fnId, fnSwitchPage.descriptor);
+  register(fnRestartPage.fnId, fnRestartPage.descriptor, { deprecated: true });
   //register(fnYield.fnId);
 }

@@ -843,26 +843,29 @@ describe("VM -- fiber state machine", () => {
 // ---- Action calls ----
 
 describe("VM -- action calls", () => {
-  test("ACTION_CALL resolves action slot through action refs", () => {
+  test("ACTION_CALL resolves action slot through executable actions", () => {
     const actionId = "test-vm-action-call";
     let seenCallSiteId: number | undefined;
 
-    getBrainServices().functions.register(
-      actionId,
-      false,
-      {
-        exec: (ctx: ExecutionContext) => {
-          seenCallSiteId = ctx.currentCallSiteId;
-          return mkNumberValue(321);
-        },
+    const descriptor = {
+      key: actionId,
+      kind: "actuator" as const,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+    };
+    const action = {
+      binding: "host" as const,
+      descriptor,
+      execSync: (ctx: ExecutionContext) => {
+        seenCallSiteId = ctx.currentCallSiteId;
+        return mkNumberValue(321);
       },
-      mkCallDef({ type: "bag", items: [] })
-    );
+    };
 
     const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = {
       ...mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 9 }, { op: Op.RET }])], [args]),
-      actionRefs: List.from([{ slot: 0, key: actionId }]),
+      actions: List.from([action]),
     };
 
     const handles = new HandleTable(100);
@@ -883,7 +886,18 @@ describe("VM -- action calls", () => {
     const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = {
       ...mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 1, c: 0 }, { op: Op.RET }])], [args]),
-      actionRefs: List.from([{ slot: 0, key: "test-vm-action-verifier" }]),
+      actions: List.from([
+        {
+          binding: "host" as const,
+          descriptor: {
+            key: "test-vm-action-verifier",
+            kind: "actuator" as const,
+            callDef: mkCallDef({ type: "bag", items: [] }),
+            isAsync: false,
+          },
+          execSync: () => VOID_VALUE,
+        },
+      ]),
     };
 
     const handles = new HandleTable(100);

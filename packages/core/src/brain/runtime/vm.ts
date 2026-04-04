@@ -7,8 +7,9 @@ import { StringUtils as SU } from "../../platform/string";
 import { Time } from "../../platform/time";
 import { UniqueSet } from "../../platform/uniqueset";
 import type {
-  BrainProgram,
   ErrorValue,
+  ExecutableAction,
+  ExecutableBrainProgram,
   ExecutionContext,
   FunctionBytecode,
   HandleId,
@@ -345,9 +346,9 @@ class BytecodeVerifier {
       case Op.ACTION_CALL:
       case Op.ACTION_CALL_ASYNC: {
         const actionSlot = ins.a ?? 0;
-        const actionRefCount = (this.prog as BrainProgram).actionRefs?.size() ?? 0;
-        if (actionSlot < 0 || actionSlot >= actionRefCount) {
-          errors.push(`${site}: ${Op[ins.op]} actionSlot ${actionSlot} out of bounds [0, ${actionRefCount})`);
+        const actionCount = (this.prog as ExecutableBrainProgram).actions?.size() ?? 0;
+        if (actionSlot < 0 || actionSlot >= actionCount) {
+          errors.push(`${site}: ${Op[ins.op]} actionSlot ${actionSlot} out of bounds [0, ${actionCount})`);
         }
         break;
       }
@@ -962,16 +963,16 @@ export class VM implements IVM {
     return undefined;
   }
 
-  private getActionKey(actionSlot: number, opName: string): string {
-    const actionRefs = (this.prog as BrainProgram).actionRefs;
-    if (!actionRefs) {
-      throw new Error(`${opName}: program does not define action refs`);
+  private getExecutableAction(actionSlot: number, opName: string): ExecutableAction {
+    const actions = (this.prog as ExecutableBrainProgram).actions;
+    if (!actions) {
+      throw new Error(`${opName}: program does not define executable actions`);
     }
-    if (actionSlot < 0 || actionSlot >= actionRefs.size()) {
+    if (actionSlot < 0 || actionSlot >= actions.size()) {
       throw new Error(`${opName}: action slot ${actionSlot} out of bounds`);
     }
 
-    return actionRefs.get(actionSlot)!.key;
+    return actions.get(actionSlot)!;
   }
 
   private execActionCall(fiber: Fiber, ins: Instr, frame: Frame): undefined {
@@ -984,19 +985,22 @@ export class VM implements IVM {
       throw new Error(`ACTION_CALL: expected map arguments, got ${args.t}`);
     }
 
-    const actionKey = this.getActionKey(actionSlot, "ACTION_CALL");
-    const entry = this.fns.get(actionKey);
-    if (!entry) {
-      throw new Error(`ACTION_CALL: missing action binding for ${actionKey}`);
+    const action = this.getExecutableAction(actionSlot, "ACTION_CALL");
+    const actionKey = action.descriptor.key;
+    if (action.binding !== "host") {
+      throw new Error(`ACTION_CALL: bytecode action dispatch is not implemented for ${actionKey}`);
     }
-    if (entry.isAsync) {
+    if (action.descriptor.isAsync) {
       throw new Error(`ACTION_CALL: action ${actionKey} requires ACTION_CALL_ASYNC`);
+    }
+    if (!action.execSync) {
+      throw new Error(`ACTION_CALL: host action ${actionKey} is missing execSync`);
     }
 
     fiber.executionContext.currentCallSiteId = callSiteId;
     fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
 
-    const result = entry.fn.exec(fiber.executionContext, args);
+    const result = action.execSync(fiber.executionContext, args);
     this.push(fiber, result);
     frame.pc++;
     return undefined;
@@ -1012,13 +1016,16 @@ export class VM implements IVM {
       throw new Error(`ACTION_CALL_ASYNC: expected map arguments, got ${args.t}`);
     }
 
-    const actionKey = this.getActionKey(actionSlot, "ACTION_CALL_ASYNC");
-    const entry = this.fns.get(actionKey);
-    if (!entry) {
-      throw new Error(`ACTION_CALL_ASYNC: missing action binding for ${actionKey}`);
+    const action = this.getExecutableAction(actionSlot, "ACTION_CALL_ASYNC");
+    const actionKey = action.descriptor.key;
+    if (action.binding !== "host") {
+      throw new Error(`ACTION_CALL_ASYNC: bytecode action dispatch is not implemented for ${actionKey}`);
     }
-    if (!entry.isAsync) {
-      throw new Error(`ACTION_CALL_ASYNC: action ${actionKey} must be synchronous`);
+    if (!action.descriptor.isAsync) {
+      throw new Error(`ACTION_CALL_ASYNC: action ${actionKey} must use ACTION_CALL`);
+    }
+    if (!action.execAsync) {
+      throw new Error(`ACTION_CALL_ASYNC: host action ${actionKey} is missing execAsync`);
     }
 
     const hid = this.handles.createPending();
@@ -1027,7 +1034,7 @@ export class VM implements IVM {
     fiber.executionContext.currentCallSiteId = callSiteId;
     fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
 
-    entry.fn.exec(fiber.executionContext, args, hid);
+    action.execAsync(fiber.executionContext, args, hid);
     frame.pc++;
     return undefined;
   }

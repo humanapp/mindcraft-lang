@@ -6,7 +6,6 @@ import { UniqueSet } from "../../platform/uniqueset";
 import {
   type ActionCallSiteEntry,
   type ActionRef,
-  type BrainProgram,
   BYTECODE_VERSION,
   type FunctionBytecode,
   type IBrainDef,
@@ -19,6 +18,7 @@ import {
   type PageMetadata,
   type TileId,
   TRUE_VALUE,
+  type UnlinkedBrainProgram,
   Value,
 } from "../interfaces";
 import { ConstantPool } from "./constant-pool";
@@ -180,7 +180,7 @@ export class BrainCompiler {
    * @param brainDef - The brain definition to compile
    * @returns A complete BrainProgram ready for execution
    */
-  compile(brainDef: IBrainDef): BrainProgram {
+  compile(brainDef: IBrainDef): UnlinkedBrainProgram {
     // Reset state for fresh compilation
     this.constantPool = new ConstantPool();
     this.functions = List.empty();
@@ -490,7 +490,7 @@ export class BrainCompiler {
  * @param catalogs - Tile catalogs for type resolution
  * @returns A complete BrainProgram
  */
-export function compileBrain(brainDef: IBrainDef, catalogs: ReadonlyList<ITileCatalog>): BrainProgram {
+export function compileBrain(brainDef: IBrainDef, catalogs: ReadonlyList<ITileCatalog>): UnlinkedBrainProgram {
   const compiler = new BrainCompiler(catalogs);
   return compiler.compile(brainDef);
 }

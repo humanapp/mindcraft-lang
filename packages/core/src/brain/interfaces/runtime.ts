@@ -1,10 +1,12 @@
 import { Dict } from "../../platform/dict";
-import type { List } from "../../platform/list";
+import type { List, ReadonlyList } from "../../platform/list";
 import type { UniqueSet } from "../../platform/uniqueset";
 import type { EventEmitterConsumer } from "../../util";
-import type { ActionKey } from "./functions";
+import type { ITileCatalog } from "./catalog";
+import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./functions";
 import type { TileId } from "./tiles";
-import type { FunctionBytecode, Value } from "./vm";
+import type { TypeId } from "./type-system";
+import type { HandleId, MapValue, Program, Value } from "./vm";
 
 export interface ActionRef {
   slot: number;
@@ -15,26 +17,12 @@ export interface ActionCallSiteEntry {
   actionSlot: number;
   callSiteId: number;
 }
+
 /**
  * Extended Program interface for compiled brains. Adds rule-to-function mapping
  * and page metadata.
  */
-export interface BrainProgram {
-  /** Bytecode version for compatibility checking */
-  version: number;
-
-  /** All functions in the program (one per rule) */
-  functions: List<FunctionBytecode>;
-
-  /** Shared constant pool across all rules */
-  constants: List<Value>;
-
-  /** Named variable identifiers for cross-context variable access */
-  variableNames: List<string>;
-
-  /** Entry point function ID (main orchestrator, or first page's first rule) */
-  entryPoint: number;
-
+export interface UnlinkedBrainProgram extends Program {
   /**
    * Mapping from rule path to function ID.
    *
@@ -53,6 +41,67 @@ export interface BrainProgram {
    * function IDs of its root rules.
    */
   pages: List<PageMetadata>;
+}
+
+export type BrainProgram = UnlinkedBrainProgram;
+
+export interface HostActionBinding {
+  binding: "host";
+  descriptor: ActionDescriptor;
+  onPageEntered?: (ctx: ExecutionContext) => void;
+  execSync?: (ctx: ExecutionContext, args: MapValue) => Value;
+  execAsync?: (ctx: ExecutionContext, args: MapValue, handleId: HandleId) => void;
+}
+
+export interface UserActionArtifact extends Program {
+  key: ActionKey;
+  kind: ActionKind;
+  callDef: BrainActionCallDef;
+  outputType?: TypeId;
+  isAsync: boolean;
+  numStateSlots: number;
+  entryFuncId: number;
+  activationFuncId?: number;
+  revisionId: string;
+}
+
+export interface BytecodeResolvedAction {
+  binding: "bytecode";
+  descriptor: ActionDescriptor;
+  artifact: UserActionArtifact;
+}
+
+export type ResolvedAction = HostActionBinding | BytecodeResolvedAction;
+
+export interface BytecodeExecutableAction {
+  binding: "bytecode";
+  descriptor: ActionDescriptor;
+  entryFuncId: number;
+  activationFuncId?: number;
+  numStateSlots: number;
+}
+
+export type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
+
+export interface ExecutableBrainProgram extends Program {
+  ruleIndex: Dict<string, number>;
+  pages: List<PageMetadata>;
+  actions: List<ExecutableAction>;
+}
+
+export interface BrainActionResolver {
+  resolveAction(descriptor: ActionDescriptor): ResolvedAction | undefined;
+}
+
+export interface IBrainActionRegistry extends BrainActionResolver {
+  register(action: ResolvedAction): ResolvedAction;
+  getByKey(key: ActionKey): ResolvedAction | undefined;
+  size(): number;
+}
+
+export interface BrainLinkEnvironment {
+  catalogs: ReadonlyList<ITileCatalog>;
+  actionResolver: BrainActionResolver;
 }
 
 export interface PageMetadata {
@@ -108,7 +157,8 @@ export interface IBrain {
   startup(): void;
   shutdown(): void;
   think(currentTime: number): void;
-  getProgram(): BrainProgram | undefined;
+  getProgram(): ExecutableBrainProgram | undefined;
+  getCompiledProgram(): UnlinkedBrainProgram | undefined;
   rng(): number; // Returns a random number between 0 and 1.
   requestPageChange(pageIndex: number): void;
   requestPageChangeByPageId(pageId: string): void;

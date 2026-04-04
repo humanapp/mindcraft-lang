@@ -1,5 +1,6 @@
 import { Error } from "../platform/error";
 import type {
+  IBrainActionRegistry,
   IBrainTileDefBuilder,
   IConversionRegistry,
   IFunctionRegistry,
@@ -45,6 +46,7 @@ import type {
  */
 export class BrainServices {
   public readonly tiles: ITileCatalog;
+  public readonly actions: IBrainActionRegistry;
   public readonly operatorTable: IOperatorTable;
   public readonly operatorOverloads: IOperatorOverloads;
   public readonly types: ITypeRegistry;
@@ -54,6 +56,7 @@ export class BrainServices {
 
   constructor(config: {
     tiles: ITileCatalog;
+    actions: IBrainActionRegistry;
     operatorTable: IOperatorTable;
     operatorOverloads: IOperatorOverloads;
     types: ITypeRegistry;
@@ -62,6 +65,7 @@ export class BrainServices {
     conversions: IConversionRegistry;
   }) {
     this.tiles = config.tiles;
+    this.actions = config.actions;
     this.operatorTable = config.operatorTable;
     this.operatorOverloads = config.operatorOverloads;
     this.types = config.types;

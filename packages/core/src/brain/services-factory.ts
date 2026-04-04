@@ -1,4 +1,5 @@
 import type {
+  IBrainActionRegistry,
   IBrainTileDefBuilder,
   IConversionRegistry,
   IFunctionRegistry,
@@ -7,6 +8,7 @@ import type {
   ITileCatalog,
   ITypeRegistry,
 } from "./interfaces";
+import { BrainActionRegistry } from "./runtime/action-registry";
 import { ConversionRegistry } from "./runtime/conversions";
 import { FunctionRegistry } from "./runtime/functions";
 import { OperatorOverloads, OperatorTable } from "./runtime/operators";
@@ -32,6 +34,13 @@ import { TileCatalog } from "./tiles/catalog";
  */
 export function createTileCatalog(): ITileCatalog {
   return new TileCatalog();
+}
+
+/**
+ * Creates a new brain action registry instance.
+ */
+export function createActionRegistry(): IBrainActionRegistry {
+  return new BrainActionRegistry();
 }
 
 /**
@@ -98,6 +107,7 @@ export function createTileBuilder(): IBrainTileDefBuilder {
  */
 export function createBrainServices(): BrainServices {
   const tiles = createTileCatalog();
+  const actions = createActionRegistry();
   const types = createTypeRegistry();
   const functions = createFunctionRegistry();
   const conversions = createConversionRegistry(functions);
@@ -106,6 +116,7 @@ export function createBrainServices(): BrainServices {
 
   return new BrainServices({
     tiles,
+    actions,
     operatorTable,
     operatorOverloads,
     types,

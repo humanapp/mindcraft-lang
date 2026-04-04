@@ -4,8 +4,6 @@ import {
   type ActionDescriptor,
   type BrainTileDefCreateOptions,
   CoreCapabilityBits,
-  CoreTypeIds,
-  mkActionDescriptor,
   mkSensorTileId,
   TilePlacement,
   type TypeId,
@@ -60,23 +58,21 @@ export class BrainTileSensorDef extends BrainActionTileBase {
 
 export function registerCoreSensorTileDefs() {
   const tiles = getBrainServices().tiles;
-  const register = (sensorId: string, outputType: TypeId, opts: BrainTileDefCreateOptions = {}) => {
-    const fnEntry = getBrainServices().functions.get(sensorId);
-    if (!fnEntry) throw new Error(`registerCoreSensorTileDefs: missing function entry for ${sensorId}`);
-    const tileDef = new BrainTileSensorDef(sensorId, mkActionDescriptor("sensor", fnEntry, outputType), opts);
+  const register = (sensorId: string, action: typeof fnRandom.descriptor, opts: BrainTileDefCreateOptions = {}) => {
+    const tileDef = new BrainTileSensorDef(sensorId, action, opts);
     tiles.registerTileDef(tileDef);
   };
-  register(fnRandom.fnId, CoreTypeIds.Number, {
+  register(fnRandom.fnId, fnRandom.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
   });
-  register(fnOnPageEntered.fnId, CoreTypeIds.Boolean);
-  register(fnTimeout.fnId, CoreTypeIds.Boolean);
+  register(fnOnPageEntered.fnId, fnOnPageEntered.descriptor);
+  register(fnTimeout.fnId, fnTimeout.descriptor);
   const pageSensorCaps = new BitSet().set(CoreCapabilityBits.PageSensor);
-  register(fnCurrentPage.fnId, CoreTypeIds.String, {
+  register(fnCurrentPage.fnId, fnCurrentPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
   });
-  register(fnPreviousPage.fnId, CoreTypeIds.String, {
+  register(fnPreviousPage.fnId, fnPreviousPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
   });

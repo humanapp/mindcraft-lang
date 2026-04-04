@@ -172,30 +172,40 @@ These are hard boundaries, not suggestions.
 
 ## Current State
 
-As of 2026-04-03 after Phase 2, the action execution stack is split across a
-different partially migrated model:
+As of 2026-04-03 after Phase 3, the action execution stack has crossed the
+explicit compile/link boundary but still stops short of bytecode-backed action
+execution:
 
 1. Sensor and actuator tile defs store `ActionDescriptor` metadata instead of
    `BrainFunctionEntry`.
-2. Brain compilation now interns sensor and actuator `ActionDescriptor.key`
-   values into program-local `actionRefs`, emits `ACTION_CALL` /
-   `ACTION_CALL_ASYNC`, and records `PageMetadata.actionCallSites`.
-3. Operators and conversions still compile and resolve through the host
-   intrinsic path using `HOST_CALL*`.
-4. Runtime execution still uses a temporary bridge: `Brain` page activation and
-   VM action opcode handlers resolve `actionSlot -> actionRefs[actionSlot].key
-   -> getBrainServices().functions`. There is still no explicit link step or
-   executable action table.
-5. Built-in core action registration still derives descriptors from
-   `FunctionRegistry` entries via `mkActionDescriptor()`. This remains
-   transitional and must not become the permanent built-in binding model past
-   Phase 3.
-6. User-authored tiles are still compiled as ordinary bytecode programs, then
-   wrapped back into host-function closures so the brain runtime can invoke
-   them.
-7. Downstream registration code in `packages/typescript` and `apps/sim` still
-   targets the pre-Phase-1 action tile constructors and is expected to remain
-   broken until the later integration phases update those paths.
+2. Brain compilation emits `UnlinkedBrainProgram` artifacts with program-local
+   `actionRefs`, `ACTION_CALL` / `ACTION_CALL_ASYNC`, and
+   `PageMetadata.actionCallSites`.
+3. Core runtime interfaces now distinguish `UnlinkedBrainProgram`,
+   `ResolvedAction`, `ExecutableAction`, and `ExecutableBrainProgram`, with a
+   `BrainActionResolver` boundary between compile and runtime.
+4. `Brain.initialize()` now follows `compile -> link -> instantiate`.
+   `linkBrainProgram()` resolves action slots into
+   `ExecutableBrainProgram.actions` before the VM is created.
+5. Built-in core sensors and actuators now publish descriptors and host
+   bindings directly. Core runtime registration installs those bindings into a
+   `BrainActionRegistry`, and built-in tile registration consumes descriptor
+   exports instead of deriving action metadata from `FunctionRegistry` entries.
+6. The linker currently builds its descriptor lookup from both the `BrainDef`
+   rule tree and registered tile catalogs so programmatic action tiles still
+   link even when they were never catalog-registered.
+7. `Brain` page activation and VM `ACTION_CALL` / `ACTION_CALL_ASYNC` now read
+   the explicit executable action table for host-backed actions. Operators and
+   conversions still compile and execute through the host intrinsic path using
+   `HOST_CALL*`.
+8. Bytecode action linking and dispatch are still not implemented. The Phase 3
+   linker throws for bytecode bindings, and the VM only executes host-backed
+   executable actions.
+9. User-authored tiles are still compiled as ordinary bytecode programs, then
+   wrapped back into host-function closures in downstream packages.
+10. Downstream registration code in `packages/typescript` and `apps/sim` still
+    targets the pre-Phase-1 action tile constructors and/or pre-link-step
+    runtime contracts and remains deferred to later phases.
 
 The codebase already contains the raw capabilities needed for the new design:
 
@@ -520,14 +530,19 @@ executable action table.
 
 Current branch note:
 
-- Phase 2 may already have temporary VM handlers for `ACTION_CALL` and
-   `ACTION_CALL_ASYNC` that dispatch through `BrainProgram.actionRefs` back
-   into the global host-function registry.
-- Phase 4 must replace that bridge with executable-action-table dispatch. Do
-   not treat the temporary registry lookup path as the completed runtime model.
+- Phase 3 already introduced `ExecutableBrainProgram.actions`, and the current
+   VM now dispatches existing host-backed actions from that executable table.
+- Bytecode action linking and dispatch are still missing. The linker currently
+   throws for bytecode bindings, and `ACTION_CALL` / `ACTION_CALL_ASYNC`
+   intentionally stop at host-backed actions only.
+- Phase 4 therefore needs both bytecode-action link-step work and VM dispatch
+   work. Updating VM handlers alone is not enough.
+- Phase 4 must preserve the existing host-backed executable-action-table path
+   while extending it to bytecode-backed sync and async actions.
 
 ### In scope
 
+- bytecode executable-action materialization in the core link step
 - sync action dispatch
 - async action dispatch
 - verifier bounds checks for action slots
@@ -543,33 +558,39 @@ Current branch note:
 
 ### Ordered tasks
 
-1. Replace the temporary Phase 2 `ACTION_CALL` registry bridge with
-   executable-action-table sync dispatch in the VM.
-2. Replace the temporary Phase 2 `ACTION_CALL_ASYNC` registry bridge with
-   executable-action-table async dispatch in the VM.
-3. Dispatch host-backed actions directly from the executable action table.
+1. Extend the explicit brain link step so bytecode resolved actions are merged
+   into the executable program and materialized as
+   `BytecodeExecutableAction` entries with remapped program-global function
+   IDs.
+2. Preserve the existing host-backed executable-action-table dispatch path and
+   extend `ACTION_CALL` to support bytecode-backed sync actions.
+3. Extend `ACTION_CALL_ASYNC` to support bytecode-backed async actions using
+   child fibers and handle completion.
 4. Dispatch bytecode-backed sync actions by pushing an action-root frame onto
    the current fiber and returning through ordinary `RET` semantics. Do not use
    `spawnFiber()` plus an inline blocking run for sync dispatch.
-5. Dispatch bytecode-backed async actions using child fibers and handle
-   completion.
-6. Add static verifier and compiler checks that reject suspension paths inside
+5. Add static verifier and compiler checks that reject suspension paths inside
    sync bytecode actions where they are knowable, including `YIELD`, `AWAIT`,
    `HOST_CALL_ASYNC`, and `ACTION_CALL_ASYNC`.
-7. Fault the fiber at runtime if a sync bytecode action still reaches a
+6. Fault the fiber at runtime if a sync bytecode action still reaches a
    suspension point through a path that was not rejected statically.
-8. Add verifier checks for action slots.
-9. Add or update VM tests covering host-backed and bytecode-backed action
-   paths.
+7. Keep verifier checks aligned with executable-program action tables and
+   tighten them further if needed for merged bytecode actions.
+8. Add or update linker/VM tests covering host-backed regression behavior plus
+   bytecode-backed action paths.
 
 ### Likely files
 
+- `packages/core/src/brain/interfaces/runtime.ts`
+- `packages/core/src/brain/runtime/linker.ts`
 - `packages/core/src/brain/runtime/vm.ts`
 - `packages/core/src/brain/interfaces/vm.ts`
 - `packages/core/src/brain/runtime/vm.spec.ts`
 
 ### Verification
 
+- bytecode-backed actions are linked into executable action entries with
+   remapped program-global function IDs before dispatch
 - sync host-backed actions execute without the old sensor/actuator host registry
   path
 - sync bytecode-backed actions execute on the current fiber's frame stack and
@@ -1097,3 +1118,71 @@ phase boundary.
 - Updated Phase 3 and Phase 4 to call out the temporary Phase 2 runtime bridge
    explicitly so later work removes it instead of treating it as the target
    design.
+
+### Phase 3 (2026-04-03)
+
+**Planned vs actual:**
+
+Ordered tasks 1 through 5 landed within the intended core-side scope, with one
+small forward step into the next runtime phase boundary.
+
+- Core runtime interfaces now distinguish `UnlinkedBrainProgram`,
+   `ResolvedAction`, `ExecutableAction`, `ExecutableBrainProgram`, and the
+   resolver/link environment contracts needed for the explicit link step.
+- `compileBrain()` and `BrainCompiler` remained the compile step that produces
+   the unlinked artifact.
+- `Brain.initialize()` now compiles, links, then instantiates the VM, and
+   `Brain` exposes both the linked executable program and the compiled unlinked
+   program for inspection.
+- `linkBrainProgram()` was added as the explicit core link step. It resolves
+   action slots through an interface-only resolver and materializes
+   `ExecutableBrainProgram.actions`.
+- Built-in core sensors and actuators now publish stable descriptors and host
+   bindings directly. Core runtime registration installs those bindings into a
+   `BrainActionRegistry`, and built-in tile registration consumes descriptor
+   exports instead of deriving `ActionDescriptor` from `FunctionRegistry`
+   entries.
+- The runtime no longer routes action execution or page-entry hooks through
+   `getBrainServices().functions` for the steady-state action path.
+
+**Deviation from planned phase boundary:**
+
+- Phase 3 moved existing host-backed `ACTION_CALL` / `ACTION_CALL_ASYNC` and
+   page-entry execution onto the executable action table instead of leaving that
+   swap entirely for Phase 4.
+- This did not implement bytecode-backed action execution. The phase still
+   stopped short of merged bytecode artifacts, action-root frames, child-fiber
+   bytecode actions, or action-state scoping changes.
+
+**Deviations and discoveries:**
+
+- The linker needed to recover `ActionDescriptor` metadata from both the
+   `BrainDef` rule tree and the registered tile catalogs. Programmatic tests can
+   construct action tiles directly without catalog registration, so future work
+   must not assume descriptor lookup can rely on catalogs alone.
+- The built-in core binding model no longer uses
+   `BrainFunctionEntry -> ActionDescriptor` as the source of truth for actions.
+   `FunctionRegistry` still exists for host intrinsics and legacy test access,
+   but built-in action metadata and bindings now live on the runtime descriptor
+   exports plus `BrainActionRegistry`.
+- Because the VM now executes linked artifacts, action-slot verification moved
+   from `BrainProgram.actionRefs.size()` to
+   `ExecutableBrainProgram.actions.size()`. Later phases must preserve that
+   executable-artifact boundary while extending dispatch to bytecode actions.
+- Custom runtime tests that previously registered ad hoc actions only in
+   `FunctionRegistry` now also need explicit action-registry bindings. This is a
+   useful signal that the resolver boundary is real rather than an alias for the
+   old global host registry.
+
+**Verification:**
+
+- Ran `cd packages/core && npm run typecheck && npm run check && npm run build && npm test`
+- Final result: pass. Core typecheck passed, check passed, build passed, and
+   534 tests passed.
+
+**Spec updates from this post-mortem:**
+
+- Updated `Current State` to reflect the Phase 3 baseline instead of the
+   post-Phase-2 model.
+- Updated Phase 4 to start from the current host-backed executable-action-table
+   dispatch path instead of the removed registry bridge.

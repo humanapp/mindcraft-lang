@@ -1,9 +1,11 @@
 import {
+  type ActionDescriptor,
   type BrainActionCallDef,
   type BrainActionCallSpec,
   CoreActuatorId,
   callSpecToArgSlots,
   type ExecutionContext,
+  type HostActionBinding,
   type MapValue,
   mkActuatorTileId,
   mkParameterTileId,
@@ -23,14 +25,30 @@ const callDef: BrainActionCallDef = {
   argSlots,
 };
 
+const descriptor: ActionDescriptor = {
+  key: CoreActuatorId.Yield,
+  kind: "actuator",
+  callDef,
+  isAsync: false,
+};
+
 function fnYield(ctx: ExecutionContext, _args: MapValue): Value {
   // TODO: Implement
   return VOID_VALUE;
 }
+
+const binding: HostActionBinding = {
+  binding: "host",
+  descriptor,
+  execSync: fnYield,
+};
+
 export default {
   fnId: CoreActuatorId.Yield,
   tileId: mkActuatorTileId(CoreActuatorId.Yield),
   isAsync: false,
+  descriptor,
+  binding,
   fn: {
     exec: fnYield,
   },
