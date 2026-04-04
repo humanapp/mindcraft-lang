@@ -32,7 +32,6 @@ export function deserializeBrainFromArrayBuffer(buffer: ArrayBuffer): BrainDef |
       brainDef.appendNewPage();
     }
 
-    brainDef.compile();
     return brainDef;
   } catch (err) {
     console.error("Failed to deserialize brain from ArrayBuffer:", err);
@@ -112,8 +111,6 @@ export function loadBrainFromLocalStorage(archetype: Archetype): BrainDef | unde
     if (brainDef.pages().size() === 0) {
       brainDef.appendNewPage();
     }
-
-    brainDef.compile();
 
     console.log(`Brain loaded from localStorage for archetype: ${archetype}`);
     return brainDef;

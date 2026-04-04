@@ -1,5 +1,6 @@
 import type { Vector2 } from "@mindcraft-lang/core";
 import { type IBrain, type IBrainDef, mkSensorTileId } from "@mindcraft-lang/core/brain";
+import { createSimBrain } from "@/services/brain-runtime";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
 import { Mover, type MoverConfig, type Steering, steerAvoidObstacles } from "./movement";
@@ -102,6 +103,7 @@ export class Actor {
   engine: Engine;
   actorId: number;
   archetype: Archetype;
+  brainDef: IBrainDef;
   brain: IBrain;
   mover: Mover;
   sprite: Phaser.Physics.Matter.Sprite;
@@ -138,7 +140,8 @@ export class Actor {
     this.engine = engine;
     this.actorId = 0; // to be assigned later
     this.archetype = archetype;
-    this.brain = brainDef.compile();
+    this.brainDef = brainDef;
+    this.brain = createSimBrain(this.brainDef, this);
     this.mover = new Mover(moverCfg);
     this.sprite = null!; // to be assigned later
     this.bornAt = this.engine.clock.now;
@@ -157,17 +160,16 @@ export class Actor {
       this.animalComp = new AnimalComp(this);
     }
 
-    this.brain.initialize(this);
     this.brain.events().on("page_activated", this.pageActivated);
     this.brain.events().on("page_deactivated", this.pageDeactivated);
     this.brain.startup();
   }
 
-  replaceBrain(brainDef: IBrainDef) {
+  replaceBrain(brainDef: IBrainDef = this.brainDef) {
+    this.brainDef = brainDef;
     this.brain.shutdown();
     this.brain.events().removeAllListeners();
-    this.brain = brainDef.compile();
-    this.brain.initialize(this);
+    this.brain = createSimBrain(this.brainDef, this);
     this.brain.events().on("page_activated", this.pageActivated);
     this.brain.events().on("page_deactivated", this.pageDeactivated);
     this.brain.startup();

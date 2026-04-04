@@ -646,7 +646,9 @@ executable-brain invalidation and rebuild.
 When a user-authored action compiles successfully:
 
 1. update the app-side action artifact registry for that `ActionKey`
-2. record the new artifact `revisionId`
+2. record a stable revision for that artifact; if the compiler-emitted
+  `revisionId` is build-ephemeral, derive a deterministic content-based
+  revision before comparing dependencies
 3. invalidate any cached `ExecutableBrainProgram` whose linked action revisions
    include that key at an older revision
 4. replace every active `Brain` instance whose executable program was

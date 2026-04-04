@@ -1,24 +1,15 @@
 import { getBrainServices } from "@mindcraft-lang/core/brain";
 import { BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
-import type { ActionDef } from "@/brain/fns/action-def";
+import { type ActionDef, buildActionDescriptor } from "@/brain/fns/action-def";
 import fnBump from "@/brain/fns/sensors/bump";
 import fnSee from "@/brain/fns/sensors/see";
 
 export function registerSensorTiles() {
-  const { functions, tiles } = getBrainServices();
-
-  function getFn(tileId: string) {
-    const fn = functions.get(tileId);
-    if (!fn) {
-      throw new Error(`Function not registered: ${tileId}`);
-    }
-    return fn;
-  }
+  const { tiles } = getBrainServices();
 
   function registerSensor(fnDef: ActionDef) {
-    const fn = getFn(fnDef.tileId);
     tiles.registerTileDef(
-      new BrainTileSensorDef(fnDef.tileId, fn, fnDef.returnType, {
+      new BrainTileSensorDef(fnDef.tileId, buildActionDescriptor("sensor", fnDef), {
         visual: fnDef.visual,
         capabilities: fnDef.capabilities,
       })

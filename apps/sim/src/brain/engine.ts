@@ -17,6 +17,7 @@ const GAZE_SMOOTHING = 0.08; // Lerp factor per frame (lower = smoother)
 import type { Vector2 } from "@mindcraft-lang/core";
 import { heatColor } from "@/lib/color";
 import { getDefaultBrain, loadBrainFromLocalStorage } from "../services/brain-persistence";
+import { type ActiveBrainContainer, registerActiveBrainContainer, shouldRebuildBrain } from "../services/brain-runtime";
 import { loadDesiredCounts } from "../services/population-persistence";
 import { drawMovementIntent } from "./movement";
 import { type ScoreSnapshot, ScoreTracker } from "./score";
@@ -29,11 +30,12 @@ import {
   type SightResult,
 } from "./vision";
 
-export class Engine {
+export class Engine implements ActiveBrainContainer {
   private world: ECS.World<Actor>;
   private actors: { [key in Archetype]: ECS.Query<Actor> };
   private brains: { [key in Archetype]: BrainDef };
   private moverCfg: { [key in Archetype]: Partial<MoverConfig> };
+  private unregisterActiveBrainContainer?: () => void;
 
   get clock(): Phaser.Time.Clock {
     return this.scene.time;
@@ -145,6 +147,10 @@ export class Engine {
   }
 
   start() {
+    if (!this.unregisterActiveBrainContainer) {
+      this.unregisterActiveBrainContainer = registerActiveBrainContainer(this);
+    }
+
     // Create the spatial grid after the scene is ready so dimensions are known.
     // Cell size 150px balances grid granularity vs. overhead for typical vision ranges (600px).
     this.grid = new SpatialGrid(this.worldWidth, this.worldHeight, 150);
@@ -167,6 +173,11 @@ export class Engine {
   }
 
   shutdown() {
+    if (this.unregisterActiveBrainContainer) {
+      this.unregisterActiveBrainContainer();
+      this.unregisterActiveBrainContainer = undefined;
+    }
+
     // Clean up blips
     this.blipPool.destroyAll();
 
@@ -331,6 +342,14 @@ export class Engine {
     const actorsQuery = this.actors[archetype];
     for (const actor of actorsQuery.entities) {
       actor.replaceBrain(newBrainDef);
+    }
+  }
+
+  rebuildBrainsUsingChangedActions(changedRevisions: ReadonlyMap<string, string>): void {
+    for (const actor of this.world.entities) {
+      if (shouldRebuildBrain(actor.brain, changedRevisions)) {
+        actor.replaceBrain();
+      }
     }
   }
 

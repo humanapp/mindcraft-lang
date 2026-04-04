@@ -172,9 +172,9 @@ These are hard boundaries, not suggestions.
 
 ## Current State
 
-As of 2026-04-03 after Phase 6, the action execution stack now reaches direct
-user-action artifacts in `packages/typescript`, while sim-side resolver wiring
-and executable-brain rebuild behavior are still pending:
+As of 2026-04-03 after Phase 7, the action execution stack now reaches the
+resolver-backed sim runtime path end to end, while the remaining work is
+cleanup, persistence policy, and documentation alignment:
 
 1. Sensor and actuator tile defs store `ActionDescriptor` metadata instead of
    `BrainFunctionEntry`.
@@ -218,24 +218,35 @@ and executable-brain rebuild behavior are still pending:
 12. Page activation now resets each action callsite deterministically and
    dispatches the correct activation hook once per activation for both host
    `onPageEntered` handlers and bytecode `activationFuncId` hooks.
-13. `packages/typescript` now typechecks cleanly against the direct artifact
-   contract, but `apps/sim` is still on stale pre-Phase-6 integration code:
-   built-in sim tile registration still derives actions from
-   `FunctionRegistry`, and `user-tile-registration.ts` still imports removed
-   TypeScript symbols and fabricates metadata-only compiled-program stubs.
-   Phase 7 starts by making sim compile against the new API surface instead of
-   restoring compatibility exports.
-14. `packages/typescript` now emits `UserActionArtifact`-shaped user programs
+13. `packages/typescript` now emits `UserActionArtifact`-shaped user programs
    with stable `ActionKey`s, artifact-local `entryFuncId` /
    `activationFuncId`, direct `isAsync`, and `revisionId` fields instead of
    wrapper-era runtime metadata.
-15. `packages/typescript` no longer exports a VM/scheduler-capturing wrapper
+14. `packages/typescript` no longer exports a VM/scheduler-capturing wrapper
    runtime for user tiles. `linkUserPrograms()` now remains only as a pure
    bytecode merge/remap helper returning artifact offsets and remapped debug
    metadata.
-16. `packages/typescript` runtime registration now publishes parameter tiles,
+15. `packages/typescript` runtime registration now publishes parameter tiles,
    tile metadata, and direct `BytecodeResolvedAction` artifacts into the core
    action registry without mutating `FunctionRegistry` entries in place.
+16. `apps/sim` built-in sensor and actuator registration now constructs
+   `ActionDescriptor` metadata and host action bindings directly. Sim tile
+   defs no longer derive action metadata from `FunctionRegistry` entries.
+17. Sim startup now hydrates user-tile catalog metadata from
+   `sim:user-tile-metadata` before live bridge compilation begins, so
+   persisted brains can deserialize by tile ID without fabricating empty
+   compiled-program stubs or no-op host wrappers.
+18. `apps/sim` now creates brains through a resolver-backed factory that links
+   against both core host-backed actions and the current user-action artifact
+   registry. Actor construction, brain replacement, and persisted-brain loads
+   now all flow through that resolver path.
+19. User tile recompilation in the sim now publishes direct artifacts,
+   preserves the last successful live artifacts when recompilation fails, and
+   rebuilds only active brains whose tracked action revisions are stale.
+20. The sim currently derives deterministic content-based action revisions for
+   rebuild invalidation because compiler-emitted `revisionId` values are
+   build-ephemeral. No executable-brain cache has been added yet, so affected
+   actor brains are recreated individually from current artifacts.
 
 The codebase already contains the raw capabilities needed for the new design:
 
@@ -1060,18 +1071,23 @@ startup/runtime path.
 
 Current branch note:
 
-- By the end of Phase 6, most wrapper-oriented runtime code has already been
-   removed from `packages/typescript`. The remaining cleanup is concentrated in
-   sim-side startup and persistence shims plus docs that still describe
-   host-function registration.
+- After Phase 7, the sim now uses the resolver-based action path end to end.
+   Remaining cleanup is concentrated in startup/persistence policy and docs,
+   not in missing runtime wiring.
+- `sim:user-tile-metadata` is now a pure startup metadata cache used to
+   register user tile catalogs before the first live compile. It no longer
+   fabricates compiled programs or no-op host bindings.
 - The persisted `BrainDef` format itself is still tile-ID based and has not
    been version-bumped by the action execution redesign. The real persistence
-   risk is startup tile resolution for user-authored tiles, especially the
-   wrapper-era `sim:user-tile-metadata` cache and any startup flow that depends
-   on it.
-- Phase 8 should delete dead compatibility paths only after Phase 7 proves the
-   resolver and rebuild flow end-to-end. It is not the phase to invent another
-   transition layer.
+   question for Phase 8 is whether the metadata cache should be kept,
+   version-bumped, or cleared explicitly.
+- No executable-brain cache landed in Phase 7. Rebuild invalidation currently
+   tracks dependencies per live `Brain` instance and recreates affected actor
+   brains individually.
+- The sim runtime currently derives deterministic content-based action
+   revisions for rebuild invalidation because compiler-emitted `revisionId`
+   values are build-ephemeral. Phase 8 should not treat raw compiler revision
+   IDs as persistence-stable cache keys.
 
 ### In scope
 
@@ -1114,10 +1130,11 @@ Current branch note:
 ### Verification
 
 - no runtime path depends on user tiles being registered as host functions
-- existing saved brains that reference still-registered built-in tiles remain
-   deserializable and compilable after startup
+- existing saved brains remain deserializable and compilable after startup for
+   every tile whose metadata is intentionally retained by the final load path
 - only genuinely incompatible local storage state is cleared or versioned out
-   explicitly, with user-tile metadata cache being the primary expected target
+   explicitly; do not assume `sim:user-tile-metadata` must be reset unless its
+   retained shape is shown to be unsound
 - if any persisted brain keys must be invalidated, the exact incompatibility is
    identified and documented instead of assuming all saved brains are stale
 - a clean sim startup after any required reset repopulates tile metadata and
@@ -1572,3 +1589,76 @@ scope.
    post-Phase-5 model.
 - Updated Phase 7 current-branch notes to reflect the direct artifact
    registration API that the sim app now needs to consume.
+
+### Phase 7 (2026-04-03)
+
+**Planned vs actual:**
+
+Ordered tasks 1 through 7, 9, and 10 landed within the intended sim-side
+scope. Ordered task 8 became moot because no executable-brain cache was
+introduced, and ordered task 11 was intentionally left unimplemented.
+
+- Sim built-in sensor and actuator registration now constructs
+   `ActionDescriptor` metadata and host-backed bindings directly. Tile defs no
+   longer consume `BrainFunctionEntry` for action metadata.
+- User tile registration now has two explicit responsibilities: startup
+   metadata hydration from `sim:user-tile-metadata` and live artifact
+   publication from successful compile results.
+- The synthetic empty-program and user-link bootstrap path was removed.
+   Cached user tiles no longer fabricate compiled programs or no-op host
+   wrappers just to populate the catalog.
+- Startup now registers cached user-tile metadata before bridge compilation
+   begins so persisted brains can deserialize by tile ID before the first live
+   compile finishes.
+- `apps/sim` now creates brains through a resolver-backed factory that links
+   against both core host-backed actions and the current user-action artifact
+   registry.
+- Recompilation now compares tracked per-brain action revisions, rebuilds only
+   affected active brains, and restarts each affected actor brain from the
+   same `BrainDef` and host object instead of patching live VM or scheduler
+   state.
+- Failed recompilation now keeps the last successful action artifacts and the
+   currently running brains alive.
+- No executable-brain cache was added. This matched the optional task 11
+   boundary and kept correctness-focused invalidation explicit.
+
+**Deviation from planned phase boundary:**
+
+- No material deviation. The optional executable-brain cache was intentionally
+   omitted; invalidation currently targets active brain instances directly
+   instead of cached immutable programs.
+
+**Deviations and discoveries:**
+
+- `packages/typescript` `revisionId` values are build-ephemeral rather than
+   content-stable. The sim therefore normalizes user artifacts to deterministic
+   content-hash revisions before comparing dependencies for rebuild
+   invalidation.
+- The startup metadata cache remains necessary for early persisted-brain tile
+   resolution, but it is now pure tile metadata rather than a fake compiled
+   program bootstrap. Phase 8 should decide explicitly whether to keep,
+   version-bump, or clear that cache.
+- Correct failed-recompile behavior requires keeping the last successful action
+   artifact for a file when the latest compile result still has diagnostics and
+   no emitted program. Treating "no new artifact" as an implicit deletion
+   would tear down live runtime state incorrectly.
+- Rebuild scope is per live actor brain, not process-wide. Actors that share a
+   `BrainDef` still recreate separate `Brain` instances so VM, scheduler,
+   fiber, and action-instance state remain isolated.
+
+**Verification:**
+
+- Ran `cd apps/sim && npm run typecheck && npm run check`
+- Ran `cd packages/core && npm run check && npm run build && npm test`
+- Ran `cd packages/typescript && npm run typecheck && npm run check && npm test`
+- Final result: pass. Sim typecheck and check passed; core check, build, and
+   test passed with 544 tests passing; TypeScript typecheck, check, and test
+   passed with 520 tests passing.
+
+**Spec updates from this post-mortem:**
+
+- Updated `Current State` to reflect the Phase 7 baseline instead of the
+   post-Phase-6 model.
+- Updated Phase 8 current-branch notes to reflect the resolver-based sim
+   baseline, the remaining metadata-cache decision, and the absence of an
+   executable-brain cache.

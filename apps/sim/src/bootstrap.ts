@@ -21,11 +21,11 @@ setTileVisualProvider(genVisualForTile);
 registerCoreBrainComponents();
 registerBrainComponents();
 
+// Register user-authored tiles so brains referencing them can deserialize
+
+registerUserTilesAtStartup();
+
 // ----------------------------------------------------
 // Initialize project and compile user tiles
 
 initProject();
-
-// Register user-authored tiles so brains referencing them can deserialize
-
-registerUserTilesAtStartup();
