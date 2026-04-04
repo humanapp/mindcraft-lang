@@ -270,6 +270,19 @@ function deleteRegisteredTile(key: string): void {
   registeredTiles.delete(key);
 }
 
+function resolveMetadataOutputType(outputType: string | undefined): string | undefined {
+  if (outputType === undefined) {
+    return undefined;
+  }
+
+  const { types } = getBrainServices();
+  if (types.get(outputType)) {
+    return outputType;
+  }
+
+  return types.resolveByName(outputType);
+}
+
 function registerMetadata(metadata: UserTileMetadata): boolean {
   deleteRegisteredTile(metadata.key);
 
@@ -279,7 +292,7 @@ function registerMetadata(metadata: UserTileMetadata): boolean {
     kind: metadata.kind,
     callDef: mkCallDef(metadata.callSpec),
     isAsync: metadata.isAsync,
-    outputType: metadata.outputType ? types.resolveByName(metadata.outputType) : undefined,
+    outputType: resolveMetadataOutputType(metadata.outputType),
   };
 
   if (metadata.kind === "sensor" && descriptor.outputType === undefined) {
