@@ -2,6 +2,7 @@ import {
   type BrainAsyncFunctionEntry,
   getBrainServices,
   type HostAsyncFn,
+  mkActionDescriptor,
   mkParameterTileId,
   tiles as tileDefs,
 } from "@mindcraft-lang/core/brain";
@@ -32,10 +33,11 @@ export function registerUserTile(linkInfo: UserTileLinkInfo, hostFn: HostAsyncFn
   }
 
   const fnEntry = functions.register(pgmId, true, hostFn, program.callDef);
+  const actionDescriptor = mkActionDescriptor(program.kind, fnEntry, program.outputType);
 
   if (program.kind === "sensor") {
-    tiles.registerTileDef(new tileDefs.BrainTileSensorDef(pgmId, fnEntry, program.outputType!));
+    tiles.registerTileDef(new tileDefs.BrainTileSensorDef(pgmId, actionDescriptor));
   } else {
-    tiles.registerTileDef(new tileDefs.BrainTileActuatorDef(pgmId, fnEntry));
+    tiles.registerTileDef(new tileDefs.BrainTileActuatorDef(pgmId, actionDescriptor));
   }
 }

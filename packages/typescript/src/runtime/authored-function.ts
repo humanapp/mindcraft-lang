@@ -5,6 +5,7 @@ import {
   type ExecutionContext,
   type Fiber,
   getCallSiteState,
+  getOrCreateActionInstance,
   type HandleId,
   type HostAsyncFn,
   type MapValue,
@@ -24,7 +25,7 @@ export function createUserTileExec(
   scheduler: Scheduler
 ): HostAsyncFn {
   const { linkedEntryFuncId, linkedInitFuncId, linkedOnPageEnteredFuncId, program } = linkInfo;
-  const { numCallsiteVars, execIsAsync } = program;
+  const { numStateSlots, execIsAsync } = program;
   const hasParams = linkedProgram.functions.get(linkedEntryFuncId).numParams > 1;
   let nextFiberId = -1;
 
@@ -62,6 +63,29 @@ export function createUserTileExec(
     };
   }
 
+  function bindActionState(fiber: Fiber, ctx: ExecutionContext, callsiteVars: List<Value>): void {
+    const callSiteId = ctx.currentCallSiteId;
+    if (callSiteId === undefined) {
+      return;
+    }
+
+    const actionInstance = getOrCreateActionInstance(ctx, callSiteId, numStateSlots);
+    actionInstance.stateSlots = callsiteVars;
+    fiber.executionContext.currentActionInstance = actionInstance;
+
+    const frame = fiber.frames.get(0);
+    if (!frame) {
+      return;
+    }
+
+    frame.actionBinding = {
+      actionKey: program.name,
+      callSiteId,
+      isAsync: execIsAsync,
+      actionInstance,
+    };
+  }
+
   function runFiberInline(
     funcId: number,
     args: List<Value>,
@@ -70,7 +94,7 @@ export function createUserTileExec(
   ): Value | undefined {
     const fiberId = nextFiberId--;
     const fiber = vm.spawnFiber(fiberId, funcId, args, { ...ctx });
-    fiber.callsiteVars = callsiteVars;
+    bindActionState(fiber, fiber.executionContext, callsiteVars);
     fiber.instrBudget = 10000;
     const result = vm.runFiber(fiber, scheduler);
     if (result.status === VmStatus.DONE) {
@@ -84,7 +108,7 @@ export function createUserTileExec(
     if (vars) return vars;
 
     vars = List.empty<Value>();
-    for (let i = 0; i < numCallsiteVars; i++) {
+    for (let i = 0; i < numStateSlots; i++) {
       vars.push(NIL_VALUE);
     }
     setCallSiteState(ctx, vars);
@@ -109,7 +133,7 @@ export function createUserTileExec(
 
     const fiberId = nextFiberId--;
     const fiber = vm.spawnFiber(fiberId, linkedEntryFuncId, fiberArgs, { ...ctx });
-    fiber.callsiteVars = callsiteVars;
+    bindActionState(fiber, fiber.executionContext, callsiteVars);
 
     pendingAsyncFibers.set(fiberId, outerHandleId);
     scheduler.addFiber!(fiber);

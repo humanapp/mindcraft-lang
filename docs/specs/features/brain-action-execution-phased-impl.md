@@ -172,9 +172,9 @@ These are hard boundaries, not suggestions.
 
 ## Current State
 
-As of 2026-04-03 after Phase 4, the action execution stack now reaches
-bytecode-backed action dispatch in core, but still stops short of unified
-action-instance state and downstream artifact adoption:
+As of 2026-04-03 after Phase 5, the action execution stack now reaches unified
+action-instance state in core plus limited downstream contract alignment, but
+direct user-action artifact adoption and sim integration are still pending:
 
 1. Sensor and actuator tile defs store `ActionDescriptor` metadata instead of
    `BrainFunctionEntry`.
@@ -201,8 +201,7 @@ action-instance state and downstream artifact adoption:
 8. `linkBrainProgram()` now merges bytecode resolved actions into the
    executable program and materializes `BytecodeExecutableAction` entries with
    remapped function IDs, constants, and variable-name indexes. If present,
-   `activationFuncId` is linked as executable metadata, but bytecode page
-   activation dispatch is still deferred.
+   `activationFuncId` is linked as executable metadata.
 9. VM `ACTION_CALL` now executes sync bytecode-backed actions on the current
    fiber by entering an action-root frame, while `ACTION_CALL_ASYNC` runs async
    bytecode-backed actions on child fibers and resolves the returned handle
@@ -211,24 +210,29 @@ action-instance state and downstream artifact adoption:
    rejects statically knowable sync suspension paths. The VM still faults the
    fiber if a sync bytecode action reaches suspension through an indirect or
    otherwise runtime-only path.
-11. Action dispatch now threads `currentCallSiteId` and caller rule metadata
-   through bytecode action frames, but persistent action state still relies on
-   a temporary `ExecutionContext.callSiteState` / `fiber.callsiteVars` bridge
-   rather than the final action-instance model.
-12. User-authored tiles are still compiled as ordinary bytecode programs, then
-   wrapped back into host-function closures in downstream packages.
-13. Downstream registration code in `packages/typescript` and `apps/sim` still
-    targets the pre-Phase-1 action tile constructors and/or pre-link-step
-    runtime contracts. In particular,
-    `packages/typescript/src/runtime/registration-bridge.ts` still registers
-    user tiles through `FunctionRegistry`,
-    `apps/sim/src/brain/tiles/sensors.ts` /
-    `apps/sim/src/brain/tiles/actuators.ts` still build built-in tiles from
-    `BrainFunctionEntry`, and
-    `apps/sim/src/services/user-tile-registration.ts` still fabricates
-    metadata-only program/link stubs plus no-op host functions. That synthetic
-    program path now lags the core unlinked-program shape and must be replaced,
-    not patched forward.
+11. Persistent action state is now represented by page-activation-scoped
+   `ActionInstance` records keyed by action callsite. `ExecutionContext`
+   binds the current action instance explicitly, and bytecode
+   `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` now resolve through that action
+   binding instead of the fiber-global runtime path.
+12. Page activation now resets each action callsite deterministically and
+   dispatches the correct activation hook once per activation for both host
+   `onPageEntered` handlers and bytecode `activationFuncId` hooks.
+13. `packages/typescript` has partial Phase 5 alignment only: runtime-facing
+   state-slot naming now uses `numStateSlots`, the wrapper runtime binds the
+   current action instance, `linkUserPrograms()` preserves the current
+   `BrainProgram` shape, and user-tile registration now constructs
+   `ActionDescriptor`-based tiles. User-authored tiles are still wrapped back
+   into host-function closures instead of being published as direct action
+   artifacts.
+14. Downstream sim integration still targets older registration/runtime
+   contracts. `apps/sim/src/brain/tiles/sensors.ts` /
+   `apps/sim/src/brain/tiles/actuators.ts` still build built-in tiles from
+   `BrainFunctionEntry`, and
+   `apps/sim/src/services/user-tile-registration.ts` still fabricates
+   metadata-only program/link stubs plus no-op host functions. That synthetic
+   program path now lags the core unlinked-program shape and must be replaced,
+   not patched forward.
 
 The codebase already contains the raw capabilities needed for the new design:
 
@@ -784,14 +788,24 @@ action artifacts that the core linker can bind directly.
 
 Current branch note:
 
-- `UserAuthoredProgram` still uses legacy fields such as `numCallsiteVars`,
-   `initFuncId`, `execIsAsync`, and `programRevisionId`.
+- `UserAuthoredProgram` now uses `numStateSlots` rather than
+   `numCallsiteVars`, but it still carries wrapper-era runtime fields such as
+   `initFuncId`, `lifecycleFuncIds`, `execIsAsync`, and
+   `programRevisionId`.
+- `UserTileLinkInfo` still exposes wrapper-oriented linked IDs
+   (`linkedInitFuncId` and `linkedOnPageEnteredFuncId`), so
+   `linkUserPrograms()` remains coupled to wrapper execution instead of being a
+   pure artifact/link helper.
+- `packages/typescript/src/runtime/authored-function.ts` now binds wrapper
+   fibers through the core action-instance model, but it still captures a
+   VM/scheduler pair and executes user tiles as host-function closures.
 - `packages/typescript/src/runtime/registration-bridge.ts` still registers user
-   tiles through `FunctionRegistry`, mutates existing async entries in place,
-   and constructs user action tiles through the pre-Phase-1 constructor path.
+   tiles through `FunctionRegistry` and mutates existing async entries in
+   place, even though it now constructs `ActionDescriptor`-based tiles through
+   the current constructor contract.
 - `linkUserPrograms()` is still being used as wrapper-preparation glue for
-   downstream registration. Phase 6 must turn it into pure artifact/link support
-   or remove it from that runtime role.
+   downstream registration. Phase 6 must turn it into pure artifact/link
+   support or remove it from that runtime role.
 
 ### In scope
 
@@ -812,8 +826,8 @@ Current branch note:
 
 1. Replace `UserAuthoredProgram` runtime-facing fields with a cleaner action
    artifact shape aligned with the architecture spec.
-2. Collapse `initFuncId` plus lifecycle wrapper semantics into a direct
-   `activationFuncId` export if possible.
+2. Collapse `initFuncId` plus `lifecycleFuncIds` wrapper semantics into a
+   direct `activationFuncId` export if possible.
 3. Keep `entryFuncId` and `activationFuncId` artifact-local. Do not precompute
    merged-program function indexes inside `packages/typescript`.
 4. Remove `createUserTileExec` from the intended runtime path.
@@ -821,13 +835,14 @@ Current branch note:
    action artifacts, not host-function closures or `FunctionRegistry`
    swap-in-place mutations.
 6. If `linkUserPrograms()` remains in this phase, keep it only as a pure
-   bytecode merge/remap helper, not as wrapper-preparation glue for runtime
-   registration.
+   bytecode merge/remap helper. It must stop returning wrapper-oriented linked
+   IDs for runtime registration.
 7. Update compiler and linker tests accordingly.
 
 ### Likely files
 
 - `packages/typescript/src/compiler/types.ts`
+- `packages/typescript/src/compiler/lowering.ts`
 - `packages/typescript/src/compiler/project.ts`
 - `packages/typescript/src/linker/linker.ts`
 - `packages/typescript/src/runtime/authored-function.ts`
@@ -1342,3 +1357,74 @@ Ordered tasks 1 through 8 landed within the intended core-side scope.
 - Updated Phase 5 to start from the new bytecode-action dispatch baseline and
    call out the temporary state bridge plus deferred bytecode activation
    dispatch.
+
+### Phase 5 (2026-04-03)
+
+**Planned vs actual:**
+
+Ordered tasks 1 through 6 landed within the intended core-first scope, with
+only the limited `packages/typescript` contract alignment explicitly allowed by
+the phase.
+
+- Core runtime now defines page-activation-scoped `ActionInstance` records and
+   threads them through `ExecutionContext.currentActionInstance` plus action
+   frame bindings.
+- VM `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` now resolve through the current
+   action-instance state slots, and helper `CALL`s inside an action inherit the
+   same binding.
+- Host `getCallSiteState()` / `setCallSiteState()` now read and write the
+   current action instance rather than an execution-context-global map keyed
+   only by callsite ID.
+- `Brain.activatePage()` now resets each action callsite deterministically and
+   dispatches both host `onPageEntered` hooks and bytecode
+   `activationFuncId` hooks once per activation.
+- Runtime-facing `packages/typescript` fields now use `numStateSlots`, the
+   wrapper runtime binds current action instances, and local
+   linker/registration/spec helpers were aligned to the current
+   `BrainProgram` and tile-constructor contracts.
+- Added regression coverage for action-state slot isolation, host-backed state
+   isolation/reset behavior, and bytecode activation-hook behavior.
+
+**Deviation from planned phase boundary:**
+
+- No material deviation. `packages/typescript` edits stayed limited to field
+   renames and contract alignment needed to keep the existing wrapper path
+   compiling and type-safe; Phase 6 wrapper removal and artifact-shape redesign
+   remain pending.
+
+**Deviations and discoveries:**
+
+- Page activation has to run action-state reset and activation dispatch before
+   spawning root rule fibers, otherwise one-shot activation semantics and clean
+   page-restart reset behavior are not deterministic.
+- Host-backed actions fit the unified model cleanly once `ExecutionContext`
+   carries `currentActionInstance`; forcing them onto a `numStateSlots`-style
+   executable contract would have been the wrong abstraction.
+- A narrow `fiber.callsiteVars` fallback is still needed for current
+   wrapper-oriented direct VM/test paths, but core action dispatch no longer
+   depends on that fiber-global bridge.
+- Phase 5 exposed stale downstream core-contract assumptions beyond
+   `numStateSlots`, specifically missing `actionRefs` in linked-program helpers
+   and old tile-constructor usage in `packages/typescript`
+   registration/test code. Those were fixed as contract alignment, not as
+   Phase 6 artifact redesign.
+- Bytecode activation hooks now execute inline during page activation and
+   cannot suspend. Later phases must treat activation dispatch as eager startup
+   work, not as scheduler-driven async behavior.
+
+**Verification:**
+
+- Ran `cd packages/core && npm run typecheck`
+- Ran `cd packages/core && npm run check && npm run build && npm test`
+- Ran `cd packages/typescript && npm run typecheck && npm run check && npm test`
+- Final result: pass. Core typecheck passed; core check, build, and test passed
+   with 544 tests passing. TypeScript typecheck, check, and test passed with
+   533 tests passing.
+
+**Spec updates from this post-mortem:**
+
+- Updated `Current State` to reflect the Phase 5 baseline instead of the
+   post-Phase-4 model.
+- Updated Phase 6 current-branch notes to reflect the limited TypeScript
+   contract alignment already landed in Phase 5 and narrow the remaining
+   wrapper-removal work.

@@ -1,5 +1,5 @@
 import { Dict } from "../../platform/dict";
-import type { List, ReadonlyList } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import type { UniqueSet } from "../../platform/uniqueset";
 import type { EventEmitterConsumer } from "../../util";
 import type { ITileCatalog } from "./catalog";
@@ -7,6 +7,7 @@ import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from
 import type { TileId } from "./tiles";
 import type { TypeId } from "./type-system";
 import type { HandleId, MapValue, Program, Value } from "./vm";
+import { NIL_VALUE } from "./vm";
 
 export interface ActionRef {
   slot: number;
@@ -128,11 +129,20 @@ export interface PageMetadata {
 }
 
 /**
- * Per-call-site state storage for host functions.
- * Keyed by call-site ID (assigned at compile time).
- * Each host function can store arbitrary state that persists across ticks.
+ * Page-activation-scoped action-instance state.
+ *
+ * Bytecode-backed actions use `stateSlots` for LOAD_CALLSITE_VAR /
+ * STORE_CALLSITE_VAR. Host-backed actions store their opaque persistent payload
+ * in `hostState` via getCallSiteState()/setCallSiteState().
  */
-export type CallSiteStateMap = Dict<number, unknown>;
+export interface ActionInstance {
+  callSiteId: number;
+  stateSlots: List<Value>;
+  hostState?: unknown;
+}
+
+export type ActionInstanceMap = Dict<number, ActionInstance>;
+export type CallSiteStateMap = ActionInstanceMap;
 
 export type BrainEvents = {
   page_activated: { pageIndex: number };
@@ -270,13 +280,16 @@ export interface ExecutionContext {
   data?: unknown;
 
   /**
-   * Per-call-site state storage for host functions.
-   * Each HOST_CALL instruction has a unique call-site ID assigned at compile time.
-   * Host functions can use this to persist state across ticks (e.g., cooldown timestamps).
-   *
-   * Initialized lazily on first use. Use getCallSiteState/setCallSiteState helpers.
+   * Page-activation-scoped action-instance storage keyed by action call-site ID.
+   * Runtime code binds the current action instance through `currentActionInstance`.
    */
   callSiteState?: CallSiteStateMap;
+
+  /**
+   * The currently bound action instance for host-backed action execution or the
+   * current bytecode action frame chain.
+   */
+  currentActionInstance?: ActionInstance;
 
   /**
    * Current call-site ID being executed.
@@ -316,6 +329,82 @@ export interface ExecutionContext {
   currentTick: number;
 }
 
+function createActionStateSlots(numStateSlots: number): List<Value> {
+  const stateSlots = List.empty<Value>();
+  for (let i = 0; i < numStateSlots; i++) {
+    stateSlots.push(NIL_VALUE);
+  }
+  return stateSlots;
+}
+
+function isActionInstance(value: unknown): value is ActionInstance {
+  if (!value) {
+    return false;
+  }
+
+  const maybeActionInstance = value as Partial<ActionInstance>;
+  return maybeActionInstance.callSiteId !== undefined && maybeActionInstance.stateSlots !== undefined;
+}
+
+export function getActionInstance(ctx: ExecutionContext, callSiteId: number): ActionInstance | undefined {
+  const rawValue = ctx.callSiteState?.get(callSiteId) as unknown;
+  if (rawValue === undefined) {
+    return undefined;
+  }
+
+  if (isActionInstance(rawValue)) {
+    return rawValue;
+  }
+
+  const actionInstance: ActionInstance = {
+    callSiteId,
+    stateSlots: List.empty<Value>(),
+    hostState: rawValue,
+  };
+  ctx.callSiteState!.set(callSiteId, actionInstance);
+  return actionInstance;
+}
+
+export function getOrCreateActionInstance(
+  ctx: ExecutionContext,
+  callSiteId: number,
+  numStateSlots: number
+): ActionInstance {
+  if (!ctx.callSiteState) {
+    ctx.callSiteState = new Dict<number, ActionInstance>();
+  }
+
+  const existing = getActionInstance(ctx, callSiteId);
+  if (existing) {
+    return existing;
+  }
+
+  const actionInstance: ActionInstance = {
+    callSiteId,
+    stateSlots: createActionStateSlots(numStateSlots),
+  };
+  ctx.callSiteState.set(callSiteId, actionInstance);
+  return actionInstance;
+}
+
+export function resetActionInstance(ctx: ExecutionContext, callSiteId: number, numStateSlots: number): ActionInstance {
+  if (!ctx.callSiteState) {
+    ctx.callSiteState = new Dict<number, ActionInstance>();
+  }
+
+  const actionInstance: ActionInstance = {
+    callSiteId,
+    stateSlots: createActionStateSlots(numStateSlots),
+  };
+  ctx.callSiteState.set(callSiteId, actionInstance);
+
+  if (ctx.currentCallSiteId === callSiteId) {
+    ctx.currentActionInstance = actionInstance;
+  }
+
+  return actionInstance;
+}
+
 // ============================================================================
 // Call-Site State Helper Functions
 // ============================================================================
@@ -346,14 +435,13 @@ export interface ExecutionContext {
  * ```
  */
 export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
-  const callSiteId = ctx.currentCallSiteId;
-  if (callSiteId === undefined || !ctx.callSiteState) {
+  const actionInstance =
+    ctx.currentActionInstance ??
+    (ctx.currentCallSiteId !== undefined ? getActionInstance(ctx, ctx.currentCallSiteId) : undefined);
+  if (!actionInstance) {
     return undefined;
   }
-  if (!ctx.callSiteState.has(callSiteId)) {
-    return undefined;
-  }
-  return ctx.callSiteState.get(callSiteId) as T;
+  return actionInstance.hostState as T | undefined;
 }
 
 /**
@@ -364,15 +452,16 @@ export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
  * @param state - The state object to store
  */
 export function setCallSiteState<T>(ctx: ExecutionContext, state: T): void {
-  const callSiteId = ctx.currentCallSiteId;
-  if (callSiteId === undefined) {
-    return;
+  let actionInstance = ctx.currentActionInstance;
+  if (!actionInstance) {
+    const callSiteId = ctx.currentCallSiteId;
+    if (callSiteId === undefined) {
+      return;
+    }
+
+    actionInstance = getOrCreateActionInstance(ctx, callSiteId, 0);
+    ctx.currentActionInstance = actionInstance;
   }
 
-  // Lazy initialization of callSiteState map
-  if (!ctx.callSiteState) {
-    ctx.callSiteState = new Dict<number, unknown>();
-  }
-
-  ctx.callSiteState.set(callSiteId, state);
+  actionInstance.hostState = state;
 }

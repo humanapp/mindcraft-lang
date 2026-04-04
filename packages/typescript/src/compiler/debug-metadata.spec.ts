@@ -29,7 +29,7 @@ function mkEmptyBrainProgram(): BrainProgram {
     pageId: "page-0",
     pageName: "Page 0",
     rootRuleFuncIds: List.empty(),
-    hostCallSites: List.empty(),
+    actionCallSites: List.empty(),
     sensors: new UniqueSet<string>(),
     actuators: new UniqueSet<string>(),
   };
@@ -40,6 +40,7 @@ function mkEmptyBrainProgram(): BrainProgram {
     variableNames: List.empty(),
     entryPoint: 0,
     ruleIndex: Dict.empty(),
+    actionRefs: List.empty(),
     pages: List.from([emptyPage]),
   };
 }

@@ -25,7 +25,9 @@ import {
 import { compileUserTile } from "../compiler/compile.js";
 import { linkUserPrograms } from "./linker.js";
 
-function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+function mkCtx(
+  overrides: Omit<Partial<ExecutionContext>, "callSiteState"> & { callSiteState?: Dict<number, unknown> } = {}
+): ExecutionContext {
   return {
     brain: undefined as never,
     getVariable: () => undefined,
@@ -35,7 +37,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     dt: 0,
     currentTick: 0,
     ...overrides,
-  };
+  } as ExecutionContext;
 }
 
 function mkScheduler(): Scheduler {
@@ -60,7 +62,7 @@ function mkEmptyBrainProgram(): BrainProgram {
     pageId: "page-0",
     pageName: "Page 0",
     rootRuleFuncIds: List.empty(),
-    hostCallSites: List.empty(),
+    actionCallSites: List.empty(),
     sensors: new UniqueSet<string>(),
     actuators: new UniqueSet<string>(),
   };
@@ -71,6 +73,7 @@ function mkEmptyBrainProgram(): BrainProgram {
     variableNames: List.empty(),
     entryPoint: 0,
     ruleIndex: Dict.empty(),
+    actionRefs: List.empty(),
     pages: List.from([emptyPage]),
   };
 }
@@ -87,7 +90,7 @@ function mkBrainProgramWithStubFunction(): BrainProgram {
     pageId: "page-0",
     pageName: "Page 0",
     rootRuleFuncIds: List.from([0]),
-    hostCallSites: List.empty(),
+    actionCallSites: List.empty(),
     sensors: new UniqueSet<string>(),
     actuators: new UniqueSet<string>(),
   };
@@ -98,6 +101,7 @@ function mkBrainProgramWithStubFunction(): BrainProgram {
     variableNames: List.empty(),
     entryPoint: 0,
     ruleIndex: Dict.empty(),
+    actionRefs: List.empty(),
     pages: List.from([emptyPage]),
   };
 }

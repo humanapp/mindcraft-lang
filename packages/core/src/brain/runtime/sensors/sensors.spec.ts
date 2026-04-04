@@ -18,7 +18,9 @@ import {
   ValueDict,
 } from "@mindcraft-lang/core/brain";
 
-function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+function mkCtx(
+  overrides: Omit<Partial<ExecutionContext>, "callSiteState"> & { callSiteState?: Dict<number, unknown> } = {}
+): ExecutionContext {
   return {
     brain: undefined as never,
     getVariable: () => undefined,
@@ -29,7 +31,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     dt: 0,
     currentTick: 0,
     ...overrides,
-  };
+  } as ExecutionContext;
 }
 
 function mkArgs(): MapValue {

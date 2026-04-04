@@ -19,7 +19,7 @@ export interface UserAuthoredProgram extends Program {
   name: string;
   callDef: BrainActionCallDef;
   outputType?: TypeId;
-  numCallsiteVars: number;
+  numStateSlots: number;
   entryFuncId: number;
   initFuncId?: number;
   execIsAsync: boolean;

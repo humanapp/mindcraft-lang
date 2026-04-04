@@ -77,7 +77,7 @@ export interface ProgramLoweringResult {
   entryFuncId: number;
   initFuncId?: number;
   onPageEnteredWrapperId: number;
-  numCallsiteVars: number;
+  numStateSlots: number;
   functionTable: Map<string, number>;
   diagnostics: CompileDiagnostic[];
 }
@@ -363,7 +363,7 @@ export function lowerProgram(
     entryFuncId,
     initFuncId,
     onPageEnteredWrapperId,
-    numCallsiteVars: nextCallsiteVar,
+    numStateSlots: nextCallsiteVar,
     functionTable,
     diagnostics,
   };

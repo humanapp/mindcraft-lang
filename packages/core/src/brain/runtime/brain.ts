@@ -5,8 +5,10 @@ import { MathOps } from "../../platform/math";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import { compileBrain } from "../compiler";
 import {
+  type ActionInstance,
   type BrainEvents,
   type BrainLinkEnvironment,
+  type BytecodeExecutableAction,
   type ExecutableBrainProgram,
   type ExecutionContext,
   FiberState,
@@ -15,8 +17,10 @@ import {
   type IBrainDef,
   type IBrainPageDef,
   type IBrainRule,
+  resetActionInstance,
   type UnlinkedBrainProgram,
   type Value,
+  VmStatus,
 } from "../interfaces";
 import { getBrainServices } from "../services";
 import { linkBrainProgram } from "./linker";
@@ -99,6 +103,8 @@ export class Brain implements IBrain {
    * Tracked for respawning when they complete.
    */
   private activeRuleFiberIds: List<{ funcId: number; fiberId: number | undefined }> = List.empty();
+
+  private nextInlineFiberId: number = -1000000;
 
   /** O(1) lookup from stable pageId (UUID) to page index, built during initialize(). */
   private pageIdToIndex: Dict<string, number> = new Dict();
@@ -386,7 +392,7 @@ export class Brain implements IBrain {
    * Activate a page by spawning fibers for its root rules.
    */
   private activatePage(pageIndex: number): void {
-    if (!this.program || !this.scheduler || !this.executionContext) return;
+    if (!this.program || !this.scheduler || !this.executionContext || !this.vm) return;
 
     const pageMetadata = this.program.pages.get(pageIndex);
     if (!pageMetadata) return;
@@ -394,22 +400,41 @@ export class Brain implements IBrain {
     // Clear any existing tracked fibers
     this.activeRuleFiberIds = List.empty();
 
-    // Spawn a fiber for each root rule in the page
+    // Reset and activate each action callsite once for this page activation.
+    for (let i = 0; i < pageMetadata.actionCallSites.size(); i++) {
+      const site = pageMetadata.actionCallSites.get(i)!;
+      const action = this.program.actions.get(site.actionSlot);
+      if (!action) {
+        continue;
+      }
+
+      const actionInstance = resetActionInstance(
+        this.executionContext,
+        site.callSiteId,
+        action.binding === "bytecode" ? action.numStateSlots : 0
+      );
+
+      if (action.binding === "host") {
+        if (action.onPageEntered) {
+          this.runHostActivationHook(site.callSiteId, actionInstance, action.onPageEntered);
+        }
+        continue;
+      }
+
+      if (action.activationFuncId !== undefined) {
+        this.runBytecodeActivationHook(action, site.callSiteId, actionInstance);
+      }
+    }
+
+    this.executionContext.currentCallSiteId = undefined;
+    this.executionContext.currentActionInstance = undefined;
+    this.executionContext.rule = undefined;
+
+    // Spawn a fiber for each root rule in the page.
     for (let i = 0; i < pageMetadata.rootRuleFuncIds.size(); i++) {
       const funcId = pageMetadata.rootRuleFuncIds.get(i)!;
       const fiberId = this.scheduler.spawn(funcId, List.empty(), this.executionContext);
       this.activeRuleFiberIds.push({ funcId, fiberId });
-    }
-
-    // Notify linked host-backed actions of page entry, once per call site.
-    for (let i = 0; i < pageMetadata.actionCallSites.size(); i++) {
-      const site = pageMetadata.actionCallSites.get(i)!;
-      const action = this.program.actions.get(site.actionSlot);
-      if (!action || action.binding !== "host" || !action.onPageEntered) {
-        continue;
-      }
-      this.executionContext.currentCallSiteId = site.callSiteId;
-      action.onPageEntered(this.executionContext);
     }
 
     // Notify the page runtime
@@ -440,6 +465,13 @@ export class Brain implements IBrain {
   private deactivateCurrentPage(): void {
     this.cancelActiveFibers();
     this.activeRuleFiberIds = List.empty();
+
+    if (this.executionContext) {
+      this.executionContext.callSiteState = undefined;
+      this.executionContext.currentActionInstance = undefined;
+      this.executionContext.currentCallSiteId = undefined;
+      this.executionContext.rule = undefined;
+    }
 
     // Notify the page runtime
     if (this.isValidPageIndex(this.currentPageIndex)) {
@@ -490,6 +522,71 @@ export class Brain implements IBrain {
     if (!fiber) return true;
 
     return fiber.state === FiberState.DONE || fiber.state === FiberState.FAULT || fiber.state === FiberState.CANCELLED;
+  }
+
+  private runHostActivationHook(
+    callSiteId: number,
+    actionInstance: ActionInstance,
+    onPageEntered: (ctx: ExecutionContext) => void
+  ): void {
+    if (!this.executionContext) {
+      return;
+    }
+
+    const previousCallSiteId = this.executionContext.currentCallSiteId;
+    const previousActionInstance = this.executionContext.currentActionInstance;
+    const previousRule = this.executionContext.rule;
+
+    this.executionContext.currentCallSiteId = callSiteId;
+    this.executionContext.currentActionInstance = actionInstance;
+    this.executionContext.rule = undefined;
+
+    try {
+      onPageEntered(this.executionContext);
+    } finally {
+      this.executionContext.currentCallSiteId = previousCallSiteId;
+      this.executionContext.currentActionInstance = previousActionInstance;
+      this.executionContext.rule = previousRule;
+    }
+  }
+
+  private runBytecodeActivationHook(
+    action: BytecodeExecutableAction,
+    callSiteId: number,
+    actionInstance: ActionInstance
+  ): void {
+    if (!this.executionContext || !this.vm || !this.scheduler || action.activationFuncId === undefined) {
+      return;
+    }
+
+    const activationContext: ExecutionContext = {
+      ...this.executionContext,
+      currentCallSiteId: callSiteId,
+      currentActionInstance: actionInstance,
+      rule: undefined,
+    };
+    const activationFiber = this.vm.spawnFiber(
+      this.nextInlineFiberId--,
+      action.activationFuncId,
+      List.empty(),
+      activationContext
+    );
+    const activationFrame = activationFiber.frames.get(0)!;
+    activationFrame.actionBinding = {
+      actionKey: action.descriptor.key,
+      callSiteId,
+      isAsync: false,
+      actionInstance,
+    };
+    activationFiber.instrBudget = 10000;
+
+    const result = this.vm.runFiber(activationFiber, this.scheduler);
+    if (result.status === VmStatus.FAULT) {
+      throw new Error(`Page activation for action '${action.descriptor.key}' faulted: ${result.error.message}`);
+    }
+    if (result.status !== VmStatus.DONE) {
+      throw new Error(`Page activation for action '${action.descriptor.key}' cannot suspend`);
+    }
   }
 
   private isValidPageIndex(pageIndex: number): boolean {

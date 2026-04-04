@@ -23,6 +23,7 @@ import {
   type FunctionBytecode,
   type FunctionValue,
   getBrainServices,
+  getCallSiteState,
   HandleState,
   HandleTable,
   type IBrainRule,
@@ -41,6 +42,7 @@ import {
   Op,
   type Program,
   registerCoreBrainComponents,
+  setCallSiteState,
   TRUE_VALUE,
   type Value,
   ValueDict,
@@ -697,27 +699,51 @@ describe("VM -- local variables", () => {
 // ---- Callsite-persistent variables ----
 
 describe("VM -- callsite-persistent variables", () => {
-  test("LOAD_CALLSITE_VAR and STORE_CALLSITE_VAR read/write fiber.callsiteVars", () => {
+  test("LOAD_CALLSITE_VAR and STORE_CALLSITE_VAR read/write current action state slots", () => {
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = mkProgram(
       [
         {
+          code: List.from([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 9 }, { op: Op.RET }]),
+          numParams: 0,
+          numLocals: 0,
+          name: "root",
+        },
+        {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 0 }, // push 42
-            { op: Op.STORE_CALLSITE_VAR, a: 0 }, // callsiteVars[0] = 42
-            { op: Op.LOAD_CALLSITE_VAR, a: 0 }, // push callsiteVars[0]
+            { op: Op.PUSH_CONST, a: 1 },
+            { op: Op.STORE_CALLSITE_VAR, a: 0 },
+            { op: Op.LOAD_CALLSITE_VAR, a: 0 },
             { op: Op.RET },
           ]),
           numParams: 0,
           numLocals: 0,
-          name: "test",
+          name: "action-entry",
         },
       ],
-      [mkNumberValue(42)]
+      [args, mkNumberValue(42)]
     );
     const handles = new HandleTable(100);
-    const vm = new VM(prog, handles);
+    const vm = new VM(
+      {
+        ...prog,
+        actions: List.from([
+          {
+            binding: "bytecode" as const,
+            descriptor: {
+              key: "test-vm-action-state-slots",
+              kind: "actuator" as const,
+              callDef: mkCallDef({ type: "bag", items: [] }),
+              isAsync: false,
+            },
+            entryFuncId: 1,
+            numStateSlots: 1,
+          },
+        ]),
+      } as Program,
+      handles
+    );
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
-    fiber.callsiteVars = List.from([NIL_VALUE, NIL_VALUE]);
     fiber.instrBudget = 100;
 
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
@@ -727,7 +753,7 @@ describe("VM -- callsite-persistent variables", () => {
     }
   });
 
-  test("LOAD_CALLSITE_VAR without callsiteVars faults", () => {
+  test("LOAD_CALLSITE_VAR without an action binding faults", () => {
     const prog = mkProgram([
       {
         code: List.from([{ op: Op.LOAD_CALLSITE_VAR, a: 0 }, { op: Op.RET }]),
@@ -745,35 +771,57 @@ describe("VM -- callsite-persistent variables", () => {
     assert.equal(result.status, VmStatus.FAULT);
   });
 
-  test("callsiteVars persist across calls within same fiber", () => {
-    // func 0: store 100 into callsiteVar[0], call func 1, ret
-    // func 1: load callsiteVar[0], ret
+  test("action state slots persist across helper CALLs within the same action", () => {
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = mkProgram(
       [
         {
+          code: List.from([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 4 }, { op: Op.RET }]),
+          numParams: 0,
+          numLocals: 0,
+          name: "root",
+        },
+        {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 0 },
+            { op: Op.PUSH_CONST, a: 1 },
             { op: Op.STORE_CALLSITE_VAR, a: 0 },
-            { op: Op.CALL, a: 1, b: 0 },
+            { op: Op.CALL, a: 2, b: 0 },
             { op: Op.RET },
           ]),
           numParams: 0,
           numLocals: 0,
-          name: "outer",
+          name: "action-entry",
         },
         {
           code: List.from([{ op: Op.LOAD_CALLSITE_VAR, a: 0 }, { op: Op.RET }]),
           numParams: 0,
           numLocals: 0,
-          name: "inner",
+          name: "action-helper",
         },
       ],
-      [mkNumberValue(100)]
+      [args, mkNumberValue(100)]
     );
     const handles = new HandleTable(100);
-    const vm = new VM(prog, handles);
+    const vm = new VM(
+      {
+        ...prog,
+        actions: List.from([
+          {
+            binding: "bytecode" as const,
+            descriptor: {
+              key: "test-vm-action-state-helper-call",
+              kind: "actuator" as const,
+              callDef: mkCallDef({ type: "bag", items: [] }),
+              isAsync: false,
+            },
+            entryFuncId: 1,
+            numStateSlots: 1,
+          },
+        ]),
+      } as Program,
+      handles
+    );
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
-    fiber.callsiteVars = List.from([NIL_VALUE]);
     fiber.instrBudget = 100;
 
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
@@ -781,6 +829,64 @@ describe("VM -- callsite-persistent variables", () => {
     if (result.status === VmStatus.DONE) {
       assert.equal((result.result as { v: number }).v, 100);
     }
+  });
+
+  test("distinct action callsites in the same rule fiber keep independent host-backed state", () => {
+    const seenValues: number[] = [];
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
+    const descriptor = {
+      key: "test-vm-host-action-state-isolation",
+      kind: "actuator" as const,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+    };
+    const prog = {
+      ...mkProgram(
+        [
+          mkFunc(
+            [
+              { op: Op.PUSH_CONST, a: 0 },
+              { op: Op.ACTION_CALL, a: 0, c: 1 },
+              { op: Op.POP },
+              { op: Op.PUSH_CONST, a: 0 },
+              { op: Op.ACTION_CALL, a: 0, c: 2 },
+              { op: Op.POP },
+              { op: Op.PUSH_CONST, a: 0 },
+              { op: Op.ACTION_CALL, a: 0, c: 1 },
+              { op: Op.RET },
+            ],
+            0,
+            "root"
+          ),
+        ],
+        [args]
+      ),
+      actions: List.from([
+        {
+          binding: "host" as const,
+          descriptor,
+          execSync: (ctx: ExecutionContext) => {
+            const nextValue = (getCallSiteState<number>(ctx) ?? 0) + 1;
+            setCallSiteState(ctx, nextValue);
+            seenValues.push(nextValue);
+            return mkNumberValue(nextValue);
+          },
+        },
+      ]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 2);
+    }
+    assert.deepEqual(seenValues, [1, 1, 2]);
   });
 });
 

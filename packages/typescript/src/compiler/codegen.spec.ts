@@ -293,7 +293,7 @@ export default Sensor({
     assert.equal(prog.kind, "sensor");
     assert.equal(prog.name, "is-close");
     assert.equal(prog.entryFuncId, 0);
-    assert.equal(prog.numCallsiteVars, 0);
+    assert.equal(prog.numStateSlots, 0);
     assert.ok(prog.outputType);
     assert.ok(prog.programRevisionId);
     assert.equal(prog.functions.size(), 2);
@@ -1055,11 +1055,11 @@ export default Sensor({
     assert.ok(result.program);
 
     const prog = result.program!;
-    assert.ok(prog.numCallsiteVars > 0, "expected numCallsiteVars > 0");
+    assert.ok(prog.numStateSlots > 0, "expected numStateSlots > 0");
     assert.ok(prog.initFuncId !== undefined, "expected initFuncId to be set");
 
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     // Run init function to set count = 0
     {
@@ -1118,11 +1118,11 @@ export default Sensor({
     assert.ok(result.program);
 
     const prog = result.program!;
-    assert.equal(prog.numCallsiteVars, 2);
+    assert.equal(prog.numStateSlots, 2);
     assert.ok(prog.initFuncId !== undefined);
 
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     // Run init
     {
@@ -1169,7 +1169,7 @@ export default Sensor({
     const handles = new HandleTable(100);
 
     // First callsite: init + two calls -> 1, 2
-    const callsiteVars1 = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars1 = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
     {
       const vm = new runtime.VM(prog, handles);
       const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
@@ -1197,7 +1197,7 @@ export default Sensor({
     }
 
     // Fresh callsiteVars2 + init -> resets to 0, next call -> 1
-    const callsiteVars2 = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars2 = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
     {
       const vm = new runtime.VM(prog, handles);
       const fiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
@@ -1243,10 +1243,10 @@ export default Sensor({
     assert.ok(result.program);
 
     const prog = result.program!;
-    assert.ok(prog.numCallsiteVars > 0);
+    assert.ok(prog.numStateSlots > 0);
 
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     // Init
     {
@@ -1280,7 +1280,7 @@ export default Sensor({
     }
   });
 
-  test("no top-level vars produces numCallsiteVars=0 and no initFuncId", () => {
+  test("no top-level vars produces numStateSlots=0 and no initFuncId", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1296,7 +1296,7 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
-    assert.equal(result.program!.numCallsiteVars, 0);
+    assert.equal(result.program!.numStateSlots, 0);
     assert.equal(result.program!.initFuncId, undefined);
   });
 
@@ -1402,7 +1402,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     // Init
     {
@@ -1474,7 +1474,7 @@ export default Sensor({
     assert.ok(prog.initFuncId !== undefined, "expected initFuncId");
 
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     // Run init -> count = 0
     {
@@ -1542,7 +1542,7 @@ export default Sensor({
     assert.ok(prog.initFuncId !== undefined);
 
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     // Init -> count = 0
     {
@@ -1612,7 +1612,7 @@ export default Sensor({
     assert.ok(prog.lifecycleFuncIds.onPageEntered !== undefined);
 
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     // Run onPageEntered wrapper: init sets startValue=0, then user onPageEntered sets startValue=100
     {
@@ -1654,7 +1654,7 @@ export default Sensor({
 
     const prog = result.program!;
     assert.ok(prog.lifecycleFuncIds.onPageEntered !== undefined, "wrapper should always exist");
-    assert.equal(prog.numCallsiteVars, 0);
+    assert.equal(prog.numStateSlots, 0);
     assert.equal(prog.initFuncId, undefined);
 
     // The wrapper should be callable and return without error
@@ -1693,7 +1693,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     // Run wrapper: init sets a=0,b=0 then user onPageEntered sets a=5,b=50
     {
@@ -1815,7 +1815,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     {
       const vm = new runtime.VM(prog, handles);
@@ -2055,7 +2055,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     {
       const initFiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());
@@ -2133,7 +2133,7 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(prog, handles);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     {
       const initFiber = vm.spawnFiber(1, prog.initFuncId!, List.empty(), mkCtx());

@@ -63,6 +63,7 @@ export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserA
     variableNames: brainProgram.variableNames,
     entryPoint: brainProgram.entryPoint,
     ruleIndex: brainProgram.ruleIndex,
+    actionRefs: brainProgram.actionRefs,
     pages: brainProgram.pages,
   };
 

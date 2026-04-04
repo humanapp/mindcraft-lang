@@ -4,7 +4,7 @@ import type { List } from "../../platform/list";
 import { Time } from "../../platform/time";
 import { UniqueSet } from "../../platform/uniqueset";
 import { EventEmitter } from "../../util/event-emitter";
-import type { ExecutionContext } from "./runtime";
+import type { ActionInstance, ExecutionContext } from "./runtime";
 import { NativeType, type TypeId } from "./type-system";
 
 ///////////////////////////
@@ -316,7 +316,7 @@ export enum Op {
   LOAD_LOCAL = 130,
   STORE_LOCAL,
 
-  // Callsite-persistent variables (per-callsite state that survives across ticks)
+  // Legacy opcode name retained; resolves against the current action instance state slots.
   LOAD_CALLSITE_VAR = 140,
   STORE_CALLSITE_VAR,
 
@@ -454,8 +454,7 @@ export interface ActionFrameBinding {
   actionKey: string;
   callSiteId: number;
   isAsync: boolean;
-  previousCallSiteId?: number;
-  previousCallsiteVars?: List<Value>;
+  actionInstance: ActionInstance;
 }
 
 export interface Frame {
@@ -499,9 +498,8 @@ export interface Fiber {
    */
   executionContext: ExecutionContext;
   /**
-   * Per-callsite persistent variable storage for user-authored tiles.
-   * Set by the host exec wrapper before fiber execution.
-   * Accessed by LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR opcodes.
+   * Legacy direct state-slot seeding path for wrapper-oriented runtime/tests.
+   * Core action dispatch binds state through action frames instead.
    */
   callsiteVars?: List<Value>;
   asyncResultHandleId?: HandleId;

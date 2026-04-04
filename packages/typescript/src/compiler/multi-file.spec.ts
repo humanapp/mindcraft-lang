@@ -79,10 +79,10 @@ export default Sensor({
     assert.ok(entry.program);
 
     const prog = entry.program!;
-    assert.ok(prog.numCallsiteVars >= 1, "expected at least 1 callsite var for THRESHOLD");
+    assert.ok(prog.numStateSlots >= 1, "expected at least 1 callsite var for THRESHOLD");
 
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     {
       const vm = new runtime.VM(prog, handles);
@@ -137,7 +137,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     {
       const vm = new runtime.VM(prog, handles);
@@ -208,7 +208,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     {
       const vm = new runtime.VM(prog, handles);
@@ -263,7 +263,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     {
       const vm = new runtime.VM(prog, handles);
@@ -313,7 +313,7 @@ export default Sensor({
     assert.ok(entry);
     assert.deepStrictEqual(entry.diagnostics, []);
     assert.ok(entry.program);
-    assert.equal(entry.program!.numCallsiteVars, 0);
+    assert.equal(entry.program!.numStateSlots, 0);
   });
 
   test("per-importer isolation: two entry-points get separate callsite var spaces", () => {
@@ -361,7 +361,7 @@ export default Sensor({
     const handles = new HandleTable(100);
 
     const progA = entryA.program!;
-    const varsA = List.from<Value>(Array.from({ length: progA.numCallsiteVars }, () => NIL_VALUE));
+    const varsA = List.from<Value>(Array.from({ length: progA.numStateSlots }, () => NIL_VALUE));
     {
       const vm = new runtime.VM(progA, handles);
       const fiber = vm.spawnFiber(1, progA.initFuncId!, List.empty(), mkCtx());
@@ -371,7 +371,7 @@ export default Sensor({
     }
 
     const progB = entryB.program!;
-    const varsB = List.from<Value>(Array.from({ length: progB.numCallsiteVars }, () => NIL_VALUE));
+    const varsB = List.from<Value>(Array.from({ length: progB.numStateSlots }, () => NIL_VALUE));
     {
       const vm = new runtime.VM(progB, handles);
       const fiber = vm.spawnFiber(1, progB.initFuncId!, List.empty(), mkCtx());
@@ -448,7 +448,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     const vm = new runtime.VM(prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
@@ -490,7 +490,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     const vm = new runtime.VM(prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
@@ -591,7 +591,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const callsiteVars = List.from<Value>(Array.from({ length: prog.numCallsiteVars }, () => NIL_VALUE));
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
     const vm = new runtime.VM(prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());

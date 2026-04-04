@@ -331,7 +331,7 @@ export class UserTileProject {
       name: descriptor.name,
       callDef,
       outputType,
-      numCallsiteVars: programResult.numCallsiteVars,
+      numStateSlots: programResult.numStateSlots,
       entryFuncId: programResult.entryFuncId,
       initFuncId: programResult.initFuncId,
       execIsAsync: descriptor.execIsAsync,

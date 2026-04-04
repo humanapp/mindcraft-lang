@@ -37,7 +37,9 @@ import { linkUserPrograms } from "../linker/linker.js";
 import { createUserTileExec } from "./authored-function.js";
 import { registerUserTile } from "./registration-bridge.js";
 
-function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+function mkCtx(
+  overrides: Omit<Partial<ExecutionContext>, "callSiteState"> & { callSiteState?: Dict<number, unknown> } = {}
+): ExecutionContext {
   return {
     brain: undefined as never,
     getVariable: () => undefined,
@@ -47,7 +49,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     dt: 0,
     currentTick: 0,
     ...overrides,
-  };
+  } as ExecutionContext;
 }
 
 function mkScheduler(): Scheduler {
@@ -64,7 +66,7 @@ function mkEmptyBrainProgram(): BrainProgram {
     pageId: "page-0",
     pageName: "Page 0",
     rootRuleFuncIds: List.empty(),
-    hostCallSites: List.empty(),
+    actionCallSites: List.empty(),
     sensors: new UniqueSet<string>(),
     actuators: new UniqueSet<string>(),
   };
@@ -75,6 +77,7 @@ function mkEmptyBrainProgram(): BrainProgram {
     variableNames: List.empty(),
     entryPoint: 0,
     ruleIndex: Dict.empty(),
+    actionRefs: List.empty(),
     pages: List.from([emptyPage]),
   };
 }

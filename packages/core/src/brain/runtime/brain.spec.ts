@@ -15,6 +15,7 @@ import { List } from "@mindcraft-lang/core";
 import {
   type ActionDescriptor,
   type BooleanValue,
+  BYTECODE_VERSION,
   CoreSensorId,
   CoreTypeIds,
   type ExecutionContext,
@@ -28,17 +29,21 @@ import {
   type MapValue,
   mkActionDescriptor,
   mkCallDef,
+  mkNumberValue,
   mkVariableTileId,
   NativeType,
+  NIL_VALUE,
   Op,
   param,
   registerCoreBrainComponents,
   TilePlacement,
+  type UserActionArtifact,
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { Brain } from "@mindcraft-lang/core/brain/runtime";
 import {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
@@ -610,6 +615,149 @@ describe("Brain behavioral -- fiber respawn", () => {
 
     // Variable should still be 5 after multiple ticks (re-assigned each tick)
     assert.equal(extractNumberValue(brain.getVariable(v.varName)), 5);
+  });
+});
+
+describe("Brain behavioral -- action state", () => {
+  test("host-backed action state survives root-rule respawns and resets on page restart", () => {
+    let activationCount = 0;
+
+    const onPageEnteredFn = getBrainServices().functions.get(CoreSensorId.OnPageEntered);
+    assert.ok(onPageEnteredFn, "on-page-entered function should be registered");
+
+    const sensor = new BrainTileSensorDef(
+      CoreSensorId.OnPageEntered,
+      mkActionDescriptor("sensor", onPageEnteredFn!, CoreTypeIds.Boolean),
+      {
+        placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      }
+    );
+
+    const actuatorDescriptor: ActionDescriptor = {
+      key: "test-phase5-host-activation-counter",
+      kind: "actuator",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+    };
+    getBrainServices().actions.register({
+      binding: "host",
+      descriptor: actuatorDescriptor,
+      execSync: () => {
+        activationCount += 1;
+        return VOID_VALUE;
+      },
+    });
+
+    const actuator = new BrainTileActuatorDef("test-phase5-host-activation-counter", actuatorDescriptor);
+    const brainDef = buildBrain([sensor], [actuator]);
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+
+    brain.think(16);
+    brain.think(32);
+    brain.think(48);
+
+    assert.equal(activationCount, 1, "on-page-entered should only fire once per activation across respawns");
+
+    brain.requestPageRestart();
+    brain.think(64);
+
+    assert.equal(activationCount, 2, "page restart should reset host-backed action state");
+  });
+
+  test("bytecode-backed activation hook runs once per activation and resets action state", () => {
+    let activationCount = 0;
+    const activationFnEntry = getBrainServices().functions.register(
+      "test-phase5-bytecode-activation-host",
+      false,
+      {
+        exec: () => {
+          activationCount += 1;
+          return mkNumberValue(activationCount);
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+
+    const descriptor: ActionDescriptor = {
+      key: "test-phase5-bytecode-activation",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    const sensor = new BrainTileSensorDef("test-phase5-bytecode-activation", descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const v = mkVar("bytecode-activation");
+    const brainDef = buildBrain([], [v, opAssign, sensor]);
+
+    const artifact: UserActionArtifact = {
+      version: BYTECODE_VERSION,
+      functions: List.from([
+        {
+          code: List.from([{ op: Op.LOAD_CALLSITE_VAR, a: 0 }, { op: Op.RET }]),
+          numParams: 0,
+          name: "entry",
+        },
+        {
+          code: List.from([
+            { op: Op.HOST_CALL_ARGS, a: activationFnEntry.id, b: 0, c: 0 },
+            { op: Op.STORE_CALLSITE_VAR, a: 0 },
+            { op: Op.PUSH_CONST, a: 0 },
+            { op: Op.RET },
+          ]),
+          numParams: 0,
+          name: "activation",
+        },
+      ]),
+      constants: List.from([NIL_VALUE]),
+      variableNames: List.empty(),
+      entryPoint: 0,
+      key: descriptor.key,
+      kind: descriptor.kind,
+      callDef: descriptor.callDef,
+      outputType: descriptor.outputType,
+      isAsync: false,
+      numStateSlots: 1,
+      entryFuncId: 0,
+      activationFuncId: 1,
+      revisionId: "test-phase5-bytecode-activation-rev1",
+    };
+
+    const brain = new Brain(brainDef, {
+      catalogs: List.from([getBrainServices().tiles, brainDef.catalog()]),
+      actionResolver: {
+        resolveAction(actionDescriptor) {
+          if (actionDescriptor.key === descriptor.key) {
+            return {
+              binding: "bytecode" as const,
+              descriptor: actionDescriptor,
+              artifact,
+            };
+          }
+          return undefined;
+        },
+      },
+    });
+
+    brain.initialize();
+    brain.startup();
+
+    assert.equal(activationCount, 1, "startup should invoke bytecode activation exactly once");
+
+    brain.think(16);
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1);
+
+    brain.think(32);
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1);
+
+    brain.requestPageRestart();
+    brain.think(48);
+
+    assert.equal(activationCount, 2, "page restart should re-run bytecode activation");
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 2);
   });
 });
 
