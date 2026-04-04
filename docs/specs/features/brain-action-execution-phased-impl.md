@@ -205,7 +205,16 @@ execution:
    wrapped back into host-function closures in downstream packages.
 10. Downstream registration code in `packages/typescript` and `apps/sim` still
     targets the pre-Phase-1 action tile constructors and/or pre-link-step
-    runtime contracts and remains deferred to later phases.
+    runtime contracts. In particular,
+    `packages/typescript/src/runtime/registration-bridge.ts` still registers
+    user tiles through `FunctionRegistry`,
+    `apps/sim/src/brain/tiles/sensors.ts` /
+    `apps/sim/src/brain/tiles/actuators.ts` still build built-in tiles from
+    `BrainFunctionEntry`, and
+    `apps/sim/src/services/user-tile-registration.ts` still fabricates
+    metadata-only program/link stubs plus no-op host functions. That synthetic
+    program path now lags the core unlinked-program shape and must be replaced,
+    not patched forward.
 
 The codebase already contains the raw capabilities needed for the new design:
 
@@ -539,6 +548,10 @@ Current branch note:
    work. Updating VM handlers alone is not enough.
 - Phase 4 must preserve the existing host-backed executable-action-table path
    while extending it to bytecode-backed sync and async actions.
+- `linkBrainProgram()` currently recovers `ActionDescriptor` metadata from both
+   the `BrainDef` rule tree and the registered tile catalogs. Phase 4 bytecode
+   action linking must preserve that behavior for programmatic tests and
+   non-catalog-registered action tiles.
 
 ### In scope
 
@@ -624,6 +637,8 @@ cd packages/core && npm run check && npm run build && npm test
 - relying only on runtime faults and skipping the static verifier/compiler
    rejection for knowable suspension paths
 - breaking `AWAIT` / handle semantics for host async execution
+- assuming action descriptor recovery can rely on catalogs alone and breaking
+  programmatic action-tile use cases during bytecode-action linking
 
 ---
 
@@ -640,6 +655,16 @@ action context.
 - Architecture spec sections E.4, E.5, E.6, G.3
 - current `fiber.callsiteVars` usage and TS compiler assumptions around
   `numCallsiteVars`
+
+Current branch note:
+
+- Host-backed actions already execute through `ExecutableBrainProgram.actions`
+   and still rely on `ExecutionContext.currentCallSiteId` plus
+   `getCallSiteState()` / `setCallSiteState()`.
+- Bytecode-backed actions are still not linked or executed yet, but the Phase 5
+   state model must be designed so it works uniformly for both binding kinds.
+- Phase 5 should unify lifetime and scoping, not force host-backed actions onto
+   a `numStateSlots`-style binding contract.
 
 ### In scope
 
@@ -714,6 +739,9 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
   action-callsite lifecycle
 - preserving `ExecutionContext.callSiteState` as an independent parallel store
    outside the unified action-instance model
+- forcing host-backed actions onto a `numStateSlots`-style executable binding
+   contract instead of rebinding the existing ctx helper API to the unified
+   action-instance record
 
 ---
 
@@ -729,6 +757,17 @@ action artifacts that the core linker can bind directly.
 - Architecture spec sections G and J
 - current TS compiler artifact shape, linker, and wrapper runtime files
 
+Current branch note:
+
+- `UserAuthoredProgram` still uses legacy fields such as `numCallsiteVars`,
+   `initFuncId`, `execIsAsync`, and `programRevisionId`.
+- `packages/typescript/src/runtime/registration-bridge.ts` still registers user
+   tiles through `FunctionRegistry`, mutates existing async entries in place,
+   and constructs user action tiles through the pre-Phase-1 constructor path.
+- `linkUserPrograms()` is still being used as wrapper-preparation glue for
+   downstream registration. Phase 6 must turn it into pure artifact/link support
+   or remove it from that runtime role.
+
 ### In scope
 
 - user action artifact shape
@@ -741,6 +780,8 @@ action artifacts that the core linker can bind directly.
 - sim resolver implementation
 - app-side brain rebuild behavior
 - cleanup of old persistence paths
+- fixing sim-side synthetic empty-program/bootstrap registration shims; those
+   belong to Phase 7
 
 ### Ordered tasks
 
@@ -752,8 +793,12 @@ action artifacts that the core linker can bind directly.
    merged-program function indexes inside `packages/typescript`.
 4. Remove `createUserTileExec` from the intended runtime path.
 5. Change the registration bridge so it publishes tile metadata plus compiled
-   action artifacts, not host-function closures.
-6. Update compiler and linker tests accordingly.
+   action artifacts, not host-function closures or `FunctionRegistry`
+   swap-in-place mutations.
+6. If `linkUserPrograms()` remains in this phase, keep it only as a pure
+   bytecode merge/remap helper, not as wrapper-preparation glue for runtime
+   registration.
+7. Update compiler and linker tests accordingly.
 
 ### Likely files
 
@@ -795,6 +840,10 @@ cd packages/core && npm run check && npm run build && npm test
 - encoding app-specific resolver assumptions into the TypeScript package
 - treating artifact-local function IDs as if they were final executable-program
    indexes
+- keeping `linkUserPrograms()` coupled to host-wrapper registration instead of
+   narrowing it to pure artifact/link support
+- trying to repair sim's synthetic empty-program bootstrap path here instead of
+   finishing the TypeScript artifact contract first
 
 ---
 
@@ -810,6 +859,18 @@ mutation with executable-brain invalidation and rebuild.
 - Architecture spec sections D.5, J, and K
 - current sim-side tile registration, compilation, actor brain lifecycle, and
   engine update flow
+
+Current branch note:
+
+- `apps/sim/src/brain/tiles/sensors.ts` and
+   `apps/sim/src/brain/tiles/actuators.ts` still build built-in tiles from
+   `FunctionRegistry` entries using the old constructor shape.
+- `apps/sim/src/services/user-tile-registration.ts` still reconstructs fake
+   metadata-only programs, links them against an empty program, and registers
+   no-op or swapped host functions.
+- That synthetic metadata/bootstrap path now lags the core
+   `UnlinkedBrainProgram` shape (`actionRefs` missing). Phase 7 should delete or
+   replace it, not keep it alive with padded fake fields.
 
 ### In scope
 
@@ -831,18 +892,21 @@ mutation with executable-brain invalidation and rebuild.
    directly.
 2. Split user tile registration into catalog metadata registration and compiled
    action artifact registration.
-3. Implement a sim-side resolver that resolves both built-in and user-authored
+3. Delete the synthetic empty-program/user-link bootstrap path used only to
+   register cached metadata, and replace it with metadata-only registration
+   that does not fabricate compiled programs.
+4. Implement a sim-side resolver that resolves both built-in and user-authored
    action keys.
-4. Update actor/engine brain creation to use the new resolver path.
-5. On successful user action recompilation, invalidate executable-brain cache
+5. Update actor/engine brain creation to use the new resolver path.
+6. On successful user action recompilation, invalidate executable-brain cache
    entries whose linked action revisions include the changed key at an older
    revision.
-6. Replace every active Brain instance using an invalidated executable program.
+7. Replace every active Brain instance using an invalidated executable program.
    Restart the Brain from the same `BrainDef` and same host object; do not
    patch the live VM or scheduler in place.
-7. On failed recompilation, keep the last successful action artifacts and keep
+8. On failed recompilation, keep the last successful action artifacts and keep
    existing active brains running.
-8. Add executable-brain caching only if it reduces clear repeated work without
+9. Add executable-brain caching only if it reduces clear repeated work without
    obscuring correctness.
 
 ### Likely files
@@ -858,6 +922,8 @@ mutation with executable-brain invalidation and rebuild.
 ### Verification
 
 - recompiling a user tile no longer mutates a global host-function entry
+- sim no longer fabricates empty unlinked-program stubs just to register cached
+  user-tile metadata
 - active actors depending on the changed action rebuild from current compiled
    artifacts
 - actors whose executable brains do not depend on the changed action are not
@@ -884,6 +950,8 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
 - fixing only user-tile registration and forgetting the built-in sim
    sensor/actuator tile registration that now needs `ActionDescriptor`
    construction
+- padding fake `actionRefs` or other compiled-program fields onto metadata-only
+  stubs instead of removing the synthetic-program path
 - rebuilding only some active Brain instances for a changed action key
 - patching the executable action table or VM in place instead of restarting the
    affected Brain instances
