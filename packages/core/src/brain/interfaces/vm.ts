@@ -264,6 +264,10 @@ export enum Op {
   HOST_CALL_ARGS,
   HOST_CALL_ARGS_ASYNC,
 
+  // Action calls (pre-built MapValue on stack)
+  ACTION_CALL = 44,
+  ACTION_CALL_ASYNC,
+
   // Async operations and cooperative scheduling
   AWAIT = 50,
   YIELD,

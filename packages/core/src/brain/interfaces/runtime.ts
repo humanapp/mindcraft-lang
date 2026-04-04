@@ -2,8 +2,19 @@ import { Dict } from "../../platform/dict";
 import type { List } from "../../platform/list";
 import type { UniqueSet } from "../../platform/uniqueset";
 import type { EventEmitterConsumer } from "../../util";
+import type { ActionKey } from "./functions";
 import type { TileId } from "./tiles";
 import type { FunctionBytecode, Value } from "./vm";
+
+export interface ActionRef {
+  slot: number;
+  key: ActionKey;
+}
+
+export interface ActionCallSiteEntry {
+  actionSlot: number;
+  callSiteId: number;
+}
 /**
  * Extended Program interface for compiled brains. Adds rule-to-function mapping
  * and page metadata.
@@ -33,19 +44,15 @@ export interface BrainProgram {
   ruleIndex: Dict<string, number>;
 
   /**
+   * Program-local action slots referenced by ACTION_CALL instructions.
+   */
+  actionRefs: List<ActionRef>;
+
+  /**
    * Page metadata for page-switching logic. Each page entry contains the
    * function IDs of its root rules.
    */
   pages: List<PageMetadata>;
-}
-
-/**
- * A HOST_CALL / HOST_CALL_ASYNC call site recorded during compilation. Used to
- * notify host functions via onPageEntered when a page is activated.
- */
-export interface HostCallSiteEntry {
-  fnId: number;
-  callSiteId: number;
 }
 
 export interface PageMetadata {
@@ -61,8 +68,8 @@ export interface PageMetadata {
   /** Function IDs of root-level rules in this page (in order) */
   rootRuleFuncIds: List<number>;
 
-  /** All HOST_CALL / HOST_CALL_ASYNC call sites in this page's rule tree */
-  hostCallSites: List<HostCallSiteEntry>;
+  /** All ACTION_CALL / ACTION_CALL_ASYNC call sites in this page's rule tree */
+  actionCallSites: List<ActionCallSiteEntry>;
 
   /** Unique sensor tile IDs referenced by rules in this page */
   sensors: UniqueSet<TileId>;
@@ -223,21 +230,23 @@ export interface ExecutionContext {
 
   /**
    * Current call-site ID being executed.
-   * Set by the VM before invoking a host function via HOST_CALL/HOST_CALL_ASYNC.
+   * Set by the VM before invoking a host function via HOST_CALL/HOST_CALL_ASYNC
+   * or a host-backed action via ACTION_CALL/ACTION_CALL_ASYNC.
    * Host functions can use this with callSiteState to access per-call-site data.
    */
   currentCallSiteId?: number;
 
   /**
    * The BrainRule currently being executed. This provides access to rule-specific state
-   * and metadata. It is set by the VM before each HOST_CALL using the funcIdToRule mapping.
+   * and metadata. It is set by the VM before host-backed host or action calls using
+   * the funcIdToRule mapping.
    */
   rule?: IBrainRule;
 
   /**
    * Mapping from function ID to the IBrainRule that was compiled into that function.
    * Set by the Brain during initialization. Used by the VM to resolve ctx.rule
-   * before HOST_CALL instructions, based on the current frame's funcId.
+   * before host-backed host or action calls, based on the current frame's funcId.
    */
   funcIdToRule?: Dict<number, IBrainRule>;
 
@@ -262,7 +271,7 @@ export interface ExecutionContext {
 // ============================================================================
 
 /**
- * Get the per-call-site state for the current HOST_CALL.
+ * Get the per-call-site state for the current host-backed call.
  * This allows host functions to persist state across ticks.
  *
  * @param ctx - The execution context
@@ -298,7 +307,7 @@ export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
 }
 
 /**
- * Set the per-call-site state for the current HOST_CALL.
+ * Set the per-call-site state for the current host-backed call.
  * This allows host functions to persist state across ticks.
  *
  * @param ctx - The execution context

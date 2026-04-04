@@ -22,11 +22,13 @@ import {
   FiberState,
   type FunctionBytecode,
   type FunctionValue,
+  getBrainServices,
   HandleState,
   HandleTable,
   type Instr,
   isFunctionValue,
   mkBooleanValue,
+  mkCallDef,
   mkFunctionValue,
   mkNumberValue,
   mkStringValue,
@@ -39,6 +41,7 @@ import {
   registerCoreBrainComponents,
   TRUE_VALUE,
   type Value,
+  ValueDict,
   VmStatus,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
@@ -834,6 +837,57 @@ describe("VM -- fiber state machine", () => {
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
     assert.equal(result.status, VmStatus.YIELDED);
     assert.equal(fiber.state, FiberState.RUNNABLE);
+  });
+});
+
+// ---- Action calls ----
+
+describe("VM -- action calls", () => {
+  test("ACTION_CALL resolves action slot through action refs", () => {
+    const actionId = "test-vm-action-call";
+    let seenCallSiteId: number | undefined;
+
+    getBrainServices().functions.register(
+      actionId,
+      false,
+      {
+        exec: (ctx: ExecutionContext) => {
+          seenCallSiteId = ctx.currentCallSiteId;
+          return mkNumberValue(321);
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
+    const prog = {
+      ...mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 9 }, { op: Op.RET }])], [args]),
+      actionRefs: List.from([{ slot: 0, key: actionId }]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 321);
+    }
+    assert.equal(seenCallSiteId, 9);
+  });
+
+  test("ACTION_CALL out-of-bounds slot is rejected by verifier", () => {
+    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
+    const prog = {
+      ...mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 1, c: 0 }, { op: Op.RET }])], [args]),
+      actionRefs: List.from([{ slot: 0, key: "test-vm-action-verifier" }]),
+    };
+
+    const handles = new HandleTable(100);
+    assert.throws(() => new VM(prog, handles), /ACTION_CALL actionSlot 1 out of bounds/);
   });
 });
 

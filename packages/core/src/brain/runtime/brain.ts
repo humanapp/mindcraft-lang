@@ -380,11 +380,15 @@ export class Brain implements IBrain {
       this.activeRuleFiberIds.push({ funcId, fiberId });
     }
 
-    // Notify host functions of page entry, once per call site
+    // Notify host-backed actions of page entry, once per call site
     const fns = getBrainServices().functions;
-    for (let i = 0; i < pageMetadata.hostCallSites.size(); i++) {
-      const site = pageMetadata.hostCallSites.get(i)!;
-      const entry = fns.getSyncById(site.fnId) ?? fns.getAsyncById(site.fnId);
+    for (let i = 0; i < pageMetadata.actionCallSites.size(); i++) {
+      const site = pageMetadata.actionCallSites.get(i)!;
+      const actionRef = this.program.actionRefs.get(site.actionSlot);
+      if (!actionRef) {
+        continue;
+      }
+      const entry = fns.get(actionRef.key);
       if (entry?.fn.onPageEntered) {
         this.executionContext.currentCallSiteId = site.callSiteId;
         entry.fn.onPageEntered(this.executionContext);

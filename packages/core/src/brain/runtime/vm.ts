@@ -7,6 +7,7 @@ import { StringUtils as SU } from "../../platform/string";
 import { Time } from "../../platform/time";
 import { UniqueSet } from "../../platform/uniqueset";
 import type {
+  BrainProgram,
   ErrorValue,
   ExecutionContext,
   FunctionBytecode,
@@ -341,6 +342,15 @@ class BytecodeVerifier {
         }
         break;
       }
+      case Op.ACTION_CALL:
+      case Op.ACTION_CALL_ASYNC: {
+        const actionSlot = ins.a ?? 0;
+        const actionRefCount = (this.prog as BrainProgram).actionRefs?.size() ?? 0;
+        if (actionSlot < 0 || actionSlot >= actionRefCount) {
+          errors.push(`${site}: ${Op[ins.op]} actionSlot ${actionSlot} out of bounds [0, ${actionRefCount})`);
+        }
+        break;
+      }
       case Op.LOAD_LOCAL:
       case Op.STORE_LOCAL: {
         const idx = ins.a ?? 0;
@@ -525,6 +535,10 @@ export class VM implements IVM {
           return this.execHostCall(fiber, ins, frame);
         case Op.HOST_CALL_ASYNC:
           return this.execHostCallAsync(fiber, ins, frame, scheduler);
+        case Op.ACTION_CALL:
+          return this.execActionCall(fiber, ins, frame);
+        case Op.ACTION_CALL_ASYNC:
+          return this.execActionCallAsync(fiber, ins, frame, scheduler);
         case Op.HOST_CALL_ARGS:
           return this.execHostCallArgs(fiber, ins, frame);
         case Op.HOST_CALL_ARGS_ASYNC:
@@ -944,6 +958,76 @@ export class VM implements IVM {
     fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
 
     this.fns.getAsyncById(fnId)!.fn.exec(fiber.executionContext, args, hid);
+    frame.pc++;
+    return undefined;
+  }
+
+  private getActionKey(actionSlot: number, opName: string): string {
+    const actionRefs = (this.prog as BrainProgram).actionRefs;
+    if (!actionRefs) {
+      throw new Error(`${opName}: program does not define action refs`);
+    }
+    if (actionSlot < 0 || actionSlot >= actionRefs.size()) {
+      throw new Error(`${opName}: action slot ${actionSlot} out of bounds`);
+    }
+
+    return actionRefs.get(actionSlot)!.key;
+  }
+
+  private execActionCall(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const actionSlot = ins.a ?? 0;
+    const callSiteId = ins.c ?? 0;
+
+    const args = this.pop(fiber);
+
+    if (args.t !== NativeType.Map) {
+      throw new Error(`ACTION_CALL: expected map arguments, got ${args.t}`);
+    }
+
+    const actionKey = this.getActionKey(actionSlot, "ACTION_CALL");
+    const entry = this.fns.get(actionKey);
+    if (!entry) {
+      throw new Error(`ACTION_CALL: missing action binding for ${actionKey}`);
+    }
+    if (entry.isAsync) {
+      throw new Error(`ACTION_CALL: action ${actionKey} requires ACTION_CALL_ASYNC`);
+    }
+
+    fiber.executionContext.currentCallSiteId = callSiteId;
+    fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
+
+    const result = entry.fn.exec(fiber.executionContext, args);
+    this.push(fiber, result);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execActionCallAsync(fiber: Fiber, ins: Instr, frame: Frame, scheduler: Scheduler): VmRunResult | undefined {
+    const actionSlot = ins.a ?? 0;
+    const callSiteId = ins.c ?? 0;
+
+    const args = this.pop(fiber);
+
+    if (args.t !== NativeType.Map) {
+      throw new Error(`ACTION_CALL_ASYNC: expected map arguments, got ${args.t}`);
+    }
+
+    const actionKey = this.getActionKey(actionSlot, "ACTION_CALL_ASYNC");
+    const entry = this.fns.get(actionKey);
+    if (!entry) {
+      throw new Error(`ACTION_CALL_ASYNC: missing action binding for ${actionKey}`);
+    }
+    if (!entry.isAsync) {
+      throw new Error(`ACTION_CALL_ASYNC: action ${actionKey} must be synchronous`);
+    }
+
+    const hid = this.handles.createPending();
+    this.push(fiber, V.handle(hid));
+
+    fiber.executionContext.currentCallSiteId = callSiteId;
+    fiber.executionContext.rule = fiber.executionContext.funcIdToRule?.get(frame.funcId);
+
+    entry.fn.exec(fiber.executionContext, args, hid);
     frame.pc++;
     return undefined;
   }

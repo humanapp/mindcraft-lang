@@ -13,6 +13,7 @@ import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
 import {
+  type ActionDescriptor,
   type BooleanValue,
   type BrainProgram,
   CoreSensorId,
@@ -30,6 +31,7 @@ import {
   mkCallDef,
   mkVariableTileId,
   NativeType,
+  Op,
   param,
   registerCoreBrainComponents,
   TilePlacement,
@@ -608,6 +610,42 @@ describe("Brain behavioral -- compiled program structure", () => {
     assert.ok(program!.functions.size() > 0, "should have at least one function");
     assert.ok(program!.pages.size() > 0, "should have at least one page");
     assert.ok(program!.constants.size() > 0, "should have constants");
+  });
+
+  test("action tiles compile to action refs and page action callsites", () => {
+    const unboundAction: ActionDescriptor = {
+      key: "test-phase2-unbound-action",
+      kind: "actuator",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+    };
+
+    const actuator = new BrainTileActuatorDef("test-phase2-unbound-actuator", unboundAction);
+    const brainDef = buildBrain([], [actuator]);
+    const brain = brainDef.compile();
+    brain.initialize();
+
+    const program = brain.getProgram();
+    assert.ok(program, "program should exist after initialize");
+    assert.equal(program!.actionRefs.size(), 1);
+    assert.deepEqual(program!.actionRefs.get(0), {
+      slot: 0,
+      key: "test-phase2-unbound-action",
+    });
+
+    const page = program!.pages.get(0)!;
+    assert.equal(page.actionCallSites.size(), 1);
+    assert.deepEqual(page.actionCallSites.get(0), {
+      actionSlot: 0,
+      callSiteId: 0,
+    });
+
+    const rootFunc = program!.functions.get(page.rootRuleFuncIds.get(0)!)!;
+    assert.notEqual(
+      rootFunc.code.findIndex((ins) => ins.op === Op.ACTION_CALL),
+      -1,
+      "root rule should contain ACTION_CALL bytecode"
+    );
   });
 });
 
