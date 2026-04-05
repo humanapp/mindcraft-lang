@@ -2682,6 +2682,165 @@ export default Sensor({
   });
 });
 
+describe("target-typed implicit conversions", () => {
+  before(() => {
+    registerCoreBrainComponents();
+
+    const types = getBrainServices().types;
+    const signalTypeId = mkTypeId(NativeType.Enum, "Signal");
+    if (!types.get(signalTypeId)) {
+      types.addEnumType("Signal", {
+        symbols: List.from([
+          { key: "go", label: "Go", value: "green" },
+          { key: "stop", label: "Stop", value: "red" },
+        ]),
+        defaultKey: "go",
+      });
+    }
+
+    const throttleTypeId = mkTypeId(NativeType.Enum, "Throttle");
+    if (!types.get(throttleTypeId)) {
+      types.addEnumType("Throttle", {
+        symbols: List.from([
+          { key: "idle", label: "Idle", value: 0 },
+          { key: "fast", label: "Fast", value: 2 },
+        ]),
+        defaultKey: "idle",
+      });
+    }
+  });
+
+  test("return statement converts a pre-registered enum value to string", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Signal } from "mindcraft";
+
+export default Sensor({
+  name: "enum-return-string",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const signal: Signal = "go";
+    return signal;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "green");
+    }
+  });
+
+  test("function-call arguments convert enum values to the declared parameter type", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Signal } from "mindcraft";
+
+function label(text: string): string {
+  return text + "-label";
+}
+
+export default Sensor({
+  name: "enum-arg-string",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const signal: Signal = "go";
+    return label(signal);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "green-label");
+    }
+  });
+
+  test("variable initializers and simple assignments convert numeric enum values to number", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Throttle } from "mindcraft";
+
+export default Sensor({
+  name: "numeric-enum-targets",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const throttle: Throttle = "fast";
+    // @ts-ignore testing runtime implicit numeric enum conversion
+    const initial: number = throttle;
+    let total: number = 0;
+    // @ts-ignore testing runtime implicit numeric enum conversion
+    total = throttle;
+    return initial + total;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 4);
+    }
+  });
+
+  test("missing target-type conversion produces a clear lowering diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function expectText(text: string): string {
+  return text;
+}
+
+export default Sensor({
+  name: "missing-target-conversion",
+  output: "string",
+  onExecute(ctx: Context): string {
+    // @ts-ignore testing runtime missing target-type conversion
+    return expectText([1, 2]);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
+    assert.ok(
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.NoConversionToTargetType),
+      `Expected target-type conversion diagnostic but got: ${JSON.stringify(result.diagnostics)}`
+    );
+  });
+});
+
 describe("struct literal compilation", () => {
   before(async () => {
     registerCoreBrainComponents();

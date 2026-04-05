@@ -1,6 +1,6 @@
 # TypeScript Enum Support -- Phased Implementation Plan
 
-**Status:** E1 complete, E2 complete, E2.5 complete, E3 complete, E4 pending
+**Status:** E1 complete, E2 complete, E2.5 complete, E3 complete, E4 complete, E5 pending
 **Created:** 2026-04-04
 **Related:**
 
@@ -50,7 +50,7 @@ survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-04-04) Phases E1, E2, E2.5, and E3 are complete. `EnumTypeShape.symbols`
+- (Updated 2026-04-05) Phases E1, E2, E2.5, E3, and E4 are complete. `EnumTypeShape.symbols`
   and `EnumTypeDef.symbols` now carry explicit declared primitive values for each
   enum member, and `EnumTypeShape.defaultKey` is optional only for empty enums.
 - `EnumValue` in `packages/core` still stores `typeId` plus the enum member key.
@@ -80,11 +80,17 @@ survive. Keep this doc current.
   left operand.
 - TypeScript binary lowering now emits a dedicated ambiguity diagnostic when both
   single-step conversion directions are viable.
-- Shared single-step conversion emission helpers now back binary lowering, template-
-  literal interpolation, and list `.join()` stringification.
+- Shared single-step conversion emission helpers now back binary lowering, target-
+  typed coercion sites, template-literal interpolation, and list `.join()`
+  stringification.
+- TypeScript target-typed lowering now inserts single-step conversions at return
+  statements, variable initializers, simple assignments, and checker-resolved call
+  arguments, and emits a dedicated lowering diagnostic when no unique target-type
+  conversion exists.
 - Registered enum type resolution in TypeScript lowering now falls back to declared
   identifier types when `getTypeAtLocation()` narrows enum-typed locals or params to
-  primitive string literals.
+  primitive string literals, and it also recognizes contextual enum string literals
+  before target-type conversion checks run.
 - The TypeScript compiler already supports enum-typed string literals for pre-registered
   Mindcraft enum types, but it rejects user-authored `enum` declarations entirely.
 - Imported symbols currently include functions, variables, and classes. Imported enums
@@ -453,6 +459,9 @@ conversions in sync when user enums are changed or deleted.
 - Lower enum member access like `Direction.Up` directly to an enum constant.
 - Reuse the existing contextual-literal logic so enum-typed literals become enum values
   rather than raw strings or numbers.
+- Reuse the E4 target-typed boundary helper for enum-valued returns, assignments, and
+  call arguments after user-authored enums are registered, rather than adding a
+  separate enum-only coercion path.
 - Continue to reject heterogeneous enums and enum-object reflection patterns.
 
 **Concrete deliverables:**
@@ -512,6 +521,9 @@ conversions in sync when user enums are changed or deleted.
   giving them their own collection and registration path.
 - Cleaning up only the enum type record on recompilation while leaving stale
   conversions or enum-specific overloads behind.
+- Adding a separate enum-only target-typed coercion path for user enums instead of
+  routing them through the shared E4 helper, which would recreate the contextual-
+  literal and nullable-target bugs already solved in E4.
 - Modeling user-authored enums as TS-only string unions without runtime registration,
   which would make E1-E4 enum semantics unavailable to compiled user code.
 
@@ -743,3 +755,66 @@ All acceptance criteria passed. Added tests for direct-overload precedence, uniq
 implicit binary conversion success, no-overload diagnostics, ambiguous implicit
 conversion diagnostics, and enum-plus-string concatenation through enum-to-string
 conversion.
+
+### Phase E4 -- 2026-04-05
+
+**Planned vs actual:**
+
+All 4 concrete deliverables were implemented.
+
+- Return statements now insert target-typed single-step conversions using the
+  declared function, method, or closure return type.
+- Variable initializers and simple assignments now insert conversions to the target
+  type before storing the value.
+- Function-call arguments now insert conversions to declared parameter types for
+  direct calls, indirect calls, and struct method calls when the TS checker can
+  resolve a signature.
+- The new target-typed lowering path reuses the same shared single-step conversion
+  emission helper already used by binary lowering, template literals, and list
+  `.join()` stringification.
+
+One planned file did not need changes:
+
+- `packages/typescript/src/compiler/compile.spec.ts` stayed unchanged because the new
+  lowering diagnostic and runtime behavior were fully covered in `codegen.spec.ts`.
+
+**Unplanned additions and discoveries:**
+
+1. Exact target-type matches must short-circuit before nullable or union expansion.
+   Without that check, valid cases like `number:<number?>` falsely report a missing
+   conversion to themselves.
+2. Contextual enum string literals must resolve to their enum `typeId` before target-
+   typed conversion checks run. Otherwise, existing enum-literal lowering is
+   misclassified as plain `string` and starts failing string/number boundary coercions.
+3. Threading `currentReturnTypeId` through helper functions, closures, constructors,
+   and class methods kept return-site conversion behavior consistent without adding a
+   separate return-only lowering path.
+
+**Design decisions:**
+
+- Kept target-typed coercion checker-driven and single-step only.
+- Reused one shared `lowerExpressionWithExpectedType()` path across returns,
+  assignments, initializers, and call arguments instead of adding site-specific
+  coercion emitters.
+- Used one diagnostic code, `NoConversionToTargetType`, for both missing and
+  ambiguous target-type conversions, with message text distinguishing the cases.
+
+**Files changed:**
+
+- `packages/typescript/src/compiler/lowering.ts`
+- `packages/typescript/src/compiler/diag-codes.ts`
+- `packages/typescript/src/compiler/codegen.spec.ts`
+
+**Verification:**
+
+- `npm run typecheck`
+- `npm run check`
+- `npm test`
+
+**Acceptance criteria result:**
+
+All acceptance criteria passed. Added tests for enum return-to-string conversion,
+enum argument-to-string conversion, numeric enum conversion at initializer and
+assignment sites, and the new missing target-type conversion diagnostic. Full
+verification passed after fixing nullable-target exact-match handling and contextual
+enum literal type recovery.

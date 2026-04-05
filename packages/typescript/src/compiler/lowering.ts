@@ -103,6 +103,7 @@ interface LowerContext {
   closureFunctions: Map<number, FunctionEntry>;
   thisLocalIndex?: number;
   currentFunctionName: string;
+  currentReturnTypeId?: TypeId;
 }
 
 function allocLabel(ctx: LowerContext): number {
@@ -187,6 +188,12 @@ interface BinaryOperatorResolution {
   conversion?: SingleStepConversionResolution & { operand: "left" | "right" };
 }
 
+type TargetTypedConversionResolution =
+  | { kind: "none" }
+  | { kind: "convert"; conversion: SingleStepConversionResolution }
+  | { kind: "missing" }
+  | { kind: "ambiguous" };
+
 function resolveRegisteredEnumTypeId(type: ts.Type): string | undefined {
   const sym = type.getSymbol() ?? type.aliasSymbol;
   if (!sym) return undefined;
@@ -228,6 +235,13 @@ function resolveDeclaredEnumTypeId(exprNode: ts.Expression, ctx: LowerContext): 
 }
 
 function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): string | undefined {
+  if (ts.isStringLiteral(exprNode)) {
+    const enumValue = tryResolveEnumValue(exprNode, ctx);
+    if (enumValue && enumValue.t === NativeType.Enum) {
+      return enumValue.typeId;
+    }
+  }
+
   const declaredEnumTypeId = resolveDeclaredEnumTypeId(exprNode, ctx);
   if (declaredEnumTypeId) {
     return declaredEnumTypeId;
@@ -257,6 +271,198 @@ function resolveSingleStepConversion(fromTypeId: string, toTypeId: string): Sing
 
 function emitSingleStepConversion(fnName: string, ctx: LowerContext): void {
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+}
+
+function resolveExpandedTargetTypeIds(expectedTypeId: TypeId): TypeId[] {
+  const registry = getBrainServices().types;
+  const typeDef = registry.get(expectedTypeId);
+  if (!typeDef) {
+    return [expectedTypeId];
+  }
+
+  if (typeDef.nullable) {
+    return [(typeDef as NullableTypeDef).baseTypeId, CoreTypeIds.Nil];
+  }
+
+  if (typeDef.coreType === NativeType.Union) {
+    const memberTypeIds: TypeId[] = [];
+    (typeDef as UnionTypeDef).memberTypeIds.forEach((memberTypeId) => {
+      memberTypeIds.push(memberTypeId);
+    });
+    return memberTypeIds;
+  }
+
+  return [expectedTypeId];
+}
+
+function isSatisfiedWithoutTargetTypeConversion(sourceTypeId: TypeId, expectedTypeId: TypeId): boolean {
+  if (sourceTypeId === expectedTypeId || expectedTypeId === CoreTypeIds.Any) {
+    return true;
+  }
+
+  const registry = getBrainServices().types;
+  const sourceDef = registry.get(sourceTypeId);
+  const expectedDef = registry.get(expectedTypeId);
+  if (!sourceDef || !expectedDef) {
+    return false;
+  }
+
+  if (sourceDef.coreType === NativeType.Struct && expectedDef.coreType === NativeType.Struct) {
+    return registry.isStructurallyCompatible(sourceTypeId, expectedTypeId);
+  }
+
+  if (sourceDef.coreType === NativeType.List && expectedDef.coreType === NativeType.List) {
+    return true;
+  }
+
+  if (sourceDef.coreType === NativeType.Map && expectedDef.coreType === NativeType.Map) {
+    return true;
+  }
+
+  if (sourceDef.coreType === NativeType.Function && expectedDef.coreType === NativeType.Function) {
+    return true;
+  }
+
+  return false;
+}
+
+function resolveTargetTypedConversion(sourceTypeId: TypeId, expectedTypeId: TypeId): TargetTypedConversionResolution {
+  if (isSatisfiedWithoutTargetTypeConversion(sourceTypeId, expectedTypeId)) {
+    return { kind: "none" };
+  }
+
+  const candidateTypeIds = resolveExpandedTargetTypeIds(expectedTypeId);
+  for (const candidateTypeId of candidateTypeIds) {
+    if (isSatisfiedWithoutTargetTypeConversion(sourceTypeId, candidateTypeId)) {
+      return { kind: "none" };
+    }
+  }
+
+  const candidateConversions: SingleStepConversionResolution[] = [];
+  for (const candidateTypeId of candidateTypeIds) {
+    const conversion = resolveSingleStepConversion(sourceTypeId, candidateTypeId);
+    if (conversion) {
+      candidateConversions.push(conversion);
+    }
+  }
+
+  if (candidateConversions.length === 1) {
+    return { kind: "convert", conversion: candidateConversions[0] };
+  }
+
+  if (candidateConversions.length > 1) {
+    return { kind: "ambiguous" };
+  }
+
+  return { kind: "missing" };
+}
+
+function emitTargetTypeConversionDiagnostic(
+  sourceTypeId: TypeId,
+  expectedTypeId: TypeId,
+  siteDescription: string,
+  isAmbiguous: boolean,
+  diagNode: ts.Node,
+  ctx: LowerContext
+): void {
+  const message = isAmbiguous
+    ? `No unique conversion from ${sourceTypeId} to expected type ${expectedTypeId} for ${siteDescription}`
+    : `No conversion from ${sourceTypeId} to expected type ${expectedTypeId} for ${siteDescription}`;
+  ctx.diagnostics.push(makeDiag(LoweringDiagCode.NoConversionToTargetType, message, diagNode));
+}
+
+function lowerExpressionWithExpectedType(
+  exprNode: ts.Expression,
+  expectedTypeId: TypeId | undefined,
+  siteDescription: string,
+  diagNode: ts.Node,
+  ctx: LowerContext
+): void {
+  lowerExpression(exprNode, ctx);
+
+  if (!expectedTypeId) {
+    return;
+  }
+
+  const sourceTypeId = resolveExpressionTypeId(exprNode, ctx);
+  if (!sourceTypeId) {
+    return;
+  }
+
+  const resolution = resolveTargetTypedConversion(sourceTypeId, expectedTypeId);
+  if (resolution.kind === "none") {
+    return;
+  }
+
+  if (resolution.kind === "convert") {
+    emitSingleStepConversion(resolution.conversion.fnName, ctx);
+    return;
+  }
+
+  emitTargetTypeConversionDiagnostic(
+    sourceTypeId,
+    expectedTypeId,
+    siteDescription,
+    resolution.kind === "ambiguous",
+    diagNode,
+    ctx
+  );
+}
+
+function resolveSignatureReturnTypeId(
+  signatureDecl: ts.SignatureDeclarationBase,
+  checker: ts.TypeChecker
+): TypeId | undefined {
+  const signature = checker.getSignatureFromDeclaration(signatureDecl as ts.SignatureDeclaration);
+  if (!signature) {
+    return undefined;
+  }
+
+  return tsTypeToTypeId(checker.getReturnTypeOfSignature(signature), checker);
+}
+
+function resolveVariableDeclarationTargetTypeId(decl: ts.VariableDeclaration, ctx: LowerContext): TypeId | undefined {
+  const targetType = ctx.checker.getTypeAtLocation(decl.name);
+  return tsTypeToTypeId(targetType, ctx.checker);
+}
+
+function resolveCallArgumentTargetTypeId(
+  callExpr: ts.CallExpression,
+  argIndex: number,
+  ctx: LowerContext
+): TypeId | undefined {
+  const signature = ctx.checker.getResolvedSignature(callExpr);
+  if (!signature) {
+    return undefined;
+  }
+
+  const parameters = signature.getParameters();
+  if (parameters.length === 0) {
+    return undefined;
+  }
+
+  let parameterIndex = argIndex;
+  if (parameterIndex >= parameters.length) {
+    const lastParam = parameters[parameters.length - 1];
+    const lastDeclaration = lastParam.valueDeclaration ?? lastParam.declarations?.[0];
+    if (!lastDeclaration || !ts.isParameter(lastDeclaration) || !lastDeclaration.dotDotDotToken) {
+      return undefined;
+    }
+    parameterIndex = parameters.length - 1;
+  }
+
+  const parameter = parameters[parameterIndex];
+  const parameterLocation = parameter.valueDeclaration ?? parameter.declarations?.[0] ?? callExpr.expression;
+  const parameterType = ctx.checker.getTypeOfSymbolAtLocation(parameter, parameterLocation);
+  return tsTypeToTypeId(parameterType, ctx.checker);
+}
+
+function lowerCallArgumentsWithTargetTypes(callExpr: ts.CallExpression, ctx: LowerContext): void {
+  for (let argIndex = 0; argIndex < callExpr.arguments.length; argIndex++) {
+    const argument = callExpr.arguments[argIndex];
+    const expectedTypeId = resolveCallArgumentTargetTypeId(callExpr, argIndex, ctx);
+    lowerExpressionWithExpectedType(argument, expectedTypeId, `function argument ${argIndex + 1}`, argument, ctx);
+  }
 }
 
 function emitOperandConversion(
@@ -613,6 +819,7 @@ function lowerOnPageEnteredBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onPageEntered`,
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker),
   };
 
   const body = funcNode.body;
@@ -791,6 +998,7 @@ function lowerOnExecuteBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onExecute`,
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker),
   };
 
   const body = funcNode.body;
@@ -881,6 +1089,7 @@ function lowerHelperFunction(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: funcName,
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker),
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -965,7 +1174,15 @@ function generateModuleInitWithImports(
       if (iv.sourceModule === moduleName && iv.initializer) {
         const varIdx = callsiteVars.get(iv.name);
         if (varIdx !== undefined) {
-          lowerExpression(iv.initializer, ctx);
+          const decl = ts.isVariableDeclaration(iv.initializer.parent) ? iv.initializer.parent : undefined;
+          const expectedTypeId = decl ? resolveVariableDeclarationTargetTypeId(decl, ctx) : undefined;
+          lowerExpressionWithExpectedType(
+            iv.initializer,
+            expectedTypeId,
+            `variable initializer for '${iv.name}'`,
+            iv.initializer,
+            ctx
+          );
           ir.push({ kind: "StoreCallsiteVar", index: varIdx });
         }
       }
@@ -978,7 +1195,13 @@ function generateModuleInitWithImports(
         if (ts.isIdentifier(decl.name) && decl.initializer) {
           const varIdx = callsiteVars.get(decl.name.text);
           if (varIdx !== undefined) {
-            lowerExpression(decl.initializer, ctx);
+            lowerExpressionWithExpectedType(
+              decl.initializer,
+              resolveVariableDeclarationTargetTypeId(decl, ctx),
+              `variable initializer for '${decl.name.text}'`,
+              decl.initializer,
+              ctx
+            );
             ir.push({ kind: "StoreCallsiteVar", index: varIdx });
           }
         }
@@ -1013,7 +1236,13 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
 
   if (ts.isReturnStatement(stmt)) {
     if (stmt.expression) {
-      lowerExpression(stmt.expression, ctx);
+      lowerExpressionWithExpectedType(
+        stmt.expression,
+        ctx.currentReturnTypeId,
+        "return statement",
+        stmt.expression,
+        ctx
+      );
     }
     ctx.ir.push({ kind: "Return" });
   } else if (ts.isExpressionStatement(stmt)) {
@@ -1061,7 +1290,13 @@ function lowerVariableDeclarationList(declList: ts.VariableDeclarationList, ctx:
     if (ts.isIdentifier(decl.name)) {
       const localIdx = ctx.scopeStack.declareLocal(decl.name.text);
       if (decl.initializer) {
-        lowerExpression(decl.initializer, ctx);
+        lowerExpressionWithExpectedType(
+          decl.initializer,
+          resolveVariableDeclarationTargetTypeId(decl, ctx),
+          `variable initializer for '${decl.name.text}'`,
+          decl.initializer,
+          ctx
+        );
         checkStructAssignmentCompat(decl.name, decl.initializer, decl, ctx);
         ctx.ir.push({ kind: "StoreLocal", index: localIdx });
         ctx.scopeStack.setLocalIrStart(localIdx, ctx.ir.length);
@@ -2034,9 +2269,7 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
   if (ts.isIdentifier(expr.expression)) {
     const funcId = ctx.functionTable.get(expr.expression.text);
     if (funcId !== undefined) {
-      for (const arg of expr.arguments) {
-        lowerExpression(arg, ctx);
-      }
+      lowerCallArgumentsWithTargetTypes(expr, ctx);
       ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: expr.arguments.length });
       return;
     }
@@ -2068,9 +2301,7 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
     if (ctx.ir.length === irLenBefore) {
       return;
     }
-    for (const arg of expr.arguments) {
-      lowerExpression(arg, ctx);
-    }
+    lowerCallArgumentsWithTargetTypes(expr, ctx);
     ctx.ir.push({ kind: "CallIndirect", argc: expr.arguments.length });
     return;
   }
@@ -2106,9 +2337,7 @@ function lowerStructMethodCall(
   const userFuncId = ctx.functionTable.get(fnName);
   if (userFuncId !== undefined) {
     lowerExpression(propAccess.expression, ctx);
-    for (const arg of expr.arguments) {
-      lowerExpression(arg, ctx);
-    }
+    lowerCallArgumentsWithTargetTypes(expr, ctx);
     const argc = expr.arguments.length + 1;
     ctx.ir.push({ kind: "Call", funcIndex: userFuncId, argc });
     return true;
@@ -2123,9 +2352,7 @@ function lowerStructMethodCall(
   }
 
   lowerExpression(propAccess.expression, ctx);
-  for (const arg of expr.arguments) {
-    lowerExpression(arg, ctx);
-  }
+  lowerCallArgumentsWithTargetTypes(expr, ctx);
   const argc = expr.arguments.length + 1;
   if (fnEntry.isAsync) {
     ctx.ir.push({ kind: "HostCallArgsAsync", fnName, argc });
@@ -2290,6 +2517,7 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     funcIdCounter: ctx.funcIdCounter,
     closureFunctions: ctx.closureFunctions,
     currentFunctionName: closureName,
+    currentReturnTypeId: resolveSignatureReturnTypeId(expr, ctx.checker),
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -2306,7 +2534,13 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     closureIr.push({ kind: "PushConst", value: NIL_VALUE });
     closureIr.push({ kind: "Return" });
   } else {
-    lowerExpression(expr.body, closureCtx);
+    lowerExpressionWithExpectedType(
+      expr.body,
+      closureCtx.currentReturnTypeId,
+      "return statement",
+      expr.body,
+      closureCtx
+    );
     closureIr.push({ kind: "Return" });
   }
 
@@ -2427,7 +2661,13 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
   }
 
   if (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
-    lowerExpression(expr.right, ctx);
+    lowerExpressionWithExpectedType(
+      expr.right,
+      resolveExpressionTypeId(expr.left, ctx),
+      `assignment to '${expr.left.text}'`,
+      expr.right,
+      ctx
+    );
     checkStructAssignmentCompat(expr.left, expr.right, expr, ctx);
   } else {
     emitLoad(target, ctx);
@@ -5815,6 +6055,7 @@ function lowerClassDeclaration(
     closureFunctions,
     thisLocalIndex: thisLocal,
     currentFunctionName: `${ci.name}$new`,
+    currentReturnTypeId: ctor ? resolveSignatureReturnTypeId(ctor, checker) : undefined,
   };
 
   if (typeId) {
@@ -5902,6 +6143,7 @@ function lowerClassDeclaration(
       closureFunctions,
       thisLocalIndex: 0,
       currentFunctionName: `${ci.name}.${methodName}`,
+      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker),
     };
 
     for (let i = 0; i < userParamCount; i++) {
