@@ -6,6 +6,7 @@ user-authored tile compilation, and bridge connectivity without depending on
 global registries, concrete runtime classes, or low-level transport objects.
 
 Companion design doc: [mindcraft-seam-design.md](mindcraft-seam-design.md).
+Companion requirements doc: [mindcraft-public-seam-requirements.md](mindcraft-public-seam-requirements.md).
 
 Depends on infrastructure from:
 - [brain-action-execution-architecture.md](brain-action-execution-architecture.md)
@@ -55,8 +56,20 @@ Phases here are numbered S1-S7.
    it.
 4. **Post-mortem** -- "Run post-mortem for Phase S1." This step:
    - Diffs planned deliverables vs what was actually built.
+   - Reviews the phase's prospective `Requirements addressed` section before
+     closing the phase.
    - Records the outcome in the Phase Log (bottom of this doc). The Phase Log
      is a post-mortem artifact -- never write it during implementation.
+   - Records a `Requirements retrospective` subsection in the Phase Log using
+     the planned requirement list as the baseline, for example:
+     - `FR-<id>: satisfied as planned`
+     - `FR-<id>: partially satisfied (<what was actually covered>; remaining work carries to Phase S<n>)`
+     - `FR-<id>: not addressed (deferred to Phase S<n> -- <reason>)`
+   - Uses the same retrospective format for any `NFR-<id>` or `INV-<id>` items
+     that were listed in the phase's prospective `Requirements addressed`
+     section.
+   - Ensures every prospectively listed requirement that was not fully
+     satisfied names the phase that now owns the remaining work.
    - Amends upstream specs with dated notes if they were wrong or
      underspecified.
    - Propagates discoveries to upcoming phases in this doc (updated risks,
@@ -66,6 +79,17 @@ Phases here are numbered S1-S7.
 
 The planning doc is the source of truth across conversations. Session memory
 does not survive. Keep this doc current.
+
+Requirement references in this plan should follow the IDs in
+[mindcraft-public-seam-requirements.md](mindcraft-public-seam-requirements.md).
+When a new requirement is inserted between existing entries, it is acceptable
+to use a fractional ID such as `FR-2.5` rather than renumbering the rest of the
+document.
+
+The `Requirements retrospective` is append-only. Once a phase is closed and its
+retrospective is written to the Phase Log, do not edit that retrospective in a
+later phase. Any newly discovered drift should be recorded in the later phase's
+own retrospective and carry-forward notes.
 
 ---
 
@@ -81,10 +105,8 @@ This plan does **not** aim to:
 The first goal is a clean new seam, not artificial continuity with legacy API
 shapes.
 
-The plan also does **not** assume up front that the final recommended app-facing
-entrypoint must live directly in `@mindcraft-lang/core`. If the core package's
-multi-target constraints make that materially worse, a dedicated node/browser
-facade package is an acceptable outcome.
+If S2 reveals that Roblox constraints distort the app-facing API, we may
+introduce a thin node/browser facade package; that decision is deferred.
 
 There are currently no external compatibility constraints on this work. If a
 breaking API cleanup is the cleanest path, that is acceptable. Temporary
@@ -119,6 +141,41 @@ permanent, intentional API.
   - instantiate `Brain` directly from `@mindcraft-lang/core/brain/runtime`
   - read and mutate registries through `getBrainServices()`
 
+### Registration machinery reality
+
+The registration problem is deeper than the top-level bootstrap functions.
+
+- `packages/core/src/brain/runtime/index.ts` is only a shallow orchestrator.
+  `registerCoreRuntimeComponents()` fans out into `registerCoreTypes()`,
+  `registerContextTypes()`, `registerCoreActuators()`,
+  `registerCoreSensors()`, `registerCoreConversions()`,
+  `registerCoreOperators()`, `registerElementAccessBuiltins()`, and others.
+- The built-in registrars behind `registerElementAccessBuiltins()`,
+  `registerMapBuiltins()`, `registerMathBuiltins()`, and
+  `registerStringBuiltins()` write into `getBrainServices().functions`, which
+  is a distinct function registry rather than the operator table.
+- `packages/core/src/brain/tiles/index.ts` is the same pattern for tile
+  registrations. `registerCoreTileComponents()` fans out into operator,
+  control-flow, variable, literal, parameter, actuator, and sensor tile
+  registration.
+- Representative leaf functions such as `registerCoreTypes()` and
+  `registerCoreSensors()` resolve their target registries by calling
+  `getBrainServices()` internally rather than accepting an explicit install
+  target.
+- Sim has the same structural shape. `registerBrainComponents()` fans out into
+  `registerTypes()`, `registerFns()`, and `registerTiles()`, which then fan out
+  again into leaf registrations that also assume ambient services.
+
+So `coreModule()` becoming real is not a thin wrapper around
+`registerCoreBrainComponents()`. The target architecture is explicit
+install-context threading through the registration call trees.
+
+If a tightly scoped install-time ambient registration context is used during
+migration, it should be treated only as a temporary bridge to that threaded
+end-state.
+
+The same applies to sim's module install path.
+
 ### Bridge-app integration seam
 
 - `packages/bridge-app/src/app-project.ts` subclasses the low-level
@@ -137,9 +194,16 @@ permanent, intentional API.
 - `apps/sim/src/bootstrap.ts` calls `setTileVisualProvider()`,
   `registerCoreBrainComponents()`, `registerBrainComponents()`,
   `registerUserTilesAtStartup()`, and `initProject()` during bootstrap.
+- `registerUserTilesAtStartup()` exists specifically so cached user-authored
+  tile metadata is present before persisted brains deserialize; fresh compiler
+  output only arrives later through `initProject()`.
 - `apps/sim/src/services/brain-runtime.ts` imports the concrete `Brain` class,
   uses `getBrainServices()` to build catalogs and resolve host actions, and
   keeps app-owned user action artifact maps.
+- `apps/sim/src/services/brain-runtime.ts` also owns the current selective
+  rebuild machinery: `brainActionRevisions`, `registerActiveBrainContainer()`,
+  `shouldRebuildBrain()`, and
+  `rebuildActiveBrainsUsingChangedActions(changedRevisions)`.
 - `apps/sim/src/services/user-tile-registration.ts` directly manipulates the
   tile and type registries through `getBrainServices()`, instantiates concrete
   tile definition classes, and persists user tile metadata separately from the
@@ -147,6 +211,11 @@ permanent, intentional API.
 - `apps/sim/src/services/vscode-bridge.ts` constructs `AppProject`, reaches into
   `project.session`, `project.files`, and `project.compilation`, and triggers a
   synthetic `import` notification to seed startup compilation.
+- `apps/sim/src/services/vscode-bridge.ts` also injects generated
+  `mindcraft.d.ts` and a compiler-owned `tsconfig.json` copy into the
+  bridge-owned filesystem before handing it to `AppProject`, so compiler
+  inputs and system files are currently mixed into the raw workspace snapshot
+  rather than composed explicitly.
 
 ### Import-shape symptoms
 
@@ -205,20 +274,15 @@ Important implications:
 For this reason, any phase that touches `packages/core` must treat the Roblox
 build as a primary correctness gate, not a compatibility afterthought.
 
+That includes the registration machinery refactor. A solution that only changes
+the top-level bootstrap API while the real registration leaves still depend on
+ambient globals is not finished.
+
 ---
 
 ## Target End State
 
 The final integration story should support three clean adoption tiers.
-
-The examples below assume the clean seam can live directly in
-`@mindcraft-lang/core`. If Phase S1 determines that doing so would require too
-many Roblox-driven compromises in the default app-facing API, the same examples
-may instead use a dedicated node/browser facade package layered over core.
-
-That facade option does **not** replace the required Roblox-facing root import
-pattern of `@mindcraft-lang/core`; it only offers a cleaner node/browser-facing
-entrypoint if needed.
 
 ### 1. Core-only app
 
@@ -231,8 +295,10 @@ const environment = createMindcraftEnvironment({
 
 const brain = environment.createBrain(brainDef, {
   context: actor,
-  catalogs: [brainDef.catalog()],
 });
+
+brain.startup();
+brain.think(now);
 ```
 
 ### 2. Core + TypeScript-authored tiles
@@ -245,10 +311,13 @@ const environment = createMindcraftEnvironment({
   modules: [coreModule(), createAppModule()],
 });
 
-const compiler = createWorkspaceCompiler({ ambientFiles, tsconfig });
+const compiler = createWorkspaceCompiler({ environment });
 const snapshot = compiler.compile();
 
-environment.replaceActionBundle(snapshot.bundle);
+const update = environment.replaceActionBundle(snapshot.bundle);
+if (update.invalidatedBrains.length > 0) {
+  scheduleBrainRebuild();
+}
 ```
 
 ### 3. Core + compiler + VS Code bridge
@@ -256,6 +325,9 @@ environment.replaceActionBundle(snapshot.bundle);
 ```ts
 import { createAppBridge } from "@mindcraft-lang/bridge-app";
 import { createCompilationFeature } from "@mindcraft-lang/bridge-app/compilation";
+import { createWorkspaceCompiler } from "@mindcraft-lang/ts-compiler";
+
+const compiler = createWorkspaceCompiler({ environment });
 
 const bridge = createAppBridge({
   app: { id: "sim", name: "Sim", projectId: "sim-default", projectName: "Sim" },
@@ -274,7 +346,7 @@ bridge.start();
 - language model
 - runtime
 - compiler for tile brains
-- module installation API
+- module definition and environment-construction-time installation
 - action bundle contract consumed by the runtime
 
 `@mindcraft-lang/ts-compiler` owns:
@@ -296,17 +368,6 @@ bridge.start();
 - filesystem sync primitives
 - transport-oriented project/session internals
 
-Optional facade package owns:
-
-- a cleaner node/browser-facing integration surface when exposing that seam
-  directly from `@mindcraft-lang/core` would be too distorted by multi-target
-  constraints
-- re-exporting/adapting the recommended runtime-facing APIs for app consumers
-
-The facade package would not replace core internally. It would sit above core as
-the preferred app-facing package for browser/node apps if Phase S1 concludes
-that this produces a better seam.
-
 ---
 
 ## Architecture Strategy
@@ -322,20 +383,6 @@ This redesign should be clarity-first and staged for implementation risk.
 
 That sequencing keeps the risk in control and prevents the seam redesign from
 turning into a stop-the-world rewrite.
-
-### Allowed packaging escape hatch
-
-If a clean app-facing seam in `@mindcraft-lang/core` would require awkward
-API-level gymnastics because of the multi-target / Roblox-safe requirements,
-this plan explicitly allows introducing a dedicated node/browser facade package.
-
-Use that option only if it genuinely improves the default app experience. The
-facade should stay thin:
-
-- core remains the implementation foundation
-- the facade re-exports/adapts rather than re-implements semantics
-- bridge-app and ts-compiler compose against the facade for app-facing usage,
-  while remaining separate packages
 
 ### Core-specific implementation rule
 
@@ -364,7 +411,8 @@ or the bridge packages must themselves become multi-target builds.
 ## Phase S1: Public contract layer and export map stabilization
 
 **Objective:** Introduce the names, package entrypoints, and high-level public
-contracts for the new seam without changing the underlying behavior yet.
+contracts for the new seam without changing the underlying behavior yet or
+forcing the facade-package decision prematurely.
 
 **Packages/files touched:**
 
@@ -379,16 +427,22 @@ contracts for the new seam without changing the underlying behavior yet.
 
 1. Add top-level core public contract types for the new seam:
    - `MindcraftEnvironment`
+  - `MindcraftCatalog`
+  - `HydratedTileMetadataSnapshot`
    - `MindcraftModule`
    - `MindcraftModuleApi`
    - `CreateBrainOptions`
    - `CompiledActionBundle`
+  - ensure `MindcraftModuleApi` includes a distinct runtime function
+    registration path in addition to operator registration
 2. Add top-level bridge-app public contract types for the new seam:
    - `AppBridge`
    - `AppBridgeOptions`
    - `AppBridgeSnapshot`
    - `WorkspaceAdapter`
    - `AppBridgeFeature`
+  - `AppBridgeFeatureContext`
+  - `AppBridgeFeatureStatus`
 3. Add a new bridge-app compilation subpath contract:
    - `WorkspaceCompiler`
    - `DiagnosticSnapshot`
@@ -398,10 +452,7 @@ contracts for the new seam without changing the underlying behavior yet.
    imported without reaching into old subpaths.
 6. Confirm that any new `packages/core` export-map or file-layout changes do not
   conflict with the node/esm/rbx package shape.
-7. Decide whether the recommended app-facing seam should live directly in
-   `@mindcraft-lang/core` or in a dedicated node/browser facade package layered
-   over core. Document that decision before Phase S2 begins.
-8. Preserve the existing Roblox-facing root import shape of `@mindcraft-lang/core`,
+7. Preserve the existing Roblox-facing root import shape of `@mindcraft-lang/core`,
   including the `brain` namespace export and `brain.compiler` /
   `brain.tiles` access pattern.
 
@@ -411,8 +462,17 @@ contracts for the new seam without changing the underlying behavior yet.
   phases can refactor internals without renaming the API every step.
 - The new contracts should avoid leaking `BrainServices`, `ProjectSession`,
   `ProjectFiles`, or concrete tile-definition classes.
-- If the facade-package path is chosen, S1 should also settle its scope: thin
-  re-export/adapter layer only, not a second implementation stack.
+- S1 should avoid speculative public surface area that is not required by the
+  extracted requirements, especially runtime module handles/uninstall and
+  incremental authored-action mutation APIs.
+- `MindcraftModuleApi` must model callable runtime functions separately from
+  operators. Core built-ins such as element/index access helpers, map
+  operations, math functions, and string methods currently register through the
+  function registry, not the operator table.
+- S1 should make it clear that default ambient generation stays in
+  `@mindcraft-lang/ts-compiler` and will stop depending on
+  `getBrainServices()` once registry ownership becomes environment-scoped.
+- S1 should lock the public vocabulary and avoid speculative packaging work.
 - S1 should also explicitly decide which legacy exports will be retained
   temporarily for internal migration only, and which can be removed outright.
 
@@ -425,28 +485,66 @@ contracts for the new seam without changing the underlying behavior yet.
 
 - S1 defines names that still leak `BrainServices`, `ProjectSession`,
   `ProjectFiles`, or other low-level internals into the new seam.
-- S1 leaves the direct-core-vs-facade decision unresolved, forcing later phases
-  to build against a moving target.
+- S1 omits runtime function registration from `MindcraftModuleApi` and
+  implicitly treats callable built-ins as operators even though they live in a
+  separate function registry.
+- S1 leaves the ambient-generation dependency story vague, so later work either
+  falls back to `getBrainServices()` again or pushes TypeScript-specific
+  declaration generation into core.
 - S1 introduces provisional aliases or export shims without clear ownership or
   a removal plan.
-- S1 produces a second implementation stack instead of a thin facade if the
-  facade-package option is chosen.
 - S1 accidentally breaks or de-emphasizes the required Roblox import shape from
   `@mindcraft-lang/core`, especially the `brain` namespace export.
 
+### Requirements addressed
+
+- `FR-1`: partially satisfied (runtime-only seam names and top-level imports are
+  defined; implementation is deferred to Phase S2 and real-app proof to
+  Phase S6)
+- `FR-2`: partially satisfied (compiler seam vocabulary and bundle contract
+  names are defined; bridge-free compiler/runtime implementation is deferred to
+  Phase S3)
+- `FR-3`: partially satisfied (bridge-only public contract vocabulary is
+  defined; implementation is deferred to Phase S4)
+- `FR-4`: partially satisfied (cross-package seam vocabulary is aligned;
+  composed compiler+bridge flow is deferred to Phase S5 and real-app proof to
+  Phase S7)
+- `FR-5`: partially satisfied (recommended public boundaries are named without
+  legacy internals, including a distinct module-level runtime function
+  registration path; concrete migration and cleanup are deferred to Phases S2-S7)
+- `FR-18`: partially satisfied (the bridge lifecycle surface is named;
+  concrete behavior is deferred to Phase S4)
+- `FR-22`: partially satisfied (the feature capability surface is named; real
+  feature proof is deferred to Phase S5)
+- `FR-23`: partially satisfied (diagnostic/status publication hooks are named
+  in the contract layer; implementation is deferred to Phase S5)
+- `FR-25`: partially satisfied (the contract layer names environment-owned
+  registry state as the source of default ambient generation; implementation is
+  deferred to Phase S2 and ts-compiler consumption to Phase S5)
+- `NFR-3`: partially satisfied (the root import shape is preserved in the
+  public contract layer; runtime coexistence with the new core seam is deferred
+  to Phase S2)
+- `NFR-6`: partially satisfied (the intended standard path is named; final
+  demotion of legacy seams is deferred to Phase S7)
+- `NFR-7`: partially satisfied (the adoption-tier vocabulary is established;
+  final public guidance is deferred to Phase S7)
+- `INV-5`: partially satisfied (bridge and compilation are modeled as separate
+  optional layers; concrete implementation is deferred to Phases S4-S5)
+- `INV-6`: partially satisfied (advanced paths are secondary in the contract
+  story; final legacy demotion is deferred to Phase S7)
+
 ---
 
-## Phase S2: Environment-scoped core runtime and module installation
+## Phase S2: Environment-scoped core runtime and constructor-time module installation
 
 **Objective:** Make the new core integration path environment-scoped rather than
 process-global, with legacy globals retained only if they still reduce internal
 migration risk.
 
-**Prerequisites:** Phase S1.
+This is not a wrapper phase. S2 must make the core registration machinery
+environment-aware in a real way.
 
-This phase assumes S1 has already decided whether the primary app-facing symbols
-are exported directly from `@mindcraft-lang/core` or from a thin facade layered
-over it.
+**Prerequisites:** Phase S1.
 
 **Packages/files touched:**
 
@@ -461,32 +559,109 @@ over it.
 
 1. Implement `createMindcraftEnvironment()` backed by a private environment
    state container instead of the process-global singleton.
-2. Implement `coreModule()` as the environment-scoped replacement for
+2. Implement `coreModule()` as the environment-construction-time replacement for
    `registerCoreBrainComponents()`.
-3. Add `environment.createCatalog()` and `environment.createBrain(...)`.
-4. Route host action resolution and catalog composition through the environment
-   rather than through `getBrainServices()` in the new path.
-5. Decide explicitly whether legacy singleton-oriented APIs are:
+3. Keep module installation constructor-time only in v1:
+  - supply modules through `createMindcraftEnvironment({ modules: [...] })`
+  - do not expose a public runtime install/uninstall or module-handle surface
+   unless a concrete product need appears during implementation
+4. Add `environment.createCatalog()` and `environment.createBrain(...)`.
+5. Ensure the value returned by `createBrain(...)` is the runnable app-facing
+   brain surface, not a lifecycle-only token:
+  - apps can tick it through the supported seam
+  - apps can inspect runtime state they currently need, such as program/page
+   state, compiled program, execution context, and scheduler state
+  - apps do not need the concrete `Brain` class to use created brains
+6. Ensure one `BrainDef` can be reused to create many independent runnable
+   brains:
+  - repeated `createBrain(sharedDef, ...)` calls produce distinct runtime
+   instances
+  - those instances do not share variables, page state, scheduler state,
+   execution-context state, or linked-action revision tracking
+  - apps can choose when to replace live instances after a definition change;
+   existing instances are not silently collapsed into one shared runtime
+7. Route host action resolution, built-in function registration, and catalog
+  composition through the environment rather than through
+  `getBrainServices()` in the new path.
+8. Define the catalog model explicitly:
+  - `createCatalog()` returns an empty app-owned overlay catalog
+  - module-installed tiles live in environment-shared catalog state
+  - startup-hydrated fallback tiles live in an environment-managed semantic
+    hydration catalog
+  - `brainDef.catalog()` remains a brain-local catalog included automatically
+   by `createBrain(...)`
+  - environment-owned and overlay catalogs use `TileCatalog` internally, or a
+    direct successor that preserves the same distributed-ownership
+    `serialize` / `deserialize` and `toJson` / `fromJson` protocol
+  - `BrainDef -> catalog()` remains the owner of per-brain tile serialization;
+    `MindcraftCatalog` is a public contract over that implementation, not a
+    separate storage model
+  - duplicate tile IDs across the effective catalog set are not a normal
+   override mechanism to rely on
+9. Define the persisted-brain deserialization seam so normal brain loading no
+  longer hardcodes a process-global tile catalog:
+  - either add an environment-scoped deserialize/load helper, or
+  - thread environment-shared catalogs into the model-layer deserializers used
+    by normal app startup
+10. Decide explicitly whether legacy singleton-oriented APIs are:
   - removed outright in this phase, or
   - retained temporarily as thin migration shims over the new environment.
-6. Add tests proving that two environments can coexist without leaking types,
-   tiles, actions, or operator registrations into each other.
-7. Validate that the environment implementation is Roblox-safe in shared core
+11. Add tests proving that two environments can coexist without leaking types,
+  functions, tiles, actions, or operator registrations into each other.
+12. Validate that the environment implementation is Roblox-safe in shared core
    code: no Node/browser-only assumptions, no forbidden shared-code constructs,
    and no breakage of the existing platform abstraction pattern.
-8. Ensure the new seam coexists with the preserved root export shape so Roblox
+13. Ensure the new seam coexists with the preserved root export shape so Roblox
   consumers can continue using `import { brain, List, logger } from
   "@mindcraft-lang/core"`.
-
-If S1 chose the facade-package route, S2 still implements the environment in
-core; the facade only re-exports/adapts the finished core seam.
+14. Adopt explicit context threading through the registration call tree as the
+  target architecture for core registration.
+15. If a tightly scoped install-time ambient registration context is used at
+  all, treat it only as a short-lived migration bridge and document its
+  removal point.
+16. Refactor `registerCoreRuntimeComponents()`,
+   `registerCoreTileComponents()`, and their transitive leaf registrations so
+  module installation no longer depends on an already-populated default global
+  services instance.
+  - this includes the distinct function-registry leaves behind
+    `registerElementAccessBuiltins()`, `registerMapBuiltins()`,
+    `registerMathBuiltins()`, and `registerStringBuiltins()`
+17. Introduce an internal registration context type if useful
+   (`CoreRegistrationContext`, similar naming, or equivalent) so leaf
+   registrations do not have to consume the public `MindcraftModuleApi`
+   directly. The public API and the internal wiring do not need to be the same
+   object.
+18. Make the environment-owned registry state available to core-adjacent
+  compiler tooling without going through `getBrainServices()` or a process-
+  global singleton. This does not require a new public description type in v1.
 
 **Notes:**
 
 - The critical success condition for S2 is that a new app can use the new core
   API without touching the singleton seam.
+- V1 should stop at constructor-time module installation unless real product
+  pressure appears. A dynamic module lifecycle can be added later if it becomes
+  necessary, but it should not be paid for up front.
+- A good S2 result also makes catalog ownership obvious: environment-shared
+  tiles, startup-hydrated fallback tiles, app-owned overlay catalogs, and
+  automatic brain-local catalogs should each have a clear role.
+- A good S2 result also preserves the existing distributed-ownership
+  serialization chain for per-brain tiles. Narrowing the public catalog
+  interface must not break `BrainDef -> catalog() -> tile defs` round-tripping.
+- A good S2 result also makes runtime callable ownership obvious: operators stay
+  in the operator table, while callable built-ins register through the distinct
+  function-registry path exposed by `MindcraftModuleApi.registerFunction(...)`.
+- A good S2 result also makes tooling ownership obvious: `@mindcraft-lang/core`
+  owns the environment-scoped registries, while `@mindcraft-lang/ts-compiler`
+  owns TypeScript-specific ambient declaration rendering.
 - Existing deep subpaths or singleton helpers do not need to be preserved unless
   they still earn their keep during internal migration.
+- A good S2 result may still use an internal helper context, but it cannot leave
+  the registration tree fundamentally dependent on `getBrainServices()` as an
+  implicit install target.
+- `MindcraftModuleApi` is the public abstraction. Internally, the implementation
+  should adapt it into a narrower registration context rather than threading the
+  full public API through every registration leaf.
 
 **Risks:**
 
@@ -507,6 +682,70 @@ core; the facade only re-exports/adapts the finished core seam.
 - Legacy singleton helpers remain after their internal migration role is over.
 - The environment refactor requires Roblox consumers to switch away from the
   root `brain` namespace import pattern.
+- S2 exposes a public runtime module lifecycle even though the current
+  requirements only justify constructor-time installation.
+- Built-in functions are still misclassified as operators, or still require
+  hidden `getBrainServices().functions` access because `MindcraftModuleApi`
+  never gained a distinct function-registration path.
+- Ambient generation still has to read `getBrainServices()` because the
+  environment-scoped registry state was never made available to compiler
+  tooling.
+- `MindcraftCatalog` gets backed by a new ad hoc storage model instead of
+  `TileCatalog` (or a compatible successor), so `BrainDef` no longer preserves
+  the existing catalog-owned binary/JSON serialization chain.
+- `createCatalog()` ends up as a snapshot or alias of the environment's shared
+  tiles, so overlay vs shared catalog ownership is still muddy.
+- Persisted-brain deserialization still resolves against a default global tile
+  catalog because no environment-scoped load path was ever defined.
+- Callers still have to pass `brainDef.catalog()` through
+  `CreateBrainOptions` because automatic brain-local catalog composition was
+  never made explicit.
+- `createBrain(...)` returns a lifecycle-only handle, so apps still need the
+  concrete `Brain` runtime class to tick or inspect created brains.
+- Multiple `createBrain(...)` calls with the same `BrainDef` end up sharing one
+  runtime instance or one mutable runtime-state bag, so archetype-style reuse no
+  longer works.
+- Only the top-level bootstrap function changes, while the real registration
+  leaf functions still depend on `getBrainServices()` and a default global.
+- An install-scoped ambient context survives as the real end-state instead of a
+  temporary migration bridge toward explicit threading.
+
+### Requirements addressed
+
+- `FR-1`: partially satisfied (the core runtime-only seam is implemented at the
+  package level; real-app proof is deferred to Phase S6 and final product
+  guidance to Phase S7)
+- `FR-5`: partially satisfied (normal core integration no longer depends on
+  singleton-oriented APIs, including the hidden function registry; bridge-side
+  cleanup is deferred to Phases S4-S7)
+- `FR-25`: partially satisfied (core owns the environment-scoped registry state
+  that default ambient generation depends on; ts-compiler consumption is
+  deferred to Phase S5 and real-app proof to Phases S6-S7)
+- `FR-6`: partially satisfied (environment isolation covers registrations and
+  created brains; bundle-update isolation is deferred to Phase S3)
+- `FR-7`: partially satisfied (environment-shared, app overlay, and brain-local
+  catalog roles are implemented; hydrated and bundle-authored tile roles are
+  deferred to Phase S3)
+- `FR-8`: partially satisfied (load/link resolution covers shared, overlay, and
+  brain-local sources; hydrated and compiled authored metadata are deferred to
+  Phase S3)
+- `FR-14`: partially satisfied (the stable runnable brain handle is introduced;
+  rebuild/disposal tracking against authored-action invalidation is deferred to
+  Phase S3)
+- `FR-15`: partially satisfied (independent runtime instances from a shared
+  `BrainDef` are implemented; archetype-style real-app proof is deferred to
+  Phase S6)
+- `NFR-1`: partially satisfied (the core environment seam and registration
+  refactor remain compatible with core targets; bundle-contract work is deferred
+  to Phase S3 and real-app proof to Phase S6)
+- `NFR-2`: partially satisfied (shared runtime-facing environment logic avoids
+  node/browser-only assumptions; bundle consumption work is deferred to
+  Phase S3)
+- `NFR-3`: fully satisfied
+- `NFR-5`: partially satisfied (explicit brain lifecycle starts here;
+  invalidation/disposal correctness completes in Phase S3)
+- `INV-1`: partially satisfied (the catalog model establishes no-shadowing as
+  the normal rule; hydrated/bundle handoff behavior is deferred to Phase S3)
 
 ---
 
@@ -526,21 +765,64 @@ and remove process-global tile presentation from the new integration path.
 
 **Concrete deliverables:**
 
-1. Implement `environment.replaceActionBundle(bundle)` and
-   `environment.removeActions(keys)`.
-2. Define the exact core contract for a `CompiledActionBundle` so
+1. Implement `environment.replaceActionBundle(bundle)` as the public
+  invalidating operation, not an eager rebuild operation.
+  - removal of authored actions is represented by omission from the next full
+    replacement bundle, not by a second public incremental mutation API
+2. Define the environment-owned brain lifecycle for this path:
+  - the environment tracks brains it creates
+  - each tracked brain records linked action revisions from its last successful
+   link/rebuild
+  - `dispose()` removes a brain from tracking
+3. Add an explicit invalidation notification and rebuild seam such as
+  `onBrainsInvalidated(...)` plus `rebuildInvalidatedBrains(...)` or an
+  equivalent brain-level rebuild API so apps can control when rebuild work
+  runs.
+  - successive `replaceActionBundle(...)` calls must accumulate invalidation in
+    the environment until brains are rebuilt or disposed
+  - `rebuildInvalidatedBrains()` with no arguments must rebuild the full
+    current invalidation set at call time
+  - deferred schedulers must be able to use the no-args form instead of
+    relying on a previously captured `invalidatedBrains` array
+4. Define `HydratedTileMetadataSnapshot` and
+  `environment.hydrateTileMetadata(snapshot)` as the pre-compiler startup path
+  for semantic tile hydration.
+5. Define the exact core contract for a `CompiledActionBundle` so
    `@mindcraft-lang/ts-compiler` can produce data that the core runtime can
    consume without app-owned side maps.
-3. Add a compiler-side adapter or helper that maps project compile output into
+6. Define how startup-hydrated tiles and `CompiledActionBundle.tiles` project
+  into environment-owned shared catalog state, including the handoff from
+  fallback hydration to fresh compiler-owned bundle state.
+7. Define `CompiledActionBundle` as a whole-snapshot contract, not an
+   incremental diff contract:
+  - every successful bundle emission contains the complete authored tile set
+    needed for the bundle-managed domain
+  - shared semantic tiles such as parameter tiles remain present even when only
+    some authored actions changed
+  - bundle replacement does not rely on compiler-side tile ref-count deltas or
+    partial tile emissions to preserve correctness
+8. Add a compiler-side adapter or helper that maps project compile output into
    the bundle contract.
-4. Introduce a non-global tile presentation seam for the new path, such as a
-   presentation resolver or catalog-scoped presentation source.
-5. Decide whether `setTileVisualProvider()` is still worth keeping as a
+9. Remove `setTileVisualProvider()` from the normal integration path and define
+   the minimum viable non-global presentation story needed by the first real
+   consumer:
+  - prefer an app/UI-owned presentation map/provider if presentation lookup is
+    only needed in UI/editor code
+  - do not introduce a new public core resolver/registry type unless S3 proves
+    that non-UI consumers need tile-presentation lookup by ID
+  - if a dedicated lookup seam is required, S3 must define who creates it, who
+    owns it, and how it composes with one environment without leaking across
+    contexts
+10. Decide whether `setTileVisualProvider()` is still worth keeping as a
   temporary migration shim or whether this phase should remove it from the
   primary integration path entirely.
-6. Add tests covering bundle replacement, bundle removal, and presentation
-   isolation across multiple environments.
-7. Ensure the semantic bundle contract remains platform-neutral so it can be
+11. Add tests covering bundle replacement, authored-action removal by omission
+  from a later bundle snapshot, startup hydration, persisted-brain
+  deserialization against hydrated tiles, selective
+  invalidation, deferred rebuild scheduling, disposed-brain removal from the
+  tracking set, presentation isolation across multiple environments, and shared
+  parameter-tile survival across full-snapshot bundle replacement.
+12. Ensure the semantic bundle contract remains platform-neutral so it can be
   consumed by the Roblox, node, and esm core runtimes without target-specific
   public API branches.
 
@@ -549,6 +831,51 @@ and remove process-global tile presentation from the new integration path.
 - Phase S3 is the boundary between the compiler and the runtime. If this seam is
   well-shaped, app code no longer needs to directly maintain user action
   artifact maps and tile metadata registries just to consume compiler output.
+- The new seam must preserve the current split between dependency tracking and
+  actual rebuild work. `replaceActionBundle(...)` should mark affected brains as
+  invalidated, not immediately recreate them.
+- Overlapping bundle replacements must coalesce through the environment's live
+  invalidation state. Deferred rebuild code should call no-args
+  `rebuildInvalidatedBrains()` rather than treating an earlier
+  `invalidatedBrains` array as an overlap-safe token.
+- V1 should stay with one public authored-action mutation path. If incremental
+  patch/remove semantics are ever needed later, they should be introduced as a
+  separate contract rather than smuggled into the snapshot seam.
+- The environment owns the dependency graph for the brains it creates. Apps own
+  rebuild timing.
+- Startup hydration is a semantic fallback path, not an executable action path.
+  It exists so persisted brains and editor state can load before the compiler
+  produces fresh bundle output.
+- `CompiledActionBundle` is still a core-facing contract even when
+  `@mindcraft-lang/ts-compiler` is the producer. If it remains on the
+  `MindcraftEnvironment` seam, it should use core-safe containers such as
+  `Dict` rather than native `Map`.
+- `CompiledActionBundle.tiles` belongs to the semantic catalog story, not just
+  the runtime action story. It should update environment-shared bundle catalog
+  state rather than acting like a second unrelated tile registry.
+- Presentation is a separate concern from those semantic catalogs. S3 should
+  prefer keeping it app/UI-owned unless the first real migration slice proves
+  that a dedicated non-global lookup seam is actually required.
+- `CompiledActionBundle.tiles` must be complete on every successful bundle
+  emission. The replacement contract is snapshot-based, not tile-diff-based.
+  Shared parameter tiles or other reused semantic tiles must therefore remain
+  present in later bundles even if the specific source file that changed did not
+  redefine them.
+- This deliberately replaces sim's current runtime-side parameter-tile
+  ref-counting. The new seam should not require core to retain or release shared
+  parameter tiles one function at a time.
+- The hydration-to-bundle handoff must be atomic. Because catalog lookup is
+  first-match-wins and the seam does not model multiple independent hydrated
+  domains, the first successful bundle install must discard the full hydrated
+  fallback snapshot before or as it installs fresh bundle tiles.
+- A hydrated tile that does not appear in the fresh bundle must disappear at
+  that handoff. It must not remain visible as stale fallback metadata.
+- `DiagnosticSnapshot` is different because it lives on the bridge/compiler
+  side of the seam rather than inside `packages/core`, so it does not inherit
+  that Roblox container constraint by default.
+- Because `packages/core` is multi-target, disposal needs to be explicit. Do
+  not make the design depend on `WeakRef`, finalizers, or other GC-sensitive
+  runtime behavior.
 - Startup metadata hydration for persisted brains must remain supported.
 - Tile presentation is especially important to isolate here because it is more
   naturally app/UI-facing, while `packages/core` must remain viable for Roblox
@@ -562,6 +889,12 @@ and remove process-global tile presentation from the new integration path.
 - Persisted brains currently depend on user tile metadata being available early
   enough for deserialization. The new bundle/presentation seam must preserve
   that startup behavior.
+- It is easy to solve runtime bundle replacement while still leaving startup
+  brain loading broken if semantic hydration before the compiler remains
+  unspecified.
+- It is easy to accidentally move rebuild responsibility back to the app if the
+  environment only stores action bundles and does not also own per-brain linked
+  revision tracking.
 - Do not let presentation concerns leak back into the semantic bundle contract.
 
 **Common failure modes:**
@@ -570,10 +903,73 @@ and remove process-global tile presentation from the new integration path.
   in a core runtime seam.
 - The compiler-side adapter keeps app-owned state alive instead of collapsing it
   into the new bundle seam.
-- Presentation remains effectively process-global even though the API shape has
-  been renamed.
+- S3 names a `TilePresentationResolver`-style API without deciding who owns it,
+  who constructs it, or whether the UI layer could have handled presentation
+  lookup more simply.
+- Startup still depends on fresh compiler output to register tile metadata,
+  so persisted brains fail to deserialize on cold load.
+- Bundle tiles become a second ad hoc registry instead of the environment's
+  bundle-managed shared catalog.
+- Fresh compiler bundles never fully replace the startup-hydrated fallback
+  metadata, so stale semantic tiles linger after compile succeeds.
+- The first bundle install merges with hydrated fallback tiles instead of
+  replacing them atomically, so stale hydrated entries remain visible or shadow
+  fresh bundle tiles under first-match lookup.
+- The compiler emits only changed tile metadata into a replacement bundle, so
+  shared parameter tiles or other reused semantic tiles disappear when the
+  bundle-managed catalog is swapped.
+- The new seam keeps sim's old runtime-side parameter ref-count tables even
+  though completeness of the emitted bundle snapshot already defines which
+  shared parameter tiles should exist.
+- Hydrated tile metadata is mistakenly treated as if it already provided
+  executable actions.
+- `replaceActionBundle(...)` eagerly rebuilds brains and leaves no scheduling
+  hook for apps that need to defer work to a frame boundary.
+- Deferred rebuild code captures an earlier `invalidatedBrains` array and misses
+  additional brains invalidated by a later overlapping bundle replacement.
+- The app still needs its own `brainActionRevisions` or active-brain registry
+  because the environment never took ownership of dependency tracking.
+- Disposed brains remain in the environment's invalidation set and keep getting
+  rebuilt.
+- Presentation remains effectively process-global, or a new presentation
+  registry is introduced into core even though an app/UI-owned map/provider
+  would have been sufficient.
 - Temporary bundle/presentation adapters remain in place after the new core seam
   is fully wired.
+
+### Requirements addressed
+
+- `FR-2`: partially satisfied (the bridge-free compiler/runtime bundle seam is
+  implemented; real-app proof is deferred to Phase S6)
+- `FR-6`: fully satisfied
+- `FR-7`: fully satisfied
+- `FR-8`: partially satisfied (the package seam resolves effective tile
+  visibility across shared, hydrated, compiled, overlay, and brain-local
+  metadata; real-app proof is deferred to Phase S6 and final public guidance is
+  deferred to Phase S7)
+- `FR-9`: partially satisfied (the package-level startup hydration path is
+  implemented; real-app cold-start proof is deferred to Phase S6)
+- `FR-10`: fully satisfied
+- `FR-11`: partially satisfied (authoritative bundle handoff and
+  complete-snapshot semantics are implemented; real-app proof is deferred to
+  Phase S6)
+- `FR-12`: partially satisfied (selective invalidation is implemented at the
+  core seam; real-app proof is deferred to Phase S6)
+- `FR-13`: partially satisfied (deferred rebuild control is implemented at the
+  core seam; real-app proof is deferred to Phase S6)
+- `FR-14`: fully satisfied
+- `FR-16`: fully satisfied
+- `FR-17`: fully satisfied
+- `NFR-1`: partially satisfied (the bundle contract remains core-target
+  compatible; real-app proof is deferred to Phase S6)
+- `NFR-2`: partially satisfied (runtime-facing bundle consumption remains
+  platform-neutral; real-app proof is deferred to Phase S6)
+- `NFR-4`: partially satisfied (cold-start semantics are implemented at the
+  package seam; real-app cold-start proof is deferred to Phase S6)
+- `NFR-5`: fully satisfied
+- `INV-1`: fully satisfied
+- `INV-2`: fully satisfied
+- `INV-3`: fully satisfied
 
 ---
 
@@ -593,19 +989,43 @@ and remove process-global tile presentation from the new integration path.
 **Concrete deliverables:**
 
 1. Implement `createAppBridge(options)`.
-2. Introduce `WorkspaceAdapter` as the seam between app-owned workspace state
-   and the bridge transport.
-3. Support the essential lifecycle and query methods on the new facade:
+2. Introduce sourced bridge-app workspace aliases instead of inventing new
+  filesystem transport types:
+  - `WorkspaceSnapshot = ExportedFileSystem`
+  - `WorkspaceChange = FileSystemNotification`
+  - `FileSystemNotification` remains protocol-owned in `bridge-protocol`, but
+   the bridge-app seam should source it through the public re-export from
+   `bridge-client`
+3. Introduce `WorkspaceAdapter` as the seam between app-owned workspace state
+  and the bridge transport.
+4. Support the essential lifecycle and query methods on the new facade:
    - `start()`
    - `stop()`
    - `requestSync()`
    - `snapshot()`
    - `onStateChange(...)`
    - `onRemoteChange(...)`
-4. Decide whether `AppProject` remains temporarily as an internal migration aid
+5. Define `AppBridgeFeatureContext` as the only capability surface for optional
+   bridge features. It should provide:
+  - current bridge snapshot and state-change subscription
+  - current workspace snapshot
+  - remote workspace change subscription
+  - a sync-complete hook for replay-oriented features
+  - outbound publication helpers for diagnostics/status style feature messages
+6. Make workspace ownership explicit:
+  - the app owns the workspace/VFS state
+  - bridge-app reads current contents through `exportSnapshot()`
+  - bridge-app applies inbound changes through `applyRemoteChange(...)`
+  - persistence remains an app concern, not a bridge concern
+  - generated compiler support files are not part of the app-owned workspace
+    snapshot and are composed separately by compilation features
+7. Define the persistence trigger for browser apps: persist after successful
+  workspace mutation, not by reaching into bridge internals. Full import/sync
+  operations should result in one batched persisted snapshot write.
+8. Decide whether `AppProject` remains temporarily as an internal migration aid
   or is replaced outright by the new facade in this phase.
-5. Add tests for connection status transitions, join-code propagation, remote
-   file-change delivery, and sync behavior.
+9. Add tests for connection status transitions, join-code propagation, remote
+   file-change delivery, sync behavior, and feature attach/replay behavior.
 
 **Notes:**
 
@@ -613,6 +1033,17 @@ and remove process-global tile presentation from the new integration path.
   machinery rather than rebuilding bridge logic from scratch.
 - The new facade should not expose `session`, `files`, or any `Project`-level
   internals.
+- S4 should not invent a second snapshot/change schema. The public
+  `WorkspaceSnapshot` / `WorkspaceChange` names should stay as bridge-app seam
+  aliases over `ExportedFileSystem` and `FileSystemNotification`.
+- The feature context is part of the seam, not an internal afterthought. S4 is
+  incomplete if optional features still need `Project` or `session` objects to
+  function.
+- `WorkspaceAdapter.exportSnapshot()` should represent user-authored workspace
+  state, not generated compiler support files.
+- The bridge facade should not be the owner of persistence. The app-owned
+  workspace store is the source of truth and the thing that decides when to
+  write a snapshot to localStorage or other persistence.
 
 **Risks:**
 
@@ -626,10 +1057,42 @@ and remove process-global tile presentation from the new integration path.
   `files`, just under softer naming.
 - The facade is so thin that apps still need to understand low-level transport
   behavior to use it correctly.
+- `AppBridgeFeatureContext` is undefined or too weak, so the first real feature
+  still has to reach into `Project`, `session`, or transport callbacks.
 - `AppProject` remains the real primary integration path and the new facade is
   only cosmetic.
 - A temporary adapter layer around `AppProject` survives after the facade has
   taken over.
+- `WorkspaceSnapshot` / `WorkspaceChange` become new ad hoc bridge-app types
+  instead of sourced aliases over `bridge-client`'s `ExportedFileSystem` /
+  `FileSystemNotification`.
+- Persistence still depends on reading a bridge-owned VFS snapshot from outside
+  the bridge layer.
+- Ambient declarations or compiler-controlled system files are still mixed into
+  the bridge-owned filesystem snapshot, and `tsconfig.json` is still
+  app-injectable instead of being overwritten internally.
+- Full import/sync operations cause repeated per-file persistence writes instead
+  of one batched snapshot save.
+
+### Requirements addressed
+
+- `FR-3`: partially satisfied (the bridge-only facade is implemented at the
+  package level; real-app proof and final guidance are deferred to Phase S7)
+- `FR-18`: partially satisfied (the app-facing bridge lifecycle/join-code/
+  workspace surface is implemented; real-app proof is deferred to Phase S7)
+- `FR-19`: partially satisfied (public remote/local workspace flow is
+  implemented; real-app proof is deferred to Phase S7)
+- `FR-20`: partially satisfied (the app-owned workspace persistence seam is
+  implemented; sim migration proof is deferred to Phases S6-S7)
+- `FR-21`: partially satisfied (the batched full-sync persistence boundary is
+  implemented; sim proof is deferred to Phases S6-S7)
+- `FR-22`: partially satisfied (the feature capability surface is implemented;
+  diagnostics/status feature proof is deferred to Phase S5)
+- `NFR-6`: partially satisfied (a clean bridge default path exists at the
+  package level; final legacy demotion is deferred to Phase S7)
+- `INV-5`: partially satisfied (bridge connectivity remains independent of
+  compilation in the base bridge facade; compilation feature proof is deferred
+  to Phase S5)
 
 ---
 
@@ -650,15 +1113,44 @@ facade and into an optional feature surface.
 
 **Concrete deliverables:**
 
-1. Introduce `createCompilationFeature({ compiler, publishStatus? })` on the
-   new `@mindcraft-lang/bridge-app/compilation` subpath.
+1. Introduce `createCompilationFeature({ compiler, publishStatus? })`
+  on the new `@mindcraft-lang/bridge-app/compilation` subpath.
 2. Replace the root-level `CompilationProvider` seam with a feature-oriented
-   `WorkspaceCompiler` seam for the new integration path.
-3. Refactor `CompilationManager` into the feature implementation so it is no
+  `WorkspaceCompiler` seam for the new integration path, while preserving the
+  current dependency direction:
+  - `@mindcraft-lang/bridge-app/compilation` owns the feature port
+  - `@mindcraft-lang/ts-compiler` remains independent of `bridge-app`
+  - app code or an optional adapter helper supplies a bridge-facing compiler
+   adapter value
+  - the raw `@mindcraft-lang/ts-compiler` compiler object is expected to expose
+    workspace update methods plus a richer compile result that includes
+    diagnostics and an optional `CompiledActionBundle`; the adapter to
+    `WorkspaceCompiler` narrows that source shape for bridge-app
+3. Keep compiler-only inputs compiler-owned in v1 rather than standardizing a
+  caller-supplied support-files provider. `tsconfig.json` remains a
+  compiler-controlled system file and is not injectable by the app.
+4. Define the feature wiring exclusively through `AppBridgeFeatureContext`:
+  - seed compiler state from `workspaceSnapshot()`
+  - apply bridge-originated changes from `onRemoteChange(...)`
+  - replay cached diagnostics after `onDidSync(...)`
+  - inspect connection status through `snapshot()` / `onStateChange(...)`
+  - publish diagnostics and compile status through the context rather than a
+   raw session sender
+5. Refactor `CompilationManager` into the feature implementation so it is no
    longer conceptually part of the base bridge connection object.
-4. Preserve the current diagnostic replay behavior when an extension pairs after
+6. Define how ambient declarations are generated from environment-owned
+  registry state by default in the new path, replacing the current implicit
+  `buildAmbientDeclarations()` -> `getBrainServices()` dependency, while
+  keeping the public seam focused on the default path.
+  - let `@mindcraft-lang/ts-compiler` read environment-owned registry state
+    directly rather than process-global registries
+  - keep `.d.ts` string generation in `@mindcraft-lang/ts-compiler` rather
+    than introducing a TypeScript-specific generator into core
+  - defer caller-supplied ambient/support-file injection until a concrete app
+    actually needs it
+7. Preserve the current diagnostic replay behavior when an extension pairs after
    compilation has already run.
-5. Decide whether the old `AppProject({ compilationProvider })` shape survives
+8. Decide whether the old `AppProject({ compilationProvider })` shape survives
   temporarily as an internal migration shim or is replaced directly by the
   feature-based surface.
 
@@ -668,6 +1160,20 @@ facade and into an optional feature surface.
   at the package seam.
 - The new shape should let apps opt into bridge connectivity without also taking
   a dependency on compiler-specific abstractions.
+- A successful S5 result does not need raw session access inside the feature;
+  the context from S4 should already provide everything required.
+- `WorkspaceCompiler` should consume the S4 `WorkspaceSnapshot` /
+  `WorkspaceChange` aliases rather than introducing a separate compiler-only
+  snapshot/change model.
+- S5 should preserve the current consumer-owned port pattern rather than
+  introducing a new package cycle between `bridge-app` and `ts-compiler`.
+- S5 should preserve the distinction between user workspace files and
+  compiler-controlled system files. Ambient declarations are derived inputs,
+  not persisted app workspace content, and `tsconfig.json` remains
+  authoritative internal compiler state even if a copy appears in a serialized
+  fileset.
+- The base setup should work with internally generated declarations and no
+  caller-supplied support-files/provider seam.
 
 **Risks:**
 
@@ -679,11 +1185,54 @@ facade and into an optional feature surface.
 
 - The compilation feature is still conceptually welded into the base bridge
   connection object.
+- The compilation feature still cannot be implemented without reaching into
+  `session`, `onRemoteFileChange()`, or other pre-facade internals because the
+  feature context never became concrete enough.
+- `@mindcraft-lang/ts-compiler` now depends directly on
+  `@mindcraft-lang/bridge-app` just to satisfy the feature port type, or
+  `bridge-app` now depends on `ts-compiler` for its public contracts.
+- The new compiler seam still assumes `mindcraft.d.ts` must be injected because
+  no internal default ambient-generation path was defined.
+- `tsconfig.json` is still app-injectable, or whichever serialized copy happens
+  to be present in the fileset wins over the compiler's authoritative config.
+- Ambient declarations still depend on `getBrainServices()` even though the
+  environment is supposed to own the registries on the new path.
+- Ambient generation invents a new public description contract even though
+  direct reads from environment-owned registries would have been sufficient.
+- The bridge feature standardizes a public support-files provider even though
+  no real caller needs externally supplied compiler-only overlays yet.
+- The default path still needs ad hoc caller wiring for compiler-only files
+  even though internally generated ambient declarations were supposed to be
+  sufficient.
+- The compilation feature introduces a second workspace snapshot/change format
+  instead of reusing the sourced S4 bridge-app aliases.
 - The old `compilationProvider` path remains the primary codepath instead of a
   short-lived migration aid.
 - Diagnostic replay or startup compile ordering regresses during the refactor.
 - Temporary dual-wiring between the old and new compilation seams remains after
   feature-based wiring is complete.
+
+### Requirements addressed
+
+- `FR-4`: partially satisfied (compiler + bridge composition is implemented at
+  the package level; full real-app proof is deferred to Phase S7)
+- `FR-22`: fully satisfied
+- `FR-23`: fully satisfied
+- `FR-24`: partially satisfied (diagnostic replay support is implemented in the
+  package seam; real-app proof is deferred to Phase S7)
+- `FR-25`: partially satisfied (default ambient generation is implemented in
+  the package seam by reading environment-owned registry state instead of
+  `getBrainServices()`; real-app proof is deferred to Phases S6-S7)
+- `FR-27`: partially satisfied (compiler-owned system-file authority is
+  implemented in the package seam; real-app proof is deferred to Phase S6)
+- `FR-28`: partially satisfied (user workspace is separated from compiler-only
+  inputs in the package seam; sim proof is deferred to Phase S6 and final
+  full-stack proof to Phase S7)
+- `NFR-6`: partially satisfied (feature layering is clean in the package seam;
+  final recommended guidance and legacy cleanup are deferred to Phase S7)
+- `INV-4`: partially satisfied (package-level separation is implemented;
+  real-app proof is deferred to Phase S6)
+- `INV-5`: fully satisfied
 
 ---
 
@@ -696,6 +1245,7 @@ app and remove direct registry access from the normal sim integration path.
 
 **Packages/files touched:**
 
+- `apps/sim/src/services/vscode-bridge.ts`
 - `apps/sim/src/bootstrap.ts`
 - `apps/sim/src/brain/index.ts`
 - `apps/sim/src/services/brain-runtime.ts`
@@ -710,18 +1260,43 @@ app and remove direct registry access from the normal sim integration path.
    `coreModule()` and the sim module, and passes that environment into the
    services that need it.
 3. Update the sim brain runtime path so it uses `environment.createBrain(...)`
-   rather than importing and constructing `Brain` directly.
+  rather than importing and constructing `Brain` directly, while preserving
+  the supported ability to tick brains and inspect runtime state through the
+  returned brain object.
 4. Update the user-authored action integration path so the sim consumes compiler
-   output through `replaceActionBundle(...)` rather than maintaining the primary
-   runtime state in app-owned maps.
-5. Preserve persisted-brain loading, startup user tile hydration, and rebuild of
+  output through `replaceActionBundle(...)` and environment invalidation events
+  rather than maintaining the primary runtime state in app-owned maps and
+  revision trackers.
+5. Replace `registerUserTilesAtStartup()` with a startup hydration path that:
+  - loads the persisted `HydratedTileMetadataSnapshot`
+  - calls `environment.hydrateTileMetadata(...)` before persisted brains load
+  - lets the first successful compiler bundle atomically replace that fallback
+    snapshot
+6. Replace the current bridge-owned VFS persistence pattern in
+  `vscode-bridge.ts` with an app-owned workspace store that:
+  - loads the persisted snapshot at startup
+  - exposes the `WorkspaceAdapter` contract to bridge-app
+  - persists after successful workspace mutations
+  - batches full import/sync application into one persisted snapshot write
+7. Replace the current injected `mindcraft.d.ts` / `tsconfig.json` filesystem
+  hack with a compiler-owned system-file path that always reinstates the
+  authoritative `tsconfig.json`, plus a default ambient-generation path that
+  derives declarations from the environment. If a future app proves a concrete
+  need for caller-supplied ambient overlays after that, add a separate seam
+  then instead of standardizing it preemptively in v1.
+8. Preserve persisted-brain loading, startup user tile hydration, and rebuild of
    active brains whose linked action revisions changed.
-6. Confirm that the new sim-facing core integration is still built on top of a
+9. Confirm that the new sim-facing core integration is still built on top of a
   core API that remains valid for Roblox-targeted consumers, rather than a
   browser-specific shortcut.
-7. If a facade package is used for sim, keep that strictly as a node/browser
-  convenience layer; do not move the required Roblox-facing root export shape
-  out of `@mindcraft-lang/core`.
+10. Refactor sim's registration call tree (`registerBrainComponents()` ->
+   `registerTypes()` / `registerFns()` / `registerTiles()` and their transitive
+   leaf registrations) so the sim module installs against the new environment or
+   install context rather than assuming ambient global services.
+11. Replace the current `brainActionRevisions` /
+  `registerActiveBrainContainer()` /
+  `rebuildActiveBrainsUsingChangedActions()` normal-path wiring with the new
+  environment-owned invalidation plus sim-controlled rebuild scheduling model.
 
 **Notes:**
 
@@ -730,6 +1305,19 @@ app and remove direct registry access from the normal sim integration path.
 - If an internal helper still uses `getBrainServices()` during migration, that
   is acceptable as an intermediate step as long as the new app-facing seam is in
   place and the composition root no longer depends on it.
+- The same ownership rule applies to VFS persistence: sim should persist its own
+  workspace store, not reach into bridge internals to export and save raw files.
+- As with S2, this is not just a top-level wrapper rename. The sim registration
+  fan-out is part of the machinery that has to be re-plumbed.
+- The startup hydration path is specifically for persisted-brain data loading.
+  It should not be treated as a substitute for fresh compiler output when
+  executable brains need authored action implementations.
+- Sim should no longer need to smuggle generated `mindcraft.d.ts` into the
+  bridge filesystem just to get correct compiler inputs, and it should never be
+  able to control the authoritative `tsconfig.json` through app wiring.
+- Sim should be able to defer rebuilds to a safe frame boundary. The new seam is
+  incomplete if bundle replacement forces reinitialization inside the compiler
+  callback itself.
 
 **Risks:**
 
@@ -745,11 +1333,62 @@ app and remove direct registry access from the normal sim integration path.
 - Direct `Brain` construction or direct registry manipulation remains in the
   normal sim runtime path.
 - The migration breaks persisted-brain loading or startup user tile hydration.
+- Sim still needs to register fallback startup tiles through global registries
+  because the environment never gained a semantic hydration path.
+- Sim still injects generated ambient declarations into the raw workspace
+  snapshot because no explicit compiler support-files seam was introduced.
+- Sim keeps a parallel action-revision tracking system because the environment
+  invalidation contract is too weak.
+- Bundle replacement immediately rebuilds active brains at compile time instead
+  of letting sim schedule the work.
 - Temporary app-level adapters added to get sim across the transition remain in
   the codebase after the new seam is working.
 - The sim-oriented refactor accidentally becomes the default shape for Roblox
   consumers too, even though their root import pattern is required to stay
   supported.
+- VFS persistence still hangs off bridge callbacks and `project.files.raw.export`
+  style reach-through instead of an app-owned workspace store.
+- `registerBrainComponents()` keeps calling the old ambient registration chain,
+  just under a new module-shaped top-level wrapper.
+
+### Requirements addressed
+
+- `FR-1`: partially satisfied (sim proves the new core runtime path in a real
+  app; final tier guidance is deferred to Phase S7)
+- `FR-2`: partially satisfied (sim proves compiler output can feed the runtime
+  without bridge-specific runtime bookkeeping; final tier guidance is deferred
+  to Phase S7)
+- `FR-5`: partially satisfied (sim's normal path no longer depends on core
+  registries, including the hidden function registry, or concrete runtime
+  classes; bridge-side cleanup is deferred to Phase S7)
+- `FR-8`: partially satisfied (sim proves load/link against hydrated and
+  compiled metadata in a real app; final public guidance is deferred to
+  Phase S7)
+- `FR-9`: fully satisfied
+- `FR-11`: fully satisfied
+- `FR-12`: fully satisfied
+- `FR-13`: fully satisfied
+- `FR-15`: fully satisfied
+- `FR-20`: partially satisfied (sim adopts an app-owned workspace store;
+  final standardization on the new bridge seam is deferred to Phase S7)
+- `FR-21`: partially satisfied (sim proves batched full-sync persistence in the
+  app store; final standardization on the new bridge seam is deferred to
+  Phase S7)
+- `FR-25`: partially satisfied (default ambient generation is proven in sim;
+  final full-stack bridge proof is deferred to Phase S7)
+- `FR-27`: partially satisfied (compiler-owned system-file authority is proven
+  in sim; final bridge-seam proof is deferred to Phase S7)
+- `FR-28`: partially satisfied (sim proves user workspace vs compiler-only
+  inputs separation; final bridge-seam standardization is deferred to Phase S7)
+- `NFR-1`: partially satisfied (a real app proves the core seam remains usable
+  without abandoning Roblox-oriented core constraints; final plan completion is
+  deferred to Phase S7)
+- `NFR-2`: partially satisfied (the real app path continues to avoid
+  browser-only assumptions in shared core behavior; final plan completion is
+  deferred to Phase S7)
+- `NFR-4`: fully satisfied
+- `INV-4`: partially satisfied (the separation model is proven in sim; final
+  standard-path cleanup is deferred to Phase S7)
 
 ---
 
@@ -808,12 +1447,52 @@ legacy seam is either removed or reduced to the smallest justified remainder.
   end of the work.
 - The final package surfaces are cleaner on paper than in the actual codebase.
 
+### Requirements addressed
+
+- `FR-1`: fully satisfied (the runtime-only tier is documented and retained as
+  a supported standard path)
+- `FR-2`: fully satisfied (the runtime + compiler tier is documented and
+  retained as a supported standard path)
+- `FR-3`: fully satisfied (the bridge-only tier is documented and validated by
+  the final bridge seam)
+- `FR-4`: fully satisfied (the full-stack runtime + compiler + bridge flow is
+  proven in sim and documented)
+- `FR-5`: fully satisfied (the standard path no longer requires hidden
+  registries, including the function registry, or concrete runtime classes)
+- `FR-8`: fully satisfied (the standard path is proven and documented to load,
+  link, and deserialize against the full effective shared, hydrated, compiled,
+  overlay, and brain-local tile set)
+- `FR-18`: fully satisfied (the app-facing bridge lifecycle surface is proven
+  in sim and remains the documented standard path)
+- `FR-19`: fully satisfied (remote/local workspace flow is proven through the
+  final bridge seam)
+- `FR-20`: fully satisfied (the standard app story uses app-owned workspace
+  persistence rather than bridge-owned raw VFS export)
+- `FR-21`: fully satisfied (the standard app story preserves batched full-sync
+  persistence)
+- `FR-24`: fully satisfied
+- `FR-25`: fully satisfied
+- `FR-27`: fully satisfied
+- `FR-28`: fully satisfied
+- `NFR-1`: fully satisfied (the final standard path and package surfaces rely
+  only on core-facing seams that have been validated across supported core
+  targets)
+- `NFR-2`: fully satisfied (the final standard path does not depend on
+  browser-only or node-only behavior in shared runtime-facing code)
+- `NFR-6`: fully satisfied
+- `NFR-7`: fully satisfied
+- `INV-4`: fully satisfied
+- `INV-6`: fully satisfied
+
 ---
 
 ## Phase Ordering Rationale
 
-- S1 fixes names and exports first so later work has a stable target.
-- S2 and S3 establish the new core seam before the app migration starts.
+- S1 fixes names and export compatibility first so later work has a stable
+  vocabulary.
+- S2 establishes the new core seam before the app migration starts.
+- S3 then builds the compiler/runtime seam on that core foundation before the
+  app migration starts.
 - S4 and S5 establish the new bridge seam before sim's bridge layer migrates.
 - S6 proves the core seam in a real app.
 - S7 proves the bridge seam in the same app and updates the public guidance.
@@ -828,9 +1507,8 @@ producing useful partial outcomes.
 This plan is successful when all of the following are true:
 
 1. A new app can integrate Mindcraft runtime features through the recommended
-  app-facing package -- either `@mindcraft-lang/core` directly or a dedicated
-  facade layered over core -- without calling `registerCoreBrainComponents()`
-  or `getBrainServices()`.
+  app-facing seam without calling `registerCoreBrainComponents()` or
+  `getBrainServices()`.
 2. A new app can add TypeScript-authored tiles without owning the primary runtime
    action-artifact state in app code.
 3. A new app can add bridge connectivity without touching `ProjectSession`,
@@ -852,3 +1530,18 @@ This plan is successful when all of the following are true:
 ## Phase Log
 
 Add entries only during post-mortem.
+
+Each phase log entry must include a `Requirements retrospective` subsection.
+Use the phase's prospective `Requirements addressed` list as the baseline and
+record what actually happened, for example:
+
+```md
+### Requirements retrospective
+- FR-<id>: satisfied as planned
+- FR-<id>: partially satisfied (<what was actually covered>; remaining work carries to Phase S<n>)
+- FR-<id>: not addressed (deferred to Phase S<n> -- <reason>)
+```
+
+Use the same format for any `NFR-<id>` or `INV-<id>` items that were part of the
+phase's prospective requirement list. This retrospective is append-only once
+the phase is closed.
