@@ -7,7 +7,7 @@ import {
   mkNumberValue,
   type NumberValue,
 } from "../interfaces";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 const mathCallDef = mkCallDef({ type: "bag", items: [] });
 
@@ -15,8 +15,8 @@ function num(args: MapValue, index: number): number {
   return (args.v.get(index) as NumberValue).v;
 }
 
-export function registerMathBuiltins() {
-  const { functions } = getBrainServices();
+export function registerMathBuiltins(services: BrainServices) {
+  const { functions } = services;
 
   functions.register(
     "$$math_abs",

@@ -13,7 +13,7 @@ import {
   type StringValue,
   type Value,
 } from "../interfaces";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 const strCallDef = mkCallDef({ type: "bag", items: [] });
 
@@ -31,8 +31,8 @@ function optNum(args: MapValue, index: number): number | undefined {
   return (val as NumberValue).v;
 }
 
-export function registerStringBuiltins() {
-  const { functions } = getBrainServices();
+export function registerStringBuiltins(services: BrainServices) {
+  const { functions, types } = services;
 
   functions.register(
     "$$str_length",
@@ -134,7 +134,7 @@ export function registerStringBuiltins() {
     {
       exec: (_ctx: ExecutionContext, args: MapValue) => {
         const parts = SU.split(str(args, 0), str(args, 1), optNum(args, 2));
-        const listTypeId = getBrainServices().types.instantiate("List", List.from([CoreTypeIds.String]));
+        const listTypeId = types.instantiate("List", List.from([CoreTypeIds.String]));
         const items = new List<Value>();
         for (const part of parts) {
           items.push(mkStringValue(part));

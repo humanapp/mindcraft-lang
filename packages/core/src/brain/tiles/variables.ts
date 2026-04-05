@@ -24,6 +24,7 @@ export interface VariableTileJson {
   uniqueId: string;
 }
 
+import type { BrainServices } from "../services";
 import { getBrainServices } from "../services";
 import { BrainTileFactoryDef } from "./factories";
 
@@ -125,7 +126,8 @@ export function BrainTileVariableDef_deserialize(stream: IReadStream, catalog: I
 export function registerVariableFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
-  opts: BrainTileDefCreateOptions = {}
+  opts: BrainTileDefCreateOptions = {},
+  services: BrainServices
 ) {
   const tileDef = new BrainTileFactoryDef(
     mkVariableFactoryTileId(factoryId),
@@ -134,7 +136,7 @@ export function registerVariableFactoryTileDef(
     producedDataType,
     opts
   );
-  getBrainServices().tiles.registerTileDef(tileDef);
+  services.tiles.registerTileDef(tileDef);
 }
 
 function manufactureVarTileDef(
@@ -148,8 +150,8 @@ function manufactureVarTileDef(
   return tileDef;
 }
 
-export function registerCoreVariableFactoryTileDefs() {
-  registerVariableFactoryTileDef(CoreVariableFactoryId.Boolean, CoreTypeIds.Boolean);
-  registerVariableFactoryTileDef(CoreVariableFactoryId.Number, CoreTypeIds.Number);
-  registerVariableFactoryTileDef(CoreVariableFactoryId.String, CoreTypeIds.String);
+export function registerCoreVariableFactoryTileDefs(services: BrainServices) {
+  registerVariableFactoryTileDef(CoreVariableFactoryId.Boolean, CoreTypeIds.Boolean, {}, services);
+  registerVariableFactoryTileDef(CoreVariableFactoryId.Number, CoreTypeIds.Number, {}, services);
+  registerVariableFactoryTileDef(CoreVariableFactoryId.String, CoreTypeIds.String, {}, services);
 }

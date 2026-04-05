@@ -1,7 +1,7 @@
 import { type BrainTileDefCreateOptions, mkAccessorTileId, TilePlacement } from "../interfaces";
 import type { TypeId } from "../interfaces/type-system";
 import { BrainTileDefBase } from "../model/tiledef";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 export type BrainAccessorTileDefCreateOptions = BrainTileDefCreateOptions & {
   /** When true, the field is read-only and cannot appear as an assignment target. */
@@ -63,8 +63,9 @@ export function registerAccessorTileDef(
   structTypeId: TypeId,
   fieldName: string,
   fieldTypeId: TypeId,
-  opts?: BrainAccessorTileDefCreateOptions
+  opts: BrainAccessorTileDefCreateOptions | undefined,
+  services: BrainServices
 ) {
   const tileDef = createAccessorTileDef(structTypeId, fieldName, fieldTypeId, opts);
-  getBrainServices().tiles.registerTileDef(tileDef);
+  services.tiles.registerTileDef(tileDef);
 }

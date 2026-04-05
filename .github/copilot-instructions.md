@@ -29,6 +29,19 @@ These instructions apply to all Copilot features, including inline tab completio
   - Exception: `.d.ts` ambient declaration files and Roblox `.rbx.ts` platform shims where
     top-level imports would break the ambient module context.
 
+## Naming and Layout Conventions
+
+- Match the naming and placement conventions already established in the area you are editing
+  when creating new files, directories, test files, generated artifacts, or other repo
+  entries.
+- Before creating a new file, inspect nearby siblings and follow the dominant local pattern for
+  separators (`-` vs `.` vs `_`), casing, prefixes, suffixes, and test file naming.
+- Do not introduce a new naming pattern to an area of the repo unless the user explicitly asks
+  for it or an existing tool/framework requires it.
+- If you notice that a file or artifact you created does not match the repo's established naming
+  convention, correct it proactively instead of leaving it in place just because validation still
+  passes.
+
 ## Project-Specific Rules
 
 ### Multi-Target Core (`packages/core`)

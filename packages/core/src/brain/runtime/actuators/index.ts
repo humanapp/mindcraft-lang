@@ -1,11 +1,10 @@
 import { CoreActuatorId } from "../../interfaces";
-import { getBrainServices } from "../../services";
+import type { BrainServices } from "../../services";
 import fnRestartPage from "./restart-page";
 import fnSwitchPage from "./switch-page";
 import fnYield from "./yield";
 
-export function registerCoreActuators() {
-  const services = getBrainServices();
+export function registerCoreActuators(services: BrainServices) {
   services.actions.register(fnSwitchPage.binding);
   services.actions.register(fnRestartPage.binding);
   services.actions.register(fnYield.binding);

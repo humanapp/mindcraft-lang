@@ -14,7 +14,7 @@ import fnOnPageEntered from "../runtime/sensors/on-page-entered";
 import fnPreviousPage from "../runtime/sensors/previous-page";
 import fnRandom from "../runtime/sensors/random";
 import fnTimeout from "../runtime/sensors/timeout";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 /**
  * Defines a sensor tile for the brain system.
@@ -56,8 +56,8 @@ export class BrainTileSensorDef extends BrainActionTileBase {
   }
 }
 
-export function registerCoreSensorTileDefs() {
-  const tiles = getBrainServices().tiles;
+export function registerCoreSensorTileDefs(services: BrainServices) {
+  const tiles = services.tiles;
   const register = (sensorId: string, action: typeof fnRandom.descriptor, opts: BrainTileDefCreateOptions = {}) => {
     const tileDef = new BrainTileSensorDef(sensorId, action, opts);
     tiles.registerTileDef(tileDef);

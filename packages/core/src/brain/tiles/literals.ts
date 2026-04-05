@@ -29,6 +29,7 @@ export interface LiteralTileJson {
   displayFormat: string;
 }
 
+import type { BrainServices } from "../services";
 import { getBrainServices } from "../services";
 import { BrainTileFactoryDef } from "./factories";
 
@@ -182,7 +183,8 @@ export function BrainTileLiteralDef_deserialize(stream: IReadStream, catalog: IT
 export function registerLiteralFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
-  opts: BrainTileDefCreateOptions = {}
+  opts: BrainTileDefCreateOptions = {},
+  services: BrainServices
 ) {
   const tileDef = new BrainTileFactoryDef(
     mkLiteralFactoryTileId(factoryId),
@@ -191,7 +193,7 @@ export function registerLiteralFactoryTileDef(
     producedDataType,
     opts
   );
-  getBrainServices().tiles.registerTileDef(tileDef);
+  services.tiles.registerTileDef(tileDef);
 }
 
 function manufactureLiteralTileDef(
@@ -208,12 +210,12 @@ function manufactureLiteralTileDef(
   return tileDef;
 }
 
-export function registerCoreLiteralFactoryTileDefs() {
-  const tiles = getBrainServices().tiles;
+export function registerCoreLiteralFactoryTileDefs(services: BrainServices) {
+  const tiles = services.tiles;
   // --------------------------------------------------------------
   // Literal Factories
-  registerLiteralFactoryTileDef(CoreLiteralFactoryId.Number, CoreTypeIds.Number);
-  registerLiteralFactoryTileDef(CoreLiteralFactoryId.String, CoreTypeIds.String);
+  registerLiteralFactoryTileDef(CoreLiteralFactoryId.Number, CoreTypeIds.Number, {}, services);
+  registerLiteralFactoryTileDef(CoreLiteralFactoryId.String, CoreTypeIds.String, {}, services);
   // --------------------------------------------------------------
   // Well-known Literals
   const trueTileDef = new BrainTileLiteralDef(CoreTypeIds.Boolean, true, { persist: false });

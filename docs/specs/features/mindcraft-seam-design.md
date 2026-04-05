@@ -635,10 +635,18 @@ style object is likely cleaner. The important point is that the registration
 call trees have to be re-plumbed away from assuming a pre-existing default
 global services instance.
 
-If a tightly scoped install-time ambient mechanism is needed during migration,
-it should be treated only as a temporary bridge to the threaded end-state. It
-must not become a renamed replacement for the current process-global singleton
-model.
+If a tightly scoped services mechanism is used internally, it should be
+treated as a deliberate environment-owned execution/install context, not as a
+pretend-temporary bridge. It must not become a renamed replacement for the
+current process-global singleton model, but it may remain as an internal
+mechanism while deeper transitive getBrainServices() dependencies continue to
+exist inside model/registry code.
+
+A later refactor may still eliminate that scoped ambient by pushing explicit
+internal context deeper into classes such as catalog, model, and type-system
+implementations. That work is separate from establishing the v1 public seam and
+should not be implied as already completed just because the top-level
+registration leaves were re-threaded.
 
 ### Why this is better
 

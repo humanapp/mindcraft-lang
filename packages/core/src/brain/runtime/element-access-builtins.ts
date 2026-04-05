@@ -12,7 +12,7 @@ import {
   type StringValue,
   type Value,
 } from "../interfaces";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 const elementAccessCallDef = mkCallDef({ type: "bag", items: [] });
 
@@ -85,8 +85,8 @@ function stringGetJs(source: string, key: Value | undefined): Value {
   return NIL_VALUE;
 }
 
-export function registerElementAccessBuiltins() {
-  const { functions } = getBrainServices();
+export function registerElementAccessBuiltins(services: BrainServices) {
+  const { functions } = services;
 
   functions.register(
     "$$list_get_js",

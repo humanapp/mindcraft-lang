@@ -8,7 +8,7 @@ import {
   TilePlacement,
 } from "../interfaces";
 import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 export class BrainTileControlFlowDef extends BrainTileDefBase {
   readonly kind = "controlFlow";
@@ -35,13 +35,13 @@ export function BrainTileControlFlowDef_deserialize(
   throw new Error(`BrainTileControlFlowDef.deserialize: unknown tileId ${tileId}`);
 }
 
-function registerCoreControlFlowTileDef(cfId: string, opts: BrainTileDefCreateOptions = {}) {
+function registerCoreControlFlowTileDef(cfId: string, opts: BrainTileDefCreateOptions = {}, services: BrainServices) {
   const tileDef = new BrainTileControlFlowDef(cfId, opts);
-  getBrainServices().tiles.registerTileDef(tileDef);
+  services.tiles.registerTileDef(tileDef);
 }
 
-export function registerCoreControlFlowTileDefs() {
-  const tiles = getBrainServices().tiles;
+export function registerCoreControlFlowTileDefs(services: BrainServices) {
+  const tiles = services.tiles;
   const register = (cfId: string, opts: BrainTileDefCreateOptions = {}) => {
     const tileDef = new BrainTileControlFlowDef(cfId, opts);
     tiles.registerTileDef(tileDef);

@@ -24,23 +24,22 @@ Depends on infrastructure from:
 
 ## Status
 
-As of 2026-04-05, Phase S1 is complete. Phases S2-S7 remain unimplemented.
+As of 2026-04-05, Phases S1-S2 are complete. Phase S3 has partial package-level
+groundwork already present in `packages/core`, but Phases S3-S7 remain open.
 
-The codebase now exposes the Phase S1 contract vocabulary in `packages/core`
-and `packages/bridge-app`, including the
-`@mindcraft-lang/bridge-app/compilation` subpath. The current product behavior
-still works through the legacy seams, and the recommended integration path
-still has three structural problems:
+The codebase now exposes and implements the new environment-scoped core seam in
+`packages/core`, while bridge and app migration work remains outstanding:
 
-- `@mindcraft-lang/core` integration is centered on process-global state
-  (`registerCoreBrainComponents()`, `getBrainServices()`,
-  `setTileVisualProvider()`).
-- `@mindcraft-lang/bridge-app` integration is centered on `AppProject`, which
-  exposes low-level transport internals (`session`, `files`) and also mixes in
-  optional compilation behavior.
-- `apps/sim` proves the stack works, but it has to compose it through deep
-  imports, compatibility hooks, synthetic file-import events, and app-owned
-  caches that should instead be hidden behind clearer package seams.
+- `@mindcraft-lang/core` now supports `createMindcraftEnvironment()`,
+  `coreModule()`, environment-owned catalogs, environment-scoped brain
+  deserialization, and runnable `MindcraftBrain` instances without requiring
+  apps to touch the singleton seam.
+- Legacy core globals still exist as secondary migration paths, and some
+  internal core code still depends on a tightly scoped environment-owned
+  services context via `runWithBrainServices(...)`.
+- `@mindcraft-lang/bridge-app` integration is still centered on `AppProject`,
+  and `apps/sim` still depends on deep imports, global tile presentation,
+  synthetic import events, and app-owned compiler/runtime glue.
 
 ---
 
@@ -126,59 +125,53 @@ permanent, intentional API.
 
 ## Current State
 
-(2026-04-04)
+(2026-04-05)
 
 ### Core integration seam
 
-- `packages/core/src/brain/index.ts` exposes
-  `registerCoreBrainComponents()`, which creates services, writes them into the
-  global singleton in `packages/core/src/brain/services.ts`, then registers
-  runtime and tile components.
-- `packages/core/src/brain/services.ts` stores a single mutable global
-  `BrainServices` instance and exposes `getBrainServices()`,
-  `setBrainServices()`, `hasBrainServices()`, and reset aliases.
-- `packages/core/src/brain/tiles/catalog.ts` stores a single mutable global
-  tile visual provider through `setTileVisualProvider()`.
-- The practical integration story for apps is still:
-  - initialize the global services once
-  - register app-specific types/functions/tiles into those services
-  - instantiate `Brain` directly from `@mindcraft-lang/core/brain/runtime`
-  - read and mutate registries through `getBrainServices()`
+- `packages/core/src/mindcraft.ts` now implements
+  `createMindcraftEnvironment()`, `coreModule()`, `MindcraftCatalog`,
+  `MindcraftBrain`, environment-scoped brain deserialization,
+  `replaceActionBundle(...)`, `onBrainsInvalidated(...)`, and
+  `rebuildInvalidatedBrains(...)`.
+- `packages/core/src/index.ts` exports `createMindcraftEnvironment` and
+  `coreModule` at the root package surface while preserving the existing
+  `import { brain, ... } from "@mindcraft-lang/core"` shape.
+- `packages/core/src/brain/index.ts` still exposes
+  `registerCoreBrainComponents()` as a legacy compatibility seam, but it now
+  installs through the same explicit-service registration path used by
+  `coreModule()`.
+- `packages/core/src/brain/services.ts` still stores a default global
+  `BrainServices` instance for legacy callers, but shared core code can now also
+  resolve an environment-owned active services context via
+  `peekBrainServices()` / `runWithBrainServices()`.
 
 ### Registration machinery reality
 
-The registration problem is deeper than the top-level bootstrap functions.
+- `registerCoreRuntimeComponents()` and `registerCoreTileComponents()` now
+  accept explicit `BrainServices`, and their lower-level leaf registrars no
+  longer depend on an already-populated default global services instance.
+- Some deeper model/type-system/catalog code still reaches services through the
+  scoped active-services context rather than full constructor injection. That is
+  now a deliberate internal mechanism for the environment path, not just an
+  install-time migration bridge.
+- `coreModule()` installs through a structural install-time services accessor
+  rather than a concrete `EnvironmentModuleApi` identity check.
+- The effective catalog chain is now explicitly ordered as shared -> hydrated
+  fallback -> bundle -> overlay -> brain-local so first-match lookup preserves
+  pre-S2 behavior under duplicate IDs, even though duplicate IDs are not a
+  supported override mechanism.
 
-- `packages/core/src/brain/runtime/index.ts` is only a shallow orchestrator.
-  `registerCoreRuntimeComponents()` fans out into `registerCoreTypes()`,
-  `registerContextTypes()`, `registerCoreActuators()`,
-  `registerCoreSensors()`, `registerCoreConversions()`,
-  `registerCoreOperators()`, `registerElementAccessBuiltins()`, and others.
-- The built-in registrars behind `registerElementAccessBuiltins()`,
-  `registerMapBuiltins()`, `registerMathBuiltins()`, and
-  `registerStringBuiltins()` write into `getBrainServices().functions`, which
-  is a distinct function registry rather than the operator table.
-- `packages/core/src/brain/tiles/index.ts` is the same pattern for tile
-  registrations. `registerCoreTileComponents()` fans out into operator,
-  control-flow, variable, literal, parameter, actuator, and sensor tile
-  registration.
-- Representative leaf functions such as `registerCoreTypes()` and
-  `registerCoreSensors()` resolve their target registries by calling
-  `getBrainServices()` internally rather than accepting an explicit install
-  target.
-- Sim has the same structural shape. `registerBrainComponents()` fans out into
-  `registerTypes()`, `registerFns()`, and `registerTiles()`, which then fan out
-  again into leaf registrations that also assume ambient services.
+### Bundle and hydration behavior
 
-So `coreModule()` becoming real is not a thin wrapper around
-`registerCoreBrainComponents()`. The target architecture is explicit
-install-context threading through the registration call trees.
-
-If a tightly scoped install-time ambient registration context is used during
-migration, it should be treated only as a temporary bridge to that threaded
-end-state.
-
-The same applies to sim's module install path.
+- `MindcraftEnvironment.replaceActionBundle(...)`,
+  `hydrateTileMetadata(...)`, `onBrainsInvalidated(...)`, and
+  `rebuildInvalidatedBrains(...)` now exist in `packages/core` and are covered
+  by package tests.
+- Managed brains track linked bundle action revisions and invalidate
+  selectively; rebuilds preserve the stable `MindcraftBrain` handle.
+- The first successful bundle replacement clears the hydrated fallback catalog
+  as it installs fresh bundle tiles.
 
 ### Bridge-app integration seam
 
@@ -193,33 +186,21 @@ The same applies to sim's module install path.
 - The current API shape makes app code reason about both the domain seam and
   transport internals at the same time.
 
-### Sim as proof of the current seam
+### Sim as proof of the remaining migration work
 
-- `apps/sim/src/bootstrap.ts` calls `setTileVisualProvider()`,
+- `apps/sim/src/bootstrap.ts` still calls `setTileVisualProvider()`,
   `registerCoreBrainComponents()`, `registerBrainComponents()`,
   `registerUserTilesAtStartup()`, and `initProject()` during bootstrap.
-- `registerUserTilesAtStartup()` exists specifically so cached user-authored
-  tile metadata is present before persisted brains deserialize; fresh compiler
-  output only arrives later through `initProject()`.
-- `apps/sim/src/services/brain-runtime.ts` imports the concrete `Brain` class,
-  uses `getBrainServices()` to build catalogs and resolve host actions, and
-  keeps app-owned user action artifact maps.
-- `apps/sim/src/services/brain-runtime.ts` also owns the current selective
-  rebuild machinery: `brainActionRevisions`, `registerActiveBrainContainer()`,
-  `shouldRebuildBrain()`, and
-  `rebuildActiveBrainsUsingChangedActions(changedRevisions)`.
-- `apps/sim/src/services/user-tile-registration.ts` directly manipulates the
-  tile and type registries through `getBrainServices()`, instantiates concrete
-  tile definition classes, and persists user tile metadata separately from the
-  compiler and runtime.
-- `apps/sim/src/services/vscode-bridge.ts` constructs `AppProject`, reaches into
-  `project.session`, `project.files`, and `project.compilation`, and triggers a
-  synthetic `import` notification to seed startup compilation.
-- `apps/sim/src/services/vscode-bridge.ts` also injects generated
-  `mindcraft.d.ts` and a compiler-owned `tsconfig.json` copy into the
-  bridge-owned filesystem before handing it to `AppProject`, so compiler
-  inputs and system files are currently mixed into the raw workspace snapshot
-  rather than composed explicitly.
+- `apps/sim/src/services/brain-runtime.ts` still imports the concrete `Brain`
+  class, uses `getBrainServices()` to build catalogs and resolve host actions,
+  and still owns app-side active-brain bookkeeping that later phases should
+  migrate to `MindcraftEnvironment`.
+- `apps/sim/src/services/user-tile-registration.ts` still directly mutates tile
+  and type registries through `getBrainServices()` and persists startup tile
+  metadata outside the new bundle seam.
+- `apps/sim/src/services/vscode-bridge.ts` still constructs `AppProject`,
+  reaches through transport internals, and injects generated compiler inputs
+  into the raw bridge-owned filesystem snapshot.
 
 ### Import-shape symptoms
 
@@ -620,9 +601,11 @@ environment-aware in a real way.
   "@mindcraft-lang/core"`.
 14. Adopt explicit context threading through the registration call tree as the
   target architecture for core registration.
-15. If a tightly scoped install-time ambient registration context is used at
-  all, treat it only as a short-lived migration bridge and document its
-  removal point.
+15. If a tightly scoped services context is used at all, document it as
+  an internal environment/module mechanism, define its invariants clearly, and
+  avoid describing its removal as an implied S2 cleanup requirement.
+  - if a later deeper refactor removes it, that should be treated as separate
+    follow-on work rather than as a hidden acceptance criterion for this phase
 16. Refactor `registerCoreRuntimeComponents()`,
    `registerCoreTileComponents()`, and their transitive leaf registrations so
   module installation no longer depends on an already-populated default global
@@ -711,8 +694,9 @@ environment-aware in a real way.
   longer works.
 - Only the top-level bootstrap function changes, while the real registration
   leaf functions still depend on `getBrainServices()` and a default global.
-- An install-scoped ambient context survives as the real end-state instead of a
-  temporary migration bridge toward explicit threading.
+- The scoped services context becomes an unbounded implicit dependency again,
+  so environment ownership or isolation starts depending on hidden global
+  behavior.
 
 ### Requirements addressed
 
@@ -835,6 +819,11 @@ and remove process-global tile presentation from the new integration path.
 - Phase S3 is the boundary between the compiler and the runtime. If this seam is
   well-shaped, app code no longer needs to directly maintain user action
   artifact maps and tile metadata registries just to consume compiler output.
+- Core-side hydration, bundle replacement, selective invalidation, deferred
+  rebuild control, and catalog precedence groundwork already landed during S2
+  review. S3 should treat those package-level pieces as baseline and focus on
+  compiler bundle adaptation, real startup-hydration proof against compiler
+  output, and tile-presentation decoupling.
 - The new seam must preserve the current split between dependency tracking and
   actual rebuild work. `replaceActionBundle(...)` should mark affected brains as
   invalidated, not immediately recreate them.
@@ -887,6 +876,9 @@ and remove process-global tile presentation from the new integration path.
 - The compiler package is still not a Roblox target. The requirement here is
   that the bundle contract it emits for core stays platform-neutral enough for
   the multi-target core runtime.
+- The scoped services mechanism established in S2 is now an intentional
+  internal environment mechanism. S3 should not assume that removing it is part
+  of the bundle/presentation deliverables.
 
 **Risks:**
 
@@ -1690,3 +1682,173 @@ subpath resolves cleanly, and the legacy seams remain available for migration.
   implementations remain with Phases S4-S5)
 - `INV-6`: partially satisfied (the new contract layer is additive and lower-
   level paths remain explicit; final legacy demotion remains with Phase S7)
+
+### Phase S2 -- 2026-04-05
+
+**Planned vs actual:**
+
+All major S2 seam deliverables landed at the package level, and the new core
+integration path is now genuinely environment-scoped rather than a thin wrapper
+over the singleton path.
+
+- `packages/core` now implements `createMindcraftEnvironment()` backed by a
+  private environment state container and exports it from the root package.
+- `coreModule()` now replaces `registerCoreBrainComponents()` in the new path
+  and installs the core runtime/tile registrars into environment-owned
+  services.
+- Module installation remains constructor-time only through
+  `createMindcraftEnvironment({ modules: [...] })`; no public runtime module
+  lifecycle was added.
+- `environment.createCatalog()` and `environment.createBrain(...)` now exist,
+  and the returned `MindcraftBrain` is the runnable app-facing handle rather
+  than a lifecycle-only token.
+- One shared `BrainDef` can now produce multiple independent runnable brain
+  instances without shared runtime or invalidation state.
+- Persisted-brain loading can now run through environment-scoped
+  deserialization helpers instead of assuming the process-global tile catalog.
+- Core and tile registration leaves now thread explicit `BrainServices` rather
+  than depending on an already-populated default global install target.
+- Root-package coexistence with `import { brain, ... } from "@mindcraft-lang/core"`
+  was preserved and validated across node, esm, and rbx.
+- Review-driven refinements also landed some S3 groundwork early in
+  `packages/core`: hydrated fallback catalogs, bundle-managed catalogs,
+  selective invalidation, deferred rebuild control, and explicit catalog
+  precedence tests.
+
+One planned abstraction did not materialize as a named internal type:
+
+- Deliverable 17's suggested `CoreRegistrationContext` / equivalent was not
+  introduced as a standalone type. The implementation instead uses explicit
+  `BrainServices` threading plus narrow internal helpers
+  (`EnvironmentModuleApi`, structural install-time accessors, and scoped
+  services execution).
+
+One planned area remains partial by design:
+
+- Deliverable 18 is only partially complete. Environment-owned registry state
+  is now available internally without relying on the default global singleton,
+  but ts-compiler-side ambient generation consumption remains deferred to
+  Phase S5.
+
+**Unplanned additions and discoveries:**
+
+1. Review found that the initial environment spec filename drifted from repo
+   naming conventions, which led to a rename to
+   `mindcraft-environment.spec.ts` and a broader naming/layout rule update in
+   `.github/copilot-instructions.md`.
+2. Review found that `coreModule()` had started depending on a concrete
+   `EnvironmentModuleApi` class check. That was replaced with a structural
+   install-time services accessor plus a regression test.
+3. Review found that the initial S2 catalog chain order was reversed relative
+   to first-match lookup semantics and pre-S2 sim behavior. The environment now
+   preserves shared-first precedence and has a dedicated regression test for it.
+4. Review found that selective bundle invalidation was already necessary to
+   keep the environment seam credible, so package-level invalidation tracking
+   and rebuild control landed before the formal S3 phase.
+5. Review found that the scoped services context is load-bearing beyond module
+   install. The planning and design docs now treat it as an intentional
+   internal environment mechanism rather than promising it away as implicit S2
+   cleanup.
+6. Roblox-target verification rejected some JS-style method/value invocation
+   patterns during the `coreModule()` refactor; the final implementation had to
+   stay within Roblox-safe shared-code constraints.
+
+**Design decisions:**
+
+- Kept legacy singleton-oriented APIs available as migration paths rather than
+  removing them in S2.
+- Used a structural install-time services accessor for `coreModule()` rather
+  than coupling installs to a concrete `EnvironmentModuleApi` identity check.
+- Treated the scoped services mechanism as an intentional internal environment
+  mechanism for registration, catalog mutation, deserialization, and brain
+  lifecycle operations.
+- Preserved pre-S2 first-match catalog behavior with explicit precedence:
+  shared -> hydrated fallback -> bundle -> overlay -> brain-local.
+- Tracked linked bundle action revisions per managed brain and invalidated only
+  affected brains on bundle replacement.
+
+**Files changed:**
+
+- `.github/copilot-instructions.md`
+- `packages/core/src/index.ts`
+- `packages/core/src/mindcraft.ts`
+- `packages/core/src/mindcraft.spec.ts`
+- `packages/core/src/mindcraft-environment.spec.ts`
+- `packages/core/src/brain/index.ts`
+- `packages/core/src/brain/services.ts`
+- `packages/core/src/brain/runtime/index.ts`
+- `packages/core/src/brain/runtime/actuators/index.ts`
+- `packages/core/src/brain/runtime/context-types.ts`
+- `packages/core/src/brain/runtime/conversions.ts`
+- `packages/core/src/brain/runtime/element-access-builtins.ts`
+- `packages/core/src/brain/runtime/map-builtins.ts`
+- `packages/core/src/brain/runtime/math-builtins.ts`
+- `packages/core/src/brain/runtime/operators.ts`
+- `packages/core/src/brain/runtime/sensors/index.ts`
+- `packages/core/src/brain/runtime/string-builtins.ts`
+- `packages/core/src/brain/runtime/type-system.ts`
+- `packages/core/src/brain/tiles/index.ts`
+- `packages/core/src/brain/tiles/accessors.ts`
+- `packages/core/src/brain/tiles/actuators.ts`
+- `packages/core/src/brain/tiles/controlflow.ts`
+- `packages/core/src/brain/tiles/literals.ts`
+- `packages/core/src/brain/tiles/operators.ts`
+- `packages/core/src/brain/tiles/parameters.ts`
+- `packages/core/src/brain/tiles/sensors.ts`
+- `packages/core/src/brain/tiles/variables.ts`
+- `docs/specs/features/mindcraft-seam-design.md`
+
+**Verification:**
+
+- `packages/core`: repeated `npm run typecheck`, `npm run check`,
+  `npm run build`, and `npm test` during review refinements; final passing
+  result was 565 tests, 0 failures
+
+**Acceptance criteria result:**
+
+S2 is accepted at the package level. A new app can now create an environment,
+install modules at construction time, create/rebuild/dispose runnable brains,
+deserialize persisted brains through the environment seam, use overlay
+catalogs, and avoid the singleton seam on the normal core-only path. Bridge
+migration, compiler bundle adaptation, tile presentation decoupling, and sim
+adoption remain later phases.
+
+### Requirements retrospective
+
+- `FR-1`: partially satisfied (runtime-only adoption now works at the package
+  level through `createMindcraftEnvironment()` and `createBrain(...)`; real-app
+  proof remains with Phase S6 and final product guidance remains with Phase S7)
+- `FR-5`: partially satisfied (the recommended core path no longer requires
+  singleton helpers or the concrete `Brain` class; bridge/app migration and
+  final legacy demotion remain with Phases S4-S7)
+- `FR-25`: partially satisfied (environment-owned registry state now exists and
+  is internally accessible without the default global singleton; ts-compiler
+  ambient-generation consumption remains with Phase S5 and real-app proof
+  remains with Phases S6-S7)
+- `FR-6`: fully satisfied (environment-owned registrations, created brains, and
+  invalidation state are isolated per runtime context in the package seam)
+- `FR-7`: fully satisfied (environment-shared, overlay, and automatic
+  brain-local tile scopes are implemented in the package seam)
+- `FR-8`: partially satisfied (the effective shared/hydrated/bundle/overlay/
+  brain-local lookup order is implemented and regression-tested; compiler-
+  produced metadata proof remains with Phase S3 and real-app proof remains with
+  Phase S6)
+- `FR-14`: partially satisfied (stable brain handles, rebuild-on-handle, and
+  explicit disposal semantics are implemented; fuller disposed-brain coverage in
+  the authored-bundle path remains with Phase S3 and real-app proof remains
+  with Phase S6)
+- `FR-15`: fully satisfied (repeated creation from one `BrainDef` now produces
+  independent runtime instances with separate runtime and invalidation state)
+- `NFR-1`: partially satisfied (the core-facing seam was validated across node,
+  esm, and rbx builds; full compiler/app proof remains with Phase S6)
+- `NFR-2`: partially satisfied (shared runtime-facing environment behavior and
+  bundle consumption remain platform-neutral in `packages/core`; full consumer
+  proof remains with Phase S6)
+- `NFR-3`: satisfied as planned
+- `NFR-5`: partially satisfied (explicit disposal removes brains from
+  environment bookkeeping in the package seam; broader authored-bundle
+  lifecycle coverage remains with Phase S3)
+- `INV-1`: partially satisfied (the seam treats duplicate tile IDs as abnormal
+  and keeps no-shadowing as the intended rule, but stable precedence is still
+  defined defensively to preserve pre-S2 behavior; remaining bundle/hydration
+  hardening stays with Phase S3)

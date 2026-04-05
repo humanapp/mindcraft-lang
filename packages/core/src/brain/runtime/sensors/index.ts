@@ -1,13 +1,12 @@
 import { CoreSensorId } from "../../interfaces";
-import { getBrainServices } from "../../services";
+import type { BrainServices } from "../../services";
 import fnCurrentPage from "./current-page";
 import fnOnPageEntered from "./on-page-entered";
 import fnPreviousPage from "./previous-page";
 import fnRandom from "./random";
 import fnTimeout from "./timeout";
 
-export function registerCoreSensors() {
-  const services = getBrainServices();
+export function registerCoreSensors(services: BrainServices) {
   services.actions.register(fnRandom.binding);
   services.actions.register(fnOnPageEntered.binding);
   services.actions.register(fnTimeout.binding);

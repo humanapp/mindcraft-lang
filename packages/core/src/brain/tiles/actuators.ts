@@ -4,7 +4,7 @@ import { BrainActionTileBase } from "../model/tiledef";
 import fnRestartPage from "../runtime/actuators/restart-page";
 import fnSwitchPage from "../runtime/actuators/switch-page";
 import fnYield from "../runtime/actuators/yield";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 export class BrainTileActuatorDef extends BrainActionTileBase {
   readonly kind = "actuator";
@@ -20,8 +20,8 @@ export class BrainTileActuatorDef extends BrainActionTileBase {
   }
 }
 
-export function registerCoreActuatorTileDefs() {
-  const tiles = getBrainServices().tiles;
+export function registerCoreActuatorTileDefs(services: BrainServices) {
+  const tiles = services.tiles;
   const register = (
     actuatorId: string,
     action: typeof fnSwitchPage.descriptor,

@@ -95,6 +95,25 @@ export class BrainServices {
  *    (setting custom services bypasses registerCoreBrainComponents() early-exit check)
  */
 let _brainServices: BrainServices | undefined;
+let _activeBrainServices: BrainServices | undefined;
+
+export function getDefaultBrainServices(): BrainServices | undefined {
+  return _brainServices;
+}
+
+export function peekBrainServices(): BrainServices | undefined {
+  return _activeBrainServices ?? _brainServices;
+}
+
+export function runWithBrainServices<T>(services: BrainServices, callback: () => T): T {
+  const previous = _activeBrainServices;
+  _activeBrainServices = services;
+  try {
+    return callback();
+  } finally {
+    _activeBrainServices = previous;
+  }
+}
 
 /**
  * Get the global brain services instance.
@@ -107,10 +126,11 @@ let _brainServices: BrainServices | undefined;
  * @returns The BrainServices instance
  */
 export function getBrainServices(): BrainServices {
-  if (!_brainServices) {
+  const services = peekBrainServices();
+  if (!services) {
     throw new Error("Brain services not initialized. Call registerCoreBrainComponents() or setBrainServices() first.");
   }
-  return _brainServices;
+  return services;
 }
 
 /**

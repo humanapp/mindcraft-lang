@@ -12,9 +12,23 @@ export * from "./services-factory";
 export * as tiles from "./tiles";
 
 import { registerCoreRuntimeComponents } from "./runtime";
-import { type BrainServices, getBrainServices, hasBrainServices, setBrainServices } from "./services";
+import {
+  type BrainServices,
+  getDefaultBrainServices,
+  hasBrainServices,
+  runWithBrainServices,
+  setBrainServices,
+} from "./services";
 import { createBrainServices } from "./services-factory";
 import { registerCoreTileComponents } from "./tiles";
+
+export function installCoreBrainComponents(services: BrainServices): BrainServices {
+  runWithBrainServices(services, () => {
+    registerCoreRuntimeComponents(services);
+    registerCoreTileComponents(services);
+  });
+  return services;
+}
 
 /**
  * Registers all core brain components (runtime and tiles) and sets up the global services.
@@ -28,7 +42,7 @@ import { registerCoreTileComponents } from "./tiles";
 export function registerCoreBrainComponents(): BrainServices {
   // Don't re-initialize if already done
   if (hasBrainServices()) {
-    return getBrainServices();
+    return getDefaultBrainServices()!;
   }
 
   // Create all registries
@@ -37,11 +51,5 @@ export function registerCoreBrainComponents(): BrainServices {
   // Set as global BEFORE registration so tiles can use getBrainServices()
   setBrainServices(services);
 
-  // Register core components with the new services
-  registerCoreRuntimeComponents();
-
-  // Register core tiles
-  registerCoreTileComponents();
-
-  return services;
+  return installCoreBrainComponents(services);
 }

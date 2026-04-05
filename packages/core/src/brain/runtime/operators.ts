@@ -28,7 +28,7 @@ import {
   type Value,
 } from "../interfaces";
 import { CoreTypeIds } from "../interfaces/core-types";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 /**
  * Operator precedence and parsing information for core operators.
@@ -272,10 +272,9 @@ export class OperatorOverloads implements IOperatorOverloads {
  * comparison (<, <=, >, >=, ==, !=), and assignment operators for Boolean, Number, and String types.
  * Note: Assignment is special-cased in the compiler and is a no-op at runtime. The overload is registered for the type system.
  */
-export function registerCoreOperators() {
-  const brainServices = getBrainServices();
-  const operatorTable = brainServices.operatorTable;
-  const operatorOverloads = brainServices.operatorOverloads;
+export function registerCoreOperators(services: BrainServices) {
+  const operatorTable = services.operatorTable;
+  const operatorOverloads = services.operatorOverloads;
 
   operatorTable.add({ id: CoreOpId.And, parse: Precedence[CoreOpId.And] });
   operatorTable.add({ id: CoreOpId.Or, parse: Precedence[CoreOpId.Or] });

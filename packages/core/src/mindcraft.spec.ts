@@ -7,6 +7,8 @@ import {
   type CompiledActionArtifact,
   type CompiledActionBundle,
   type CreateBrainOptions,
+  coreModule,
+  createMindcraftEnvironment,
   Dict,
   type HydratedTileMetadataSnapshot,
   type MindcraftBrain,
@@ -58,4 +60,35 @@ test("exports mindcraft public contracts from the root package", () => {
   assert.ok(brain.compiler);
   assert.ok(brain.runtime);
   assert.ok(brain.tiles);
+  assert.equal(typeof createMindcraftEnvironment, "function");
+  assert.equal(typeof coreModule, "function");
+});
+
+test("coreModule installs through a structural install-capable module api", () => {
+  const services = brain.createBrainServices();
+
+  const fail = (): never => {
+    throw new Error("coreModule() should use the install-time BrainServices accessor");
+  };
+
+  const api: MindcraftModuleApi & {
+    unsafeGetBrainServicesForInstall(): typeof services;
+  } = {
+    unsafeGetBrainServicesForInstall: () => services,
+    defineType: fail,
+    registerHostSensor: fail,
+    registerHostActuator: fail,
+    registerFunction: fail,
+    registerTile: fail,
+    registerOperator: fail,
+    registerConversion: fail,
+  };
+
+  coreModule().install(api);
+
+  assert.ok(services.types.resolveByName("number"));
+  assert.ok(services.functions.get(brain.CoreSensorId.CurrentPage));
+  assert.ok(services.actions.getByKey(brain.CoreSensorId.CurrentPage));
+  assert.ok(services.tiles.get(brain.mkSensorTileId(brain.CoreSensorId.CurrentPage)));
+  assert.ok(services.operatorTable.get(brain.CoreOpId.Add));
 });

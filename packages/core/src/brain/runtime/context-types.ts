@@ -13,7 +13,7 @@ import {
   type StructValue,
   type Value,
 } from "../interfaces";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 export const ContextTypeNames = {
   Context: "Context",
@@ -27,8 +27,8 @@ export const ContextTypeIds = {
   EngineContext: mkTypeId(NativeType.Struct, ContextTypeNames.EngineContext),
 };
 
-export function registerContextTypes() {
-  const { types, functions } = getBrainServices();
+export function registerContextTypes(services: BrainServices) {
+  const { types, functions } = services;
 
   const selfContextTypeId = types.addStructType(ContextTypeNames.SelfContext, {
     fields: List.empty(),

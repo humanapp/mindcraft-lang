@@ -21,7 +21,7 @@ import {
 import type { Conversion, IConversionRegistry } from "../interfaces/conversions";
 import type { IFunctionRegistry } from "../interfaces/functions";
 import type { TypeId } from "../interfaces/type-system";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 export function conversionFnName(fromType: TypeId, toType: TypeId): string {
   return `$$conv_${fromType}_to_${toType}`;
@@ -185,8 +185,7 @@ const anonEnumCallDef = mkCallDef({
   anonymous: true,
 });
 
-export function registerEnumConversions(typeId: TypeId) {
-  const services = getBrainServices();
+export function registerEnumConversions(typeId: TypeId, services: BrainServices) {
   const enumType = services.types.get(typeId);
   if (!enumType || enumType.coreType !== NativeType.Enum) {
     throw new Error(`registerEnumConversions: type ${typeId} is not an enum`);
@@ -206,7 +205,7 @@ export function registerEnumConversions(typeId: TypeId) {
       cost: stringCost,
       fn: {
         exec: (_ctx: ExecutionContext, args: MapValue) => {
-          const value = resolveEnumPrimitiveValue(typeId, args);
+          const value = resolveEnumPrimitiveValue(typeId, args, services);
           return {
             t: NativeType.String,
             v: TypeUtils.isString(value) ? value : SU.toString(value),
@@ -224,7 +223,7 @@ export function registerEnumConversions(typeId: TypeId) {
       cost: 1,
       fn: {
         exec: (_ctx: ExecutionContext, args: MapValue) => {
-          const value = resolveEnumPrimitiveValue(typeId, args);
+          const value = resolveEnumPrimitiveValue(typeId, args, services);
           if (!TypeUtils.isNumber(value)) {
             throw new Error(`Enum conversion ${typeId} -> ${CoreTypeIds.Number} expected a numeric value`);
           }
@@ -239,13 +238,13 @@ export function registerEnumConversions(typeId: TypeId) {
   }
 }
 
-function resolveEnumPrimitiveValue(typeId: TypeId, args: MapValue): string | number {
+function resolveEnumPrimitiveValue(typeId: TypeId, args: MapValue, services: BrainServices): string | number {
   const enumValue = args.v.get(0) as EnumValue;
   if (enumValue.t !== NativeType.Enum || enumValue.typeId !== typeId) {
     throw new Error(`Enum conversion expected value of type ${typeId}`);
   }
 
-  const symbol = getBrainServices().types.getEnumSymbol(typeId, enumValue.v);
+  const symbol = services.types.getEnumSymbol(typeId, enumValue.v);
   if (!symbol) {
     throw new Error(`Unknown enum key ${enumValue.v} for type ${typeId}`);
   }
@@ -253,8 +252,8 @@ function resolveEnumPrimitiveValue(typeId: TypeId, args: MapValue): string | num
   return symbol.value;
 }
 
-export function registerCoreConversions() {
-  const conversionRegistry = getBrainServices().conversions;
+export function registerCoreConversions(services: BrainServices) {
+  const conversionRegistry = services.conversions;
   // Number -> String conversion
   conversionRegistry.register({
     fromType: CoreTypeIds.Number,

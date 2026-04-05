@@ -10,12 +10,12 @@ import {
   mkStringValue,
   type Value,
 } from "../interfaces";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 const mapCallDef = mkCallDef({ type: "bag", items: [] });
 
-export function registerMapBuiltins() {
-  const { functions, types } = getBrainServices();
+export function registerMapBuiltins(services: BrainServices) {
+  const { functions, types } = services;
 
   functions.register(
     "$$map_keys",

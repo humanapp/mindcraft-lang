@@ -9,6 +9,7 @@ import {
 } from "../interfaces";
 import type { ITileCatalog } from "../interfaces/catalog";
 import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
+import type { BrainServices } from "../services";
 import { getBrainServices } from "../services";
 
 /**
@@ -51,8 +52,8 @@ export function BrainTileOperatorDef_deserialize(stream: IReadStream, catalog: I
  * Registers all core operator tile definitions with the tile catalog.
  * Sets appropriate placement restrictions for each operator tile.
  */
-export function registerCoreOperatorTileDefs() {
-  const tiles = getBrainServices().tiles;
+export function registerCoreOperatorTileDefs(services: BrainServices) {
+  const tiles = services.tiles;
   const registerCoreOperatorTileDef = (opId: string, opts: BrainTileDefCreateOptions = {}) => {
     const tileDef = new BrainTileOperatorDef(opId, opts);
     tiles.registerTileDef(tileDef);

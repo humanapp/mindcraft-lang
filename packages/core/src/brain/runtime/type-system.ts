@@ -36,7 +36,8 @@ import {
   type TypeId,
   type UnionTypeDef,
 } from "../interfaces";
-import { getBrainServices, hasBrainServices } from "../services";
+import type { BrainServices } from "../services";
+import { peekBrainServices } from "../services";
 import { registerEnumConversions } from "./conversions";
 
 export class TypeRegistry implements ITypeRegistry {
@@ -160,12 +161,14 @@ export class TypeRegistry implements ITypeRegistry {
   }
 
   private registerEnumConversions(typeId: TypeId): void {
-    if (!hasBrainServices()) return;
-    registerEnumConversions(typeId);
+    const services = peekBrainServices();
+    if (!services) return;
+    registerEnumConversions(typeId, services);
   }
 
   private registerEnumOperators(typeId: TypeId): void {
-    if (!hasBrainServices()) return;
+    const services = peekBrainServices();
+    if (!services) return;
     const def = this.get(typeId);
     if (!def || def.coreType !== NativeType.Enum) {
       return;
@@ -173,7 +176,7 @@ export class TypeRegistry implements ITypeRegistry {
     if ((def as EnumTypeDef).symbols.size() === 0) {
       return;
     }
-    const overloads = getBrainServices().operatorOverloads;
+    const overloads = services.operatorOverloads;
     overloads.binary(
       CoreOpId.EqualTo,
       typeId,
@@ -221,8 +224,8 @@ export class TypeRegistry implements ITypeRegistry {
   }
 
   private unregisterEnumArtifacts(typeId: TypeId): void {
-    if (!hasBrainServices()) return;
-    const services = getBrainServices();
+    const services = peekBrainServices();
+    if (!services) return;
     services.conversions.remove(typeId, CoreTypeIds.String);
     services.conversions.remove(typeId, CoreTypeIds.Number);
     services.operatorOverloads.remove(CoreOpId.EqualTo, [typeId, typeId]);
@@ -597,8 +600,8 @@ export class TypeRegistry implements ITypeRegistry {
 // ----------------------------------------------------
 // Register core types
 
-export function registerCoreTypes() {
-  const typeRegistry = getBrainServices().types;
+export function registerCoreTypes(services: BrainServices) {
+  const typeRegistry = services.types;
   typeRegistry.addVoidType(CoreTypeNames.Void);
   typeRegistry.addNilType(CoreTypeNames.Nil);
   typeRegistry.addBooleanType(CoreTypeNames.Boolean);
