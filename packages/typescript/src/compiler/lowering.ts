@@ -176,18 +176,147 @@ function resolveOperatorWithExpansion(opId: string, argTypes: string[]): string 
   return undefined;
 }
 
+interface SingleStepConversionResolution {
+  fromTypeId: string;
+  toTypeId: string;
+  fnName: string;
+}
+
+interface BinaryOperatorResolution {
+  operatorFnName: string;
+  conversion?: SingleStepConversionResolution & { operand: "left" | "right" };
+}
+
+function resolveRegisteredEnumTypeId(type: ts.Type): string | undefined {
+  const sym = type.getSymbol() ?? type.aliasSymbol;
+  if (!sym) return undefined;
+
+  const registry = getBrainServices().types;
+  const typeId = registry.resolveByName(resolveRegistryName(sym));
+  if (!typeId) return undefined;
+
+  const typeDef = registry.get(typeId);
+  if (!typeDef || typeDef.coreType !== NativeType.Enum) {
+    return undefined;
+  }
+
+  return typeId;
+}
+
+function unwrapTypeResolutionExpression(expr: ts.Expression): ts.Expression {
+  let current = expr;
+  while (ts.isParenthesizedExpression(current) || ts.isAsExpression(current) || ts.isNonNullExpression(current)) {
+    current = current.expression;
+  }
+  return current;
+}
+
+function resolveDeclaredEnumTypeId(exprNode: ts.Expression, ctx: LowerContext): string | undefined {
+  const targetExpr = unwrapTypeResolutionExpression(exprNode);
+  if (!ts.isIdentifier(targetExpr)) {
+    return undefined;
+  }
+
+  const symbol = ctx.checker.getSymbolAtLocation(targetExpr);
+  const declaration = symbol?.valueDeclaration;
+  if (!symbol || !declaration) {
+    return undefined;
+  }
+
+  const declaredType = ctx.checker.getTypeOfSymbolAtLocation(symbol, declaration);
+  return resolveRegisteredEnumTypeId(declaredType);
+}
+
+function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): string | undefined {
+  const declaredEnumTypeId = resolveDeclaredEnumTypeId(exprNode, ctx);
+  if (declaredEnumTypeId) {
+    return declaredEnumTypeId;
+  }
+
+  const exprType = ctx.checker.getTypeAtLocation(exprNode);
+  return tsTypeToTypeId(exprType, ctx.checker);
+}
+
+function resolveSingleStepConversion(fromTypeId: string, toTypeId: string): SingleStepConversionResolution | undefined {
+  if (fromTypeId === toTypeId) {
+    return undefined;
+  }
+
+  const conversionPath = getBrainServices().conversions.findBestPath(fromTypeId, toTypeId, 1);
+  const conversion = conversionPath?.get(0);
+  if (!conversion) {
+    return undefined;
+  }
+
+  return {
+    fromTypeId: conversion.fromType,
+    toTypeId: conversion.toType,
+    fnName: runtime.conversionFnName(conversion.fromType, conversion.toType),
+  };
+}
+
+function emitSingleStepConversion(fnName: string, ctx: LowerContext): void {
+  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+}
+
+function emitOperandConversion(
+  conversion: SingleStepConversionResolution & { operand: "left" | "right" },
+  ctx: LowerContext
+): void {
+  if (conversion.operand === "left") {
+    ctx.ir.push({ kind: "Swap" });
+    emitSingleStepConversion(conversion.fnName, ctx);
+    ctx.ir.push({ kind: "Swap" });
+    return;
+  }
+
+  emitSingleStepConversion(conversion.fnName, ctx);
+}
+
+function resolveBinaryOperatorCandidate(
+  opId: string,
+  leftTypeId: string,
+  rightTypeId: string,
+  operand: "left" | "right"
+): BinaryOperatorResolution | undefined {
+  const sourceTypeId = operand === "left" ? leftTypeId : rightTypeId;
+  const targetTypeId = operand === "left" ? rightTypeId : leftTypeId;
+  const conversion = resolveSingleStepConversion(sourceTypeId, targetTypeId);
+  if (!conversion) {
+    return undefined;
+  }
+
+  const operatorFnName = resolveOperatorWithExpansion(opId, [targetTypeId, targetTypeId]);
+  if (!operatorFnName) {
+    return undefined;
+  }
+
+  return {
+    operatorFnName,
+    conversion: {
+      ...conversion,
+      operand,
+    },
+  };
+}
+
+function describeBinaryOperatorCandidate(candidate: BinaryOperatorResolution): string {
+  if (!candidate.conversion) {
+    return "direct overload";
+  }
+
+  return `${candidate.conversion.operand} operand ${candidate.conversion.fromTypeId} -> ${candidate.conversion.toTypeId}`;
+}
+
 function emitBinaryOperatorForNodes(
   opId: string,
-  leftNode: ts.Node,
-  rightNode: ts.Node,
+  leftNode: ts.Expression,
+  rightNode: ts.Expression,
   diagNode: ts.Node,
   ctx: LowerContext
 ): boolean {
-  const lhsType = ctx.checker.getTypeAtLocation(leftNode);
-  const rhsType = ctx.checker.getTypeAtLocation(rightNode);
-
-  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
-  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
+  const lhsTypeId = resolveExpressionTypeId(leftNode, ctx);
+  const rhsTypeId = resolveExpressionTypeId(rightNode, ctx);
 
   if (!lhsTypeId || !rhsTypeId) {
     ctx.diagnostics.push(
@@ -196,13 +325,28 @@ function emitBinaryOperatorForNodes(
     return false;
   }
 
-  const fnName = resolveOperator(opId, [lhsTypeId, rhsTypeId]);
-  if (!fnName) {
-    const fallbackFn = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
-    if (fallbackFn) {
-      ctx.ir.push({ kind: "HostCallArgs", fnName: fallbackFn, argc: 2 });
-      return true;
-    }
+  const directResolution = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
+  if (directResolution) {
+    ctx.ir.push({ kind: "HostCallArgs", fnName: directResolution, argc: 2 });
+    return true;
+  }
+
+  const rightCandidate = resolveBinaryOperatorCandidate(opId, lhsTypeId, rhsTypeId, "right");
+  const leftCandidate = resolveBinaryOperatorCandidate(opId, lhsTypeId, rhsTypeId, "left");
+
+  if (rightCandidate && leftCandidate) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.AmbiguousImplicitBinaryConversion,
+        `Ambiguous implicit conversion for ${opId}(${lhsTypeId}, ${rhsTypeId}): ${describeBinaryOperatorCandidate(rightCandidate)} or ${describeBinaryOperatorCandidate(leftCandidate)}`,
+        diagNode
+      )
+    );
+    return false;
+  }
+
+  const resolved = rightCandidate ?? leftCandidate;
+  if (!resolved) {
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.NoOperatorOverload,
@@ -213,7 +357,11 @@ function emitBinaryOperatorForNodes(
     return false;
   }
 
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  if (resolved.conversion) {
+    emitOperandConversion(resolved.conversion, ctx);
+  }
+
+  ctx.ir.push({ kind: "HostCallArgs", fnName: resolved.operatorFnName, argc: 2 });
   return true;
 }
 
@@ -2593,8 +2741,7 @@ function lowerNullishCoalescing(expr: ts.BinaryExpression, ctx: LowerContext): v
 }
 
 function emitToStringIfNeeded(exprNode: ts.Expression, ctx: LowerContext): void {
-  const exprType = ctx.checker.getTypeAtLocation(exprNode);
-  const typeId = tsTypeToTypeId(exprType, ctx.checker);
+  const typeId = resolveExpressionTypeId(exprNode, ctx);
   if (!typeId) {
     ctx.diagnostics.push(
       makeDiag(
@@ -2606,14 +2753,14 @@ function emitToStringIfNeeded(exprNode: ts.Expression, ctx: LowerContext): void 
     return;
   }
   if (typeId !== CoreTypeIds.String) {
-    const fnName = runtime.conversionFnName(typeId, CoreTypeIds.String);
-    if (!getBrainServices().functions.get(fnName)) {
+    const conversion = resolveSingleStepConversion(typeId, CoreTypeIds.String);
+    if (!conversion) {
       ctx.diagnostics.push(
         makeDiag(LoweringDiagCode.NoConversionToString, `No conversion from ${typeId} to string`, exprNode)
       );
       return;
     }
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+    emitSingleStepConversion(conversion.fnName, ctx);
   }
 }
 
@@ -4297,8 +4444,8 @@ function lowerListJoinWithSeparator(
 }
 
 function emitToStringForJoinElement(ctx: LowerContext, diagNode: ts.Node): void {
-  const fnName = runtime.conversionFnName(CoreTypeIds.Number, CoreTypeIds.String);
-  if (!getBrainServices().functions.get(fnName)) {
+  const conversion = resolveSingleStepConversion(CoreTypeIds.Number, CoreTypeIds.String);
+  if (!conversion) {
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.CannotConvertListElementToString,
@@ -4308,7 +4455,7 @@ function emitToStringForJoinElement(ctx: LowerContext, diagNode: ts.Node): void 
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+  emitSingleStepConversion(conversion.fnName, ctx);
 }
 
 function lowerListReverse(
@@ -5394,6 +5541,10 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
   }
   if (type.flags & ts.TypeFlags.Void) {
     return CoreTypeIds.Void;
+  }
+  const enumTypeId = resolveRegisteredEnumTypeId(type);
+  if (enumTypeId) {
+    return enumTypeId;
   }
   const callSigs = type.getCallSignatures();
   if (callSigs.length > 0 && checker) {

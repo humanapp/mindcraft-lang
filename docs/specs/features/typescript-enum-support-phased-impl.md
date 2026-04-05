@@ -1,6 +1,6 @@
 # TypeScript Enum Support -- Phased Implementation Plan
 
-**Status:** E1 complete, E2 complete, E2.5 complete, E3 pending
+**Status:** E1 complete, E2 complete, E2.5 complete, E3 complete, E4 pending
 **Created:** 2026-04-04
 **Related:**
 
@@ -50,7 +50,7 @@ survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-04-04) Phases E1, E2, and E2.5 are complete. `EnumTypeShape.symbols`
+- (Updated 2026-04-04) Phases E1, E2, E2.5, and E3 are complete. `EnumTypeShape.symbols`
   and `EnumTypeDef.symbols` now carry explicit declared primitive values for each
   enum member, and `EnumTypeShape.defaultKey` is optional only for empty enums.
 - `EnumValue` in `packages/core` still stores `typeId` plus the enum member key.
@@ -74,9 +74,17 @@ survive. Keep this doc current.
   but user enum registrations and derived enum conversions are not yet refreshed.
 - The tile-language compiler already uses conversion search for operator inference in
   `packages/core/src/brain/compiler/inferred-types.ts`.
-- The TypeScript lowering pass mostly uses exact type/operator matching. It only uses
-  conversions in a few bespoke places such as template-literal interpolation and some
-  string-building helpers.
+- The TypeScript lowering pass now resolves binary operators with the same broad
+  precedence shape as the tile-language compiler: direct overload first, then a
+  single-step conversion on the right operand, then a single-step conversion on the
+  left operand.
+- TypeScript binary lowering now emits a dedicated ambiguity diagnostic when both
+  single-step conversion directions are viable.
+- Shared single-step conversion emission helpers now back binary lowering, template-
+  literal interpolation, and list `.join()` stringification.
+- Registered enum type resolution in TypeScript lowering now falls back to declared
+  identifier types when `getTypeAtLocation()` narrows enum-typed locals or params to
+  primitive string literals.
 - The TypeScript compiler already supports enum-typed string literals for pre-registered
   Mindcraft enum types, but it rejects user-authored `enum` declarations entirely.
 - Imported symbols currently include functions, variables, and classes. Imported enums
@@ -356,6 +364,9 @@ function arguments, return statements, variable initializers, and assignments.
   type system or bypass TS errors.
 - Reuse this helper in return statements, assignments, variable initializers, and
   function-call argument lowering.
+- Reuse the expression-type resolution path from E3 so declared enum types can still
+  be recovered when TS flow narrowing collapses an enum-typed identifier to a
+  primitive literal type.
 
 **Concrete deliverables:**
 
@@ -383,6 +394,19 @@ function arguments, return statements, variable initializers, and assignments.
   runtime value still needs conversion.
 - Argument conversion for indirect calls and closures may require extra care if the
   parameter types are not fully recoverable from the checker.
+
+**Common failure modes:**
+
+- Adding target-typed coercion by bypassing or weakening TypeScript's checker instead
+  of only lowering conversions at sites TS already permits.
+- Re-implementing separate ad hoc conversion emitters for returns, arguments,
+  assignments, and initializers instead of reusing one shared E3-style helper.
+- Relying only on `getTypeAtLocation()` for enum-typed identifiers, which can lose the
+  declared enum type after TS flow narrowing and silently skip needed enum conversions.
+- Emitting conversions after argument packing, after storing an assignment target, or
+  in some other place that changes evaluation order or stack layout.
+- Quietly allowing multi-hop target-typed coercions, which would broaden runtime
+  semantics beyond the single-step model established in E3.
 
 ---
 
@@ -463,9 +487,9 @@ conversions in sync when user enums are changed or deleted.
 
 **Key risks:**
 
-- `tsTypeToTypeId()` currently tends to collapse enum-member types to primitive
-  `string` or `number` too early. Enum-aware type resolution may need to inspect the
-  symbol declarations and parent enum declaration explicitly.
+- E3 now recovers registered enum types from declared identifier types in some
+  expression contexts, but E5 still needs enum-aware resolution for user-authored
+  enum declarations, imported enums, and enum member access.
 - Imported enums cannot be treated like imported mutable variables. They need their own
   collection/registration path.
 - Cleanup must remove only user-authored enum registrations and their derived runtime
@@ -474,6 +498,22 @@ conversions in sync when user enums are changed or deleted.
   recompilation does not leave a mixed stale state behind.
 - Numeric enum contextual literals are more subtle than string enums. Use TS checker
   constant information rather than hand-rolled initializer evaluation.
+
+**Common failure modes:**
+
+- Recovering enum member values from raw syntax alone instead of TS constant
+  information, which will mishandle numeric auto-increment and other compile-time
+  constant enum cases.
+- Registering user enums under unqualified names only, which risks cross-file
+  collisions and imported enum alias confusion.
+- Lowering enum member access directly to primitive strings or numbers rather than real
+  enum constants, which would bypass enum runtime identity and derived conversions.
+- Treating imported enums like imported mutable variables or callsite state instead of
+  giving them their own collection and registration path.
+- Cleaning up only the enum type record on recompilation while leaving stale
+  conversions or enum-specific overloads behind.
+- Modeling user-authored enums as TS-only string unions without runtime registration,
+  which would make E1-E4 enum semantics unavailable to compiled user code.
 
 ---
 
@@ -651,3 +691,55 @@ All 4 concrete deliverables were implemented.
 All acceptance criteria passed. Added tests for empty enum registration, invalid
 defaultKey handling across empty and non-empty enums, the absence of empty-enum
 conversions, and the absence of empty-enum equality overload registration.
+
+### Phase E3 -- 2026-04-04
+
+**Planned vs actual:**
+
+All 4 concrete deliverables were implemented.
+
+- Binary operator lowering can now apply a single-step conversion to one operand.
+- The lowering now has reusable helpers for resolving and emitting one conversion host call.
+- Binary `+` lowering now flows through the same conversion-aware path, while template
+  literals and list `.join()` reuse the shared single-step conversion emission logic.
+- Diagnostics now distinguish between no-overload failures and ambiguous implicit
+  binary conversions.
+
+**Unplanned additions and discoveries:**
+
+1. `getTypeAtLocation()` is not sufficient to preserve registered enum identity in
+   binary lowering. TS flow narrowing can collapse `const d: Direction = "north"`
+   down to the literal type `"north"` at later use sites, so E3 added a declared-
+   symbol fallback for identifier expressions.
+2. Left-operand conversions did not require temporary locals. Emitting `Swap`, then
+   the conversion host call, then `Swap` again was enough to preserve the operand
+   order expected by `HostCallArgs`.
+3. The new ambiguity diagnostic is currently exercised through supported strict
+   equality lowering (`===`). Loose equality (`==`) remains unsupported by the
+   TypeScript lowering pass and still reports `Unsupported operator`.
+
+**Design decisions:**
+
+- Kept implicit conversion search at `maxDepth = 1`.
+- Continued to prefer a direct overload over either conversion direction.
+- Shared the new single-step conversion emission helpers with existing string-
+  building lowering instead of adding another separate conversion path.
+
+**Files changed:**
+
+- `packages/typescript/src/compiler/lowering.ts`
+- `packages/typescript/src/compiler/diag-codes.ts`
+- `packages/typescript/src/compiler/codegen.spec.ts`
+
+**Verification:**
+
+- `npm run typecheck`
+- `npm run check`
+- `npm test`
+
+**Acceptance criteria result:**
+
+All acceptance criteria passed. Added tests for direct-overload precedence, unique
+implicit binary conversion success, no-overload diagnostics, ambiguous implicit
+conversion diagnostics, and enum-plus-string concatenation through enum-to-string
+conversion.

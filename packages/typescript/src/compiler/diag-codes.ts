@@ -187,6 +187,8 @@ export enum LoweringDiagCode {
   NoConversionToString = 3051,
   /** No operator overload for string concatenation */
   NoOverloadForStringConcat = 3052,
+  /** Both implicit conversion directions are viable for a binary operator */
+  AmbiguousImplicitBinaryConversion = 3053,
   /** Property access on a struct references a field that does not exist */
   PropertyNotOnStruct = 3060,
   /** Property access form is not supported */

@@ -2509,6 +2509,179 @@ export default Sensor({
   });
 });
 
+describe("binary operator implicit conversions", () => {
+  before(() => {
+    registerCoreBrainComponents();
+
+    const types = getBrainServices().types;
+    const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
+    if (!types.get(dirTypeId)) {
+      types.addEnumType("Direction", {
+        symbols: List.from([
+          { key: "north", label: "North", value: "north" },
+          { key: "south", label: "South", value: "south" },
+          { key: "east", label: "East", value: "east" },
+          { key: "west", label: "West", value: "west" },
+        ]),
+        defaultKey: "north",
+      });
+    }
+  });
+
+  test("existing direct overloads still compile and execute", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function joinParts(left: string, right: string): string {
+  return left + right;
+}
+
+export default Sensor({
+  name: "direct-string-add",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return joinParts("1", "2");
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "12");
+    }
+  });
+
+  test("binary lowering can convert the right operand to match an overload", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function addFlag(count: number, flag: boolean): number {
+  // @ts-ignore testing runtime implicit conversion behavior
+  return count + flag;
+}
+
+export default Sensor({
+  name: "right-conversion",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return addFlag(5, true);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 6);
+    }
+  });
+
+  test("binary lowering reports a no-overload diagnostic when no implicit conversion exists", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function stringify(values: number[]): string {
+  return values + "!";
+}
+
+export default Sensor({
+  name: "missing-overload",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return stringify([1, 2]);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
+    assert.ok(
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.NoOperatorOverload),
+      `Expected no-overload diagnostic but got: ${JSON.stringify(result.diagnostics)}`
+    );
+  });
+
+  test("binary lowering reports ambiguous implicit conversions", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function compare(left: string, right: boolean): boolean {
+  // @ts-ignore testing runtime implicit conversion ambiguity
+  return left === right;
+}
+
+export default Sensor({
+  name: "ambiguous-binary-conversion",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    return compare("1", false);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0, "expected an ambiguity diagnostic");
+    assert.ok(
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.AmbiguousImplicitBinaryConversion),
+      `Expected ambiguity diagnostic but got: ${JSON.stringify(result.diagnostics)}`
+    );
+  });
+
+  test("enum values concatenate with strings through enum-to-string conversion", () => {
+    const ambientSource = buildAmbientDeclarations();
+    const source = `
+import { Sensor, type Context, type Direction } from "mindcraft";
+
+function label(direction: Direction): string {
+  return direction + "!";
+}
+
+export default Sensor({
+  name: "enum-string-concat",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return label("south");
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "south!");
+    }
+  });
+});
+
 describe("struct literal compilation", () => {
   before(async () => {
     registerCoreBrainComponents();
