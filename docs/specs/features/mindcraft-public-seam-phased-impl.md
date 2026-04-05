@@ -24,9 +24,13 @@ Depends on infrastructure from:
 
 ## Status
 
-As of 2026-04-04, none of the phases in this document have been implemented.
-The current product behavior works, but the recommended integration path still
-has three structural problems:
+As of 2026-04-05, Phase S1 is complete. Phases S2-S7 remain unimplemented.
+
+The codebase now exposes the Phase S1 contract vocabulary in `packages/core`
+and `packages/bridge-app`, including the
+`@mindcraft-lang/bridge-app/compilation` subpath. The current product behavior
+still works through the legacy seams, and the recommended integration path
+still has three structural problems:
 
 - `@mindcraft-lang/core` integration is centered on process-global state
   (`registerCoreBrainComponents()`, `getBrainServices()`,
@@ -1044,6 +1048,9 @@ and remove process-global tile presentation from the new integration path.
 - The bridge facade should not be the owner of persistence. The app-owned
   workspace store is the source of truth and the thing that decides when to
   write a snapshot to localStorage or other persistence.
+- 2026-04-05 post-mortem note: the S1 contract layer uses plain `() => void`
+  cleanup handles for listener and feature subscriptions. Keep S4 aligned with
+  that shape unless a concrete runtime consumer forces a separate abstraction.
 
 **Risks:**
 
@@ -1174,6 +1181,14 @@ facade and into an optional feature surface.
   fileset.
 - The base setup should work with internally generated declarations and no
   caller-supplied support-files/provider seam.
+- 2026-04-05 post-mortem note: S1 already added a small
+  `createCompilationFeature(...)` helper and public replay tests. S5 should
+  evolve or replace that helper directly rather than keeping parallel feature
+  implementations alive.
+- 2026-04-05 post-mortem note: keep the legacy `CompilationResult` type
+  standalone even if it is structurally compatible with `DiagnosticSnapshot`.
+  Do not reintroduce inheritance between those shapes as part of the S5 seam
+  work.
 
 **Risks:**
 
@@ -1545,3 +1560,133 @@ record what actually happened, for example:
 Use the same format for any `NFR-<id>` or `INV-<id>` items that were part of the
 phase's prospective requirement list. This retrospective is append-only once
 the phase is closed.
+
+### Phase S1 -- 2026-04-05
+
+**Planned vs actual:**
+
+All 7 concrete deliverables were implemented.
+
+- `packages/core` now exposes the S1 core seam contract types from a new
+  root-level `mindcraft.ts` file, and the root `brain` namespace export
+  remains intact.
+- `MindcraftModuleApi` includes a distinct `registerFunction(...)` path
+  alongside operator registration.
+- `packages/bridge-app` now exposes the S1 bridge contract types from a new
+  public `app-bridge.ts` file and root barrel exports.
+- `@mindcraft-lang/bridge-app/compilation` now exists as an export-map subpath
+  with `WorkspaceCompiler`, `DiagnosticSnapshot`, and
+  `createCompilationFeature(...)`.
+- Public import tests now cover the new root `@mindcraft-lang/core` exports and
+  the new bridge-app subpath exports without reaching through legacy subpaths.
+- `packages/core/package.json` did not need a new export-map entry because the
+  S1 vocabulary fits on the root package surface without disturbing the
+  Roblox-facing package shape.
+- The preserved root import pattern `import { brain, ... } from
+  "@mindcraft-lang/core"` still builds across node, esm, and rbx via the full
+  core verification run.
+
+One planned file did not need changes:
+
+- `packages/core/package.json` stayed unchanged because root-level type exports
+  were enough for S1; no new core subpaths were required.
+
+**Unplanned additions and discoveries:**
+
+1. `createCompilationFeature(...)` gained a small working implementation and
+   replay-oriented tests in S1 even though the host `createAppBridge(...)`
+   facade remains deferred to S4.
+2. `packages/bridge-app` needed a dedicated `tsconfig.spec.json`, local `tsx`
+   devDependency, and `test/**/*.spec.ts` discovery to match the repo's
+   standard spec-test workflow.
+3. Bridge cleanup handles in the new public seam were reviewed and locked to
+   plain `() => void`, not a dedicated `Disposable` contract.
+4. The legacy `CompilationResult` type stays standalone; compatibility with the
+   new `DiagnosticSnapshot` should remain structural rather than expressed via
+   inheritance.
+5. S1 deliberately retained the legacy public seams
+   (`registerCoreBrainComponents()`, `getBrainServices()`,
+   `setTileVisualProvider()`, `AppProject`, `CompilationProvider`,
+   `CompilationManager`, and `CompilationResult`) so later phases can migrate
+   callers without temporary shims becoming permanent.
+
+**Design decisions:**
+
+- Kept the new core vocabulary as root exports only; no new
+  `@mindcraft-lang/core` subpaths were added in S1.
+- Preserved the existing `brain` namespace export and validated it through the
+  full `packages/core` build, including Roblox.
+- Used `() => void` cleanup handles across the new bridge-app contracts for v1
+  consistency with the existing codebase.
+- Kept `DiagnosticSnapshot` as the new feature-side contract and
+  `CompilationResult` as the legacy transport-side contract without an
+  inheritance relationship between them.
+- Retained legacy exports unchanged in S1 and deferred demotion/removal to the
+  migration phases, especially S4-S7.
+
+**Files changed:**
+
+- `packages/core/src/index.ts`
+- `packages/core/src/mindcraft.ts`
+- `packages/core/src/mindcraft.spec.ts`
+- `packages/bridge-app/src/app-bridge.ts`
+- `packages/bridge-app/src/compilation.ts`
+- `packages/bridge-app/src/index.ts`
+- `packages/bridge-app/package.json`
+- `packages/bridge-app/tsconfig.spec.json`
+- `packages/bridge-app/test/public-api.spec.ts`
+- `docs/specs/features/mindcraft-seam-design.md`
+
+**Verification:**
+
+- `packages/core`: `npm run typecheck`, `npm run check`, `npm run build`,
+  `npm test`
+- `packages/bridge-app`: `npm run typecheck`, `npm run check`, `npm run build`,
+  `npm test`
+
+**Acceptance criteria result:**
+
+All S1 concrete deliverables passed review after refinement. The new root/core
+and bridge-app import surfaces compile cleanly, the new bridge-app compilation
+subpath resolves cleanly, and the legacy seams remain available for migration.
+
+### Requirements retrospective
+
+- `FR-1`: partially satisfied (implemented the root core seam vocabulary and
+  import coverage; environment/brain factory behavior remains with Phase S2 and
+  real-app proof remains with Phase S6)
+- `FR-2`: partially satisfied (implemented `CompiledActionBundle` and related
+  compiler/runtime vocabulary; bridge-free bundle/runtime behavior remains with
+  Phase S3 and real-app proof remains with Phase S6)
+- `FR-3`: partially satisfied (implemented the bridge-app contract vocabulary;
+  `createAppBridge(...)` and real-app proof remain with Phases S4 and S7)
+- `FR-4`: partially satisfied (aligned the core, bridge, and compilation
+  vocabulary and added the `./compilation` subpath plus an early helper
+  implementation; the full composed flow remains with Phases S5 and S7)
+- `FR-5`: partially satisfied (named the new boundaries and exposed a distinct
+  `registerFunction(...)` path; actual migration away from legacy registries,
+  concrete runtime classes, and transport internals remains with Phases S2-S7)
+- `FR-18`: partially satisfied (named the bridge lifecycle surface; concrete
+  bridge behavior remains with Phases S4 and S7)
+- `FR-22`: partially satisfied (named the feature capability surface and added
+  an early `createCompilationFeature(...)` helper; full feature wiring through
+  `createAppBridge(...)` remains with Phases S4-S5)
+- `FR-23`: partially satisfied (named diagnostics/status publication hooks and
+  added early helper-side publishing behavior; full bridge feature
+  implementation remains with Phase S5)
+- `FR-25`: partially satisfied (named environment-owned registry state as the
+  ambient source of truth; environment implementation remains with Phase S2 and
+  ts-compiler consumption remains with Phase S5)
+- `NFR-3`: partially satisfied (preserved the root `brain` namespace export and
+  validated the core build across targets; coexistence with the new runtime
+  seam remains with Phase S2)
+- `NFR-6`: partially satisfied (established the new standard vocabulary while
+  retaining legacy exports for migration; final demotion/removal remains with
+  Phase S7)
+- `NFR-7`: partially satisfied (the adoption-tier vocabulary now exists in the
+  contract layer; final public integration guidance remains with Phase S7)
+- `INV-5`: partially satisfied (kept bridge and compilation as separate
+  optional contract layers; the real bridge-only and feature-composed
+  implementations remain with Phases S4-S5)
+- `INV-6`: partially satisfied (the new contract layer is additive and lower-
+  level paths remain explicit; final legacy demotion remains with Phase S7)

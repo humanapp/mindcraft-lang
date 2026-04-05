@@ -157,7 +157,7 @@ export interface MindcraftEnvironment {
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void;
   createBrain(definition: BrainDef, options?: CreateBrainOptions): MindcraftBrain;
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate;
-  onBrainsInvalidated(listener: (event: BrainInvalidationEvent) => void): Disposable;
+  onBrainsInvalidated(listener: (event: BrainInvalidationEvent) => void): () => void;
   rebuildInvalidatedBrains(brains?: Iterable<MindcraftBrain>): void;
 }
 
@@ -725,8 +725,8 @@ export interface AppBridge {
   stop(): void;
   requestSync(): Promise<void>;
   snapshot(): AppBridgeSnapshot;
-  onStateChange(listener: (state: AppBridgeState) => void): Disposable;
-  onRemoteChange(listener: (change: WorkspaceChange) => void): Disposable;
+  onStateChange(listener: (state: AppBridgeState) => void): () => void;
+  onRemoteChange(listener: (change: WorkspaceChange) => void): () => void;
 }
 
 export interface AppBridgeSnapshot {
@@ -751,19 +751,19 @@ export interface AppBridgeOptions {
 export interface WorkspaceAdapter {
   exportSnapshot(): WorkspaceSnapshot;
   applyRemoteChange(change: WorkspaceChange): void;
-  onLocalChange(listener: (change: WorkspaceChange) => void): Disposable;
+  onLocalChange(listener: (change: WorkspaceChange) => void): () => void;
 }
 
 export interface AppBridgeFeature {
-  attach(context: AppBridgeFeatureContext): Disposable;
+  attach(context: AppBridgeFeatureContext): () => void;
 }
 
 export interface AppBridgeFeatureContext {
   snapshot(): AppBridgeSnapshot;
   workspaceSnapshot(): WorkspaceSnapshot;
-  onStateChange(listener: (state: AppBridgeState) => void): Disposable;
-  onRemoteChange(listener: (change: WorkspaceChange) => void): Disposable;
-  onDidSync(listener: () => void): Disposable;
+  onStateChange(listener: (state: AppBridgeState) => void): () => void;
+  onRemoteChange(listener: (change: WorkspaceChange) => void): () => void;
+  onDidSync(listener: () => void): () => void;
   publishDiagnostics(file: string, diagnostics: readonly DiagnosticEntry[]): void;
   publishStatus(update: AppBridgeFeatureStatus): void;
 }
@@ -779,6 +779,13 @@ export interface AppBridgeFeatureStatus {
 
 export declare function createAppBridge(options: AppBridgeOptions): AppBridge;
 ```
+
+Cleanup handle note:
+
+- v1 uses plain `() => void` cleanup callbacks across these seams rather than a
+  dedicated `Disposable` contract
+- this keeps the public API aligned with the existing codebase and avoids
+  introducing a second lifecycle handle shape without a concrete product need
 
 Source note:
 
@@ -844,7 +851,7 @@ export interface WorkspaceCompiler {
   replaceWorkspace(snapshot: WorkspaceSnapshot): void;
   applyWorkspaceChange(change: WorkspaceChange): void;
   compile(): DiagnosticSnapshot;
-  onDidCompile(listener: (snapshot: DiagnosticSnapshot) => void): Disposable;
+  onDidCompile(listener: (snapshot: DiagnosticSnapshot) => void): () => void;
 }
 
 export interface DiagnosticSnapshot {

@@ -1,4 +1,28 @@
 import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
+import type {
+  AppBridgeFeature,
+  AppBridgeFeatureContext,
+  AppBridgeFeatureStatus,
+  DiagnosticEntry,
+  WorkspaceChange,
+  WorkspaceSnapshot,
+} from "./app-bridge.js";
+
+export interface DiagnosticSnapshot {
+  files: ReadonlyMap<string, readonly DiagnosticEntry[]>;
+}
+
+export interface WorkspaceCompiler {
+  replaceWorkspace(snapshot: WorkspaceSnapshot): void;
+  applyWorkspaceChange(change: WorkspaceChange): void;
+  compile(): DiagnosticSnapshot;
+  onDidCompile(listener: (snapshot: DiagnosticSnapshot) => void): () => void;
+}
+
+export interface CompilationFeatureOptions {
+  compiler: WorkspaceCompiler;
+  publishStatus?: boolean;
+}
 
 export interface CompilationResult {
   files: Map<string, CompileDiagnosticEntry[]>;
@@ -10,6 +34,99 @@ export interface CompilationProvider {
   fileRenamed(oldPath: string, newPath: string): void;
   fullSync(files: Iterable<[string, { kind: string; content?: string }]>): void;
   compileAll(): CompilationResult;
+}
+
+function buildFeatureStatus(file: string, diagnostics: readonly DiagnosticEntry[]): AppBridgeFeatureStatus {
+  let errorCount = 0;
+  let warningCount = 0;
+
+  for (const diagnostic of diagnostics) {
+    if (diagnostic.severity === "error") {
+      errorCount++;
+    } else if (diagnostic.severity === "warning") {
+      warningCount++;
+    }
+  }
+
+  return {
+    file,
+    success: errorCount === 0,
+    diagnosticCount: {
+      error: errorCount,
+      warning: warningCount,
+    },
+  };
+}
+
+export function createCompilationFeature(options: CompilationFeatureOptions): AppBridgeFeature {
+  return {
+    attach(context: AppBridgeFeatureContext): () => void {
+      let lastSnapshot: DiagnosticSnapshot | undefined;
+      const previousDiagnosticFiles = new Set<string>();
+      const publishStatus = options.publishStatus ?? true;
+
+      const publishSnapshot = (snapshot: DiagnosticSnapshot): void => {
+        if (context.snapshot().status !== "connected") {
+          return;
+        }
+
+        const currentFiles = new Set<string>();
+
+        for (const [file, diagnostics] of snapshot.files) {
+          currentFiles.add(file);
+
+          if (diagnostics.length > 0 || previousDiagnosticFiles.has(file)) {
+            context.publishDiagnostics(file, diagnostics);
+
+            if (publishStatus) {
+              context.publishStatus(buildFeatureStatus(file, diagnostics));
+            }
+          }
+        }
+
+        for (const file of previousDiagnosticFiles) {
+          if (!currentFiles.has(file)) {
+            context.publishDiagnostics(file, []);
+
+            if (publishStatus) {
+              context.publishStatus(buildFeatureStatus(file, []));
+            }
+          }
+        }
+
+        previousDiagnosticFiles.clear();
+        for (const [file, diagnostics] of snapshot.files) {
+          if (diagnostics.length > 0) {
+            previousDiagnosticFiles.add(file);
+          }
+        }
+      };
+
+      const compileAndPublish = (): void => {
+        lastSnapshot = options.compiler.compile();
+        publishSnapshot(lastSnapshot);
+      };
+
+      options.compiler.replaceWorkspace(context.workspaceSnapshot());
+      compileAndPublish();
+
+      const remoteChangeUnsub = context.onRemoteChange((change) => {
+        options.compiler.applyWorkspaceChange(change);
+        compileAndPublish();
+      });
+
+      const syncUnsub = context.onDidSync(() => {
+        if (lastSnapshot) {
+          publishSnapshot(lastSnapshot);
+        }
+      });
+
+      return () => {
+        syncUnsub();
+        remoteChangeUnsub();
+      };
+    },
+  };
 }
 
 export class CompilationManager {

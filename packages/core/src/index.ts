@@ -3,6 +3,27 @@ import { Vector2 } from "./platform/vector2";
 export const CORE_PLACEHOLDER = "testing symbol export";
 
 export * as brain from "./brain";
+export type {
+  ActionBundleUpdate,
+  BrainInvalidationEvent,
+  CompiledActionArtifact,
+  CompiledActionBundle,
+  ConversionDefinition,
+  CreateBrainOptions,
+  HostActuatorDefinition,
+  HostFunctionDefinition,
+  HostSensorDefinition,
+  HydratedTileMetadataSnapshot,
+  MindcraftBrain,
+  MindcraftCatalog,
+  MindcraftEnvironment,
+  MindcraftModule,
+  MindcraftModuleApi,
+  MindcraftTypeDefinition,
+  OperatorDefinition,
+  OperatorOverloadDefinition,
+  TileDefinitionInput,
+} from "./mindcraft";
 export { Dict } from "./platform/dict";
 export { Error } from "./platform/error";
 // Platform utilities

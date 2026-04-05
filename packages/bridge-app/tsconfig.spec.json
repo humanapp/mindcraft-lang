@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@mindcraft-lang/bridge-app": ["./src/index.ts"],
+      "@mindcraft-lang/bridge-app/compilation": ["./src/compilation.ts"]
+    }
+  },
+  "include": ["test/**/*.spec.ts"],
+  "exclude": ["node_modules", "dist"]
+}
