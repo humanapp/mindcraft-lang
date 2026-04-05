@@ -1,6 +1,6 @@
 # TypeScript Enum Support -- Phased Implementation Plan
 
-**Status:** E1 complete, E2 pending
+**Status:** E1 complete, E2 complete, E2.5 pending
 **Created:** 2026-04-04
 **Related:**
 
@@ -17,11 +17,15 @@ Focused on three linked changes:
 This plan is intentionally separate from the large archived compiler plans. The goal is
 to keep enum work reviewable and phase-sized.
 
+Backward compatibility is not a constraint for this work. If a cleaner enum or runtime
+model conflicts with prior enum registration, conversion, or serialization behavior,
+prefer the cleaner model.
+
 ---
 
 ## Workflow Convention
 
-Phases here are numbered E1-E5.
+Phases here are numbered E1, E2, E2.5, E3-E5.
 
 Each phase follows this loop:
 
@@ -46,7 +50,7 @@ survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-04-04) Phase E1 is complete. `EnumTypeShape.symbols` and
+- (Updated 2026-04-04) Phases E1 and E2 are complete. `EnumTypeShape.symbols` and
   `EnumTypeDef.symbols` now carry explicit declared primitive values for each
   enum member.
 - `EnumValue` in `packages/core` still stores `typeId` plus the enum member key.
@@ -54,12 +58,19 @@ survive. Keep this doc current.
   metadata.
 - `TypeRegistry.addEnumType()` requires explicit member values, rejects
   heterogeneous enums, and allows duplicate underlying values.
+- For non-empty enums, `TypeRegistry.addEnumType()` now auto-registers direct enum
+  conversions alongside enum equality overloads.
 - `TypeRegistry.addEnumType()` still auto-registers `EqualTo` and `NotEqualTo`
   overloads, but they now compare underlying primitive values within the same enum
   type.
 - `EnumCodec.stringify()` now returns the underlying primitive value, not the
   symbolic key.
-- Core conversions only cover primitive boolean/number/string conversions.
+- Empty enums are still unsupported in the core type system because
+  `EnumTypeShape.defaultKey` is mandatory and the current enum conversion setup
+  assumes at least one declared member.
+- Core conversions now cover the primitive boolean/number/string set plus direct
+  enum-to-string for non-empty enums and direct enum-to-number for non-empty
+  numeric enums.
 - The tile-language compiler already uses conversion search for operator inference in
   `packages/core/src/brain/compiler/inferred-types.ts`.
 - The TypeScript lowering pass mostly uses exact type/operator matching. It only uses
@@ -100,6 +111,7 @@ this one.
 | ----- | ----- | -------- | ------ |
 | E1 | Core enum value model | core | Medium |
 | E2 | Core enum conversions | core | Small-Medium |
+| E2.5 | Empty enum type support | core | Small-Medium |
 | E3 | Conversion-aware binary lowering | typescript | Medium |
 | E4 | Target-typed coercion sites | typescript | Medium |
 | E5 | TypeScript enum syntax support | typescript | Medium-Large |
@@ -215,13 +227,63 @@ enum values into primitive `string` or `number` values where the type system all
 
 ---
 
+## Phase E2.5: Empty Enum Type Support
+
+**Objective:** Upgrade the core enum type-system model so empty enums are representable
+without breaking the E2 conversion work or later TypeScript enum syntax support.
+This phase lands after E2 because the current conversion behavior is already in place,
+and the work here is to relax the zero-member invariant cleanly around it.
+
+**Prerequisites:** Phase E2.
+
+**Packages/files touched:**
+
+- `packages/core/src/brain/interfaces/type-system.ts`
+- `packages/core/src/brain/runtime/type-system.ts`
+- `packages/core/src/brain/runtime/conversions.ts`
+- `packages/core/src/brain/runtime/type-system.spec.ts`
+- `packages/core/src/brain/compiler/conversion.spec.ts` if a regression test is useful
+
+**Design direction:**
+
+- Allow enum types with zero members to be registered in `packages/core`.
+- Make `defaultKey` optional when, and only when, the enum has no symbols.
+- Keep non-empty enums strict: they must still supply a valid `defaultKey`.
+- Empty enums should register as real enum types, but they should not auto-register
+  enum conversions or enum operator overloads that require member lookup.
+- Keep `EnumValue` unchanged. An empty enum simply has no valid runtime member values.
+
+**Concrete deliverables:**
+
+1. `EnumTypeShape` can represent an empty enum without an invalid synthetic `defaultKey`.
+2. `TypeRegistry.addEnumType()` accepts empty enums and preserves the existing rules
+   for non-empty enums.
+3. `registerEnumConversions()` becomes a safe no-op for empty enums.
+4. Enum operator registration does not crash or create invalid assumptions for empty enums.
+
+**Acceptance criteria:**
+
+- Test: an empty enum type can be registered successfully.
+- Test: a non-empty enum still rejects a missing or invalid `defaultKey`.
+- Test: empty enums do not expose enum-to-string or enum-to-number conversions.
+- Test: registering an empty enum does not throw from conversion or operator setup.
+- `npm run check`, `npm run build`, and `npm test` pass in `packages/core`.
+
+**Key risks:**
+
+- Making `defaultKey` optional too broadly could weaken validation for normal enums.
+- Some UI or literal-tile code may assume enum types always have at least one member;
+  confirm those call sites before using empty enums in editors.
+
+---
+
 ## Phase E3: Conversion-Aware Binary Lowering
 
 **Objective:** Make binary operator lowering in `packages/typescript` use conversion
 search before failing overload resolution. This establishes the same broad coercion model
 already used in the tile-language compiler.
 
-**Prerequisites:** Phase E2.
+**Prerequisites:** Phase E2.5.
 
 **Packages/files touched:**
 
@@ -393,11 +455,12 @@ infrastructure established by E1-E4.
 ## Suggested Implementation Order
 
 1. Implement E1 and E2 fully in `packages/core` and stop for review.
-2. Implement E3 next so binary-expression coercion semantics are stable.
-3. Implement E4 before enum syntax so target-typed enum coercion is already solved.
-4. Implement E5 last.
+2. Implement E2.5 next so empty-enum support is settled before TypeScript lowering work.
+3. Implement E3 next so binary-expression coercion semantics are stable.
+4. Implement E4 before enum syntax so target-typed enum coercion is already solved.
+5. Implement E5 last.
 
-Do not try to land all five phases in one pass. The value model and coercion rules need
+Do not try to land all six phases in one pass. The value model and coercion rules need
 to settle before the TypeScript syntax support is reviewed.
 
 ---
@@ -464,3 +527,55 @@ Two planned files did not need changes:
 All acceptance criteria passed. Added runtime tests for explicit string and numeric
 enum values, missing-value rejection, heterogeneous rejection, duplicate numeric
 aliases comparing equal, and underlying-value stringification.
+
+### Phase E2 -- 2026-04-04
+
+**Planned vs actual:**
+
+All 4 concrete deliverables were implemented for non-empty enums.
+
+- String enums now register direct enum-to-string conversions.
+- Numeric enums now register direct enum-to-number conversions.
+- Numeric enums also register direct enum-to-string conversions, so string contexts
+  do not rely on multi-hop coercion.
+- Conversion registration now happens automatically from enum type registration.
+
+One planned file did not need changes:
+
+- `packages/core/src/brain/interfaces/conversions.ts` stayed unchanged because the
+  existing conversion registry API already supported enum conversion registration.
+
+**Unplanned additions and discoveries:**
+
+1. Enum conversions are registered from `TypeRegistry.addEnumType()` after the enum
+  type is added to the registry, reusing `getEnumSymbol()` for key -> primitive lookup.
+2. Direct enum-to-string conversion uses different costs by enum kind: string enums
+  use cost 1, numeric enums use cost 2, while numeric enum-to-number uses cost 1.
+3. Empty enums remain a follow-on for E2.5: the current core model still requires a
+  valid `defaultKey`, and `registerEnumConversions()` currently assumes at least one
+  symbol when deciding which enum conversions to register.
+
+**Design decisions:**
+
+- Kept enum conversion search single-step only.
+- Did not add primitive-to-enum conversions.
+- Used direct numeric-enum -> string conversion instead of relying on enum -> number -> string chaining.
+
+**Files changed:**
+
+- `packages/core/src/brain/runtime/conversions.ts`
+- `packages/core/src/brain/runtime/type-system.ts`
+- `packages/core/src/brain/compiler/conversion.spec.ts`
+
+**Verification:**
+
+- `npm run typecheck`
+- `npm run check`
+- `npm run build`
+- `npm test`
+
+**Acceptance criteria result:**
+
+All acceptance criteria passed. Added conversion tests for direct path discovery and
+host-function execution across string enums, numeric enums, and the absence of
+enum-to-number conversion for string enums.

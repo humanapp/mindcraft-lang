@@ -37,6 +37,7 @@ import {
   type UnionTypeDef,
 } from "../interfaces";
 import { getBrainServices, hasBrainServices } from "../services";
+import { registerEnumConversions } from "./conversions";
 
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
@@ -156,8 +157,14 @@ export class TypeRegistry implements ITypeRegistry {
       defaultKey: shape.defaultKey,
     };
     this.add(enumTypeDef);
+    this.registerEnumConversions(typeId);
     this.registerEnumOperators(typeId);
     return typeId;
+  }
+
+  private registerEnumConversions(typeId: TypeId): void {
+    if (!hasBrainServices()) return;
+    registerEnumConversions(typeId);
   }
 
   private registerEnumOperators(typeId: TypeId): void {
