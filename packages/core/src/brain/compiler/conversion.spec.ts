@@ -31,7 +31,7 @@ before(() => {
   registerCoreBrainComponents();
 });
 
-function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey: string): string {
+function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
   const registry = getBrainServices().types;
   const existing = registry.resolveByName(name);
   if (existing) {
@@ -246,5 +246,15 @@ describe("Conversion: enum values", () => {
 
     const path = getBrainServices().conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
     assert.equal(path, undefined);
+  });
+
+  test("empty enums do not expose enum conversions", () => {
+    const typeId = ensureEnumType("ConversionSpecEmptyEnum", List.empty<EnumSymbolDef>());
+
+    const stringPath = getBrainServices().conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    const numberPath = getBrainServices().conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+
+    assert.equal(stringPath, undefined);
+    assert.equal(numberPath, undefined);
   });
 });

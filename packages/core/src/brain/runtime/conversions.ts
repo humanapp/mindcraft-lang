@@ -179,7 +179,7 @@ export function registerEnumConversions(typeId: TypeId) {
   const enumDef = enumType as EnumTypeDef;
   const firstSymbol = enumDef.symbols.get(0);
   if (!firstSymbol) {
-    throw new Error(`registerEnumConversions: enum type ${typeId} has no symbols`);
+    return;
   }
 
   if (!services.conversions.get(typeId, CoreTypeIds.String)) {

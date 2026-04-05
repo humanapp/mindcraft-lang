@@ -1,6 +1,6 @@
 # TypeScript Enum Support -- Phased Implementation Plan
 
-**Status:** E1 complete, E2 complete, E2.5 pending
+**Status:** E1 complete, E2 complete, E2.5 complete, E3 pending
 **Created:** 2026-04-04
 **Related:**
 
@@ -50,27 +50,28 @@ survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-04-04) Phases E1 and E2 are complete. `EnumTypeShape.symbols` and
-  `EnumTypeDef.symbols` now carry explicit declared primitive values for each
-  enum member.
+- (Updated 2026-04-04) Phases E1, E2, and E2.5 are complete. `EnumTypeShape.symbols`
+  and `EnumTypeDef.symbols` now carry explicit declared primitive values for each
+  enum member, and `EnumTypeShape.defaultKey` is optional only for empty enums.
 - `EnumValue` in `packages/core` still stores `typeId` plus the enum member key.
   `ITypeRegistry.getEnumSymbol(typeId, key)` resolves the normalized enum-member
   metadata.
 - `TypeRegistry.addEnumType()` requires explicit member values, rejects
   heterogeneous enums, and allows duplicate underlying values.
+- `TypeRegistry.addEnumType()` now accepts empty enums, rejects `defaultKey` on an
+  empty enum, and still requires a valid `defaultKey` for non-empty enums.
 - For non-empty enums, `TypeRegistry.addEnumType()` now auto-registers direct enum
   conversions alongside enum equality overloads.
 - `TypeRegistry.addEnumType()` still auto-registers `EqualTo` and `NotEqualTo`
   overloads, but they now compare underlying primitive values within the same enum
-  type.
+  type. Empty enums do not register enum equality overloads.
 - `EnumCodec.stringify()` now returns the underlying primitive value, not the
   symbolic key.
-- Empty enums are still unsupported in the core type system because
-  `EnumTypeShape.defaultKey` is mandatory and the current enum conversion setup
-  assumes at least one declared member.
 - Core conversions now cover the primitive boolean/number/string set plus direct
   enum-to-string for non-empty enums and direct enum-to-number for non-empty
-  numeric enums.
+  numeric enums. Empty enums expose no enum conversions.
+- The existing recompilation cleanup path removes user struct types before rebuild,
+  but user enum registrations and derived enum conversions are not yet refreshed.
 - The tile-language compiler already uses conversion search for operator inference in
   `packages/core/src/brain/compiler/inferred-types.ts`.
 - The TypeScript lowering pass mostly uses exact type/operator matching. It only uses
@@ -389,7 +390,8 @@ function arguments, return statements, variable initializers, and assignments.
 
 **Objective:** Support user-authored `enum` declarations, imported enums, and enum-member
 access in `packages/typescript`, compiling them down onto the enum runtime and coercion
-infrastructure established by E1-E4.
+infrastructure established by E1-E4, while keeping registered enum types and derived
+conversions in sync when user enums are changed or deleted.
 
 **Prerequisites:** Phase E4.
 
@@ -401,17 +403,28 @@ infrastructure established by E1-E4.
 - `packages/typescript/src/compiler/compile.spec.ts`
 - `packages/typescript/src/compiler/multi-file.spec.ts`
 - `packages/typescript/src/compiler/codegen.spec.ts`
+- `packages/core/src/brain/interfaces/type-system.ts` if user-type cleanup needs to
+  expand beyond structs
+- `packages/core/src/brain/runtime/type-system.ts` if enum registration cleanup needs
+  a runtime hook
+- `packages/core/src/brain/interfaces/conversions.ts` and
+  `packages/core/src/brain/runtime/conversions.ts` if stale enum conversions need
+  explicit removal support
 
 **Design direction:**
 
 - Remove the blanket validator rejection for enum declarations.
 - Support top-level enum declarations whose member values are compile-time constants
   recoverable from the TS checker via `checker.getConstantValue(member)`.
+- Support top-level empty enums as type declarations with no members.
 - For numeric enums, the TypeScript compiler must compute and pass explicit member
   values into `addEnumType()`. The core registry does not infer TS auto-increment
   behavior from omitted values.
 - Register user-authored enums before lowering function bodies, using file-qualified
   names where needed to avoid cross-module collisions.
+- Extend the recompilation cleanup path so deleted or changed user enums remove stale
+  enum type registrations, enum-derived conversions, and any enum-specific overloads
+  before the current program state is re-registered.
 - Extend import collection to include exported enums and aliased enum imports.
 - Lower enum member access like `Direction.Up` directly to an enum constant.
 - Reuse the existing contextual-literal logic so enum-typed literals become enum values
@@ -422,9 +435,12 @@ infrastructure established by E1-E4.
 
 1. Local top-level string enums compile.
 2. Local top-level numeric enums compile, including auto-incremented members.
-3. Imported enums compile across files, including aliased imports.
-4. Enum member access lowers directly to enum constants.
-5. Existing conversion-aware lowering makes common string/number enum usage work
+3. Local top-level empty enums compile.
+4. Imported enums compile across files, including aliased imports.
+5. Enum member access lowers directly to enum constants.
+6. Recompilation removes stale user enum registrations and derived conversions when
+  a user enum is deleted or changed.
+7. Existing conversion-aware lowering makes common string/number enum usage work
    without special cases.
 
 **Acceptance criteria:**
@@ -433,8 +449,13 @@ infrastructure established by E1-E4.
   string context.
 - Test: local numeric enum member can be compared against numeric contexts and used in
   arithmetic-compatible numeric contexts where appropriate.
+- Test: local empty enum declaration compiles and can be referenced as a type.
 - Test: imported enum member works across files.
 - Test: aliased enum import works across files.
+- Test: deleting a user enum removes its registered enum type and derived conversions
+  on recompilation.
+- Test: changing a user enum between string and numeric forms refreshes its derived
+  conversions so stale conversion registrations do not survive recompilation.
 - Test: heterogeneous enum declaration still produces a diagnostic.
 - Test: enum-object reflection patterns that remain unsupported still produce explicit
   diagnostics rather than lowering incorrectly.
@@ -447,6 +468,10 @@ infrastructure established by E1-E4.
   symbol declarations and parent enum declaration explicitly.
 - Imported enums cannot be treated like imported mutable variables. They need their own
   collection/registration path.
+- Cleanup must remove only user-authored enum registrations and their derived runtime
+  artifacts, not core or pre-registered enums.
+- Enum type cleanup, conversion cleanup, and overload cleanup should happen together so
+  recompilation does not leave a mixed stale state behind.
 - Numeric enum contextual literals are more subtle than string enums. Use TS checker
   constant information rather than hand-rolled initializer evaluation.
 
@@ -579,3 +604,50 @@ One planned file did not need changes:
 All acceptance criteria passed. Added conversion tests for direct path discovery and
 host-function execution across string enums, numeric enums, and the absence of
 enum-to-number conversion for string enums.
+
+### Phase E2.5 -- 2026-04-04
+
+**Planned vs actual:**
+
+All 4 concrete deliverables were implemented.
+
+- `EnumTypeShape` can now represent an empty enum without a synthetic `defaultKey`.
+- `TypeRegistry.addEnumType()` now accepts empty enums and preserves stricter
+  validation for non-empty enums.
+- `registerEnumConversions()` is now a safe no-op for empty enums.
+- Enum operator registration now skips empty enums instead of creating unusable
+  overload assumptions.
+
+**Unplanned additions and discoveries:**
+
+1. `EnumTypeShape.defaultKey` had to become optional at the type level, but runtime
+   validation remains strict: empty enums reject `defaultKey`, non-empty enums require it.
+2. E5 should explicitly support top-level empty enum declarations as type declarations,
+   since the core runtime can now represent them cleanly.
+
+**Design decisions:**
+
+- Kept `EnumValue` unchanged; empty enums simply have no valid runtime values.
+- Did not synthesize a placeholder enum member or fallback default key.
+- Kept empty enums free of auto-registered conversions and equality overloads.
+
+**Files changed:**
+
+- `packages/core/src/brain/interfaces/type-system.ts`
+- `packages/core/src/brain/runtime/type-system.ts`
+- `packages/core/src/brain/runtime/conversions.ts`
+- `packages/core/src/brain/runtime/type-system.spec.ts`
+- `packages/core/src/brain/compiler/conversion.spec.ts`
+
+**Verification:**
+
+- `npm run typecheck`
+- `npm run check`
+- `npm run build`
+- `npm test`
+
+**Acceptance criteria result:**
+
+All acceptance criteria passed. Added tests for empty enum registration, invalid
+defaultKey handling across empty and non-empty enums, the absence of empty-enum
+conversions, and the absence of empty-enum equality overload registration.

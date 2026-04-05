@@ -84,7 +84,7 @@ export interface EnumSymbolDef {
 
 export interface EnumTypeShape {
   symbols: List<EnumSymbolDef>;
-  defaultKey: string;
+  defaultKey?: string;
 }
 
 export type EnumTypeDef = TypeDef & EnumTypeShape;

@@ -28,7 +28,7 @@ import {
 
 const { MemoryStream } = stream;
 
-function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey: string): string {
+function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
   const registry = getBrainServices().types;
   const existing = registry.resolveByName(name);
   if (existing) {
@@ -234,6 +234,39 @@ describe("enum type registration", () => {
         defaultKey: "North",
       });
     }, /unsupported value/);
+  });
+
+  test("empty enums can be registered without defaultKey", () => {
+    const typeId = ensureEnumType("TypeSystemSpecEmptyEnum", List.empty<EnumSymbolDef>());
+
+    const registry = getBrainServices().types;
+    const def = registry.get(typeId) as EnumTypeDef;
+    assert.equal(def.symbols.size(), 0);
+    assert.equal(def.defaultKey, undefined);
+
+    const resolution = getBrainServices().operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]);
+    assert.equal(resolution, undefined);
+  });
+
+  test("empty enums reject defaultKey", () => {
+    const registry = getBrainServices().types;
+
+    assert.throws(() => {
+      registry.addEnumType("TypeSystemSpecEmptyEnumWithDefault", {
+        symbols: List.empty<EnumSymbolDef>(),
+        defaultKey: "North",
+      });
+    }, /cannot specify defaultKey without symbols/);
+  });
+
+  test("non-empty enums require defaultKey", () => {
+    const registry = getBrainServices().types;
+
+    assert.throws(() => {
+      registry.addEnumType("TypeSystemSpecMissingDefaultKey", {
+        symbols: List.from([{ key: "North", label: "North", value: "north" }]),
+      });
+    }, /requires defaultKey/);
   });
 
   test("heterogeneous enum values are rejected", () => {

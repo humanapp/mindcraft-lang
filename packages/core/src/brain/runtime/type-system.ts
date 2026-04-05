@@ -143,10 +143,7 @@ export class TypeRegistry implements ITypeRegistry {
     const typeId = mkTypeId(NativeType.Enum, name);
     this.validateTypeNotRegistered(typeId);
     const symbols = normalizeEnumSymbols(typeId, shape.symbols);
-    // Verify defaultKey exists
-    if (!symbols.find((symbol) => symbol.key === shape.defaultKey)) {
-      throw new Error(`Enum type ${typeId} has invalid defaultKey: ${shape.defaultKey}`);
-    }
+    const defaultKey = resolveEnumDefaultKey(typeId, symbols, shape.defaultKey);
     // Register
     const enumTypeDef: EnumTypeDef = {
       coreType: NativeType.Enum,
@@ -154,7 +151,7 @@ export class TypeRegistry implements ITypeRegistry {
       codec: new EnumCodec(symbols),
       name,
       symbols,
-      defaultKey: shape.defaultKey,
+      defaultKey,
     };
     this.add(enumTypeDef);
     this.registerEnumConversions(typeId);
@@ -169,6 +166,13 @@ export class TypeRegistry implements ITypeRegistry {
 
   private registerEnumOperators(typeId: TypeId): void {
     if (!hasBrainServices()) return;
+    const def = this.get(typeId);
+    if (!def || def.coreType !== NativeType.Enum) {
+      return;
+    }
+    if ((def as EnumTypeDef).symbols.size() === 0) {
+      return;
+    }
     const overloads = getBrainServices().operatorOverloads;
     overloads.binary(
       CoreOpId.EqualTo,
@@ -780,6 +784,29 @@ function normalizeEnumSymbols(typeId: TypeId, rawSymbols: List<EnumSymbolDef>): 
   });
 
   return symbols;
+}
+
+function resolveEnumDefaultKey(
+  typeId: TypeId,
+  symbols: List<EnumSymbolDef>,
+  defaultKey: string | undefined
+): string | undefined {
+  if (symbols.size() === 0) {
+    if (defaultKey !== undefined) {
+      throw new Error(`Enum type ${typeId} cannot specify defaultKey without symbols`);
+    }
+    return undefined;
+  }
+
+  if (defaultKey === undefined) {
+    throw new Error(`Enum type ${typeId} requires defaultKey`);
+  }
+
+  if (!symbols.find((symbol) => symbol.key === defaultKey)) {
+    throw new Error(`Enum type ${typeId} has invalid defaultKey: ${defaultKey}`);
+  }
+
+  return defaultKey;
 }
 
 function enumPrimitiveType(typeId: TypeId, key: string, value: unknown): NativeType.String | NativeType.Number {
