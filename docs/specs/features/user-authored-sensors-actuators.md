@@ -771,7 +771,7 @@ shape described in
 `entryFuncId` and `activationFuncId` remain artifact-local function indexes and
 are remapped during the core brain link step. `params` is still stored so the
 registration bridge can resolve parameter tile defs without reparsing the
-call spec. See `packages/typescript/src/compiler/types.ts` for the current
+call spec. See `packages/ts-compiler/src/compiler/types.ts` for the current
 shape.
 
 #### Debug metadata emission
@@ -832,14 +832,14 @@ the new opcodes.)
 ### Where this code lives
 
 The compiler and metadata publication bridge live in the
-`@mindcraft-lang/typescript` package, not in `packages/core`. Core must remain
+`@mindcraft-lang/ts-compiler` package, not in `packages/core`. Core must remain
 free of TypeScript compiler API dependencies to preserve roblox-ts
 compatibility. Core provides the VM, bytecode interfaces, action-descriptor
 contracts, and the explicit brain link/runtime path; the TypeScript package
 consumes those to compile and publish user action artifacts.
 
 ```
-packages/typescript/src/
+packages/ts-compiler/src/
   compiler/
     compile.ts              -- public entry point; re-exports UserTileProject
     project.ts              -- UserTileProject class (multi-file orchestrator)
@@ -890,7 +890,7 @@ The resulting executable brain program is then instantiated by the VM. User
 actions are not invoked through a `HOST_CALL` wrapper path anymore.
 
 The linker is ~100 lines: iterate user programs, compute offset, copy+remap
-bytecode instructions, merge constants. It lives in `@mindcraft-lang/typescript`, not
+bytecode instructions, merge constants. It lives in `@mindcraft-lang/ts-compiler`, not
 in core. Core provides no linking API -- the linker manipulates `List<>` contents on
 the `BrainProgram` before passing it to the VM constructor.
 
@@ -992,7 +992,7 @@ pieces of data:
 1. tile metadata for `TileCatalog`
 2. a direct bytecode action artifact for the sim's action registry
 
-`packages/typescript/src/runtime/registration-bridge.ts` builds an
+`packages/ts-compiler/src/runtime/registration-bridge.ts` builds an
 `ActionDescriptor`, registers any needed parameter tiles, and publishes a
 `BytecodeResolvedAction` to the brain action registry. No user-authored tile is
 registered in `FunctionRegistry`, and no VM-capturing host wrapper is created.
@@ -1164,7 +1164,7 @@ declare module "mindcraft" {
 
 Ambient declarations are generated dynamically from the type registry, not maintained
 as static `.d.ts` files. `buildAmbientDeclarations()` in
-`packages/typescript/src/compiler/ambient.ts` iterates over all registered types --
+`packages/ts-compiler/src/compiler/ambient.ts` iterates over all registered types --
 including Context, SelfContext, EngineContext -- and generates TypeScript interfaces
 with fields and method signatures. Native-backed structs get branded readonly
 interfaces. Host apps register their EngineContext methods via `addStructMethods()`

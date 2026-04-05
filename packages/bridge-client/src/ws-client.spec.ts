@@ -71,7 +71,7 @@ describe("WsClient", () => {
   beforeEach(() => {
     MockWebSocket.instances = [];
     (globalThis as Record<string, unknown>).WebSocket = MockWebSocket;
-    mock.timers.enable({ apis: ["setTimeout"] });
+    mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   });
 
   afterEach(() => {

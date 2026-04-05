@@ -224,7 +224,7 @@ Both are compiler-produced strings, not user-facing. No breaking change.
   method.
 - `packages/core/src/brain/interfaces/type-system.ts` -- add
   `removeUserTypes()` to `ITypeRegistry` interface.
-- `packages/typescript/src/compiler/project.ts` -- call `removeUserTypes()`
+- `packages/ts-compiler/src/compiler/project.ts` -- call `removeUserTypes()`
   at the start of `compileAll()` (or in the private `_compile` method, before
   the per-file loop).
 
@@ -273,7 +273,7 @@ that same-named classes in different files get distinct TypeIds.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- update
+- `packages/ts-compiler/src/compiler/lowering.ts` -- update
   `registerClassStructType`, `resolveStructType`, `tsTypeToTypeId` to use
   qualified names for user types.
 
@@ -357,9 +357,9 @@ references.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` or wherever
+- `packages/ts-compiler/src/compiler/lowering.ts` or wherever
   `extractDescriptor` lives -- update param/output type name extraction.
-- `packages/typescript/src/compiler/project.ts` -- verify
+- `packages/ts-compiler/src/compiler/project.ts` -- verify
   `resolveByName(descriptor.outputType)` works with qualified names.
 
 **Concrete deliverables:**
@@ -453,7 +453,7 @@ M1, M2, and M3 complete. C3.5 D1+D2 can proceed independently.
    struct types whose name contains `::` (module-qualified user types). Types
    with bare names (no `::`) are preserved regardless of other properties.
    Clears `nameToId` entries and `compatCache`.
-3. Call site in `_compile()` (`packages/typescript/src/compiler/project.ts`) --
+3. Call site in `_compile()` (`packages/ts-compiler/src/compiler/project.ts`) --
    `getBrainServices().types.removeUserTypes()` before the per-file compilation
    loop.
 4. 4 unit tests in `type-system.spec.ts` (user type removed, host with
@@ -526,12 +526,12 @@ lint clean in both packages.
 
 **Packages/files changed:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- helpers + 6 function updates
-- `packages/typescript/src/compiler/ambient.ts` -- skip `::` types
+- `packages/ts-compiler/src/compiler/lowering.ts` -- helpers + 6 function updates
+- `packages/ts-compiler/src/compiler/ambient.ts` -- skip `::` types
 - `packages/core/src/brain/runtime/type-system.ts` -- `removeUserTypes()` heuristic
 - `packages/core/src/brain/runtime/type-system.spec.ts` -- updated tests
-- `packages/typescript/src/compiler/codegen.spec.ts` -- assertion updates, nominal cleanup
-- `packages/typescript/src/compiler/multi-file.spec.ts` -- 3 new M2 tests
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- assertion updates, nominal cleanup
+- `packages/ts-compiler/src/compiler/multi-file.spec.ts` -- 3 new M2 tests
 
 **Decisions made:**
 
@@ -590,11 +590,11 @@ lint clean in both packages.
 
 **Packages/files changed:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- export `qualifiedClassName`
-- `packages/typescript/src/compiler/project.ts` -- 2 helpers + qualification in
+- `packages/ts-compiler/src/compiler/lowering.ts` -- export `qualifiedClassName`
+- `packages/ts-compiler/src/compiler/project.ts` -- 2 helpers + qualification in
   `_compileEntryPoint`
-- `packages/typescript/src/compiler/ambient.ts` -- `MindcraftType` widened
-- `packages/typescript/src/compiler/multi-file.spec.ts` -- 3 new M3 tests
+- `packages/ts-compiler/src/compiler/ambient.ts` -- `MindcraftType` widened
+- `packages/ts-compiler/src/compiler/multi-file.spec.ts` -- 3 new M3 tests
 
 **Decisions made:**
 

@@ -44,7 +44,7 @@ Mindcraft. The implementation is being completed in phases:
 
 The following components are **implemented and working**:
 
-- **TypeScript Compiler Pipeline** (`packages/typescript`)
+- **TypeScript Compiler Pipeline** (`packages/ts-compiler`)
   - Full TypeScript-to-bytecode compilation with type checking
   - Virtual file system (in-memory, no disk I/O)
   - Compilation diagnostics (errors, warnings) with source positions
@@ -194,7 +194,7 @@ The following are described in this spec but **not yet implemented**:
 - Disconnected session cache (5-min TTL) for seamless reconnection
 - Rate limiting and connection throttling
 - Stub handlers for compile, debug, and project message categories [planned]
-- **Note:** The registration bridge (`registration-bridge.ts` in `packages/typescript`)
+- **Note:** The registration bridge (`registration-bridge.ts` in `packages/ts-compiler`)
   integrates compiled user tiles into the brain's catalog; this is separate from the
   WebSocket bridge server.
 
@@ -508,7 +508,7 @@ for user code referencing the Mindcraft API -- without any additional language s
 Compilation runs **inside the Mindcraft browser app**. Reasons:
 
 1. The compiler (from the user-authored-sensors-actuators spec) is part of
-   `@mindcraft-lang/typescript`, which is loaded in the app.
+   `@mindcraft-lang/ts-compiler`, which is loaded in the app.
 2. The compiled bytecode must be immediately available to the VM instances running
    in the app.
 3. The compiler needs access to the app's function registry and type system to
@@ -533,7 +533,7 @@ On save, the app:
 
 1. Stores the updated source in the world/project data.
 2. Runs the TypeScript compiler pipeline (see Section B.2 of user-authored-sensors-actuators.md).
-   - The compiler pipeline is **fully implemented** in `packages/typescript/src/compiler/`
+   - The compiler pipeline is **fully implemented** in `packages/ts-compiler/src/compiler/`
    - Stages: parse (TypeScript AST) -> validate -> extract descriptor -> lower to IR ->
      emit bytecode -> assemble program
    - Multi-file: `UserTileProject` class manages file imports, `collectImports()` gathers
@@ -1025,7 +1025,7 @@ codebase infrastructure:
 
 **5. Compiler Output**
 - `UserAuthoredProgram` is the target for debug metadata attachment
-- The compiler (`packages/typescript/src/compiler/compile.ts`) is the place to emit
+- The compiler (`packages/ts-compiler/src/compiler/compile.ts`) is the place to emit
   `DebugMetadata` alongside bytecode
 - The lowering pass (`lowering.ts`) has access to all scope, variable, and AST
   position information needed to generate spans, scopes, and locals
@@ -2461,7 +2461,7 @@ The adapter constructs a `mindcraft://` URI for each file.
 
 No protocol, debug adapter, or metadata structural changes are needed for
 multi-file. The multi-file compiler support is already complete (see
-`packages/typescript/src/compiler/project.ts` for the `UserTileProject` class
+`packages/ts-compiler/src/compiler/project.ts` for the `UserTileProject` class
 and `collectImports()` function).
 
 ---
@@ -2838,17 +2838,17 @@ This document describes the integration points between the debugger and existing
 Mindcraft infrastructure. Implementation should reference the following files:
 
 **Compiler and Type System:**
-- `packages/typescript/src/compiler/compile.ts` -- Main compilation entry point
-- `packages/typescript/src/compiler/project.ts` -- Multi-file project orchestration
-- `packages/typescript/src/compiler/lowering.ts` -- TS AST to IR lowering (scope/variable info)
-- `packages/typescript/src/compiler/emit.ts` -- Bytecode emission (extend for debug metadata)
-- `packages/typescript/src/compiler/ir.ts` -- IR node type definitions (~40 kinds)
-- `packages/typescript/src/compiler/types.ts` -- `UserAuthoredProgram`, `ExtractedDescriptor`
-- `packages/typescript/src/compiler/descriptor.ts` -- Tile metadata extraction
-- `packages/typescript/src/compiler/scope.ts` -- Variable scope tracking
-- `packages/typescript/src/compiler/diag-codes.ts` -- Diagnostic code system
-- `packages/typescript/src/compiler/linker/linker.ts` -- User program linking
-- `packages/typescript/src/index.ts` -- Public API
+- `packages/ts-compiler/src/compiler/compile.ts` -- Main compilation entry point
+- `packages/ts-compiler/src/compiler/project.ts` -- Multi-file project orchestration
+- `packages/ts-compiler/src/compiler/lowering.ts` -- TS AST to IR lowering (scope/variable info)
+- `packages/ts-compiler/src/compiler/emit.ts` -- Bytecode emission (extend for debug metadata)
+- `packages/ts-compiler/src/compiler/ir.ts` -- IR node type definitions (~40 kinds)
+- `packages/ts-compiler/src/compiler/types.ts` -- `UserAuthoredProgram`, `ExtractedDescriptor`
+- `packages/ts-compiler/src/compiler/descriptor.ts` -- Tile metadata extraction
+- `packages/ts-compiler/src/compiler/scope.ts` -- Variable scope tracking
+- `packages/ts-compiler/src/compiler/diag-codes.ts` -- Diagnostic code system
+- `packages/ts-compiler/src/compiler/linker/linker.ts` -- User program linking
+- `packages/ts-compiler/src/index.ts` -- Public API
 
 **VM and Fiber Execution:**
 - `packages/core/src/brain/runtime/vm.ts` -- Stack-based VM, instruction execution
@@ -2862,8 +2862,8 @@ Mindcraft infrastructure. Implementation should reference the following files:
   (extend with `DebugMetadata` field)
 
 **User-Authored Tile Integration:**
-- `packages/typescript/src/runtime/authored-function.ts` -- User tile execution wrapper
-- `packages/typescript/src/runtime/registration-bridge.ts` -- Tile registration
+- `packages/ts-compiler/src/runtime/authored-function.ts` -- User tile execution wrapper
+- `packages/ts-compiler/src/runtime/registration-bridge.ts` -- Tile registration
 
 **Bridge Infrastructure:**
 - `apps/vscode-bridge/src/` -- Bridge server (Hono + Node.js WebSocket relay)

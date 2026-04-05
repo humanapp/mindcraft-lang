@@ -303,7 +303,7 @@ and the work here is to relax the zero-member invariant cleanly around it.
 
 ## Phase E3: Conversion-Aware Binary Lowering
 
-**Objective:** Make binary operator lowering in `packages/typescript` use conversion
+**Objective:** Make binary operator lowering in `packages/ts-compiler` use conversion
 search before failing overload resolution. This establishes the same broad coercion model
 already used in the tile-language compiler.
 
@@ -311,9 +311,9 @@ already used in the tile-language compiler.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts`
-- `packages/typescript/src/compiler/diag-codes.ts`
-- `packages/typescript/src/compiler/codegen.spec.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/diag-codes.ts`
+- `packages/ts-compiler/src/compiler/codegen.spec.ts`
 
 **Design direction:**
 
@@ -346,7 +346,7 @@ already used in the tile-language compiler.
   overload exists.
 - Test: pre-registered enum value plus string uses enum-to-string conversion rather
   than failing overload resolution.
-- `npm run typecheck`, `npm run check`, and `npm test` pass in `packages/typescript`.
+- `npm run typecheck`, `npm run check`, and `npm test` pass in `packages/ts-compiler`.
 
 **Key risks:**
 
@@ -366,9 +366,9 @@ function arguments, return statements, variable initializers, and assignments.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts`
-- `packages/typescript/src/compiler/codegen.spec.ts`
-- `packages/typescript/src/compiler/compile.spec.ts` if new diagnostics are needed
+- `packages/ts-compiler/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/codegen.spec.ts`
+- `packages/ts-compiler/src/compiler/compile.spec.ts` if new diagnostics are needed
 
 **Design direction:**
 
@@ -400,7 +400,7 @@ function arguments, return statements, variable initializers, and assignments.
 - Test: assigning a pre-registered numeric enum value to a `number` target inserts
   enum-to-number conversion.
 - Test: missing conversion at a target-typed boundary produces a clear diagnostic.
-- `npm run typecheck`, `npm run check`, and `npm test` pass in `packages/typescript`.
+- `npm run typecheck`, `npm run check`, and `npm test` pass in `packages/ts-compiler`.
 
 **Key risks:**
 
@@ -428,7 +428,7 @@ function arguments, return statements, variable initializers, and assignments.
 ## Phase E5: TypeScript Enum Syntax Support
 
 **Objective:** Support user-authored `enum` declarations, imported enums, and enum-member
-access in `packages/typescript`, compiling them down onto the enum runtime and coercion
+access in `packages/ts-compiler`, compiling them down onto the enum runtime and coercion
 infrastructure established by E1-E4, while keeping registered enum types and derived
 conversions in sync when user enums are changed or deleted.
 
@@ -436,12 +436,12 @@ conversions in sync when user enums are changed or deleted.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/validator.ts`
-- `packages/typescript/src/compiler/project.ts`
-- `packages/typescript/src/compiler/lowering.ts`
-- `packages/typescript/src/compiler/compile.spec.ts`
-- `packages/typescript/src/compiler/multi-file.spec.ts`
-- `packages/typescript/src/compiler/codegen.spec.ts`
+- `packages/ts-compiler/src/compiler/validator.ts`
+- `packages/ts-compiler/src/compiler/project.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/compile.spec.ts`
+- `packages/ts-compiler/src/compiler/multi-file.spec.ts`
+- `packages/ts-compiler/src/compiler/codegen.spec.ts`
 - `packages/core/src/brain/interfaces/type-system.ts` if user-type cleanup needs to
   expand beyond structs
 - `packages/core/src/brain/runtime/type-system.ts` if enum registration cleanup needs
@@ -501,7 +501,7 @@ conversions in sync when user enums are changed or deleted.
 - Test: heterogeneous enum declaration still produces a diagnostic.
 - Test: enum-object reflection patterns that remain unsupported still produce explicit
   diagnostics rather than lowering incorrectly.
-- `npm run typecheck`, `npm run check`, and `npm test` pass in `packages/typescript`.
+- `npm run typecheck`, `npm run check`, and `npm test` pass in `packages/ts-compiler`.
 
 **Key risks:**
 
@@ -748,9 +748,9 @@ All 4 concrete deliverables were implemented.
 
 **Files changed:**
 
-- `packages/typescript/src/compiler/lowering.ts`
-- `packages/typescript/src/compiler/diag-codes.ts`
-- `packages/typescript/src/compiler/codegen.spec.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/diag-codes.ts`
+- `packages/ts-compiler/src/compiler/codegen.spec.ts`
 
 **Verification:**
 
@@ -784,7 +784,7 @@ All 4 concrete deliverables were implemented.
 
 One planned file did not need changes:
 
-- `packages/typescript/src/compiler/compile.spec.ts` stayed unchanged because the new
+- `packages/ts-compiler/src/compiler/compile.spec.ts` stayed unchanged because the new
   lowering diagnostic and runtime behavior were fully covered in `codegen.spec.ts`.
 
 **Unplanned additions and discoveries:**
@@ -810,9 +810,9 @@ One planned file did not need changes:
 
 **Files changed:**
 
-- `packages/typescript/src/compiler/lowering.ts`
-- `packages/typescript/src/compiler/diag-codes.ts`
-- `packages/typescript/src/compiler/codegen.spec.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/diag-codes.ts`
+- `packages/ts-compiler/src/compiler/codegen.spec.ts`
 
 **Verification:**
 
@@ -890,18 +890,18 @@ One planned file did not need changes:
 - `packages/core/src/brain/runtime/operators.ts`
 - `packages/core/src/brain/runtime/type-system.ts`
 - `packages/core/src/brain/runtime/type-system.spec.ts`
-- `packages/typescript/src/compiler/diag-codes.ts`
-- `packages/typescript/src/compiler/validator.ts`
-- `packages/typescript/src/compiler/project.ts`
-- `packages/typescript/src/compiler/lowering.ts`
-- `packages/typescript/src/compiler/compile.spec.ts`
-- `packages/typescript/src/compiler/codegen.spec.ts`
-- `packages/typescript/src/compiler/multi-file.spec.ts`
+- `packages/ts-compiler/src/compiler/diag-codes.ts`
+- `packages/ts-compiler/src/compiler/validator.ts`
+- `packages/ts-compiler/src/compiler/project.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/compile.spec.ts`
+- `packages/ts-compiler/src/compiler/codegen.spec.ts`
+- `packages/ts-compiler/src/compiler/multi-file.spec.ts`
 
 **Verification:**
 
 - `packages/core`: `npm run typecheck`, `npm run check`, `npm run build`, `npm test`
-- `packages/typescript`: `npm run typecheck`, `npm run check`, `npm test`
+- `packages/ts-compiler`: `npm run typecheck`, `npm run check`, `npm test`
 
 **Acceptance criteria result:**
 

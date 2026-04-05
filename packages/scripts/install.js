@@ -6,7 +6,7 @@ const packages = [
     "core",
     "ui",
     "docs",
-    "typescript",
+    "ts-compiler",
     "bridge-protocol",
     "bridge-client",
     "bridge-app",

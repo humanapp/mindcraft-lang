@@ -2,7 +2,7 @@ import { List } from "@mindcraft-lang/core";
 import type { BrainActionResolver } from "@mindcraft-lang/core/brain";
 import { type ActionDescriptor, getBrainServices, type IBrain, type IBrainDef } from "@mindcraft-lang/core/brain";
 import { Brain } from "@mindcraft-lang/core/brain/runtime";
-import type { UserAuthoredProgram } from "@mindcraft-lang/typescript";
+import type { UserAuthoredProgram } from "@mindcraft-lang/ts-compiler";
 
 export interface ActiveBrainContainer {
   rebuildBrainsUsingChangedActions(changedRevisions: ReadonlyMap<string, string>): void;

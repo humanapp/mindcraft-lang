@@ -11,7 +11,7 @@ Depends on infrastructure from:
 - [user-authored-sensors-actuators.md](user-authored-sensors-actuators.md) (compiler pipeline)
 - [brain-action-execution-architecture.md](brain-action-execution-architecture.md) (runtime/link architecture)
 - [vscode-authoring-debugging.md](vscode-authoring-debugging.md) (bridge architecture)
-- `packages/typescript` (UserTileProject, compiled user action artifacts, ambient declarations)
+- `packages/ts-compiler` (UserTileProject, compiled user action artifacts, ambient declarations)
 - `packages/bridge-client` (Project, ProjectFiles, FileSystemNotification)
 
 ---
@@ -134,7 +134,7 @@ VS Code edit -> extension -> bridge server -> sim app
 
 `CompilationManager` ignores `mkdir` and `rmdir` actions.
 
-### Compilation pipeline (packages/typescript)
+### Compilation pipeline (packages/ts-compiler)
 
 The primary compilation API is `UserTileProject`, a stateful class that holds
 all project files and compiles them as a unit:
@@ -462,7 +462,7 @@ calling think, so the routing key is available in every HOST_CALL.
 ### Integration point
 
 `Brain.initialize()` is in `packages/core`. It has no knowledge of user
-tiles or `packages/typescript`. The sim app calls
+tiles or `packages/ts-compiler`. The sim app calls
 `brainDef.compile()` then `brain.initialize(contextData)` in
 `Actor.constructor` and `Actor.replaceBrain()`.
 
@@ -578,7 +578,7 @@ lives in `vscode-bridge.ts` via a switch on `ev.action`. Logging via `logger`
 from `@mindcraft-lang/core`. Listener hooks (`onCompilation`, `onRemoval`) for
 Phase 2 integration.
 
-**Reworked same day:** After `packages/typescript` was updated to support
+**Reworked same day:** After `packages/ts-compiler` was updated to support
 multi-file project compilation via `UserTileProject`, the module was reworked to
 maintain a persistent `UserTileProject` instance instead of calling per-file
 `compileUserTile()`. `recompileAll()` now calls `project.compileAll()` and diffs

@@ -1,7 +1,7 @@
 # Class Support -- Phased Implementation Plan
 
 Research and implementation plan for adding user-defined class support to the
-TypeScript compiler (`packages/typescript`). Classes compile down to the existing
+TypeScript compiler (`packages/ts-compiler`). Classes compile down to the existing
 struct + function infrastructure -- no new VM opcodes are required.
 
 Companion to [typescript-compiler-phased-impl-p2.md](typescript-compiler-phased-impl-p2.md).
@@ -214,11 +214,11 @@ compilation yet -- constructor and method bodies emit placeholder returns.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/validator.ts` -- remove class rejection; add
+- `packages/ts-compiler/src/compiler/validator.ts` -- remove class rejection; add
   targeted rejections for unsupported class features.
-- `packages/typescript/src/compiler/lowering.ts` -- handle `ClassDeclaration` in
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `ClassDeclaration` in
   the top-level `lowerProgram` scan and in `lowerStatement`.
-- `packages/typescript/src/compiler/diag-codes.ts` -- add diagnostic codes for
+- `packages/ts-compiler/src/compiler/diag-codes.ts` -- add diagnostic codes for
   unsupported class features.
 
 **Concrete deliverables:**
@@ -309,7 +309,7 @@ fields. Support `new ClassName(args)` expressions.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- implement constructor body
+- `packages/ts-compiler/src/compiler/lowering.ts` -- implement constructor body
   lowering and `NewExpression` handling.
 
 **Concrete deliverables:**
@@ -428,7 +428,7 @@ variables.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- implement method body lowering
+- `packages/ts-compiler/src/compiler/lowering.ts` -- implement method body lowering
   and method call dispatch for user-compiled methods.
 
 **Concrete deliverables:**
@@ -534,12 +534,12 @@ Listed here because it blocks C4 and was discovered during C3 investigation.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/project.ts` -- `collectImports` filtering.
-- `packages/typescript/src/compiler/lowering.ts` -- `lowerProgram` symbol
+- `packages/ts-compiler/src/compiler/project.ts` -- `collectImports` filtering.
+- `packages/ts-compiler/src/compiler/lowering.ts` -- `lowerProgram` symbol
   registration, `resolveStructType`, `lowerNewExpression`,
   `lowerStructMethodCall`, `lowerCallExpression`, `lowerIdentifier`,
   `resolveVarTarget`, `registerClassStructType`.
-- `packages/typescript/src/compiler/diag-codes.ts` -- new diagnostic codes for
+- `packages/ts-compiler/src/compiler/diag-codes.ts` -- new diagnostic codes for
   collisions.
 
 **Problem statement:**
@@ -622,11 +622,11 @@ destructuring, callsite variables), and comprehensive edge case handling.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/ambient.ts` -- ensure user-registered struct
+- `packages/ts-compiler/src/compiler/ambient.ts` -- ensure user-registered struct
   types appear in ambient declarations.
-- `packages/typescript/src/compiler/compile.ts` / `project.ts` -- coordinate class
+- `packages/ts-compiler/src/compiler/compile.ts` / `project.ts` -- coordinate class
   type registration in multi-file compilation.
-- `packages/typescript/src/compiler/lowering.ts` -- edge cases and integration.
+- `packages/ts-compiler/src/compiler/lowering.ts` -- edge cases and integration.
 
 **Concrete deliverables:**
 
@@ -813,19 +813,19 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
 
 **Files changed:**
 
-- `packages/typescript/src/compiler/diag-codes.ts` -- renamed `ClassesNotSupported`
+- `packages/ts-compiler/src/compiler/diag-codes.ts` -- renamed `ClassesNotSupported`
   to `ClassExpressionsNotSupported` (1000); added validator codes `ClassMustBeNamed`
   (1015), `ClassInheritanceNotSupported` (1016), `StaticMembersNotSupported`
   (1017), `PrivateFieldsNotSupported` (1018), `ClassGettersSettersNotSupported`
   (1019); added lowering codes `ClassDeclarationMissingName` (3140),
   `UnresolvableClassFieldType` (3141).
-- `packages/typescript/src/compiler/validator.ts` -- removed blanket
+- `packages/ts-compiler/src/compiler/validator.ts` -- removed blanket
   `ClassDeclaration` rejection. Added `validateClassDeclaration()` with targeted
   checks: unnamed class, `extends` clause, getter/setter accessors, `static`
   modifier (via `canHaveModifiers` guard), `#private` identifiers on properties
   and methods. `ClassExpression` still rejected. Child nodes visited recursively
   after validation.
-- `packages/typescript/src/compiler/lowering.ts` -- added `ClassInfo` interface,
+- `packages/ts-compiler/src/compiler/lowering.ts` -- added `ClassInfo` interface,
   class scanning in `lowerProgram` top-level loop (allocates function table slots
   for `ClassName$new` and `ClassName.methodName`), `registerClassStructType`
   (delegates to `extractClassFields` and `extractClassMethodDecls`, calls
@@ -837,11 +837,11 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
   `FunctionEntry` objects with `PushConst(NIL_VALUE)` + `Return`),
   `lowerStatement` no-op branch for `ClassDeclaration`. Type registration runs
   before function body compilation; stubs generated after helper functions.
-- `packages/typescript/src/compiler/compile.spec.ts` -- renamed test from "class
+- `packages/ts-compiler/src/compiler/compile.spec.ts` -- renamed test from "class
   declaration produces diagnostic" to "class expression produces diagnostic";
   changed source to use `const Foo = class { ... }` and assert
   `ClassExpressionsNotSupported`.
-- `packages/typescript/src/compiler/codegen.spec.ts` -- added `ValidatorDiagCode`
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- added `ValidatorDiagCode`
   and `StructTypeDef` to imports; added "class declarations" describe block with
   9 tests.
 
@@ -896,7 +896,7 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
 
 **Files changed:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- added `thisLocalIndex?:
+- `packages/ts-compiler/src/compiler/lowering.ts` -- added `thisLocalIndex?:
   number` to `LowerContext`; replaced stub constructor in `lowerClassDeclaration`
   with real compilation: parameter locals, `ScopeStack` with `thisLocal` allocated
   after params, `StructNew(typeId)` + `StoreLocal(this)`, property initializer
@@ -909,10 +909,10 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
   added `lowerThisFieldAssignment` (`LoadLocal(this)`, `PushConst(fieldName)`,
   evaluate RHS, `StructSet`, `Dup`, `StoreLocal(this)`). Method entries remain as
   stubs (C3 scope).
-- `packages/typescript/src/compiler/diag-codes.ts` -- added lowering codes
+- `packages/ts-compiler/src/compiler/diag-codes.ts` -- added lowering codes
   `ThisOutsideClassContext` (3142), `NewExpressionUnknownClass` (3143),
   `NewExpressionNotIdentifier` (3144).
-- `packages/typescript/src/compiler/codegen.spec.ts` -- added 7 new tests to the
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- added 7 new tests to the
   "class declarations" describe block (total now 16).
 
 **Test results:** 257 tests pass (234 codegen + 23 compile), 0 failures.
@@ -965,7 +965,7 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
 
 **Files changed:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- replaced method stub bodies
+- `packages/ts-compiler/src/compiler/lowering.ts` -- replaced method stub bodies
   in `lowerClassDeclaration` with real compilation: `this` at local 0 (implicit
   first param), user params at local 1+, destructuring pattern support for
   method params, `lowerStatements(member.body)`, default nil+return tail.
@@ -977,7 +977,7 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
   (`+=`, `-=`, `*=`, `/=`): reads field, evaluates RHS, resolves operator via
   `resolveOperatorWithExpansion`, emits `HostCallArgs`, then standard
   `StructSet` + `StoreLocal(this)` store-back.
-- `packages/typescript/src/compiler/codegen.spec.ts` -- added 7 C3 tests to
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- added 7 C3 tests to
   the "class declarations" describe block.
 
 **Test results:** 473 typescript tests pass, 0 failures. Typecheck and lint clean.
@@ -1033,15 +1033,15 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
 
 **Files changed:**
 
-- `packages/typescript/src/compiler/diag-codes.ts` -- added
+- `packages/ts-compiler/src/compiler/diag-codes.ts` -- added
   `CompileDiagCode.DuplicateImportedSymbol` (5004).
-- `packages/typescript/src/compiler/project.ts` -- added `hasExportModifier`
+- `packages/ts-compiler/src/compiler/project.ts` -- added `hasExportModifier`
   helper using `ts.canHaveModifiers` + `ts.getModifiers`. Updated `visitFile` in
   `collectImports` to check `hasExportModifier(stmt)` before collecting function
   declarations and variable statements. Added post-collection duplicate detection:
   scans collected functions and variables for same-named symbols from different
   source modules, emits `DuplicateImportedSymbol` diagnostic.
-- `packages/typescript/src/compiler/multi-file.spec.ts` -- added 5 C3.5 tests
+- `packages/ts-compiler/src/compiler/multi-file.spec.ts` -- added 5 C3.5 tests
   across two new describe blocks.
 
 **Test results:** 478 typescript tests pass, 0 failures. Typecheck and lint clean.
@@ -1093,17 +1093,17 @@ Completed phases are recorded here with dates, actual outcomes, and deviations.
 
 **Files changed:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- Added `ImportedClass`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- Added `ImportedClass`
   interface (exported). Updated `lowerProgram` signature to accept
   `importedClasses?: ImportedClass[]`. Added processing loop that allocates
   function table slots for imported class constructors and methods, creates
   `ClassInfo` entries that flow through existing `registerClassStructType` and
   `lowerClassDeclaration`.
-- `packages/typescript/src/compiler/project.ts` -- Updated `CollectResult` to
+- `packages/ts-compiler/src/compiler/project.ts` -- Updated `CollectResult` to
   include `classes: ImportedClass[]`. Extended `collectImports` `visitFile` to
   collect exported class declarations. Added collision detection for duplicate
   class names across files. Passes `imported.classes` to `lowerProgram`.
-- `packages/typescript/src/compiler/multi-file.spec.ts` -- Added 9 C4 tests.
+- `packages/ts-compiler/src/compiler/multi-file.spec.ts` -- Added 9 C4 tests.
 
 **Test results:** 495 pass, 0 fail.
 

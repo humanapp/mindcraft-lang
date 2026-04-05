@@ -90,9 +90,11 @@ describe("Project seq deduplication", () => {
   beforeEach(() => {
     MockWebSocket.instances = [];
     (globalThis as Record<string, unknown>).WebSocket = MockWebSocket;
+    mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   });
 
   afterEach(() => {
+    mock.timers.reset();
     (globalThis as Record<string, unknown>).WebSocket = originalWebSocket;
   });
 
@@ -335,34 +337,29 @@ describe("Project seq deduplication", () => {
 
   describe("seq across reconnect", () => {
     it("maintains outboundSeq counter across reconnects", () => {
-      mock.timers.enable({ apis: ["setTimeout"] });
-      try {
-        const project = createProject();
-        const ws1 = startProject(project);
+      const project = createProject();
+      const ws1 = startProject(project);
 
-        project.files.toRemote.write("src/a.ts", "a");
-        project.files.toRemote.write("src/b.ts", "b");
+      project.files.toRemote.write("src/a.ts", "a");
+      project.files.toRemote.write("src/b.ts", "b");
 
-        const changesWs1 = parseSent(ws1).filter((m) => m.type === "filesystem:change");
-        assert.equal(changesWs1[changesWs1.length - 1].seq, 2);
+      const changesWs1 = parseSent(ws1).filter((m) => m.type === "filesystem:change");
+      assert.equal(changesWs1[changesWs1.length - 1].seq, 2);
 
-        ws1.simulateClose();
-        mock.timers.tick(1000);
+      ws1.simulateClose();
+      mock.timers.tick(1000);
 
-        const ws2 = lastSocket();
-        assert.notEqual(ws2, ws1, "new socket created after reconnect timer");
+      const ws2 = lastSocket();
+      assert.notEqual(ws2, ws1, "new socket created after reconnect timer");
 
-        project.files.toRemote.mkdir("src/lib");
+      project.files.toRemote.mkdir("src/lib");
 
-        ws2.simulateOpen();
+      ws2.simulateOpen();
 
-        const allMsgs = parseSent(ws2);
-        const changes = allMsgs.filter((m) => m.type === "filesystem:change");
-        assert.ok(changes.length >= 1);
-        assert.equal(changes[0].seq, 3, "continues from previous outboundSeq");
-      } finally {
-        mock.timers.reset();
-      }
+      const allMsgs = parseSent(ws2);
+      const changes = allMsgs.filter((m) => m.type === "filesystem:change");
+      assert.ok(changes.length >= 1);
+      assert.equal(changes[0].seq, 3, "continues from previous outboundSeq");
     });
   });
 });

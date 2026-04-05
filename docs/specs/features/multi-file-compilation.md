@@ -8,7 +8,7 @@ statements between user-authored `.ts` files. Also eliminates redundant
 Depends on infrastructure from:
 - [user-tile-compilation-pipeline.md](user-tile-compilation-pipeline.md) (single-file compilation, Phase 1)
 - [user-authored-sensors-actuators.md](user-authored-sensors-actuators.md) (compiler pipeline)
-- `packages/typescript` (compileUserTile, virtual-host, lowering, emit)
+- `packages/ts-compiler` (compileUserTile, virtual-host, lowering, emit)
 - `packages/bridge-client` (ProjectFiles, FileSystem, ExportedFileSystem)
 
 ---
@@ -72,7 +72,7 @@ and synced via WebSocket.
 
 ### Existing virtual compiler host
 
-`createVirtualCompilerHost` in `packages/typescript/src/compiler/virtual-host.ts`
+`createVirtualCompilerHost` in `packages/ts-compiler/src/compiler/virtual-host.ts`
 already implements `resolveModuleNameLiterals` -- it checks
 `files.has(candidate)` for `/${name}.ts`, `/${name}.d.ts`, etc. This means
 import resolution across files works if all files are present in the `Map`.
@@ -100,7 +100,7 @@ files. Enable static import of functions and types from helper modules.
 
 ### Deliverables
 
-1. **`UserTileProject` class** (`packages/typescript/src/compiler/project.ts`):
+1. **`UserTileProject` class** (`packages/ts-compiler/src/compiler/project.ts`):
    - Holds a `Map<string, string>` of all `.ts` and `.d.ts` file contents.
    - `setFiles(files)` -- bulk-replace all files (initial sync).
    - `updateFile(path, content)` -- single file update.
@@ -167,7 +167,7 @@ files. Enable static import of functions and types from helper modules.
     - `mindcraft.d.ts` is read from the VFS file map -- remove the
       `buildAmbientDeclarations()` call from the compilation path.
 
-12. **Export from `packages/typescript`**: Add `UserTileProject` and
+12. **Export from `packages/ts-compiler`**: Add `UserTileProject` and
     `ProjectCompileResult` to `index.ts`.
 
 ### Risks
@@ -246,21 +246,21 @@ entry-point's space.
 **Status**: Complete. 253/253 tests pass. TypeScript and Biome clean.
 
 **Files created**:
-- `packages/typescript/src/compiler/project.ts` -- `UserTileProject` class,
+- `packages/ts-compiler/src/compiler/project.ts` -- `UserTileProject` class,
   `CompileResult`, `ProjectCompileResult` types, import collection logic
 
 **Files modified**:
-- `packages/typescript/src/compiler/compile.ts` -- slimmed to thin wrapper
+- `packages/ts-compiler/src/compiler/compile.ts` -- slimmed to thin wrapper
   delegating to `UserTileProject`
-- `packages/typescript/src/compiler/virtual-host.ts` -- relative import
+- `packages/ts-compiler/src/compiler/virtual-host.ts` -- relative import
   resolution (`./`, `../`) in `resolveModuleNameLiterals`
-- `packages/typescript/src/compiler/lowering.ts` -- `ImportedFunction`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- `ImportedFunction`
   interface, `importedFunctions` parameter on `lowerProgram`
-- `packages/typescript/src/compiler/validator.ts` -- early return for
+- `packages/ts-compiler/src/compiler/validator.ts` -- early return for
   `ImportDeclaration` (allows static imports, still rejects dynamic)
-- `packages/typescript/src/compiler/diag-codes.ts` -- added
+- `packages/ts-compiler/src/compiler/diag-codes.ts` -- added
   `HelperModuleHasVariables = 5003`
-- `packages/typescript/src/index.ts` -- exports for `UserTileProject`,
+- `packages/ts-compiler/src/index.ts` -- exports for `UserTileProject`,
   `ProjectCompileResult`
 - `apps/sim/src/services/user-tile-compiler.ts` -- rewritten to use
   `UserTileProject` instance
@@ -305,19 +305,19 @@ entry-point's space.
 and Biome clean.
 
 **Files modified**:
-- `packages/typescript/src/compiler/lowering.ts` -- added `ImportedVariable`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- added `ImportedVariable`
   interface; `lowerProgram` extended with `importedVariables` and
   `moduleInitOrder` params; replaced `generateModuleInit` with
   `generateModuleInitWithImports` that emits helper module initializers in
   topological order before entry-point's own initializers
-- `packages/typescript/src/compiler/project.ts` -- replaced
+- `packages/ts-compiler/src/compiler/project.ts` -- replaced
   `collectImportedFunctions` with `collectImports` that also gathers
   variables and computes `moduleInitOrder`; removed `hasTopLevelVariables`
   restriction and the dead function; `_compileEntryPoint` now passes
   variables and init order to `lowerProgram`
 
 **Files created**:
-- `packages/typescript/src/compiler/multi-file.spec.ts` -- 6 end-to-end
+- `packages/ts-compiler/src/compiler/multi-file.spec.ts` -- 6 end-to-end
   tests: constant from helper, mutable state via imported function, diamond
   import, init ordering, function-only helper (no init), per-importer
   isolation

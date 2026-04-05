@@ -8,7 +8,7 @@ import {
   mkSensorTileId,
 } from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
-import type { CompileResult, ExtractedParam, UserAuthoredProgram } from "@mindcraft-lang/typescript";
+import type { CompileResult, ExtractedParam, UserAuthoredProgram } from "@mindcraft-lang/ts-compiler";
 import {
   deleteUserActionArtifacts,
   publishUserActionArtifacts,

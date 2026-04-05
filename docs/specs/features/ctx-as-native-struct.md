@@ -72,7 +72,7 @@ Register three struct types with fieldGetters:
 Sub-struct values (SelfContext, EngineContext) can be lazily created by the Context
 fieldGetter rather than allocated up-front.
 
-### Compiler Changes (packages/typescript)
+### Compiler Changes (packages/ts-compiler)
 
 1. **Argument passing**: `onExecute(ctx, params)` currently compiles to `numParams: 0`
    (no tile params) or `numParams: 1` (with tile params, where local 0 is the params

@@ -252,7 +252,7 @@ architecture that supports this feature in a robust way.
 - `packages/core` targets both web (sim app) and Roblox
   (`tsconfig.rbx.json`). Roblox does not have user-authored tiles yet
   but the core API should not preclude it.
-- `packages/core` must not depend on `packages/typescript` (the user
+- `packages/core` must not depend on `packages/ts-compiler` (the user
   tile compiler). Any integration must be through interfaces/callbacks.
 - The `FunctionRegistry` is append-only with index-based IDs. Removal
   would break VM references to existing functions. Any solution must
@@ -281,9 +281,9 @@ Core runtime:
 - `packages/core/src/brain/model/tiledef.ts` -- BrainActionTileBase
 
 User tile pipeline:
-- `packages/typescript/src/linker/linker.ts` -- linkUserPrograms
-- `packages/typescript/src/runtime/authored-function.ts` -- createUserTileExec
-- `packages/typescript/src/runtime/registration-bridge.ts` -- registerUserTile
+- `packages/ts-compiler/src/linker/linker.ts` -- linkUserPrograms
+- `packages/ts-compiler/src/runtime/authored-function.ts` -- createUserTileExec
+- `packages/ts-compiler/src/runtime/registration-bridge.ts` -- registerUserTile
 - `apps/sim/src/services/user-tile-registration.ts` -- registration + hot-swap
 - `apps/sim/src/services/user-tile-compiler.ts` -- compilation provider
 - `apps/sim/src/brain/actor.ts` -- Actor constructor, replaceBrain

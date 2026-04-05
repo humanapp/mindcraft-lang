@@ -249,7 +249,7 @@ Resolution sources:
 - app-side compiled user action registry resolves user-authored tiles to
   bytecode action artifacts
 
-Core must not depend on `packages/typescript`; it only depends on the resolver
+Core must not depend on `packages/ts-compiler`; it only depends on the resolver
 interface.
 
 ---

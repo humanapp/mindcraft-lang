@@ -1,0 +1,1 @@
+[![Publish @mindcraft-lang/ts-compiler](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-ts-compiler.yml/badge.svg)](https://github.com/humanapp/mindcraft-lang/actions/workflows/publish-ts-compiler.yml)

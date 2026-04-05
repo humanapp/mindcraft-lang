@@ -36,7 +36,7 @@ Same loop as the compiler phased plan:
 
 - Compilation runs **in the Mindcraft browser app** (`apps/sim/`).
 - `apps/sim/src/services/user-tile-compiler.ts` wraps `UserTileProject` from
-  `@mindcraft-lang/typescript`. Exports `createCompilationProvider()` which
+  `@mindcraft-lang/ts-compiler`. Exports `createCompilationProvider()` which
   returns a `CompilationProvider` adapter (Phase D3). The adapter's
   `compileAll()` calls `UserTileProject.compileAll()` and maps
   `ProjectCompileResult` into `CompilationResult` with protocol-shaped
@@ -235,7 +235,7 @@ cached diagnostics re-emitted through bridge to extension
 - **Diagnostic range and severity -- back-propagated to compiler.** The
   protocol requires `startLine/startColumn/endLine/endColumn` and `severity`.
   Rather than synthesizing these in Phase D3, the `CompileDiagnostic`
-  interface in `packages/typescript/src/compiler/types.ts` will be enhanced
+  interface in `packages/ts-compiler/src/compiler/types.ts` will be enhanced
   to carry `endLine?`, `endColumn?`, and
   `severity?: "error" | "warning" | "info"` natively. All three diagnostic
   creation sites (`makeDiag` in lowering, `addDiag` in validator, TS
@@ -331,7 +331,7 @@ compiled programs for its tile runtime) stay in the sim.
    `CompilationResult` provides per-file diagnostics in a shape close to
    `ProjectCompileResult` but mapped to the protocol's
    `CompileDiagnosticEntry[]` per file. The exact shape should avoid
-   coupling `bridge-app` to `@mindcraft-lang/typescript` internals -- the
+   coupling `bridge-app` to `@mindcraft-lang/ts-compiler` internals -- the
    provider is responsible for the mapping.
    ```
    interface CompilationResult {
@@ -386,7 +386,7 @@ compiled programs for its tile runtime) stay in the sim.
 **Key risks:**
 
 - **Coupling to compiler types.** `bridge-app` must not depend on
-  `@mindcraft-lang/typescript`. The `CompilationProvider` interface is the
+  `@mindcraft-lang/ts-compiler`. The `CompilationProvider` interface is the
   seam -- the app provides an adapter that wraps the compiler and maps
   its output to `CompileDiagnosticEntry[]`. `bridge-app` depends only on
   `bridge-protocol` for the diagnostic entry type.
@@ -700,7 +700,7 @@ since the status bar can rely on receiving status messages.
   entirely from the result (e.g., deleted) get empty array + `onRemoval`.
 - `bridge-app` depends only on `bridge-protocol` for diagnostic types
   (`CompileDiagnosticEntry`, `AppClientMessage`), not on
-  `@mindcraft-lang/typescript`. The decoupling is clean.
+  `@mindcraft-lang/ts-compiler`. The decoupling is clean.
 
 ### Phase D3 (2026-04-02)
 

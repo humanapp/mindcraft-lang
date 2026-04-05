@@ -45,7 +45,7 @@ Common substitutions:
 
 ## Generated Files -- Do Not Read
 
-**Never read `packages/typescript/src/compiler/lib-dts.generated.ts`** when exploring the codebase. It is a machine-generated file that repackages TypeScript's `lib.d.ts` as a string constant. It contains no project logic and is extremely large. Skip it in all searches and explorations.
+**Never read `packages/ts-compiler/src/compiler/lib-dts.generated.ts`** when exploring the codebase. It is a machine-generated file that repackages TypeScript's `lib.d.ts` as a string constant. It contains no project logic and is extremely large. Skip it in all searches and explorations.
 
 ## After Making Code Changes
 

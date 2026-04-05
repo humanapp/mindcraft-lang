@@ -1,5 +1,5 @@
 import { AppProject, type AppProjectOptions } from "@mindcraft-lang/bridge-app";
-import { buildAmbientDeclarations } from "@mindcraft-lang/typescript";
+import { buildAmbientDeclarations } from "@mindcraft-lang/ts-compiler";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
 import {
   createCompilationProvider,

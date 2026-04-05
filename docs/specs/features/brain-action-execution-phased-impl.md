@@ -133,10 +133,10 @@ Run the commands for every package modified in the current phase.
 cd packages/core && npm run check && npm run build && npm test
 ```
 
-### `packages/typescript`
+### `packages/ts-compiler`
 
 ```sh
-cd packages/typescript && npm run typecheck && npm run check && npm test
+cd packages/ts-compiler && npm run typecheck && npm run check && npm test
 ```
 
 ### `apps/sim`
@@ -218,15 +218,15 @@ complete:
 12. Page activation now resets each action callsite deterministically and
    dispatches the correct activation hook once per activation for both host
    `onPageEntered` handlers and bytecode `activationFuncId` hooks.
-13. `packages/typescript` now emits `UserActionArtifact`-shaped user programs
+13. `packages/ts-compiler` now emits `UserActionArtifact`-shaped user programs
    with stable `ActionKey`s, artifact-local `entryFuncId` /
    `activationFuncId`, direct `isAsync`, and `revisionId` fields instead of
    wrapper-era runtime metadata.
-14. `packages/typescript` no longer exports a VM/scheduler-capturing wrapper
+14. `packages/ts-compiler` no longer exports a VM/scheduler-capturing wrapper
    runtime for user tiles. `linkUserPrograms()` now remains only as a pure
    bytecode merge/remap helper returning artifact offsets and remapped debug
    metadata.
-15. `packages/typescript` runtime registration now publishes parameter tiles,
+15. `packages/ts-compiler` runtime registration now publishes parameter tiles,
    tile metadata, and direct `BytecodeResolvedAction` artifacts into the core
    action registry without mutating `FunctionRegistry` entries in place.
 16. `apps/sim` built-in sensor and actuator registration now constructs
@@ -386,7 +386,7 @@ At the start of Phase 2, assume this baseline:
    `BrainFunctionEntry`; that is acceptable at the start of Phase 2 but remains
    transitional only and must not survive as the permanent built-in action model
    past Phase 3
-- downstream registration code in `packages/typescript` and `apps/sim` may
+- downstream registration code in `packages/ts-compiler` and `apps/sim` may
    still target the pre-Phase-1 action tile constructors; that breakage is
    expected and remains out of scope for Phase 2
 
@@ -412,7 +412,7 @@ compiler-side lookups back into the global `FunctionRegistry`.
 - actual VM action execution
 - user-authored artifact format changes
 - sim integration
-- repairing stale app-side or `packages/typescript` action-tile constructor
+- repairing stale app-side or `packages/ts-compiler` action-tile constructor
    call sites left behind by the Phase 1 contract change
 
 ### Ordered tasks
@@ -462,7 +462,7 @@ cd packages/core && npm run check && npm run build && npm test
 - introducing a separate top-level `actionCallSites` list instead of replacing
    the field inside `PageMetadata`
 - spending Phase 2 effort on downstream registration fixes in `apps/sim` or
-   `packages/typescript` instead of completing the core compiler boundary
+   `packages/ts-compiler` instead of completing the core compiler boundary
 
 ---
 
@@ -521,7 +521,7 @@ Current branch note:
    `BrainDef.compile()` remains a runtime factory, it must not collapse compile
    and link into an opaque single-phase implementation boundary.
 5. Keep the link step interface-only. Do not make core depend on
-   `packages/typescript`.
+   `packages/ts-compiler`.
 
 ### Likely files
 
@@ -729,8 +729,8 @@ Current branch note:
 ### Out of scope
 
 - sim integration
-- removal of user wrapper artifacts from `packages/typescript`
-- any `packages/typescript` edits in this phase must stay limited to field
+- removal of user wrapper artifacts from `packages/ts-compiler`
+- any `packages/ts-compiler` edits in this phase must stay limited to field
    renames and contract alignment needed by the new action-state model, not
    artifact-shape redesign or runtime-path replacement
 
@@ -759,10 +759,10 @@ Current branch note:
 - `packages/core/src/brain/runtime/vm.ts`
 - `packages/core/src/brain/runtime/brain.ts`
 - `packages/core/src/brain/runtime/sensors/*.ts`
-- `packages/typescript/src/compiler/types.ts`
-- `packages/typescript/src/compiler/lowering.ts`
-- `packages/typescript/src/compiler/project.ts`
-- `packages/typescript/src/compiler/codegen.spec.ts`
+- `packages/ts-compiler/src/compiler/types.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/project.ts`
+- `packages/ts-compiler/src/compiler/codegen.spec.ts`
 
 ### Verification
 
@@ -778,7 +778,7 @@ Run:
 
 ```sh
 cd packages/core && npm run check && npm run build && npm test
-cd packages/typescript && npm run typecheck && npm run check && npm test
+cd packages/ts-compiler && npm run typecheck && npm run check && npm test
 ```
 
 ### Stop when
@@ -804,7 +804,7 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
 
 ### Goal
 
-Remove the runtime wrapper model from `packages/typescript` and publish user
+Remove the runtime wrapper model from `packages/ts-compiler` and publish user
 action artifacts that the core linker can bind directly.
 
 ### Read first
@@ -822,10 +822,10 @@ Current branch note:
    (`linkedInitFuncId` and `linkedOnPageEnteredFuncId`), so
    `linkUserPrograms()` remains coupled to wrapper execution instead of being a
    pure artifact/link helper.
-- `packages/typescript/src/runtime/authored-function.ts` now binds wrapper
+- `packages/ts-compiler/src/runtime/authored-function.ts` now binds wrapper
    fibers through the core action-instance model, but it still captures a
    VM/scheduler pair and executes user tiles as host-function closures.
-- `packages/typescript/src/runtime/registration-bridge.ts` still registers user
+- `packages/ts-compiler/src/runtime/registration-bridge.ts` still registers user
    tiles through `FunctionRegistry` and mutates existing async entries in
    place, even though it now constructs `ActionDescriptor`-based tiles through
    the current constructor contract.
@@ -855,7 +855,7 @@ Current branch note:
 2. Collapse `initFuncId` plus `lifecycleFuncIds` wrapper semantics into a
    direct `activationFuncId` export if possible.
 3. Keep `entryFuncId` and `activationFuncId` artifact-local. Do not precompute
-   merged-program function indexes inside `packages/typescript`.
+   merged-program function indexes inside `packages/ts-compiler`.
 4. Remove `createUserTileExec` from the intended runtime path.
 5. Change the registration bridge so it publishes tile metadata plus compiled
    action artifacts, not host-function closures or `FunctionRegistry`
@@ -867,13 +867,13 @@ Current branch note:
 
 ### Likely files
 
-- `packages/typescript/src/compiler/types.ts`
-- `packages/typescript/src/compiler/lowering.ts`
-- `packages/typescript/src/compiler/project.ts`
-- `packages/typescript/src/linker/linker.ts`
-- `packages/typescript/src/runtime/authored-function.ts`
-- `packages/typescript/src/runtime/registration-bridge.ts`
-- `packages/typescript/src/runtime/authored-function.spec.ts`
+- `packages/ts-compiler/src/compiler/types.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/project.ts`
+- `packages/ts-compiler/src/linker/linker.ts`
+- `packages/ts-compiler/src/runtime/authored-function.ts`
+- `packages/ts-compiler/src/runtime/registration-bridge.ts`
+- `packages/ts-compiler/src/runtime/authored-function.spec.ts`
 
 ### Verification
 
@@ -886,7 +886,7 @@ Current branch note:
 Run:
 
 ```sh
-cd packages/typescript && npm run typecheck && npm run check && npm test
+cd packages/ts-compiler && npm run typecheck && npm run check && npm test
 ```
 
 If core interfaces changed during the same phase, also run:
@@ -897,7 +897,7 @@ cd packages/core && npm run check && npm run build && npm test
 
 ### Stop when
 
-- `packages/typescript` targets the new action-linking contract
+- `packages/ts-compiler` targets the new action-linking contract
 - sim integration still has not been rewritten
 
 ### Common failure modes
@@ -937,7 +937,7 @@ Current branch note:
    `registerUserTile(linkInfo, noOpHostFn)`), and still fabricates
    wrapper-era artifact fields such as `numCallsiteVars`, `execIsAsync`,
    `lifecycleFuncIds`, and `programRevisionId`.
-- After Phase 6, `packages/typescript` now publishes direct bytecode actions
+- After Phase 6, `packages/ts-compiler` now publishes direct bytecode actions
    and `registerUserTile(program)` metadata registration instead. Phase 7 must
    switch the sim to that artifact model rather than adapt the old wrapper API.
 - That synthetic metadata/bootstrap path still lags the core
@@ -1018,7 +1018,7 @@ Current branch note:
 ### Verification
 
 - `apps/sim` typechecks again without restoring removed wrapper-era exports in
-   `packages/typescript`
+   `packages/ts-compiler`
 - cold startup can hydrate user-tile catalogs early enough for persisted-brain
    deserialization without fabricating empty compiled-program stubs
 - recompiling a user tile no longer mutates a global host-function entry
@@ -1036,7 +1036,7 @@ Run:
 ```sh
 cd apps/sim && npm run typecheck && npm run check
 cd packages/core && npm run check && npm run build && npm test
-cd packages/typescript && npm run typecheck && npm run check && npm test
+cd packages/ts-compiler && npm run typecheck && npm run check && npm test
 ```
 
 ### Stop when
@@ -1048,7 +1048,7 @@ cd packages/typescript && npm run typecheck && npm run check && npm test
 ### Common failure modes
 
 - reintroducing `UserTileLinkInfo` or other removed compatibility exports in
-   `packages/typescript` instead of rewriting sim against the new artifact API
+   `packages/ts-compiler` instead of rewriting sim against the new artifact API
 - fixing only user-tile registration and forgetting the built-in sim
    sensor/actuator tile registration that now needs `ActionDescriptor`
    construction
@@ -1158,7 +1158,7 @@ Run:
 ```sh
 cd apps/sim && npm run typecheck && npm run check
 cd packages/core && npm run check && npm run build && npm test
-cd packages/typescript && npm run typecheck && npm run check && npm test
+cd packages/ts-compiler && npm run typecheck && npm run check && npm test
 ```
 
 ### Stop when
@@ -1258,7 +1258,7 @@ host-function subsystem was not renamed in Phase 1.
 - The constructor contract change immediately breaks downstream registration
    code that still passes `BrainFunctionEntry` directly into
    `BrainTileSensorDef` / `BrainTileActuatorDef`. Confirmed stale call sites:
-   `packages/typescript/src/runtime/registration-bridge.ts`,
+   `packages/ts-compiler/src/runtime/registration-bridge.ts`,
    `apps/sim/src/brain/tiles/sensors.ts`, and
    `apps/sim/src/brain/tiles/actuators.ts`.
 - Those downstream breakages are acceptable for this phase. They should not be
@@ -1476,7 +1476,7 @@ Ordered tasks 1 through 8 landed within the intended core-side scope.
 **Planned vs actual:**
 
 Ordered tasks 1 through 6 landed within the intended core-first scope, with
-only the limited `packages/typescript` contract alignment explicitly allowed by
+only the limited `packages/ts-compiler` contract alignment explicitly allowed by
 the phase.
 
 - Core runtime now defines page-activation-scoped `ActionInstance` records and
@@ -1491,7 +1491,7 @@ the phase.
 - `Brain.activatePage()` now resets each action callsite deterministically and
    dispatches both host `onPageEntered` hooks and bytecode
    `activationFuncId` hooks once per activation.
-- Runtime-facing `packages/typescript` fields now use `numStateSlots`, the
+- Runtime-facing `packages/ts-compiler` fields now use `numStateSlots`, the
    wrapper runtime binds current action instances, and local
    linker/registration/spec helpers were aligned to the current
    `BrainProgram` and tile-constructor contracts.
@@ -1500,7 +1500,7 @@ the phase.
 
 **Deviation from planned phase boundary:**
 
-- No material deviation. `packages/typescript` edits stayed limited to field
+- No material deviation. `packages/ts-compiler` edits stayed limited to field
    renames and contract alignment needed to keep the existing wrapper path
    compiling and type-safe; Phase 6 wrapper removal and artifact-shape redesign
    remain pending.
@@ -1518,7 +1518,7 @@ the phase.
    depends on that fiber-global bridge.
 - Phase 5 exposed stale downstream core-contract assumptions beyond
    `numStateSlots`, specifically missing `actionRefs` in linked-program helpers
-   and old tile-constructor usage in `packages/typescript`
+   and old tile-constructor usage in `packages/ts-compiler`
    registration/test code. Those were fixed as contract alignment, not as
    Phase 6 artifact redesign.
 - Bytecode activation hooks now execute inline during page activation and
@@ -1529,7 +1529,7 @@ the phase.
 
 - Ran `cd packages/core && npm run typecheck`
 - Ran `cd packages/core && npm run check && npm run build && npm test`
-- Ran `cd packages/typescript && npm run typecheck && npm run check && npm test`
+- Ran `cd packages/ts-compiler && npm run typecheck && npm run check && npm test`
 - Final result: pass. Core typecheck passed; core check, build, and test passed
    with 544 tests passing. TypeScript typecheck, check, and test passed with
    533 tests passing.
@@ -1546,7 +1546,7 @@ the phase.
 
 **Planned vs actual:**
 
-Ordered tasks 1 through 7 landed within the intended `packages/typescript`
+Ordered tasks 1 through 7 landed within the intended `packages/ts-compiler`
 scope.
 
 - `UserAuthoredProgram` now extends the core `UserActionArtifact` contract.
@@ -1559,7 +1559,7 @@ scope.
 - `linkUserPrograms()` now stays in the package only as a pure bytecode
    merge/remap helper. It returns artifact offsets plus remapped debug metadata
    instead of wrapper-oriented linked runtime IDs.
-- `packages/typescript/src/runtime/authored-function.ts` and its wrapper-runtime
+- `packages/ts-compiler/src/runtime/authored-function.ts` and its wrapper-runtime
    tests were deleted from the intended runtime path and public exports.
 - `registerUserTile()` now registers parameter tiles plus tile metadata and
    publishes direct `BytecodeResolvedAction` artifacts into the core action
@@ -1569,7 +1569,7 @@ scope.
 
 **Deviation from planned phase boundary:**
 
-- No material deviation. Phase 6 stayed inside `packages/typescript`, reused
+- No material deviation. Phase 6 stayed inside `packages/ts-compiler`, reused
    the Phase 5 core contract as-is, and left sim integration unchanged for
    Phase 7.
 
@@ -1591,7 +1591,7 @@ scope.
 
 **Verification:**
 
-- Ran `cd packages/typescript && npm run typecheck && npm run check && npm test`
+- Ran `cd packages/ts-compiler && npm run typecheck && npm run check && npm test`
 - Final result: pass. TypeScript typecheck, check, and test passed with 520
    tests passing.
 
@@ -1642,7 +1642,7 @@ introduced, and ordered task 11 was intentionally left unimplemented.
 
 **Deviations and discoveries:**
 
-- `packages/typescript` `revisionId` values are build-ephemeral rather than
+- `packages/ts-compiler` `revisionId` values are build-ephemeral rather than
    content-stable. The sim therefore normalizes user artifacts to deterministic
    content-hash revisions before comparing dependencies for rebuild
    invalidation.
@@ -1662,7 +1662,7 @@ introduced, and ordered task 11 was intentionally left unimplemented.
 
 - Ran `cd apps/sim && npm run typecheck && npm run check`
 - Ran `cd packages/core && npm run check && npm run build && npm test`
-- Ran `cd packages/typescript && npm run typecheck && npm run check && npm test`
+- Ran `cd packages/ts-compiler && npm run typecheck && npm run check && npm test`
 - Final result: pass. Sim typecheck and check passed; core check, build, and
    test passed with 544 tests passing; TypeScript typecheck, check, and test
    passed with 520 tests passing.
@@ -1722,7 +1722,7 @@ Ordered tasks 1 through 5 landed within the intended cleanup-only scope.
 - Reused the Phase 8 implementation verification:
 - Ran `cd apps/sim && npm run typecheck && npm run check`
 - Ran `cd packages/core && npm run check && npm run build && npm test`
-- Ran `cd packages/typescript && npm run typecheck && npm run check && npm test`
+- Ran `cd packages/ts-compiler && npm run typecheck && npm run check && npm test`
 - Final result: pass. Sim typecheck and check passed; core check, build, and
    test passed with 544 tests passing; TypeScript typecheck, check, and test
    passed with 520 tests passing.

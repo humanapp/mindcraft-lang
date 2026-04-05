@@ -1,5 +1,5 @@
 {
-  "name": "@mindcraft-lang/typescript",
+  "name": "@mindcraft-lang/ts-compiler",
   "version": "0.1.9",
   "description": "TypeScript-to-Mindcraft bytecode compiler for sensors and actuators implemented in TypeScript",
   "license": "MIT",
@@ -8,12 +8,12 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/humanapp/mindcraft-lang.git",
-    "directory": "packages/typescript"
+    "directory": "packages/ts-compiler"
   },
   "bugs": {
     "url": "https://github.com/humanapp/mindcraft-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/typescript#readme",
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/ts-compiler#readme",
   "keywords": [
     "mindcraft",
     "visual-programming",

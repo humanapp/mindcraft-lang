@@ -1,4 +1,4 @@
-# `@mindcraft-lang/typescript` -- Phased Implementation Plan (Part 2)
+# `@mindcraft-lang/ts-compiler` -- Phased Implementation Plan (Part 2)
 
 Continuation doc for **Phases 16-25**. The original plan with phases 0-15 and their
 post-mortems is in [typescript-compiler-phased-impl.md](typescript-compiler-phased-impl.md).
@@ -52,7 +52,7 @@ per-function data (files, functions, callSites, suspendSites, debugFunctionId)
 and added linker remapping of compiledFuncId.
 See the original doc's Current State and Phase Log for full history.
 
-### Compiler pipeline (`packages/typescript/src/compiler/`)
+### Compiler pipeline (`packages/ts-compiler/src/compiler/`)
 
 - `compile.ts` -- `compileUserTile(source, options?)` single-file entry point;
   wraps `UserTileProject` for backward compatibility. Re-exports
@@ -120,7 +120,7 @@ See the original doc's Current State and Phase Log for full history.
   Emit, Compile).
 - `call-def-builder.ts` -- builds `BrainActionCallDef` from params.
 
-### Linker (`packages/typescript/src/linker/linker.ts`)
+### Linker (`packages/ts-compiler/src/linker/linker.ts`)
 
 `linkUserPrograms(brainProgram, userPrograms[])` appends user functions to the brain
 program, remaps `CALL`, `PUSH_CONST`, `MAKE_CLOSURE` operands, remaps `FunctionValue`
@@ -129,7 +129,7 @@ constants, merges constants, copies `injectCtxTypeId`. Returns `LinkResult` with
 `remapDebugMetadata()` offsets `compiledFuncId` values by the function base offset;
 `linkedDebugMetadata` is included in `UserTileLinkInfo`.
 
-### Runtime (`packages/typescript/src/runtime/`)
+### Runtime (`packages/ts-compiler/src/runtime/`)
 
 - `authored-function.ts` -- `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)`
   returns a `HostAsyncFn`. Sync tiles use `vm.spawnFiber()` + `vm.runFiber()` inline
@@ -265,7 +265,7 @@ type system Phase 1 is available for default value nil-checks.)
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.ObjectBindingPattern`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `ts.ObjectBindingPattern`
   and `ts.ArrayBindingPattern` in variable declarations. Array destructuring uses
   the existing `IrListGet` node. Object destructuring uses `IrGetField` from Phase 13.
 
@@ -341,12 +341,12 @@ instead of `HOST_CALL_ARGS`.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- extend host call lowering to
+- `packages/ts-compiler/src/compiler/lowering.ts` -- extend host call lowering to
   check if the target function is async and emit `IrHostCallArgsAsync`
-- `packages/typescript/src/compiler/ir.ts` -- add `IrHostCallArgsAsync` node
-- `packages/typescript/src/compiler/emit.ts` -- emit `HOST_CALL_ARGS_ASYNC` opcode
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrHostCallArgsAsync` node
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `HOST_CALL_ARGS_ASYNC` opcode
   via `emitter.hostCallArgsAsync()`
-- `packages/typescript/src/compiler/types.ts` -- no changes needed;
+- `packages/ts-compiler/src/compiler/types.ts` -- no changes needed;
   `resolveHostFn` was removed in Phase 10. Async detection should use
   `getBrainServices().functions.get()` metadata directly
 
@@ -399,10 +399,10 @@ async functions are not supported in v1. Only `await` on async host calls is pla
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.AwaitExpression`:
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `ts.AwaitExpression`:
   lower the operand (which should be a `HOST_CALL_ARGS_ASYNC`), then emit `IrAwait`
-- `packages/typescript/src/compiler/ir.ts` -- add `IrAwait` node
-- `packages/typescript/src/compiler/emit.ts` -- emit `AWAIT` opcode via
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrAwait` node
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `AWAIT` opcode via
   `emitter.await()` (already available in core's `BytecodeEmitter`)
 
 **Prerequisites:** Phase 18 (async host call emission) must be complete so that the
@@ -453,7 +453,7 @@ frame/locals model, which is unaffected by the type system changes.)
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `async` modifier on
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `async` modifier on
   `onExecute` (the `descriptor.execIsAsync` flag is already extracted)
 - Integration tests exercising async execution
 
@@ -541,16 +541,16 @@ registration bridge. (3) Full end-to-end integration tests.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/runtime/authored-function.ts` -- replace `execAsync` /
+- `packages/ts-compiler/src/runtime/authored-function.ts` -- replace `execAsync` /
   `waitForHandle` event-listener dispatch with scheduler-integrated dispatch:
   use `scheduler.addFiber()` (or equivalent) to register the spawned fiber,
   remove manual `vm.runFiber()` calls and `events.on("completed")` listeners.
   Add a mechanism to resolve the outer handle when the user-tile fiber reaches
   DONE (e.g., fiber-to-outer-handle mapping with a scheduler callback or
   `onHandleCompleted` hook).
-- `packages/typescript/src/runtime/registration-bridge.ts` -- add
+- `packages/ts-compiler/src/runtime/registration-bridge.ts` -- add
   recompile-and-update pathway.
-- Integration test file(s) in `packages/typescript/src/runtime/`.
+- Integration test file(s) in `packages/ts-compiler/src/runtime/`.
 - May need minor additions to `FiberScheduler` in
   `packages/core/src/brain/runtime/vm.ts` if a fiber-completion callback is
   needed for outer handle resolution.
@@ -634,13 +634,13 @@ Class methods and constructors generate additional `FunctionBytecode` entries
 alongside closures -- all need `DebugFunctionInfo` records.
 
 **Objective:** Define the `DebugMetadata` type hierarchy in
-`@mindcraft-lang/typescript` (mirroring the structures defined in the
+`@mindcraft-lang/ts-compiler` (mirroring the structures defined in the
 [debugger spec, section 6](vscode-authoring-debugging.md#6-debug-metadata)) and add
 the `debugMetadata` field to `UserAuthoredProgram`.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/types.ts` -- add `DebugMetadata`,
+- `packages/ts-compiler/src/compiler/types.ts` -- add `DebugMetadata`,
   `DebugFileInfo`, `DebugFunctionInfo`, `Span`, `ScopeInfo`, `LocalInfo`,
   `CallSiteInfo`, `SuspendSiteInfo` interfaces; add optional `debugMetadata`
   field to `UserAuthoredProgram`
@@ -693,15 +693,15 @@ emission so every bytecode instruction maps back to a source location.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/ir.ts` -- add optional `sourceSpan` field to
+- `packages/ts-compiler/src/compiler/ir.ts` -- add optional `sourceSpan` field to
   a shared IR node base type (all 43 node kinds inherit it).
-- `packages/typescript/src/compiler/lowering.ts` -- annotate IR nodes with source
+- `packages/ts-compiler/src/compiler/lowering.ts` -- annotate IR nodes with source
   position info from the TS AST node (`node.getStart()`, `node.getEnd()`,
   line/column from `sourceFile.getLineAndCharacterOfPosition()`).
-- `packages/typescript/src/compiler/emit.ts` -- extend `EmitResult` to include
+- `packages/ts-compiler/src/compiler/emit.ts` -- extend `EmitResult` to include
   `spans: DebugSpan[]` and `pcToSpanIndex: number[]`. Build these during emission.
   Set `isStatementBoundary` per the debugger spec's rules.
-- `packages/typescript/src/compiler/project.ts` -- pass span data through from
+- `packages/ts-compiler/src/compiler/project.ts` -- pass span data through from
   `emitFunction` to the `CompileResult`.
 
 **Prerequisites:** Phase 22 (debug metadata types) must be complete so `DebugSpan` is
@@ -768,13 +768,13 @@ and variable lifetimes for debugger inspection.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/scope.ts` -- extend `ScopeStack` to record
+- `packages/ts-compiler/src/compiler/scope.ts` -- extend `ScopeStack` to record
   scope metadata: scope IDs, kind (`"function" | "block" | "module"`), parent
   scope ID, start/end IR indices (mapped to PCs during emission).
-- `packages/typescript/src/compiler/lowering.ts` -- track scope enter/exit points,
+- `packages/ts-compiler/src/compiler/lowering.ts` -- track scope enter/exit points,
   record variable declaration IR indices and lifetimes. Mark `allocLocal()`
   temporaries as compiler-generated.
-- `packages/typescript/src/compiler/emit.ts` -- map IR-index-based scope/variable
+- `packages/ts-compiler/src/compiler/emit.ts` -- map IR-index-based scope/variable
   boundaries to final PCs.
 
 **Prerequisites:** Phase 23 (source span tracking) must be complete because scope
@@ -840,12 +840,12 @@ metadata collected in Phases 23-24 and attach it to `UserAuthoredProgram`.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/project.ts` -- collect per-function debug info
+- `packages/ts-compiler/src/compiler/project.ts` -- collect per-function debug info
   from lowering and emission, assemble `DebugMetadata`, set on
   `UserAuthoredProgram.debugMetadata`
-- `packages/typescript/src/compiler/emit.ts` -- return debug spans, scopes, and
+- `packages/ts-compiler/src/compiler/emit.ts` -- return debug spans, scopes, and
   local metadata alongside bytecode in `EmitResult`
-- `packages/typescript/src/linker/linker.ts` -- remap `compiledFuncId` values in
+- `packages/ts-compiler/src/linker/linker.ts` -- remap `compiledFuncId` values in
   debug metadata by function base offset. Copy or merge `DebugFileInfo` entries.
 
 **Prerequisites:** Phases 23 and 24 must be complete (spans and scope metadata are
@@ -1153,7 +1153,7 @@ cancellation.
 - Spec deliverable 4 called for a full brain-rule-to-async-actuator end-to-end test
   (WHEN sensor -> DO async actuator -> rule completes). This was not implemented --
   it would require a fully compiled brain program with rules, which is beyond the
-  scope of the `packages/typescript` test infrastructure. The scheduler-level tests
+  scope of the `packages/ts-compiler` test infrastructure. The scheduler-level tests
   (fiber spawned, budget-limited, WAITING, resumed, DONE -> outer handle resolved)
   verify the same mechanics without needing a full brain compilation.
 - Spec deliverable 5 mentioned verifying fiber state transitions
@@ -1204,13 +1204,13 @@ cancellation.
 
 **Tests added:** 8 total (4 existing async tests migrated to FiberScheduler +
 tick() pattern, 3 new: scheduler stats, budget respect, cancellation; 1 new:
-recompile-and-update). All 499 tests pass (packages/typescript). All 530 core
+recompile-and-update). All 499 tests pass (packages/ts-compiler). All 530 core
 tests pass.
 
 ### Phase 22 -- Debug metadata types (2026-04-02)
 
 **Planned:** Define the `DebugMetadata` type hierarchy in
-`packages/typescript/src/compiler/types.ts` per the debugger spec section 6.
+`packages/ts-compiler/src/compiler/types.ts` per the debugger spec section 6.
 Add optional `debugMetadata` field to `UserAuthoredProgram`. Type-only changes,
 no functional behavior.
 

@@ -1,7 +1,7 @@
 import type { CompilationProvider, CompilationResult } from "@mindcraft-lang/bridge-app";
 import { logger } from "@mindcraft-lang/core";
-import type { CompileDiagnostic, CompileResult, ProjectCompileResult } from "@mindcraft-lang/typescript";
-import { UserTileProject } from "@mindcraft-lang/typescript";
+import type { CompileDiagnostic, CompileResult, ProjectCompileResult } from "@mindcraft-lang/ts-compiler";
+import { UserTileProject } from "@mindcraft-lang/ts-compiler";
 
 export interface TileCompilationEntry {
   path: string;

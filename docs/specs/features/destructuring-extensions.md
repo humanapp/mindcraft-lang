@@ -109,7 +109,7 @@ const { items: [first, second] } = data;
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- refactor
+- `packages/ts-compiler/src/compiler/lowering.ts` -- refactor
   `lowerObjectDestructuring` and `lowerArrayDestructuring` to support recursive
   binding patterns.
 
@@ -226,7 +226,7 @@ function swap([a, b]: number[]): number[] {
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- extend `lowerHelperFunction`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- extend `lowerHelperFunction`
   and `lowerClosureExpression` to handle binding patterns in parameter positions.
 
 **Concrete deliverables:**
@@ -303,7 +303,7 @@ const { x, ...rest } = point3d;
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- extend array destructuring to
+- `packages/ts-compiler/src/compiler/lowering.ts` -- extend array destructuring to
   handle `dotDotDotToken` on the last element.
 
 **Concrete deliverables:**
@@ -350,10 +350,10 @@ const { x, ...rest } = point3d;
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- extend object destructuring to
+- `packages/ts-compiler/src/compiler/lowering.ts` -- extend object destructuring to
   handle `dotDotDotToken` on the last element.
-- Possibly `packages/typescript/src/compiler/ir.ts` and
-  `packages/typescript/src/compiler/emit.ts` if a new IR node is needed.
+- Possibly `packages/ts-compiler/src/compiler/ir.ts` and
+  `packages/ts-compiler/src/compiler/emit.ts` if a new IR node is needed.
 - Possibly `packages/core/src/brain/runtime/vm.ts` if a new opcode is needed.
 
 **Analysis: three implementation options:**
@@ -456,11 +456,11 @@ const { ["name"]: name } = obj;  // string literal -- already validator-allowed
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `ComputedPropertyName`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `ComputedPropertyName`
   in object destructuring.
-- `packages/typescript/src/compiler/ir.ts` -- add `IrGetFieldDynamic` node (or
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrGetFieldDynamic` node (or
   extend the existing `IrGetField` pattern).
-- `packages/typescript/src/compiler/emit.ts` -- emit `GET_FIELD` with a
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `GET_FIELD` with a
   dynamically-pushed field name.
 
 **Analysis:**
@@ -684,7 +684,7 @@ validate rest-is-last; resolve list type for `ListNew`.
 
 **Planned:** Support `const { x, ...rest } = obj` in object destructuring via a
 new `STRUCT_COPY_EXCEPT` VM opcode (Option 2 from the spec). Deliver changes across
-both `packages/core` (opcode, VM handler, emitter) and `packages/typescript` (IR
+both `packages/core` (opcode, VM handler, emitter) and `packages/ts-compiler` (IR
 node, emit handler, lowering logic).
 
 **Actual:**
@@ -698,7 +698,7 @@ node, emit handler, lowering logic).
     typeId from constant pool at `ins.b`, pushes `V.struct(fields, typeId)`.
   - Added `structCopyExcept(numExclude, typeIdConstIdx)` method to
     `BytecodeEmitter`.
-- **packages/typescript changes:**
+- **packages/ts-compiler changes:**
   - Added `IrStructCopyExcept { kind: "StructCopyExcept"; numExclude: number;
     typeId: string }` to the IR node union in `ir.ts`.
   - Added `case "StructCopyExcept"` emit handler in `emit.ts`: gets typeId

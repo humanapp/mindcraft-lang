@@ -46,7 +46,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@mindcraft-lang/core": "file:../../packages/core",
     "@mindcraft-lang/docs": "file:../../packages/docs",
-    "@mindcraft-lang/typescript": "file:../../packages/typescript",
+    "@mindcraft-lang/ts-compiler": "file:../../packages/ts-compiler",
     "@mindcraft-lang/bridge-app": "file:../../packages/bridge-app",
     "@mindcraft-lang/ui": "file:../../packages/ui",
     "class-variance-authority": "^0.7.1",
