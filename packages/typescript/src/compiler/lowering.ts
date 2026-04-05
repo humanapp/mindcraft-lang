@@ -16,7 +16,7 @@ import {
   type Value,
 } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
-import { LoweringDiagCode } from "./diag-codes.js";
+import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
 import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
@@ -55,6 +55,12 @@ export interface ImportedClass {
   sourceFile: ts.SourceFile;
 }
 
+export interface ImportedEnum {
+  node: ts.EnumDeclaration;
+  name: string;
+  sourceFile: ts.SourceFile;
+}
+
 interface ClassInfo {
   node: ts.ClassDeclaration;
   name: string;
@@ -65,6 +71,13 @@ interface ClassInfo {
 
 export function qualifiedClassName(fileName: string, className: string): string {
   return `${fileName}::${className}`;
+}
+
+function resolveAliasedSymbol(symbol: ts.Symbol | undefined, checker?: ts.TypeChecker): ts.Symbol | undefined {
+  if (!symbol || !checker || !(symbol.flags & ts.SymbolFlags.Alias)) {
+    return symbol;
+  }
+  return checker.getAliasedSymbol(symbol);
 }
 
 function isUserSourceDecl(decl: ts.Declaration): boolean {
@@ -194,12 +207,12 @@ type TargetTypedConversionResolution =
   | { kind: "missing" }
   | { kind: "ambiguous" };
 
-function resolveRegisteredEnumTypeId(type: ts.Type): string | undefined {
-  const sym = type.getSymbol() ?? type.aliasSymbol;
-  if (!sym) return undefined;
+function resolveRegisteredEnumTypeIdFromSymbol(sym: ts.Symbol, checker?: ts.TypeChecker): string | undefined {
+  const resolvedSym = resolveAliasedSymbol(sym, checker);
+  if (!resolvedSym) return undefined;
 
   const registry = getBrainServices().types;
-  const typeId = registry.resolveByName(resolveRegistryName(sym));
+  const typeId = registry.resolveByName(resolveRegistryName(resolvedSym, checker));
   if (!typeId) return undefined;
 
   const typeDef = registry.get(typeId);
@@ -208,6 +221,12 @@ function resolveRegisteredEnumTypeId(type: ts.Type): string | undefined {
   }
 
   return typeId;
+}
+
+function resolveRegisteredEnumTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undefined {
+  const sym = type.getSymbol() ?? type.aliasSymbol;
+  if (!sym) return undefined;
+  return resolveRegisteredEnumTypeIdFromSymbol(sym, checker);
 }
 
 function unwrapTypeResolutionExpression(expr: ts.Expression): ts.Expression {
@@ -231,7 +250,7 @@ function resolveDeclaredEnumTypeId(exprNode: ts.Expression, ctx: LowerContext): 
   }
 
   const declaredType = ctx.checker.getTypeOfSymbolAtLocation(symbol, declaration);
-  return resolveRegisteredEnumTypeId(declaredType);
+  return resolveRegisteredEnumTypeId(declaredType, ctx.checker);
 }
 
 function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): string | undefined {
@@ -239,6 +258,13 @@ function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): st
     const enumValue = tryResolveEnumValue(exprNode, ctx);
     if (enumValue && enumValue.t === NativeType.Enum) {
       return enumValue.typeId;
+    }
+  }
+
+  if (ts.isPropertyAccessExpression(exprNode)) {
+    const enumAccess = resolveEnumPropertyAccess(exprNode, ctx);
+    if (enumAccess?.kind === "member" && enumAccess.value.t === NativeType.Enum) {
+      return enumAccess.value.typeId;
     }
   }
 
@@ -578,13 +604,15 @@ export function lowerProgram(
   importedFunctions?: ImportedFunction[],
   importedVariables?: ImportedVariable[],
   moduleInitOrder?: string[],
-  importedClasses?: ImportedClass[]
+  importedClasses?: ImportedClass[],
+  importedEnums?: ImportedEnum[]
 ): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
   const functionTable = new Map<string, number>();
   const helperNodes: ts.FunctionDeclaration[] = [];
   const classInfos: ClassInfo[] = [];
+  const localEnumNodes: ts.EnumDeclaration[] = [];
   const funcIdCounter = { value: 0 };
   const closureFunctions = new Map<number, FunctionEntry>();
 
@@ -599,6 +627,8 @@ export function lowerProgram(
     if (ts.isFunctionDeclaration(stmt) && stmt.name) {
       functionTable.set(stmt.name.text, funcIdCounter.value++);
       helperNodes.push(stmt);
+    } else if (ts.isEnumDeclaration(stmt)) {
+      localEnumNodes.push(stmt);
     } else if (ts.isClassDeclaration(stmt) && stmt.name) {
       const className = stmt.name.text;
       const constructorFuncId = funcIdCounter.value++;
@@ -689,6 +719,8 @@ export function lowerProgram(
   }
 
   const functions: FunctionEntry[] = [];
+
+  registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics);
 
   for (const ci of classInfos) {
     registerClassStructType(ci, checker, diagnostics);
@@ -2218,6 +2250,21 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
   if (ctx.functionTable.has(expr.text)) {
     ctx.ir.push({ kind: "PushFunctionRef", funcName: expr.text });
     return;
+  }
+
+  const enumSymbol = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(expr), ctx.checker);
+  if (enumSymbol && resolveEnumDeclaration(enumSymbol, ctx.checker)) {
+    const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.checker);
+    if (typeId) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.EnumObjectUsageNotSupported,
+          "Enum objects are not supported at runtime; use direct member access like Direction.Up",
+          expr
+        )
+      );
+      return;
+    }
   }
 
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.text}`, expr));
@@ -5433,6 +5480,23 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     return;
   }
 
+  const enumAccess = resolveEnumPropertyAccess(expr, ctx);
+  if (enumAccess) {
+    if (enumAccess.kind === "member") {
+      ctx.ir.push({ kind: "PushConst", value: enumAccess.value });
+      return;
+    }
+
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.EnumObjectUsageNotSupported,
+        "Enum objects are not supported at runtime; only direct member access like Direction.Up is supported",
+        expr
+      )
+    );
+    return;
+  }
+
   if (expr.name.text === "length") {
     const objType = ctx.checker.getTypeAtLocation(expr.expression);
     if (isStringType(objType)) {
@@ -5479,9 +5543,10 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedPropertyAccess, "Unsupported property access", expr));
 }
 
-function resolveRegistryName(sym: ts.Symbol): string {
-  const name = sym.getName();
-  const decls = sym.getDeclarations();
+function resolveRegistryName(sym: ts.Symbol, checker?: ts.TypeChecker): string {
+  const resolvedSym = resolveAliasedSymbol(sym, checker) ?? sym;
+  const name = resolvedSym.getName();
+  const decls = resolvedSym.getDeclarations();
   if (decls && decls.length > 0 && isUserSourceDecl(decls[0])) {
     const qualName = qualifiedClassName(decls[0].getSourceFile().fileName, name);
     if (getBrainServices().types.resolveByName(qualName)) {
@@ -5508,6 +5573,158 @@ function resolveStructType(type: ts.Type): StructTypeDef | undefined {
   const def = registry.get(typeId);
   if (!def || def.coreType !== NativeType.Struct) return undefined;
   return def as StructTypeDef;
+}
+
+function resolveEnumDeclaration(sym: ts.Symbol, checker?: ts.TypeChecker): ts.EnumDeclaration | undefined {
+  const resolvedSym = resolveAliasedSymbol(sym, checker);
+  const declarations = resolvedSym?.getDeclarations();
+  if (!declarations) {
+    return undefined;
+  }
+  return declarations.find(ts.isEnumDeclaration);
+}
+
+function getEnumMemberKey(member: ts.EnumMember): string | undefined {
+  if (ts.isIdentifier(member.name) || ts.isStringLiteral(member.name) || ts.isNumericLiteral(member.name)) {
+    return member.name.text;
+  }
+  return undefined;
+}
+
+function registerUserEnumTypes(
+  localEnumNodes: ts.EnumDeclaration[],
+  importedEnums: ImportedEnum[],
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[]
+): void {
+  const seenNames = new Set<string>();
+
+  for (const enumNode of localEnumNodes) {
+    const qualifiedName = qualifiedClassName(enumNode.getSourceFile().fileName, enumNode.name.text);
+    if (seenNames.has(qualifiedName)) {
+      continue;
+    }
+    seenNames.add(qualifiedName);
+    registerUserEnumType(enumNode, checker, diagnostics);
+  }
+
+  for (const importedEnum of importedEnums) {
+    const qualifiedName = qualifiedClassName(importedEnum.sourceFile.fileName, importedEnum.name);
+    if (seenNames.has(qualifiedName)) {
+      continue;
+    }
+    seenNames.add(qualifiedName);
+    registerUserEnumType(importedEnum.node, checker, diagnostics);
+  }
+}
+
+function registerUserEnumType(
+  enumNode: ts.EnumDeclaration,
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[]
+): void {
+  const registry = getBrainServices().types;
+  const qualifiedName = qualifiedClassName(enumNode.getSourceFile().fileName, enumNode.name.text);
+  if (registry.resolveByName(qualifiedName)) {
+    return;
+  }
+
+  const symbols = new List<{ key: string; label: string; value: string | number }>();
+  let valueKind: "string" | "number" | undefined;
+
+  for (const member of enumNode.members) {
+    const key = getEnumMemberKey(member);
+    if (!key) {
+      diagnostics.push(
+        makeCompileDiag(
+          CompileDiagCode.InvalidEnumDeclaration,
+          `Enum member '${enumNode.name.text}' must use an identifier or literal name`,
+          member
+        )
+      );
+      return;
+    }
+
+    const constantValue = checker.getConstantValue(member);
+    if (constantValue === undefined || (typeof constantValue !== "string" && typeof constantValue !== "number")) {
+      diagnostics.push(
+        makeCompileDiag(
+          CompileDiagCode.InvalidEnumDeclaration,
+          `Enum member '${enumNode.name.text}.${key}' must have a compile-time string or number value`,
+          member
+        )
+      );
+      return;
+    }
+
+    const currentKind: "string" | "number" = typeof constantValue === "string" ? "string" : "number";
+    if (valueKind && valueKind !== currentKind) {
+      diagnostics.push(
+        makeCompileDiag(
+          CompileDiagCode.InvalidEnumDeclaration,
+          `Heterogeneous enum '${enumNode.name.text}' is not supported`,
+          enumNode
+        )
+      );
+      return;
+    }
+
+    valueKind = currentKind;
+    symbols.push({ key, label: key, value: constantValue });
+  }
+
+  try {
+    if (symbols.isEmpty()) {
+      registry.addEnumType(qualifiedName, { symbols });
+      return;
+    }
+
+    registry.addEnumType(qualifiedName, {
+      symbols,
+      defaultKey: symbols.get(0).key,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : `Invalid enum declaration '${enumNode.name.text}'`;
+    diagnostics.push(makeCompileDiag(CompileDiagCode.InvalidEnumDeclaration, message, enumNode));
+  }
+}
+
+type EnumPropertyAccessResolution = { kind: "member"; value: Value } | { kind: "unsupported" };
+
+function resolveEnumPropertyAccess(
+  expr: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): EnumPropertyAccessResolution | undefined {
+  const enumSymbol = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(expr.expression), ctx.checker);
+  if (!enumSymbol) {
+    return undefined;
+  }
+
+  const enumDecl = resolveEnumDeclaration(enumSymbol, ctx.checker);
+  if (!enumDecl) {
+    return undefined;
+  }
+
+  const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.checker);
+  if (!typeId) {
+    return undefined;
+  }
+
+  const memberSymbol = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(expr.name), ctx.checker);
+  const memberDecl = memberSymbol?.getDeclarations()?.find(ts.isEnumMember);
+  if (!memberDecl || memberDecl.parent !== enumDecl) {
+    return { kind: "unsupported" };
+  }
+
+  const key = getEnumMemberKey(memberDecl);
+  if (!key || !getBrainServices().types.getEnumSymbol(typeId, key)) {
+    return { kind: "unsupported" };
+  }
+
+  return {
+    kind: "member",
+    value: { t: NativeType.Enum, typeId, v: key },
+  };
 }
 
 function isNativeBackedStruct(def: StructTypeDef): boolean {
@@ -5756,11 +5973,9 @@ function expandTypeIdMembers(typeId: string): string[] {
 function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value | undefined {
   const contextualType = ctx.checker.getContextualType(expr);
   if (!contextualType) return undefined;
-  const sym = contextualType.getSymbol() ?? contextualType.aliasSymbol;
-  if (!sym) return undefined;
-  const registry = getBrainServices().types;
-  const typeId = registry.resolveByName(sym.getName());
+  const typeId = resolveRegisteredEnumTypeId(contextualType, ctx.checker);
   if (!typeId) return undefined;
+  const registry = getBrainServices().types;
   const typeDef = registry.get(typeId);
   if (!typeDef || typeDef.coreType !== NativeType.Enum) return undefined;
   return { t: NativeType.Enum, typeId, v: expr.text };
@@ -5782,7 +5997,7 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
   if (type.flags & ts.TypeFlags.Void) {
     return CoreTypeIds.Void;
   }
-  const enumTypeId = resolveRegisteredEnumTypeId(type);
+  const enumTypeId = resolveRegisteredEnumTypeId(type, checker);
   if (enumTypeId) {
     return enumTypeId;
   }
@@ -6180,6 +6395,20 @@ function lowerClassDeclaration(
 }
 
 function makeDiag(code: LoweringDiagCode, message: string, node: ts.Node): CompileDiagnostic {
+  const sourceFile = node.getSourceFile();
+  const diag: CompileDiagnostic = { code, message, severity: "error" };
+  if (sourceFile) {
+    const start = sourceFile.getLineAndCharacterOfPosition(node.getStart());
+    const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
+    diag.line = start.line + 1;
+    diag.column = start.character + 1;
+    diag.endLine = end.line + 1;
+    diag.endColumn = end.character + 1;
+  }
+  return diag;
+}
+
+function makeCompileDiag(code: CompileDiagCode, message: string, node: ts.Node): CompileDiagnostic {
   const sourceFile = node.getSourceFile();
   const diag: CompileDiagnostic = { code, message, severity: "error" };
   if (sourceFile) {

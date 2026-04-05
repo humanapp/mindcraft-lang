@@ -61,6 +61,22 @@ export class ConversionRegistry implements IConversionRegistry {
     return conversion;
   }
 
+  remove(fromType: TypeId, toType: TypeId): boolean {
+    const fromDict = this.conversions.get(fromType);
+    const existing = fromDict?.get(toType);
+    if (!fromDict || !existing) {
+      return false;
+    }
+
+    fromDict.delete(toType);
+    if (fromDict.isEmpty()) {
+      this.conversions.delete(fromType);
+    }
+
+    this.functions.unregister(conversionFnName(fromType, toType));
+    return true;
+  }
+
   get(fromType: TypeId, toType: TypeId): Conversion | undefined {
     const fromDict = this.conversions.get(fromType);
     if (fromDict) {

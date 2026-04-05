@@ -14,6 +14,7 @@ export type Conversion = {
 
 export interface IConversionRegistry {
   register(conv: Omit<Conversion, "id">): Conversion;
+  remove(fromType: TypeId, toType: TypeId): boolean;
   get(fromType: TypeId, toType: TypeId): Conversion | undefined;
   findBestPath(fromType: TypeId, toType: TypeId, maxDepth?: number): List<Conversion> | undefined;
 }

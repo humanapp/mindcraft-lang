@@ -95,6 +95,10 @@ export class RegisteredOperator implements IRegisteredOperator {
     this.overload.set(key, overload);
   }
 
+  remove(argTypes: TypeId[]): boolean {
+    return this.overload.delete(argsKey(argTypes));
+  }
+
   /**
    * Retrieves the operator overload for a specific set of argument types.
    * @param argTypes - The array of type IDs for the arguments
@@ -228,6 +232,22 @@ export class OperatorOverloads implements IOperatorOverloads {
       fnEntry,
     });
     return reg;
+  }
+
+  remove(op: OpId, argTypes: TypeId[]): boolean {
+    const reg = this.table_.get(op);
+    if (!reg) {
+      return false;
+    }
+
+    const overload = reg.get(argTypes);
+    if (!overload) {
+      return false;
+    }
+
+    reg.remove(argTypes);
+    this.functions.unregister(overload.fnEntry.name);
+    return true;
   }
 
   /**

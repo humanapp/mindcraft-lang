@@ -229,6 +229,7 @@ export function mkActionDescriptor(
 
 export interface IFunctionRegistry {
   register(name: string, isAsync: boolean, fn: HostFn, callDef: BrainActionCallDef): BrainFunctionEntry;
+  unregister(name: string): boolean;
   get(name: string): BrainFunctionEntry | undefined;
   getSyncById(id: number): BrainSyncFunctionEntry | undefined;
   getAsyncById(id: number): BrainAsyncFunctionEntry | undefined;

@@ -220,6 +220,15 @@ export class TypeRegistry implements ITypeRegistry {
     );
   }
 
+  private unregisterEnumArtifacts(typeId: TypeId): void {
+    if (!hasBrainServices()) return;
+    const services = getBrainServices();
+    services.conversions.remove(typeId, CoreTypeIds.String);
+    services.conversions.remove(typeId, CoreTypeIds.Number);
+    services.operatorOverloads.remove(CoreOpId.EqualTo, [typeId, typeId]);
+    services.operatorOverloads.remove(CoreOpId.NotEqualTo, [typeId, typeId]);
+  }
+
   addListType(name: string, shape: ListTypeShape): TypeId {
     this.validateTypeName(name);
     const typeId = mkTypeId(NativeType.List, name);
@@ -518,12 +527,15 @@ export class TypeRegistry implements ITypeRegistry {
   removeUserTypes(): void {
     const toRemove = new List<TypeId>();
     this.defs.forEach((def) => {
-      if (def.coreType !== NativeType.Struct) return;
+      if (def.coreType !== NativeType.Struct && def.coreType !== NativeType.Enum) return;
       if (SU.indexOf(def.name, "::") < 0) return;
       toRemove.push(def.typeId);
     });
     toRemove.forEach((typeId) => {
       const def = this.defs.get(typeId);
+      if (def?.coreType === NativeType.Enum) {
+        this.unregisterEnumArtifacts(typeId);
+      }
       if (def) {
         this.nameToId.delete(def.name);
       }

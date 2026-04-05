@@ -1,6 +1,6 @@
 # TypeScript Enum Support -- Phased Implementation Plan
 
-**Status:** E1 complete, E2 complete, E2.5 complete, E3 complete, E4 complete, E5 pending
+**Status:** E1 complete, E2 complete, E2.5 complete, E3 complete, E4 complete, E5 complete
 **Created:** 2026-04-04
 **Related:**
 
@@ -50,7 +50,7 @@ survive. Keep this doc current.
 
 ## Current State
 
-- (Updated 2026-04-05) Phases E1, E2, E2.5, E3, and E4 are complete. `EnumTypeShape.symbols`
+- (Updated 2026-04-05) Phases E1, E2, E2.5, E3, E4, and E5 are complete. `EnumTypeShape.symbols`
   and `EnumTypeDef.symbols` now carry explicit declared primitive values for each
   enum member, and `EnumTypeShape.defaultKey` is optional only for empty enums.
 - `EnumValue` in `packages/core` still stores `typeId` plus the enum member key.
@@ -70,8 +70,8 @@ survive. Keep this doc current.
 - Core conversions now cover the primitive boolean/number/string set plus direct
   enum-to-string for non-empty enums and direct enum-to-number for non-empty
   numeric enums. Empty enums expose no enum conversions.
-- The existing recompilation cleanup path removes user struct types before rebuild,
-  but user enum registrations and derived enum conversions are not yet refreshed.
+- Recompilation cleanup now removes user struct and enum types before rebuild,
+  including user enum-derived conversions and enum equality overloads.
 - The tile-language compiler already uses conversion search for operator inference in
   `packages/core/src/brain/compiler/inferred-types.ts`.
 - The TypeScript lowering pass now resolves binary operators with the same broad
@@ -91,10 +91,19 @@ survive. Keep this doc current.
   identifier types when `getTypeAtLocation()` narrows enum-typed locals or params to
   primitive string literals, and it also recognizes contextual enum string literals
   before target-type conversion checks run.
-- The TypeScript compiler already supports enum-typed string literals for pre-registered
-  Mindcraft enum types, but it rejects user-authored `enum` declarations entirely.
-- Imported symbols currently include functions, variables, and classes. Imported enums
-  are not collected or registered.
+- Enum member access like `Direction.Up` now lowers directly to runtime enum
+  constants, and type recovery preserves that enum identity so target-typed
+  enum-to-string and enum-to-number conversions still fire.
+- The TypeScript compiler now accepts top-level user-authored string enums,
+  numeric enums, and empty enums, registering them under file-qualified names
+  before lowering function bodies.
+- Imported symbol collection now includes exported enums and aliased enum imports,
+  without routing enum objects through callsite vars or function tables.
+- User-authored enum validation uses `checker.getConstantValue(member)` and still
+  rejects heterogeneous enums, non-constant enum members, and enum-object
+  reflection patterns with explicit diagnostics.
+- Descriptor output and param type qualification now prefers source-file-qualified
+  user types, so local enums and classes beat unrelated bare-name registrations.
 
 ---
 
@@ -818,3 +827,86 @@ enum argument-to-string conversion, numeric enum conversion at initializer and
 assignment sites, and the new missing target-type conversion diagnostic. Full
 verification passed after fixing nullable-target exact-match handling and contextual
 enum literal type recovery.
+
+### Phase E5 -- 2026-04-05
+
+**Planned vs actual:**
+
+All 7 concrete deliverables were implemented.
+
+- Local top-level string enums, numeric enums, and empty enums now compile and
+  register as file-qualified runtime enum types.
+- Imported enums and aliased enum imports now compile across files through the
+  existing multi-file import walk plus pre-lowering enum registration.
+- Enum member access like `Direction.Up` now lowers directly to runtime enum
+  constants.
+- Recompilation now removes stale user enum type registrations plus derived enum
+  conversions and enum equality overloads before rebuilding the current program.
+- Existing conversion-aware lowering now covers common string and number enum usage
+  without a separate enum-specific coercion path.
+
+One planned file did not need changes:
+
+- `packages/core/src/brain/interfaces/type-system.ts` stayed unchanged because the
+  existing `removeUserTypes()` surface was already broad enough; only the runtime
+  cleanup implementation had to expand to cover enums.
+
+**Unplanned additions and discoveries:**
+
+1. Recompilation cleanup needed unregister/remove hooks in the function,
+   conversion, and operator registries. Removing enum type defs alone leaves
+   generated host-function names occupied and breaks re-registration.
+2. Direct enum member property access must recover enum identity in
+   `resolveExpressionTypeId()` before target-type conversion search runs.
+   Otherwise `Direction.Up` looks like a raw string/number literal and misses
+   enum-to-string/number conversion insertion.
+3. Imported enums did not need a new callsite-var or function-table
+   representation. Extending import collection and registering enums before
+   lowering was enough because later resolution can ride checker symbols.
+4. Descriptor type qualification must prefer the source-file-qualified user type
+   over any bare-name registry hit, or local enums/classes can bind to unrelated
+   pre-registered types.
+5. Direct string/numeric enum member use is TS-assignable in the scenarios covered
+   by the imported-enum tests, so those tests did not need `@ts-ignore` once the
+   implementation stabilized.
+
+**Design decisions:**
+
+- Used `checker.getConstantValue(member)` as the single source of truth for enum
+  member values, including numeric auto-increment.
+- Kept enum-object reflection unsupported; only direct member access lowers.
+- Reused the existing E3/E4 conversion paths for enum string/number coercion
+  instead of adding enum-specific boundary logic.
+- Extended the existing `removeUserTypes()` cleanup entry point instead of adding
+  a separate enum-only cleanup path.
+
+**Files changed:**
+
+- `packages/core/src/brain/interfaces/functions.ts`
+- `packages/core/src/brain/interfaces/conversions.ts`
+- `packages/core/src/brain/interfaces/operators.ts`
+- `packages/core/src/brain/runtime/functions.ts`
+- `packages/core/src/brain/runtime/conversions.ts`
+- `packages/core/src/brain/runtime/operators.ts`
+- `packages/core/src/brain/runtime/type-system.ts`
+- `packages/core/src/brain/runtime/type-system.spec.ts`
+- `packages/typescript/src/compiler/diag-codes.ts`
+- `packages/typescript/src/compiler/validator.ts`
+- `packages/typescript/src/compiler/project.ts`
+- `packages/typescript/src/compiler/lowering.ts`
+- `packages/typescript/src/compiler/compile.spec.ts`
+- `packages/typescript/src/compiler/codegen.spec.ts`
+- `packages/typescript/src/compiler/multi-file.spec.ts`
+
+**Verification:**
+
+- `packages/core`: `npm run typecheck`, `npm run check`, `npm run build`, `npm test`
+- `packages/typescript`: `npm run typecheck`, `npm run check`, `npm test`
+
+**Acceptance criteria result:**
+
+All acceptance criteria passed. Added coverage for local string, numeric, and
+empty enums, imported and aliased enum member access, heterogeneous enum and
+enum-object diagnostics, and recompilation cleanup when user enums are deleted
+or changed. Direct-member imported-enum tests no longer need `@ts-ignore`
+because TS accepts those assignments without suppression.

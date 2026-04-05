@@ -6,7 +6,7 @@ import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { emitFunction } from "./emit.js";
-import type { FunctionEntry, ImportedClass, ImportedFunction, ImportedVariable } from "./lowering.js";
+import type { FunctionEntry, ImportedClass, ImportedEnum, ImportedFunction, ImportedVariable } from "./lowering.js";
 import { lowerProgram, qualifiedClassName } from "./lowering.js";
 import type {
   CallSiteInfo,
@@ -258,7 +258,8 @@ export class UserTileProject {
       imported.functions,
       imported.variables,
       imported.moduleInitOrder,
-      imported.classes
+      imported.classes,
+      imported.enums
     );
     if (programResult.diagnostics.length > 0) {
       return { diagnostics: programResult.diagnostics };
@@ -351,9 +352,9 @@ export class UserTileProject {
 
 function qualifyDescriptorType(typeName: string, sourceFile: ts.SourceFile): string {
   const types = getBrainServices().types;
-  if (types.resolveByName(typeName)) return typeName;
   const qualified = qualifiedClassName(sourceFile.fileName, typeName);
   if (types.resolveByName(qualified)) return qualified;
+  if (types.resolveByName(typeName)) return typeName;
   return typeName;
 }
 
@@ -461,6 +462,7 @@ interface CollectResult {
   functions: ImportedFunction[];
   variables: ImportedVariable[];
   classes: ImportedClass[];
+  enums: ImportedEnum[];
   moduleInitOrder: string[];
   diagnostics: CompileDiagnostic[];
 }
@@ -474,6 +476,7 @@ function collectImports(
   const functions: ImportedFunction[] = [];
   const variables: ImportedVariable[] = [];
   const classes: ImportedClass[] = [];
+  const enums: ImportedEnum[] = [];
   const diagnostics: CompileDiagnostic[] = [];
   const visitedFiles = new Set<string>();
   const moduleInitOrder: string[] = [];
@@ -509,6 +512,9 @@ function collectImports(
       }
       if (ts.isClassDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
         classes.push({ node: stmt, name: stmt.name.text, sourceFile });
+      }
+      if (ts.isEnumDeclaration(stmt) && hasExportModifier(stmt)) {
+        enums.push({ node: stmt, name: stmt.name.text, sourceFile });
       }
     }
 
@@ -593,7 +599,7 @@ function collectImports(
     }
   }
 
-  return { functions, variables, classes, moduleInitOrder, diagnostics };
+  return { functions, variables, classes, enums, moduleInitOrder, diagnostics };
 }
 
 function hasExportModifier(node: ts.Node): boolean {

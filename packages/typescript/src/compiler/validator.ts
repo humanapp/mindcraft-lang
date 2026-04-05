@@ -57,10 +57,6 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
         validateClassDeclaration(node as ts.ClassDeclaration);
         return;
 
-      case ts.SyntaxKind.EnumDeclaration:
-        addDiag(ValidatorDiagCode.EnumsNotSupported, node, "Enums are not supported");
-        return;
-
       case ts.SyntaxKind.WithStatement:
         addDiag(ValidatorDiagCode.WithNotSupported, node, "`with` is not supported");
         return;

@@ -5710,6 +5710,170 @@ export default Sensor({
   });
 });
 
+describe("user-authored enum declarations", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("local enum member lowers to EnumValue and resolves a qualified output type", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+enum Direction {
+  Up = "north",
+  Down = "south",
+}
+
+export default Sensor({
+  name: "local-user-enum",
+  output: "Direction",
+  onExecute(ctx: Context): Direction {
+    return Direction.Up;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const typeId = mkTypeId(NativeType.Enum, "/user-code.ts::Direction");
+    assert.equal(prog.outputType, typeId);
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.ok(runResult.result);
+      assert.ok(isEnumValue(runResult.result!), "expected EnumValue");
+      const ev = runResult.result as EnumValue;
+      assert.equal(ev.typeId, typeId);
+      assert.equal(ev.v, "Up");
+    }
+  });
+
+  test("local string enum supports equality and string conversion sites", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+enum Direction {
+  Up = "north",
+  Down = "south",
+}
+
+function label(text: string): string {
+  return text + "!";
+}
+
+export default Sensor({
+  name: "local-string-enum-conversion",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const same = Direction.Up === Direction.Up;
+    if (!same) {
+      return "bad";
+    }
+    // @ts-ignore testing runtime implicit string enum conversion
+    return label(Direction.Down);
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.String);
+      assert.equal((runResult.result as StringValue).v, "south!");
+    }
+  });
+
+  test("local numeric enum works in numeric conversion sites", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+enum Throttle {
+  Idle = 0,
+  Fast = 2,
+}
+
+export default Sensor({
+  name: "local-numeric-enum",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const speed = Throttle.Fast;
+    // @ts-ignore testing runtime implicit numeric enum conversion
+    const first: number = speed;
+    // @ts-ignore testing runtime implicit numeric enum conversion
+    const second: number = speed;
+    return first + second;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Number);
+      assert.equal((runResult.result as NumberValue).v, 4);
+    }
+  });
+
+  test("empty enum can be referenced as a type", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+enum Empty {}
+
+export default Sensor({
+  name: "empty-enum-type",
+  output: "boolean",
+  onExecute(ctx: Context): boolean {
+    let value: Empty | null = null;
+    return value === null;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal(runResult.result!.t, NativeType.Boolean);
+      assert.equal((runResult.result as BooleanValue).v, true);
+    }
+  });
+});
+
 describe("enum value literals", () => {
   before(async () => {
     registerCoreBrainComponents();

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import {
+  CoreOpId,
+  CoreTypeIds,
   type ExecutionContext,
   getBrainServices,
   HandleTable,
@@ -12,6 +14,7 @@ import {
   registerCoreBrainComponents,
   runtime,
   type Scheduler,
+  type StringValue,
   type StructTypeDef,
   type Value,
   VmStatus,
@@ -581,6 +584,239 @@ export default Sensor({
     if (r.status === VmStatus.DONE) {
       assert.equal((r.result as NumberValue).v, 26, "5*5 + 1 = 26");
     }
+  });
+});
+
+describe("multi-file: imported enums", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("imported enum member works across files", () => {
+    const result = compileProject({
+      "helpers/direction.ts": `
+export enum Direction {
+  Up = "north",
+  Down = "south",
+}
+`,
+      "sensors/use-direction.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Direction } from "../helpers/direction";
+
+export default Sensor({
+  name: "use-direction",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return Direction.Up;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/use-direction.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as StringValue).v, "north");
+    }
+  });
+
+  test("aliased enum import works across files", () => {
+    const result = compileProject({
+      "helpers/direction.ts": `
+export enum Direction {
+  Up = "north",
+  Down = "south",
+}
+`,
+      "sensors/use-direction-alias.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Direction as Dir } from "../helpers/direction";
+
+export default Sensor({
+  name: "use-direction-alias",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return Dir.Down;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/use-direction-alias.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as StringValue).v, "south");
+    }
+  });
+});
+
+describe("multi-file: enum recompilation cleanup", () => {
+  before(() => {
+    registerCoreBrainComponents();
+  });
+
+  test("deleting a user enum removes its registered type and derived artifacts", () => {
+    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations() });
+    project.setFiles(
+      new Map(
+        Object.entries({
+          "helpers/mode.ts": `
+export enum Mode {
+  Idle = 0,
+  Fast = 2,
+}
+`,
+          "sensors/use-mode.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Mode } from "../helpers/mode";
+
+export default Sensor({
+  name: "use-mode",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const value: number = Mode.Fast;
+    return value;
+  },
+});
+`,
+        })
+      )
+    );
+
+    let result = project.compileAll();
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    let entry = result.results.get("sensors/use-mode.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+
+    const registry = getBrainServices().types;
+    const typeId = registry.resolveByName("/helpers/mode.ts::Mode");
+    assert.ok(typeId, "Mode should be registered before deletion");
+    assert.ok(getBrainServices().conversions.get(typeId!, CoreTypeIds.String));
+    assert.ok(getBrainServices().conversions.get(typeId!, CoreTypeIds.Number));
+    assert.ok(getBrainServices().operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]));
+
+    project.deleteFile("helpers/mode.ts");
+    project.updateFile(
+      "sensors/use-mode.ts",
+      `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "use-mode",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`
+    );
+
+    result = project.compileAffected();
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    entry = result.results.get("sensors/use-mode.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+
+    assert.equal(registry.resolveByName("/helpers/mode.ts::Mode"), undefined);
+    assert.equal(getBrainServices().conversions.get(typeId!, CoreTypeIds.String), undefined);
+    assert.equal(getBrainServices().conversions.get(typeId!, CoreTypeIds.Number), undefined);
+    assert.equal(getBrainServices().operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]), undefined);
+  });
+
+  test("changing a user enum between numeric and string forms refreshes conversions", () => {
+    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations() });
+    project.setFiles(
+      new Map(
+        Object.entries({
+          "helpers/mode.ts": `
+export enum Mode {
+  Fast = 2,
+  Slow = 4,
+}
+`,
+          "sensors/use-mode.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Mode } from "../helpers/mode";
+
+export default Sensor({
+  name: "refresh-mode",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const value: number = Mode.Fast;
+    return value;
+  },
+});
+`,
+        })
+      )
+    );
+
+    let result = project.compileAll();
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+
+    const registry = getBrainServices().types;
+    const typeId = registry.resolveByName("/helpers/mode.ts::Mode");
+    assert.ok(typeId, "Mode should be registered before recompilation");
+    assert.ok(getBrainServices().conversions.get(typeId!, CoreTypeIds.Number));
+
+    project.updateFile(
+      "helpers/mode.ts",
+      `
+export enum Mode {
+  Fast = "fast",
+  Slow = "slow",
+}
+`
+    );
+    project.updateFile(
+      "sensors/use-mode.ts",
+      `
+import { Sensor, type Context } from "mindcraft";
+import { Mode } from "../helpers/mode";
+
+export default Sensor({
+  name: "refresh-mode",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return Mode.Fast;
+  },
+});
+`
+    );
+
+    result = project.compileAffected();
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/use-mode.ts");
+    assert.ok(entry);
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+
+    assert.equal(registry.resolveByName("/helpers/mode.ts::Mode"), typeId);
+    assert.ok(getBrainServices().conversions.get(typeId!, CoreTypeIds.String));
+    assert.equal(getBrainServices().conversions.get(typeId!, CoreTypeIds.Number), undefined);
   });
 });
 

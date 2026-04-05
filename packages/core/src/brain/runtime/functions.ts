@@ -49,6 +49,9 @@ export class FunctionRegistry implements IFunctionRegistry {
       return entry;
     }
   }
+  unregister(name: string): boolean {
+    return this.fnDict.delete(name);
+  }
   get(name: string): BrainFunctionEntry | undefined {
     return this.fnDict.get(name);
   }

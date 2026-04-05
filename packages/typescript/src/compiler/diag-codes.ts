@@ -19,7 +19,7 @@
 export enum ValidatorDiagCode {
   /** Class expressions (inline) are not supported */
   ClassExpressionsNotSupported = 1000,
-  /** Enum declarations are not supported */
+  /** Reserved legacy validator code for enum rejection */
   EnumsNotSupported = 1001,
   /** Reserved legacy validator code for validator-level for...in rejection */
   ForInNotSupported = 1002,
@@ -299,6 +299,8 @@ export enum LoweringDiagCode {
   NewExpressionUnknownClass = 3143,
   /** `new` expression target is not an identifier */
   NewExpressionNotIdentifier = 3144,
+  /** Enum objects cannot be used as runtime values; only direct member access is supported */
+  EnumObjectUsageNotSupported = 3145,
 }
 
 /**
@@ -333,6 +335,8 @@ export enum CompileDiagCode {
   HelperModuleHasVariables = 5003,
   /** Two imported modules export the same symbol name */
   DuplicateImportedSymbol = 5004,
+  /** User-authored enum declaration is invalid or unsupported */
+  InvalidEnumDeclaration = 5005,
 }
 
 /**

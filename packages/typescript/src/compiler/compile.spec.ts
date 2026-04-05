@@ -183,22 +183,72 @@ export default Sensor({
     assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.ComputedPropertyNamesNotSupported));
   });
 
-  test("enum declaration produces diagnostic", () => {
+  test("enum declaration passes validation", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
-enum Direction { Up, Down }
+enum Direction {
+  Up = "north",
+  Down = "south",
+}
 
 export default Sensor({
   name: "test",
   output: "boolean",
   params: {},
-  onExecute(ctx: Context): boolean { return true; },
+  onExecute(ctx: Context): boolean {
+    return Direction.Up === Direction.Up;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.deepStrictEqual(result.diagnostics, []);
+  });
+
+  test("heterogeneous enum declaration produces diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+enum Mixed {
+  A = "a",
+  B = 1,
+}
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean {
+    return true;
+  },
 });
 `;
     const result = compileUserTile(source);
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.code === ValidatorDiagCode.EnumsNotSupported));
+    assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.InvalidEnumDeclaration));
+  });
+
+  test("enum object usage produces explicit diagnostic", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+enum Direction {
+  Up = "north",
+}
+
+export default Sensor({
+  name: "test",
+  output: "boolean",
+  params: {},
+  onExecute(ctx: Context): boolean {
+    const ref = Direction;
+    return ref !== undefined;
+  },
+});
+`;
+    const result = compileUserTile(source);
+    assert.ok(result.diagnostics.length > 0);
+    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.EnumObjectUsageNotSupported));
   });
 
   test("let and const pass validation", () => {

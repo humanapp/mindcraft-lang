@@ -923,6 +923,33 @@ describe("removeUserTypes", () => {
     registerCoreBrainComponents();
   });
 
+  test("removes enum types with module-qualified names and clears derived artifacts", () => {
+    const registry = getBrainServices().types;
+    const typeId = registry.addEnumType("/user-enum.ts::TrafficLight", {
+      symbols: List.from([
+        { key: "stop", label: "Stop", value: 0 },
+        { key: "go", label: "Go", value: 1 },
+      ]),
+      defaultKey: "stop",
+    });
+
+    assert.ok(registry.get(typeId));
+    assert.ok(registry.resolveByName("/user-enum.ts::TrafficLight"));
+    assert.ok(getBrainServices().conversions.get(typeId, CoreTypeIds.String));
+    assert.ok(getBrainServices().conversions.get(typeId, CoreTypeIds.Number));
+    assert.ok(getBrainServices().operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]));
+    assert.ok(getBrainServices().operatorOverloads.resolve(CoreOpId.NotEqualTo, [typeId, typeId]));
+
+    registry.removeUserTypes();
+
+    assert.equal(registry.get(typeId), undefined);
+    assert.equal(registry.resolveByName("/user-enum.ts::TrafficLight"), undefined);
+    assert.equal(getBrainServices().conversions.get(typeId, CoreTypeIds.String), undefined);
+    assert.equal(getBrainServices().conversions.get(typeId, CoreTypeIds.Number), undefined);
+    assert.equal(getBrainServices().operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]), undefined);
+    assert.equal(getBrainServices().operatorOverloads.resolve(CoreOpId.NotEqualTo, [typeId, typeId]), undefined);
+  });
+
   test("removes struct types with module-qualified names (contains ::)", () => {
     const registry = getBrainServices().types;
     const typeId = registry.addStructType("/user-code.ts::UserClass", {
@@ -948,6 +975,24 @@ describe("removeUserTypes", () => {
 
     assert.ok(registry.get(hostId));
     assert.ok(registry.resolveByName("AppVector2RM"));
+  });
+
+  test("preserves enum types with bare names (no ::)", () => {
+    const registry = getBrainServices().types;
+    const hostId = registry.addEnumType("HostStatusRM", {
+      symbols: List.from([
+        { key: "ready", label: "Ready", value: "ready" },
+        { key: "busy", label: "Busy", value: "busy" },
+      ]),
+      defaultKey: "ready",
+    });
+
+    registry.removeUserTypes();
+
+    assert.ok(registry.get(hostId));
+    assert.ok(registry.resolveByName("HostStatusRM"));
+    assert.ok(getBrainServices().conversions.get(hostId, CoreTypeIds.String));
+    assert.ok(getBrainServices().operatorOverloads.resolve(CoreOpId.EqualTo, [hostId, hostId]));
   });
 
   test("does not remove non-struct types", () => {
