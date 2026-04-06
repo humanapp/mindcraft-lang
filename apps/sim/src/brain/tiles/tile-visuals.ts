@@ -1,4 +1,3 @@
-import { Dict } from "@mindcraft-lang/core";
 import {
   CoreActuatorId,
   CoreControlFlowId,
@@ -25,7 +24,7 @@ import type { TileVisual } from "./types";
 // Visual definitions for well-known tiles
 
 // biome-ignore format: uniform one-liner-per-entry style
-export const tileVisuals = new Dict<string, Partial<TileVisual>>([
+export const tileVisuals = new Map<string, Partial<TileVisual>>([
   // Operators
   [mkOperatorTileId(CoreOpId.And), { label: "AND", iconUrl: "/assets/brain/icons/and.svg" }],
   [mkOperatorTileId(CoreOpId.Or), { label: "OR", iconUrl: "/assets/brain/icons/or.svg" }],
