@@ -99,7 +99,7 @@ function normalizeWorkspacePath(path: string): string {
   return path.startsWith("/") ? path.slice(1) : path;
 }
 
-function isCompilerControlledPath(path: string): boolean {
+export function isCompilerControlledPath(path: string): boolean {
   const normalized = normalizeWorkspacePath(path);
   return normalized === "mindcraft.d.ts" || normalized === "tsconfig.json";
 }

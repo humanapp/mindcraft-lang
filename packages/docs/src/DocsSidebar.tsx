@@ -1,4 +1,4 @@
-import { getBrainServices } from "@mindcraft-lang/core/brain";
+import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GripVertical, Printer, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { DocMarkdown } from "./DocMarkdown";
 import { DocsPrintView } from "./DocsPrintView";
 import type { DocsConceptEntry, DocsPatternEntry, DocsTileEntry } from "./DocsRegistry";
-import { type DocTab, useDocsSidebar } from "./DocsSidebarContext";
+import { type DocTab, useDocsResolveTileVisual, useDocsSidebar } from "./DocsSidebarContext";
 import { useDocsPrint } from "./useDocsPrint";
 
 // ---------------------------------------------------------------------------
@@ -101,12 +101,27 @@ function matchesSearch(query: string, ...fields: (string | string[] | undefined)
   return false;
 }
 
+function getTileVisual(
+  tileCatalog: ITileCatalog | undefined,
+  resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined,
+  tileId: string
+): TileVisual | undefined {
+  const tileDef = tileCatalog?.get(tileId);
+  if (!tileDef) {
+    return undefined;
+  }
+  return resolveTileVisual(tileDef);
+}
+
 /** Resolve display label for a tile from the tile catalog. */
-function getTileLabel(tileId: string): string {
-  const tileDef = getBrainServices().tiles.get(tileId);
-  if (tileDef) {
-    const visual = tileDef.visual as TileVisual | undefined;
-    if (visual?.label) return visual.label;
+function getTileLabel(
+  tileCatalog: ITileCatalog | undefined,
+  resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined,
+  tileId: string
+): string {
+  const visual = getTileVisual(tileCatalog, resolveTileVisual, tileId);
+  if (visual?.label) {
+    return visual.label;
   }
   // Fallback: extract the last segment after ->
   const arrow = tileId.indexOf("->");
@@ -114,13 +129,12 @@ function getTileLabel(tileId: string): string {
 }
 
 /** Resolve icon URL for a tile from the tile catalog. */
-function getTileIconUrl(tileId: string): string | undefined {
-  const tileDef = getBrainServices().tiles.get(tileId);
-  if (tileDef) {
-    const visual = tileDef.visual as TileVisual | undefined;
-    return visual?.iconUrl;
-  }
-  return undefined;
+function getTileIconUrl(
+  tileCatalog: ITileCatalog | undefined,
+  resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined,
+  tileId: string
+): string | undefined {
+  return getTileVisual(tileCatalog, resolveTileVisual, tileId)?.iconUrl;
 }
 
 // ---------------------------------------------------------------------------
@@ -270,8 +284,10 @@ interface TileCardProps {
 }
 
 function TileCard({ entry, onClick }: TileCardProps) {
-  const label = getTileLabel(entry.tileId);
-  const iconUrl = getTileIconUrl(entry.tileId);
+  const { tileCatalog } = useDocsSidebar();
+  const resolveTileVisual = useDocsResolveTileVisual();
+  const label = getTileLabel(tileCatalog, resolveTileVisual, entry.tileId);
+  const iconUrl = getTileIconUrl(tileCatalog, resolveTileVisual, entry.tileId);
 
   return (
     <button
@@ -345,7 +361,8 @@ export interface DocsPanelContentProps {
 }
 
 export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef }: DocsPanelContentProps) {
-  const { activeTab, setTab, registry, navKey, navTab, navigateToEntry, navigateBack } = useDocsSidebar();
+  const { activeTab, setTab, registry, navKey, navTab, navigateToEntry, navigateBack, tileCatalog } = useDocsSidebar();
+  const resolveTileVisual = useDocsResolveTileVisual();
   const [search, setSearch] = useState("");
 
   // Reset search when tab changes
@@ -367,12 +384,21 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
   // Filter entries based on search
   const filteredTiles = useMemo(() => {
     const tiles = Array.from(registry.tiles.values()).filter((t) => {
-      const tileDef = getBrainServices().tiles.get(t.tileId);
+      const tileDef = tileCatalog?.get(t.tileId);
       return !tileDef?.hidden && !tileDef?.deprecated;
     });
     if (!search) return tiles;
-    return tiles.filter((t) => matchesSearch(search, getTileLabel(t.tileId), t.tileId, t.tags, t.category, t.content));
-  }, [registry, search]);
+    return tiles.filter((t) =>
+      matchesSearch(
+        search,
+        getTileLabel(tileCatalog, resolveTileVisual, t.tileId),
+        t.tileId,
+        t.tags,
+        t.category,
+        t.content
+      )
+    );
+  }, [registry, search, tileCatalog, resolveTileVisual]);
 
   const filteredPatterns = useMemo(() => {
     const patterns = Array.from(registry.patterns.values());
@@ -466,7 +492,7 @@ export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", sea
 
   // No-docs fallback -- navKey is set but no content found in registry
   if (navKey) {
-    const tileLabel = getTileLabel(navKey);
+    const tileLabel = getTileLabel(tileCatalog, resolveTileVisual, navKey);
     return (
       <>
         <div className="flex items-center gap-1 px-3 py-2 border-b border-slate-700 shrink-0">

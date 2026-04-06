@@ -1,10 +1,10 @@
-import { getBrainServices, mkNativeStructValue } from "@mindcraft-lang/core/brain";
+import { type BrainServices, mkNativeStructValue } from "@mindcraft-lang/core/brain";
 import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import { getSelf, getTargetActor } from "../execution-context-types";
 import { TargetActorCapabilityBitSet } from "../tileids";
 import { MyTypeIds } from "../type-system";
 
-export function registerLiteralTiles() {
+export function registerLiteralTiles(services: BrainServices) {
   const meVisual = {
     label: "me",
     iconUrl: "/assets/brain/icons/actor-mask.svg",
@@ -14,7 +14,7 @@ export function registerLiteralTiles() {
     iconUrl: "/assets/brain/icons/actor-mask.svg",
   };
 
-  const { tiles } = getBrainServices();
+  const { tiles } = services;
 
   tiles.registerTileDef(
     new BrainTileLiteralDef(MyTypeIds.ActorRef, mkNativeStructValue(MyTypeIds.ActorRef, getSelf), {

@@ -1,3 +1,5 @@
+import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, Printer } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
@@ -135,6 +137,12 @@ function DocsPageLayout({ backLabel = "Home", backHref = "/" }: DocsPageLayoutPr
 export interface DocsPageProps {
   /** The docs registry to use. */
   registry: DocsRegistry;
+  /** Optional tile catalog for label/icon resolution without global brain services. */
+  tileCatalog?: ITileCatalog;
+  /** Optional tile visual resolver for app-provided labels, icons, and colors. */
+  resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
+  /** Optional callback for running local catalog deserialization with initialized brain services. */
+  withBrainServices?: <T>(callback: () => T) => T;
   /** Label displayed in the back link (top-left). Defaults to "Home". */
   backLabel?: string;
   /** URL the back link navigates to. Defaults to "/". */
@@ -143,11 +151,27 @@ export interface DocsPageProps {
   children?: React.ReactNode;
 }
 
-export function DocsPage({ registry, backLabel, backHref, children }: DocsPageProps) {
+export function DocsPage({
+  registry,
+  tileCatalog,
+  resolveTileVisual,
+  withBrainServices,
+  backLabel,
+  backHref,
+  children,
+}: DocsPageProps) {
   const { tab, key } = useMemo(() => parseDocsUrl(window.location.pathname), []);
 
   return (
-    <DocsSidebarProvider registry={registry} initialTab={tab} initialNavKey={key} initialNavTab={key ? tab : null}>
+    <DocsSidebarProvider
+      registry={registry}
+      tileCatalog={tileCatalog}
+      resolveTileVisual={resolveTileVisual}
+      withBrainServices={withBrainServices}
+      initialTab={tab}
+      initialNavKey={key}
+      initialNavTab={key ? tab : null}
+    >
       <DocsPageLayout backLabel={backLabel} backHref={backHref} />
       {children}
     </DocsSidebarProvider>

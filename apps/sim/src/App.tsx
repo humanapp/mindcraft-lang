@@ -1,3 +1,5 @@
+import { withMindcraftEnvironmentServices } from "@mindcraft-lang/core";
+import { getBrainServices } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
 import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@mindcraft-lang/ui";
@@ -5,14 +7,20 @@ import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
+import { genVisualForTile } from "./brain/tiles/visual-provider";
 import { buildBrainEditorConfig } from "./brain-editor-config";
 import { Sidebar } from "./components/Sidebar";
 import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
+import { getMindcraftEnvironment } from "./services/mindcraft-environment";
 import { loadDesiredCounts } from "./services/population-persistence";
 import { getUiPreferences, updateUiPreferences } from "./services/ui-preferences";
+
+function withSimDocsBrainServices<T>(callback: () => T): T {
+  return withMindcraftEnvironmentServices(getMindcraftEnvironment(), callback);
+}
 
 /** Compare two snapshots by display-relevant fields to skip no-op re-renders. */
 function statsEqual(
@@ -46,6 +54,7 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
   const config = useMemo(
     () => ({
       ...buildBrainEditorConfig(archetype ?? undefined),
+      withBrainServices: withSimDocsBrainServices,
       onTileHelp: openDocsForTile,
       docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
     }),
@@ -65,6 +74,7 @@ function App() {
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
+  const docsTileCatalog = useMemo(() => withSimDocsBrainServices(() => getBrainServices().tiles), []);
 
   useEffect(() => {
     scene?.setTimeSpeed(timeSpeed);
@@ -146,7 +156,12 @@ function App() {
   }, []);
 
   return (
-    <DocsSidebarProvider registry={docsRegistry}>
+    <DocsSidebarProvider
+      registry={docsRegistry}
+      tileCatalog={docsTileCatalog}
+      resolveTileVisual={genVisualForTile}
+      withBrainServices={withSimDocsBrainServices}
+    >
       <div className="h-screen flex bg-background overflow-hidden">
         <h1 className="sr-only">Mindcraft Simulation</h1>
         {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}

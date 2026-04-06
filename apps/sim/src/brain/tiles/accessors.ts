@@ -1,9 +1,8 @@
-import { CoreTypeIds, getBrainServices } from "@mindcraft-lang/core/brain";
+import { type BrainServices, CoreTypeIds } from "@mindcraft-lang/core/brain";
 import { registerAccessorTileDef } from "@mindcraft-lang/core/brain/tiles";
 import { MyTypeIds } from "../type-system";
 
-export function registerAccessorTiles() {
-  const services = getBrainServices();
+export function registerAccessorTiles(services: BrainServices) {
   // Accessors for Vector2
   const xVisual = { label: "x", iconUrl: "/assets/brain/icons/x.svg" };
   const yVisual = { label: "y", iconUrl: "/assets/brain/icons/y.svg" };

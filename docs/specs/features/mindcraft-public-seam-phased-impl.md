@@ -24,10 +24,11 @@ Depends on infrastructure from:
 
 ## Status
 
-As of 2026-04-05, Phases S1-S5 are complete. Phases S6-S7 remain open.
+As of 2026-04-06, Phases S1-S6 are complete. Phase S7 remains open.
 
-The codebase now exposes the new package-level runtime/compiler/presentation
-seam, while bridge and real-app migration work remains outstanding:
+The codebase now exposes and proves the new package-level
+runtime/compiler/bridge seam in the real sim app, while documentation and
+legacy cleanup remain outstanding:
 
 - `@mindcraft-lang/core` now supports `createMindcraftEnvironment()`,
   `coreModule()`, environment-owned catalogs, environment-scoped brain
@@ -38,9 +39,9 @@ seam, while bridge and real-app migration work remains outstanding:
   `buildCompiledActionBundle()` and `createWorkspaceCompiler({ environment })`
   for the new runtime-facing authored-action path, including compiler-owned
   ambient/`tsconfig.json` handling on the new seam.
-- `@mindcraft-lang/ui` now supports app-owned tile-presentation resolution
-  through editor config instead of relying on process-global core tile-visual
-  mutation in the normal path.
+- `@mindcraft-lang/ui` and `@mindcraft-lang/docs` now support app-owned tile
+  presentation plus injected brain-services runners for runtime-facing
+  editor/docs flows instead of relying on process-global singleton state.
 - Legacy core globals still exist as secondary migration paths, and some
   internal core code still depends on a tightly scoped environment-owned
   services context via `runWithBrainServices(...)`.
@@ -49,8 +50,11 @@ seam, while bridge and real-app migration work remains outstanding:
   `@mindcraft-lang/bridge-app/compilation` now exposes the feature-oriented
   optional compilation seam over `AppBridgeFeatureContext`; `AppProject` and
   the root-level compilation seam remain as legacy migration paths.
-- `apps/sim` still depends on `AppProject`, synthetic import events, and
-  app-owned compiler/runtime glue.
+- `apps/sim` now boots through `createMindcraftEnvironment()`,
+  `createWorkspaceCompiler({ environment })`, `createAppBridge(...)`, and
+  `createCompilationFeature(...)` with an app-owned debounced workspace store,
+  startup tile hydration, compiler-owned system-file authority, and
+  environment-owned brain invalidation/rebuild control.
 
 ---
 
@@ -140,7 +144,7 @@ permanent back-compat seams.
 
 ## Current State
 
-(2026-04-05)
+(2026-04-06)
 
 ### Core integration seam
 
@@ -250,26 +254,35 @@ permanent back-compat seams.
   apps can still end up reasoning about both the domain seam and transport
   internals until Phases S6-S7 finish the real-app migration and cleanup.
 
-### Sim as proof of the remaining migration work
+### Sim as proof of the migrated seam
 
-- `apps/sim/src/bootstrap.ts` still calls `registerCoreBrainComponents()`,
-  `registerBrainComponents()`, `registerUserTilesAtStartup()`, and
-  `initProject()` during bootstrap, but no longer uses
-  `setTileVisualProvider()` in the normal startup path.
-- `apps/sim/src/brain-editor-config.tsx` now supplies
-  `resolveTileVisual: genVisualForTile`, so sim presentation is app-owned even
-  though the runtime path is not yet migrated.
-- `apps/sim/src/services/brain-runtime.ts` still imports the concrete `Brain`
-  class, uses `getBrainServices()` to build catalogs and resolve host actions,
-  and still owns app-side active-brain bookkeeping that later phases should
-  migrate to `MindcraftEnvironment`.
-- `apps/sim/src/services/user-tile-registration.ts` still directly mutates tile
-  and type registries through `getBrainServices()` and persists startup tile
-  metadata outside the new bundle seam.
-- `apps/sim/src/services/vscode-bridge.ts` still constructs `AppProject`,
-  reaches through transport internals, and still injects generated compiler
-  inputs into the raw bridge-owned filesystem snapshot instead of consuming the
-  new compiler-owned system-file path.
+- `apps/sim/src/bootstrap.ts` now initializes one sim-owned
+  `MindcraftEnvironment`, starts environment-backed brain runtime services,
+  hydrates cached semantic tile metadata before persisted brain load, and then
+  initializes the bridge path.
+- `apps/sim/src/services/brain-runtime.ts`,
+  `apps/sim/src/services/brain-persistence.ts`, and
+  `apps/sim/src/brain/engine.ts` now create, deserialize, clone, and rebuild
+  brains through the environment seam, with invalidated-brain rebuild work
+  deferred to the sim tick boundary.
+- `apps/sim/src/services/user-tile-registration.ts` now hydrates cached
+  `HydratedTileMetadataSnapshot` state before persisted brains load and applies
+  fresh compiler output via `replaceActionBundle(...)` instead of keeping the
+  primary authored-action runtime state in app-owned maps.
+- `apps/sim/src/services/vscode-bridge.ts` now uses `createAppBridge(...)`
+  plus `createCompilationFeature(...)`, and
+  `apps/sim/src/services/workspace-store.ts` now owns persisted workspace state
+  through `WorkspaceAdapter` semantics with debounced snapshot writes.
+- Sim no longer injects generated `mindcraft.d.ts` or the authoritative
+  `tsconfig.json` into the app-owned workspace snapshot; compiler-owned system
+  files now come from `@mindcraft-lang/ts-compiler`.
+- `@mindcraft-lang/docs` and `@mindcraft-lang/ui` now accept injected tile
+  catalogs, tile-visual resolution, and `withBrainServices(...)` runners, so
+  sim's normal docs/editor path no longer assumes globally initialized brain
+  services.
+- A few narrow helpers still use `getBrainServices()` inside an explicit
+  environment-owned services scope or legacy fallback path, but the normal sim
+  integration story no longer depends on it as an app-facing primitive.
 
 ### Import-shape symptoms
 
@@ -284,7 +297,10 @@ The current sim app imports from all of these shapes:
 - `@mindcraft-lang/ts-compiler`
 
 Those subpaths are not inherently wrong, but they indicate that the top-level
-integration seam is not carrying enough semantic weight.
+integration seam is still sharing some implementation weight with deeper
+package boundaries. The composition root now uses the intended top-level seam;
+the remaining deep imports are mostly internal detail that S7 can narrow or
+document more clearly where that improves the public story.
 
 ### Core multi-target constraint
 
@@ -1415,6 +1431,11 @@ app and remove direct registry access from the normal sim integration path.
 - Sim should be able to defer rebuilds to a safe frame boundary. The new seam is
   incomplete if bundle replacement forces reinitialization inside the compiler
   callback itself.
+- 2026-04-06 post-mortem note: migrating the sim composition root was not
+  sufficient by itself. Shared docs/editor flows also needed injected tile
+  catalogs, visual resolvers, and a `withBrainServices(...)` runner because
+  clone/serialize/deserialize/typecheck/manufacture paths in shared packages
+  still depended transitively on an active services context.
 
 **Risks:**
 
@@ -1499,34 +1520,39 @@ legacy seam is either removed or reduced to the smallest justified remainder.
 
 **Packages/files touched:**
 
-- `apps/sim/src/services/vscode-bridge.ts`
-- sim workspace persistence and compiler integration helpers
 - `INTEGRATION.md`
 - `packages/core/README.md`
 - `packages/bridge-app/README.md`
+- legacy public-surface files in `packages/core`, `packages/bridge-app`, and
+  other touched packages as needed
 - any package docs/examples that currently teach the old path first
 
 **Concrete deliverables:**
 
-1. Replace sim's direct `AppProject` usage with `createAppBridge(...)`.
-2. Replace sim's direct root-level compilation wiring with
-   `createCompilationFeature(...)`.
-3. Remove direct `project.session`, `project.files`, and `project.compilation`
-   access from sim's normal integration path.
-4. Update the integration docs so they clearly describe three supported tiers:
+1. Treat sim's already-migrated `createAppBridge(...)` +
+  `createCompilationFeature(...)` + app-owned workspace-store path as the
+  standard full-stack reference implementation, making only cleanup-oriented
+  code changes there if needed.
+2. Update the integration docs so they clearly describe three supported tiers:
    - core only
    - core + ts-compiler
    - core + ts-compiler + bridge
-5. Remove legacy app-facing seams that are no longer justified once sim has
+3. Remove legacy app-facing seams that are no longer justified now that sim has
    migrated:
    - `registerCoreBrainComponents()` if it no longer serves a clear internal role
    - `getBrainServices()` as an app-integration primitive
    - `setTileVisualProvider()` entirely; it is not allowed to remain as a
      compatibility shim or legacy fallback after S7
    - `AppProject` as the recommended app-facing bridge API
+4. Remove or sharply narrow any temporary migration helpers introduced earlier
+  if they are not intentionally permanent.
 
 **Notes:**
 
+- S6 already replaced sim's direct `AppProject` usage, root-level compilation
+  wiring, and direct `project.session` / `project.files` /
+  `project.compilation` access. S7 should treat that migration as complete and
+  focus on product guidance plus legacy cleanup.
 - S7 should end with the new seam documented as the gold-standard path.
 - S7 is the explicit removal point for temporary legacy fallback shims carried
   earlier for migration, including `setTileVisualProvider()`.
@@ -1686,7 +1712,7 @@ One planned file did not need changes:
    replay-oriented tests in S1 even though the host `createAppBridge(...)`
    facade remains deferred to S4.
 2. `packages/bridge-app` needed a dedicated `tsconfig.spec.json`, local `tsx`
-   devDependency, and `test/**/*.spec.ts` discovery to match the repo's
+   devDependency, and `src/**/*.spec.ts` discovery to match the repo's
    standard spec-test workflow.
 3. Bridge cleanup handles in the new public seam were reviewed and locked to
    plain `() => void`, not a dedicated `Disposable` contract.
@@ -2394,3 +2420,222 @@ Real-app adoption in sim and final legacy cleanup remain with Phases S6-S7.
 - `INV-4`: partially satisfied (package-level separation is implemented;
   real-app proof is deferred to Phase S6)
 - `INV-5`: satisfied as planned
+
+### Phase S6 -- 2026-04-06
+
+**Planned vs actual:**
+
+All 11 S6 deliverables landed, and sim now runs through the new
+environment-owned runtime/compiler/bridge path on its normal startup path. The
+phase also pulled part of S7 forward: sim no longer uses `AppProject` or the
+root-level compilation seam in its normal path.
+
+- `apps/sim` now creates one `MindcraftEnvironment` at bootstrap, installs
+  `coreModule()` plus a sim-owned module, hydrates cached tile metadata before
+  persisted brains load, and uses environment-owned brain
+  creation/deserialization on the normal path.
+- Sim runtime brain creation now goes through `environment.createBrain(...)`;
+  invalidated brains are rebuilt at a sim-controlled frame boundary via
+  `rebuildInvalidatedBrains(...)` instead of app-owned revision maps and
+  container tracking.
+- User-authored tile integration now consumes
+  `createWorkspaceCompiler({ environment })`, `CompiledActionBundle`,
+  `replaceActionBundle(...)`, and `hydrateTileMetadata(...)` instead of direct
+  registry mutation and app-owned executable artifact maps.
+- Sim workspace/bridge integration now uses an app-owned `WorkspaceAdapter`,
+  `createAppBridge(...)`, and `createCompilationFeature(...)`; compiler-
+  controlled `mindcraft.d.ts` / `tsconfig.json` are no longer injected into
+  the persisted workspace snapshot.
+- Full import/sync and remote change bursts now persist through one debounced
+  workspace snapshot write on the app-owned store, and compiler-controlled
+  paths are filtered through the shared ts-compiler
+  `isCompilerControlledPath(...)` helper.
+- Persisted brains, default-brain assets, fallback archetype brains, docs
+  rendering, and editor operations that clone/serialize/deserialize/typecheck
+  brains now run inside the environment-owned services context instead of
+  assuming global singleton state.
+- `@mindcraft-lang/docs` and `@mindcraft-lang/ui` gained injected tile-catalog
+  / visual-resolution / `withBrainServices(...)` seams so sim's normal
+  docs/editor path no longer requires globally initialized brain services.
+- `packages/core` gained a regression fix for `BrainRuleDef.clone()` so mixed
+  global + brain-local rules survive delete/undo and other clone-based editor
+  flows under the new seam.
+
+One planned phase boundary shifted earlier than expected:
+
+- S6 also completed the sim-side adoption of `createAppBridge(...)` and
+  `createCompilationFeature(...)`, work that the original plan had left to S7.
+  S7 now mainly owns docs/product guidance and legacy seam cleanup rather than
+  sim bridge migration itself.
+
+One planned outcome needed late-phase hardening:
+
+- Deliverable 6 initially regressed to synchronous per-change persistence in
+  the new workspace store. The final S6 result restores debounced batched
+  writes so sync/import bursts and rapid remote change sequences collapse to
+  one persisted snapshot write.
+
+**Unplanned additions and discoveries:**
+
+1. Migrating sim's composition root was not enough by itself. Shared docs and
+   editor code paths also needed explicit `tileCatalog`,
+   `resolveTileVisual(...)`, and `withBrainServices(...)` injection because
+   many model operations are service-sensitive transitively rather than through
+   obvious direct `getBrainServices()` calls.
+2. Brain model operations such as `clone()`, `serialize()`, `deserialize()`,
+   `toJson()`, `replaceContentFromJson()`, `typecheck()`, page mutation
+   helpers, and tile factory manufacture should be treated as environment-
+   scoped in runtime-facing UI/docs code.
+3. The environment migration exposed a latent core bug in
+   `BrainRuleDef.clone()`: binary deserialization there only considered the
+   brain-local catalog, so rules mixing global tiles with local
+   literal/variable tiles broke under editor delete/undo flows. The fix was to
+   use the same combined deserialization catalogs as other rule load paths.
+4. Sim's app-owned workspace store needed a shared compiler-controlled-path
+   rule with ts-compiler to keep persisted workspace filtering aligned with
+   compiler-owned system-file authority.
+5. The app-owned workspace persistence requirement is stronger in practice
+   than "one write for import." Browser-side remote mutation bursts need
+   debounce-based snapshot persistence generally, so both explicit `import`
+   syncs and rapid per-file replay sequences coalesce to one write.
+6. Dedicated docs routes and editor helper flows were part of the normal seam
+   proof. Leaving those paths on ambient globals would have made the
+   composition root look migrated while real runtime-facing UI remained
+   singleton-coupled.
+
+**Design decisions:**
+
+- Keep one sim-owned `MindcraftEnvironment` as the composition root for
+  runtime, compilation, hydration, persisted-brain load, docs, and editor
+  service activation.
+- Keep bundle replacement and invalidation immediate, but defer actual brain
+  rebuild work to the sim tick boundary via `flushPendingBrainRebuilds()`.
+- Keep workspace persistence app-owned through `WorkspaceAdapter`, exclude
+  compiler-controlled files from the persisted snapshot, and debounce browser
+  writes at the store boundary.
+- Treat shared docs/editor service activation as an explicit seam: inject
+  semantic tile lookup, tile presentation resolution, and a brain-services
+  runner from the host app instead of relying on ambient process-wide globals.
+- Keep legacy globals and migration shims available for now
+  (`registerCoreBrainComponents()`, `getBrainServices()`, `AppProject`,
+  `CompilationProvider`, `CompilationManager`, and
+  `setTileVisualProvider()`), but they are no longer required by sim's normal
+  path and should be narrowed/removed in S7.
+
+**Files changed:**
+
+- `apps/sim/src/App.tsx`
+- `apps/sim/src/DocsPage.tsx`
+- `apps/sim/src/bootstrap.ts`
+- `apps/sim/src/brain/index.ts`
+- `apps/sim/src/brain/actor.ts`
+- `apps/sim/src/brain/archetypes.ts`
+- `apps/sim/src/brain/engine.ts`
+- `apps/sim/src/brain/fns/index.ts`
+- `apps/sim/src/brain/fns/actuators/index.ts`
+- `apps/sim/src/brain/fns/sensors/index.ts`
+- `apps/sim/src/brain/tiles/index.ts`
+- `apps/sim/src/brain/tiles/accessors.ts`
+- `apps/sim/src/brain/tiles/actuators.ts`
+- `apps/sim/src/brain/tiles/literals.ts`
+- `apps/sim/src/brain/tiles/modifiers.ts`
+- `apps/sim/src/brain/tiles/parameters.ts`
+- `apps/sim/src/brain/tiles/sensors.ts`
+- `apps/sim/src/brain/tiles/variables.ts`
+- `apps/sim/src/brain/type-system.ts`
+- `apps/sim/src/services/brain-persistence.ts`
+- `apps/sim/src/services/brain-runtime.ts`
+- `apps/sim/src/services/mindcraft-environment.ts`
+- `apps/sim/src/services/user-tile-compiler.ts`
+- `apps/sim/src/services/user-tile-registration.ts`
+- `apps/sim/src/services/vscode-bridge.ts`
+- `apps/sim/src/services/workspace-store.ts`
+- `packages/core/src/brain/model/ruledef.ts`
+- `packages/core/src/brain/model/ruledef.spec.ts`
+- `packages/docs/src/BrainCodeBlock.tsx`
+- `packages/docs/src/DocMarkdown.tsx`
+- `packages/docs/src/DocsPage.tsx`
+- `packages/docs/src/DocsPrintView.tsx`
+- `packages/docs/src/DocsRule.tsx`
+- `packages/docs/src/DocsSidebar.tsx`
+- `packages/docs/src/DocsSidebarContext.tsx`
+- `packages/ts-compiler/src/compiler/compile.ts`
+- `packages/ts-compiler/src/compiler/project.ts`
+- `packages/ts-compiler/src/index.ts`
+- `packages/ui/src/brain-editor/BrainEditorContext.tsx`
+- `packages/ui/src/brain-editor/BrainEditorDialog.tsx`
+- `packages/ui/src/brain-editor/BrainPageEditor.tsx`
+- `packages/ui/src/brain-editor/BrainRuleEditor.tsx`
+- `packages/ui/src/brain-editor/BrainTileEditor.tsx`
+- `packages/ui/src/brain-editor/BrainTilePickerDialog.tsx`
+- `packages/ui/src/brain-editor/brain-clipboard.ts`
+- `packages/ui/src/brain-editor/brain-services.ts`
+- `packages/ui/src/brain-editor/commands/BrainCommands.ts`
+- `packages/ui/src/brain-editor/commands/PageCommands.ts`
+- `packages/ui/src/brain-editor/commands/RuleCommands.ts`
+- `packages/ui/src/brain-editor/commands/TileCommands.ts`
+- `packages/ui/src/brain-editor/hooks/useTileSelection.ts`
+- `packages/ui/src/brain-editor/rule-clipboard.ts`
+- `packages/ui/src/brain-editor/tile-clipboard.ts`
+
+**Verification:**
+
+- `apps/sim`: `npm run typecheck`, `npm run check`
+- `packages/core`: `npm run check`, `npm run build`, `npm test`
+- `packages/ts-compiler`: `npm run typecheck`, `npm run check`,
+  `npm run build`
+- `packages/ui`: `npm run typecheck`, `npm run check`
+
+**Acceptance criteria result:**
+
+S6 is accepted. Sim now proves environment-owned runtime/compiler/bridge
+composition in a real app, including startup hydration, compiler-owned
+system-file authority, app-owned workspace persistence, and app-scheduled
+invalidation rebuilds. The remaining plan work is documentation and explicit
+legacy seam cleanup in S7.
+
+### Requirements retrospective
+
+- `FR-1`: partially satisfied (the sim migration proves the new runtime seam
+  in a real app; final adoption-tier guidance remains with Phase S7)
+- `FR-2`: partially satisfied (sim proves the compiler-to-runtime path without
+  bridge-owned runtime bookkeeping; final adoption-tier guidance remains with
+  Phase S7)
+- `FR-5`: partially satisfied (sim's normal composition root and
+  runtime-facing docs/editor path no longer require hidden registries or
+  concrete runtime classes, but final legacy seam demotion/removal remains
+  with Phase S7)
+- `FR-8`: partially satisfied (sim now proves load/link/deserialization across
+  shared, hydrated, bundle, overlay, and brain-local tiles in runtime,
+  editor, and docs flows; final public guidance remains with Phase S7)
+- `FR-9`: fully satisfied (cold-start hydration is now proven in sim before
+  fresh compile output arrives)
+- `FR-11`: fully satisfied (sim consumes fresh compiler output through
+  authoritative bundle replacement and atomic hydration handoff)
+- `FR-12`: fully satisfied (sim now relies on environment-owned selective
+  invalidation rather than app-owned revision bookkeeping)
+- `FR-13`: fully satisfied (sim defers rebuild work to its own tick boundary
+  after invalidation)
+- `FR-15`: satisfied as planned
+- `FR-20`: fully satisfied (sim persists an app-owned workspace snapshot
+  without exporting a bridge-owned raw VFS)
+- `FR-21`: fully satisfied (full import/full sync and remote change bursts now
+  coalesce to one debounced persisted snapshot write)
+- `FR-25`: fully satisfied (default ambient generation is proven in sim on the
+  normal compiler path with no ambient overlay input)
+- `FR-27`: fully satisfied (compiler-controlled system files remain
+  authoritative even if serialized copies appear in persisted workspace state)
+- `FR-28`: fully satisfied (sim keeps user workspace content distinct from
+  compiler-only inputs and compiler-controlled system files)
+- `NFR-1`: partially satisfied (the real-app path is proven without breaking
+  core's cross-target constraints, but final public-surface cleanup remains
+  with Phase S7)
+- `NFR-2`: partially satisfied (shared runtime-facing behavior remains
+  platform-neutral on the proven sim path, but final legacy cleanup remains
+  with Phase S7)
+- `NFR-4`: satisfied as planned (cold-start persisted-brain loading and
+  startup hydration survived the migration and bundle handoff in the real app
+  path)
+- `INV-4`: fully satisfied (sim now keeps user workspace, compiler-only
+  overlays, and compiler-controlled files as distinct categories on the
+  standard path)

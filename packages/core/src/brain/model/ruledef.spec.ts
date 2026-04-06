@@ -2,9 +2,14 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List, stream } from "@mindcraft-lang/core";
-import { getBrainServices, type ITileCatalog, registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
+import {
+  CoreTypeIds,
+  getBrainServices,
+  type ITileCatalog,
+  registerCoreBrainComponents,
+} from "@mindcraft-lang/core/brain";
 import { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import { BrainTileLiteralDef, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 
 const { MemoryStream } = stream;
 
@@ -13,14 +18,14 @@ before(() => {
 });
 
 type TileSetDeserializer = {
-  deserialize: (stream: MemoryStream, catalogs?: List<ITileCatalog>) => void;
+  deserialize: (stream: InstanceType<typeof MemoryStream>, catalogs?: List<ITileCatalog>) => void;
 };
 
 type BrainRuleDefInternals = {
   when_: TileSetDeserializer;
 };
 
-function createSerializedRuleLevel(): MemoryStream {
+function createSerializedRuleLevel(): InstanceType<typeof MemoryStream> {
   const stream = new MemoryStream();
   const rule = new BrainRuleDef();
   rule.serializeThisLevelOnly(stream);
@@ -77,5 +82,28 @@ describe("BrainRuleDef binary deserialization", () => {
     assert.equal(capturedCatalogs.size(), 2);
     assert.equal(capturedCatalogs.get(0), brainCatalog);
     assert.equal(capturedCatalogs.get(1), getBrainServices().tiles);
+  });
+
+  test("clone resolves both global and brain-local tiles", () => {
+    const brain = new BrainDef();
+    const page = new BrainPageDef();
+    brain.addPage(page);
+
+    const rule = page.appendNewRule() as BrainRuleDef;
+    const globalTile = getBrainServices().tiles.get("tile.op->add");
+    assert.ok(globalTile);
+
+    const literalTile = new BrainTileLiteralDef(CoreTypeIds.Number, 1);
+    brain.catalog().registerTileDef(literalTile);
+
+    rule.when().appendTile(globalTile);
+    rule.do().appendTile(literalTile);
+
+    const cloned = rule.clone();
+
+    assert.equal(cloned.when().tiles().size(), 1);
+    assert.equal(cloned.do().tiles().size(), 1);
+    assert.equal(cloned.when().tiles().get(0).tileId, globalTile.tileId);
+    assert.equal(cloned.do().tiles().get(0).tileId, literalTile.tileId);
   });
 });

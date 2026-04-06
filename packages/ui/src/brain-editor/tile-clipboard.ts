@@ -9,6 +9,8 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 import { isClipboardLoggingEnabled } from "../settings";
+import type { BrainServicesRunner } from "./brain-services";
+import { runWithBrainServices } from "./brain-services";
 
 /**
  * Serialized clipboard payload for a copied tile.
@@ -54,7 +56,11 @@ export function onTileClipboardChanged(listener: () => void): () => void {
  * If the tile has persist=true (literal, variable, page), its catalog entry is
  * serialized so the clipboard is self-contained across brain open/close.
  */
-export function copyTileToClipboard(tileDef: IBrainTileDef, brain: IBrainDef | undefined): void {
+export function copyTileToClipboard(
+  tileDef: IBrainTileDef,
+  brain: IBrainDef | undefined,
+  withBrainServices?: BrainServicesRunner
+): void {
   const tempCatalog = new TileCatalog();
   let pageName: string | undefined;
 
@@ -69,7 +75,7 @@ export function copyTileToClipboard(tileDef: IBrainTileDef, brain: IBrainDef | u
     }
   }
 
-  const catalogJson = tempCatalog.toJson();
+  const catalogJson = runWithBrainServices(withBrainServices, () => tempCatalog.toJson());
 
   tileClipboardData = { tileId: tileDef.tileId, tileDef, catalogJson, pageName };
   if (isClipboardLoggingEnabled()) {
@@ -97,21 +103,28 @@ export function hasTileInClipboard(): boolean {
  *
  * Returns undefined if the clipboard is empty or the tile cannot be resolved.
  */
-export function importTileFromClipboard(destBrain: IBrainDef): IBrainTileDef | undefined {
+export function importTileFromClipboard(
+  destBrain: IBrainDef,
+  withBrainServices?: BrainServicesRunner
+): IBrainTileDef | undefined {
   if (!tileClipboardData) return undefined;
+  const currentClipboardData = tileClipboardData;
 
   const destCatalog = destBrain.catalog();
-  const tileId = tileClipboardData.tileId;
+  const tileId = currentClipboardData.tileId;
 
   const existing = destCatalog.get(tileId);
   if (existing) return existing;
 
-  const tempCatalog = new TileCatalog();
-  tempCatalog.deserializeJson(tileClipboardData.catalogJson);
+  const tempCatalog = runWithBrainServices(withBrainServices, () => {
+    const catalog = new TileCatalog();
+    catalog.deserializeJson(currentClipboardData.catalogJson);
+    return catalog;
+  });
 
   const tileDef = tempCatalog.get(tileId);
   if (!tileDef) {
-    return tileClipboardData.tileDef;
+    return currentClipboardData.tileDef;
   }
 
   if (isPageTileId(tileId)) {

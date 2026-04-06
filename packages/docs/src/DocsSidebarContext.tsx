@@ -1,4 +1,18 @@
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
+import {
+  type IBrainTileDef,
+  type ITileCatalog,
+  LiteralDisplayFormats,
+  peekBrainServices,
+  runWithBrainServices,
+} from "@mindcraft-lang/core/brain";
+import {
+  applyDisplayFormat,
+  type BrainTileAccessorDef,
+  type BrainTileLiteralDef,
+  type BrainTileVariableDef,
+  getCatalogFallbackLabel,
+} from "@mindcraft-lang/core/brain/tiles";
+import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { DocsRegistry } from "./DocsRegistry";
 
@@ -8,6 +22,9 @@ interface DocsSidebarContextValue {
   isOpen: boolean;
   activeTab: DocTab;
   registry: DocsRegistry;
+  tileCatalog: ITileCatalog | undefined;
+  resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined;
+  withBrainServices: <T>(callback: () => T) => T;
   /** The key of the entry currently shown in detail view, or null for list view. */
   navKey: string | null;
   /** The tab that the detail view belongs to (only meaningful when navKey is set). */
@@ -26,9 +43,32 @@ interface DocsSidebarContextValue {
 
 const DocsSidebarContext = createContext<DocsSidebarContextValue | null>(null);
 
+function defaultTileLabel(tileDef: IBrainTileDef): string {
+  if (tileDef.kind === "literal") {
+    const literalDef = tileDef as BrainTileLiteralDef;
+    const format = literalDef.displayFormat;
+    return format && format !== LiteralDisplayFormats.Default && typeof literalDef.value === "number"
+      ? applyDisplayFormat(literalDef.value, format)
+      : literalDef.valueLabel || String(literalDef.value);
+  }
+
+  if (tileDef.kind === "variable") {
+    return (tileDef as BrainTileVariableDef).varName;
+  }
+
+  if (tileDef.kind === "accessor") {
+    return (tileDef as BrainTileAccessorDef).fieldName;
+  }
+
+  return getCatalogFallbackLabel(tileDef);
+}
+
 interface DocsSidebarProviderProps {
   children: ReactNode;
   registry?: DocsRegistry;
+  tileCatalog?: ITileCatalog;
+  resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
+  withBrainServices?: <T>(callback: () => T) => T;
   /** Initial active tab (defaults to "tiles"). */
   initialTab?: DocTab;
   /** Initial detail-view key (defaults to null -- list view). */
@@ -40,6 +80,9 @@ interface DocsSidebarProviderProps {
 export function DocsSidebarProvider({
   children,
   registry: externalRegistry,
+  tileCatalog: externalTileCatalog,
+  resolveTileVisual: resolveTileVisualProp,
+  withBrainServices: withBrainServicesProp,
   initialTab,
   initialNavKey,
   initialNavTab,
@@ -49,6 +92,40 @@ export function DocsSidebarProvider({
   const [navKey, setNavKey] = useState<string | null>(initialNavKey ?? null);
   const [navTab, setNavTab] = useState<DocTab | null>(initialNavTab ?? null);
   const registry = useMemo(() => externalRegistry ?? new DocsRegistry(), [externalRegistry]);
+  const tileCatalog = useMemo(() => externalTileCatalog ?? peekBrainServices()?.tiles, [externalTileCatalog]);
+  const resolveTileVisual = useCallback(
+    (tileDef: IBrainTileDef): TileVisual | undefined => {
+      const intrinsicVisual = tileDef.visual as TileVisual | undefined;
+      const appVisual = resolveTileVisualProp?.(tileDef);
+      const appLabel = appVisual?.label;
+      const resolvedAppLabel = appLabel && appLabel !== getCatalogFallbackLabel(tileDef) ? appLabel : undefined;
+      const intrinsicLabel = intrinsicVisual?.label;
+      const resolvedIntrinsicLabel =
+        intrinsicLabel && intrinsicLabel !== getCatalogFallbackLabel(tileDef) ? intrinsicLabel : undefined;
+
+      return {
+        ...(intrinsicVisual ?? {}),
+        ...(appVisual ?? {}),
+        label: resolvedAppLabel ?? resolvedIntrinsicLabel ?? defaultTileLabel(tileDef),
+      };
+    },
+    [resolveTileVisualProp]
+  );
+  const withBrainServices = useCallback(
+    function withBrainServicesImpl<T>(callback: () => T): T {
+      if (withBrainServicesProp) {
+        return withBrainServicesProp(callback);
+      }
+
+      const services = peekBrainServices();
+      if (services) {
+        return runWithBrainServices(services, callback);
+      }
+
+      return callback();
+    },
+    [withBrainServicesProp]
+  );
 
   const navigateToEntry = useCallback((tab: DocTab, key: string) => {
     setActiveTab(tab);
@@ -94,6 +171,9 @@ export function DocsSidebarProvider({
     isOpen,
     activeTab,
     registry,
+    tileCatalog,
+    resolveTileVisual,
+    withBrainServices,
     navKey,
     navTab,
     open,
@@ -114,4 +194,16 @@ export function useDocsSidebar(): DocsSidebarContextValue {
     throw new Error("useDocsSidebar must be used within a DocsSidebarProvider");
   }
   return ctx;
+}
+
+export function useDocsTileCatalog(): ITileCatalog | undefined {
+  return useDocsSidebar().tileCatalog;
+}
+
+export function useDocsResolveTileVisual(): (tileDef: IBrainTileDef) => TileVisual | undefined {
+  return useDocsSidebar().resolveTileVisual;
+}
+
+export function useDocsWithBrainServices(): <T>(callback: () => T) => T {
+  return useDocsSidebar().withBrainServices;
 }

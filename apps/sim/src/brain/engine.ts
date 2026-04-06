@@ -1,8 +1,11 @@
+import { withMindcraftEnvironmentServices } from "@mindcraft-lang/core";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import * as ECS from "miniplex";
 import type { Playground } from "@/game/scenes/Playground";
+import { flushPendingBrainRebuilds } from "../services/brain-runtime";
+import { getMindcraftEnvironment } from "../services/mindcraft-environment";
 import { Actor, type Archetype } from "./actor";
-import { ARCHETYPES } from "./archetypes";
+import { ARCHETYPES, createArchetypeFallbackBrain } from "./archetypes";
 import { BLIP_DAMAGE, BLIP_RADIUS, BLIP_SPEED, type Blip, BlipPool } from "./blip";
 import type { MoverConfig } from "./movement";
 
@@ -17,7 +20,6 @@ const GAZE_SMOOTHING = 0.08; // Lerp factor per frame (lower = smoother)
 import type { Vector2 } from "@mindcraft-lang/core";
 import { heatColor } from "@/lib/color";
 import { getDefaultBrain, loadBrainFromLocalStorage } from "../services/brain-persistence";
-import { type ActiveBrainContainer, registerActiveBrainContainer, shouldRebuildBrain } from "../services/brain-runtime";
 import { loadDesiredCounts } from "../services/population-persistence";
 import { drawMovementIntent } from "./movement";
 import { type ScoreSnapshot, ScoreTracker } from "./score";
@@ -30,12 +32,11 @@ import {
   type SightResult,
 } from "./vision";
 
-export class Engine implements ActiveBrainContainer {
+export class Engine {
   private world: ECS.World<Actor>;
   private actors: { [key in Archetype]: ECS.Query<Actor> };
   private brains: { [key in Archetype]: BrainDef };
   private moverCfg: { [key in Archetype]: Partial<MoverConfig> };
-  private unregisterActiveBrainContainer?: () => void;
 
   get clock(): Phaser.Time.Clock {
     return this.scene.time;
@@ -116,13 +117,16 @@ export class Engine implements ActiveBrainContainer {
 
     // Initialize brains: localStorage -> pre-loaded default .brain asset -> empty brain
     const loadBrain = (archetype: Archetype): BrainDef => {
+      const cloneBrain = (brainDef: BrainDef): BrainDef =>
+        withMindcraftEnvironmentServices(getMindcraftEnvironment(), () => brainDef.clone());
+
       const fromStorage = loadBrainFromLocalStorage(archetype);
       if (fromStorage) return fromStorage;
 
-      const fromAsset = getDefaultBrain(archetype)?.clone();
-      if (fromAsset) return fromAsset;
+      const fromAsset = getDefaultBrain(archetype);
+      if (fromAsset) return cloneBrain(fromAsset);
 
-      return ARCHETYPES[archetype].brain.clone();
+      return createArchetypeFallbackBrain(archetype);
     };
 
     this.brains = {
@@ -147,10 +151,6 @@ export class Engine implements ActiveBrainContainer {
   }
 
   start() {
-    if (!this.unregisterActiveBrainContainer) {
-      this.unregisterActiveBrainContainer = registerActiveBrainContainer(this);
-    }
-
     // Create the spatial grid after the scene is ready so dimensions are known.
     // Cell size 150px balances grid granularity vs. overhead for typical vision ranges (600px).
     this.grid = new SpatialGrid(this.worldWidth, this.worldHeight, 150);
@@ -173,11 +173,6 @@ export class Engine implements ActiveBrainContainer {
   }
 
   shutdown() {
-    if (this.unregisterActiveBrainContainer) {
-      this.unregisterActiveBrainContainer();
-      this.unregisterActiveBrainContainer = undefined;
-    }
-
     // Clean up blips
     this.blipPool.destroyAll();
 
@@ -189,6 +184,8 @@ export class Engine implements ActiveBrainContainer {
   }
 
   tick(time: number, dt: number) {
+    flushPendingBrainRebuilds();
+
     // Rebuild spatial grid once per tick -- O(N) and avoids incremental bookkeeping
     this.grid.rebuild(this.world.entities);
 
@@ -342,14 +339,6 @@ export class Engine implements ActiveBrainContainer {
     const actorsQuery = this.actors[archetype];
     for (const actor of actorsQuery.entities) {
       actor.replaceBrain(newBrainDef);
-    }
-  }
-
-  rebuildBrainsUsingChangedActions(changedRevisions: ReadonlyMap<string, string>): void {
-    for (const actor of this.world.entities) {
-      if (shouldRebuildBrain(actor.brain, changedRevisions)) {
-        actor.replaceBrain();
-      }
     }
   }
 

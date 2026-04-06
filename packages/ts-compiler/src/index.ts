@@ -7,7 +7,7 @@ export type {
   ExtractedParam,
   ProjectCompileResult,
 } from "./compiler/compile.js";
-export { compileUserTile, UserTileProject } from "./compiler/compile.js";
+export { compileUserTile, isCompilerControlledPath, UserTileProject } from "./compiler/compile.js";
 export type { TsDiagCode } from "./compiler/diag-codes.js";
 export {
   CompileDiagCode,

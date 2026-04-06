@@ -1,4 +1,4 @@
-import { getBrainServices } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { buildHostActionBinding } from "../action-def";
 import fnEat from "./eat";
 import fnMove from "./move";
@@ -6,8 +6,8 @@ import fnSay from "./say";
 import fnShoot from "./shoot";
 import fnTurn from "./turn";
 
-export function registerActuators() {
-  const { actions, functions: fns } = getBrainServices();
+export function registerActuators(services: BrainServices) {
+  const { actions, functions: fns } = services;
   actions.register(buildHostActionBinding("actuator", fnMove));
   actions.register(buildHostActionBinding("actuator", fnSay));
   actions.register(buildHostActionBinding("actuator", fnEat));

@@ -516,8 +516,7 @@ export class BrainRuleDef implements IBrainRuleDef {
     this.serialize(stream);
     stream.resetRead(); // Reset stream read position to beginning
     const newRule = new BrainRuleDef();
-    // pass in brain's local catalog for deserialization of full-save tiles (like literals and variables)
-    newRule.deserialize(stream, this.brain()?.catalog() ? List.from([this.brain()!.catalog()]) : undefined);
+    newRule.deserialize(stream, buildBinaryDeserializationCatalogs(this.brain()));
     // Note: new rule is unpaged (page_ is undefined) and has fresh subscriptions
     return newRule;
   }

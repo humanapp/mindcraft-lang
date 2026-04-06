@@ -1,5 +1,5 @@
-import type { Vector2 } from "@mindcraft-lang/core";
-import { type IBrain, type IBrainDef, mkSensorTileId } from "@mindcraft-lang/core/brain";
+import type { MindcraftBrain, Vector2 } from "@mindcraft-lang/core";
+import { type IBrainDef, mkSensorTileId } from "@mindcraft-lang/core/brain";
 import { createSimBrain } from "@/services/brain-runtime";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
@@ -104,7 +104,7 @@ export class Actor {
   actorId: number;
   archetype: Archetype;
   brainDef: IBrainDef;
-  brain: IBrain;
+  brain: MindcraftBrain;
   mover: Mover;
   sprite: Phaser.Physics.Matter.Sprite;
   debugGraphics?: Phaser.GameObjects.Graphics; // For debug visualization
@@ -167,8 +167,8 @@ export class Actor {
 
   replaceBrain(brainDef: IBrainDef = this.brainDef) {
     this.brainDef = brainDef;
-    this.brain.shutdown();
     this.brain.events().removeAllListeners();
+    this.brain.dispose();
     this.brain = createSimBrain(this.brainDef, this);
     this.brain.events().on("page_activated", this.pageActivated);
     this.brain.events().on("page_deactivated", this.pageDeactivated);
@@ -401,7 +401,7 @@ export class Actor {
       this.pupils[1].destroy();
       this.pupils = undefined;
     }
-    this.brain.shutdown();
     this.brain.events().removeAllListeners();
+    this.brain.dispose();
   }
 }

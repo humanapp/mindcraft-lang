@@ -10,6 +10,7 @@
     { "path": "packages/bridge-client/tsconfig.json" },
     { "path": "packages/bridge-client/tsconfig.spec.json" },
     { "path": "packages/bridge-app/tsconfig.json" },
+    { "path": "packages/bridge-app/tsconfig.spec.json" },
     { "path": "packages/docs/tsconfig.json" },
     { "path": "packages/ui/tsconfig.json" },
     { "path": "apps/sim/tsconfig.json" },

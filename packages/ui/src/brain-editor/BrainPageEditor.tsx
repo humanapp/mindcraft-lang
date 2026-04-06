@@ -1,7 +1,9 @@
 import { task, type thread } from "@mindcraft-lang/core";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { useEffect, useRef, useState } from "react";
+import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainRuleEditor } from "./BrainRuleEditor";
+import { runWithBrainServices } from "./brain-services";
 import type { BrainCommandHistory } from "./commands";
 
 interface BrainPageEditorProps {
@@ -45,6 +47,7 @@ function flattenRules(rules: BrainRuleDef[], depth: number = 0, startLineNumber:
 }
 
 export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 }: BrainPageEditorProps) {
+  const { withBrainServices } = useBrainEditorConfig();
   const [ruleCount, setRuleCount] = useState(pageDef.children().size());
   const [updateCounter, setUpdateCounter] = useState(0);
   const parseTimerRef = useRef<thread | null>(null);
@@ -81,7 +84,9 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
       cancelParseTimer();
 
       parseTimerRef.current = task.delay(PARSE_DEBOUNCE_SECS, () => {
-        pageDef.typecheck();
+        runWithBrainServices(withBrainServices, () => {
+          pageDef.typecheck();
+        });
         parseTimerRef.current = null;
       });
     };
@@ -106,7 +111,7 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
         parseTimerRef.current = null;
       }
     };
-  }, [pageDef]);
+  }, [pageDef, withBrainServices]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: ruleCount and updateCounter are intentional trigger signals
   useEffect(() => {

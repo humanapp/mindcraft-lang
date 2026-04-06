@@ -9,6 +9,8 @@ import {
 import { type BrainDef, BrainRuleDef, type RuleJson } from "@mindcraft-lang/core/brain/model";
 import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 import { isClipboardLoggingEnabled } from "../settings";
+import type { BrainServicesRunner } from "./brain-services";
+import { runWithBrainServices } from "./brain-services";
 
 /**
  * Serialized clipboard payload for copied rules.
@@ -67,9 +69,7 @@ function collectReferencedTileIds(rule: BrainRuleDef, out: Set<string>): void {
  * Serializes the rule and a subset of the source brain's local catalog
  * (only tiles referenced by this rule) so the clipboard is self-contained.
  */
-export function copyRuleToClipboard(rule: BrainRuleDef): void {
-  const ruleJson = rule.toJson();
-
+export function copyRuleToClipboard(rule: BrainRuleDef, withBrainServices?: BrainServicesRunner): void {
   const referencedIds = new Set<string>();
   collectReferencedTileIds(rule, referencedIds);
 
@@ -88,7 +88,10 @@ export function copyRuleToClipboard(rule: BrainRuleDef): void {
     }
   }
 
-  const catalogJson = tempCatalog.toJson();
+  const { ruleJson, catalogJson } = runWithBrainServices(withBrainServices, () => ({
+    ruleJson: rule.toJson(),
+    catalogJson: tempCatalog.toJson(),
+  }));
 
   clipboardData = { ruleJsons: [ruleJson], catalogJson, pageNames };
   if (isClipboardLoggingEnabled()) {
@@ -145,8 +148,11 @@ function remapTileSet(
  *
  * Returns the deserialized rule, or undefined if the clipboard is empty.
  */
-export function deserializeRuleFromClipboard(destBrain: BrainDef): BrainRuleDef | undefined {
-  const rules = deserializeAllRulesFromClipboard(destBrain);
+export function deserializeRuleFromClipboard(
+  destBrain: BrainDef,
+  withBrainServices?: BrainServicesRunner
+): BrainRuleDef | undefined {
+  const rules = deserializeAllRulesFromClipboard(destBrain, withBrainServices);
   return rules.length > 0 ? rules[0] : undefined;
 }
 
@@ -157,78 +163,81 @@ export function deserializeRuleFromClipboard(destBrain: BrainDef): BrainRuleDef 
  * is empty. Catalog import and page remapping are performed once for the
  * entire batch.
  */
-export function deserializeAllRulesFromClipboard(destBrain: BrainDef): BrainRuleDef[] {
+export function deserializeAllRulesFromClipboard(
+  destBrain: BrainDef,
+  withBrainServices?: BrainServicesRunner
+): BrainRuleDef[] {
   if (!clipboardData) return [];
+  const currentClipboardData = clipboardData;
 
-  const destCatalog = destBrain.catalog();
+  return runWithBrainServices(withBrainServices, () => {
+    const destCatalog = destBrain.catalog();
 
-  const tempCatalog = new TileCatalog();
-  tempCatalog.deserializeJson(clipboardData.catalogJson);
+    const tempCatalog = new TileCatalog();
+    tempCatalog.deserializeJson(currentClipboardData.catalogJson);
 
-  const destPageIds = new Set<string>();
-  const destPageByName = new Map<string, IBrainTileDef>();
-  for (const page of destBrain.pages().toArray()) {
-    destPageIds.add(page.pageId());
-    const pageTileId = mkPageTileId(page.pageId());
-    const pageTile = destCatalog.get(pageTileId);
-    if (pageTile) {
-      destPageByName.set(page.name(), pageTile);
-    }
-  }
-
-  const pageRemapTable = new Map<string, IBrainTileDef>();
-
-  for (const tileDef of tempCatalog.getAll().toArray()) {
-    if (destCatalog.has(tileDef.tileId)) {
-      continue;
+    const destPageIds = new Set<string>();
+    const destPageByName = new Map<string, IBrainTileDef>();
+    for (const page of destBrain.pages().toArray()) {
+      destPageIds.add(page.pageId());
+      const pageTileId = mkPageTileId(page.pageId());
+      const pageTile = destCatalog.get(pageTileId);
+      if (pageTile) {
+        destPageByName.set(page.name(), pageTile);
+      }
     }
 
-    if (isPageTileId(tileDef.tileId)) {
-      const pageId = getPageIdFromTileId(tileDef.tileId);
-      if (pageId && destPageIds.has(pageId)) {
+    const pageRemapTable = new Map<string, IBrainTileDef>();
+
+    for (const tileDef of tempCatalog.getAll().toArray()) {
+      if (destCatalog.has(tileDef.tileId)) {
         continue;
       }
 
-      const sourceName = clipboardData.pageNames.get(tileDef.tileId) || tileDef.visual?.label || "";
-      const destPageTile = destPageByName.get(sourceName);
-      if (destPageTile) {
-        const placeholder = new BrainTileMissingDef(tileDef.tileId, "page", sourceName);
-        destCatalog.registerTileDef(placeholder);
-        pageRemapTable.set(tileDef.tileId, destPageTile);
+      if (isPageTileId(tileDef.tileId)) {
+        const pageId = getPageIdFromTileId(tileDef.tileId);
+        if (pageId && destPageIds.has(pageId)) {
+          continue;
+        }
+
+        const sourceName = currentClipboardData.pageNames.get(tileDef.tileId) || tileDef.visual?.label || "";
+        const destPageTile = destPageByName.get(sourceName);
+        if (destPageTile) {
+          const placeholder = new BrainTileMissingDef(tileDef.tileId, "page", sourceName);
+          destCatalog.registerTileDef(placeholder);
+          pageRemapTable.set(tileDef.tileId, destPageTile);
+        } else {
+          const label = currentClipboardData.pageNames.get(tileDef.tileId) || tileDef.visual?.label || "page";
+          const missingTile = new BrainTileMissingDef(tileDef.tileId, "page", label);
+          destCatalog.registerTileDef(missingTile);
+        }
       } else {
-        const label = clipboardData.pageNames.get(tileDef.tileId) || tileDef.visual?.label || "page";
-        const missingTile = new BrainTileMissingDef(tileDef.tileId, "page", label);
-        destCatalog.registerTileDef(missingTile);
+        destCatalog.registerTileDef(tileDef);
       }
-    } else {
-      destCatalog.registerTileDef(tileDef);
     }
-  }
 
-  const catalogs = List.from([destCatalog, getBrainServices().tiles]);
-  const results: BrainRuleDef[] = [];
+    const catalogs = List.from([destCatalog, getBrainServices().tiles]);
+    const results: BrainRuleDef[] = [];
 
-  for (const ruleJson of clipboardData.ruleJsons) {
-    const newRule = new BrainRuleDef();
-    // Include the global tile catalog so that registered tiles (sensors, actuators, etc.)
-    // can be resolved even though they are not stored in the brain's local catalog.
-    newRule.deserializeJson(ruleJson, catalogs);
+    for (const ruleJson of currentClipboardData.ruleJsons) {
+      const newRule = new BrainRuleDef();
+      newRule.deserializeJson(ruleJson, catalogs);
+
+      if (pageRemapTable.size > 0) {
+        remapPageTiles(newRule, pageRemapTable);
+      }
+
+      results.push(newRule);
+    }
 
     if (pageRemapTable.size > 0) {
-      remapPageTiles(newRule, pageRemapTable);
+      for (const sourceTileId of pageRemapTable.keys()) {
+        destCatalog.delete(sourceTileId);
+      }
     }
 
-    results.push(newRule);
-  }
-
-  // Clean up placeholder tiles after all rules have been deserialized
-  if (pageRemapTable.size > 0) {
-    for (const sourceTileId of pageRemapTable.keys()) {
-      destCatalog.delete(sourceTileId);
-    }
-  }
-
-  return results;
+    return results;
+  });
 }
 
 // Plain-JSON shape that matches the serialized form inside brain fence blocks.

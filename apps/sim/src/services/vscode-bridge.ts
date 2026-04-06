@@ -1,149 +1,119 @@
-import { AppProject, type AppProjectOptions } from "@mindcraft-lang/bridge-app";
-import { buildAmbientDeclarations } from "@mindcraft-lang/ts-compiler";
+import { type AppBridge, type AppBridgeState, createAppBridge } from "@mindcraft-lang/bridge-app";
+import { createCompilationFeature } from "@mindcraft-lang/bridge-app/compilation";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
-import {
-  createCompilationProvider,
-  getAllCompileResults,
-  handleCompilationResult,
-  lastCompilationHadTsErrors,
-} from "./user-tile-compiler";
-import { handleRecompilation } from "./user-tile-registration";
+import { getUiPreferences } from "./ui-preferences";
+import { getWorkspaceCompiler, initUserTileCompiler } from "./user-tile-compiler";
+import { getWorkspaceStore, initWorkspaceStore } from "./workspace-store";
 
-const LS_FS_KEY = "sim:vscode-bridge:filesystem";
-
-type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
+type ConnectionStatus = AppBridgeState;
 type StatusListener = (status: ConnectionStatus) => void;
-
 type JoinCodeListener = (joinCode: string | undefined) => void;
 
-let project: AppProject;
+let bridge: AppBridge | undefined;
+let currentStatus: ConnectionStatus = "disconnected";
 let currentJoinCode: string | undefined;
-const unsubs: (() => void)[] = [];
+
 const listeners = new Set<StatusListener>();
 const joinCodeListeners = new Set<JoinCodeListener>();
 
-let saveTimer: ReturnType<typeof setTimeout> | undefined;
+let bridgeStateUnsub: (() => void) | undefined;
 
-const TS_CONFIG = `{
-  "compilerOptions": {
-    "target": "ES2016",
-    "module": "ES2020",
-    "moduleResolution": "bundler",
-    "strict": true,
-    "noLib": true,
-    "skipLibCheck": true
-  },
-  "include": ["**/*.ts", "**/*.d.ts"]
-}`;
-
-function saveFilesystem(): void {
-  if (saveTimer !== undefined) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    const exported = project.files.raw.export();
-    localStorage.setItem(LS_FS_KEY, JSON.stringify([...exported]));
-  }, 500);
-}
-
-function loadFilesystem(): AppProjectOptions["filesystem"] {
-  const json = localStorage.getItem(LS_FS_KEY);
-  if (!json) return new Map();
-  try {
-    return new Map(JSON.parse(json));
-  } catch {
-    return new Map();
-  }
-}
-
-function notifyListeners(status: ConnectionStatus): void {
-  for (const fn of listeners) {
-    fn(status);
+function notifyStatusListeners(status: ConnectionStatus): void {
+  for (const listener of listeners) {
+    listener(status);
   }
 }
 
 function notifyJoinCodeListeners(joinCode: string | undefined): void {
-  currentJoinCode = joinCode;
-  for (const fn of joinCodeListeners) {
-    fn(joinCode);
+  for (const listener of joinCodeListeners) {
+    listener(joinCode);
   }
 }
 
-function wireSession(): void {
-  for (const unsub of unsubs) unsub();
-  unsubs.length = 0;
+function applyBridgeSnapshot(activeBridge: AppBridge): void {
+  const snapshot = activeBridge.snapshot();
 
-  unsubs.push(project.session.addEventListener("status", notifyListeners));
-  unsubs.push(project.onJoinCodeChange(notifyJoinCodeListeners));
+  if (snapshot.status !== currentStatus) {
+    currentStatus = snapshot.status;
+    notifyStatusListeners(currentStatus);
+  }
+
+  if (snapshot.joinCode !== currentJoinCode) {
+    currentJoinCode = snapshot.joinCode;
+    notifyJoinCodeListeners(currentJoinCode);
+  }
 }
 
-const AMBIENT_PATH = "mindcraft.d.ts";
+function wireBridgeState(activeBridge: AppBridge): void {
+  bridgeStateUnsub?.();
+  bridgeStateUnsub = activeBridge.onStateChange(() => {
+    applyBridgeSnapshot(activeBridge);
+  });
+  applyBridgeSnapshot(activeBridge);
+}
 
-function createProject(): AppProject {
-  const { vscodeBridgeUrl } = getAppSettings();
-  const filesystem = loadFilesystem();
-  filesystem.set(AMBIENT_PATH, {
-    kind: "file",
-    content: buildAmbientDeclarations(),
-    etag: `ambient-${Date.now()}`,
-    isReadonly: true,
+function createBridge(): AppBridge {
+  return createAppBridge({
+    app: {
+      id: "sim",
+      name: "Sim",
+      projectId: "sim-default",
+      projectName: "Sim",
+    },
+    bridgeUrl: getAppSettings().vscodeBridgeUrl,
+    workspace: getWorkspaceStore(),
+    features: [
+      createCompilationFeature({
+        compiler: getWorkspaceCompiler(),
+      }),
+    ],
   });
-  filesystem.set("tsconfig.json", {
-    kind: "file",
-    content: TS_CONFIG,
-    etag: `tsconfig-${Date.now()}`,
-    isReadonly: true,
-  });
-  return new AppProject({
-    appName: "sim",
-    projectId: "sim-default",
-    projectName: "Sim",
-    bridgeUrl: vscodeBridgeUrl,
-    filesystem,
-    compilationProvider: createCompilationProvider(),
-  });
+}
+
+function recreateBridge(shouldStart: boolean): void {
+  bridgeStateUnsub?.();
+  bridgeStateUnsub = undefined;
+
+  bridge?.stop();
+
+  bridge = createBridge();
+  wireBridgeState(bridge);
+
+  if (shouldStart) {
+    bridge.start();
+  }
 }
 
 export function initProject(): void {
-  project = createProject();
-  project.onRemoteFileChange(() => {
-    saveFilesystem();
-  });
-  project.compilation?.onCompilation(handleCompilationResult);
-  project.compilation?.handleFileChange({
-    action: "import",
-    entries: [...project.files.raw.export()],
-  });
-  project.compilation?.onCompilation((result) => {
-    const compileResults = getAllCompileResults();
-    handleRecompilation(compileResults, lastCompilationHadTsErrors());
-  });
+  const workspace = initWorkspaceStore();
+  initUserTileCompiler(workspace.exportSnapshot());
+  recreateBridge(false);
 }
 
 export function connectBridge(): void {
-  if (project.session.status !== "disconnected") return;
-  wireSession();
-  project.session.start();
+  if (!bridge) {
+    initProject();
+  }
+
+  if (!bridge || bridge.snapshot().status !== "disconnected") {
+    return;
+  }
+
+  bridge.start();
 }
 
 export function disconnectBridge(): void {
-  for (const unsub of unsubs) unsub();
-  unsubs.length = 0;
-  project.session.stop();
-  notifyJoinCodeListeners(undefined);
-  notifyListeners("disconnected");
+  bridge?.stop();
 }
 
 export function getBridgeStatus(): ConnectionStatus {
-  return project.session.status;
+  return currentStatus;
 }
 
-export function getProject(): AppProject {
-  return project;
-}
-
-export function onBridgeStatusChange(fn: StatusListener): () => void {
-  listeners.add(fn);
+export function onBridgeStatusChange(listener: StatusListener): () => void {
+  listeners.add(listener);
   return () => {
-    listeners.delete(fn);
+    listeners.delete(listener);
   };
 }
 
@@ -151,16 +121,16 @@ export function getBridgeJoinCode(): string | undefined {
   return currentJoinCode;
 }
 
-export function onBridgeJoinCodeChange(fn: JoinCodeListener): () => void {
-  joinCodeListeners.add(fn);
+export function onBridgeJoinCodeChange(listener: JoinCodeListener): () => void {
+  joinCodeListeners.add(listener);
   return () => {
-    joinCodeListeners.delete(fn);
+    joinCodeListeners.delete(listener);
   };
 }
 
 onAppSettingsChange((settings, prev) => {
   if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl) {
-    disconnectBridge();
-    connectBridge();
+    const shouldStart = getUiPreferences().bridgeEnabled || currentStatus !== "disconnected";
+    recreateBridge(shouldStart);
   }
 });

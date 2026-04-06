@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "../ui/input";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
+import { runWithBrainServices } from "./brain-services";
 import { resolveTileVisual } from "./tile-visual-utils";
 
 type TileGroup =
@@ -94,7 +95,7 @@ export function BrainTilePickerDialog({
   onCancel,
 }: BrainTilePickerDialogProps) {
   const editorConfig = useBrainEditorConfig();
-  const services = getBrainServices();
+  const { withBrainServices } = editorConfig;
   const [filter, setFilter] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -108,121 +109,133 @@ export function BrainTilePickerDialog({
   }, [isOpen]);
 
   const catalogs = React.useMemo(() => {
-    const list = List.from<ITileCatalog>([services.tiles]);
+    const servicesTiles = runWithBrainServices(withBrainServices, () => getBrainServices().tiles);
+    const list = List.from<ITileCatalog>([servicesTiles]);
     if (localCatalog) list.push(localCatalog);
     return list.asReadonly();
-  }, [services.tiles, localCatalog]);
+  }, [localCatalog, withBrainServices]);
 
   const { exactByKind, conversionByKind, hasConversions } = React.useMemo(() => {
-    const expr = exprProp ?? (existingTiles ? parseTilesForSuggestions(existingTiles) : undefined);
-    const unclosedParenDepth = existingTiles ? countUnclosedParens(existingTiles, replaceTileIndex) : 0;
-    const context: InsertionContext = {
-      ruleSide: side,
-      expectedType,
-      expr,
-      replaceTileIndex,
-      availableCapabilities,
-      unclosedParenDepth,
-    };
-    const result = suggestTiles(context, catalogs);
+    return runWithBrainServices(withBrainServices, () => {
+      const expr = exprProp ?? (existingTiles ? parseTilesForSuggestions(existingTiles) : undefined);
+      const unclosedParenDepth = existingTiles ? countUnclosedParens(existingTiles, replaceTileIndex) : 0;
+      const context: InsertionContext = {
+        ruleSide: side,
+        expectedType,
+        expr,
+        replaceTileIndex,
+        availableCapabilities,
+        unclosedParenDepth,
+      };
+      const result = suggestTiles(context, catalogs);
 
-    const tileToGroup = (tileDef: IBrainTileDef): TileGroup => {
-      if (
-        tileDef.kind === "sensor" &&
-        tileDef.placement !== undefined &&
-        (tileDef.placement & TilePlacement.Inline) !== 0
-      ) {
-        if (tileDef.capabilities().get(CoreCapabilityBits.PageSensor) !== 0) return "page";
-        return "function";
-      }
-      if (tileDef.kind === "factory") {
-        if (tileDef.tileId.includes("var.factory")) return "variable";
-        if (tileDef.tileId.includes("lit.factory")) return "literal";
-        return "other";
-      }
-      switch (tileDef.kind) {
-        case "parameter":
-        case "modifier":
-          return "parameter+modifier";
-        case "operator":
-        case "controlFlow":
-          return "operator+controlFlow";
-        case "actuator":
-        case "sensor":
-        case "variable":
-        case "accessor":
-        case "literal":
-        case "page":
-          return tileDef.kind;
-        default:
+      const tileToGroup = (tileDef: IBrainTileDef): TileGroup => {
+        if (
+          tileDef.kind === "sensor" &&
+          tileDef.placement !== undefined &&
+          (tileDef.placement & TilePlacement.Inline) !== 0
+        ) {
+          if (tileDef.capabilities().get(CoreCapabilityBits.PageSensor) !== 0) return "page";
+          return "function";
+        }
+        if (tileDef.kind === "factory") {
+          if (tileDef.tileId.includes("var.factory")) return "variable";
+          if (tileDef.tileId.includes("lit.factory")) return "literal";
           return "other";
+        }
+        switch (tileDef.kind) {
+          case "parameter":
+          case "modifier":
+            return "parameter+modifier";
+          case "operator":
+          case "controlFlow":
+            return "operator+controlFlow";
+          case "actuator":
+          case "sensor":
+          case "variable":
+          case "accessor":
+          case "literal":
+          case "page":
+            return tileDef.kind;
+          default:
+            return "other";
+        }
+      };
+
+      const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
+      const precedingIndex = replaceTileIndex != null ? replaceTileIndex - 1 : (existingTiles?.size() ?? 0) - 1;
+      const precedingTile = precedingIndex >= 0 ? existingTiles?.get(precedingIndex) : undefined;
+      const pagesFirst = precedingTile?.tileId === switchPageTileId;
+
+      const groupOrder = pagesFirst
+        ? allTileGroups([
+            "page",
+            "literal",
+            "variable",
+            "function",
+            "actuator",
+            "sensor",
+            "parameter+modifier",
+            "accessor",
+            "operator+controlFlow",
+            "other",
+          ])
+        : allTileGroups([
+            "actuator",
+            "sensor",
+            "function",
+            "parameter+modifier",
+            "variable",
+            "accessor",
+            "literal",
+            "page",
+            "operator+controlFlow",
+            "other",
+          ]);
+      const groupIndex = (g: TileGroup) => {
+        const idx = groupOrder.indexOf(g);
+        return idx === -1 ? groupOrder.length : idx;
+      };
+
+      const exactGroups = new Map<TileGroup, TileSuggestion[]>();
+      for (let i = 0; i < result.exact.size(); i++) {
+        const s = result.exact.get(i);
+        const group = tileToGroup(s.tileDef);
+        if (!exactGroups.has(group)) exactGroups.set(group, []);
+        exactGroups.get(group)?.push(s);
       }
-    };
 
-    const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
-    const precedingIndex = replaceTileIndex != null ? replaceTileIndex - 1 : (existingTiles?.size() ?? 0) - 1;
-    const precedingTile = precedingIndex >= 0 ? existingTiles?.get(precedingIndex) : undefined;
-    const pagesFirst = precedingTile?.tileId === switchPageTileId;
+      const convGroups = new Map<TileGroup, TileSuggestion[]>();
+      for (let i = 0; i < result.withConversion.size(); i++) {
+        const s = result.withConversion.get(i);
+        const group = tileToGroup(s.tileDef);
+        if (!convGroups.has(group)) convGroups.set(group, []);
+        convGroups.get(group)?.push(s);
+      }
 
-    const groupOrder = pagesFirst
-      ? allTileGroups([
-          "page",
-          "literal",
-          "variable",
-          "function",
-          "actuator",
-          "sensor",
-          "parameter+modifier",
-          "accessor",
-          "operator+controlFlow",
-          "other",
-        ])
-      : allTileGroups([
-          "actuator",
-          "sensor",
-          "function",
-          "parameter+modifier",
-          "variable",
-          "accessor",
-          "literal",
-          "page",
-          "operator+controlFlow",
-          "other",
-        ]);
-    const groupIndex = (g: TileGroup) => {
-      const idx = groupOrder.indexOf(g);
-      return idx === -1 ? groupOrder.length : idx;
-    };
+      for (const tiles of convGroups.values()) {
+        tiles.sort((a, b) => a.conversionCost - b.conversionCost);
+      }
 
-    const exactGroups = new Map<TileGroup, TileSuggestion[]>();
-    for (let i = 0; i < result.exact.size(); i++) {
-      const s = result.exact.get(i);
-      const group = tileToGroup(s.tileDef);
-      if (!exactGroups.has(group)) exactGroups.set(group, []);
-      exactGroups.get(group)!.push(s);
-    }
+      const sortEntries = (entries: [TileGroup, TileSuggestion[]][]) =>
+        entries.sort((a, b) => groupIndex(a[0]) - groupIndex(b[0]));
 
-    const convGroups = new Map<TileGroup, TileSuggestion[]>();
-    for (let i = 0; i < result.withConversion.size(); i++) {
-      const s = result.withConversion.get(i);
-      const group = tileToGroup(s.tileDef);
-      if (!convGroups.has(group)) convGroups.set(group, []);
-      convGroups.get(group)!.push(s);
-    }
-
-    for (const tiles of convGroups.values()) {
-      tiles.sort((a, b) => a.conversionCost - b.conversionCost);
-    }
-
-    const sortEntries = (entries: [TileGroup, TileSuggestion[]][]) =>
-      entries.sort((a, b) => groupIndex(a[0]) - groupIndex(b[0]));
-
-    return {
-      exactByKind: sortEntries(Array.from(exactGroups.entries())),
-      conversionByKind: sortEntries(Array.from(convGroups.entries())),
-      hasConversions: result.withConversion.size() > 0,
-    };
-  }, [side, expectedType, exprProp, replaceTileIndex, availableCapabilities, existingTiles, catalogs]);
+      return {
+        exactByKind: sortEntries(Array.from(exactGroups.entries())),
+        conversionByKind: sortEntries(Array.from(convGroups.entries())),
+        hasConversions: result.withConversion.size() > 0,
+      };
+    });
+  }, [
+    side,
+    expectedType,
+    exprProp,
+    replaceTileIndex,
+    availableCapabilities,
+    existingTiles,
+    catalogs,
+    withBrainServices,
+  ]);
 
   const filterGroups = (groups: [TileGroup, TileSuggestion[]][]): [TileGroup, TileSuggestion[]][] => {
     if (filter.length === 0) return groups;

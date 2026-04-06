@@ -1,4 +1,6 @@
 import type { BrainDef, BrainPageDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainServicesRunner } from "../brain-services";
+import { runWithBrainServices } from "../brain-services";
 import type { BrainCommand } from "./BrainCommand";
 
 /**
@@ -9,26 +11,31 @@ export class AddPageCommand implements BrainCommand {
 
   constructor(
     private brainDef: BrainDef,
-    private insertAtIndex?: number
+    private insertAtIndex?: number,
+    private readonly withBrainServices?: BrainServicesRunner
   ) {}
 
   execute(): void {
-    if (this.insertAtIndex !== undefined) {
-      const result = this.brainDef.insertNewPageAtIndex(this.insertAtIndex);
-      if (result.success) {
-        this.addedIndex = result.value.index;
+    runWithBrainServices(this.withBrainServices, () => {
+      if (this.insertAtIndex !== undefined) {
+        const result = this.brainDef.insertNewPageAtIndex(this.insertAtIndex);
+        if (result.success) {
+          this.addedIndex = result.value.index;
+        }
+      } else {
+        const result = this.brainDef.appendNewPage();
+        if (result.success) {
+          this.addedIndex = result.value.index;
+        }
       }
-    } else {
-      const result = this.brainDef.appendNewPage();
-      if (result.success) {
-        this.addedIndex = result.value.index;
-      }
-    }
+    });
   }
 
   undo(): void {
     if (this.addedIndex !== undefined) {
-      this.brainDef.removePageAtIndex(this.addedIndex);
+      runWithBrainServices(this.withBrainServices, () => {
+        this.brainDef.removePageAtIndex(this.addedIndex!);
+      });
     }
   }
 
@@ -41,27 +48,33 @@ export class AddPageCommand implements BrainCommand {
  * Command to remove a page from the brain.
  */
 export class RemovePageCommand implements BrainCommand {
-  private removedPage?: BrainPageDef;
+  private removedPage: BrainPageDef | null = null;
   private pageToRemove: BrainPageDef | null = null;
 
   constructor(
     private brainDef: BrainDef,
-    private pageIndex: number
+    private pageIndex: number,
+    private readonly withBrainServices?: BrainServicesRunner
   ) {}
 
   execute(): void {
-    const page = this.pageToRemove || this.brainDef.pages().get(this.pageIndex);
-    if (page) {
-      this.removedPage = page as BrainPageDef;
-      this.brainDef.removePageAtIndex(this.pageIndex);
-      this.pageToRemove = null;
-    }
+    runWithBrainServices(this.withBrainServices, () => {
+      const page = this.pageToRemove || this.brainDef.pages().get(this.pageIndex);
+      if (page) {
+        this.removedPage = page as BrainPageDef;
+        this.brainDef.removePageAtIndex(this.pageIndex);
+        this.pageToRemove = null;
+      }
+    });
   }
 
   undo(): void {
     if (this.removedPage) {
-      this.brainDef.insertPageAtIndex(this.pageIndex, this.removedPage);
-      this.pageToRemove = this.removedPage;
+      const removedPage = this.removedPage;
+      runWithBrainServices(this.withBrainServices, () => {
+        this.brainDef.insertPageAtIndex(this.pageIndex, removedPage);
+        this.pageToRemove = removedPage;
+      });
     }
   }
 
@@ -76,38 +89,45 @@ export class RemovePageCommand implements BrainCommand {
  * and adding a new empty one as an atomic operation for proper undo/redo.
  */
 export class ReplaceLastPageCommand implements BrainCommand {
-  private removedPage?: BrainPageDef;
-  private addedPage?: BrainPageDef;
+  private removedPage: BrainPageDef | null = null;
+  private addedPage: BrainPageDef | null = null;
   private pageToRemove: BrainPageDef | null = null;
 
   constructor(
     private brainDef: BrainDef,
-    private pageIndex: number
+    private pageIndex: number,
+    private readonly withBrainServices?: BrainServicesRunner
   ) {}
 
   execute(): void {
-    const page = this.pageToRemove || this.brainDef.pages().get(this.pageIndex);
-    if (page) {
-      this.removedPage = page as BrainPageDef;
-      this.brainDef.removePageAtIndex(this.pageIndex);
+    runWithBrainServices(this.withBrainServices, () => {
+      const page = this.pageToRemove || this.brainDef.pages().get(this.pageIndex);
+      if (page) {
+        this.removedPage = page as BrainPageDef;
+        this.brainDef.removePageAtIndex(this.pageIndex);
 
-      const result = this.brainDef.appendNewPage();
-      if (result.success) {
-        this.addedPage = result.value.page;
+        const result = this.brainDef.appendNewPage();
+        if (result.success) {
+          this.addedPage = result.value.page;
+        }
+
+        this.pageToRemove = null;
       }
-
-      this.pageToRemove = null;
-    }
+    });
   }
 
   undo(): void {
     if (this.addedPage && this.removedPage) {
-      const addedIndex = this.brainDef.pages().indexOf(this.addedPage);
-      if (addedIndex >= 0) {
-        this.brainDef.removePageAtIndex(addedIndex);
-      }
-      this.brainDef.insertPageAtIndex(this.pageIndex, this.removedPage);
-      this.pageToRemove = this.removedPage;
+      const addedPage = this.addedPage;
+      const removedPage = this.removedPage;
+      runWithBrainServices(this.withBrainServices, () => {
+        const addedIndex = this.brainDef.pages().indexOf(addedPage);
+        if (addedIndex >= 0) {
+          this.brainDef.removePageAtIndex(addedIndex);
+        }
+        this.brainDef.insertPageAtIndex(this.pageIndex, removedPage);
+        this.pageToRemove = removedPage;
+      });
     }
   }
 

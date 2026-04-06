@@ -1,10 +1,12 @@
 import { List } from "@mindcraft-lang/core";
-import { getBrainServices, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
 import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import type { Element } from "hast";
+import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useDocsResolveTileVisual, useDocsTileCatalog, useDocsWithBrainServices } from "./DocsSidebarContext";
 
 // ---------------------------------------------------------------------------
 // Print-friendly tile chip -- no glass, no gradients, border-only
@@ -16,7 +18,8 @@ interface PrintTileChipProps {
 }
 
 function PrintTileChip({ tileDef, side }: PrintTileChipProps) {
-  const visual = tileDef.visual as TileVisual | undefined;
+  const resolveTileVisual = useDocsResolveTileVisual();
+  const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
   const iconUrl = visual?.iconUrl;
   const baseColor = (side === RuleSide.When ? visual?.colorDef?.when : visual?.colorDef?.do) || "#475569";
@@ -101,11 +104,16 @@ interface FlatPrintRule {
   lineNumber: number;
 }
 
-function buildPrintLocalCatalog(entries: CatalogTileJson[]): TileCatalog | undefined {
+function buildPrintLocalCatalog(
+  entries: CatalogTileJson[],
+  withBrainServices: <T>(callback: () => T) => T
+): TileCatalog | undefined {
   if (entries.length === 0) return undefined;
-  const catalog = new TileCatalog();
-  catalog.deserializeJson(List.from(entries));
-  return catalog;
+  return withBrainServices(() => {
+    const catalog = new TileCatalog();
+    catalog.deserializeJson(List.from(entries));
+    return catalog;
+  });
 }
 
 function collectPrintCatalogEntries(rules: PlainRule[], topLevel?: CatalogTileJson[]): CatalogTileJson[] {
@@ -118,13 +126,17 @@ function collectPrintCatalogEntries(rules: PlainRule[], topLevel?: CatalogTileJs
   return entries;
 }
 
-function resolveTiles(tileIds: string[], localCatalog?: TileCatalog): IBrainTileDef[] {
-  const globalCatalog = getBrainServices().tiles;
-  return tileIds.map((id) => localCatalog?.get(id) ?? globalCatalog.get(id)).filter(Boolean) as IBrainTileDef[];
+function resolveTiles(
+  tileIds: string[],
+  tileCatalog: ITileCatalog | undefined,
+  localCatalog?: TileCatalog
+): IBrainTileDef[] {
+  return tileIds.map((id) => localCatalog?.get(id) ?? tileCatalog?.get(id)).filter(Boolean) as IBrainTileDef[];
 }
 
 function flattenPlainRules(
   rules: PlainRule[],
+  tileCatalog: ITileCatalog | undefined,
   localCatalog: TileCatalog | undefined,
   depth = 0,
   startLine = 1
@@ -134,13 +146,13 @@ function flattenPlainRules(
   for (const rule of rules) {
     result.push({
       comment: rule.comment,
-      whenTiles: resolveTiles(rule.when ?? [], localCatalog),
-      doTiles: resolveTiles(rule.do ?? [], localCatalog),
+      whenTiles: resolveTiles(rule.when ?? [], tileCatalog, localCatalog),
+      doTiles: resolveTiles(rule.do ?? [], tileCatalog, localCatalog),
       depth,
       lineNumber: line++,
     });
     if (rule.children && rule.children.length > 0) {
-      const children = flattenPlainRules(rule.children, localCatalog, depth + 1, line);
+      const children = flattenPlainRules(rule.children, tileCatalog, localCatalog, depth + 1, line);
       result.push(...children);
       line += children.length;
     }
@@ -149,6 +161,8 @@ function flattenPlainRules(
 }
 
 function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string }) {
+  const tileCatalog = useDocsTileCatalog();
+  const withBrainServices = useDocsWithBrainServices();
   const noFrame = meta.toLowerCase().split(/\s+/).includes("noframe");
   const metaSide = meta.toLowerCase().split(/\s+/).includes("do") ? RuleSide.Do : RuleSide.When;
 
@@ -159,8 +173,8 @@ function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string 
     const singleId = parsed?.tile ?? parsed?.tileId;
     if (parsed && typeof parsed === "object" && typeof singleId === "string") {
       const single = parsed as PlainSingleTile;
-      const localCatalog = buildPrintLocalCatalog(single.catalog ?? []);
-      const tiles = resolveTiles([singleId], localCatalog);
+      const localCatalog = buildPrintLocalCatalog(single.catalog ?? [], withBrainServices);
+      const tiles = resolveTiles([singleId], tileCatalog, localCatalog);
       const side = single.side === "do" ? RuleSide.Do : single.side === "when" ? RuleSide.When : metaSide;
       return (
         <div className={noFrame ? "docs-print-tiles-noframe" : "docs-print-brain-block"}>
@@ -175,8 +189,8 @@ function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string 
     // Multiple tiles: { tiles: [...] }
     if (parsed && typeof parsed === "object" && Array.isArray(parsed.tiles)) {
       const multi = parsed as PlainMultiTile;
-      const localCatalog = buildPrintLocalCatalog(multi.catalog ?? []);
-      const tiles = resolveTiles(multi.tiles, localCatalog);
+      const localCatalog = buildPrintLocalCatalog(multi.catalog ?? [], withBrainServices);
+      const tiles = resolveTiles(multi.tiles, tileCatalog, localCatalog);
       const side = multi.side === "do" ? RuleSide.Do : multi.side === "when" ? RuleSide.When : metaSide;
       return (
         <div className={noFrame ? "docs-print-tiles-noframe" : "docs-print-brain-block"}>
@@ -202,8 +216,8 @@ function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string 
       return <pre className="docs-print-code-fallback">{content}</pre>;
     }
 
-    const localCatalog = buildPrintLocalCatalog(catalogEntries);
-    const flat = flattenPlainRules(rules, localCatalog);
+    const localCatalog = buildPrintLocalCatalog(catalogEntries, withBrainServices);
+    const flat = flattenPlainRules(rules, tileCatalog, localCatalog);
     return (
       <div className="docs-print-brain-block">
         {flat.map((r) => (
@@ -244,7 +258,8 @@ function PrintTagPill({ label }: { label: string }) {
 // ---------------------------------------------------------------------------
 
 function PrintInlineTileIcon({ tileDef }: { tileDef: IBrainTileDef }) {
-  const visual = tileDef.visual as TileVisual | undefined;
+  const resolveTileVisual = useDocsResolveTileVisual();
+  const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
   const iconUrl = visual?.iconUrl;
   const baseColor = visual?.colorDef?.when || visual?.colorDef?.do || "#475569";
@@ -267,32 +282,11 @@ const PRINT_MD_COMPONENTS: Components = {
   },
 
   code({ className, children, node }) {
-    const lang = (className ?? "").replace("language-", "");
-
-    if (lang === "brain") {
-      const meta = ((node as Element | undefined)?.data as { meta?: string } | undefined)?.meta ?? "";
-      return <PrintBrainCodeBlock content={String(children).trimEnd()} meta={meta} />;
-    }
-
-    if (!className) {
-      const text = String(children);
-      if (text.startsWith("tile:")) {
-        const tileId = text.slice(5);
-        const tileDef = getBrainServices().tiles.get(tileId);
-        if (tileDef) {
-          return <PrintInlineTileIcon tileDef={tileDef} />;
-        }
-        return <code className="docs-print-code-inline">{tileId}</code>;
-      }
-      if (text.startsWith("tag:")) {
-        const spec = parsePrintTagSpec(text);
-        if (spec) {
-          return <PrintTagPill label={spec.label} />;
-        }
-      }
-    }
-
-    return <code className="docs-print-code-inline">{children}</code>;
+    return (
+      <PrintMarkdownCode className={className} node={node}>
+        {children}
+      </PrintMarkdownCode>
+    );
   },
 
   h1({ children }) {
@@ -353,6 +347,44 @@ const PRINT_MD_COMPONENTS: Components = {
     return <td className="docs-print-td">{children}</td>;
   },
 };
+
+function PrintMarkdownCode({
+  className,
+  children,
+  node,
+}: {
+  className?: string;
+  children?: ReactNode;
+  node?: unknown;
+}) {
+  const tileCatalog = useDocsTileCatalog();
+  const lang = (className ?? "").replace("language-", "");
+
+  if (lang === "brain") {
+    const meta = ((node as Element | undefined)?.data as { meta?: string } | undefined)?.meta ?? "";
+    return <PrintBrainCodeBlock content={String(children).trimEnd()} meta={meta} />;
+  }
+
+  if (!className) {
+    const text = String(children);
+    if (text.startsWith("tile:")) {
+      const tileId = text.slice(5);
+      const tileDef = tileCatalog?.get(tileId);
+      if (tileDef) {
+        return <PrintInlineTileIcon tileDef={tileDef} />;
+      }
+      return <code className="docs-print-code-inline">{tileId}</code>;
+    }
+    if (text.startsWith("tag:")) {
+      const spec = parsePrintTagSpec(text);
+      if (spec) {
+        return <PrintTagPill label={spec.label} />;
+      }
+    }
+  }
+
+  return <code className="docs-print-code-inline">{children}</code>;
+}
 
 // ---------------------------------------------------------------------------
 // DocsPrintView -- renders a markdown doc page for print

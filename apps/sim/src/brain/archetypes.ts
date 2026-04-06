@@ -1,4 +1,6 @@
+import { withMindcraftEnvironmentServices } from "@mindcraft-lang/core";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { getMindcraftEnvironment } from "@/services/mindcraft-environment";
 import type { Archetype } from "./actor";
 import type { MoverConfig } from "./movement";
 
@@ -48,7 +50,7 @@ export interface VisionConfig {
 export interface ArchetypeConfig {
   physics: ArchetypePhysicsConfig;
   mover: Partial<MoverConfig>;
-  brain: BrainDef;
+  brainName: string;
   initialSpawnCount: number;
   energy: EnergyConfig;
   vision: VisionConfig;
@@ -75,7 +77,7 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
       lateralDamping: 0.92,
       maxSpeed: 2,
     },
-    brain: BrainDef.emptyBrainDef("Carnivore Brain"),
+    brainName: "Carnivore Brain",
     initialSpawnCount: 2,
     vision: { range: 600, halfFOV: Math.PI * 0.65 },
     energy: {
@@ -106,7 +108,7 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
       lateralDamping: 0.92,
       maxSpeed: 5,
     },
-    brain: BrainDef.emptyBrainDef("Herbivore Brain"),
+    brainName: "Herbivore Brain",
     initialSpawnCount: 5,
     vision: { range: 600, halfFOV: Math.PI * 0.65 },
     energy: {
@@ -137,7 +139,7 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
       lateralDamping: 0,
       maxSpeed: 0,
     },
-    brain: BrainDef.emptyBrainDef("Plant Brain"),
+    brainName: "Plant Brain",
     initialSpawnCount: 5,
     vision: { range: 600, halfFOV: Math.PI },
     energy: {
@@ -151,3 +153,9 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
     respawnDelay: 4000,
   },
 };
+
+export function createArchetypeFallbackBrain(archetype: Archetype): BrainDef {
+  return withMindcraftEnvironmentServices(getMindcraftEnvironment(), () =>
+    BrainDef.emptyBrainDef(ARCHETYPES[archetype].brainName)
+  );
+}

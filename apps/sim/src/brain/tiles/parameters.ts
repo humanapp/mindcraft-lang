@@ -1,9 +1,9 @@
-import { CoreTypeIds, getBrainServices } from "@mindcraft-lang/core/brain";
+import { type BrainServices, CoreTypeIds } from "@mindcraft-lang/core/brain";
 import { BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import { TileIds } from "@/brain/tileids";
 import { MyTypeIds } from "@/brain/type-system";
 
-export function registerParameterTiles() {
+export function registerParameterTiles(services: BrainServices) {
   const delayVisual = {
     label: "delay ms",
     iconUrl: "/assets/brain/icons/delay.svg",
@@ -20,7 +20,7 @@ export function registerParameterTiles() {
     label: "per/sec",
     iconUrl: "/assets/brain/icons/fps.svg",
   };
-  const { tiles } = getBrainServices();
+  const { tiles } = services;
   tiles.registerTileDef(
     new BrainTileParameterDef(TileIds.Parameter.AnonymousActorRef, MyTypeIds.ActorRef, {
       hidden: true,

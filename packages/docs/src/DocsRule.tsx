@@ -3,6 +3,7 @@ import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } 
 import { adjustColor, formatValue, glassEffect, saturateColor } from "@mindcraft-lang/ui";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { useLayoutEffect, useState } from "react";
+import { useDocsResolveTileVisual } from "./DocsSidebarContext";
 
 const tileGlass = glassEffect({
   highlightSize: 4,
@@ -36,7 +37,8 @@ interface DocsTileChipProps {
 }
 
 export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
-  const visual = tileDef.visual as TileVisual | undefined;
+  const resolveTileVisual = useDocsResolveTileVisual();
+  const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
   const iconUrl = visual?.iconUrl || "/assets/brain/icons/question_mark.svg";
   const baseColor = (side === RuleSide.When ? visual?.colorDef?.when : visual?.colorDef?.do) || "#475569";
@@ -176,7 +178,8 @@ interface InlineTileIconProps {
 }
 
 export function InlineTileIcon({ tileDef }: InlineTileIconProps) {
-  const visual = tileDef.visual as TileVisual | undefined;
+  const resolveTileVisual = useDocsResolveTileVisual();
+  const visual = resolveTileVisual(tileDef);
   const label = visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
   const iconUrl = visual?.iconUrl;
   const baseColor = visual?.colorDef?.when || visual?.colorDef?.do || "#475569";
@@ -206,8 +209,9 @@ interface DocsRuleRowProps {
 }
 
 function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: DocsRuleRowProps) {
-  const whenLabel = whenTiles.map((t) => (t.visual as TileVisual | undefined)?.label ?? t.tileId).join(", ");
-  const doLabel = doTiles.map((t) => (t.visual as TileVisual | undefined)?.label ?? t.tileId).join(", ");
+  const resolveTileVisual = useDocsResolveTileVisual();
+  const whenLabel = whenTiles.map((t) => resolveTileVisual(t)?.label ?? t.tileId).join(", ");
+  const doLabel = doTiles.map((t) => resolveTileVisual(t)?.label ?? t.tileId).join(", ");
   const rowLabel =
     lineNumber !== undefined
       ? `Rule ${lineNumber}: When ${whenLabel || ""}, do ${doLabel || ""}`

@@ -22,7 +22,6 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     getVariable: () => undefined,
     setVariable: () => {},
     clearVariable: () => {},
-    fiberId: 0,
     time: 0,
     dt: 0,
     currentTick: 0,

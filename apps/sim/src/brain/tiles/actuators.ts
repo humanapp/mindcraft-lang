@@ -1,4 +1,4 @@
-import { getBrainServices } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
 import { type ActionDef, buildActionDescriptor } from "@/brain/fns/action-def";
 import fnEat from "@/brain/fns/actuators/eat";
@@ -7,8 +7,8 @@ import fnSay from "@/brain/fns/actuators/say";
 import fnShoot from "@/brain/fns/actuators/shoot";
 import fnTurn from "@/brain/fns/actuators/turn";
 
-export function registerActuatorTiles() {
-  const { tiles } = getBrainServices();
+export function registerActuatorTiles(services: BrainServices) {
+  const { tiles } = services;
 
   function registerActuator(fnDef: ActionDef) {
     tiles.registerTileDef(

@@ -9,6 +9,7 @@ import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileFactoryDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBrainEditorConfig } from "../BrainEditorContext";
+import { runWithBrainServices } from "../brain-services";
 import { resolveTileVisual } from "../tile-visual-utils";
 
 interface UseTileSelectionOptions {
@@ -22,7 +23,7 @@ interface UseTileSelectionOptions {
  */
 export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelectionOptions) {
   const editorConfig = useBrainEditorConfig();
-  const { isAppVariableFactoryTileId } = editorConfig;
+  const { isAppVariableFactoryTileId, withBrainServices } = editorConfig;
 
   const [showCreateVariableDialog, setShowCreateVariableDialog] = useState(false);
   const [showCreateLiteralDialog, setShowCreateLiteralDialog] = useState(false);
@@ -69,9 +70,13 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
 
       const catalog = ruleDefRef.current.brain()?.catalog();
 
-      let newTileDef = pendingFactoryTile.manufacture(pendingFactoryTile, {
-        name: varName,
-      }) as BrainTileVariableDef;
+      let newTileDef = runWithBrainServices(
+        withBrainServices,
+        () =>
+          pendingFactoryTile.manufacture(pendingFactoryTile, {
+            name: varName,
+          }) as BrainTileVariableDef
+      );
       if (newTileDef) {
         if (catalog) {
           const existingDef = catalog.find((td) => {
@@ -95,7 +100,7 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
       setPendingTileAction(null);
       onComplete?.();
     },
-    [pendingFactoryTile, pendingTileAction, onComplete]
+    [pendingFactoryTile, pendingTileAction, onComplete, withBrainServices]
   );
 
   const handleVariableDialogClose = useCallback(() => {
@@ -110,10 +115,14 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
 
       const catalog = ruleDefRef.current.brain()?.catalog();
 
-      let newTileDef = pendingFactoryTile.manufacture(pendingFactoryTile, {
-        value,
-        displayFormat,
-      }) as BrainTileLiteralDef;
+      let newTileDef = runWithBrainServices(
+        withBrainServices,
+        () =>
+          pendingFactoryTile.manufacture(pendingFactoryTile, {
+            value,
+            displayFormat,
+          }) as BrainTileLiteralDef
+      );
       if (newTileDef) {
         if (catalog) {
           const existingDef = catalog.find((td) => {
@@ -139,7 +148,7 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
       setPendingTileAction(null);
       onComplete?.();
     },
-    [pendingFactoryTile, pendingTileAction, onComplete]
+    [pendingFactoryTile, pendingTileAction, onComplete, withBrainServices]
   );
 
   const handleLiteralDialogClose = useCallback(() => {

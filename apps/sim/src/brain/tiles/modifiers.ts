@@ -1,8 +1,8 @@
-import { getBrainServices } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { BrainTileModifierDef } from "@mindcraft-lang/core/brain/tiles";
 import { TileIds } from "@/brain/tileids";
 
-export function registerModifierTiles() {
+export function registerModifierTiles(services: BrainServices) {
   const timeMsVisual = {
     label: "millis",
     iconUrl: "/assets/brain/icons/milliseconds.svg",
@@ -59,7 +59,7 @@ export function registerModifierTiles() {
     label: "slowly",
     iconUrl: "/assets/brain/icons/slowly.svg",
   };
-  const { tiles } = getBrainServices();
+  const { tiles } = services;
   tiles.registerTileDef(new BrainTileModifierDef(TileIds.Modifier.TimeMs, { visual: timeMsVisual }));
   tiles.registerTileDef(
     new BrainTileModifierDef(TileIds.Modifier.TimeSecs, {

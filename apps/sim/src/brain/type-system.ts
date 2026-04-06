@@ -1,9 +1,9 @@
 import { Dict, List, TypeUtils, Vector2 } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   CoreOpId,
   CoreTypeIds,
   type ExecutionContext,
-  getBrainServices,
   type MapValue,
   mkCallDef,
   mkNumberValue,
@@ -126,8 +126,8 @@ export function mkActorRefDirect(actor: Actor): StructValue {
   return mkStructValue(MyTypeIds.ActorRef, new Dict(), actor);
 }
 
-export function registerTypes() {
-  const { types } = getBrainServices();
+export function registerTypes(services: BrainServices) {
+  const { types } = services;
 
   // Define vector2 struct type
   const vector2TypeId = types.addStructType(MyTypeNames.Vector2, {
@@ -155,7 +155,7 @@ export function registerTypes() {
   }
 
   // Register assignment overloads for struct types (no-op at runtime; compiler special-cases assignment)
-  const { operatorOverloads } = getBrainServices();
+  const { operatorOverloads } = services;
   operatorOverloads.binary(
     CoreOpId.Assign,
     MyTypeIds.Vector2,
@@ -173,7 +173,7 @@ export function registerTypes() {
     false
   );
 
-  const { conversions } = getBrainServices();
+  const { conversions } = services;
   const anonCallDef = mkCallDef({
     type: "arg",
     tileId: "",

@@ -17,6 +17,7 @@ import {
   BYTECODE_VERSION,
   CoreSensorId,
   CoreTypeIds,
+  type ExecutionContext,
   type ITileCatalog,
   type MapValue,
   mkCallDef,
@@ -25,6 +26,7 @@ import {
   mkVariableTileId,
   NativeType,
   Op,
+  type StructTypeDef,
   TilePlacement,
   TRUE_VALUE,
 } from "@mindcraft-lang/core/brain";
@@ -87,20 +89,21 @@ function createAlphaModule(capture: {
     id: "alpha-module",
     install(api): void {
       const alphaTypeId = mkTypeId(NativeType.Struct, "AlphaThing");
-      capture.typeId = api.defineType({
+      const alphaDef: StructTypeDef = {
         coreType: NativeType.Struct,
         typeId: alphaTypeId,
         codec: noopCodec,
         name: "AlphaThing",
         fields: List.empty(),
-      });
+      };
+      capture.typeId = api.defineType(alphaDef);
 
       const helperCallDef = mkCallDef({ type: "bag", items: [] });
       api.registerFunction({
         name: "alpha.helper",
         isAsync: false,
         fn: {
-          exec: (_ctx, _args: MapValue) => mkNumberValue(7),
+          exec: (_ctx: ExecutionContext, _args: MapValue) => mkNumberValue(7),
         },
         callDef: helperCallDef,
       });
