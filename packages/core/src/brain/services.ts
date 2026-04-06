@@ -153,14 +153,6 @@ export function setBrainServices(services: BrainServices): void {
 }
 
 /**
- * Alias for setBrainServices() to support existing code during migration.
- * @deprecated Use setBrainServices() instead
- */
-export function setDefaultServices(services: BrainServices): void {
-  setBrainServices(services);
-}
-
-/**
  * Checks if brain services have been initialized.
  *
  * Useful for preventing double-initialization in registerCoreBrainComponents().
@@ -172,14 +164,6 @@ export function hasBrainServices(): boolean {
 }
 
 /**
- * Alias for hasBrainServices() to support existing code during migration.
- * @deprecated Use hasBrainServices() instead
- */
-export function hasDefaultServices(): boolean {
-  return hasBrainServices();
-}
-
-/**
  * Resets the brain services instance to undefined.
  *
  * This should only be used in testing to ensure a clean state between tests.
@@ -187,12 +171,4 @@ export function hasDefaultServices(): boolean {
  */
 export function resetBrainServices(): void {
   _brainServices = undefined;
-}
-
-/**
- * Alias for resetBrainServices() to support existing code during migration.
- * @deprecated Use resetBrainServices() instead
- */
-export function resetDefaultServices(): void {
-  resetBrainServices();
 }

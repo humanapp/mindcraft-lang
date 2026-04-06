@@ -196,32 +196,106 @@ the sim app's `globals.css` for a complete example.
 
 ## 6. Integrating `@mindcraft-lang/core`
 
-The core package provides the brain model, tile catalog, compiler, runtime, and VM. Import
-from its sub-path exports:
+The core package provides the brain model, tile catalog, compiler, runtime, and VM.
+
+### Tier 1: Core-only (runtime)
+
+Create a `MindcraftEnvironment`, install modules, and create brains:
 
 ```typescript
-// Brain model types
-import type { BrainDef } from "@mindcraft-lang/core/brain/model";
+import {
+  createMindcraftEnvironment,
+  coreModule,
+  type MindcraftModule,
+  type MindcraftModuleApi,
+} from "@mindcraft-lang/core";
 
-// Tile definitions and catalog
-import { getBrainServices } from "@mindcraft-lang/core/brain";
+// Define your app module with custom types, sensors, actuators, and tiles
+function createAppModule(): MindcraftModule {
+  return {
+    id: "my-app",
+    install(api: MindcraftModuleApi) {
+      // Register app-specific types, sensors, actuators, operators, and tiles
+      // api.defineType(...)
+      // api.registerHostSensor(...)
+      // api.registerHostActuator(...)
+      // api.registerTile(...)
+    },
+  };
+}
 
-// Compiler
-import { compile } from "@mindcraft-lang/core/brain/compiler";
+const environment = createMindcraftEnvironment({
+  modules: [coreModule(), createAppModule()],
+});
 
-// Runtime / VM
-import { BrainRunner } from "@mindcraft-lang/core/brain/runtime";
+// Create and run a brain
+const brain = environment.createBrain(brainDef, { context: actor });
+brain.startup();
+brain.think(now);
+```
 
-// Platform utilities
-import { Vector2, Vector3, List, Dict } from "@mindcraft-lang/core";
+### Tier 2: Core + TypeScript-authored tiles
+
+Add `@mindcraft-lang/ts-compiler` to compile user-authored TypeScript actions:
+
+```typescript
+import { createMindcraftEnvironment, coreModule } from "@mindcraft-lang/core";
+import { createWorkspaceCompiler } from "@mindcraft-lang/ts-compiler";
+
+const environment = createMindcraftEnvironment({
+  modules: [coreModule(), createAppModule()],
+});
+
+// Create a workspace compiler bound to the environment
+const compiler = createWorkspaceCompiler({ environment });
+
+// Compile and install the action bundle
+const result = compiler.compile();
+if (result.bundle) {
+  const update = environment.replaceActionBundle(result.bundle);
+  if (update.invalidatedBrains.length > 0) {
+    // Schedule brain rebuilds at a safe frame boundary
+    environment.rebuildInvalidatedBrains();
+  }
+}
+```
+
+### Tier 3: Core + compiler + VS Code bridge
+
+Add `@mindcraft-lang/bridge-app` for VS Code extension connectivity:
+
+```typescript
+import { createAppBridge } from "@mindcraft-lang/bridge-app";
+import { createCompilationFeature } from "@mindcraft-lang/bridge-app/compilation";
+import { createWorkspaceCompiler } from "@mindcraft-lang/ts-compiler";
+
+const compiler = createWorkspaceCompiler({ environment });
+
+const bridge = createAppBridge({
+  app: {
+    id: "my-app",
+    name: "My App",
+    projectId: "project-1",
+    projectName: "Project",
+  },
+  bridgeUrl: "ws://localhost:6464",
+  workspace: {
+    exportSnapshot: () => workspaceStore.export(),
+    applyRemoteChange: (change) => workspaceStore.apply(change),
+    onLocalChange: (listener) => workspaceStore.onChange(listener),
+  },
+  features: [createCompilationFeature({ compiler })],
+});
+
+bridge.start();
 ```
 
 ### Available sub-path exports
 
 | Import path                                    | Contents                              |
 | ---------------------------------------------- | ------------------------------------- |
-| `@mindcraft-lang/core`                         | Top-level: platform utils, re-exports |
-| `@mindcraft-lang/core/brain`                   | Brain services, tile catalog          |
+| `@mindcraft-lang/core`                         | Top-level: environment, modules, platform utils |
+| `@mindcraft-lang/core/brain`                   | Brain services, tile catalog (internal) |
 | `@mindcraft-lang/core/brain/model`             | BrainDef, page/rule/tile interfaces   |
 | `@mindcraft-lang/core/brain/tiles`             | Built-in tile definitions             |
 | `@mindcraft-lang/core/brain/compiler`          | Compiler and parser                   |
@@ -512,35 +586,33 @@ When `docsIntegration` is not provided, the brain editor hides the docs toggle b
 
 ## 9. Minimal Integration Checklist
 
-### Core only
+### Tier 1: Core only (runtime)
 
 - [ ] `npm install @mindcraft-lang/core`
 - [ ] Add `optimizeDeps.exclude: ["@mindcraft-lang/core"]` to Vite config
-- [ ] Import from sub-path exports as needed
+- [ ] Create a `MindcraftEnvironment` with `createMindcraftEnvironment({ modules: [coreModule()] })`
+- [ ] Define app-specific modules via `MindcraftModule` and install at creation time
+- [ ] Create brains with `environment.createBrain(brainDef)`
 
-### Core + UI (brain editor)
+### Tier 2: Core + TypeScript-authored tiles
 
-- [ ] `npm install @mindcraft-lang/core @mindcraft-lang/ui`
-- [ ] Add Vite alias for `@mindcraft-lang/ui` pointing to `node_modules/.../src`
-- [ ] Add `uiPlugin()` from `@mindcraft-lang/ui/src/vite-plugin.ts` to Vite plugins
-- [ ] Add tsconfig `paths` for `@mindcraft-lang/ui`
-- [ ] Import `@mindcraft-lang/ui/ui.css` and add `@source` directive in globals.css
-- [ ] Define shadcn/ui theme variables in globals.css
-- [ ] Build a `BrainEditorConfig` and wrap your app with `BrainEditorProvider`
+- [ ] `npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler`
+- [ ] Create a workspace compiler with `createWorkspaceCompiler({ environment })`
+- [ ] Compile and install bundles with `environment.replaceActionBundle(bundle)`
+- [ ] Handle brain invalidation with `environment.onBrainsInvalidated(...)`
+- [ ] Schedule rebuilds with `environment.rebuildInvalidatedBrains()`
 
-### Core + UI + Docs (full integration)
+### Tier 3: Core + compiler + VS Code bridge
 
-- [ ] `npm install @mindcraft-lang/core @mindcraft-lang/ui @mindcraft-lang/docs`
-- [ ] Add Vite aliases for both `@mindcraft-lang/ui` and `@mindcraft-lang/docs`
-- [ ] Add `uiPlugin()` from `@mindcraft-lang/ui/src/vite-plugin.ts` to Vite plugins
-- [ ] Add tsconfig `paths` for both source-only packages
-- [ ] Add `@source` directives for both packages in globals.css
-- [ ] Create a docs manifest with `AppTileDocMeta` and `AppPatternDocMeta`
-- [ ] Write markdown content files
-- [ ] Build a `DocsRegistry` using `buildDocsRegistry()`
-- [ ] Wrap your app with `DocsSidebarProvider` and render `DocsSidebar`
-- [ ] Optionally add a `/docs` route using `DocsPage`
-- [ ] Optionally wire `useDocsSidebar()` into `BrainEditorConfig`
+- [ ] `npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler @mindcraft-lang/bridge-app`
+- [ ] Create an app bridge with `createAppBridge({ workspace, features: [...] })`
+- [ ] Add compilation with `createCompilationFeature({ compiler })`
+- [ ] Manage workspace persistence through the app-owned `WorkspaceAdapter`
+
+### UI and docs (any tier)
+
+- [ ] `npm install @mindcraft-lang/ui` (for brain editor and shadcn/ui components)
+- [ ] `npm install @mindcraft-lang/docs` (for documentation sidebar and renderer)
 
 ---
 

@@ -3,7 +3,7 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { fourCC } from "../../primitives";
-import type { IBrainTileDef, ITileCatalog, ITileVisual } from "../interfaces";
+import type { IBrainTileDef, ITileCatalog } from "../interfaces";
 import { getBrainServices } from "../services";
 import { BrainTileLiteralDef, type LiteralTileJson } from "./literals";
 import { BrainTileMissingDef, type MissingTileJson } from "./missing";
@@ -21,33 +21,8 @@ const STags = {
   TCNT: fourCC("TCNT"), // Tile count
 };
 
-type FnVisualProvider = (tileDef: IBrainTileDef) => ITileVisual;
-
 export function getCatalogFallbackLabel(tileDef: IBrainTileDef): string {
   return tileDef.tileId.split(".").pop() || tileDef.tileId;
-}
-
-let tileVisualProvider: FnVisualProvider = (tileDef: IBrainTileDef) => {
-  return { label: getCatalogFallbackLabel(tileDef) };
-};
-
-export function setTileVisualProvider(provider: (tileDef: IBrainTileDef) => ITileVisual) {
-  tileVisualProvider = provider;
-}
-
-export function getTileVisualProvider(): FnVisualProvider {
-  return tileVisualProvider;
-}
-
-function mergeTileVisual(tile: IBrainTileDef, providedVisual: ITileVisual): ITileVisual {
-  if (!tile.visual) {
-    return providedVisual;
-  }
-
-  return {
-    ...providedVisual,
-    ...tile.visual,
-  };
 }
 
 export class TileCatalog implements ITileCatalog {
@@ -169,9 +144,6 @@ export class TileCatalog implements ITileCatalog {
   }
 
   registerTileDef(tile: IBrainTileDef) {
-    if (getTileVisualProvider) {
-      tile.visual = mergeTileVisual(tile, getTileVisualProvider()(tile));
-    }
     this.add(tile);
   }
 }

@@ -31,13 +31,7 @@ import {
   TRUE_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import {
-  BrainTileParameterDef,
-  BrainTileSensorDef,
-  BrainTileVariableDef,
-  getTileVisualProvider,
-  setTileVisualProvider,
-} from "@mindcraft-lang/core/brain/tiles";
+import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 
 const noopCodec = {
   encode(): void {},
@@ -468,29 +462,22 @@ describe("mindcraft environment", () => {
     assert.equal(resolveTileFromChain(bundleChain, overlayLayered.tileId), bundleLayered.tile);
   });
 
-  test("stores hydrated and bundled tiles without invoking the global visual provider", () => {
+  test("stores hydrated and bundled tiles without mutating tile visuals", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const internals = getEnvironmentInternals(environment);
-    const originalVisualProvider = getTileVisualProvider();
 
-    setTileVisualProvider(() => ({ label: "provider-label" }));
+    const hydrated = createBundleSensor("hydrated.visual");
+    environment.hydrateTileMetadata({
+      revision: "hydrated.visual.rev1",
+      tiles: [hydrated.tile],
+    });
 
-    try {
-      const hydrated = createBundleSensor("hydrated.visual");
-      environment.hydrateTileMetadata({
-        revision: "hydrated.visual.rev1",
-        tiles: [hydrated.tile],
-      });
+    assert.equal(internals.hydratedCatalog.get(hydrated.tile.tileId)?.visual, undefined);
 
-      assert.equal(internals.hydratedCatalog.get(hydrated.tile.tileId)?.visual, undefined);
+    const bundled = createBundleSensor("bundle.visual");
+    environment.replaceActionBundle(createActionBundle("bundle.visual.rev1", [bundled]));
 
-      const bundled = createBundleSensor("bundle.visual");
-      environment.replaceActionBundle(createActionBundle("bundle.visual.rev1", [bundled]));
-
-      assert.equal(internals.bundleCatalog.get(bundled.tile.tileId)?.visual, undefined);
-    } finally {
-      setTileVisualProvider(originalVisualProvider);
-    }
+    assert.equal(internals.bundleCatalog.get(bundled.tile.tileId)?.visual, undefined);
   });
 
   test("selectively invalidates brains whose linked bundle action revisions change", () => {

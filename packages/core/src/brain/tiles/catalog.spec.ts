@@ -1,18 +1,7 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, test } from "node:test";
+import { describe, test } from "node:test";
 import { CoreTypeIds } from "@mindcraft-lang/core/brain";
-import {
-  BrainTileParameterDef,
-  getTileVisualProvider,
-  setTileVisualProvider,
-  TileCatalog,
-} from "@mindcraft-lang/core/brain/tiles";
-
-const originalTileVisualProvider = getTileVisualProvider();
-
-afterEach(() => {
-  setTileVisualProvider(originalTileVisualProvider);
-});
+import { BrainTileParameterDef, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 
 describe("TileCatalog", () => {
   test("preserves explicit visuals when registering tiles", () => {
@@ -28,14 +17,13 @@ describe("TileCatalog", () => {
     assert.equal(tile.visual?.label, "Explicit Label");
   });
 
-  test("keeps legacy visual providers as fallback augmentation", () => {
-    setTileVisualProvider(() => ({ label: "Provider Label" }));
-
+  test("registers tiles without visual when none is provided", () => {
     const catalog = new TileCatalog();
-    const tile = new BrainTileParameterDef("provider-visual", CoreTypeIds.Number);
+    const tile = new BrainTileParameterDef("no-visual", CoreTypeIds.Number);
 
     catalog.registerTileDef(tile);
 
-    assert.equal(tile.visual?.label, "Provider Label");
+    assert.equal(catalog.has(tile.tileId), true);
+    assert.equal(tile.visual, undefined);
   });
 });

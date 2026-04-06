@@ -24,37 +24,40 @@ Depends on infrastructure from:
 
 ## Status
 
-As of 2026-04-06, Phases S1-S6 are complete. Phase S7 remains open.
+As of 2026-04-06, all phases (S1-S7) are complete. The plan is closed.
 
 The codebase now exposes and proves the new package-level
-runtime/compiler/bridge seam in the real sim app, while documentation and
-legacy cleanup remain outstanding:
+runtime/compiler/bridge seam in the real sim app, with documentation updated
+and legacy seams cleaned up:
 
-- `@mindcraft-lang/core` now supports `createMindcraftEnvironment()`,
+- `@mindcraft-lang/core` exposes `createMindcraftEnvironment()`,
   `coreModule()`, environment-owned catalogs, environment-scoped brain
   deserialization, startup tile hydration, compiled action bundle replacement,
   and runnable `MindcraftBrain` instances without requiring apps to touch the
   singleton seam.
-- `@mindcraft-lang/ts-compiler` now exposes both
+- `@mindcraft-lang/ts-compiler` exposes both
   `buildCompiledActionBundle()` and `createWorkspaceCompiler({ environment })`
   for the new runtime-facing authored-action path, including compiler-owned
   ambient/`tsconfig.json` handling on the new seam.
-- `@mindcraft-lang/ui` and `@mindcraft-lang/docs` now support app-owned tile
+- `@mindcraft-lang/ui` and `@mindcraft-lang/docs` support app-owned tile
   presentation plus injected brain-services runners for runtime-facing
   editor/docs flows instead of relying on process-global singleton state.
-- Legacy core globals still exist as secondary migration paths, and some
-  internal core code still depends on a tightly scoped environment-owned
-  services context via `runWithBrainServices(...)`.
-- `@mindcraft-lang/bridge-app` now exposes `createAppBridge(...)` over
-  app-owned workspace adapters plus feature composition, and
-  `@mindcraft-lang/bridge-app/compilation` now exposes the feature-oriented
-  optional compilation seam over `AppBridgeFeatureContext`; `AppProject` and
-  the root-level compilation seam remain as legacy migration paths.
-- `apps/sim` now boots through `createMindcraftEnvironment()`,
+- `@mindcraft-lang/bridge-app` exposes `createAppBridge(...)` over app-owned
+  workspace adapters plus feature composition, and
+  `@mindcraft-lang/bridge-app/compilation` exposes the feature-oriented
+  optional compilation seam over `AppBridgeFeatureContext`. `AppProject` and
+  compilation internals are no longer part of the public barrel.
+- `apps/sim` boots through `createMindcraftEnvironment()`,
   `createWorkspaceCompiler({ environment })`, `createAppBridge(...)`, and
   `createCompilationFeature(...)` with an app-owned debounced workspace store,
   startup tile hydration, compiler-owned system-file authority, and
   environment-owned brain invalidation/rebuild control.
+- Legacy seams that were removed in S7: `setTileVisualProvider()`,
+  `getTileVisualProvider()`, `setDefaultServices()`, `hasDefaultServices()`,
+  `resetDefaultServices()`, and public exports of `AppProject`,
+  `CompilationManager`, `CompilationProvider`, `CompilationResult`.
+- Deliberately retained: `registerCoreBrainComponents()` (test convenience,
+  100+ test files), `getBrainServices()` (internal, scoped usage only).
 
 ---
 
@@ -2639,3 +2642,117 @@ legacy seam cleanup in S7.
 - `INV-4`: fully satisfied (sim now keeps user workspace, compiler-only
   overlays, and compiler-controlled files as distinct categories on the
   standard path)
+
+### Phase S7 -- 2026-04-06
+
+**Planned vs actual:**
+
+All 4 concrete S7 deliverables were addressed. The legacy cleanup landed as
+planned, with two justified narrowing decisions on the
+`registerCoreBrainComponents()` and `getBrainServices()` removals.
+
+- Deliverable 1 (sim as reference implementation): No sim code changes were
+  needed. Sim already uses `createMindcraftEnvironment()`,
+  `createWorkspaceCompiler({ environment })`, `createAppBridge(...)`, and
+  `createCompilationFeature(...)` as the normal path from S6.
+- Deliverable 2 (three-tier integration docs): `INTEGRATION.md` now documents
+  Tier 1 (core only), Tier 2 (core + ts-compiler), and Tier 3
+  (core + ts-compiler + bridge) with code examples.
+  `packages/core/README.md` and `packages/bridge-app/README.md` now include
+  recommended integration snippets using the new seam.
+- Deliverable 3 (legacy removal):
+  - `setTileVisualProvider()`, `getTileVisualProvider()`, `mergeTileVisual()`,
+    and `FnVisualProvider` removed entirely from `packages/core`.
+  - `setDefaultServices()`, `hasDefaultServices()`, and
+    `resetDefaultServices()` deprecated aliases removed from
+    `packages/core/src/brain/services.ts`.
+  - `AppProject`, `CompilationManager`, `CompilationProvider`, and
+    `CompilationResult` removed from `packages/bridge-app`'s public barrel
+    (retained internally as implementation details).
+  - `registerCoreBrainComponents()` retained: used by 100+ test files across
+    multiple packages as a test-setup convenience. Removing it would be a
+    large mechanical churn with no user-facing benefit. It is not promoted as
+    an app integration path; the root `@mindcraft-lang/core` barrel only
+    re-exports it nested under the `brain` namespace.
+  - `getBrainServices()` retained: all sim usage is within
+    `withMindcraftEnvironmentServices(...)` scope, which is the correct
+    internal pattern. It is not used as an app-integration primitive outside
+    scoped environment activation.
+- Deliverable 4 (temporary migration helpers): `setTileVisualProvider()` was
+  the last temporary migration shim from earlier phases. It is now removed.
+  No other temporary helpers required cleanup.
+
+**Unplanned additions and discoveries:**
+
+None. S7 was a focused cleanup and documentation phase.
+
+**Design decisions:**
+
+- Retained `registerCoreBrainComponents()` as a test-facing convenience
+  export rather than undertaking a 100+ file mechanical removal. It remains
+  on the `@mindcraft-lang/core/brain` subpath and is not part of the
+  documented app integration story.
+- Retained `getBrainServices()` because all remaining call sites are internal
+  to the environment-scoped execution model, not app-level primitives.
+- Removed `AppProject` and compilation types from the bridge-app public
+  barrel but kept the implementations as internal modules used by
+  `createAppBridge(...)`.
+
+**Files changed:**
+
+- `packages/core/src/brain/tiles/catalog.ts`
+- `packages/core/src/brain/tiles/catalog.spec.ts`
+- `packages/core/src/mindcraft-environment.spec.ts`
+- `packages/core/src/brain/services.ts`
+- `packages/bridge-app/src/index.ts`
+- `INTEGRATION.md`
+- `packages/core/README.md`
+- `packages/bridge-app/README.md`
+
+**Verification:**
+
+- `packages/core`: `npm run typecheck`, `npm run check`, `npm run build`,
+  `npm test` -- 575 tests, 0 failures
+- `packages/bridge-app`: `npm run typecheck`, `npm run check`, `npm test`
+- `apps/sim`: `npm run typecheck`, `npm run check`
+- `packages/ui`: `npm run typecheck`
+
+**Acceptance criteria result:**
+
+S7 is accepted. The new seam is documented as the standard integration path
+across three adoption tiers. Legacy app-facing seams have been either removed
+(`setTileVisualProvider`, deprecated service aliases, `AppProject` from public
+barrel) or narrowed to a deliberately justified internal/test subset
+(`registerCoreBrainComponents`, `getBrainServices`).
+
+### Requirements retrospective
+
+- `FR-1`: satisfied as planned (the runtime-only tier is documented in
+  INTEGRATION.md and packages/core/README.md as a supported standard path)
+- `FR-2`: satisfied as planned (the runtime + compiler tier is documented as a
+  supported standard path)
+- `FR-3`: satisfied as planned (the bridge tier is documented and validated by
+  the final bridge seam)
+- `FR-4`: satisfied as planned (the full-stack flow is proven in sim and
+  documented across all three tiers)
+- `FR-5`: satisfied as planned (the standard path no longer requires hidden
+  registries or concrete runtime classes; `registerCoreBrainComponents()`
+  remains only as a test convenience, not on the recommended app path)
+- `FR-8`: satisfied as planned
+- `FR-18`: satisfied as planned
+- `FR-19`: satisfied as planned
+- `FR-20`: satisfied as planned
+- `FR-21`: satisfied as planned
+- `FR-24`: satisfied as planned
+- `FR-25`: satisfied as planned
+- `FR-27`: satisfied as planned
+- `FR-28`: satisfied as planned
+- `NFR-1`: satisfied as planned (the final package surfaces rely only on
+  core-facing seams validated across node, esm, and rbx targets)
+- `NFR-2`: satisfied as planned
+- `NFR-6`: satisfied as planned (legacy seams are either removed or narrowed
+  to an explicitly justified subset)
+- `NFR-7`: satisfied as planned (three adoption tiers are documented with code
+  examples)
+- `INV-4`: satisfied as planned
+- `INV-6`: satisfied as planned

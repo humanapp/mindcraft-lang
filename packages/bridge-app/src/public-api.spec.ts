@@ -60,7 +60,8 @@ test("createCompilationFeature publishes diagnostics and replays them on sync", 
   let replaceWorkspaceArg: WorkspaceSnapshot | undefined;
   let compileCount = 0;
   const diagnosticsEvents: Array<{ file: string; diagnostics: readonly DiagnosticEntry[] }> = [];
-  const statusEvents: Array<{ file: string; success: boolean; diagnosticCount: { error: number; warning: number } }> = [];
+  const statusEvents: Array<{ file: string; success: boolean; diagnosticCount: { error: number; warning: number } }> =
+    [];
   const remoteChangeListeners = new Set<(change: WorkspaceChange) => void>();
   const syncListeners = new Set<() => void>();
 
@@ -152,7 +153,8 @@ test("createCompilationFeature clears previously published diagnostics when they
   let compileIndex = 0;
   const appliedChanges: WorkspaceChange[] = [];
   const diagnosticsEvents: Array<{ file: string; diagnostics: readonly DiagnosticEntry[] }> = [];
-  const statusEvents: Array<{ file: string; success: boolean; diagnosticCount: { error: number; warning: number } }> = [];
+  const statusEvents: Array<{ file: string; success: boolean; diagnosticCount: { error: number; warning: number } }> =
+    [];
   const remoteChangeListeners = new Set<(change: WorkspaceChange) => void>();
 
   const compiler: WorkspaceCompiler = {
@@ -231,7 +233,8 @@ test("createCompilationFeature republishes out-of-band compiler results through 
   };
 
   const diagnosticsEvents: Array<{ file: string; diagnostics: readonly DiagnosticEntry[] }> = [];
-  const statusEvents: Array<{ file: string; success: boolean; diagnosticCount: { error: number; warning: number } }> = [];
+  const statusEvents: Array<{ file: string; success: boolean; diagnosticCount: { error: number; warning: number } }> =
+    [];
   const syncListeners = new Set<() => void>();
   const compileListeners = new Set<(snapshot: DiagnosticSnapshot) => void>();
 

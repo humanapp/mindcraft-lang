@@ -43,6 +43,24 @@ Layers follow a strict bottom-up dependency hierarchy: `primitives -> platform -
 
 To use this package in your own app, see the [Integration Guide](https://github.com/humanapp/mindcraft-lang/blob/main/INTEGRATION.md).
 
+The main app integration entry point is `createMindcraftEnvironment()`:
+
+```typescript
+import { createMindcraftEnvironment, coreModule } from "@mindcraft-lang/core";
+
+const environment = createMindcraftEnvironment({
+  modules: [coreModule(), createAppModule()],
+});
+
+const brain = environment.createBrain(brainDef, { context: actor });
+brain.startup();
+brain.think(now);
+```
+
+Sub-path imports (`@mindcraft-lang/core/brain`, `@mindcraft-lang/core/brain/model`, etc.)
+remain available for esoteric use cases (like Roblox) and internal consumption, but webapps should
+prefer the root-level `createMindcraftEnvironment` / `coreModule` api.
+
 ## Getting Started
 
 ### Prerequisites

@@ -1,8 +1,14 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it, mock } from "node:test";
-import { FileSystem, type ExportedFileSystem, type FileSystemNotification } from "@mindcraft-lang/bridge-client";
-import { createAppBridge, type AppBridgeFeature, type AppBridgeSnapshot, type WorkspaceAdapter, type WorkspaceChange } from "@mindcraft-lang/bridge-app";
 import type { DiagnosticEntry } from "@mindcraft-lang/bridge-app";
+import {
+  type AppBridgeFeature,
+  type AppBridgeSnapshot,
+  createAppBridge,
+  type WorkspaceAdapter,
+  type WorkspaceChange,
+} from "@mindcraft-lang/bridge-app";
+import { type ExportedFileSystem, FileSystem, type FileSystemNotification } from "@mindcraft-lang/bridge-client";
 import type { WsMessage } from "@mindcraft-lang/bridge-protocol";
 
 type WsCallback = ((...args: unknown[]) => void) | null;
@@ -202,12 +208,7 @@ describe("createAppBridge", () => {
 
   it("forwards local changes and applies remote changes through the workspace adapter", () => {
     const workspace = new MemoryWorkspace(
-      new Map([
-        [
-          "src/main.ts",
-          { kind: "file", content: "const value = 1;", etag: "etag-1", isReadonly: false },
-        ],
-      ])
+      new Map([["src/main.ts", { kind: "file", content: "const value = 1;", etag: "etag-1", isReadonly: false }]])
     );
     const bridge = createBridge(workspace);
     const remoteChanges: WorkspaceChange[] = [];
@@ -262,12 +263,7 @@ describe("createAppBridge", () => {
 
   it("applies sync responses as one import change and updates the workspace snapshot", async () => {
     const workspace = new MemoryWorkspace(
-      new Map([
-        [
-          "src/stale.ts",
-          { kind: "file", content: "stale", etag: "etag-stale", isReadonly: false },
-        ],
-      ])
+      new Map([["src/stale.ts", { kind: "file", content: "stale", etag: "etag-stale", isReadonly: false }]])
     );
     const bridge = createBridge(workspace);
     const remoteChanges: WorkspaceChange[] = [];
@@ -306,10 +302,7 @@ describe("createAppBridge", () => {
     assert.ok(secondRequest?.id);
 
     const entries: ExportedFileSystem = new Map([
-      [
-        "src/fresh.ts",
-        { kind: "file", content: "fresh", etag: "etag-fresh", isReadonly: false },
-      ],
+      ["src/fresh.ts", { kind: "file", content: "fresh", etag: "etag-fresh", isReadonly: false }],
     ]);
 
     socket.simulateMessage({
@@ -337,12 +330,7 @@ describe("createAppBridge", () => {
 
   it("attaches features and replays through the sync hook with publish helpers", () => {
     const workspace = new MemoryWorkspace(
-      new Map([
-        [
-          "src/main.ts",
-          { kind: "file", content: "const value = 1;", etag: "etag-1", isReadonly: false },
-        ],
-      ])
+      new Map([["src/main.ts", { kind: "file", content: "const value = 1;", etag: "etag-1", isReadonly: false }]])
     );
     const seenSnapshots: AppBridgeSnapshot[] = [];
     let attachedWorkspaceSize = 0;
