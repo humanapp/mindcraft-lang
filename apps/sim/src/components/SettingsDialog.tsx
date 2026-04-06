@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  Switch,
 } from "@mindcraft-lang/ui";
 import { useEffect, useState } from "react";
 import { type AppSettings, getAppSettings, updateAppSettings } from "@/services/app-settings";
@@ -38,6 +39,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
           <DialogDescription className="text-slate-500">Configure application settings</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
+          <div className="flex items-center justify-between">
+            <label htmlFor="show-bridge-panel" className="text-sm font-medium text-slate-700">
+              Show VS Code Bridge Panel
+            </label>
+            <Switch
+              id="show-bridge-panel"
+              checked={draft.showBridgePanel}
+              onCheckedChange={(checked) => setDraft((prev) => ({ ...prev, showBridgePanel: checked }))}
+            />
+          </div>
           <div className="space-y-1.5">
             <label htmlFor="vscode-bridge-url" className="text-sm font-medium text-slate-700">
               VS Code Bridge URL

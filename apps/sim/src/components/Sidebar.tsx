@@ -6,6 +6,7 @@ import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { getAppSettings } from "@/services/app-settings";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
 import { getUiPreferences, updateUiPreferences } from "@/services/ui-preferences";
 import {
@@ -304,54 +305,56 @@ export function Sidebar({
         )}
 
         {/* VS Code Bridge */}
-        <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
-          <div className="flex items-center justify-between">
-            <label htmlFor="bridge-toggle" className="text-sm font-medium">
-              VS Code Bridge
-            </label>
-            <Switch
-              id="bridge-toggle"
-              checked={bridgeStatus !== "disconnected"}
-              onCheckedChange={(checked) => {
-                updateUiPreferences({ bridgeEnabled: checked });
-                if (checked) {
-                  connectBridge();
-                } else {
-                  disconnectBridge();
-                }
-              }}
-              aria-label="Toggle VS Code bridge connection"
-            />
-          </div>
-          <span
-            className={`text-xs font-mono ${
-              bridgeStatus === "connected"
-                ? "text-green-400"
-                : bridgeStatus === "connecting" || bridgeStatus === "reconnecting"
-                  ? "text-yellow-400"
-                  : "text-muted-foreground"
-            }`}
-          >
-            {bridgeStatus}
-          </span>
-          {joinCode && (
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-mono text-slate-300 truncate">{joinCode}</span>
-              <button
-                type="button"
-                className="shrink-0 p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
-                aria-label="Copy join code"
-                onClick={() => {
-                  navigator.clipboard.writeText(joinCode);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
+        {getAppSettings().showBridgePanel && (
+          <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
+            <div className="flex items-center justify-between">
+              <label htmlFor="bridge-toggle" className="text-sm font-medium">
+                VS Code Bridge
+              </label>
+              <Switch
+                id="bridge-toggle"
+                checked={bridgeStatus !== "disconnected"}
+                onCheckedChange={(checked) => {
+                  updateUiPreferences({ bridgeEnabled: checked });
+                  if (checked) {
+                    connectBridge();
+                  } else {
+                    disconnectBridge();
+                  }
                 }}
-              >
-                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-              </button>
+                aria-label="Toggle VS Code bridge connection"
+              />
             </div>
-          )}
-        </div>
+            <span
+              className={`text-xs font-mono ${
+                bridgeStatus === "connected"
+                  ? "text-green-400"
+                  : bridgeStatus === "connecting" || bridgeStatus === "reconnecting"
+                    ? "text-yellow-400"
+                    : "text-muted-foreground"
+              }`}
+            >
+              {bridgeStatus}
+            </span>
+            {joinCode && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-mono text-slate-300 truncate">{joinCode}</span>
+                <button
+                  type="button"
+                  className="shrink-0 p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
+                  aria-label="Copy join code"
+                  onClick={() => {
+                    navigator.clipboard.writeText(joinCode);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  }}
+                >
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Debug toggle */}
         <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">

@@ -2,10 +2,12 @@ const STORAGE_KEY = "app-settings";
 
 export interface AppSettings {
   vscodeBridgeUrl: string;
+  showBridgePanel: boolean;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
   vscodeBridgeUrl: "vscode-bridge.mindcraft-lang.org",
+  showBridgePanel: false,
 };
 
 type Listener = (settings: AppSettings, prev: AppSettings) => void;
