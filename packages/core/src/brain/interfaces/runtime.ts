@@ -392,9 +392,11 @@ export function resetActionInstance(ctx: ExecutionContext, callSiteId: number, n
     ctx.callSiteState = new Dict<number, ActionInstance>();
   }
 
+  const existingHostState = getActionInstance(ctx, callSiteId)?.hostState;
   const actionInstance: ActionInstance = {
     callSiteId,
     stateSlots: createActionStateSlots(numStateSlots),
+    ...(existingHostState !== undefined ? { hostState: existingHostState } : {}),
   };
   ctx.callSiteState.set(callSiteId, actionInstance);
 

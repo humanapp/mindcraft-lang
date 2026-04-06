@@ -467,7 +467,6 @@ export class Brain implements IBrain {
     this.activeRuleFiberIds = List.empty();
 
     if (this.executionContext) {
-      this.executionContext.callSiteState = undefined;
       this.executionContext.currentActionInstance = undefined;
       this.executionContext.currentCallSiteId = undefined;
       this.executionContext.rule = undefined;
