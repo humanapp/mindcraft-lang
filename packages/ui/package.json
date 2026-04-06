@@ -1,7 +1,7 @@
 {
   "name": "@mindcraft-lang/ui",
   "description": "Shared React UI components and brain editor for Mindcraft apps",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "type": "module",
   "author": "humanapp",
   "license": "MIT",
