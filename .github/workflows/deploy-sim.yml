@@ -27,8 +27,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install root dependencies
-        run: npm install
+      - name: Install packages
+        run: npm run install:packages
+
+      - name: Install sim dependencies
+        run: npm --prefix apps/sim install
 
       - name: Build sim
         working-directory: apps/sim
