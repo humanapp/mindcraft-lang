@@ -1,6 +1,6 @@
 {
   "name": "@mindcraft-lang/bridge-app",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "App-side client for the Mindcraft bridge",
   "license": "MIT",
   "type": "module",
