@@ -1,13 +1,6 @@
-import type { BitSet } from "@mindcraft-lang/core";
-import type {
-  ActionDescriptor,
-  ActionKind,
-  BrainActionCallDef,
-  HostActionBinding,
-  HostAsyncFn,
-  HostSyncFn,
-  TypeId,
-} from "@mindcraft-lang/core/brain";
+import type { BitSet, HostActuatorDefinition, HostSensorDefinition } from "@mindcraft-lang/core";
+import type { ActionDescriptor, BrainActionCallDef, HostAsyncFn, HostSyncFn, TypeId } from "@mindcraft-lang/core/brain";
+import { BrainTileActuatorDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import type { TileVisual } from "@/brain/tiles/types";
 
 type ActionDefBase = {
@@ -30,32 +23,37 @@ type AsyncActionDef = ActionDefBase & {
 
 export type ActionDef = SyncActionDef | AsyncActionDef;
 
-export function buildActionDescriptor(kind: ActionKind, actionDef: ActionDef): ActionDescriptor {
+export function toHostSensorDef(def: ActionDef): HostSensorDefinition {
+  const descriptor: ActionDescriptor = {
+    key: def.tileId,
+    kind: "sensor",
+    callDef: def.callDef,
+    isAsync: def.isAsync,
+    outputType: def.returnType,
+  };
   return {
-    key: actionDef.tileId,
-    kind,
-    callDef: actionDef.callDef,
-    isAsync: actionDef.isAsync,
-    outputType: kind === "sensor" ? actionDef.returnType : undefined,
+    descriptor,
+    function: { name: def.tileId, isAsync: def.isAsync, fn: def.fn, callDef: def.callDef },
+    tile: new BrainTileSensorDef(def.tileId, descriptor, {
+      visual: def.visual,
+      capabilities: def.capabilities,
+    }),
   };
 }
 
-export function buildHostActionBinding(kind: ActionKind, actionDef: ActionDef): HostActionBinding {
-  const descriptor = buildActionDescriptor(kind, actionDef);
-
-  if (actionDef.isAsync) {
-    return {
-      binding: "host",
-      descriptor,
-      onPageEntered: actionDef.fn.onPageEntered,
-      execAsync: actionDef.fn.exec,
-    };
-  }
-
+export function toHostActuatorDef(def: ActionDef): HostActuatorDefinition {
+  const descriptor: ActionDescriptor = {
+    key: def.tileId,
+    kind: "actuator",
+    callDef: def.callDef,
+    isAsync: def.isAsync,
+  };
   return {
-    binding: "host",
     descriptor,
-    onPageEntered: actionDef.fn.onPageEntered,
-    execSync: actionDef.fn.exec,
+    function: { name: def.tileId, isAsync: def.isAsync, fn: def.fn, callDef: def.callDef },
+    tile: new BrainTileActuatorDef(def.tileId, descriptor, {
+      visual: def.visual,
+      capabilities: def.capabilities,
+    }),
   };
 }

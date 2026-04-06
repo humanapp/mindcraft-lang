@@ -1,6 +1,6 @@
+import type { MindcraftModuleApi } from "@mindcraft-lang/core";
 import { Dict, List, TypeUtils, Vector2 } from "@mindcraft-lang/core";
 import {
-  type BrainServices,
   CoreOpId,
   CoreTypeIds,
   type ExecutionContext,
@@ -126,22 +126,21 @@ export function mkActorRefDirect(actor: Actor): StructValue {
   return mkStructValue(MyTypeIds.ActorRef, new Dict(), actor);
 }
 
-export function registerTypes(services: BrainServices) {
-  const { types } = services;
-
-  // Define vector2 struct type
-  const vector2TypeId = types.addStructType(MyTypeNames.Vector2, {
+export function registerTypes(api: MindcraftModuleApi) {
+  api.defineType({
+    coreType: NativeType.Struct,
+    typeId: MyTypeIds.Vector2,
+    name: MyTypeNames.Vector2,
     fields: List.from([
       { name: "x", typeId: CoreTypeIds.Number },
       { name: "y", typeId: CoreTypeIds.Number },
     ]),
   });
-  if (vector2TypeId !== MyTypeIds.Vector2) {
-    throw new Error(`Type ID mismatch for vector2: expected ${MyTypeIds.Vector2}, got ${vector2TypeId}`);
-  }
 
-  // Define actorRef "native" struct type with custom field getter to access actor properties
-  const actorRefTypeId = types.addStructType(MyTypeNames.ActorRef, {
+  api.defineType({
+    coreType: NativeType.Struct,
+    typeId: MyTypeIds.ActorRef,
+    name: MyTypeNames.ActorRef,
     fields: List.from([
       { name: "id", typeId: CoreTypeIds.Number },
       { name: "position", typeId: MyTypeIds.Vector2 },
@@ -150,37 +149,30 @@ export function registerTypes(services: BrainServices) {
     fieldGetter: actorRefFieldGetter,
     snapshotNative: actorRefSnapshotNative,
   });
-  if (actorRefTypeId !== MyTypeIds.ActorRef) {
-    throw new Error(`Type ID mismatch for actorRef: expected ${MyTypeIds.ActorRef}, got ${actorRefTypeId}`);
-  }
 
-  // Register assignment overloads for struct types (no-op at runtime; compiler special-cases assignment)
-  const { operatorOverloads } = services;
-  operatorOverloads.binary(
-    CoreOpId.Assign,
-    MyTypeIds.Vector2,
-    MyTypeIds.Vector2,
-    MyTypeIds.Vector2,
-    { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
-    false
-  );
-  operatorOverloads.binary(
-    CoreOpId.Assign,
-    MyTypeIds.ActorRef,
-    MyTypeIds.ActorRef,
-    MyTypeIds.ActorRef,
-    { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
-    false
-  );
+  api.registerOperator({
+    spec: { id: CoreOpId.Assign, parse: { fixity: "infix", precedence: 0, assoc: "right" } },
+    overloads: [
+      {
+        argTypes: [MyTypeIds.Vector2, MyTypeIds.Vector2],
+        resultType: MyTypeIds.Vector2,
+        fn: { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
+      },
+      {
+        argTypes: [MyTypeIds.ActorRef, MyTypeIds.ActorRef],
+        resultType: MyTypeIds.ActorRef,
+        fn: { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
+      },
+    ],
+  });
 
-  const { conversions } = services;
   const anonCallDef = mkCallDef({
     type: "arg",
     tileId: "",
     anonymous: true,
   });
-  // Register conversions from actorRef to number (actor ID) and vector2 (actor position)
-  conversions.register({
+
+  api.registerConversion({
     fromType: MyTypeIds.ActorRef,
     toType: CoreTypeIds.Number,
     cost: 2,
@@ -193,7 +185,7 @@ export function registerTypes(services: BrainServices) {
     },
     callDef: anonCallDef,
   });
-  conversions.register({
+  api.registerConversion({
     fromType: MyTypeIds.ActorRef,
     toType: MyTypeIds.Vector2,
     cost: 2,
@@ -204,14 +196,12 @@ export function registerTypes(services: BrainServices) {
         if (actor) {
           return mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y));
         }
-        // If no actor, return a default position (e.g., origin)
         return mkVector2Value(new Vector2(0, 0));
       },
     },
-
     callDef: anonCallDef,
   });
-  conversions.register({
+  api.registerConversion({
     fromType: MyTypeIds.Vector2,
     toType: CoreTypeIds.String,
     cost: 3,

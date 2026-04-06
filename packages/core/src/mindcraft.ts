@@ -5,7 +5,9 @@ import type {
   BrainActionResolver,
   Conversion,
   EnumTypeDef,
+  EnumTypeShape,
   FunctionTypeDef,
+  FunctionTypeShape,
   HostActionBinding,
   HostAsyncFn,
   HostFn,
@@ -16,14 +18,19 @@ import type {
   IBrainTileDef,
   ITileCatalog,
   ListTypeDef,
+  ListTypeShape,
   MapTypeDef,
+  MapTypeShape,
   NullableTypeDef,
+  NullableTypeShape,
   OpSpec,
   ResolvedAction,
   StructTypeDef,
+  StructTypeShape,
   TypeDef,
   TypeId,
   UnionTypeDef,
+  UnionTypeShape,
   UserActionArtifact,
 } from "./brain/interfaces";
 import { NativeType } from "./brain/interfaces";
@@ -39,8 +46,19 @@ import { List } from "./platform/list";
 import type { IReadStream } from "./platform/stream";
 
 export type TileDefinitionInput = IBrainTileDef;
-export type MindcraftTypeDefinition = TypeDef;
 export type ConversionDefinition = Omit<Conversion, "id">;
+
+type TypeDefInput = Omit<TypeDef, "codec">;
+
+export type MindcraftTypeDefinition =
+  | TypeDefInput
+  | (TypeDefInput & StructTypeShape)
+  | (TypeDefInput & EnumTypeShape)
+  | (TypeDefInput & ListTypeShape)
+  | (TypeDefInput & MapTypeShape)
+  | (TypeDefInput & NullableTypeShape)
+  | (TypeDefInput & UnionTypeShape)
+  | (TypeDefInput & Partial<FunctionTypeShape>);
 export type CompiledActionArtifact = UserActionArtifact;
 
 export interface HostFunctionDefinition {

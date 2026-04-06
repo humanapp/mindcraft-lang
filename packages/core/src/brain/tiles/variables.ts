@@ -123,20 +123,27 @@ export function BrainTileVariableDef_deserialize(stream: IReadStream, catalog: I
   return tileDef;
 }
 
-export function registerVariableFactoryTileDef(
+export function createVariableFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
-  opts: BrainTileDefCreateOptions = {},
-  services: BrainServices
-) {
-  const tileDef = new BrainTileFactoryDef(
+  opts: BrainTileDefCreateOptions = {}
+): BrainTileFactoryDef {
+  return new BrainTileFactoryDef(
     mkVariableFactoryTileId(factoryId),
     factoryId,
     manufactureVarTileDef,
     producedDataType,
     opts
   );
-  services.tiles.registerTileDef(tileDef);
+}
+
+export function registerVariableFactoryTileDef(
+  factoryId: string,
+  producedDataType: TypeId,
+  opts: BrainTileDefCreateOptions = {},
+  services: BrainServices
+) {
+  services.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts));
 }
 
 function manufactureVarTileDef(

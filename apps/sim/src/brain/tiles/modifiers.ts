@@ -1,8 +1,8 @@
-import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type { MindcraftModuleApi } from "@mindcraft-lang/core";
 import { BrainTileModifierDef } from "@mindcraft-lang/core/brain/tiles";
 import { TileIds } from "@/brain/tileids";
 
-export function registerModifierTiles(services: BrainServices) {
+export function registerModifierTiles(api: MindcraftModuleApi) {
   const timeMsVisual = {
     label: "millis",
     iconUrl: "/assets/brain/icons/milliseconds.svg",
@@ -59,106 +59,105 @@ export function registerModifierTiles(services: BrainServices) {
     label: "slowly",
     iconUrl: "/assets/brain/icons/slowly.svg",
   };
-  const { tiles } = services;
-  tiles.registerTileDef(new BrainTileModifierDef(TileIds.Modifier.TimeMs, { visual: timeMsVisual }));
-  tiles.registerTileDef(
+  api.registerTile(new BrainTileModifierDef(TileIds.Modifier.TimeMs, { visual: timeMsVisual }));
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.TimeSecs, {
       visual: timeSecsVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.MovementAvoid, {
       visual: avoidVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.MovementAwayFrom, {
       visual: awayFromVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.MovementForward, {
       visual: forwardVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.MovementToward, {
       visual: towardVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.MovementWander, {
       visual: wanderVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.ActorKindCarnivore, {
       visual: carnivoreVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.ActorKindHerbivore, {
       visual: herbivoreVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.ActorKindPlant, {
       visual: plantVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.DistanceNearby, {
       visual: distanceNearbyVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.DistanceFarAway, {
       visual: distanceFarAwayVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.Quickly, {
       visual: quicklyVisual,
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.Slowly, {
       visual: slowlyVisual,
     })
   );
 
   // Turn-specific modifiers
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.TurnAround, {
       visual: { label: "around", iconUrl: "/assets/brain/icons/turn_around.svg" },
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.TurnLeft, {
       visual: { label: "left", iconUrl: "/assets/brain/icons/turn_left.svg" },
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.TurnRight, {
       visual: { label: "right", iconUrl: "/assets/brain/icons/turn_right.svg" },
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.DirectionNorth, {
       visual: { label: "north", iconUrl: "/assets/brain/icons/direction_north.svg" },
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.DirectionSouth, {
       visual: { label: "south", iconUrl: "/assets/brain/icons/direction_south.svg" },
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.DirectionEast, {
       visual: { label: "east", iconUrl: "/assets/brain/icons/direction_east.svg" },
     })
   );
-  tiles.registerTileDef(
+  api.registerTile(
     new BrainTileModifierDef(TileIds.Modifier.DirectionWest, {
       visual: { label: "west", iconUrl: "/assets/brain/icons/direction_west.svg" },
     })
