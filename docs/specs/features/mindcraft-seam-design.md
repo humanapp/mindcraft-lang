@@ -911,19 +911,22 @@ Dependency direction note:
 - `WorkspaceCompiler` is a consumer-owned feature port defined by
   `@mindcraft-lang/bridge-app/compilation`
 - this preserves the current dependency direction of `CompilationProvider`:
-  bridge-app defines the port, and app code supplies an implementation or
-  adapter
+  bridge-app defines the port, and app code decides whether the compiler value
+  is a thin adapter or the raw ts-compiler object
 - `@mindcraft-lang/ts-compiler` does not need to depend on
   `@mindcraft-lang/bridge-app` to participate in this seam
-- the normal expectation is that app code, or an optional adapter helper,
-  wraps the concrete ts-compiler API into a value that matches
-  `WorkspaceCompiler`
+- 2026-04-05 S5 post-mortem note: the raw object returned by
+  `createWorkspaceCompiler(...)` is already structurally compatible with the
+  bridge-facing `WorkspaceCompiler` port, so v1 does not need a required
+  adapter layer even though apps may still add one for local side effects or
+  narrowing
 - if a reusable adapter is added later, it should live in app code or in a
   ts-compiler-owned helper/subpath, not by introducing a hard package cycle
 
-So the `compiler` parameter passed to `createCompilationFeature(...)` is not
-necessarily the raw object returned by `@mindcraft-lang/ts-compiler`. It is the
-bridge-facing compiler adapter value.
+So the `compiler` parameter passed to `createCompilationFeature(...)` is a
+bridge-facing `WorkspaceCompiler` value. That may be the raw object returned by
+`createWorkspaceCompiler(...)` when its structural shape already matches, or an
+app-owned adapter when the app wants to narrow or decorate compiler behavior.
 
 Raw ts-compiler note:
 
@@ -942,6 +945,11 @@ Raw ts-compiler note:
   `WorkspaceCompiler` feature port by forwarding diagnostics/status to
   bridge-app, while app/core integration code can still consume the raw bundle
   result directly
+- 2026-04-05 S5 post-mortem note: the shipped v1 path activates
+  environment-owned registry state at the `createWorkspaceCompiler(...)`
+  composition root. Zero-arg `buildAmbientDeclarations()` remains a legacy
+  global-registry fallback for older callers and is carried forward for later
+  cleanup rather than as the preferred new-path seam.
 
 `createCompilationFeature(...)` should be implementable using only
 `AppBridgeFeatureContext`:

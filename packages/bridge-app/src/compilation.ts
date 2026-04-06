@@ -103,9 +103,17 @@ export function createCompilationFeature(options: CompilationFeatureOptions): Ap
       };
 
       const compileAndPublish = (): void => {
-        lastSnapshot = options.compiler.compile();
-        publishSnapshot(lastSnapshot);
+        const snapshot = options.compiler.compile();
+        if (lastSnapshot !== snapshot) {
+          lastSnapshot = snapshot;
+          publishSnapshot(snapshot);
+        }
       };
+
+      const compileUnsub = options.compiler.onDidCompile((snapshot) => {
+        lastSnapshot = snapshot;
+        publishSnapshot(snapshot);
+      });
 
       options.compiler.replaceWorkspace(context.workspaceSnapshot());
       compileAndPublish();
@@ -124,6 +132,7 @@ export function createCompilationFeature(options: CompilationFeatureOptions): Ap
       return () => {
         syncUnsub();
         remoteChangeUnsub();
+        compileUnsub();
       };
     },
   };

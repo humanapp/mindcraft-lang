@@ -21,3 +21,14 @@ export type { LinkResult } from "./linker/linker.js";
 export { linkUserPrograms } from "./linker/linker.js";
 export type { BuildCompiledActionBundleOptions } from "./runtime/action-bundle.js";
 export { buildCompiledActionBundle } from "./runtime/action-bundle.js";
+export type {
+  CreateWorkspaceCompilerOptions,
+  WorkspaceChange,
+  WorkspaceCompileResult,
+  WorkspaceCompiler,
+  WorkspaceDiagnosticEntry,
+  WorkspaceDiagnosticRange,
+  WorkspaceSnapshot,
+  WorkspaceSnapshotEntry,
+} from "./workspace-compiler.js";
+export { createWorkspaceCompiler } from "./workspace-compiler.js";

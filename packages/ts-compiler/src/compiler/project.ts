@@ -95,12 +95,21 @@ function isUserTsFile(path: string): boolean {
   return path.endsWith(".ts") && !path.endsWith(".d.ts");
 }
 
+function normalizeWorkspacePath(path: string): string {
+  return path.startsWith("/") ? path.slice(1) : path;
+}
+
+function isCompilerControlledPath(path: string): boolean {
+  const normalized = normalizeWorkspacePath(path);
+  return normalized === "mindcraft.d.ts" || normalized === "tsconfig.json";
+}
+
 export class UserTileProject {
   private _files = new Map<string, string>();
-  private _ambientSource: string;
+  private readonly _ambientSource: string | undefined;
 
   constructor(options?: CompileOptions) {
-    this._ambientSource = options?.ambientSource ?? buildAmbientDeclarations();
+    this._ambientSource = options?.ambientSource;
   }
 
   setFiles(files: ReadonlyMap<string, string>): void {
@@ -138,11 +147,11 @@ export class UserTileProject {
     checkTypeScriptVersion();
 
     const compilerFiles = new Map<string, string>();
+    const ambientSource = this.resolveAmbientSource();
 
     const userRootFiles: string[] = [];
     for (const [vfsPath, content] of this._files) {
-      if (vfsPath === "mindcraft.d.ts" || vfsPath === "/mindcraft.d.ts") {
-        compilerFiles.set(LIB_FILE, content);
+      if (isCompilerControlledPath(vfsPath)) {
         continue;
       }
       const cp = toCompilerPath(vfsPath);
@@ -152,9 +161,7 @@ export class UserTileProject {
       }
     }
 
-    if (!compilerFiles.has(LIB_FILE)) {
-      compilerFiles.set(LIB_FILE, this._ambientSource);
-    }
+    compilerFiles.set(LIB_FILE, ambientSource);
 
     if (userRootFiles.length === 0) {
       return { results: new Map(), tsErrors: new Map() };
@@ -232,6 +239,14 @@ export class UserTileProject {
     }
 
     return { results, tsErrors };
+  }
+
+  private resolveAmbientSource(): string {
+    if (this._ambientSource !== undefined) {
+      return this._ambientSource;
+    }
+
+    return buildAmbientDeclarations();
   }
 
   private _compileEntryPoint(

@@ -24,7 +24,7 @@ Depends on infrastructure from:
 
 ## Status
 
-As of 2026-04-05, Phases S1-S4 are complete. Phases S5-S7 remain open.
+As of 2026-04-05, Phases S1-S5 are complete. Phases S6-S7 remain open.
 
 The codebase now exposes the new package-level runtime/compiler/presentation
 seam, while bridge and real-app migration work remains outstanding:
@@ -34,8 +34,10 @@ seam, while bridge and real-app migration work remains outstanding:
   deserialization, startup tile hydration, compiled action bundle replacement,
   and runnable `MindcraftBrain` instances without requiring apps to touch the
   singleton seam.
-- `@mindcraft-lang/ts-compiler` now exposes `buildCompiledActionBundle()` for
-  the new runtime-facing authored-action path.
+- `@mindcraft-lang/ts-compiler` now exposes both
+  `buildCompiledActionBundle()` and `createWorkspaceCompiler({ environment })`
+  for the new runtime-facing authored-action path, including compiler-owned
+  ambient/`tsconfig.json` handling on the new seam.
 - `@mindcraft-lang/ui` now supports app-owned tile-presentation resolution
   through editor config instead of relying on process-global core tile-visual
   mutation in the normal path.
@@ -43,8 +45,10 @@ seam, while bridge and real-app migration work remains outstanding:
   internal core code still depends on a tightly scoped environment-owned
   services context via `runWithBrainServices(...)`.
 - `@mindcraft-lang/bridge-app` now exposes `createAppBridge(...)` over
-  app-owned workspace adapters plus feature composition, while `AppProject`
-  and the root-level compilation seam remain as legacy migration paths.
+  app-owned workspace adapters plus feature composition, and
+  `@mindcraft-lang/bridge-app/compilation` now exposes the feature-oriented
+  optional compilation seam over `AppBridgeFeatureContext`; `AppProject` and
+  the root-level compilation seam remain as legacy migration paths.
 - `apps/sim` still depends on `AppProject`, synthetic import events, and
   app-owned compiler/runtime glue.
 
@@ -195,9 +199,18 @@ permanent back-compat seams.
   parameter tiles, and returns `undefined` when diagnostics or unresolved
   parameter metadata block safe bundle emission.
 - `packages/ts-compiler/src/index.ts` now exposes
-  `buildCompiledActionBundle()` at the root package surface; the older
-  singleton-registration bridge remains a legacy internal path rather than the
-  primary exported integration seam.
+  `buildCompiledActionBundle()` and `createWorkspaceCompiler(...)` at the root
+  package surface; the older singleton-registration bridge remains a legacy
+  internal path rather than the primary exported integration seam.
+- `packages/ts-compiler/src/workspace-compiler.ts` now implements
+  `createWorkspaceCompiler({ environment })`, returning per-file diagnostics,
+  raw `ProjectCompileResult`, and an optional `CompiledActionBundle` from one
+  environment-bound compiler object.
+- `packages/ts-compiler/src/compiler/project.ts` now treats
+  `mindcraft.d.ts` and `tsconfig.json` as compiler-controlled system inputs on
+  the new path rather than caller-owned workspace files. The zero-arg
+  `buildAmbientDeclarations()` / `UserTileProject` fallback remains a legacy
+  migration path for older callers.
 - `HydratedTileMetadataSnapshot` and `CompiledActionBundle` are now separate
   public contracts even though they currently share `revision` and `tiles`
   fields.
@@ -227,10 +240,15 @@ permanent back-compat seams.
 - `AppProject` still subclasses the low-level `Project<TClient, TServer>`
   class from `bridge-client`, hardcodes the `"app"` websocket path and
   join-code handling, and remains available as a legacy migration seam.
-- Optional compilation transport still lives in the root bridge-app public
-  surface via `CompilationProvider`, `CompilationResult`, and
-  `CompilationManager`, so apps can still end up reasoning about both the
-  domain seam and transport internals until Phase S5/S7 migration work lands.
+- `packages/bridge-app/src/compilation.ts` now keeps
+  `createCompilationFeature(...)` as the primary optional compilation seam on
+  the new path, including remote-change application, cached diagnostic replay
+  through `onDidSync(...)`, and diagnostics/status publication without raw
+  session access.
+- `CompilationProvider`, `CompilationResult`, and `CompilationManager` still
+  exist on the root bridge-app public surface as legacy migration seams, so
+  apps can still end up reasoning about both the domain seam and transport
+  internals until Phases S6-S7 finish the real-app migration and cleanup.
 
 ### Sim as proof of the remaining migration work
 
@@ -249,8 +267,9 @@ permanent back-compat seams.
   and type registries through `getBrainServices()` and persists startup tile
   metadata outside the new bundle seam.
 - `apps/sim/src/services/vscode-bridge.ts` still constructs `AppProject`,
-  reaches through transport internals, and injects generated compiler inputs
-  into the raw bridge-owned filesystem snapshot.
+  reaches through transport internals, and still injects generated compiler
+  inputs into the raw bridge-owned filesystem snapshot instead of consuming the
+  new compiler-owned system-file path.
 
 ### Import-shape symptoms
 
@@ -1386,6 +1405,10 @@ app and remove direct registry access from the normal sim integration path.
 - S3 narrowed the intended ts-compiler runtime path to
   `buildCompiledActionBundle(...)`. S6 should migrate sim to that helper rather
   than reviving the legacy singleton `registerUserTile(...)` path.
+- S5 now provides `createWorkspaceCompiler({ environment })` with
+  compiler-owned ambient generation and authoritative `tsconfig.json`
+  reinstatement. S6 should consume that seam directly rather than reviving the
+  old injected support-file path.
 - Sim should no longer need to smuggle generated `mindcraft.d.ts` into the
   bridge filesystem just to get correct compiler inputs, and it should never be
   able to control the authoritative `tsconfig.json` through app wiring.
@@ -1507,6 +1530,10 @@ legacy seam is either removed or reduced to the smallest justified remainder.
 - S7 should end with the new seam documented as the gold-standard path.
 - S7 is the explicit removal point for temporary legacy fallback shims carried
   earlier for migration, including `setTileVisualProvider()`.
+- S5 established that the raw `createWorkspaceCompiler(...)` object is already
+  structurally compatible with the bridge-app `WorkspaceCompiler` port. S7 can
+  pass it directly to `createCompilationFeature(...)` unless sim still needs a
+  thin local wrapper for bundle side effects or scheduling.
 - Because there are no external users yet, hard cleanup is in scope where it
   improves clarity and maintainability.
 
@@ -2217,3 +2244,153 @@ Phases S5-S7.
 - `INV-5`: partially satisfied (implemented bridge connectivity as an optional
   base layer independent of compilation, while leaving compilation-feature
   proof to Phase S5)
+
+### Phase S5 -- 2026-04-05
+
+**Planned vs actual:**
+
+Most S5 deliverables landed at the package seam, and the new optional
+compilation story is now available without requiring apps on the new path to
+reach into bridge transport internals or inject compiler-controlled files
+through the workspace snapshot.
+
+- `packages/bridge-app/src/compilation.ts` now uses
+  `createCompilationFeature(...)` as the primary optional compilation seam over
+  `AppBridgeFeatureContext`, including workspace seeding, remote-change
+  application, cached diagnostic replay via `onDidSync(...)`, and
+  diagnostics/status publication without raw session senders.
+- `packages/ts-compiler` now exposes `createWorkspaceCompiler({ environment })`
+  from the root package, returning per-file diagnostics, raw
+  `ProjectCompileResult`, and an optional `CompiledActionBundle` from one
+  environment-bound compiler object.
+- The new compiler path now treats ambient declarations and `tsconfig.json` as
+  compiler-owned system inputs rather than caller-owned workspace files, and
+  package tests now cover that authority boundary.
+- The raw `createWorkspaceCompiler(...)` object remains richer than the bridge
+  feature port but is structurally compatible with
+  `@mindcraft-lang/bridge-app/compilation`'s `WorkspaceCompiler` seam, so apps
+  can pass it directly on the new path without a package cycle.
+- `packages/core/src/index.ts` now exports
+  `withMindcraftEnvironmentServices(...)` so compiler tooling can activate
+  environment-owned registry state without introducing a new public description
+  contract.
+- Public tests now cover out-of-band `onDidCompile(...)` publication, cached
+  diagnostic replay, environment-backed ambient generation, bundle emission,
+  and compiler-owned system-file authority.
+
+One planned cleanup landed as an explicit migration decision rather than a
+removal:
+
+- `CompilationProvider`, `CompilationManager`, and
+  `AppProject({ compilationProvider })` remain as legacy migration shims. The
+  new feature-based seam is now the intended package-level path, but the old
+  root seam still exists until later app migration and cleanup phases.
+
+One planned file-layout change did not materialize:
+
+- `packages/bridge-app/package.json` did not need changes in S5 because the
+  `./compilation` export map already landed in Phase S1.
+- New bridge-app files under `src/compilation/` were not needed; S5 evolved the
+  existing `src/compilation.ts` seam directly.
+
+**Unplanned additions and discoveries:**
+
+1. The raw ts-compiler compiler object turned out to be structurally compatible
+   with the bridge-app `WorkspaceCompiler` port even though the design had only
+   required app-owned adapters. That simplified the new path without changing
+   package dependency direction.
+2. Review found the `onDidCompile(...)` overload and double-declaration shape
+   in ts-compiler was unnecessary once the raw compiler result settled on
+   `WorkspaceCompileResult`, so the public surface was simplified to one
+   result-typed callback.
+3. Review found exporting a second `DiagnosticSnapshot` type name from
+   `@mindcraft-lang/ts-compiler` only duplicated bridge-app vocabulary. The
+   final public surface leaves `DiagnosticSnapshot` on the bridge-app seam and
+   exposes raw ts-compiler results through `WorkspaceCompileResult`.
+4. Review found nested `node:test` coverage had slipped into
+   `packages/bridge-app/test/public-api.spec.ts`; the final S5 tests keep the
+   replay case as a top-level test.
+5. Review found that the zero-arg `buildAmbientDeclarations()` /
+   `UserTileProject` path still reads `getBrainServices()` for migration
+   callers. The new `createWorkspaceCompiler(...)` path no longer depends on
+   that fallback, but final cleanup of the global fallback remains later-phase
+   work.
+6. Review found the environment scope only needs to be activated once at the
+   `createWorkspaceCompiler(...)` composition root; redundant nested
+   `withMindcraftEnvironmentServices(...)` layers were removed before phase
+   close.
+
+**Design decisions:**
+
+- Keep `createCompilationFeature(...)` wired entirely through
+  `AppBridgeFeatureContext` on the new path; do not reintroduce raw session
+  senders, filesystem sync heuristics, or bridge-owned workspace access.
+- Keep compiler-owned `mindcraft.d.ts` / `tsconfig.json` authority inside
+  `@mindcraft-lang/ts-compiler`; do not standardize a caller-supplied
+  support-files provider in v1.
+- Keep `createWorkspaceCompiler(...)` as the raw ts-compiler seam returning
+  `WorkspaceCompileResult`, with bridge-app owning the narrower
+  `DiagnosticSnapshot` vocabulary.
+- Allow the raw compiler object to satisfy the bridge feature port structurally
+  rather than forcing an explicit adapter layer when one is not needed.
+- Keep the legacy `CompilationProvider` / `CompilationManager` /
+  `AppProject({ compilationProvider })` path as a temporary migration seam and
+  remove or demote it in S7.
+- Keep zero-arg `buildAmbientDeclarations()` and `UserTileProject` as legacy
+  fallback entrypoints for older callers for now; the new environment-owned
+  path is `createWorkspaceCompiler(...)`.
+
+**Files changed:**
+
+- `packages/core/src/index.ts`
+- `packages/bridge-app/src/compilation.ts`
+- `packages/bridge-app/test/public-api.spec.ts`
+- `packages/ts-compiler/src/compiler/ambient.ts`
+- `packages/ts-compiler/src/compiler/project.ts`
+- `packages/ts-compiler/src/index.ts`
+- `packages/ts-compiler/src/workspace-compiler.ts`
+- `packages/ts-compiler/src/workspace-compiler.spec.ts`
+- `docs/specs/features/mindcraft-seam-design.md`
+
+**Verification:**
+
+- `packages/core`: `npm run check`, `npm run build`, `npm test`,
+  `npm run typecheck`
+- `packages/bridge-app`: `npm run typecheck`, `npm run check`,
+  `npm run build`, `npm test`
+- `packages/ts-compiler`: `npm run typecheck`, `npm run check`,
+  `npm run build`, `npm test`
+
+**Acceptance criteria result:**
+
+S5 is accepted at the package seam. Apps now have a feature-based compilation
+path through `createCompilationFeature(...)` and an environment-backed raw
+compiler seam through `createWorkspaceCompiler(...)`, with compiler-owned
+system-file authority and context-only diagnostic publication on the new path.
+Real-app adoption in sim and final legacy cleanup remain with Phases S6-S7.
+
+### Requirements retrospective
+
+- `FR-4`: partially satisfied (compiler + bridge composition is implemented at
+  the package seam through `createCompilationFeature(...)` and
+  `createWorkspaceCompiler(...)`; full real-app proof is deferred to Phase S7)
+- `FR-22`: satisfied as planned
+- `FR-23`: satisfied as planned
+- `FR-24`: partially satisfied (diagnostic replay support is implemented in the
+  package seam, including out-of-band compile-result replay; real-app proof is
+  deferred to Phase S7)
+- `FR-25`: partially satisfied (default ambient generation is implemented in
+  the package seam by reading environment-owned registry state on the new
+  compiler path; sim proof is deferred to Phase S6 and final full-stack proof
+  is deferred to Phase S7)
+- `FR-27`: partially satisfied (compiler-owned system-file authority is
+  implemented in the package seam; sim proof is deferred to Phase S6)
+- `FR-28`: partially satisfied (user workspace is separated from compiler-only
+  inputs in the package seam; sim proof is deferred to Phase S6 and final
+  full-stack proof to Phase S7)
+- `NFR-6`: partially satisfied (feature layering is clean in the package seam,
+  but `CompilationProvider`, `CompilationManager`, and `AppProject` remain as
+  migration shims until Phase S7)
+- `INV-4`: partially satisfied (package-level separation is implemented;
+  real-app proof is deferred to Phase S6)
+- `INV-5`: satisfied as planned

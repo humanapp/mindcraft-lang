@@ -1,6 +1,7 @@
 import type {
   EnumTypeDef,
   FunctionTypeDef,
+  ITypeRegistry,
   ListTypeDef,
   MapTypeDef,
   NullableTypeDef,
@@ -345,16 +346,16 @@ function isNativeBacked(def: StructTypeDef): boolean {
   return def.fieldGetter !== undefined || def.fieldSetter !== undefined || def.snapshotNative !== undefined;
 }
 
-function typeDefToTs(def: TypeDef): string {
+function typeDefToTs(def: TypeDef, registry: ITypeRegistry): string {
   if (def.nullable) {
-    const baseDef = getBrainServices().types.get((def as NullableTypeDef).baseTypeId);
+    const baseDef = registry.get((def as NullableTypeDef).baseTypeId);
     if (!baseDef) return "unknown";
-    return `${typeDefToTs(baseDef)} | null`;
+    return `${typeDefToTs(baseDef, registry)} | null`;
   }
   if (def.coreType === NativeType.Union) {
     const parts: string[] = [];
     (def as UnionTypeDef).memberTypeIds.forEach((mid) => {
-      parts.push(typeIdToTs(mid));
+      parts.push(typeIdToTs(mid, registry));
     });
     return parts.join(" | ");
   }
@@ -375,21 +376,21 @@ function typeDefToTs(def: TypeDef): string {
     case NativeType.Enum:
       return def.name;
     case NativeType.List: {
-      const elemTs = typeIdToTs((def as ListTypeDef).elementTypeId);
+      const elemTs = typeIdToTs((def as ListTypeDef).elementTypeId, registry);
       return `Array<${elemTs}>`;
     }
     case NativeType.Map:
-      return `Record<string, ${typeIdToTs((def as MapTypeDef).valueTypeId)}>`;
+      return `Record<string, ${typeIdToTs((def as MapTypeDef).valueTypeId, registry)}>`;
     case NativeType.Function: {
       const fnDef = def as FunctionTypeDef;
       if (fnDef.paramTypeIds) {
         const params: string[] = [];
         let i = 0;
         fnDef.paramTypeIds.forEach((pid) => {
-          params.push(`arg${i}: ${typeIdToTs(pid)}`);
+          params.push(`arg${i}: ${typeIdToTs(pid, registry)}`);
           i++;
         });
-        return `(${params.join(", ")}) => ${typeIdToTs(fnDef.returnTypeId)}`;
+        return `(${params.join(", ")}) => ${typeIdToTs(fnDef.returnTypeId, registry)}`;
       }
       return "Function";
     }
@@ -398,24 +399,24 @@ function typeDefToTs(def: TypeDef): string {
   }
 }
 
-function typeIdToTs(typeId: string): string {
-  const def = getBrainServices().types.get(typeId);
+function typeIdToTs(typeId: string, registry: ITypeRegistry): string {
+  const def = registry.get(typeId);
   if (!def) return "unknown";
-  return typeDefToTs(def);
+  return typeDefToTs(def, registry);
 }
 
 function needsQuoting(name: string): boolean {
   return !/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
 }
 
-function generateStructInterface(def: StructTypeDef): string {
+function generateStructInterface(def: StructTypeDef, registry: ITypeRegistry): string {
   const nativeBacked = isNativeBacked(def);
   let result = `  export interface ${def.name} {\n`;
   if (nativeBacked) {
     result += "    readonly __brand: unique symbol;\n";
   }
   def.fields.forEach((field) => {
-    const tsType = typeIdToTs(field.typeId);
+    const tsType = typeIdToTs(field.typeId, registry);
     const fieldName = needsQuoting(field.name) ? `"${field.name}"` : field.name;
     if (nativeBacked) {
       result += `    readonly ${fieldName}: ${tsType};\n`;
@@ -426,9 +427,9 @@ function generateStructInterface(def: StructTypeDef): string {
   def.methods?.forEach((method) => {
     const params: string[] = [];
     method.params.forEach((p) => {
-      params.push(`${p.name}: ${typeIdToTs(p.typeId)}`);
+      params.push(`${p.name}: ${typeIdToTs(p.typeId, registry)}`);
     });
-    const returnType = typeIdToTs(method.returnTypeId);
+    const returnType = typeIdToTs(method.returnTypeId, registry);
     const fullReturn = method.isAsync ? `Promise<${returnType}>` : returnType;
     result += `    ${method.name}(${params.join(", ")}): ${fullReturn};\n`;
   });
@@ -450,8 +451,7 @@ function generateEnumType(def: EnumTypeDef): string {
   return `  export type ${def.name} = ${members.join(" | ") || "never"};\n`;
 }
 
-export function buildAmbientDeclarations(): string {
-  const registry = getBrainServices().types;
+function buildAmbientDeclarationsFromRegistry(registry: ITypeRegistry): string {
   let typeDeclarations = "";
   let typeMapEntries = "";
 
@@ -461,10 +461,10 @@ export function buildAmbientDeclarations(): string {
     if (def.name.includes("::")) continue;
 
     if (def.nullable) {
-      const tsType = typeDefToTs(def);
+      const tsType = typeDefToTs(def, registry);
       typeMapEntries += `    ${def.name}: ${tsType};\n`;
     } else if (isStructTypeDef(def)) {
-      typeDeclarations += generateStructInterface(def);
+      typeDeclarations += generateStructInterface(def, registry);
       typeMapEntries += `    ${def.name}: ${def.name};\n`;
     } else if (isEnumTypeDef(def)) {
       typeDeclarations += generateEnumType(def);
@@ -474,13 +474,17 @@ export function buildAmbientDeclarations(): string {
       def.coreType === NativeType.Number ||
       def.coreType === NativeType.String
     ) {
-      typeMapEntries += `    ${def.name}: ${typeDefToTs(def)};\n`;
+      typeMapEntries += `    ${def.name}: ${typeDefToTs(def, registry)};\n`;
     } else if (def.coreType === NativeType.List || def.coreType === NativeType.Map) {
-      const tsType = typeDefToTs(def);
+      const tsType = typeDefToTs(def, registry);
       typeDeclarations += `  export type ${def.name} = ${tsType};\n`;
       typeMapEntries += `    ${def.name}: ${def.name};\n`;
     }
   }
 
   return `${AMBIENT_HEADER}${AMBIENT_MODULE_START}${typeMapEntries}  }\n\n${typeDeclarations}${AMBIENT_MODULE_END}`;
+}
+
+export function buildAmbientDeclarations(): string {
+  return buildAmbientDeclarationsFromRegistry(getBrainServices().types);
 }

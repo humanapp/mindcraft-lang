@@ -24,7 +24,7 @@ export type {
   OperatorOverloadDefinition,
   TileDefinitionInput,
 } from "./mindcraft";
-export { coreModule, createMindcraftEnvironment } from "./mindcraft";
+export { coreModule, createMindcraftEnvironment, withMindcraftEnvironmentServices } from "./mindcraft";
 export { Dict } from "./platform/dict";
 export { Error } from "./platform/error";
 // Platform utilities

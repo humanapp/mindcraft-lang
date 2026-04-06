@@ -220,3 +220,94 @@ test("createCompilationFeature clears previously published diagnostics when they
     diagnosticCount: { error: 0, warning: 0 },
   });
 });
+
+test("createCompilationFeature republishes out-of-band compiler results through onDidCompile", () => {
+  const workspace: WorkspaceSnapshot = new Map();
+  const initialSnapshot: DiagnosticSnapshot = {
+    files: new Map(),
+  };
+  const nextSnapshot: DiagnosticSnapshot = {
+    files: new Map([["src/extra.ts", [createDiagnostic("late diagnostic")]]]),
+  };
+
+  const diagnosticsEvents: Array<{ file: string; diagnostics: readonly DiagnosticEntry[] }> = [];
+  const statusEvents: Array<{ file: string; success: boolean; diagnosticCount: { error: number; warning: number } }> = [];
+  const syncListeners = new Set<() => void>();
+  const compileListeners = new Set<(snapshot: DiagnosticSnapshot) => void>();
+
+  let currentSnapshot = initialSnapshot;
+
+  const compiler: WorkspaceCompiler = {
+    replaceWorkspace() {},
+    applyWorkspaceChange() {},
+    compile() {
+      return currentSnapshot;
+    },
+    onDidCompile(listener) {
+      const compileListener = listener as (snapshot: DiagnosticSnapshot) => void;
+      compileListeners.add(compileListener);
+      return () => {
+        compileListeners.delete(compileListener);
+      };
+    },
+  };
+
+  const context: AppBridgeFeatureContext = {
+    snapshot() {
+      return { status: "connected" };
+    },
+    workspaceSnapshot() {
+      return workspace;
+    },
+    onStateChange() {
+      return () => {};
+    },
+    onRemoteChange() {
+      return () => {};
+    },
+    onDidSync(listener) {
+      syncListeners.add(listener);
+      return () => {
+        syncListeners.delete(listener);
+      };
+    },
+    publishDiagnostics(file, diagnostics) {
+      diagnosticsEvents.push({ file, diagnostics });
+    },
+    publishStatus(update) {
+      statusEvents.push(update);
+    },
+  };
+
+  const feature = createCompilationFeature({ compiler });
+  feature.attach(context);
+
+  currentSnapshot = nextSnapshot;
+  for (const listener of compileListeners) {
+    listener(nextSnapshot);
+  }
+
+  assert.deepEqual(diagnosticsEvents.at(-1), {
+    file: "src/extra.ts",
+    diagnostics: nextSnapshot.files.get("src/extra.ts")!,
+  });
+  assert.deepEqual(statusEvents.at(-1), {
+    file: "src/extra.ts",
+    success: false,
+    diagnosticCount: { error: 1, warning: 0 },
+  });
+
+  for (const listener of syncListeners) {
+    listener();
+  }
+
+  assert.deepEqual(diagnosticsEvents.at(-1), {
+    file: "src/extra.ts",
+    diagnostics: nextSnapshot.files.get("src/extra.ts")!,
+  });
+  assert.deepEqual(statusEvents.at(-1), {
+    file: "src/extra.ts",
+    success: false,
+    diagnosticCount: { error: 1, warning: 0 },
+  });
+});
