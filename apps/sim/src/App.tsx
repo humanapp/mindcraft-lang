@@ -1,4 +1,3 @@
-import { withMindcraftEnvironmentServices } from "@mindcraft-lang/core";
 import { getBrainServices } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
@@ -14,13 +13,9 @@ import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
-import { getMindcraftEnvironment } from "./services/mindcraft-environment";
+import { getMindcraftEnvironment, withSimBrainServices } from "./services/mindcraft-environment";
 import { loadDesiredCounts } from "./services/population-persistence";
 import { getUiPreferences, updateUiPreferences } from "./services/ui-preferences";
-
-function withSimDocsBrainServices<T>(callback: () => T): T {
-  return withMindcraftEnvironmentServices(getMindcraftEnvironment(), callback);
-}
 
 /** Compare two snapshots by display-relevant fields to skip no-op re-renders. */
 function statsEqual(
@@ -54,7 +49,7 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
   const config = useMemo(
     () => ({
       ...buildBrainEditorConfig(archetype ?? undefined),
-      withBrainServices: withSimDocsBrainServices,
+      withBrainServices: withSimBrainServices,
       onTileHelp: openDocsForTile,
       docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
     }),
@@ -74,7 +69,7 @@ function App() {
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
-  const docsTileCatalog = useMemo(() => withSimDocsBrainServices(() => getBrainServices().tiles), []);
+  const docsTileCatalog = useMemo(() => withSimBrainServices(() => getBrainServices().tiles), []);
 
   useEffect(() => {
     scene?.setTimeSpeed(timeSpeed);
@@ -160,7 +155,7 @@ function App() {
       registry={docsRegistry}
       tileCatalog={docsTileCatalog}
       resolveTileVisual={genVisualForTile}
-      withBrainServices={withSimDocsBrainServices}
+      withBrainServices={withSimBrainServices}
     >
       <div className="h-screen flex bg-background overflow-hidden">
         <h1 className="sr-only">Mindcraft Simulation</h1>
