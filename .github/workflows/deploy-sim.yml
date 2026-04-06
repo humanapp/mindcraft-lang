@@ -32,7 +32,9 @@ jobs:
 
       - name: Install sim dependencies
         working-directory: apps/sim
-        run: npm install
+        run: |
+          rm -f package-lock.json
+          npm install
 
       - name: Build sim
         working-directory: apps/sim
