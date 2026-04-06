@@ -1,9 +1,9 @@
-import type { WorkspaceSnapshot } from "@mindcraft-lang/bridge-app";
 import { logger } from "@mindcraft-lang/core";
 import {
   createWorkspaceCompiler,
   type WorkspaceCompileResult,
   type WorkspaceCompiler,
+  type WorkspaceSnapshot,
 } from "@mindcraft-lang/ts-compiler";
 import { getMindcraftEnvironment } from "./mindcraft-environment";
 import { applyCompiledUserTiles } from "./user-tile-registration";

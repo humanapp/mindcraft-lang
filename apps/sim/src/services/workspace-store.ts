@@ -1,10 +1,8 @@
 import type { WorkspaceAdapter, WorkspaceChange, WorkspaceSnapshot } from "@mindcraft-lang/bridge-app";
-import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
+import { isCompilerControlledPath, type WorkspaceSnapshotEntry } from "@mindcraft-lang/ts-compiler";
 
 const LS_FS_KEY = "sim:vscode-bridge:filesystem";
 const PERSIST_DEBOUNCE_MS = 500;
-
-type WorkspaceSnapshotEntry = WorkspaceSnapshot extends ReadonlyMap<string, infer T> ? T : never;
 
 function filterSnapshot(entries: Iterable<[string, WorkspaceSnapshotEntry]>): WorkspaceSnapshot {
   const filtered: WorkspaceSnapshot = new Map();
