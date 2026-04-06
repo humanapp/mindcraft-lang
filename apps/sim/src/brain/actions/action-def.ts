@@ -1,7 +1,7 @@
 import type { BitSet, HostActuatorDefinition, HostSensorDefinition } from "@mindcraft-lang/core";
 import type { ActionDescriptor, BrainActionCallDef, HostAsyncFn, HostSyncFn, TypeId } from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
-import type { TileVisual } from "@/brain/tiles/types";
+import type { TileVisual } from "@/brain/editor/types";
 
 type ActionDefBase = {
   tileId: string;

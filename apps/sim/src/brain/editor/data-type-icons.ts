@@ -1,5 +1,5 @@
 import { CoreTypeIds } from "@mindcraft-lang/core/brain";
-import { MyTypeIds } from "../type-system";
+import { MyTypeIds } from "@/brain/type-system";
 
 export const dataTypeIconMap = new Map<string, string>([
   [CoreTypeIds.Boolean, "/assets/brain/icons/switch.svg"],

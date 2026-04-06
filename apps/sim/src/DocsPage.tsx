@@ -2,7 +2,7 @@ import { getBrainServices } from "@mindcraft-lang/core/brain";
 import { DocsPage as SharedDocsPage } from "@mindcraft-lang/docs";
 import { Toaster } from "@mindcraft-lang/ui";
 import { useMemo } from "react";
-import { genVisualForTile } from "./brain/tiles/visual-provider";
+import { genVisualForTile } from "./brain/editor/visual-provider";
 import { createDocsRegistry } from "./docs/docs-registry";
 import { withSimBrainServices } from "./services/mindcraft-environment";
 

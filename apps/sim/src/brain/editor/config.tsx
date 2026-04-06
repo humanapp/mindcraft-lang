@@ -1,12 +1,12 @@
 import { Vector2 } from "@mindcraft-lang/core";
 import type { BrainEditorConfig, CustomLiteralType } from "@mindcraft-lang/ui";
 import type { ReactNode } from "react";
-import type { Archetype } from "./brain/actor";
-import { dataTypeIconMap, dataTypeNameMap } from "./brain/tiles/data-type-icons";
-import { isAppVariableFactoryTileId } from "./brain/tiles/variables";
-import { genVisualForTile } from "./brain/tiles/visual-provider";
-import { MyTypeIds } from "./brain/type-system";
-import { getDefaultBrain } from "./services/brain-persistence";
+import type { Archetype } from "@/brain/actor";
+import { isAppVariableFactoryTileId } from "@/brain/tiles/variables";
+import { MyTypeIds } from "@/brain/type-system";
+import { getDefaultBrain } from "@/services/brain-persistence";
+import { dataTypeIconMap, dataTypeNameMap } from "./data-type-icons";
+import { genVisualForTile } from "./visual-provider";
 
 const inputClass =
   "col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50";
