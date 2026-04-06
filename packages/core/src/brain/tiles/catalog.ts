@@ -23,8 +23,12 @@ const STags = {
 
 type FnVisualProvider = (tileDef: IBrainTileDef) => ITileVisual;
 
+export function getCatalogFallbackLabel(tileDef: IBrainTileDef): string {
+  return tileDef.tileId.split(".").pop() || tileDef.tileId;
+}
+
 let tileVisualProvider: FnVisualProvider = (tileDef: IBrainTileDef) => {
-  return { label: tileDef.tileId.split(".").pop() || tileDef.tileId };
+  return { label: getCatalogFallbackLabel(tileDef) };
 };
 
 export function setTileVisualProvider(provider: (tileDef: IBrainTileDef) => ITileVisual) {
@@ -33,6 +37,17 @@ export function setTileVisualProvider(provider: (tileDef: IBrainTileDef) => ITil
 
 export function getTileVisualProvider(): FnVisualProvider {
   return tileVisualProvider;
+}
+
+function mergeTileVisual(tile: IBrainTileDef, providedVisual: ITileVisual): ITileVisual {
+  if (!tile.visual) {
+    return providedVisual;
+  }
+
+  return {
+    ...providedVisual,
+    ...tile.visual,
+  };
 }
 
 export class TileCatalog implements ITileCatalog {
@@ -155,7 +170,7 @@ export class TileCatalog implements ITileCatalog {
 
   registerTileDef(tile: IBrainTileDef) {
     if (getTileVisualProvider) {
-      tile.visual = getTileVisualProvider()(tile);
+      tile.visual = mergeTileVisual(tile, getTileVisualProvider()(tile));
     }
     this.add(tile);
   }

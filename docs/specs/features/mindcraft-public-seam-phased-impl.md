@@ -24,22 +24,27 @@ Depends on infrastructure from:
 
 ## Status
 
-As of 2026-04-05, Phases S1-S2 are complete. Phase S3 has partial package-level
-groundwork already present in `packages/core`, but Phases S3-S7 remain open.
+As of 2026-04-05, Phases S1-S3 are complete. Phases S4-S7 remain open.
 
-The codebase now exposes and implements the new environment-scoped core seam in
-`packages/core`, while bridge and app migration work remains outstanding:
+The codebase now exposes the new package-level runtime/compiler/presentation
+seam, while bridge and real-app migration work remains outstanding:
 
 - `@mindcraft-lang/core` now supports `createMindcraftEnvironment()`,
   `coreModule()`, environment-owned catalogs, environment-scoped brain
-  deserialization, and runnable `MindcraftBrain` instances without requiring
-  apps to touch the singleton seam.
+  deserialization, startup tile hydration, compiled action bundle replacement,
+  and runnable `MindcraftBrain` instances without requiring apps to touch the
+  singleton seam.
+- `@mindcraft-lang/ts-compiler` now exposes `buildCompiledActionBundle()` for
+  the new runtime-facing authored-action path.
+- `@mindcraft-lang/ui` now supports app-owned tile-presentation resolution
+  through editor config instead of relying on process-global core tile-visual
+  mutation in the normal path.
 - Legacy core globals still exist as secondary migration paths, and some
   internal core code still depends on a tightly scoped environment-owned
   services context via `runWithBrainServices(...)`.
 - `@mindcraft-lang/bridge-app` integration is still centered on `AppProject`,
-  and `apps/sim` still depends on deep imports, global tile presentation,
-  synthetic import events, and app-owned compiler/runtime glue.
+  and `apps/sim` still depends on deep imports, synthetic import events, and
+  app-owned compiler/runtime glue.
 
 ---
 
@@ -121,6 +126,10 @@ removal point. By the end of this plan, temporary shims/adapters should no
 longer exist in the codebase unless they have been consciously promoted into a
 permanent, intentional API.
 
+For this plan, compatibility-only legacy fallback shims are not eligible for
+promotion. They must be removed by the owning cleanup phase rather than kept as
+permanent back-compat seams.
+
 ---
 
 ## Current State
@@ -172,6 +181,29 @@ permanent, intentional API.
   selectively; rebuilds preserve the stable `MindcraftBrain` handle.
 - The first successful bundle replacement clears the hydrated fallback catalog
   as it installs fresh bundle tiles.
+- Persisted-brain deserialization now resolves against shared, hydrated,
+  bundle, overlay, and brain-local catalogs in both JSON and binary paths.
+- Hydrated and bundle-owned semantic catalogs bypass the legacy global visual
+  provider when storing tiles.
+
+### Compiler and presentation seam
+
+- `packages/ts-compiler/src/runtime/action-bundle.ts` now builds whole-snapshot
+  `CompiledActionBundle` values from `ProjectCompileResult`, dedupes shared
+  parameter tiles, and returns `undefined` when diagnostics or unresolved
+  parameter metadata block safe bundle emission.
+- `packages/ts-compiler/src/index.ts` now exposes
+  `buildCompiledActionBundle()` at the root package surface; the older
+  singleton-registration bridge remains a legacy internal path rather than the
+  primary exported integration seam.
+- `HydratedTileMetadataSnapshot` and `CompiledActionBundle` are now separate
+  public contracts even though they currently share `revision` and `tiles`
+  fields.
+- `packages/ui/src/brain-editor/BrainEditorContext.tsx` now supports
+  app-owned `resolveTileVisual(...)` lookup, and
+  `packages/ui/src/brain-editor/tile-visual-utils.ts` centralizes label/icon
+  fallback so tile presentation stays in UI/app code rather than semantic core
+  catalogs.
 
 ### Bridge-app integration seam
 
@@ -188,9 +220,13 @@ permanent, intentional API.
 
 ### Sim as proof of the remaining migration work
 
-- `apps/sim/src/bootstrap.ts` still calls `setTileVisualProvider()`,
-  `registerCoreBrainComponents()`, `registerBrainComponents()`,
-  `registerUserTilesAtStartup()`, and `initProject()` during bootstrap.
+- `apps/sim/src/bootstrap.ts` still calls `registerCoreBrainComponents()`,
+  `registerBrainComponents()`, `registerUserTilesAtStartup()`, and
+  `initProject()` during bootstrap, but no longer uses
+  `setTileVisualProvider()` in the normal startup path.
+- `apps/sim/src/brain-editor-config.tsx` now supplies
+  `resolveTileVisual: genVisualForTile`, so sim presentation is app-owned even
+  though the runtime path is not yet migrated.
 - `apps/sim/src/services/brain-runtime.ts` still imports the concrete `Brain`
   class, uses `getBrainServices()` to build catalogs and resolve host actions,
   and still owns app-side active-brain bookkeeping that later phases should
@@ -839,10 +875,19 @@ and remove process-global tile presentation from the new integration path.
 - Startup hydration is a semantic fallback path, not an executable action path.
   It exists so persisted brains and editor state can load before the compiler
   produces fresh bundle output.
+- `HydratedTileMetadataSnapshot` and `CompiledActionBundle` are distinct
+  contracts even though they currently carry the same `revision` and `tiles`
+  fields. Keep those declarations separate rather than reintroducing a shared
+  base or treating a bundle as the hydration contract itself.
 - `CompiledActionBundle` is still a core-facing contract even when
   `@mindcraft-lang/ts-compiler` is the producer. If it remains on the
-  `MindcraftEnvironment` seam, it should use core-safe containers such as
-  `Dict` rather than native `Map`.
+  `MindcraftEnvironment` seam, keyed runtime-facing collections should use
+  core-safe containers such as `Dict` rather than native `Map`.
+- The container asymmetry in `CompiledActionBundle` is intentional in V1:
+  `actions` is a `Dict` because core diffs, replaces, and resolves actions by
+  key, while `tiles` remains a `readonly TileDefinitionInput[]` because it is a
+  whole-snapshot transfer list rather than a keyed mutable registry. Core may
+  project that array into `TileCatalog`/`List` internally after receipt.
 - `CompiledActionBundle.tiles` belongs to the semantic catalog story, not just
   the runtime action story. It should update environment-shared bundle catalog
   state rather than acting like a second unrelated tile registry.
@@ -1271,9 +1316,10 @@ app and remove direct registry access from the normal sim integration path.
   the supported ability to tick brains and inspect runtime state through the
   returned brain object.
 4. Update the user-authored action integration path so the sim consumes compiler
-  output through `replaceActionBundle(...)` and environment invalidation events
-  rather than maintaining the primary runtime state in app-owned maps and
-  revision trackers.
+  output through `buildCompiledActionBundle(...)`,
+  `replaceActionBundle(...)`, and environment invalidation events rather than
+  maintaining the primary runtime state in app-owned maps and revision
+  trackers.
 5. Replace `registerUserTilesAtStartup()` with a startup hydration path that:
   - loads the persisted `HydratedTileMetadataSnapshot`
   - calls `environment.hydrateTileMetadata(...)` before persisted brains load
@@ -1319,6 +1365,9 @@ app and remove direct registry access from the normal sim integration path.
 - The startup hydration path is specifically for persisted-brain data loading.
   It should not be treated as a substitute for fresh compiler output when
   executable brains need authored action implementations.
+- S3 narrowed the intended ts-compiler runtime path to
+  `buildCompiledActionBundle(...)`. S6 should migrate sim to that helper rather
+  than reviving the legacy singleton `registerUserTile(...)` path.
 - Sim should no longer need to smuggle generated `mindcraft.d.ts` into the
   bridge filesystem just to get correct compiler inputs, and it should never be
   able to control the authoritative `tsconfig.json` through app wiring.
@@ -1427,16 +1476,19 @@ legacy seam is either removed or reduced to the smallest justified remainder.
    - core only
    - core + ts-compiler
    - core + ts-compiler + bridge
-5. Remove, privatize, or explicitly demote legacy app-facing seams that are no
-   longer justified once sim has migrated:
+5. Remove legacy app-facing seams that are no longer justified once sim has
+   migrated:
    - `registerCoreBrainComponents()` if it no longer serves a clear internal role
    - `getBrainServices()` as an app-integration primitive
-   - `setTileVisualProvider()` as a primary integration mechanism
+   - `setTileVisualProvider()` entirely; it is not allowed to remain as a
+     compatibility shim or legacy fallback after S7
    - `AppProject` as the recommended app-facing bridge API
 
 **Notes:**
 
 - S7 should end with the new seam documented as the gold-standard path.
+- S7 is the explicit removal point for temporary legacy fallback shims carried
+  earlier for migration, including `setTileVisualProvider()`.
 - Because there are no external users yet, hard cleanup is in scope where it
   improves clarity and maintainability.
 
@@ -1852,3 +1904,174 @@ adoption remain later phases.
   and keeps no-shadowing as the intended rule, but stable precedence is still
   defined defensively to preserve pre-S2 behavior; remaining bundle/hydration
   hardening stays with Phase S3)
+
+### Phase S3 -- 2026-04-05
+
+**Planned vs actual:**
+
+All 12 concrete S3 deliverables landed at the package seam, although several
+details only stabilized through review-driven refinements rather than the first
+implementation pass.
+
+- `packages/core` finalized the authored-action bundle seam with environment-
+  owned hydration and bundle catalogs, atomic hydration-to-bundle handoff,
+  tracked-brain invalidation, explicit rebuild control, and persisted-brain
+  deserialization against hydrated and bundled metadata.
+- `packages/ts-compiler` now adapts project compile output into whole-snapshot
+  `CompiledActionBundle` values via `buildCompiledActionBundle(...)`, including
+  deduped shared parameter tiles and a no-bundle result when compile output or
+  bundle-time metadata resolution is not safe to install.
+- `packages/ui` now owns the normal tile-presentation path through
+  `resolveTileVisual(...)`, and sim now feeds presentation through editor config
+  instead of bootstrap-time global visual-provider mutation.
+- Startup-hydrated metadata and bundle-installed metadata now remain semantic
+  only; executable authored actions still arrive only through bundle
+  replacement.
+- The public bundle/hydration contracts are now explicitly separate, and the
+  bundle container shape is intentionally asymmetric: keyed runtime action data
+  uses `Dict`, while tile metadata remains a whole-snapshot transfer array.
+
+One planned cleanup landed as a narrowed migration decision rather than
+deletion:
+
+- `setTileVisualProvider()` remains in core only as a legacy fallback
+  augmentation shim, but it is no longer part of the primary bundle/UI
+  integration path.
+
+One planned proof remains deferred by phase design:
+
+- S3 completed the package-level seam and a small sim presentation slice, but
+  full sim runtime adoption of `buildCompiledActionBundle(...)`,
+  `replaceActionBundle(...)`, and startup hydration remains Phase S6 work.
+
+**Unplanned additions and discoveries:**
+
+1. Review found that persisted-brain binary deserialization could duplicate
+   catalog chaining on some rule paths, so S3 threaded extra catalogs through
+   `BrainDef`, `BrainPageDef`, and `BrainRuleDef` and added dedicated binary
+   regression tests.
+2. Review found that generic fallback labels were leaking into app visuals and
+   literal formatting. S3 centralized fallback-label handling in core/UI helper
+   functions and moved literal/variable/accessor fallback label ownership into
+   shared UI resolution.
+3. Review found that hydrated and bundle-owned semantic catalogs should not run
+   through the global visual provider at all. Environment-owned bundle and
+   hydration catalog replacement now uses raw catalog insertion instead of the
+   legacy registration path.
+4. Review found that treating a compiled bundle as the hydration contract was
+   semantically wrong even when the field shapes overlapped. The contracts were
+   separated, the design docs were synced, and the temporary shared field
+   helper was removed after review.
+5. Review found that the ts-compiler root API was still exposing two
+   incompatible authored-action paths. The root surface now exposes
+   `buildCompiledActionBundle(...)` rather than the legacy singleton
+   `registerUserTile(...)` bridge.
+6. Review rejected a one-off custom `UnknownUserTileParameterTypeError` as a
+   codebase convention break. The final bundle path uses the package's normal
+   `undefined` contract instead, while the legacy direct-registration bridge
+   remains fail-fast with a plain `Error`.
+
+**Design decisions:**
+
+- Keep tile presentation app/UI-owned through `resolveTileVisual(...)`; do not
+  reintroduce a process-global core presentation registry into the normal path.
+- Keep `HydratedTileMetadataSnapshot` and `CompiledActionBundle` separately
+  declared even when they currently share fields.
+- Treat `CompiledActionBundle` as a whole-snapshot seam. `actions` stays a
+  keyed `Dict`, while `tiles` stays a readonly transfer list.
+- Keep overlap-safe deferred rebuilds on the no-args
+  `rebuildInvalidatedBrains()` seam against the environment's live invalidation
+  set.
+- Keep `setTileVisualProvider()` only as a legacy fallback augmentation shim,
+  not as part of the primary authored-action or UI path, and remove it in
+  Phase S7.
+- Keep the legacy singleton registration bridge off the ts-compiler root API
+  and avoid custom runtime error subclasses for unresolved bundle-time metadata.
+
+**Files changed:**
+
+- `packages/core/src/mindcraft.ts`
+- `packages/core/src/mindcraft.spec.ts`
+- `packages/core/src/mindcraft-environment.spec.ts`
+- `packages/core/src/brain/model/braindef.ts`
+- `packages/core/src/brain/model/pagedef.ts`
+- `packages/core/src/brain/model/ruledef.ts`
+- `packages/core/src/brain/model/ruledef.spec.ts`
+- `packages/core/src/brain/tiles/catalog.ts`
+- `packages/core/src/brain/tiles/catalog.spec.ts`
+- `packages/ui/src/brain-editor/BrainEditorContext.tsx`
+- `packages/ui/src/brain-editor/BrainTile.tsx`
+- `packages/ui/src/brain-editor/BrainPrintView.tsx`
+- `packages/ui/src/brain-editor/BrainPrintTextView.tsx`
+- `packages/ui/src/brain-editor/BrainTilePickerDialog.tsx`
+- `packages/ui/src/brain-editor/hooks/useTileSelection.ts`
+- `packages/ui/src/brain-editor/tile-visual-utils.ts`
+- `packages/ts-compiler/src/index.ts`
+- `packages/ts-compiler/src/runtime/action-bundle.ts`
+- `packages/ts-compiler/src/runtime/action-bundle.spec.ts`
+- `packages/ts-compiler/src/runtime/user-tile-metadata.ts`
+- `packages/ts-compiler/src/runtime/registration-bridge.ts`
+- `packages/ts-compiler/src/runtime/registration-bridge.spec.ts`
+- `apps/sim/src/bootstrap.ts`
+- `apps/sim/src/brain-editor-config.tsx`
+- `apps/sim/src/brain/tiles/accessors.ts`
+- `apps/sim/src/brain/tiles/variables.ts`
+- `apps/sim/src/brain/tiles/visual-provider.ts`
+- `docs/specs/features/mindcraft-seam-design.md`
+
+**Verification:**
+
+- `packages/core`: repeated `npm run typecheck`, `npm run check`,
+  `npm run build`, and `npm test` during S3 review refinements; final package
+  verification passed after the contract-separation cleanup
+- `packages/ui`: `npm run typecheck`, `npm run check`
+- `apps/sim`: `npm run typecheck`, `npm run check`
+- `packages/ts-compiler`: `npm run typecheck`, `npm run check`, `npm test`
+  with a final passing result of 559 tests, 0 failures
+
+**Acceptance criteria result:**
+
+S3 is accepted at the package seam. Core now owns hydration, bundle
+replacement, invalidation, and persisted-brain deserialization behavior for
+authored actions; ts-compiler can emit the whole-snapshot bundle contract that
+core consumes; and the normal tile-presentation path is app/UI-owned rather
+than process-global. Full sim runtime adoption and final bridge/product
+guidance remain with Phases S6-S7.
+
+### Requirements retrospective
+
+- `FR-2`: partially satisfied (the bridge-free compiler/runtime bundle seam is
+  implemented and exposed through `buildCompiledActionBundle(...)`; real-app
+  proof remains with Phase S6 and final public guidance remains with Phase S7)
+- `FR-6`: satisfied as planned
+- `FR-7`: satisfied as planned
+- `FR-8`: partially satisfied (the package seam now resolves shared,
+  hydrated, compiled, overlay, and brain-local metadata during persisted-brain
+  load and runtime lookup; real-app proof remains with Phase S6 and final
+  public guidance remains with Phase S7)
+- `FR-9`: partially satisfied (startup hydration is implemented at the package
+  seam and validated against persisted-brain loading; real-app cold-start proof
+  remains with Phase S6)
+- `FR-10`: satisfied as planned
+- `FR-11`: partially satisfied (authoritative whole-snapshot bundle handoff is
+  implemented in core and ts-compiler; real-app proof remains with Phase S6)
+- `FR-12`: partially satisfied (selective invalidation is implemented and
+  regression-tested at the core seam; real-app proof remains with Phase S6)
+- `FR-13`: partially satisfied (deferred rebuild control is implemented and
+  overlap-safe at the core seam; real-app proof remains with Phase S6)
+- `FR-14`: satisfied as planned
+- `FR-16`: satisfied as planned
+- `FR-17`: satisfied as planned
+- `NFR-1`: partially satisfied (the bundle/hydration seam was validated in
+  `packages/core` and `packages/ts-compiler` without abandoning core target
+  constraints; real-app proof remains with Phase S6 and final full-stack
+  completion remains with Phase S7)
+- `NFR-2`: partially satisfied (runtime-facing bundle consumption remains
+  platform-neutral in shared core code and app-owned presentation stays out of
+  core semantic catalogs; real-app proof remains with Phase S6)
+- `NFR-4`: partially satisfied (cold-start semantics are implemented and tested
+  at the package seam; real-app cold-start proof remains with Phase S6)
+- `NFR-5`: satisfied as planned
+- `INV-1`: satisfied as planned
+- `INV-2`: satisfied as planned
+- `INV-3`: satisfied as planned

@@ -1,0 +1,101 @@
+import { type CompiledActionBundle, Dict } from "@mindcraft-lang/core";
+import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
+import { getBrainServices } from "@mindcraft-lang/core/brain";
+import type { ProjectCompileResult } from "../compiler/compile.js";
+import type { UserAuthoredProgram } from "../compiler/types.js";
+import { buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-metadata.js";
+
+export interface BuildCompiledActionBundleOptions {
+  resolveTypeId?: UserTileTypeResolver;
+  revision?: string;
+}
+
+function defaultResolveTypeId(typeName: string): string | undefined {
+  return getBrainServices().types.resolveByName(typeName);
+}
+
+function hashText(text: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function hasBlockingDiagnostics(result: ProjectCompileResult): boolean {
+  if (result.tsErrors.size > 0) {
+    return true;
+  }
+
+  for (const compileResult of result.results.values()) {
+    if (compileResult.diagnostics.length > 0) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function collectPrograms(result: ProjectCompileResult): readonly UserAuthoredProgram[] {
+  const programs: UserAuthoredProgram[] = [];
+
+  for (const compileResult of result.results.values()) {
+    if (compileResult.program) {
+      programs.push(compileResult.program);
+    }
+  }
+
+  programs.sort((left, right) => left.key.localeCompare(right.key));
+  return programs;
+}
+
+function buildRevision(programs: readonly UserAuthoredProgram[]): string {
+  if (programs.length === 0) {
+    return "bundle-empty";
+  }
+
+  const signature = programs.map((program) => `${program.key}:${program.revisionId}`).join("|");
+  return `bundle-${hashText(signature)}`;
+}
+
+function addTiles(target: Map<string, IBrainTileDef>, tiles: readonly IBrainTileDef[]): void {
+  for (const tile of tiles) {
+    if (!target.has(tile.tileId)) {
+      target.set(tile.tileId, tile);
+    }
+  }
+}
+
+export function buildCompiledActionBundle(
+  result: ProjectCompileResult,
+  options: BuildCompiledActionBundleOptions = {}
+): CompiledActionBundle | undefined {
+  if (hasBlockingDiagnostics(result)) {
+    return undefined;
+  }
+
+  const resolveTypeId = options.resolveTypeId ?? defaultResolveTypeId;
+  const programs = collectPrograms(result);
+  const actions = new Dict<string, UserAuthoredProgram>();
+  const tileMap = new Map<string, IBrainTileDef>();
+
+  for (const program of programs) {
+    const metadata = buildUserTileMetadata(program, resolveTypeId);
+    if (!metadata) {
+      return undefined;
+    }
+
+    actions.set(program.key, program);
+    addTiles(tileMap, metadata.parameterTiles);
+    addTiles(tileMap, [metadata.actionTile]);
+  }
+
+  const tiles = Array.from(tileMap.values()).sort((left, right) => left.tileId.localeCompare(right.tileId));
+
+  return {
+    revision: options.revision ?? buildRevision(programs),
+    actions,
+    tiles,
+  };
+}

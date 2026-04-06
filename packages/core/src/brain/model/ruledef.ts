@@ -54,6 +54,15 @@ const STags = {
   CMNT: fourCC("CMNT"), // Rule comment
 };
 
+function buildBinaryDeserializationCatalogs(brain: IBrainDef | undefined): List<ITileCatalog> {
+  const catalogs = new List<ITileCatalog>();
+  if (brain?.catalog()) {
+    catalogs.push(brain.catalog());
+  }
+  catalogs.push(getBrainServices().tiles);
+  return catalogs;
+}
+
 export class BrainRuleDef implements IBrainRuleDef {
   private page_?: IBrainPageDef;
   private ancestor_?: BrainRuleDef; // Next rule up in the tree, if any
@@ -560,15 +569,7 @@ export class BrainRuleDef implements IBrainRuleDef {
     if (version < 1 || version > kBinaryVersion) {
       throw new Error(`Unsupported BrainRuleDef (this level only) version: ${version}`);
     }
-    const catalogs = new List<ITileCatalog>();
-    if (catalogs_) {
-      catalogs.push(...catalogs_.toArray());
-    }
-    const brain = this.brain();
-    if (brain?.catalog()) {
-      catalogs.push(brain.catalog());
-    }
-    catalogs.push(getBrainServices().tiles); // global catalog
+    const catalogs = catalogs_ ?? buildBinaryDeserializationCatalogs(this.brain());
     this.when_.deserialize(stream, catalogs);
     this.do_.deserialize(stream, catalogs);
     if (version >= 2) {

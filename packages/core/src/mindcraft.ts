@@ -114,7 +114,9 @@ export interface HydratedTileMetadataSnapshot {
   readonly tiles: readonly TileDefinitionInput[];
 }
 
-export interface CompiledActionBundle extends HydratedTileMetadataSnapshot {
+export interface CompiledActionBundle {
+  readonly revision: string;
+  readonly tiles: readonly TileDefinitionInput[];
   readonly actions: Dict<string, CompiledActionArtifact>;
 }
 
@@ -514,13 +516,13 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   deserializeBrain(stream: IReadStream): IBrainDef {
     return withMindcraftEnvironmentServices(this, () => {
       const definition = new BrainDef();
-      definition.deserialize(stream);
+      definition.deserialize(stream, this.buildDeserializeCatalogs());
       return definition;
     });
   }
 
   deserializeBrainJson(json: BrainJson): IBrainDef {
-    return withMindcraftEnvironmentServices(this, () => BrainDef.fromJson(json));
+    return withMindcraftEnvironmentServices(this, () => BrainDef.fromJson(json, this.buildDeserializeCatalogs()));
   }
 
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void {
@@ -618,6 +620,18 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     return catalogs;
   }
 
+  buildDeserializeCatalogs(): List<ITileCatalog> {
+    const catalogs = List.empty<ITileCatalog>();
+    catalogs.push(this.brainServices.tiles);
+    if (!this.hydratedCatalog.getAll().isEmpty()) {
+      catalogs.push(this.hydratedCatalog);
+    }
+    if (!this.bundleCatalog.getAll().isEmpty()) {
+      catalogs.push(this.bundleCatalog);
+    }
+    return catalogs;
+  }
+
   actionBindings(): BrainActionResolver {
     return this.actionResolver;
   }
@@ -692,7 +706,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     runWithBrainServices(this.brainServices, () => {
       catalog.clear();
       for (let i = 0; i < tiles.size(); i++) {
-        catalog.registerTileDef(tiles.get(i)!);
+        catalog.add(tiles.get(i)!);
       }
     });
   }

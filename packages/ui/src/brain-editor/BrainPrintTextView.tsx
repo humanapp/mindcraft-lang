@@ -1,35 +1,12 @@
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { Fragment } from "react";
-import type { TileVisual } from "./types";
+import { useBrainEditorConfig } from "./BrainEditorContext";
+import { resolveTileVisual } from "./tile-visual-utils";
 
-// -- Tile label formatting ----------------------------------------------------
-
-function tileLabel(tileDef: IBrainTileDef): string {
-  const visual = tileDef.visual as TileVisual | undefined;
-
-  if (tileDef.kind === "literal") {
-    const lit = tileDef as BrainTileLiteralDef;
-    return lit.valueLabel || String(lit.value);
-  }
-
-  if (tileDef.kind === "variable") {
-    const v = tileDef as BrainTileVariableDef;
-    return v.varName;
-  }
-
-  if (tileDef.kind === "accessor") {
-    const a = tileDef as BrainTileAccessorDef;
-    return a.fieldName;
-  }
-
-  return visual?.label || tileDef.tileId.split(".").pop() || tileDef.tileId;
-}
-
-function tilesToText(tiles: IBrainTileDef[]): string {
+function tilesToText(tiles: IBrainTileDef[], getLabel: (tileDef: IBrainTileDef) => string): string {
   if (tiles.length === 0) return "(empty)";
-  return tiles.map((t) => `[${tileLabel(t)}]`).join(" ");
+  return tiles.map((t) => `[${getLabel(t)}]`).join(" ");
 }
 
 // -- Recursive rule formatter -------------------------------------------------
@@ -42,7 +19,12 @@ interface TextRule {
   doText: string;
 }
 
-function flattenRulesText(rules: BrainRuleDef[], depth: number = 0, startLine: number = 1): TextRule[] {
+function flattenRulesText(
+  rules: BrainRuleDef[],
+  getLabel: (tileDef: IBrainTileDef) => string,
+  depth: number = 0,
+  startLine: number = 1
+): TextRule[] {
   const result: TextRule[] = [];
   let currentLine = startLine;
 
@@ -53,14 +35,19 @@ function flattenRulesText(rules: BrainRuleDef[], depth: number = 0, startLine: n
         lineNumber: currentLine,
         depth,
         comment: ruleDef.comment(),
-        whenText: tilesToText(ruleDef.when().tiles().toArray()),
-        doText: tilesToText(ruleDef.do().tiles().toArray()),
+        whenText: tilesToText(ruleDef.when().tiles().toArray(), getLabel),
+        doText: tilesToText(ruleDef.do().tiles().toArray(), getLabel),
       });
     }
     currentLine++;
 
     if (ruleDef.children().size() > 0) {
-      const childRules = flattenRulesText(ruleDef.children().toArray() as BrainRuleDef[], depth + 1, currentLine);
+      const childRules = flattenRulesText(
+        ruleDef.children().toArray() as BrainRuleDef[],
+        getLabel,
+        depth + 1,
+        currentLine
+      );
       result.push(...childRules);
       currentLine += ruleDef.children().size();
     }
@@ -76,13 +63,15 @@ interface BrainPrintTextViewProps {
 }
 
 export function BrainPrintTextView({ brainDef }: BrainPrintTextViewProps) {
+  const editorConfig = useBrainEditorConfig();
   const pages = brainDef.pages().toArray() as BrainPageDef[];
+  const getLabel = (tileDef: IBrainTileDef) => resolveTileVisual(editorConfig, tileDef).label;
 
   return (
     <div className="brain-print-text-view">
       <h1 className="brain-print-text-title">{brainDef.name()}</h1>
       {pages.map((pageDef, idx) => {
-        const rules = flattenRulesText(pageDef.children().toArray() as BrainRuleDef[]);
+        const rules = flattenRulesText(pageDef.children().toArray() as BrainRuleDef[], getLabel);
         return (
           <div key={pageDef.pageId()} className="brain-print-text-page">
             <h2 className="brain-print-text-page-header">

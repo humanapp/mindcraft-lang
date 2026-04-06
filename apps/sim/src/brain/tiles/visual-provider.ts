@@ -1,14 +1,35 @@
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { LiteralDisplayFormats } from "@mindcraft-lang/core/brain";
-import type { BrainTileAccessorDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { applyDisplayFormat } from "@mindcraft-lang/core/brain/tiles";
+import {
+  type BrainTileAccessorDef,
+  type BrainTileLiteralDef,
+  type BrainTileVariableDef,
+  getCatalogFallbackLabel,
+} from "@mindcraft-lang/core/brain/tiles";
 import { dataTypeIconMap } from "./data-type-icons";
 import { tileColorMap } from "./tile-colors";
 import { tileVisuals } from "./tile-visuals";
 import type { TileVisual } from "./types";
 
+function stripGenericCatalogLabel(tileDef: IBrainTileDef, visual: TileVisual | undefined): Partial<TileVisual> {
+  if (!visual) {
+    return {};
+  }
+
+  if (visual.label !== getCatalogFallbackLabel(tileDef)) {
+    return visual;
+  }
+
+  const { label: _label, ...rest } = visual;
+  return rest;
+}
+
 export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
-  const vis: TileVisual = (tileDef.visual as TileVisual) || tileVisuals.get(tileDef.tileId) || {};
+  const intrinsicVisual = stripGenericCatalogLabel(tileDef, tileDef.visual as TileVisual | undefined);
+  const mappedVisual = tileVisuals.get(tileDef.tileId);
+  const vis: Partial<TileVisual> = {
+    ...(intrinsicVisual ?? {}),
+    ...(mappedVisual ?? {}),
+  };
 
   if (!vis.colorDef) {
     vis.colorDef = tileColorMap.get(tileDef.kind);
@@ -16,31 +37,18 @@ export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
 
   if (tileDef.kind === "variable") {
     const varTileDef = tileDef as BrainTileVariableDef;
-    if (!vis.label) {
-      vis.label = varTileDef.varName;
-    }
     if (!vis.iconUrl) {
       const dataTypeIcon = dataTypeIconMap.get(varTileDef.varType);
       vis.iconUrl = dataTypeIcon;
     }
   } else if (tileDef.kind === "accessor") {
     const accTileDef = tileDef as BrainTileAccessorDef;
-    if (!vis.label) {
-      vis.label = accTileDef.fieldName;
-    }
     if (!vis.iconUrl) {
       const dataTypeIcon = dataTypeIconMap.get(accTileDef.fieldTypeId);
       vis.iconUrl = dataTypeIcon;
     }
   } else if (tileDef.kind === "literal") {
     const litTileDef = tileDef as BrainTileLiteralDef;
-    if (!vis.label) {
-      const fmt = litTileDef.displayFormat;
-      vis.label =
-        fmt && fmt !== LiteralDisplayFormats.Default && typeof litTileDef.value === "number"
-          ? applyDisplayFormat(litTileDef.value, fmt)
-          : litTileDef.valueLabel;
-    }
     if (!vis.iconUrl) {
       const dataTypeIcon = dataTypeIconMap.get(litTileDef.valueType);
       vis.iconUrl = dataTypeIcon;
@@ -51,16 +59,10 @@ export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
     }
   }
 
-  if (!vis.label) {
-    console.warn(`No label found for tile ${tileDef.tileId}`);
-    const label = tileDef.tileId.split(".").pop() || tileDef.tileId || "??";
-    vis.label = label;
-  }
-
   if (!vis.iconUrl) {
     console.warn(`No icon found for tile ${tileDef.tileId}`);
     vis.iconUrl = "/assets/brain/icons/question_mark.svg";
   }
 
-  return vis;
+  return vis as TileVisual;
 }

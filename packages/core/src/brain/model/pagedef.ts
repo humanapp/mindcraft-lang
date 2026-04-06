@@ -100,7 +100,7 @@ export class BrainPageDef implements IBrainPageDef {
     });
   }
 
-  deserialize(stream: IReadStream): void {
+  deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void {
     const version = stream.readTaggedU8(STags.PAGE);
     if (version < 1 || version > kVersion) {
       throw new Error(`Unsupported BrainPageDef version: ${version}`);
@@ -115,7 +115,7 @@ export class BrainPageDef implements IBrainPageDef {
     for (let i = 0; i < childCount; i++) {
       const child = new BrainRuleDef();
       child.setPage(this); // set page before deserializing so rule can read brain's local catalog
-      child.deserialize(stream);
+      child.deserialize(stream, catalogs);
       this.children_.push(child);
       this.subscribeToRule_(child);
     }

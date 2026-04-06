@@ -76,6 +76,28 @@ export default Actuator({
     assert.ok(tiles.has(mkParameterTileId("anon.number")));
   });
 
+  test("throws a plain error when a parameter type cannot be resolved", () => {
+    const program = compileProgram(`
+import { Actuator, type Context } from "mindcraft";
+
+export default Actuator({
+  name: "phase6-reg-unknown-param",
+  params: {
+    target: { type: "number" },
+  },
+  onExecute(ctx: Context, params: { target: number }): void {
+  },
+});
+`);
+
+    program.params[0]!.type = "vector2";
+
+    assert.throws(
+      () => registerUserTile(program),
+      /Unknown parameter type "vector2" for "user\.actuator\.phase6-reg-unknown-param"/
+    );
+  });
+
   test("preserves artifact-local activation ids for direct core linking", () => {
     const program = compileProgram(`
 import { Sensor, type Context } from "mindcraft";

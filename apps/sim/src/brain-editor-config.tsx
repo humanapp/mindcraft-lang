@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import type { Archetype } from "./brain/actor";
 import { dataTypeIconMap, dataTypeNameMap } from "./brain/tiles/data-type-icons";
 import { isAppVariableFactoryTileId } from "./brain/tiles/variables";
+import { genVisualForTile } from "./brain/tiles/visual-provider";
 import { MyTypeIds } from "./brain/type-system";
 import { getDefaultBrain } from "./services/brain-persistence";
 
@@ -98,6 +99,7 @@ export function buildBrainEditorConfig(archetype?: Archetype): BrainEditorConfig
   return {
     dataTypeIcons: dataTypeIconMap,
     dataTypeNames: dataTypeNameMap,
+    resolveTileVisual: genVisualForTile,
     isAppVariableFactoryTileId,
     customLiteralTypes: [vector2LiteralType],
     getDefaultBrain: archetype ? () => getDefaultBrain(archetype) : undefined,

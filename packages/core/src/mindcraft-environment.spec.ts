@@ -29,7 +29,13 @@ import {
   TRUE_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
-import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  BrainTileParameterDef,
+  BrainTileSensorDef,
+  BrainTileVariableDef,
+  getTileVisualProvider,
+  setTileVisualProvider,
+} from "@mindcraft-lang/core/brain/tiles";
 
 const noopCodec = {
   encode(): void {},
@@ -45,6 +51,8 @@ type MindcraftEnvironmentInternals = {
   brainServices: BrainServices;
   hydratedCatalog: ITileCatalog;
   bundleCatalog: ITileCatalog;
+  trackedBrains: List<unknown>;
+  invalidatedBrains: List<unknown>;
   buildCatalogChain(definition: BrainDef, overlays: List<ITileCatalog>): List<ITileCatalog>;
 };
 
@@ -184,7 +192,8 @@ function createHostSensorModule(
 
 function createBundleSensor(
   key: string,
-  sensorId: string = key
+  sensorId: string = key,
+  visualLabel?: string
 ): { artifact: CompiledActionArtifact; tile: BrainTileSensorDef } {
   const descriptor = {
     key,
@@ -218,6 +227,7 @@ function createBundleSensor(
     },
     tile: new BrainTileSensorDef(sensorId, descriptor, {
       placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      visual: visualLabel ? { label: visualLabel } : undefined,
     }),
   };
 }
@@ -364,6 +374,41 @@ describe("mindcraft environment", () => {
     assert.equal(restoredBinaryRule.do().tiles().get(0)!.tileId, variableTile.tileId);
   });
 
+  test("deserializes persisted brains against hydrated and bundled tile metadata", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const bundled = createBundleSensor("bundle.persisted");
+    const brainDef = createSensorBrainDef("Hydrated Brain", bundled.tile);
+
+    assert.throws(() => environment.deserializeBrainJson(brainDef.toJson()), /bundle\.persisted/);
+
+    environment.hydrateTileMetadata({
+      revision: "hydrated.bundle.persisted",
+      tiles: [bundled.tile],
+    });
+
+    const restoredFromJson = environment.deserializeBrainJson(brainDef.toJson());
+    assert.equal(
+      restoredFromJson.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId,
+      bundled.tile.tileId
+    );
+
+    const memoryStream = new stream.MemoryStream();
+    brainDef.serialize(memoryStream);
+
+    const restoredFromBinary = environment.deserializeBrain(memoryStream);
+    assert.equal(
+      restoredFromBinary.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId,
+      bundled.tile.tileId
+    );
+
+    assert.throws(() => environment.createBrain(restoredFromJson), /bundle\.persisted/);
+
+    environment.replaceActionBundle(createActionBundle("bundle.persisted.rev1", [bundled]));
+
+    const brain = environment.createBrain(restoredFromJson);
+    assert.equal(brain.status, "active");
+  });
+
   test("builds catalog chains with shared-first precedence", () => {
     const sharedSensor = createHostSensorModule("shared-order-module", "shared.order", "shared-order");
     const environment = createMindcraftEnvironment({ modules: [coreModule(), sharedSensor.module] });
@@ -420,6 +465,31 @@ describe("mindcraft environment", () => {
     assert.equal(resolveTileFromChain(bundleChain, overlayLayered.tileId), bundleLayered.tile);
   });
 
+  test("stores hydrated and bundled tiles without invoking the global visual provider", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const internals = getEnvironmentInternals(environment);
+    const originalVisualProvider = getTileVisualProvider();
+
+    setTileVisualProvider(() => ({ label: "provider-label" }));
+
+    try {
+      const hydrated = createBundleSensor("hydrated.visual");
+      environment.hydrateTileMetadata({
+        revision: "hydrated.visual.rev1",
+        tiles: [hydrated.tile],
+      });
+
+      assert.equal(internals.hydratedCatalog.get(hydrated.tile.tileId)?.visual, undefined);
+
+      const bundled = createBundleSensor("bundle.visual");
+      environment.replaceActionBundle(createActionBundle("bundle.visual.rev1", [bundled]));
+
+      assert.equal(internals.bundleCatalog.get(bundled.tile.tileId)?.visual, undefined);
+    } finally {
+      setTileVisualProvider(originalVisualProvider);
+    }
+  });
+
   test("selectively invalidates brains whose linked bundle action revisions change", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const alpha = createBundleSensor("bundle.alpha");
@@ -473,5 +543,117 @@ describe("mindcraft environment", () => {
     assert.equal(alphaBrain.status, "active");
     assert.equal(betaBrain.status, "active");
     assert.equal(localBrain.status, "active");
+  });
+
+  test("rebuildInvalidatedBrains without args rebuilds all brains invalidated across overlapping replacements", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const alpha = createBundleSensor("bundle.alpha");
+    const beta = createBundleSensor("bundle.beta");
+
+    environment.replaceActionBundle(createActionBundle("bundle.rev1", [alpha, beta]));
+
+    const alphaBrain = environment.createBrain(createSensorBrainDef("Alpha Brain", alpha.tile));
+    const betaBrain = environment.createBrain(createSensorBrainDef("Beta Brain", beta.tile));
+
+    const firstUpdate = environment.replaceActionBundle(
+      createActionBundle("bundle.rev2", [
+        { artifact: withRevision(alpha.artifact, "bundle.alpha.rev2"), tile: alpha.tile },
+        beta,
+      ])
+    );
+
+    assert.equal(firstUpdate.invalidatedBrains.length, 1);
+    assert.equal(firstUpdate.invalidatedBrains[0], alphaBrain);
+    assert.equal(alphaBrain.status, "invalidated");
+    assert.equal(betaBrain.status, "active");
+
+    const secondUpdate = environment.replaceActionBundle(
+      createActionBundle("bundle.rev3", [
+        { artifact: withRevision(alpha.artifact, "bundle.alpha.rev2"), tile: alpha.tile },
+        { artifact: withRevision(beta.artifact, "bundle.beta.rev2"), tile: beta.tile },
+      ])
+    );
+
+    assert.equal(secondUpdate.invalidatedBrains.length, 1);
+    assert.equal(secondUpdate.invalidatedBrains[0], betaBrain);
+    assert.equal(alphaBrain.status, "invalidated");
+    assert.equal(betaBrain.status, "invalidated");
+
+    environment.rebuildInvalidatedBrains();
+
+    assert.equal(alphaBrain.status, "active");
+    assert.equal(betaBrain.status, "active");
+  });
+
+  test("disposing a brain removes it from tracking and excludes it from later invalidation and rebuild", () => {
+    const environment = createMindcraftEnvironment({ modules: [coreModule()] });
+    const internals = getEnvironmentInternals(environment);
+    const alpha = createBundleSensor("bundle.alpha");
+    const beta = createBundleSensor("bundle.beta");
+
+    environment.replaceActionBundle(createActionBundle("bundle.rev1", [alpha, beta]));
+
+    const alphaBrain = environment.createBrain(createSensorBrainDef("Alpha Brain", alpha.tile));
+    const betaBrain = environment.createBrain(createSensorBrainDef("Beta Brain", beta.tile));
+
+    assert.equal(internals.trackedBrains.size(), 2);
+    assert.equal(internals.invalidatedBrains.size(), 0);
+
+    const invalidation = environment.replaceActionBundle(
+      createActionBundle("bundle.rev2", [
+        { artifact: withRevision(alpha.artifact, "bundle.alpha.rev2"), tile: alpha.tile },
+        beta,
+      ])
+    );
+
+    assert.equal(invalidation.invalidatedBrains.length, 1);
+    assert.equal(invalidation.invalidatedBrains[0], alphaBrain);
+    assert.equal(internals.trackedBrains.size(), 2);
+    assert.equal(internals.invalidatedBrains.size(), 1);
+
+    alphaBrain.dispose();
+
+    assert.equal(alphaBrain.status, "disposed");
+    assert.equal(betaBrain.status, "active");
+    assert.equal(internals.trackedBrains.size(), 1);
+    assert.equal(internals.invalidatedBrains.size(), 0);
+
+    const disposedOnlyUpdate = environment.replaceActionBundle(
+      createActionBundle("bundle.rev3", [
+        { artifact: withRevision(alpha.artifact, "bundle.alpha.rev3"), tile: alpha.tile },
+        beta,
+      ])
+    );
+
+    assert.deepEqual(disposedOnlyUpdate.changedActionKeys, ["bundle.alpha"]);
+    assert.equal(disposedOnlyUpdate.invalidatedBrains.length, 0);
+
+    environment.rebuildInvalidatedBrains();
+
+    assert.equal(alphaBrain.status, "disposed");
+    assert.equal(betaBrain.status, "active");
+    assert.equal(internals.trackedBrains.size(), 1);
+    assert.equal(internals.invalidatedBrains.size(), 0);
+  });
+
+  test("keeps tile presentation isolated between environments", () => {
+    const envA = createMindcraftEnvironment({ modules: [coreModule()] });
+    const envB = createMindcraftEnvironment({ modules: [coreModule()] });
+    const bundleA = createBundleSensor("bundle.visual", "bundle.visual", "Alpha Label");
+    const bundleB = createBundleSensor("bundle.visual", "bundle.visual", "Beta Label");
+
+    envA.replaceActionBundle(createActionBundle("bundle.visual.revA", [bundleA]));
+    envB.replaceActionBundle(createActionBundle("bundle.visual.revB", [bundleB]));
+
+    const json = createSensorBrainDef("Visual Brain", bundleA.tile).toJson();
+    const restoredA = envA.deserializeBrainJson(json);
+    const restoredB = envB.deserializeBrainJson(json);
+    const restoredTileA = restoredA.pages().get(0)!.children().get(0)!.when().tiles().get(0)!;
+    const restoredTileB = restoredB.pages().get(0)!.children().get(0)!.when().tiles().get(0)!;
+
+    assert.equal(restoredTileA.tileId, restoredTileB.tileId);
+    assert.equal(restoredTileA.visual?.label, "Alpha Label");
+    assert.equal(restoredTileB.visual?.label, "Beta Label");
+    assert.notEqual(restoredTileA.visual?.label, restoredTileB.visual?.label);
   });
 });

@@ -1,55 +1,37 @@
-import {
-  type ActionDescriptor,
-  type BytecodeResolvedAction,
-  getBrainServices,
-  mkParameterTileId,
-  tiles as tileDefs,
-} from "@mindcraft-lang/core/brain";
+import { type BytecodeResolvedAction, getBrainServices } from "@mindcraft-lang/core/brain";
 import type { UserAuthoredProgram } from "../compiler/types.js";
-
-function buildActionDescriptor(program: UserAuthoredProgram): ActionDescriptor {
-  return {
-    key: program.key,
-    kind: program.kind,
-    callDef: program.callDef,
-    isAsync: program.isAsync,
-    outputType: program.outputType,
-  };
-}
+import { buildUserTileMetadata } from "./user-tile-metadata.js";
 
 export function registerUserTile(program: UserAuthoredProgram): void {
   const { actions, tiles, types } = getBrainServices();
-
-  for (const p of program.params) {
-    const parameterId = p.anonymous ? `anon.${p.type}` : `user.${program.name}.${p.name}`;
-    const paramTileId = mkParameterTileId(parameterId);
-
-    if (!tiles.has(paramTileId)) {
-      const typeId = types.resolveByName(p.type);
-      if (typeId) {
-        tiles.registerTileDef(new tileDefs.BrainTileParameterDef(parameterId, typeId));
-      }
+  let unresolvedTypeName: string | undefined;
+  const metadata = buildUserTileMetadata(program, (typeName) => {
+    const typeId = types.resolveByName(typeName);
+    if (!typeId && unresolvedTypeName === undefined) {
+      unresolvedTypeName = typeName;
     }
+    return typeId;
+  });
+  if (!metadata) {
+    throw new Error(`Unknown parameter type "${unresolvedTypeName ?? "unknown"}" for "${program.key}"`);
   }
 
-  const actionDescriptor = buildActionDescriptor(program);
+  const { actionDescriptor, actionTile, parameterTiles } = metadata;
   const actionBinding: BytecodeResolvedAction = {
     binding: "bytecode",
     descriptor: actionDescriptor,
     artifact: program,
   };
 
+  for (const parameterTile of parameterTiles) {
+    if (!tiles.has(parameterTile.tileId)) {
+      tiles.registerTileDef(parameterTile);
+    }
+  }
+
   actions.register(actionBinding);
 
-  if (program.kind === "sensor") {
-    const tileDef = new tileDefs.BrainTileSensorDef(program.key, actionDescriptor);
-    if (!tiles.has(tileDef.tileId)) {
-      tiles.registerTileDef(tileDef);
-    }
-  } else {
-    const tileDef = new tileDefs.BrainTileActuatorDef(program.key, actionDescriptor);
-    if (!tiles.has(tileDef.tileId)) {
-      tiles.registerTileDef(tileDef);
-    }
+  if (!tiles.has(actionTile.tileId)) {
+    tiles.registerTileDef(actionTile);
   }
 }

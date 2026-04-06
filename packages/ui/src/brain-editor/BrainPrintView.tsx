@@ -3,7 +3,7 @@ import type { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { TileValue } from "./TileValue";
-import type { TileVisual } from "./types";
+import { resolveTileVisual } from "./tile-visual-utils";
 
 // -- Print tile (simplified, no glass, no gradients) -------------------------
 
@@ -13,11 +13,12 @@ interface PrintTileProps {
 }
 
 function PrintTile({ tileDef, side }: PrintTileProps) {
-  const { dataTypeIcons } = useBrainEditorConfig();
+  const editorConfig = useBrainEditorConfig();
+  const { dataTypeIcons } = editorConfig;
 
-  const visual = tileDef.visual as TileVisual | undefined;
-  const label = visual?.label || tileDef.tileId;
-  const iconUrl = visual?.iconUrl || "/assets/brain/icons/question_mark.svg";
+  const visual = resolveTileVisual(editorConfig, tileDef);
+  const label = visual.label;
+  const iconUrl = visual.iconUrl || "/assets/brain/icons/question_mark.svg";
   const baseColor =
     (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
     "#475569";

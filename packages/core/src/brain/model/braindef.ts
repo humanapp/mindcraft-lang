@@ -53,6 +53,23 @@ const STags = {
   PGCT: fourCC("PGCT"), // Page count
 };
 
+function buildDeserializationCatalogs(
+  brainCatalog: ITileCatalog,
+  extraCatalogs?: List<ITileCatalog>
+): List<ITileCatalog> {
+  const catalogs = new List<ITileCatalog>();
+
+  if (extraCatalogs) {
+    for (let i = 0; i < extraCatalogs.size(); i++) {
+      catalogs.push(extraCatalogs.get(i)!);
+    }
+  }
+
+  catalogs.push(brainCatalog);
+  catalogs.push(getBrainServices().tiles);
+  return catalogs;
+}
+
 // -- JSON plain-object conversion helpers ------------------------------------
 // JSON.stringify serializes List<T> as T[] (via List.toJSON). When the result
 // is read back with JSON.parse all collections are plain arrays, not List<T>.
@@ -318,7 +335,7 @@ export class BrainDef implements IBrainDef {
     return { version: kVersion, name: this.name_, catalog: this.catalog_.toJson(), pages };
   }
 
-  static fromJson(json: BrainJson): BrainDef {
+  static fromJson(json: BrainJson, extraCatalogs?: List<ITileCatalog>): BrainDef {
     if (json.version !== kVersion) {
       throw new Error(`BrainDef.fromJson: unsupported version ${json.version}`);
     }
@@ -330,9 +347,7 @@ export class BrainDef implements IBrainDef {
     brain.catalog_.deserializeJson(json.catalog);
 
     // Build the catalog chain: local catalog + global catalog
-    const catalogs = new List<ITileCatalog>();
-    catalogs.push(brain.catalog_);
-    catalogs.push(getBrainServices().tiles);
+    const catalogs = buildDeserializationCatalogs(brain.catalog_, extraCatalogs);
 
     // Restore pages
     for (let i = 0; i < json.pages.size(); i++) {
@@ -356,7 +371,7 @@ export class BrainDef implements IBrainDef {
     stream.popChunk();
   }
 
-  deserialize(stream: IReadStream): void {
+  deserialize(stream: IReadStream, extraCatalogs?: List<ITileCatalog>): void {
     if (this.pages_.size() > 0) {
       throw new Error(`BrainDef.deserialize: BrainDef must be empty before deserializing`);
     }
@@ -369,10 +384,11 @@ export class BrainDef implements IBrainDef {
       this.setName(name);
       this.catalog_.deserialize(stream);
       const pageCount = stream.readTaggedU32(STags.PGCT);
+      const catalogs = buildDeserializationCatalogs(this.catalog_, extraCatalogs);
       for (let i = 0; i < pageCount; i++) {
         const page = new BrainPageDef();
         this.addPage(page); // add before deserializing to set up brain associateion, so rules can read local catalog
-        page.deserialize(stream);
+        page.deserialize(stream, catalogs);
       }
       // Reconcile page tiles after all pages are loaded (handles v1 saves that
       // lack page tiles, and ensures visual labels match deserialized page names)

@@ -3,8 +3,9 @@ import { type BrainTileFactoryDef, registerVariableFactoryTileDef } from "@mindc
 import { MyTypeIds } from "../type-system";
 
 export function registerVariableFactoryTiles() {
-  registerVariableFactoryTileDef(MyTypeIds.Vector2, MyTypeIds.Vector2);
-  registerVariableFactoryTileDef(MyTypeIds.ActorRef, MyTypeIds.ActorRef);
+  const services = getBrainServices();
+  registerVariableFactoryTileDef(MyTypeIds.Vector2, MyTypeIds.Vector2, undefined, services);
+  registerVariableFactoryTileDef(MyTypeIds.ActorRef, MyTypeIds.ActorRef, undefined, services);
 }
 
 export function isAppVariableFactoryTileId(tileId: string): boolean {

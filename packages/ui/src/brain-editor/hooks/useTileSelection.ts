@@ -9,7 +9,7 @@ import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileFactoryDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBrainEditorConfig } from "../BrainEditorContext";
-import type { TileVisual } from "../types";
+import { resolveTileVisual } from "../tile-visual-utils";
 
 interface UseTileSelectionOptions {
   ruleDef: BrainRuleDef;
@@ -21,7 +21,8 @@ interface UseTileSelectionOptions {
  * Hook to handle tile selection flow, including variable creation for factory tiles.
  */
 export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelectionOptions) {
-  const { isAppVariableFactoryTileId } = useBrainEditorConfig();
+  const editorConfig = useBrainEditorConfig();
+  const { isAppVariableFactoryTileId } = editorConfig;
 
   const [showCreateVariableDialog, setShowCreateVariableDialog] = useState(false);
   const [showCreateLiteralDialog, setShowCreateLiteralDialog] = useState(false);
@@ -148,11 +149,11 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
   }, []);
 
   const variableDialogTitle = pendingFactoryTile
-    ? (pendingFactoryTile.visual as TileVisual | undefined)?.label || pendingFactoryTile.tileId
+    ? resolveTileVisual(editorConfig, pendingFactoryTile).label
     : "Create Variable";
 
   const literalDialogTitle = pendingFactoryTile
-    ? (pendingFactoryTile.visual as TileVisual | undefined)?.label || pendingFactoryTile.tileId
+    ? resolveTileVisual(editorConfig, pendingFactoryTile).label
     : "Create Literal";
 
   const literalType = pendingFactoryTile?.producedDataType || "";

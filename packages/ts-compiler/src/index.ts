@@ -19,4 +19,5 @@ export {
 export type { LinkedUserProgram, UserAuthoredProgram } from "./compiler/types.js";
 export type { LinkResult } from "./linker/linker.js";
 export { linkUserPrograms } from "./linker/linker.js";
-export { registerUserTile } from "./runtime/registration-bridge.js";
+export type { BuildCompiledActionBundleOptions } from "./runtime/action-bundle.js";
+export { buildCompiledActionBundle } from "./runtime/action-bundle.js";

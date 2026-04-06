@@ -202,7 +202,9 @@ export interface HydratedTileMetadataSnapshot {
   readonly tiles: readonly TileDefinitionInput[];
 }
 
-export interface CompiledActionBundle extends HydratedTileMetadataSnapshot {
+export interface CompiledActionBundle {
+  readonly revision: string;
+  readonly tiles: readonly TileDefinitionInput[];
   readonly actions: Dict<string, CompiledActionArtifact>;
 }
 

@@ -1,6 +1,7 @@
 import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { createContext, type ReactNode, useContext } from "react";
+import type { TileVisual } from "./types";
 
 /**
  * Describes a custom literal type that the host app supports beyond the
@@ -37,6 +38,8 @@ export interface BrainEditorConfig {
   dataTypeIcons: ReadonlyMap<string, string>;
   /** Maps data type IDs to human-readable names (e.g. CoreTypeIds.Number -> "number"). */
   dataTypeNames: ReadonlyMap<string, string>;
+  /** Resolves app-owned tile presentation without mutating core semantic catalogs. */
+  resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Returns true if the given tile ID is an app-specific variable factory tile. */
   isAppVariableFactoryTileId: (tileId: string) => boolean;
   /** Custom literal types beyond the core String/Number. */

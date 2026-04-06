@@ -21,7 +21,9 @@ import {
 import React from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
+import { resolveTileVisual } from "./tile-visual-utils";
 
 type TileGroup =
   | "actuator"
@@ -91,6 +93,7 @@ export function BrainTilePickerDialog({
   onTileSelected,
   onCancel,
 }: BrainTilePickerDialogProps) {
+  const editorConfig = useBrainEditorConfig();
   const services = getBrainServices();
   const [filter, setFilter] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -226,7 +229,7 @@ export function BrainTilePickerDialog({
     const filtered: [TileGroup, TileSuggestion[]][] = [];
     for (const [group, tiles] of groups) {
       const matching = tiles.filter((s) => {
-        const label = s.tileDef.visual?.label || s.tileDef.tileId;
+        const label = resolveTileVisual(editorConfig, s.tileDef).label;
         return fuzzyMatch(filter, label);
       });
       if (matching.length > 0) filtered.push([group, matching]);

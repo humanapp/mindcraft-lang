@@ -7,7 +7,7 @@ import { glassEffect } from "../lib/glass-effect";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
-import type { TileVisual } from "./types";
+import { resolveTileVisual } from "./tile-visual-utils";
 
 interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   tileDef: IBrainTileDef;
@@ -17,14 +17,15 @@ interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "
 
 export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
   ({ tileDef, side, badge, className = "", ...props }, ref) => {
-    const { dataTypeIcons, dataTypeNames } = useBrainEditorConfig();
+    const editorConfig = useBrainEditorConfig();
+    const { dataTypeIcons, dataTypeNames } = editorConfig;
     const [isOverflowing, setIsOverflowing] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [labelBasedWidth, setLabelBasedWidth] = useState<number | undefined>(undefined);
 
-    const visual = tileDef.visual as TileVisual | undefined;
-    const label = visual?.label || tileDef.tileId;
-    const iconUrl = visual?.iconUrl || "/assets/brain/icons/question_mark.svg";
+    const visual = resolveTileVisual(editorConfig, tileDef);
+    const label = visual.label;
+    const iconUrl = visual.iconUrl || "/assets/brain/icons/question_mark.svg";
     const baseColor =
       (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
       "#475569";
