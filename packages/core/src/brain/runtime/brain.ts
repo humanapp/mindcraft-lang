@@ -146,7 +146,7 @@ export class Brain implements IBrain {
     );
 
     // Create VM with the linked executable program.
-    this.vm = new VM(this.program, this.handles);
+    this.vm = new VM(getBrainServices(), this.program, this.handles);
 
     // Create scheduler
     this.scheduler = new FiberScheduler(this.vm, {

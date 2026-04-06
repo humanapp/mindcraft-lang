@@ -55,7 +55,7 @@ import {
   VmStatus,
   VOID_VALUE,
 } from "../interfaces/vm";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 /**
  * Stack-based bytecode VM
@@ -461,15 +461,18 @@ class BytecodeVerifier {
 export class VM implements IVM {
   private config: VmConfig;
   private verifier: BytecodeVerifier;
-  private services = getBrainServices();
-  private fns = this.services.functions;
+  private services: BrainServices;
+  private fns: BrainServices["functions"];
   private nextInternalFiberId = -1;
 
   constructor(
+    services: BrainServices,
     private prog: Program,
     public handles: HandleTable,
     config?: Partial<VmConfig>
   ) {
+    this.services = services;
+    this.fns = services.functions;
     this.config = { ...DEFAULT_VM_CONFIG, ...config };
     this.verifier = new BytecodeVerifier(prog);
 
