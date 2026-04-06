@@ -11,6 +11,7 @@ export type {
   WorkspaceChange,
   WorkspaceSnapshot,
 } from "./app-bridge.js";
+export { createAppBridge } from "./app-bridge.js";
 export { AppProject, type AppProjectOptions } from "./app-project.js";
 export {
   CompilationManager,

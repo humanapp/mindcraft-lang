@@ -830,6 +830,10 @@ Feature note:
   publication hooks for the compilation feature path
 - `onDidSync(...)` exists so features with cached state, such as diagnostics,
   can replay that state after pairing or full filesystem sync
+- 2026-04-05 implementation note: `bridge-app` now sources `onDidSync(...)`
+  from `bridge-client`'s `Project.onDidSync()` helper rather than inspecting
+  raw `filesystem:sync` session messages directly. The remaining sync-direction
+  heuristic is intentionally narrowed to `bridge-client` internals for now.
 - `WorkspaceAdapter.exportSnapshot()` is the user-authored workspace only; it
   is not the place where generated compiler inputs such as `mindcraft.d.ts` or
   compiler-controlled system files such as `tsconfig.json` get smuggled into

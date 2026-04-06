@@ -24,7 +24,7 @@ Depends on infrastructure from:
 
 ## Status
 
-As of 2026-04-05, Phases S1-S3 are complete. Phases S4-S7 remain open.
+As of 2026-04-05, Phases S1-S4 are complete. Phases S5-S7 remain open.
 
 The codebase now exposes the new package-level runtime/compiler/presentation
 seam, while bridge and real-app migration work remains outstanding:
@@ -42,8 +42,10 @@ seam, while bridge and real-app migration work remains outstanding:
 - Legacy core globals still exist as secondary migration paths, and some
   internal core code still depends on a tightly scoped environment-owned
   services context via `runWithBrainServices(...)`.
-- `@mindcraft-lang/bridge-app` integration is still centered on `AppProject`,
-  and `apps/sim` still depends on deep imports, synthetic import events, and
+- `@mindcraft-lang/bridge-app` now exposes `createAppBridge(...)` over
+  app-owned workspace adapters plus feature composition, while `AppProject`
+  and the root-level compilation seam remain as legacy migration paths.
+- `apps/sim` still depends on `AppProject`, synthetic import events, and
   app-owned compiler/runtime glue.
 
 ---
@@ -207,16 +209,28 @@ permanent back-compat seams.
 
 ### Bridge-app integration seam
 
-- `packages/bridge-app/src/app-project.ts` subclasses the low-level
-  `Project<TClient, TServer>` class from `bridge-client`.
-- `AppProject` hardcodes the `"app"` websocket path and join-code handling,
-  but still exposes `session`, `files`, `compilation`, and
-  `onRemoteFileChange()` to consumers.
-- Optional compilation transport currently lives in the root bridge-app public
+- `packages/bridge-app/src/app-bridge.ts` now implements
+  `createAppBridge(...)` with `start()`, `stop()`, `requestSync()`,
+  `snapshot()`, `onStateChange(...)`, and `onRemoteChange(...)` over an
+  app-owned `WorkspaceAdapter`.
+- `WorkspaceSnapshot` / `WorkspaceChange` are now bridge-app seam aliases over
+  `bridge-client`'s `ExportedFileSystem` / `FileSystemNotification`, and the
+  app-owned workspace is now the source of truth for snapshot export and remote
+  mutation application.
+- `AppBridgeFeatureContext` now provides bridge snapshot access, workspace
+  snapshot access, remote change subscription, `onDidSync(...)`, and outbound
+  diagnostics/status publication helpers for optional bridge features.
+- `packages/bridge-client/src/project/project.ts` now exposes
+  `onDidSync(...)`, and full sync applies as one `import` change over
+  snapshot-replacement filesystem semantics rather than as a stream of inferred
+  per-file writes.
+- `AppProject` still subclasses the low-level `Project<TClient, TServer>`
+  class from `bridge-client`, hardcodes the `"app"` websocket path and
+  join-code handling, and remains available as a legacy migration seam.
+- Optional compilation transport still lives in the root bridge-app public
   surface via `CompilationProvider`, `CompilationResult`, and
-  `CompilationManager`.
-- The current API shape makes app code reason about both the domain seam and
-  transport internals at the same time.
+  `CompilationManager`, so apps can still end up reasoning about both the
+  domain seam and transport internals until Phase S5/S7 migration work lands.
 
 ### Sim as proof of the remaining migration work
 
@@ -1226,6 +1240,10 @@ facade and into an optional feature surface.
   standalone even if it is structurally compatible with `DiagnosticSnapshot`.
   Do not reintroduce inheritance between those shapes as part of the S5 seam
   work.
+- 2026-04-05 post-mortem note: S4 now routes sync replay through
+  `Project.onDidSync()` -> `AppBridgeFeatureContext.onDidSync()`. S5 feature
+  work should continue to use that hook rather than inspecting raw
+  `filesystem:sync` session traffic or reintroducing message-shape heuristics.
 
 **Risks:**
 
@@ -2075,3 +2093,127 @@ guidance remain with Phases S6-S7.
 - `INV-1`: satisfied as planned
 - `INV-2`: satisfied as planned
 - `INV-3`: satisfied as planned
+
+### Phase S4 -- 2026-04-05
+
+**Planned vs actual:**
+
+All 9 concrete S4 deliverables landed at the package seam, with one small
+bridge-client infrastructure hook added to keep the bridge facade off raw
+session message heuristics.
+
+- `packages/bridge-app` now implements `createAppBridge(...)` with the planned
+  lifecycle, snapshot, state-change, remote-change, and sync-request methods.
+- `WorkspaceSnapshot` and `WorkspaceChange` are now the bridge-app seam aliases
+  over `bridge-client`'s `ExportedFileSystem` and `FileSystemNotification`.
+- `WorkspaceAdapter` is now the app-owned seam for exporting workspace
+  snapshots, applying remote changes, and forwarding local workspace changes to
+  the bridge.
+- `AppBridgeFeatureContext` now provides bridge snapshot access, workspace
+  snapshot access, state-change and remote-change subscriptions, a sync-complete
+  hook, and diagnostics/status publication helpers.
+- The facade now keeps workspace ownership on the app side: local changes are
+  forwarded from the app-owned adapter, inbound bridge changes are applied back
+  through `applyRemoteChange(...)`, and full sync arrives as one `import`
+  change so browser persistence can batch at the app store boundary.
+- `AppProject` was retained as a legacy migration seam and now serves as the
+  underlying adapter implementation for `createAppBridge(...)` in S4.
+- Public tests now cover connection status transitions, join-code propagation,
+  local-to-remote forwarding, remote change application, full-sync behavior,
+  and feature attach/replay behavior.
+
+One deliverable landed with a supporting bridge-client change that went beyond
+the initial bridge-app-only expectation:
+
+- Deliverable 9 needed a small `bridge-client` helper hook. `Project` now
+  exposes `onDidSync(...)`, and the filesystem import/apply path now preserves
+  full-snapshot sync semantics and exact incoming notification shapes.
+
+**Unplanned additions and discoveries:**
+
+1. Full-sync correctness needed a shared transport-layer adjustment, not just a
+   bridge-app facade. `FileSystem.import(...)` now replaces the snapshot, and
+   `NotifyingFileSystem.applyNotification(...)` now re-emits the original
+   notification shape after applying it.
+2. Review found that the raw `filesystem:sync` request/response shape heuristic
+   already existed in `bridge-client`'s `Project`, not just in the new facade.
+   S4 narrowed that fragility to one internal location by adding
+   `Project.onDidSync(...)` and moving both `createAppBridge(...)` and the
+   legacy `AppProject` compilation replay path onto that higher-level hook.
+3. Review confirmed that outbound `requestSync()` did not actually double-fire
+   sync replay because `WsClient` resolves pending request IDs before normal
+   message listeners run. The S4 refactor still removed the duplicate-looking
+   bridge-app emission path to make the layering easier to reason about.
+4. Feature attachment intentionally happens before the bridge starts, so the
+   initial `AppBridgeFeatureContext.snapshot()` state is `disconnected`. Tests
+   now lock that behavior in so feature code can reason about the startup
+   transition consistently.
+
+**Design decisions:**
+
+- Keep `createAppBridge(...)` implemented as an adapter over `AppProject` for
+  S4 rather than rebuilding the bridge stack from scratch; Phase S7 remains the
+  cleanup point for deciding how much of `AppProject` survives publicly.
+- Keep workspace persistence out of bridge-app entirely. The facade forwards one
+  `import` change for full sync and leaves persistence batching to the app-owned
+  workspace store.
+- Keep `AppBridgeFeatureContext` listener and cleanup shapes on plain
+  `() => void` callbacks, matching the S1 contract layer and existing codebase
+  conventions.
+- Source `onDidSync(...)` from `Project.onDidSync()` rather than from raw
+  session message inspection in bridge-app or feature code.
+
+**Files changed:**
+
+- `packages/bridge-app/src/app-bridge.ts`
+- `packages/bridge-app/src/app-project.ts`
+- `packages/bridge-app/src/index.ts`
+- `packages/bridge-app/test/app-bridge.spec.ts`
+- `packages/bridge-client/src/filesystem.ts`
+- `packages/bridge-client/src/filesystem.spec.ts`
+- `packages/bridge-client/src/project/project.ts`
+- `packages/bridge-client/src/project/project.spec.ts`
+- `docs/specs/features/mindcraft-seam-design.md`
+
+**Verification:**
+
+- `packages/bridge-client`: `npm run typecheck`, `npm run check`,
+  `npm run build`, `npm test`
+- `packages/bridge-app`: `npm run typecheck`, `npm run check`, `npm run build`,
+  `npm test`
+
+**Acceptance criteria result:**
+
+S4 is accepted at the package seam. Apps can now integrate the bridge through
+`createAppBridge(...)`, keep workspace ownership on the app side, and attach
+optional features through `AppBridgeFeatureContext` without touching
+`ProjectSession` or `ProjectFiles` directly on the new path. Real-app proof,
+compilation-feature migration, and final legacy cleanup remain with
+Phases S5-S7.
+
+### Requirements retrospective
+
+- `FR-3`: partially satisfied (implemented the bridge-only facade at the
+  package seam through `createAppBridge(...)`; real-app proof and final public
+  guidance remain with Phase S7)
+- `FR-18`: partially satisfied (implemented the app-facing bridge lifecycle,
+  join-code, and workspace surface at the package seam; real-app proof remains
+  with Phase S7)
+- `FR-19`: partially satisfied (implemented public remote/local workspace flow
+  through the app-owned `WorkspaceAdapter`; real-app proof remains with
+  Phase S7)
+- `FR-20`: partially satisfied (implemented the app-owned workspace seam and
+  removed the need for bridge-owned raw VFS export on the new path; sim
+  migration proof remains with Phases S6-S7)
+- `FR-21`: partially satisfied (implemented full sync as one `import` change so
+  app-owned persistence can batch at the workspace-store boundary; sim proof
+  remains with Phases S6-S7)
+- `FR-22`: partially satisfied (implemented the feature capability surface,
+  including `onDidSync(...)` and diagnostics/status publication helpers;
+  concrete diagnostics/status feature proof remains with Phase S5)
+- `NFR-6`: partially satisfied (implemented a clean default bridge path at the
+  package seam while retaining `AppProject` as a migration seam; final legacy
+  demotion remains with Phase S7)
+- `INV-5`: partially satisfied (implemented bridge connectivity as an optional
+  base layer independent of compilation, while leaving compilation-feature
+  proof to Phase S5)

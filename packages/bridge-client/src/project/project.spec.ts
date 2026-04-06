@@ -208,6 +208,12 @@ describe("Project seq deduplication", () => {
       ws.simulateMessage({
         type: "filesystem:change",
         seq: 6,
+        payload: { action: "mkdir", path: "src" },
+      });
+
+      ws.simulateMessage({
+        type: "filesystem:change",
+        seq: 7,
         payload: { action: "write", path: "src/fresh.ts", content: "fresh", newEtag: "e4" },
       });
 
@@ -276,6 +282,12 @@ describe("Project seq deduplication", () => {
       ws.simulateMessage({
         type: "filesystem:change",
         seq: 11,
+        payload: { action: "mkdir", path: "src" },
+      });
+
+      ws.simulateMessage({
+        type: "filesystem:change",
+        seq: 12,
         payload: { action: "write", path: "src/new.ts", content: "new", newEtag: "e7" },
       });
       assert.equal(project.files.raw.read("src/new.ts"), "new");
@@ -332,6 +344,50 @@ describe("Project seq deduplication", () => {
       const afterMsgs = sentAfter(ws, beforeMsg);
       const syncResponses = afterMsgs.filter((m) => m.type === "filesystem:sync");
       assert.equal(syncResponses.length, 0, "should not respond to a sync that has payload");
+    });
+
+    it("fires onDidSync when requestSync resolves", async () => {
+      const project = createProject();
+      const ws = startProject(project);
+      let syncCount = 0;
+
+      project.onDidSync(() => {
+        syncCount++;
+      });
+
+      const syncRequest = project.requestSync();
+      const sent = parseSent(ws);
+      const syncMsg = sent.find((message) => message.type === "filesystem:sync" && message.id);
+      assert.ok(syncMsg?.id);
+
+      ws.simulateMessage({
+        type: "filesystem:sync",
+        id: syncMsg.id,
+        payload: { entries: [] },
+        seq: 3,
+      });
+
+      await syncRequest;
+
+      assert.equal(syncCount, 1);
+    });
+
+    it("fires onDidSync when responding to an inbound sync request", () => {
+      const project = createProject();
+      const ws = startProject(project);
+      let syncCount = 0;
+
+      project.onDidSync(() => {
+        syncCount++;
+      });
+
+      ws.simulateMessage({
+        type: "filesystem:sync",
+        id: "req-1",
+        seq: 7,
+      });
+
+      assert.equal(syncCount, 1);
     });
   });
 

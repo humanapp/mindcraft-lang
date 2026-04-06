@@ -23,6 +23,7 @@ export interface ProjectOptions<TClient extends WsMessage = WsMessage, TServer e
 export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
   private _session: ProjectSession<TClient, TServer>;
   private _files: ProjectFiles;
+  private readonly _syncListeners = new Set<() => void>();
   // Sequence numbers for message deduplication. _outboundSeq increments on
   // every local change sent to the bridge. _peerSeq tracks the highest seq
   // received from the peer; incoming messages with seq <= _peerSeq are
@@ -85,6 +86,7 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
 
     this._session.on("filesystem:sync" as TServer["type"], (msg) => {
       const wsMsg = msg as unknown as WsMessage;
+      // TODO: Fix this by making sync completion or sync direction a first-class bridge-client/session concept rather than inferring it from raw message shape.
       if (wsMsg.id && !wsMsg.payload) {
         if (wsMsg.seq !== undefined) this._peerSeq = wsMsg.seq;
         const entries = [...this._files.raw.export()];
@@ -94,6 +96,7 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
           payload: { entries },
           seq: this._outboundSeq,
         } as TClient);
+        this.emitDidSync();
       }
     });
   }
@@ -118,6 +121,13 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
     return this._files;
   }
 
+  onDidSync(listener: () => void): () => void {
+    this._syncListeners.add(listener);
+    return () => {
+      this._syncListeners.delete(listener);
+    };
+  }
+
   toRemoteFileChange = (ev: FileSystemNotification) => {
     this._outboundSeq++;
     this._session.send({ type: "filesystem:change", payload: ev, seq: this._outboundSeq } as TClient);
@@ -131,6 +141,13 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
     const payload = response.payload as FilesystemSyncPayload | undefined;
     if (payload?.entries) {
       this._files.fromRemote.applyNotification({ action: "import", entries: payload.entries });
+    }
+    this.emitDidSync();
+  }
+
+  private emitDidSync(): void {
+    for (const listener of this._syncListeners) {
+      listener();
     }
   }
 }

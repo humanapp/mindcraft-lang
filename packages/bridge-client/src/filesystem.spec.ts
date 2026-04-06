@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { beforeEach, describe, it } from "node:test";
 import { ErrorCode } from "./error-codes.js";
-import { type ExportedFileSystem, FileSystem } from "./filesystem.js";
+import { type ExportedFileSystem, FileSystem, type FileSystemNotification, NotifyingFileSystem } from "./filesystem.js";
 
 function make(entries?: ExportedFileSystem): FileSystem {
   const fs = new FileSystem();
@@ -398,6 +398,58 @@ describe("FileSystem", () => {
       assert.ok(bEntry && bEntry.kind === "file");
       if (aEntry.kind === "file") assert.equal(aEntry.content, "1");
       if (bEntry.kind === "file") assert.equal(bEntry.content, "2");
+    });
+
+    it("import replaces the existing snapshot", () => {
+      pf.mkdir("old");
+      pf.write("old/file.txt", "stale");
+
+      const replacement: ExportedFileSystem = new Map();
+      replacement.set("src/main.ts", {
+        kind: "file",
+        content: "fresh",
+        etag: "etag-1",
+        isReadonly: false,
+      });
+
+      pf.import(replacement);
+
+      assert.throws(() => pf.read("old/file.txt"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
+      assert.equal(pf.read("src/main.ts"), "fresh");
+    });
+  });
+
+  describe("applyNotification", () => {
+    it("re-emits import notifications as a single snapshot change", () => {
+      const base = new FileSystem();
+      base.mkdir("old");
+      base.write("old/file.txt", "stale");
+
+      const notifications: FileSystemNotification[] = [];
+      const fs = new NotifyingFileSystem(base, (notification) => {
+        notifications.push(notification);
+      });
+
+      const change: FileSystemNotification = {
+        action: "import",
+        entries: [
+          [
+            "src/main.ts",
+            {
+              kind: "file",
+              content: "fresh",
+              etag: "etag-2",
+              isReadonly: false,
+            },
+          ],
+        ],
+      };
+
+      fs.applyNotification(change);
+
+      assert.deepEqual(notifications, [change]);
+      assert.throws(() => base.read("old/file.txt"), { code: ErrorCode.DIRECTORY_NOT_FOUND });
+      assert.equal(base.read("src/main.ts"), "fresh");
     });
   });
 

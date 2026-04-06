@@ -35,7 +35,7 @@ export class AppProject extends Project<AppClientMessage, AppServerMessage> {
       );
 
       this._sessionUnsubs.push(
-        this.session.on("filesystem:sync", () => {
+        this.onDidSync(() => {
           this._compilation?.sendDiagnostics();
         })
       );

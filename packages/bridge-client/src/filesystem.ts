@@ -105,96 +105,52 @@ export class NotifyingFileSystem implements IFileSystem {
   }
 
   applyNotification(ev: FileSystemNotification): void {
+    this.applyMutation(ev);
+    this._onChange(ev);
+  }
+
+  private applyMutation(ev: FileSystemNotification): void {
     switch (ev.action) {
       case "write":
-        if (ev.expectedEtag !== undefined) {
-          try {
-            const current = this._fs.stat(ev.path);
-            if (current.kind === "file" && current.etag !== ev.expectedEtag) {
-              throw new ProtocolError(
-                ErrorCode.ETAG_MISMATCH,
-                `etag mismatch for ${ev.path}: expected ${ev.expectedEtag}, got ${current.etag}`
-              );
-            }
-          } catch (e) {
-            if (e instanceof ProtocolError && e.code === ErrorCode.ETAG_MISMATCH) {
-              throw e;
-            }
-          }
-        }
-        this.writeRestore(ev.path, ev.content, ev.isReadonly ?? false, ev.newEtag);
+        this.checkEtag(ev.path, ev.expectedEtag);
+        this._fs.writeRestore(ev.path, ev.content, ev.isReadonly ?? false, ev.newEtag);
         break;
       case "delete":
-        if (ev.expectedEtag !== undefined) {
-          try {
-            const current = this._fs.stat(ev.path);
-            if (current.kind === "file" && current.etag !== ev.expectedEtag) {
-              throw new ProtocolError(
-                ErrorCode.ETAG_MISMATCH,
-                `etag mismatch for ${ev.path}: expected ${ev.expectedEtag}, got ${current.etag}`
-              );
-            }
-          } catch (e) {
-            if (e instanceof ProtocolError && e.code === ErrorCode.ETAG_MISMATCH) {
-              throw e;
-            }
-          }
-        }
-        this.delete(ev.path);
+        this.checkEtag(ev.path, ev.expectedEtag);
+        this._fs.delete(ev.path);
         break;
       case "rename":
-        if (ev.expectedEtag !== undefined) {
-          try {
-            const current = this._fs.stat(ev.oldPath);
-            if (current.kind === "file" && current.etag !== ev.expectedEtag) {
-              throw new ProtocolError(
-                ErrorCode.ETAG_MISMATCH,
-                `etag mismatch for ${ev.oldPath}: expected ${ev.expectedEtag}, got ${current.etag}`
-              );
-            }
-          } catch (e) {
-            if (e instanceof ProtocolError && e.code === ErrorCode.ETAG_MISMATCH) {
-              throw e;
-            }
-          }
-        }
-        this.rename(ev.oldPath, ev.newPath);
+        this.checkEtag(ev.oldPath, ev.expectedEtag);
+        this._fs.rename(ev.oldPath, ev.newPath);
         break;
       case "mkdir":
-        this.mkdir(ev.path);
+        this._fs.mkdir(ev.path);
         break;
       case "rmdir":
-        this.rmdir(ev.path);
+        this._fs.rmdir(ev.path);
         break;
-      case "import": {
-        const before = this._fs.export();
-        const entries: ExportedFileSystem = new Map(ev.entries);
-        this._fs.import(entries);
-        for (const [path, entry] of entries) {
-          const prev = before.get(path);
-          if (!prev) {
-            if (entry.kind === "directory") {
-              this._onChange({ action: "mkdir", path });
-            } else {
-              this._onChange({
-                action: "write",
-                path,
-                content: entry.content,
-                isReadonly: entry.isReadonly,
-                newEtag: entry.etag,
-              });
-            }
-          } else if (entry.kind === "file" && prev.kind === "file" && entry.etag !== prev.etag) {
-            this._onChange({
-              action: "write",
-              path,
-              content: entry.content,
-              isReadonly: entry.isReadonly,
-              newEtag: entry.etag,
-            });
-          }
-        }
+      case "import":
+        this._fs.import(new Map(ev.entries));
         break;
+    }
+  }
+
+  private checkEtag(path: string, expectedEtag: string | undefined): void {
+    if (expectedEtag === undefined) {
+      return;
+    }
+
+    try {
+      const current = this._fs.stat(path);
+      if (current.kind === "file" && current.etag !== expectedEtag) {
+        throw new ProtocolError(
+          ErrorCode.ETAG_MISMATCH,
+          `etag mismatch for ${path}: expected ${expectedEtag}, got ${current.etag}`
+        );
+      }
+    } catch (e) {
+      if (e instanceof ProtocolError && e.code === ErrorCode.ETAG_MISMATCH) {
+        throw e;
       }
     }
   }
@@ -247,6 +203,7 @@ export class FileSystem implements IFileSystem {
   }
 
   import(entries: ExportedFileSystem): void {
+    this._root = new FileTree("", "");
     for (const [path, entry] of entries) {
       if (entry.kind === "directory") {
         this._root.mkdir(path);
