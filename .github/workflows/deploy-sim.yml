@@ -31,7 +31,8 @@ jobs:
         run: npm run install:packages
 
       - name: Install sim dependencies
-        run: npm --prefix apps/sim install
+        working-directory: apps/sim
+        run: npm ci
 
       - name: Build sim
         working-directory: apps/sim
