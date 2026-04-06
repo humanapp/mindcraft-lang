@@ -1,7 +1,9 @@
 name: Deploy sim
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "sim-v*"
 
 permissions:
   id-token: write
