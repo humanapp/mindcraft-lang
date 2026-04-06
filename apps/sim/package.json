@@ -29,7 +29,7 @@
   ],
   "scripts": {
     "dev": "vite --config vite/config.dev.mjs --force",
-    "prebuild": "tsc --build tsconfig.json",
+    "prebuild": "tsc --build tsconfig.refs.json",
     "build": "vite build --config vite/config.prod.mjs",
     "clean": "rm -rf dist && rm -rf node_modules/.vite",
     "lint:only": "biome lint ./src",
