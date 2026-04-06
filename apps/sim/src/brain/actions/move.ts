@@ -22,10 +22,10 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import type { ActionDef } from "@/brain/actions/action-def";
+import { resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
-import type { ActionDef } from "@/brain/fns/action-def";
-import { resolveTargetPosition } from "@/brain/fns/utils";
 import { type Steering, steerAvoid, steerAwayFrom, steerForward, steerToward } from "@/brain/movement";
 import { TileIds } from "@/brain/tileids";
 import { extractVector2, mkVector2Value } from "@/brain/type-system";

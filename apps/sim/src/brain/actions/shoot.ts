@@ -20,8 +20,8 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
-import type { ActionDef } from "../action-def";
-import { resolveTargetActor } from "../utils";
+import type { ActionDef } from "./action-def";
+import { resolveTargetActor } from "./utils";
 
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
   anonymous: true,

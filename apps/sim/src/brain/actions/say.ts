@@ -13,8 +13,8 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import type { ActionDef } from "@/brain/actions/action-def";
 import { getSelf } from "@/brain/execution-context-types";
-import type { ActionDef } from "@/brain/fns/action-def";
 import { TileIds } from "@/brain/tileids";
 
 const AnonString = param(CoreParameterId.AnonymousString, {

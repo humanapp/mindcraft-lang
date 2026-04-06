@@ -1,12 +1,12 @@
 import type { MindcraftModule, MindcraftModuleApi } from "@mindcraft-lang/core";
-import { toHostActuatorDef, toHostSensorDef } from "./fns/action-def";
-import fnEat from "./fns/actuators/eat";
-import fnMove from "./fns/actuators/move";
-import fnSay from "./fns/actuators/say";
-import fnShoot from "./fns/actuators/shoot";
-import fnTurn from "./fns/actuators/turn";
-import fnBump from "./fns/sensors/bump";
-import fnSee from "./fns/sensors/see";
+import { toHostActuatorDef, toHostSensorDef } from "./actions/action-def";
+import fnBump from "./actions/bump";
+import fnEat from "./actions/eat";
+import fnMove from "./actions/move";
+import fnSay from "./actions/say";
+import fnSee from "./actions/see";
+import fnShoot from "./actions/shoot";
+import fnTurn from "./actions/turn";
 import { registerTiles } from "./tiles";
 import { registerTypes } from "./type-system";
 

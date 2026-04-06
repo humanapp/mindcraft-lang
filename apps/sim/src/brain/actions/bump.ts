@@ -13,9 +13,9 @@ import {
   TRUE_VALUE,
   type Value,
 } from "@mindcraft-lang/core/brain";
+import type { ActionDef } from "@/brain/actions/action-def";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
-import type { ActionDef } from "@/brain/fns/action-def";
 import { TargetActorCapabilityBitSet, TileIds } from "@/brain/tileids";
 
 const Carnivore = mod(TileIds.Modifier.ActorKindCarnivore);
