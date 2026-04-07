@@ -7,6 +7,7 @@ import {
   FALSE_VALUE,
   getSlotId,
   type MapValue,
+  type ModifierTileInput,
   mkCallDef,
   mkNumberValue,
   mod,
@@ -91,3 +92,9 @@ export default {
   visual: { label: "bump", iconUrl: "/assets/brain/icons/bump.svg" },
   capabilities: TargetActorCapabilityBitSet,
 } satisfies CreateHostSensorOptions;
+
+export const modifiers: ModifierTileInput[] = [
+  { id: TileIds.Modifier.ActorKindCarnivore, label: "carnivore", iconUrl: "/assets/brain/icons/carnivore.svg" },
+  { id: TileIds.Modifier.ActorKindHerbivore, label: "herbivore", iconUrl: "/assets/brain/icons/herbivore.svg" },
+  { id: TileIds.Modifier.ActorKindPlant, label: "plant", iconUrl: "/assets/brain/icons/plant.svg" },
+];

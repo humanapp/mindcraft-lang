@@ -1,6 +1,7 @@
 import {
   bag,
   CoreParameterId,
+  CoreTypeIds,
   type CreateHostActuatorOptions,
   type ExecutionContext,
   extractNumberValue,
@@ -9,6 +10,7 @@ import {
   type MapValue,
   mkCallDef,
   optional,
+  type ParameterTileInput,
   param,
   type Value,
   VOID_VALUE,
@@ -55,3 +57,12 @@ export default {
   isAsync: false,
   visual: { label: "say", iconUrl: "/assets/brain/icons/say.svg" },
 } satisfies CreateHostActuatorOptions;
+
+export const parameters: ParameterTileInput[] = [
+  {
+    id: TileIds.Parameter.Duration,
+    dataType: CoreTypeIds.Number,
+    label: "duration",
+    iconUrl: "/assets/brain/icons/duration.svg",
+  },
+];

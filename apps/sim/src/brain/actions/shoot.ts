@@ -1,5 +1,6 @@
 import {
   bag,
+  CoreTypeIds,
   type CreateHostActuatorOptions,
   choice,
   type ExecutionContext,
@@ -12,6 +13,7 @@ import {
   mod,
   type NumberValue,
   optional,
+  type ParameterTileInput,
   param,
   setCallSiteState,
   TRUE_VALUE,
@@ -20,6 +22,7 @@ import {
 } from "@mindcraft-lang/core/app";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
+import { MyTypeIds } from "@/brain/type-system";
 import { resolveTargetActor } from "./utils";
 
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
@@ -125,3 +128,13 @@ export default {
   isAsync: false,
   visual: { label: "shoot", iconUrl: "/assets/brain/icons/shoot.svg" },
 } satisfies CreateHostActuatorOptions;
+
+export const parameters: ParameterTileInput[] = [
+  { id: TileIds.Parameter.AnonymousActorRef, dataType: MyTypeIds.ActorRef, hidden: true },
+  {
+    id: TileIds.Parameter.Rate,
+    dataType: CoreTypeIds.Number,
+    label: "per/sec",
+    iconUrl: "/assets/brain/icons/fps.svg",
+  },
+];

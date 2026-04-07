@@ -10,6 +10,7 @@ import {
   getSlotId,
   List,
   type MapValue,
+  type ModifierTileInput,
   mkCallDef,
   mkListValue,
   mkNumberValue,
@@ -223,3 +224,11 @@ export default {
   visual: { label: "see", iconUrl: "/assets/brain/icons/see.svg" },
   capabilities: TargetActorCapabilityBitSet,
 } satisfies CreateHostSensorOptions;
+
+export const modifiers: ModifierTileInput[] = [
+  { id: TileIds.Modifier.ActorKindCarnivore, label: "carnivore", iconUrl: "/assets/brain/icons/carnivore.svg" },
+  { id: TileIds.Modifier.ActorKindHerbivore, label: "herbivore", iconUrl: "/assets/brain/icons/herbivore.svg" },
+  { id: TileIds.Modifier.ActorKindPlant, label: "plant", iconUrl: "/assets/brain/icons/plant.svg" },
+  { id: TileIds.Modifier.DistanceNearby, label: "nearby", iconUrl: "/assets/brain/icons/nearby.svg" },
+  { id: TileIds.Modifier.DistanceFarAway, label: "far away", iconUrl: "/assets/brain/icons/faraway.svg" },
+];

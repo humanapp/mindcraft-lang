@@ -1,6 +1,7 @@
 import {
   type BrainActionCallChoiceSpec,
   bag,
+  CoreTypeIds,
   type CreateHostActuatorOptions,
   choice,
   conditional,
@@ -12,9 +13,11 @@ import {
   type List,
   type ListValue,
   type MapValue,
+  type ModifierTileInput,
   mkCallDef,
   mod,
   optional,
+  type ParameterTileInput,
   param,
   repeated,
   type StructValue,
@@ -28,7 +31,7 @@ import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { type Steering, steerAvoid, steerAwayFrom, steerForward, steerToward } from "@/brain/movement";
 import { TileIds } from "@/brain/tileids";
-import { extractVector2, mkVector2Value } from "@/brain/type-system";
+import { extractVector2, MyTypeIds, mkVector2Value } from "@/brain/type-system";
 
 // ---------------------------------------------------------------------------
 // Call definition & slot IDs
@@ -244,3 +247,23 @@ export default {
   isAsync: false,
   visual: { label: "move", iconUrl: "/assets/brain/icons/move2.svg" },
 } satisfies CreateHostActuatorOptions;
+
+export const modifiers: ModifierTileInput[] = [
+  { id: TileIds.Modifier.MovementForward, label: "forward", iconUrl: "/assets/brain/icons/forward.svg" },
+  { id: TileIds.Modifier.MovementToward, label: "toward", iconUrl: "/assets/brain/icons/toward.svg" },
+  { id: TileIds.Modifier.MovementAwayFrom, label: "away from", iconUrl: "/assets/brain/icons/awayfrom.svg" },
+  { id: TileIds.Modifier.MovementAvoid, label: "avoid", iconUrl: "/assets/brain/icons/avoid.svg" },
+  { id: TileIds.Modifier.MovementWander, label: "wander", iconUrl: "/assets/brain/icons/wander.svg" },
+  { id: TileIds.Modifier.Quickly, label: "quickly", iconUrl: "/assets/brain/icons/quickly.svg" },
+  { id: TileIds.Modifier.Slowly, label: "slowly", iconUrl: "/assets/brain/icons/slowly.svg" },
+];
+
+export const parameters: ParameterTileInput[] = [
+  { id: TileIds.Parameter.AnonymousActorRef, dataType: MyTypeIds.ActorRef, hidden: true },
+  {
+    id: TileIds.Parameter.Priority,
+    dataType: CoreTypeIds.Number,
+    label: "priority",
+    iconUrl: "/assets/brain/icons/priority.svg",
+  },
+];

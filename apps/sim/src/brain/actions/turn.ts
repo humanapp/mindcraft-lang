@@ -1,6 +1,7 @@
 import {
   type BrainActionCallChoiceSpec,
   bag,
+  CoreTypeIds,
   type CreateHostActuatorOptions,
   choice,
   conditional,
@@ -8,9 +9,11 @@ import {
   extractNumberValue,
   getSlotId,
   type MapValue,
+  type ModifierTileInput,
   mkCallDef,
   mod,
   optional,
+  type ParameterTileInput,
   param,
   repeated,
   type Value,
@@ -21,6 +24,7 @@ import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { type Steering, turnAwayFrom, turnToAngle, turnToward } from "@/brain/movement";
 import { TileIds } from "@/brain/tileids";
+import { MyTypeIds } from "@/brain/type-system";
 
 // ---------------------------------------------------------------------------
 // Call definition & slot IDs
@@ -187,3 +191,27 @@ export default {
   isAsync: false,
   visual: { label: "turn", iconUrl: "/assets/brain/icons/turn.svg" },
 } satisfies CreateHostActuatorOptions;
+
+export const modifiers: ModifierTileInput[] = [
+  { id: TileIds.Modifier.MovementToward, label: "toward", iconUrl: "/assets/brain/icons/toward.svg" },
+  { id: TileIds.Modifier.MovementAwayFrom, label: "away from", iconUrl: "/assets/brain/icons/awayfrom.svg" },
+  { id: TileIds.Modifier.TurnAround, label: "around", iconUrl: "/assets/brain/icons/turn_around.svg" },
+  { id: TileIds.Modifier.TurnLeft, label: "left", iconUrl: "/assets/brain/icons/turn_left.svg" },
+  { id: TileIds.Modifier.TurnRight, label: "right", iconUrl: "/assets/brain/icons/turn_right.svg" },
+  { id: TileIds.Modifier.DirectionNorth, label: "north", iconUrl: "/assets/brain/icons/direction_north.svg" },
+  { id: TileIds.Modifier.DirectionSouth, label: "south", iconUrl: "/assets/brain/icons/direction_south.svg" },
+  { id: TileIds.Modifier.DirectionEast, label: "east", iconUrl: "/assets/brain/icons/direction_east.svg" },
+  { id: TileIds.Modifier.DirectionWest, label: "west", iconUrl: "/assets/brain/icons/direction_west.svg" },
+  { id: TileIds.Modifier.Quickly, label: "quickly", iconUrl: "/assets/brain/icons/quickly.svg" },
+  { id: TileIds.Modifier.Slowly, label: "slowly", iconUrl: "/assets/brain/icons/slowly.svg" },
+];
+
+export const parameters: ParameterTileInput[] = [
+  { id: TileIds.Parameter.AnonymousActorRef, dataType: MyTypeIds.ActorRef, hidden: true },
+  {
+    id: TileIds.Parameter.Priority,
+    dataType: CoreTypeIds.Number,
+    label: "priority",
+    iconUrl: "/assets/brain/icons/priority.svg",
+  },
+];

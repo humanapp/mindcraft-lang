@@ -8,6 +8,7 @@ import {
   type MapValue,
   mkCallDef,
   optional,
+  type ParameterTileInput,
   param,
   setCallSiteState,
   TRUE_VALUE,
@@ -17,6 +18,7 @@ import {
 import { ARCHETYPES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
+import { MyTypeIds } from "@/brain/type-system";
 import { resolveTargetActor } from "./utils";
 
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
@@ -86,3 +88,7 @@ export default {
   isAsync: false,
   visual: { label: "eat", iconUrl: "/assets/brain/icons/eat.svg" },
 } satisfies CreateHostActuatorOptions;
+
+export const parameters: ParameterTileInput[] = [
+  { id: TileIds.Parameter.AnonymousActorRef, dataType: MyTypeIds.ActorRef, hidden: true },
+];
