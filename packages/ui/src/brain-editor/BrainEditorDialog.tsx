@@ -75,7 +75,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         return nextBrainDef;
       });
     },
-    [withBrainServices]
+    [withBrainServices, brainServices]
   );
 
   // Clone the brainDef to work on a copy
@@ -336,7 +336,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         console.error("Failed to load brain:", err);
       }
     }
-  }, [commandHistory, withBrainServices]);
+  }, [commandHistory, withBrainServices, brainServices]);
 
   const handleLoadDefault = useCallback(() => {
     const defaultBrain = getDefaultBrain?.();

@@ -15,7 +15,9 @@ export function createSimModule(): MindcraftModule {
   return {
     id: "mindcraft.sim",
     install(api: MindcraftModuleApi): void {
-      const services = (api as unknown as { unsafeGetBrainServicesForInstall(): BrainServices }).unsafeGetBrainServicesForInstall();
+      const services = (
+        api as unknown as { unsafeGetBrainServicesForInstall(): BrainServices }
+      ).unsafeGetBrainServicesForInstall();
       registerTypes(api);
 
       api.registerHostSensor(toHostSensorDef(fnBump));

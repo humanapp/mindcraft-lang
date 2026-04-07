@@ -197,7 +197,7 @@ export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
       return { kind: "tiles" as const, tiles: resolveTiles(block.tileIds, tileCatalog, localCatalog), side };
     }
     return { kind: "rules" as const, rules: block.rules.map((r) => convertRule(r, tileCatalog, localCatalog)) };
-  }, [content, fenceMeta.side, tileCatalog, withBrainServices]);
+  }, [content, fenceMeta.side, tileCatalog, withBrainServices, brainServices]);
 
   const handleInsert = () => {
     const block = parseBrainBlock(content);
