@@ -6,7 +6,7 @@ import type { Element } from "hast";
 import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useDocsBrainServices, useDocsResolveTileVisual, useDocsTileCatalog, useDocsWithBrainServices } from "./DocsSidebarContext";
+import { useDocsBrainServices, useDocsResolveTileVisual, useDocsTileCatalog } from "./DocsSidebarContext";
 
 // ---------------------------------------------------------------------------
 // Print-friendly tile chip -- no glass, no gradients, border-only
@@ -106,15 +106,12 @@ interface FlatPrintRule {
 
 function buildPrintLocalCatalog(
   entries: CatalogTileJson[],
-  withBrainServices: <T>(callback: () => T) => T,
   brainServices: BrainServices | undefined
 ): TileCatalog | undefined {
   if (entries.length === 0) return undefined;
-  return withBrainServices(() => {
-    const catalog = new TileCatalog();
-    if (brainServices) catalog.deserializeJson(List.from(entries), brainServices);
-    return catalog;
-  });
+  const catalog = new TileCatalog();
+  if (brainServices) catalog.deserializeJson(List.from(entries), brainServices);
+  return catalog;
 }
 
 function collectPrintCatalogEntries(rules: PlainRule[], topLevel?: CatalogTileJson[]): CatalogTileJson[] {
@@ -163,7 +160,6 @@ function flattenPlainRules(
 
 function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string }) {
   const tileCatalog = useDocsTileCatalog();
-  const withBrainServices = useDocsWithBrainServices();
   const brainServices = useDocsBrainServices();
   const noFrame = meta.toLowerCase().split(/\s+/).includes("noframe");
   const metaSide = meta.toLowerCase().split(/\s+/).includes("do") ? RuleSide.Do : RuleSide.When;
@@ -175,7 +171,7 @@ function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string 
     const singleId = parsed?.tile ?? parsed?.tileId;
     if (parsed && typeof parsed === "object" && typeof singleId === "string") {
       const single = parsed as PlainSingleTile;
-      const localCatalog = buildPrintLocalCatalog(single.catalog ?? [], withBrainServices, brainServices);
+      const localCatalog = buildPrintLocalCatalog(single.catalog ?? [], brainServices);
       const tiles = resolveTiles([singleId], tileCatalog, localCatalog);
       const side = single.side === "do" ? RuleSide.Do : single.side === "when" ? RuleSide.When : metaSide;
       return (
@@ -191,7 +187,7 @@ function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string 
     // Multiple tiles: { tiles: [...] }
     if (parsed && typeof parsed === "object" && Array.isArray(parsed.tiles)) {
       const multi = parsed as PlainMultiTile;
-      const localCatalog = buildPrintLocalCatalog(multi.catalog ?? [], withBrainServices, brainServices);
+      const localCatalog = buildPrintLocalCatalog(multi.catalog ?? [], brainServices);
       const tiles = resolveTiles(multi.tiles, tileCatalog, localCatalog);
       const side = multi.side === "do" ? RuleSide.Do : multi.side === "when" ? RuleSide.When : metaSide;
       return (
@@ -218,7 +214,7 @@ function PrintBrainCodeBlock({ content, meta }: { content: string; meta: string 
       return <pre className="docs-print-code-fallback">{content}</pre>;
     }
 
-    const localCatalog = buildPrintLocalCatalog(catalogEntries, withBrainServices, brainServices);
+    const localCatalog = buildPrintLocalCatalog(catalogEntries, brainServices);
     const flat = flattenPlainRules(rules, tileCatalog, localCatalog);
     return (
       <div className="docs-print-brain-block">

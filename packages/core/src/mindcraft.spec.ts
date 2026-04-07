@@ -64,17 +64,15 @@ test("exports mindcraft public contracts from the root package", () => {
   assert.equal(typeof coreModule, "function");
 });
 
-test("coreModule installs through a structural install-capable module api", () => {
+test("coreModule installs through MindcraftModuleApi with brainServices", () => {
   const services = brain.createBrainServices();
 
   const fail = (): never => {
-    throw new Error("coreModule() should use the install-time BrainServices accessor");
+    throw new Error("coreModule() should use api.brainServices directly");
   };
 
-  const api: MindcraftModuleApi & {
-    unsafeGetBrainServicesForInstall(): typeof services;
-  } = {
-    unsafeGetBrainServicesForInstall: () => services,
+  const api: MindcraftModuleApi = {
+    brainServices: services,
     defineType: fail,
     registerHostSensor: fail,
     registerHostActuator: fail,

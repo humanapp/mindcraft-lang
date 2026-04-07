@@ -39,7 +39,6 @@ import {
   optional,
   param,
   RuleSide,
-  registerCoreBrainComponents,
   repeated,
   type SlotExpr,
   seq,
@@ -47,6 +46,7 @@ import {
   TRUE_VALUE,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type {
   ActuatorExpr,
   BinaryOpExpr,
@@ -85,7 +85,7 @@ import { BitSet } from "@mindcraft-lang/core/util";
 let services: BrainServices;
 
 before(() => {
-  services = registerCoreBrainComponents();
+  services = __test__createBrainServices();
 });
 
 // ---- Helpers ----

@@ -1,7 +1,6 @@
 import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { createContext, type ReactNode, useContext } from "react";
-import type { BrainServicesRunner } from "./brain-services";
 import type { TileVisual } from "./types";
 
 /**
@@ -47,8 +46,6 @@ export interface BrainEditorConfig {
   customLiteralTypes: ReadonlyArray<CustomLiteralType>;
   /** Optional callback to load a default brain (replaces the archetype-specific load). */
   getDefaultBrain?: () => BrainDef | undefined;
-  /** Optional callback used to run service-backed brain model operations. */
-  withBrainServices?: BrainServicesRunner;
   /** Optional BrainServices instance for direct access to tiles, types, etc. */
   brainServices?: BrainServices;
   /** Optional tile catalog from the host environment's brain services. */

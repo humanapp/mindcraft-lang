@@ -11,7 +11,6 @@ import {
   NativeType,
   NIL_VALUE,
   type NumberValue,
-  registerCoreBrainComponents,
   runtime,
   type Scheduler,
   type StringValue,
@@ -19,6 +18,7 @@ import {
   type Value,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
@@ -70,7 +70,7 @@ function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsite
 
 describe("multi-file: helper module variables", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("entry-point reads a constant from a helper module", () => {
@@ -400,7 +400,7 @@ export default Sensor({
 
 describe("multi-file: importing symbols across files", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("one file imports a function symbol from another file", () => {
@@ -591,7 +591,7 @@ export default Sensor({
 
 describe("multi-file: imported enums", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("imported enum member works across files", () => {
@@ -677,7 +677,7 @@ export default Sensor({
 
 describe("multi-file: enum recompilation cleanup", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("deleting a user enum removes its registered type and derived artifacts", () => {
@@ -824,7 +824,7 @@ export default Sensor({
 
 describe("multi-file: module-qualified TypeIds (M2)", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("same-named classes in different files get distinct TypeIds", () => {
@@ -960,7 +960,7 @@ export default Sensor({
 
 describe("multi-file: descriptor qualified types (M3)", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("sensor output type resolves to qualified class name", () => {
@@ -1058,7 +1058,7 @@ export default Sensor({
 
 describe("multi-file: export-only collection", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("non-exported functions in imported files are not collected", () => {
@@ -1128,7 +1128,7 @@ export default Sensor({
 
 describe("multi-file: collision diagnostics (C3.5 D2)", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("two imported files exporting same-named function -> collision diagnostic", () => {
@@ -1227,7 +1227,7 @@ export default Sensor({
 
 describe("multi-file: cross-file class support (C4)", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("class defined in helper, instantiated in entry", () => {

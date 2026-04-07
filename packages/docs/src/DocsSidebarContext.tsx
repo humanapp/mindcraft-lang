@@ -24,7 +24,6 @@ interface DocsSidebarContextValue {
   tileCatalog: ITileCatalog | undefined;
   brainServices: BrainServices | undefined;
   resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined;
-  withBrainServices: <T>(callback: () => T) => T;
   /** The key of the entry currently shown in detail view, or null for list view. */
   navKey: string | null;
   /** The tab that the detail view belongs to (only meaningful when navKey is set). */
@@ -69,7 +68,6 @@ interface DocsSidebarProviderProps {
   tileCatalog?: ITileCatalog;
   brainServices?: BrainServices;
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
-  withBrainServices?: <T>(callback: () => T) => T;
   /** Initial active tab (defaults to "tiles"). */
   initialTab?: DocTab;
   /** Initial detail-view key (defaults to null -- list view). */
@@ -84,7 +82,6 @@ export function DocsSidebarProvider({
   tileCatalog: externalTileCatalog,
   brainServices: externalBrainServices,
   resolveTileVisual: resolveTileVisualProp,
-  withBrainServices: withBrainServicesProp,
   initialTab,
   initialNavKey,
   initialNavTab,
@@ -112,16 +109,6 @@ export function DocsSidebarProvider({
       };
     },
     [resolveTileVisualProp]
-  );
-  const withBrainServices = useCallback(
-    function withBrainServicesImpl<T>(callback: () => T): T {
-      if (withBrainServicesProp) {
-        return withBrainServicesProp(callback);
-      }
-
-      return callback();
-    },
-    [withBrainServicesProp]
   );
 
   const navigateToEntry = useCallback((tab: DocTab, key: string) => {
@@ -171,7 +158,6 @@ export function DocsSidebarProvider({
     tileCatalog,
     brainServices: externalBrainServices,
     resolveTileVisual,
-    withBrainServices,
     navKey,
     navTab,
     open,
@@ -200,10 +186,6 @@ export function useDocsTileCatalog(): ITileCatalog | undefined {
 
 export function useDocsResolveTileVisual(): (tileDef: IBrainTileDef) => TileVisual | undefined {
   return useDocsSidebar().resolveTileVisual;
-}
-
-export function useDocsWithBrainServices(): <T>(callback: () => T) => T {
-  return useDocsSidebar().withBrainServices;
 }
 
 export function useDocsBrainServices(): BrainServices | undefined {

@@ -37,7 +37,7 @@ import { NativeType } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
 import { BrainDef } from "./brain/model";
 import { Brain } from "./brain/runtime";
-import { type BrainServices, runWithBrainServices } from "./brain/services";
+import type { BrainServices } from "./brain/services";
 import { createBrainServices } from "./brain/services-factory";
 import { TileCatalog } from "./brain/tiles/catalog";
 import { Dict } from "./platform/dict";
@@ -118,6 +118,7 @@ export interface MindcraftModule {
 }
 
 export interface MindcraftModuleApi {
+  readonly brainServices: BrainServices;
   defineType(def: MindcraftTypeDefinition): string;
   registerHostSensor(def: HostSensorDefinition): void;
   registerHostActuator(def: HostActuatorDefinition): void;
@@ -159,10 +160,6 @@ export interface MindcraftEnvironment {
 
 type CreateMindcraftEnvironmentOptions = {
   readonly modules?: readonly MindcraftModule[];
-};
-
-type MindcraftModuleInstallApi = MindcraftModuleApi & {
-  unsafeGetBrainServicesForInstall(): BrainServices;
 };
 
 function buildHostActionBinding(descriptor: ActionDescriptor, definition: HostFunctionDefinition): HostActionBinding {
@@ -395,10 +392,7 @@ function toActionKeySet(keys: readonly string[]): Dict<string, boolean> {
 }
 
 class MindcraftCatalogImpl implements MindcraftCatalog {
-  constructor(
-    private readonly services: BrainServices,
-    private readonly catalog: TileCatalog = new TileCatalog()
-  ) {}
+  constructor(private readonly catalog: TileCatalog = new TileCatalog()) {}
 
   rawCatalog(): TileCatalog {
     return this.catalog;
@@ -417,9 +411,7 @@ class MindcraftCatalogImpl implements MindcraftCatalog {
   }
 
   registerTile(def: TileDefinitionInput): string {
-    runWithBrainServices(this.services, () => {
-      this.catalog.registerTileDef(def);
-    });
+    this.catalog.registerTileDef(def);
     return def.tileId;
   }
 
@@ -428,30 +420,28 @@ class MindcraftCatalogImpl implements MindcraftCatalog {
   }
 }
 
-function unwrapCatalog(catalog: MindcraftCatalog, services: BrainServices): ITileCatalog {
+function unwrapCatalog(catalog: MindcraftCatalog): ITileCatalog {
   if (catalog instanceof MindcraftCatalogImpl) {
     return catalog.rawCatalog();
   }
 
   const clone = new TileCatalog();
   const tiles = List.from(catalog.getAll());
-  runWithBrainServices(services, () => {
-    for (let i = 0; i < tiles.size(); i++) {
-      clone.registerTileDef(tiles.get(i)!);
-    }
-  });
+  for (let i = 0; i < tiles.size(); i++) {
+    clone.registerTileDef(tiles.get(i)!);
+  }
   return clone;
 }
 
 class EnvironmentModuleApi implements MindcraftModuleApi {
-  constructor(private readonly services: BrainServices) {}
+  readonly brainServices: BrainServices;
 
-  unsafeGetBrainServicesForInstall(): BrainServices {
-    return this.services;
+  constructor(services: BrainServices) {
+    this.brainServices = services;
   }
 
   defineType(def: MindcraftTypeDefinition): string {
-    return runWithBrainServices(this.services, () => registerMindcraftTypeDefinition(this.services, def));
+    return registerMindcraftTypeDefinition(this.brainServices, def);
   }
 
   registerHostSensor(def: HostSensorDefinition): void {
@@ -459,11 +449,9 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
       throw new Error(`Host sensor registration requires a sensor descriptor and sensor tile`);
     }
 
-    runWithBrainServices(this.services, () => {
-      ensureFunctionRegistered(this.services, def.function);
-      this.services.actions.register(buildHostActionBinding(def.descriptor, def.function));
-      this.services.tiles.registerTileDef(def.tile);
-    });
+    ensureFunctionRegistered(this.brainServices, def.function);
+    this.brainServices.actions.register(buildHostActionBinding(def.descriptor, def.function));
+    this.brainServices.tiles.registerTileDef(def.tile);
   }
 
   registerHostActuator(def: HostActuatorDefinition): void {
@@ -471,36 +459,26 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
       throw new Error(`Host actuator registration requires an actuator descriptor and actuator tile`);
     }
 
-    runWithBrainServices(this.services, () => {
-      ensureFunctionRegistered(this.services, def.function);
-      this.services.actions.register(buildHostActionBinding(def.descriptor, def.function));
-      this.services.tiles.registerTileDef(def.tile);
-    });
+    ensureFunctionRegistered(this.brainServices, def.function);
+    this.brainServices.actions.register(buildHostActionBinding(def.descriptor, def.function));
+    this.brainServices.tiles.registerTileDef(def.tile);
   }
 
   registerFunction(def: HostFunctionDefinition): void {
-    runWithBrainServices(this.services, () => {
-      ensureFunctionRegistered(this.services, def);
-    });
+    ensureFunctionRegistered(this.brainServices, def);
   }
 
   registerTile(def: TileDefinitionInput): string {
-    return runWithBrainServices(this.services, () => {
-      this.services.tiles.registerTileDef(def);
-      return def.tileId;
-    });
+    this.brainServices.tiles.registerTileDef(def);
+    return def.tileId;
   }
 
   registerOperator(def: OperatorDefinition): void {
-    runWithBrainServices(this.services, () => {
-      registerOperatorDefinition(this.services, def);
-    });
+    registerOperatorDefinition(this.brainServices, def);
   }
 
   registerConversion(def: ConversionDefinition): void {
-    runWithBrainServices(this.services, () => {
-      this.services.conversions.register(def);
-    });
+    this.brainServices.conversions.register(def);
   }
 }
 
@@ -529,7 +507,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   }
 
   createCatalog(): MindcraftCatalog {
-    return new MindcraftCatalogImpl(this.brainServices);
+    return new MindcraftCatalogImpl();
   }
 
   deserializeBrain(stream: IReadStream): IBrainDef {
@@ -710,9 +688,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
       seen.set(module.id, true);
 
       const api = new EnvironmentModuleApi(this.brainServices);
-      runWithBrainServices(this.brainServices, () => {
-        module.install(api);
-      });
+      module.install(api);
     }
   }
 
@@ -724,12 +700,10 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   }
 
   private replaceCatalogContents(catalog: TileCatalog, tiles: List<TileDefinitionInput>): void {
-    runWithBrainServices(this.brainServices, () => {
-      catalog.clear();
-      for (let i = 0; i < tiles.size(); i++) {
-        catalog.add(tiles.get(i)!);
-      }
-    });
+    catalog.clear();
+    for (let i = 0; i < tiles.size(); i++) {
+      catalog.add(tiles.get(i)!);
+    }
   }
 
   private resolveOverlayCatalogs(catalogs?: readonly MindcraftCatalog[]): List<ITileCatalog> {
@@ -740,7 +714,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
 
     const catalogList = List.from(catalogs);
     for (let i = 0; i < catalogList.size(); i++) {
-      resolved.push(unwrapCatalog(catalogList.get(i)!, this.brainServices));
+      resolved.push(unwrapCatalog(catalogList.get(i)!));
     }
     return resolved;
   }
@@ -924,19 +898,11 @@ export function createMindcraftEnvironment(options: CreateMindcraftEnvironmentOp
   return new MindcraftEnvironmentImpl(options.modules ?? []);
 }
 
-function resolveModuleInstallServices(api: MindcraftModuleApi): BrainServices {
-  const services = (api as Partial<MindcraftModuleInstallApi>).unsafeGetBrainServicesForInstall?.();
-  if (!services) {
-    throw new Error("coreModule() requires a MindcraftModuleApi with install-time BrainServices access");
-  }
-  return services;
-}
-
 export function coreModule(): MindcraftModule {
   return {
     id: "mindcraft.core",
     install(api: MindcraftModuleApi): void {
-      installCoreBrainComponents(resolveModuleInstallServices(api));
+      installCoreBrainComponents(api.brainServices);
     },
   };
 }
@@ -948,6 +914,6 @@ export function getMindcraftEnvironmentServices(environment: MindcraftEnvironmen
   return environment.brainServices;
 }
 
-export function withMindcraftEnvironmentServices<T>(environment: MindcraftEnvironment, callback: () => T): T {
-  return runWithBrainServices(getMindcraftEnvironmentServices(environment), callback);
+export function withMindcraftEnvironmentServices<T>(_environment: MindcraftEnvironment, callback: () => T): T {
+  return callback();
 }

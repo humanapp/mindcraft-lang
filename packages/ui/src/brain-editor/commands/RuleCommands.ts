@@ -1,7 +1,5 @@
 import type { BrainServices, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { type BrainDef, type BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import type { BrainServicesRunner } from "../brain-services";
-import { runWithBrainServices } from "../brain-services";
 import { deserializeAllRulesFromClipboard } from "../rule-clipboard";
 import type { BrainCommand } from "./BrainCommand";
 
@@ -106,16 +104,13 @@ export class DeleteRuleCommand implements BrainCommand {
   private clonedRule?: BrainRuleDef;
   private ruleToDelete: BrainRuleDef;
 
-  constructor(
-    rule: BrainRuleDef,
-    private readonly withBrainServices?: BrainServicesRunner
-  ) {
+  constructor(rule: BrainRuleDef) {
     this.ruleToDelete = rule;
   }
 
   execute(): void {
     this.savedState = getRuleState(this.ruleToDelete);
-    this.clonedRule = runWithBrainServices(this.withBrainServices, () => this.ruleToDelete.clone());
+    this.clonedRule = this.ruleToDelete.clone();
     this.ruleToDelete.delete();
   }
 
@@ -229,7 +224,6 @@ export class PasteRuleAboveCommand implements BrainCommand {
 
   constructor(
     private targetRule: BrainRuleDef,
-    private readonly withBrainServices?: BrainServicesRunner,
     private readonly tileCatalog?: ITileCatalog,
     private readonly brainServices?: BrainServices
   ) {}
@@ -238,7 +232,7 @@ export class PasteRuleAboveCommand implements BrainCommand {
     const brain = this.targetRule.brain() as BrainDef | undefined;
     if (!brain) return;
 
-    const newRules = deserializeAllRulesFromClipboard(brain, this.withBrainServices, this.tileCatalog, this.brainServices);
+    const newRules = deserializeAllRulesFromClipboard(brain, this.tileCatalog, this.brainServices);
     if (newRules.length === 0) return;
 
     const state = getRuleState(this.targetRule);

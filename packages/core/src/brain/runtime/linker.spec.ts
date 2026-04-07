@@ -9,9 +9,9 @@ import {
   mkCallDef,
   mkNumberValue,
   Op,
-  registerCoreBrainComponents,
   type UserActionArtifact,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { linkBrainProgram } from "@mindcraft-lang/core/brain/runtime";
@@ -20,7 +20,7 @@ import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
 let services: BrainServices;
 
 before(() => {
-  services = registerCoreBrainComponents();
+  services = __test__createBrainServices();
 });
 
 function buildBrainWithBytecodeActuator(action: ActionDescriptor): BrainDef {

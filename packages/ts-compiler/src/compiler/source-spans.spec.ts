@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { type BrainServices, registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileUserTile } from "./compile.js";
 import type { DebugSpan } from "./types.js";
 
@@ -8,7 +9,7 @@ let services: BrainServices;
 
 describe("source span tracking", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("pcToSpanIndex has an entry for every PC", () => {

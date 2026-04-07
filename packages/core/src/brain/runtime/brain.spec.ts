@@ -35,12 +35,12 @@ import {
   NIL_VALUE,
   Op,
   param,
-  registerCoreBrainComponents,
   TilePlacement,
   type UserActionArtifact,
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { Brain } from "@mindcraft-lang/core/brain/runtime";
@@ -68,7 +68,7 @@ let opNot: BrainTileOperatorDef;
 let opNeg: BrainTileOperatorDef;
 
 before(() => {
-  services = registerCoreBrainComponents();
+  services = __test__createBrainServices();
   opAdd = new BrainTileOperatorDef("add", {}, services);
   opSub = new BrainTileOperatorDef("sub", {}, services);
   opMul = new BrainTileOperatorDef("mul", {}, services);

@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { type BrainServices, registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileUserTile } from "./compile.js";
 
 let services: BrainServices;
 
 describe("scope and variable metadata", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("function with nested blocks -> correct scope tree", () => {

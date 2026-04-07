@@ -14,7 +14,6 @@ export * from "./type-system";
 export * from "./vm";
 
 import type { BrainServices } from "../services";
-import { runWithBrainServices } from "../services";
 import { registerCoreActuators } from "./actuators";
 import { registerContextTypes } from "./context-types";
 import { registerCoreConversions } from "./conversions";
@@ -27,16 +26,14 @@ import { registerStringBuiltins } from "./string-builtins";
 import { registerCoreTypes } from "./type-system";
 
 export function registerCoreRuntimeComponents(services: BrainServices) {
-  runWithBrainServices(services, () => {
-    registerCoreTypes(services);
-    registerContextTypes(services);
-    registerCoreActuators(services);
-    registerCoreSensors(services);
-    registerCoreConversions(services);
-    registerCoreOperators(services);
-    registerElementAccessBuiltins(services);
-    registerMapBuiltins(services);
-    registerMathBuiltins(services);
-    registerStringBuiltins(services);
-  });
+  registerCoreTypes(services);
+  registerContextTypes(services);
+  registerCoreActuators(services);
+  registerCoreSensors(services);
+  registerCoreConversions(services);
+  registerCoreOperators(services);
+  registerElementAccessBuiltins(services);
+  registerMapBuiltins(services);
+  registerMathBuiltins(services);
+  registerStringBuiltins(services);
 }

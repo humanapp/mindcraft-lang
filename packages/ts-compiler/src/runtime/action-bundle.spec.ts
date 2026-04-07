@@ -7,8 +7,8 @@ import {
   mkActuatorTileId,
   mkParameterTileId,
   mkSensorTileId,
-  registerCoreBrainComponents,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { UserTileProject } from "../compiler/compile.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
@@ -36,7 +36,7 @@ let services: BrainServices;
 
 describe("buildCompiledActionBundle", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("builds a full-snapshot bundle with deduped shared parameter tiles", () => {

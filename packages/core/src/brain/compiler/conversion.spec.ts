@@ -19,18 +19,18 @@ import {
   NativeType,
   type NumberValue,
   param,
-  registerCoreBrainComponents,
   type StringValue,
   ValueDict,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
 import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 
 let services: BrainServices;
 
 before(() => {
-  services = registerCoreBrainComponents();
+  services = __test__createBrainServices();
 });
 
 function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {

@@ -9,9 +9,9 @@ import {
   mkNumberValue,
   Op,
   type PageMetadata,
-  registerCoreBrainComponents,
   type Value,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { linkUserPrograms } from "../linker/linker.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -50,7 +50,7 @@ function mkEmptyBrainProgram(): BrainProgram {
 
 describe("debug metadata assembly", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("compiled program has debugMetadata with correct file and function counts", () => {

@@ -3,7 +3,7 @@ import { Toaster } from "@mindcraft-lang/ui";
 import { useMemo } from "react";
 import { genVisualForTile } from "./brain/editor/visual-provider";
 import { createDocsRegistry } from "./docs/docs-registry";
-import { getMindcraftEnvironment, withSimBrainServices } from "./services/mindcraft-environment";
+import { getMindcraftEnvironment } from "./services/mindcraft-environment";
 
 export default function DocsPage() {
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
@@ -15,7 +15,6 @@ export default function DocsPage() {
       tileCatalog={docsTileCatalog}
       brainServices={getMindcraftEnvironment().brainServices}
       resolveTileVisual={genVisualForTile}
-      withBrainServices={withSimBrainServices}
       backLabel="Sim"
       backHref="/"
     >

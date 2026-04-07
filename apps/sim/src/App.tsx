@@ -12,7 +12,7 @@ import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
-import { getMindcraftEnvironment, withSimBrainServices } from "./services/mindcraft-environment";
+import { getMindcraftEnvironment } from "./services/mindcraft-environment";
 import { loadDesiredCounts } from "./services/population-persistence";
 import { getUiPreferences, updateUiPreferences } from "./services/ui-preferences";
 
@@ -48,7 +48,6 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
   const config = useMemo(
     () => ({
       ...buildBrainEditorConfig(archetype ?? undefined),
-      withBrainServices: withSimBrainServices,
       brainServices: getMindcraftEnvironment().brainServices,
       tileCatalog: getMindcraftEnvironment().brainServices.tiles,
       onTileHelp: openDocsForTile,
@@ -157,7 +156,6 @@ function App() {
       tileCatalog={docsTileCatalog}
       brainServices={getMindcraftEnvironment().brainServices}
       resolveTileVisual={genVisualForTile}
-      withBrainServices={withSimBrainServices}
     >
       <div className="h-screen flex bg-background overflow-hidden">
         <h1 className="sr-only">Mindcraft Simulation</h1>

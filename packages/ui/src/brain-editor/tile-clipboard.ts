@@ -10,8 +10,6 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { BrainTileMissingDef, type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 import { isClipboardLoggingEnabled } from "../settings";
-import type { BrainServicesRunner } from "./brain-services";
-import { runWithBrainServices } from "./brain-services";
 
 /**
  * Serialized clipboard payload for a copied tile.
@@ -57,11 +55,7 @@ export function onTileClipboardChanged(listener: () => void): () => void {
  * If the tile has persist=true (literal, variable, page), its catalog entry is
  * serialized so the clipboard is self-contained across brain open/close.
  */
-export function copyTileToClipboard(
-  tileDef: IBrainTileDef,
-  brain: IBrainDef | undefined,
-  withBrainServices?: BrainServicesRunner
-): void {
+export function copyTileToClipboard(tileDef: IBrainTileDef, brain: IBrainDef | undefined): void {
   const tempCatalog = new TileCatalog();
   let pageName: string | undefined;
 
@@ -76,7 +70,7 @@ export function copyTileToClipboard(
     }
   }
 
-  const catalogJson = runWithBrainServices(withBrainServices, () => tempCatalog.toJson());
+  const catalogJson = tempCatalog.toJson();
 
   tileClipboardData = { tileId: tileDef.tileId, tileDef, catalogJson, pageName };
   if (isClipboardLoggingEnabled()) {
@@ -106,7 +100,6 @@ export function hasTileInClipboard(): boolean {
  */
 export function importTileFromClipboard(
   destBrain: IBrainDef,
-  withBrainServices?: BrainServicesRunner,
   brainServices?: BrainServices
 ): IBrainTileDef | undefined {
   if (!tileClipboardData) return undefined;
@@ -118,11 +111,8 @@ export function importTileFromClipboard(
   const existing = destCatalog.get(tileId);
   if (existing) return existing;
 
-  const tempCatalog = runWithBrainServices(withBrainServices, () => {
-    const catalog = new TileCatalog();
-    if (brainServices) catalog.deserializeJson(currentClipboardData.catalogJson, brainServices);
-    return catalog;
-  });
+  const tempCatalog = new TileCatalog();
+  if (brainServices) tempCatalog.deserializeJson(currentClipboardData.catalogJson, brainServices);
 
   const tileDef = tempCatalog.get(tileId);
   if (!tileDef) {

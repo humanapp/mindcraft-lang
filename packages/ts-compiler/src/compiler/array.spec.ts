@@ -12,12 +12,12 @@ import {
   mkTypeId,
   NativeType,
   type NumberValue,
-  registerCoreBrainComponents,
   runtime,
   type StringValue,
   type Value,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
@@ -27,7 +27,7 @@ let services: BrainServices;
 
 function ensureSetup(): void {
   if (!ambientSource) {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");

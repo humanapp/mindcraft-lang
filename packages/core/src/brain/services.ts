@@ -38,33 +38,3 @@ export class BrainServices {
     this.conversions = config.conversions;
   }
 }
-
-/**
- * Global brain services instance.
- *
- * Set by registerCoreBrainComponents() during initialization, which:
- * 1. Creates services with empty registries
- * 2. Sets them as global (via setBrainServices)
- * 3. Registers all core components
- */
-let _brainServices: BrainServices | undefined;
-
-export function getDefaultBrainServices(): BrainServices | undefined {
-  return _brainServices;
-}
-
-export function runWithBrainServices<T>(_services: BrainServices, callback: () => T): T {
-  return callback();
-}
-
-export function setBrainServices(services: BrainServices): void {
-  _brainServices = services;
-}
-
-export function hasBrainServices(): boolean {
-  return _brainServices !== undefined;
-}
-
-export function resetBrainServices(): void {
-  _brainServices = undefined;
-}

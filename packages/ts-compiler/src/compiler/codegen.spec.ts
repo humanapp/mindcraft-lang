@@ -23,7 +23,6 @@ import {
   NIL_VALUE,
   type NumberValue,
   Op,
-  registerCoreBrainComponents,
   runtime,
   type Scheduler,
   type StringValue,
@@ -33,6 +32,7 @@ import {
   ValueDict,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -88,7 +88,7 @@ function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsite
 
 describe("lowering + emission", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("sync sensor with comparison compiles and executes correctly (true case)", () => {
@@ -394,7 +394,7 @@ export default Sensor({
 
 describe("buildCallDef", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("empty params produces empty bag", () => {
@@ -451,7 +451,7 @@ describe("buildCallDef", () => {
 
 describe("control flow + local variables", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("if/else returns correct value for true branch", () => {
@@ -1091,7 +1091,7 @@ export default Sensor({
 
 describe("helper functions + callsite-persistent state", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("helper function called from onExecute returns correct value", () => {
@@ -1618,7 +1618,7 @@ export default Sensor({
 
 describe("activation function", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("onPageEntered resets a callsite var; next exec call sees the reset value", () => {
@@ -1837,7 +1837,7 @@ export default Sensor({
 
 describe("null literal support", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("null assigned to a variable compiles to NIL_VALUE", () => {
@@ -2510,7 +2510,7 @@ export default Sensor({
 
 describe("binary operator implicit conversions", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
@@ -2683,7 +2683,7 @@ export default Sensor({
 
 describe("target-typed implicit conversions", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const signalTypeId = mkTypeId(NativeType.Enum, "Signal");
@@ -2842,7 +2842,7 @@ export default Sensor({
 
 describe("struct literal compilation", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -3027,7 +3027,7 @@ export default Sensor({
 
 describe("array/list literal compilation", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -3221,7 +3221,7 @@ export default Sensor({
 
 describe("mixed-type list compilation (AnyList)", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const anyTypeId = mkTypeId(NativeType.Any, "any");
@@ -3364,7 +3364,7 @@ export default Sensor({
 
 describe("nullable types", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("tsTypeToTypeId returns nullable TypeId for number | null parameter", () => {
@@ -3419,7 +3419,7 @@ export default Sensor({
 
 describe("auto-instantiated list types", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -3483,7 +3483,7 @@ export default Sensor({
 
 describe("union types", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("tsTypeToTypeId returns a union TypeId for number | string (not Any)", () => {
@@ -3576,7 +3576,7 @@ export default Sensor({
 
 describe("typeof lowering", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("typeof x === 'number' compiles and returns true for number", () => {
@@ -3780,7 +3780,7 @@ export default Sensor({
 
 describe("function references and CALL_INDIRECT", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("passing a named function as argument and calling via indirect call", () => {
@@ -3875,7 +3875,7 @@ export default Sensor({
 
 describe("closures", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("simple closure: makeAdder pattern", () => {
@@ -4087,7 +4087,7 @@ export default Sensor({
 
 describe("list element access and methods", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -5257,7 +5257,7 @@ export default Sensor({
 
 describe("function type signatures", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("callback parameter gets typed FunctionTypeDef TypeId", () => {
@@ -5359,7 +5359,7 @@ export default Sensor({
 
 describe("map literal compilation", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -5711,7 +5711,7 @@ export default Sensor({
 
 describe("user-authored enum declarations", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("local enum member lowers to EnumValue and resolves a qualified output type", () => {
@@ -5875,7 +5875,7 @@ export default Sensor({
 
 describe("enum value literals", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
     const types = services.types;
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
@@ -6153,7 +6153,7 @@ export default Sensor({
 
 describe("property access chains + host calls", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const fns = services.functions;
@@ -6619,13 +6619,18 @@ export default Sensor({
 
 describe("struct method calls", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const fns = services.functions;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const voidTypeId = mkTypeId(NativeType.Void, "void");
+
+    const numListTypeId = mkTypeId(NativeType.List, "NumberList");
+    if (!types.get(numListTypeId)) {
+      types.addListType("NumberList", { elementTypeId: numTypeId });
+    }
 
     const widgetTypeId = mkTypeId(NativeType.Struct, "Widget");
     if (!types.get(widgetTypeId)) {
@@ -7619,7 +7624,7 @@ export default Sensor({
 
 describe("await expression", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const fns = services.functions;
@@ -7640,7 +7645,7 @@ describe("await expression", () => {
           {
             name: "fetchData",
             params: List.from([{ name: "url", typeId: strTypeId }]),
-            returnTypeId: numTypeId,
+            returnTypeId: strTypeId,
             isAsync: true,
           },
           {
@@ -7859,7 +7864,7 @@ export default Sensor({
 
 describe("destructuring", () => {
   before(async () => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
 
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -8905,7 +8910,7 @@ export default Sensor({
 
 describe("class declarations", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("class with constructor and method compiles without errors (stub bodies)", () => {

@@ -103,6 +103,22 @@
       },
       "default": "./dist/rbx/brain/init.luau"
     },
+    "./brain/__test__": {
+      "node": {
+        "import": {
+          "types": "./dist/node/brain/test-only-brain-services-factory.d.ts",
+          "default": "./dist/node/brain/test-only-brain-services-factory.js"
+        },
+        "require": {
+          "types": "./dist/node/brain/test-only-brain-services-factory.d.ts",
+          "default": "./dist/node/brain/test-only-brain-services-factory.js"
+        }
+      },
+      "import": {
+        "types": "./dist/esm/brain/test-only-brain-services-factory.d.ts",
+        "default": "./dist/esm/brain/test-only-brain-services-factory.js"
+      }
+    },
     "./brain/model": {
       "node": {
         "import": {

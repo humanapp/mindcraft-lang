@@ -11,10 +11,10 @@ import {
   mkNumberValue,
   mkStringValue,
   NativeType,
-  registerCoreBrainComponents,
   ValueDict,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
@@ -43,7 +43,7 @@ function getSyncEntry(name: string): BrainSyncFunctionEntry {
 }
 
 before(() => {
-  services = registerCoreBrainComponents();
+  services = __test__createBrainServices();
 });
 
 // -- switch-page actuator --

@@ -16,13 +16,13 @@ import {
   type NumberValue,
   Op,
   type PageMetadata,
-  registerCoreBrainComponents,
   runtime,
   type Scheduler,
   type Value,
   ValueDict,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileUserTile } from "../compiler/compile.js";
 import { linkUserPrograms } from "./linker.js";
 
@@ -114,7 +114,7 @@ function resolveLinkedFuncId(linkInfo: { functionOffset: number }, localFuncId: 
 describe("linker", () => {
   let services: BrainServices;
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("constant pool indices are correct after merging", () => {

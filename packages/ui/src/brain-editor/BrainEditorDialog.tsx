@@ -41,7 +41,6 @@ import {
   hasBrainInClipboard,
   onBrainClipboardChanged,
 } from "./brain-clipboard";
-import { runWithBrainServices } from "./brain-services";
 import {
   AddPageCommand,
   BrainCommandHistory,
@@ -60,22 +59,20 @@ export interface BrainEditorDialogProps {
 }
 
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
-  const { getDefaultBrain, docsIntegration, withBrainServices, brainServices } = useBrainEditorConfig();
+  const { getDefaultBrain, docsIntegration, brainServices } = useBrainEditorConfig();
   const isDocsOpen = docsIntegration?.isOpen ?? false;
   const toggleDocs = docsIntegration?.toggle;
   const closeDocs = docsIntegration?.close;
 
   const createEditableBrain = useCallback(
     (sourceBrainDef?: BrainDef): BrainDef => {
-      return runWithBrainServices(withBrainServices, () => {
-        const nextBrainDef = sourceBrainDef ? sourceBrainDef.clone() : BrainDef.emptyBrainDef(brainServices!);
-        if (nextBrainDef.pages().size() === 0) {
-          nextBrainDef.appendNewPage();
-        }
-        return nextBrainDef;
-      });
+      const nextBrainDef = sourceBrainDef ? sourceBrainDef.clone() : BrainDef.emptyBrainDef(brainServices!);
+      if (nextBrainDef.pages().size() === 0) {
+        nextBrainDef.appendNewPage();
+      }
+      return nextBrainDef;
     },
-    [withBrainServices, brainServices]
+    [brainServices]
   );
 
   // Clone the brainDef to work on a copy
@@ -129,18 +126,18 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
   const handleCopyBrain = useCallback(() => {
     if (brainDef) {
-      copyBrainToClipboard(brainDef, withBrainServices);
+      copyBrainToClipboard(brainDef);
       toast.success("Brain copied");
     }
-  }, [brainDef, withBrainServices]);
+  }, [brainDef]);
 
   const handlePasteBrain = useCallback(() => {
     if (!brainDef) return;
     const json = getBrainFromClipboard();
     if (!json) return;
-    const command = new ReplaceBrainCommand(brainDef, json, withBrainServices);
+    const command = new ReplaceBrainCommand(brainDef, json);
     commandHistory.executeCommand(command);
-  }, [brainDef, commandHistory, withBrainServices]);
+  }, [brainDef, commandHistory]);
 
   useEffect(() => {
     if (brainDef) {
@@ -179,23 +176,23 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
   const handleSubmit = useCallback(() => {
     const nextBrainDef = brainDef
-      ? runWithBrainServices(withBrainServices, () => {
+      ? (() => {
           brainDef.purgeUnusedTiles();
           return brainDef;
-        })
+        })()
       : createEditableBrain();
     onSubmit(nextBrainDef);
-  }, [brainDef, onSubmit, createEditableBrain, withBrainServices]);
+  }, [brainDef, onSubmit, createEditableBrain]);
 
   const handleInsertPageAfterCurrentClick = () => {
     if (brainDef && totalPageCount > 0) {
       const currentIndex = currentPageNumber - 1;
-      const command = new AddPageCommand(brainDef, currentIndex + 1, withBrainServices);
+      const command = new AddPageCommand(brainDef, currentIndex + 1);
       commandHistory.executeCommand(command);
       setCurrentPageNumber(currentIndex + 2); // Move to the newly added page
     } else if (brainDef && totalPageCount === 0) {
       // If no pages exist, just append a new page
-      const command = new AddPageCommand(brainDef, undefined, withBrainServices);
+      const command = new AddPageCommand(brainDef, undefined);
       commandHistory.executeCommand(command);
       setCurrentPageNumber(1);
     }
@@ -204,12 +201,12 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   const handleInsertPageBeforeCurrentClick = () => {
     if (brainDef && totalPageCount > 0) {
       const currentIndex = currentPageNumber - 1;
-      const command = new AddPageCommand(brainDef, currentIndex, withBrainServices);
+      const command = new AddPageCommand(brainDef, currentIndex);
       commandHistory.executeCommand(command);
       setCurrentPageNumber(currentIndex + 1); // Move to the newly added page
     } else if (brainDef && totalPageCount === 0) {
       // If no pages exist, just append a new page
-      const command = new AddPageCommand(brainDef, undefined, withBrainServices);
+      const command = new AddPageCommand(brainDef, undefined);
       commandHistory.executeCommand(command);
       setCurrentPageNumber(1);
     }
@@ -221,10 +218,10 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
       // Special case: if this is the last remaining page, use ReplaceLastPageCommand
       if (totalPageCount === 1) {
-        const command = new ReplaceLastPageCommand(brainDef, pageIndexToRemove, withBrainServices);
+        const command = new ReplaceLastPageCommand(brainDef, pageIndexToRemove);
         commandHistory.executeCommand(command);
       } else {
-        const command = new RemovePageCommand(brainDef, pageIndexToRemove, withBrainServices);
+        const command = new RemovePageCommand(brainDef, pageIndexToRemove);
         commandHistory.executeCommand(command);
       }
 
@@ -261,7 +258,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
     try {
       // Serialize the brain to JSON
-      const json = runWithBrainServices(withBrainServices, () => brainDef.toJson());
+      const json = brainDef.toJson();
       const text = JSON.stringify(json, null, 2);
 
       // Use File System Access API to save
@@ -285,7 +282,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         console.error("Failed to save brain:", err);
       }
     }
-  }, [brainDef, withBrainServices]);
+  }, [brainDef]);
 
   const handleLoadFromFile = useCallback(async () => {
     try {
@@ -305,26 +302,23 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       const arrayBuffer = await file.arrayBuffer();
       const uint8Array = new Uint8Array(arrayBuffer);
 
-      const loadedBrain = runWithBrainServices(withBrainServices, () => {
-        let nextBrain: BrainDef;
+      let loadedBrain: BrainDef;
 
-        if (uint8Array[0] === 0x7b) {
-          const text = new TextDecoder().decode(uint8Array);
-          nextBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown), brainServices!);
-        } else {
-          const byteArray = stream.byteArrayFromUint8Array(uint8Array);
-          const memStream = new stream.MemoryStream(byteArray);
-          nextBrain = new BrainDef(brainServices!);
-          nextBrain.deserialize(memStream);
-        }
+      if (uint8Array[0] === 0x7b) {
+        const text = new TextDecoder().decode(uint8Array);
+        loadedBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown), brainServices!);
+      } else {
+        const byteArray = stream.byteArrayFromUint8Array(uint8Array);
+        const memStream = new stream.MemoryStream(byteArray);
+        loadedBrain = new BrainDef(brainServices!);
+        loadedBrain.deserialize(memStream);
+      }
 
-        if (nextBrain.pages().size() === 0) {
-          nextBrain.appendNewPage();
-        }
+      if (loadedBrain.pages().size() === 0) {
+        loadedBrain.appendNewPage();
+      }
 
-        nextBrain.compile();
-        return nextBrain;
-      });
+      loadedBrain.compile();
 
       setBrainDef(loadedBrain);
       setCurrentPageNumber(1);
@@ -336,26 +330,23 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         console.error("Failed to load brain:", err);
       }
     }
-  }, [commandHistory, withBrainServices, brainServices]);
+  }, [commandHistory, brainServices]);
 
   const handleLoadDefault = useCallback(() => {
     const defaultBrain = getDefaultBrain?.();
     if (!defaultBrain) return;
 
-    const cloned = runWithBrainServices(withBrainServices, () => {
-      const nextBrain = defaultBrain.clone();
-      if (nextBrain.pages().size() === 0) {
-        nextBrain.appendNewPage();
-      }
-      nextBrain.compile();
-      return nextBrain;
-    });
+    const cloned = defaultBrain.clone();
+    if (cloned.pages().size() === 0) {
+      cloned.appendNewPage();
+    }
+    cloned.compile();
 
     setBrainDef(cloned);
     setCurrentPageNumber(1);
     setTotalPageCount(cloned.pages().size());
     commandHistory.clear();
-  }, [getDefaultBrain, commandHistory, withBrainServices]);
+  }, [getDefaultBrain, commandHistory]);
 
   const handleBrainNameClick = () => {
     if (brainDef) {

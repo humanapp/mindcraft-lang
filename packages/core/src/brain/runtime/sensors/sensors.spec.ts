@@ -13,10 +13,10 @@ import {
   type MapValue,
   mkNumberValue,
   NativeType,
-  registerCoreBrainComponents,
   TRUE_VALUE,
   ValueDict,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 
 function mkCtx(
   overrides: Omit<Partial<ExecutionContext>, "callSiteState"> & { callSiteState?: Dict<number, unknown> } = {}
@@ -48,7 +48,7 @@ function getSyncEntry(name: string): BrainSyncFunctionEntry {
 }
 
 before(() => {
-  services = registerCoreBrainComponents();
+  services = __test__createBrainServices();
 });
 
 // -- timeout sensor --

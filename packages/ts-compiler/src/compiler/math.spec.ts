@@ -8,11 +8,11 @@ import {
   mkNumberValue,
   NativeType,
   type NumberValue,
-  registerCoreBrainComponents,
   runtime,
   type Value,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 
@@ -77,7 +77,7 @@ function compileAndRunNumber(body: string): number {
 
 describe("Math constants", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("Math.PI", () => {
@@ -123,7 +123,7 @@ describe("Math constants", () => {
 
 describe("Math unary methods", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("Math.abs(-5) -> 5", () => {
@@ -219,7 +219,7 @@ describe("Math unary methods", () => {
 
 describe("Math binary methods", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("Math.max(3, 7) -> 7", () => {
@@ -265,7 +265,7 @@ describe("Math binary methods", () => {
 
 describe("Math.random", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("Math.random() returns a number", () => {
@@ -277,7 +277,7 @@ describe("Math.random", () => {
 
 describe("Math expressions", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("Math methods compose with arithmetic", () => {
@@ -312,7 +312,7 @@ describe("Math expressions", () => {
 
 describe("Math diagnostics", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("Math.abs() with no args produces TS error", () => {

@@ -18,7 +18,6 @@ import {
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTileEditor } from "./BrainTileEditor";
 import { BrainTilePickerDialog } from "./BrainTilePickerDialog";
-import { runWithBrainServices } from "./brain-services";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
 import {
@@ -104,7 +103,7 @@ export function BrainRuleEditor({
   updateCounter,
   commandHistory,
 }: BrainRuleEditorProps) {
-  const { withBrainServices, brainServices, tileCatalog } = useBrainEditorConfig();
+  const { brainServices, tileCatalog } = useBrainEditorConfig();
   const [canMoveUp, setCanMoveUp] = useState(ruleDef.canMoveUp());
   const [canMoveDown, setCanMoveDown] = useState(ruleDef.canMoveDown());
   const [canIndent, setCanIndent] = useState(ruleDef.canIndent());
@@ -178,7 +177,7 @@ export function BrainRuleEditor({
       [doTileSet, RuleSide.Do],
     ] as const) {
       if (!tileSet.isDirty() && !tileSet.isEmpty()) {
-        const parseResult = runWithBrainServices(withBrainServices, () => parseBrainTiles(tileSet.tiles()));
+        const parseResult = parseBrainTiles(tileSet.tiles());
         const badges = computeTileBadges(parseResult);
         if (side === RuleSide.When) setWhenBadges(badges);
         else setDoBadges(badges);
@@ -196,7 +195,7 @@ export function BrainRuleEditor({
       unsubWhen();
       unsubDo();
     };
-  }, [ruleDef, updateBadgesForSide, withBrainServices]);
+  }, [ruleDef, updateBadgesForSide]);
 
   const handleMoveUp = () => {
     const command = new MoveRuleUpCommand(ruleDef);
@@ -224,7 +223,7 @@ export function BrainRuleEditor({
   };
 
   const handleDeleteRule = () => {
-    const command = new DeleteRuleCommand(ruleDef, withBrainServices);
+    const command = new DeleteRuleCommand(ruleDef);
     commandHistory.executeCommand(command);
   };
 
@@ -235,12 +234,12 @@ export function BrainRuleEditor({
   }, []);
 
   const handleCopyRule = () => {
-    copyRuleToClipboard(ruleDef, withBrainServices);
+    copyRuleToClipboard(ruleDef);
     toast.success("Rule copied");
   };
 
   const handlePasteRuleAbove = () => {
-    const command = new PasteRuleAboveCommand(ruleDef, withBrainServices, tileCatalog, brainServices);
+    const command = new PasteRuleAboveCommand(ruleDef, tileCatalog, brainServices);
     commandHistory.executeCommand(command);
   };
 

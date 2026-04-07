@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { type BrainServices, registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
 
@@ -23,7 +24,7 @@ let services: BrainServices;
 
 describe("compileUserTile", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
   test("valid sensor source produces zero diagnostics", () => {
     const result = compileUserTile(VALID_SENSOR_SOURCE, { services });
@@ -83,7 +84,7 @@ function doStuff(ctx: Context): void {
 
 describe("AST validation", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("class expression produces diagnostic", () => {

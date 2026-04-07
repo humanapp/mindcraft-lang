@@ -1,6 +1,4 @@
 import type { BrainDef, BrainJson } from "@mindcraft-lang/core/brain/model";
-import type { BrainServicesRunner } from "../brain-services";
-import { runWithBrainServices } from "../brain-services";
 import type { BrainCommand } from "./BrainCommand";
 
 /**
@@ -13,22 +11,17 @@ export class ReplaceBrainCommand implements BrainCommand {
 
   constructor(
     private readonly brainDef: BrainDef,
-    private readonly afterJson: BrainJson,
-    private readonly withBrainServices?: BrainServicesRunner
+    private readonly afterJson: BrainJson
   ) {
-    this.beforeJson = runWithBrainServices(this.withBrainServices, () => brainDef.toJson());
+    this.beforeJson = brainDef.toJson();
   }
 
   execute(): void {
-    runWithBrainServices(this.withBrainServices, () => {
-      this.brainDef.replaceContentFromJson(this.afterJson);
-    });
+    this.brainDef.replaceContentFromJson(this.afterJson);
   }
 
   undo(): void {
-    runWithBrainServices(this.withBrainServices, () => {
-      this.brainDef.replaceContentFromJson(this.beforeJson);
-    });
+    this.brainDef.replaceContentFromJson(this.beforeJson);
   }
 
   getDescription(): string {

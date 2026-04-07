@@ -6,7 +6,7 @@ import { ClipboardCopy } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 import { DocsRuleBlock, type DocsRuleData, DocsTileChip } from "./DocsRule";
-import { useDocsBrainServices, useDocsSidebar, useDocsTileCatalog, useDocsWithBrainServices } from "./DocsSidebarContext";
+import { useDocsBrainServices, useDocsSidebar, useDocsTileCatalog } from "./DocsSidebarContext";
 
 // ---------------------------------------------------------------------------
 // Meta string parsing
@@ -93,15 +93,12 @@ function collectCatalogEntries(rules: PlainRule[], topLevel?: CatalogTileJson[])
  */
 function buildLocalCatalog(
   entries: CatalogTileJson[],
-  withBrainServices: <T>(callback: () => T) => T,
   brainServices: BrainServices | undefined
 ): TileCatalog | undefined {
   if (entries.length === 0) return undefined;
-  return withBrainServices(() => {
-    const catalog = new TileCatalog();
-    if (brainServices) catalog.deserializeJson(List.from(entries), brainServices);
-    return catalog;
-  });
+  const catalog = new TileCatalog();
+  if (brainServices) catalog.deserializeJson(List.from(entries), brainServices);
+  return catalog;
 }
 
 function resolveTiles(
@@ -183,7 +180,6 @@ interface BrainCodeBlockProps {
 export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
   const { close } = useDocsSidebar();
   const tileCatalog = useDocsTileCatalog();
-  const withBrainServices = useDocsWithBrainServices();
   const brainServices = useDocsBrainServices();
   const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const fenceMeta = useMemo(() => parseMeta(meta), [meta]);
@@ -191,13 +187,13 @@ export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
   const parsed = useMemo(() => {
     const block = parseBrainBlock(content);
     if (!block) return null;
-    const localCatalog = buildLocalCatalog(block.catalogEntries, withBrainServices, brainServices);
+    const localCatalog = buildLocalCatalog(block.catalogEntries, brainServices);
     if (block.kind === "tiles") {
       const side = block.side === "do" ? RuleSide.Do : block.side === "when" ? RuleSide.When : fenceMeta.side;
       return { kind: "tiles" as const, tiles: resolveTiles(block.tileIds, tileCatalog, localCatalog), side };
     }
     return { kind: "rules" as const, rules: block.rules.map((r) => convertRule(r, tileCatalog, localCatalog)) };
-  }, [content, fenceMeta.side, tileCatalog, withBrainServices, brainServices]);
+  }, [content, fenceMeta.side, tileCatalog, brainServices]);
 
   const handleInsert = () => {
     const block = parseBrainBlock(content);

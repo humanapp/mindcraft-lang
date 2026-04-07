@@ -95,7 +95,7 @@ export function createTileBuilder(): IBrainTileDefBuilder {
  * 3. Returns an immutable BrainServices container
  *
  * Note: Core types, operators, conversions, functions, and tiles are NOT registered by this function.
- * Call registerCoreBrainComponents() to set up services and register all core components,
+ * Call installCoreBrainComponents() after creating services to register all core components,
  * or manually register components after creating services:
  * - registerCoreTypes(services.types)
  * - registerCoreOperators(services.operatorTable, services.operatorOverloads)

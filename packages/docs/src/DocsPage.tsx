@@ -143,8 +143,6 @@ export interface DocsPageProps {
   brainServices?: BrainServices;
   /** Optional tile visual resolver for app-provided labels, icons, and colors. */
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
-  /** Optional callback for running local catalog deserialization with initialized brain services. */
-  withBrainServices?: <T>(callback: () => T) => T;
   /** Label displayed in the back link (top-left). Defaults to "Home". */
   backLabel?: string;
   /** URL the back link navigates to. Defaults to "/". */
@@ -158,7 +156,6 @@ export function DocsPage({
   tileCatalog,
   brainServices,
   resolveTileVisual,
-  withBrainServices,
   backLabel,
   backHref,
   children,
@@ -171,7 +168,6 @@ export function DocsPage({
       tileCatalog={tileCatalog}
       brainServices={brainServices}
       resolveTileVisual={resolveTileVisual}
-      withBrainServices={withBrainServices}
       initialTab={tab}
       initialNavKey={key}
       initialNavTab={key ? tab : null}

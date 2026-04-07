@@ -2,12 +2,8 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List, stream } from "@mindcraft-lang/core";
-import {
-  type BrainServices,
-  CoreTypeIds,
-  type ITileCatalog,
-  registerCoreBrainComponents,
-} from "@mindcraft-lang/core/brain";
+import { type BrainServices, CoreTypeIds, type ITileCatalog } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef, BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 
@@ -16,7 +12,7 @@ const { MemoryStream } = stream;
 let services: BrainServices;
 
 before(() => {
-  services = registerCoreBrainComponents();
+  services = __test__createBrainServices();
 });
 
 type TileSetDeserializer = {

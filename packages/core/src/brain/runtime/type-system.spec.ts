@@ -20,11 +20,11 @@ import {
   NativeType,
   type NullableTypeDef,
   nativeTypeToString,
-  registerCoreBrainComponents,
   type StructTypeDef,
   type UnionTypeDef,
   ValueDict,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 
 const { MemoryStream } = stream;
 
@@ -98,7 +98,7 @@ describe("NativeType.Any", () => {
 
 describe("AnyCodec", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("round-trips nil through encode/decode", () => {
@@ -163,7 +163,7 @@ describe("AnyCodec", () => {
 
 describe("registerCoreTypes registers Any and AnyList", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("Any type is registered", () => {
@@ -185,7 +185,7 @@ describe("registerCoreTypes registers Any and AnyList", () => {
 
 describe("enum type registration", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("string enum preserves explicit underlying values", () => {
@@ -301,7 +301,7 @@ describe("enum type registration", () => {
 
 describe("addNullableType", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("returns a TypeId like 'number:<number?>' with nullable: true", () => {
@@ -348,7 +348,7 @@ describe("addNullableType", () => {
 
 describe("NullableCodec", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("round-trips a non-nil number value", () => {
@@ -411,7 +411,7 @@ describe("NullableCodec", () => {
 
 describe("registerConstructor", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("List and Map constructors are registered after registerCoreTypes", () => {
@@ -437,7 +437,7 @@ describe("registerConstructor", () => {
 
 describe("instantiate", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("instantiate('List', [CoreTypeIds.Number]) returns a valid TypeId", () => {
@@ -543,7 +543,7 @@ describe("NativeType.Union", () => {
 
 describe("getOrCreateUnionType", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("returns a stable TypeId with coreType Union", () => {
@@ -637,7 +637,7 @@ describe("getOrCreateUnionType", () => {
 
 describe("UnionCodec", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("round-trips a number value through number | string union", () => {
@@ -703,7 +703,7 @@ describe("UnionCodec", () => {
 
 describe("getOrCreateFunctionType", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("returns a stable TypeId for the same signature", () => {
@@ -778,7 +778,7 @@ describe("getOrCreateFunctionType", () => {
 
 describe("isStructurallyCompatible", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("same TypeId is always compatible", () => {
@@ -922,7 +922,7 @@ describe("isStructurallyCompatible", () => {
 
 describe("removeUserTypes", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("removes enum types with module-qualified names and clears derived artifacts", () => {

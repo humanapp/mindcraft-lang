@@ -41,7 +41,6 @@ import {
   type NumberValue,
   Op,
   type Program,
-  registerCoreBrainComponents,
   setCallSiteState,
   TRUE_VALUE,
   type Value,
@@ -49,12 +48,13 @@ import {
   VmStatus,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { FiberScheduler, VM } from "@mindcraft-lang/core/brain/runtime";
 
 let services: BrainServices;
 
 before(() => {
-  services = registerCoreBrainComponents();
+  services = __test__createBrainServices();
 });
 
 // -- Helpers --

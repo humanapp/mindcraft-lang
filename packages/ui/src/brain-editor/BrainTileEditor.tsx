@@ -13,7 +13,6 @@ import {
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
 import { BrainTilePickerDialog } from "./BrainTilePickerDialog";
-import { runWithBrainServices } from "./brain-services";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
 import { CreateVariableDialog } from "./CreateVariableDialog";
 import {
@@ -45,7 +44,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
   const availableCapabilities = useRuleCapabilities(ruleDef);
-  const { onTileHelp, withBrainServices, brainServices } = useBrainEditorConfig();
+  const { onTileHelp, brainServices } = useBrainEditorConfig();
 
   const isNumericLiteral =
     tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
@@ -75,12 +74,12 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   }, []);
 
   const handleCopyTile = () => {
-    copyTileToClipboard(tileDef, ruleDef.brain(), withBrainServices);
+    copyTileToClipboard(tileDef, ruleDef.brain());
     toast.success("Tile copied");
   };
 
   const handlePasteTileBefore = () => {
-    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex, withBrainServices, brainServices);
+    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex, brainServices);
     commandHistory.executeCommand(command);
   };
 
@@ -128,13 +127,14 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
 
   const handleEditFormatSubmit = (newFormat: LiteralDisplayFormat) => {
     const literalDef = tileDef as BrainTileLiteralDef;
-    let newTileDef: IBrainTileDef = runWithBrainServices(
-      withBrainServices,
-      () =>
-        new BrainTileLiteralDef(literalDef.valueType, literalDef.value, {
-          valueLabel: literalDef.valueLabel,
-          displayFormat: newFormat,
-        }, brainServices!)
+    let newTileDef: IBrainTileDef = new BrainTileLiteralDef(
+      literalDef.valueType,
+      literalDef.value,
+      {
+        valueLabel: literalDef.valueLabel,
+        displayFormat: newFormat,
+      },
+      brainServices!
     );
     const catalog = ruleDef.brain()?.catalog();
     if (catalog) {

@@ -1,8 +1,6 @@
 import { logger } from "@mindcraft-lang/core";
 import type { BrainDef, BrainJson } from "@mindcraft-lang/core/brain/model";
 import { isClipboardLoggingEnabled } from "../settings";
-import type { BrainServicesRunner } from "./brain-services";
-import { runWithBrainServices } from "./brain-services";
 
 /**
  * Serialized clipboard payload for a copied brain.
@@ -38,9 +36,9 @@ export function onBrainClipboardChanged(listener: () => void): () => void {
  * Serializes the brain via its JSON representation so the clipboard is
  * self-contained and independent of the original brain instance.
  */
-export function copyBrainToClipboard(brain: BrainDef, withBrainServices?: BrainServicesRunner): void {
+export function copyBrainToClipboard(brain: BrainDef): void {
   clipboardData = {
-    brainJson: runWithBrainServices(withBrainServices, () => brain.toJson()),
+    brainJson: brain.toJson(),
   };
   if (isClipboardLoggingEnabled()) {
     logger.info("[clipboard] brain copied", JSON.stringify(clipboardData.brainJson, null, 2));

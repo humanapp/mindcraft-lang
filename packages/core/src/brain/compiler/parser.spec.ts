@@ -26,10 +26,10 @@ import {
   NativeType,
   optional,
   param,
-  registerCoreBrainComponents,
   repeated,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
 import {
   BrainTileAccessorDef,
@@ -63,7 +63,7 @@ let openParen: BrainTileControlFlowDef;
 let closeParen: BrainTileControlFlowDef;
 
 before(() => {
-  services = registerCoreBrainComponents();
+  services = __test__createBrainServices();
 
   const kParameterId_AnonymousNumber = "anon.number";
   const kModifierId_TimeMs = "time.ms";

@@ -9,12 +9,12 @@ import {
   mkNumberValue,
   NativeType,
   type NumberValue,
-  registerCoreBrainComponents,
   runtime,
   type StringValue,
   type Value,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 
@@ -99,7 +99,7 @@ function compileAndRunNumber(body: string): number {
 
 describe("String.length", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"hello".length -> 5', () => {
@@ -123,7 +123,7 @@ describe("String.length", () => {
 
 describe("String.charAt", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"abc".charAt(0) -> "a"', () => {
@@ -139,7 +139,7 @@ describe("String.charAt", () => {
 
 describe("String.charCodeAt", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"A".charCodeAt(0) -> 65', () => {
@@ -155,7 +155,7 @@ describe("String.charCodeAt", () => {
 
 describe("String.indexOf", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"hello world".indexOf("world") -> 6', () => {
@@ -176,7 +176,7 @@ describe("String.indexOf", () => {
 
 describe("String.lastIndexOf", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"abcabc".lastIndexOf("abc") -> 3', () => {
@@ -197,7 +197,7 @@ describe("String.lastIndexOf", () => {
 
 describe("String.slice", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"hello".slice(1) -> "ello"', () => {
@@ -218,7 +218,7 @@ describe("String.slice", () => {
 
 describe("String.substring", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"hello".substring(1) -> "ello"', () => {
@@ -234,7 +234,7 @@ describe("String.substring", () => {
 
 describe("String.toLowerCase / toUpperCase", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"Hello".toLowerCase() -> "hello"', () => {
@@ -255,7 +255,7 @@ describe("String.toLowerCase / toUpperCase", () => {
 
 describe("String.trim", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"  hello  ".trim() -> "hello"', () => {
@@ -271,7 +271,7 @@ describe("String.trim", () => {
 
 describe("String.split", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"a,b,c".split(",") -> ["a","b","c"]', () => {
@@ -293,7 +293,7 @@ describe("String.split", () => {
 
 describe("String.concat", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"hello".concat(" world") -> "hello world"', () => {
@@ -314,7 +314,7 @@ describe("String.concat", () => {
 
 describe("String.toString / valueOf", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"hello".toString() -> "hello"', () => {
@@ -330,7 +330,7 @@ describe("String.toString / valueOf", () => {
 
 describe("String bracket access", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test('"abc"[0] -> "a"', () => {
@@ -352,7 +352,7 @@ describe("String bracket access", () => {
 
 describe("String expressions", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("string methods compose", () => {
@@ -394,7 +394,7 @@ describe("String expressions", () => {
 
 describe("String diagnostics", () => {
   before(() => {
-    services = registerCoreBrainComponents();
+    services = __test__createBrainServices();
   });
 
   test("unsupported string method produces diagnostic", () => {
