@@ -43,6 +43,8 @@ import type { BrainServices } from "./brain/services";
 import { createBrainServices } from "./brain/services-factory";
 import { BrainTileActuatorDef } from "./brain/tiles/actuators";
 import { TileCatalog } from "./brain/tiles/catalog";
+import { BrainTileModifierDef } from "./brain/tiles/modifiers";
+import { BrainTileParameterDef } from "./brain/tiles/parameters";
 import { BrainTileSensorDef } from "./brain/tiles/sensors";
 import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
@@ -189,8 +191,24 @@ export interface MindcraftModuleApi {
   registerHostActuator(def: HostActuatorDefinition): void;
   registerFunction(def: HostFunctionDefinition): void;
   registerTile(def: TileDefinitionInput): string;
+  registerModifiers(defs: readonly ModifierTileInput[]): void;
+  registerParameters(defs: readonly ParameterTileInput[]): void;
   registerOperator(def: OperatorDefinition): void;
   registerConversion(def: ConversionDefinition): void;
+}
+
+export interface ModifierTileInput {
+  readonly id: string;
+  readonly label: string;
+  readonly iconUrl?: string;
+}
+
+export interface ParameterTileInput {
+  readonly id: string;
+  readonly dataType: TypeId;
+  readonly label?: string;
+  readonly iconUrl?: string;
+  readonly hidden?: boolean;
 }
 
 export interface HydratedTileMetadataSnapshot {
@@ -539,6 +557,23 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
   registerTile(def: TileDefinitionInput): string {
     this.brainServices.tiles.registerTileDef(def);
     return def.tileId;
+  }
+
+  registerModifiers(defs: readonly ModifierTileInput[]): void {
+    for (const def of defs) {
+      const visual: ITileVisual = { label: def.label, iconUrl: def.iconUrl };
+      this.brainServices.tiles.registerTileDef(new BrainTileModifierDef(def.id, { visual }));
+    }
+  }
+
+  registerParameters(defs: readonly ParameterTileInput[]): void {
+    for (const def of defs) {
+      const opts: BrainTileDefCreateOptions = { hidden: def.hidden };
+      if (def.label) {
+        opts.visual = { label: def.label, iconUrl: def.iconUrl };
+      }
+      this.brainServices.tiles.registerTileDef(new BrainTileParameterDef(def.id, def.dataType, opts));
+    }
   }
 
   registerOperator(def: OperatorDefinition): void {

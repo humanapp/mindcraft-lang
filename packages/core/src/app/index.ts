@@ -14,6 +14,8 @@ export type {
   MindcraftEnvironment,
   MindcraftModule,
   MindcraftModuleApi,
+  ModifierTileInput,
+  ParameterTileInput,
   TileDefinitionInput,
 } from "../mindcraft";
 export { coreModule, createHostActuator, createHostSensor, createMindcraftEnvironment } from "../mindcraft";
