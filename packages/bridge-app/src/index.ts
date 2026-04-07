@@ -12,3 +12,6 @@ export type {
   WorkspaceSnapshot,
 } from "./app-bridge.js";
 export { createAppBridge } from "./app-bridge.js";
+
+export type { LocalStorageWorkspaceOptions } from "./local-storage-workspace.js";
+export { createLocalStorageWorkspace } from "./local-storage-workspace.js";
