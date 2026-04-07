@@ -1,5 +1,6 @@
 import { List } from "@mindcraft-lang/core";
-import { compiler, getBrainServices } from "@mindcraft-lang/core/brain";
+import type { ITypeRegistry } from "@mindcraft-lang/core/brain";
+import { type BrainServices, compiler, getBrainServices } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
@@ -107,9 +108,11 @@ export function isCompilerControlledPath(path: string): boolean {
 export class UserTileProject {
   private _files = new Map<string, string>();
   private readonly _ambientSource: string | undefined;
+  private readonly _services: BrainServices | undefined;
 
   constructor(options?: CompileOptions) {
     this._ambientSource = options?.ambientSource;
+    this._services = options?.services;
   }
 
   setFiles(files: ReadonlyMap<string, string>): void {
@@ -212,7 +215,8 @@ export class UserTileProject {
     const checker = tsProgram.getTypeChecker();
     const results = new Map<string, CompileResult>();
 
-    getBrainServices().types.removeUserTypes();
+    const services = this._services ?? getBrainServices();
+    services.types.removeUserTypes();
 
     for (const compilerPath of userRootFiles) {
       const sourceFile = tsProgram.getSourceFile(compilerPath);
@@ -233,7 +237,8 @@ export class UserTileProject {
         extractionResult.descriptor,
         checker,
         tsProgram,
-        compilerFiles
+        compilerFiles,
+        services
       );
       results.set(vfsPath, result);
     }
@@ -246,7 +251,7 @@ export class UserTileProject {
       return this._ambientSource;
     }
 
-    return buildAmbientDeclarations();
+    return buildAmbientDeclarations(this._services?.types);
   }
 
   private _compileEntryPoint(
@@ -254,7 +259,8 @@ export class UserTileProject {
     descriptor: ExtractedDescriptor,
     checker: ts.TypeChecker,
     tsProgram: ts.Program,
-    compilerFiles: Map<string, string>
+    compilerFiles: Map<string, string>,
+    services: BrainServices
   ): CompileResult {
     const validationDiags = validateAst(sourceFile);
     if (validationDiags.length > 0) {
@@ -313,13 +319,13 @@ export class UserTileProject {
       });
     }
 
-    const qualifiedParams = qualifyDescriptorParams(descriptor.params, sourceFile);
+    const qualifiedParams = qualifyDescriptorParams(descriptor.params, sourceFile, services.types);
     const qualifiedOutputType = descriptor.outputType
-      ? qualifyDescriptorType(descriptor.outputType, sourceFile)
+      ? qualifyDescriptorType(descriptor.outputType, sourceFile, services.types)
       : undefined;
 
     const callDef = buildCallDef(descriptor.name, qualifiedParams);
-    const outputType = qualifiedOutputType ? getBrainServices().types.resolveByName(qualifiedOutputType) : undefined;
+    const outputType = qualifiedOutputType ? services.types.resolveByName(qualifiedOutputType) : undefined;
     if (qualifiedOutputType && !outputType) {
       return {
         diagnostics: [
@@ -365,17 +371,20 @@ export class UserTileProject {
   }
 }
 
-function qualifyDescriptorType(typeName: string, sourceFile: ts.SourceFile): string {
-  const types = getBrainServices().types;
+function qualifyDescriptorType(typeName: string, sourceFile: ts.SourceFile, types: ITypeRegistry): string {
   const qualified = qualifiedClassName(sourceFile.fileName, typeName);
   if (types.resolveByName(qualified)) return qualified;
   if (types.resolveByName(typeName)) return typeName;
   return typeName;
 }
 
-function qualifyDescriptorParams(params: ExtractedParam[], sourceFile: ts.SourceFile): ExtractedParam[] {
+function qualifyDescriptorParams(
+  params: ExtractedParam[],
+  sourceFile: ts.SourceFile,
+  types: ITypeRegistry
+): ExtractedParam[] {
   return params.map((p) => {
-    const qualifiedType = qualifyDescriptorType(p.type, sourceFile);
+    const qualifiedType = qualifyDescriptorType(p.type, sourceFile, types);
     if (qualifiedType === p.type) return p;
     return { ...p, type: qualifiedType };
   });

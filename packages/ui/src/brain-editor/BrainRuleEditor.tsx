@@ -104,7 +104,7 @@ export function BrainRuleEditor({
   updateCounter,
   commandHistory,
 }: BrainRuleEditorProps) {
-  const { withBrainServices } = useBrainEditorConfig();
+  const { withBrainServices, tileCatalog } = useBrainEditorConfig();
   const [canMoveUp, setCanMoveUp] = useState(ruleDef.canMoveUp());
   const [canMoveDown, setCanMoveDown] = useState(ruleDef.canMoveDown());
   const [canIndent, setCanIndent] = useState(ruleDef.canIndent());
@@ -240,7 +240,7 @@ export function BrainRuleEditor({
   };
 
   const handlePasteRuleAbove = () => {
-    const command = new PasteRuleAboveCommand(ruleDef, withBrainServices);
+    const command = new PasteRuleAboveCommand(ruleDef, withBrainServices, tileCatalog);
     commandHistory.executeCommand(command);
   };
 

@@ -1,4 +1,4 @@
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
+import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { createContext, type ReactNode, useContext } from "react";
 import type { BrainServicesRunner } from "./brain-services";
@@ -49,6 +49,8 @@ export interface BrainEditorConfig {
   getDefaultBrain?: () => BrainDef | undefined;
   /** Optional callback used to run service-backed brain model operations. */
   withBrainServices?: BrainServicesRunner;
+  /** Optional tile catalog from the host environment's brain services. */
+  tileCatalog?: ITileCatalog;
   /** Optional callback invoked when the user requests help for a tile (e.g. right-click -> Help). */
   onTileHelp?: (tileDef: IBrainTileDef) => void;
   /** Optional docs sidebar integration for the brain editor dialog toolbar. */

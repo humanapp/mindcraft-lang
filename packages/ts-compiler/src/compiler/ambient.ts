@@ -485,6 +485,6 @@ function buildAmbientDeclarationsFromRegistry(registry: ITypeRegistry): string {
   return `${AMBIENT_HEADER}${AMBIENT_MODULE_START}${typeMapEntries}  }\n\n${typeDeclarations}${AMBIENT_MODULE_END}`;
 }
 
-export function buildAmbientDeclarations(): string {
-  return buildAmbientDeclarationsFromRegistry(getBrainServices().types);
+export function buildAmbientDeclarations(types?: ITypeRegistry): string {
+  return buildAmbientDeclarationsFromRegistry(types ?? getBrainServices().types);
 }

@@ -146,6 +146,7 @@ export interface ActionBundleUpdate {
 export interface BrainInvalidationEvent extends ActionBundleUpdate {}
 
 export interface MindcraftEnvironment {
+  readonly brainServices: BrainServices;
   createCatalog(): MindcraftCatalog;
   deserializeBrain(stream: IReadStream): IBrainDef;
   deserializeBrainJson(json: BrainJson): IBrainDef;

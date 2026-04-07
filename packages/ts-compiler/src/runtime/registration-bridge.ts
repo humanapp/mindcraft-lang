@@ -1,9 +1,9 @@
-import { type BytecodeResolvedAction, getBrainServices } from "@mindcraft-lang/core/brain";
+import { type BrainServices, type BytecodeResolvedAction, getBrainServices } from "@mindcraft-lang/core/brain";
 import type { UserAuthoredProgram } from "../compiler/types.js";
 import { buildUserTileMetadata } from "./user-tile-metadata.js";
 
-export function registerUserTile(program: UserAuthoredProgram): void {
-  const { actions, tiles, types } = getBrainServices();
+export function registerUserTile(program: UserAuthoredProgram, services?: BrainServices): void {
+  const { actions, tiles, types } = services ?? getBrainServices();
   let unresolvedTypeName: string | undefined;
   const metadata = buildUserTileMetadata(program, (typeName) => {
     const typeId = types.resolveByName(typeName);

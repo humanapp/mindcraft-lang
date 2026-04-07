@@ -1,4 +1,3 @@
-import { getBrainServices } from "@mindcraft-lang/core/brain";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
 import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@mindcraft-lang/ui";
@@ -50,6 +49,7 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
     () => ({
       ...buildBrainEditorConfig(archetype ?? undefined),
       withBrainServices: withSimBrainServices,
+      tileCatalog: getMindcraftEnvironment().brainServices.tiles,
       onTileHelp: openDocsForTile,
       docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
     }),
@@ -69,7 +69,7 @@ function App() {
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
-  const docsTileCatalog = useMemo(() => withSimBrainServices(() => getBrainServices().tiles), []);
+  const docsTileCatalog = useMemo(() => getMindcraftEnvironment().brainServices.tiles, []);
 
   useEffect(() => {
     scene?.setTimeSpeed(timeSpeed);

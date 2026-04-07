@@ -136,6 +136,7 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
   constructor(private readonly options: CreateWorkspaceCompilerOptions) {
     this.project = new UserTileProject({
       ambientSource: options.ambientSource,
+      services: options.environment.brainServices,
     });
   }
 
@@ -167,7 +168,9 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
     const result = withMindcraftEnvironmentServices(this.options.environment, () => {
       const projectResult = this.project.compileAll();
       const files = buildDiagnosticSnapshot(projectResult);
-      const bundle = buildCompiledActionBundle(projectResult);
+      const bundle = buildCompiledActionBundle(projectResult, {
+        services: this.options.environment.brainServices,
+      });
 
       return {
         files,

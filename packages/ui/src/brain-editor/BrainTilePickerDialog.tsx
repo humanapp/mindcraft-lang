@@ -2,7 +2,6 @@ import { List, type ReadonlyBitSet, type ReadonlyList } from "@mindcraft-lang/co
 import {
   CoreActuatorId,
   CoreCapabilityBits,
-  getBrainServices,
   type IBrainTileDef,
   type ITileCatalog,
   mkActuatorTileId,
@@ -95,7 +94,7 @@ export function BrainTilePickerDialog({
   onCancel,
 }: BrainTilePickerDialogProps) {
   const editorConfig = useBrainEditorConfig();
-  const { withBrainServices } = editorConfig;
+  const { withBrainServices, tileCatalog: servicesTiles } = editorConfig;
   const [filter, setFilter] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -109,11 +108,10 @@ export function BrainTilePickerDialog({
   }, [isOpen]);
 
   const catalogs = React.useMemo(() => {
-    const servicesTiles = runWithBrainServices(withBrainServices, () => getBrainServices().tiles);
-    const list = List.from<ITileCatalog>([servicesTiles]);
+    const list = servicesTiles ? List.from<ITileCatalog>([servicesTiles]) : List.empty<ITileCatalog>();
     if (localCatalog) list.push(localCatalog);
     return list.asReadonly();
-  }, [localCatalog, withBrainServices]);
+  }, [localCatalog, servicesTiles]);
 
   const { exactByKind, conversionByKind, hasConversions } = React.useMemo(() => {
     return runWithBrainServices(withBrainServices, () => {

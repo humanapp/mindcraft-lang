@@ -1,5 +1,5 @@
 import { type CompiledActionBundle, Dict } from "@mindcraft-lang/core";
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
+import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
 import { getBrainServices } from "@mindcraft-lang/core/brain";
 import type { ProjectCompileResult } from "../compiler/compile.js";
 import type { UserAuthoredProgram } from "../compiler/types.js";
@@ -8,6 +8,7 @@ import { buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-me
 export interface BuildCompiledActionBundleOptions {
   resolveTypeId?: UserTileTypeResolver;
   revision?: string;
+  services?: BrainServices;
 }
 
 function defaultResolveTypeId(typeName: string): string | undefined {
@@ -75,7 +76,9 @@ export function buildCompiledActionBundle(
     return undefined;
   }
 
-  const resolveTypeId = options.resolveTypeId ?? defaultResolveTypeId;
+  const resolveTypeId =
+    options.resolveTypeId ??
+    (options.services ? (typeName: string) => options.services!.types.resolveByName(typeName) : defaultResolveTypeId);
   const programs = collectPrograms(result);
   const actions = new Dict<string, UserAuthoredProgram>();
   const tileMap = new Map<string, IBrainTileDef>();

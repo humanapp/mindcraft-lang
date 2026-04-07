@@ -1,4 +1,4 @@
-import type { UserActionArtifact } from "@mindcraft-lang/core/brain";
+import type { BrainServices, UserActionArtifact } from "@mindcraft-lang/core/brain";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 
@@ -30,6 +30,7 @@ export interface LinkedUserProgram {
 
 export interface CompileOptions {
   ambientSource?: string;
+  services?: BrainServices;
 }
 
 export interface ExtractedDescriptor {

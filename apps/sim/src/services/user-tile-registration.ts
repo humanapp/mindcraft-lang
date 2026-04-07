@@ -1,6 +1,7 @@
 import type { TileDefinitionInput } from "@mindcraft-lang/core";
 import { type HydratedTileMetadataSnapshot, logger, withMindcraftEnvironmentServices } from "@mindcraft-lang/core";
-import { type BrainActionCallSpec, getBrainServices, mkCallDef } from "@mindcraft-lang/core/brain";
+import type { ITypeRegistry } from "@mindcraft-lang/core/brain";
+import { type BrainActionCallSpec, mkCallDef } from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import type { ExtractedParam, UserAuthoredProgram, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { getMindcraftEnvironment } from "./mindcraft-environment";
@@ -218,8 +219,7 @@ function loadMetadataCache(): LoadedHydratedMetadata | undefined {
   }
 }
 
-function resolveTypeId(typeName: string): string | undefined {
-  const { types } = getBrainServices();
+function resolveTypeId(types: ITypeRegistry, typeName: string): string | undefined {
   if (types.get(typeName)) {
     return typeName;
   }
@@ -233,6 +233,7 @@ function getParameterId(tileName: string, param: ExtractedParam): string {
 
 function buildHydratedSnapshot(revision: string, metadata: readonly UserTileMetadata[]): HydratedTileMetadataSnapshot {
   const environment = getMindcraftEnvironment();
+  const { types } = environment.brainServices;
 
   return withMindcraftEnvironmentServices(environment, () => {
     const tiles = new Map<string, TileDefinitionInput>();
@@ -242,7 +243,7 @@ function buildHydratedSnapshot(revision: string, metadata: readonly UserTileMeta
       let canRegister = true;
 
       for (const param of entry.params) {
-        const typeId = resolveTypeId(param.type);
+        const typeId = resolveTypeId(types, param.type);
         if (!typeId) {
           logger.warn(`[user-tile-registration] unknown parameter type "${param.type}" for "${entry.key}"`);
           canRegister = false;
@@ -270,7 +271,7 @@ function buildHydratedSnapshot(revision: string, metadata: readonly UserTileMeta
       };
 
       if (entry.kind === "sensor") {
-        const outputType = entry.outputType ? resolveTypeId(entry.outputType) : undefined;
+        const outputType = entry.outputType ? resolveTypeId(types, entry.outputType) : undefined;
         if (!outputType) {
           logger.warn(`[user-tile-registration] unknown output type "${entry.outputType}" for "${entry.key}"`);
           continue;

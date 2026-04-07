@@ -1,8 +1,8 @@
 import { List, logger, type ReadonlyList } from "@mindcraft-lang/core";
 import {
-  getBrainServices,
   getPageIdFromTileId,
   type IBrainTileDef,
+  type ITileCatalog,
   isPageTileId,
   mkPageTileId,
 } from "@mindcraft-lang/core/brain";
@@ -150,9 +150,10 @@ function remapTileSet(
  */
 export function deserializeRuleFromClipboard(
   destBrain: BrainDef,
-  withBrainServices?: BrainServicesRunner
+  withBrainServices?: BrainServicesRunner,
+  serviceTileCatalog?: ITileCatalog
 ): BrainRuleDef | undefined {
-  const rules = deserializeAllRulesFromClipboard(destBrain, withBrainServices);
+  const rules = deserializeAllRulesFromClipboard(destBrain, withBrainServices, serviceTileCatalog);
   return rules.length > 0 ? rules[0] : undefined;
 }
 
@@ -165,7 +166,8 @@ export function deserializeRuleFromClipboard(
  */
 export function deserializeAllRulesFromClipboard(
   destBrain: BrainDef,
-  withBrainServices?: BrainServicesRunner
+  withBrainServices?: BrainServicesRunner,
+  serviceTileCatalog?: ITileCatalog
 ): BrainRuleDef[] {
   if (!clipboardData) return [];
   const currentClipboardData = clipboardData;
@@ -216,7 +218,7 @@ export function deserializeAllRulesFromClipboard(
       }
     }
 
-    const catalogs = List.from([destCatalog, getBrainServices().tiles]);
+    const catalogs = serviceTileCatalog ? List.from([destCatalog, serviceTileCatalog]) : List.from([destCatalog]);
     const results: BrainRuleDef[] = [];
 
     for (const ruleJson of currentClipboardData.ruleJsons) {
