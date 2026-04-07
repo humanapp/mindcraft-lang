@@ -33,10 +33,9 @@ export class TileCatalog implements ITileCatalog {
   }
 
   add(tile: IBrainTileDef) {
-    if (this.tiles.has(tile.tileId)) {
-      throw new Error(`Tile with id ${tile.tileId} is already registered`);
+    if (!this.tiles.has(tile.tileId)) {
+      this.tiles.set(tile.tileId, tile);
     }
-    this.tiles.set(tile.tileId, tile);
   }
 
   get(tileId: string): IBrainTileDef | undefined {
