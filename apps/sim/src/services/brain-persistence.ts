@@ -1,4 +1,4 @@
-import { stream, withMindcraftEnvironmentServices } from "@mindcraft-lang/core";
+import { stream } from "@mindcraft-lang/core";
 import { BrainDef, brainJsonFromPlain } from "@mindcraft-lang/core/brain/model";
 import type { Archetype } from "@/brain/actor";
 import { getMindcraftEnvironment } from "./mindcraft-environment";
@@ -14,11 +14,9 @@ function normalizeBrainDef(brainDef: unknown): BrainDef {
     throw new Error("Expected BrainDef from mindcraft environment");
   }
 
-  withMindcraftEnvironmentServices(getMindcraftEnvironment(), () => {
-    if (brainDef.pages().size() === 0) {
-      brainDef.appendNewPage();
-    }
-  });
+  if (brainDef.pages().size() === 0) {
+    brainDef.appendNewPage();
+  }
 
   return brainDef;
 }
@@ -75,9 +73,7 @@ export function saveBrainToLocalStorage(archetype: Archetype, brainDef: BrainDef
   try {
     // Serialize the brain to binary
     const memStream = new stream.MemoryStream();
-    withMindcraftEnvironmentServices(getMindcraftEnvironment(), () => {
-      brainDef.serialize(memStream);
-    });
+    brainDef.serialize(memStream);
     const byteArray = memStream.toBytes();
 
     // Convert to Uint8Array

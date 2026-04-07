@@ -1,5 +1,4 @@
 import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang/core";
-import { withMindcraftEnvironmentServices } from "@mindcraft-lang/core";
 import type { ProjectCompileResult } from "./compiler/compile.js";
 import { UserTileProject } from "./compiler/project.js";
 import type { CompileDiagnostic, DiagnosticSeverity } from "./compiler/types.js";
@@ -165,19 +164,17 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
   }
 
   compile(): WorkspaceCompileResult {
-    const result = withMindcraftEnvironmentServices(this.options.environment, () => {
-      const projectResult = this.project.compileAll();
-      const files = buildDiagnosticSnapshot(projectResult);
-      const bundle = buildCompiledActionBundle(projectResult, {
-        services: this.options.environment.brainServices,
-      });
-
-      return {
-        files,
-        projectResult,
-        bundle,
-      };
+    const projectResult = this.project.compileAll();
+    const files = buildDiagnosticSnapshot(projectResult);
+    const bundle = buildCompiledActionBundle(projectResult, {
+      services: this.options.environment.brainServices,
     });
+
+    const result: WorkspaceCompileResult = {
+      files,
+      projectResult,
+      bundle,
+    };
 
     for (const listener of this.compileListeners) {
       listener(result);

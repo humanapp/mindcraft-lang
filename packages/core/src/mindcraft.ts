@@ -212,6 +212,7 @@ export interface BrainInvalidationEvent extends ActionBundleUpdate {}
 
 export interface MindcraftEnvironment {
   readonly brainServices: BrainServices;
+  withServices<T>(callback: (services: BrainServices) => T): T;
   createCatalog(): MindcraftCatalog;
   deserializeBrain(stream: IReadStream): IBrainDef;
   deserializeBrainJson(json: BrainJson): IBrainDef;
@@ -570,22 +571,22 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     this.installModules(modules);
   }
 
+  withServices<T>(callback: (services: BrainServices) => T): T {
+    return withMindcraftEnvironmentServices(this, callback);
+  }
+
   createCatalog(): MindcraftCatalog {
     return new MindcraftCatalogImpl();
   }
 
   deserializeBrain(stream: IReadStream): IBrainDef {
-    return withMindcraftEnvironmentServices(this, () => {
-      const definition = new BrainDef(this.brainServices);
-      definition.deserialize(stream, this.buildDeserializeCatalogs());
-      return definition;
-    });
+    const definition = new BrainDef(this.brainServices);
+    definition.deserialize(stream, this.buildDeserializeCatalogs());
+    return definition;
   }
 
   deserializeBrainJson(json: BrainJson): IBrainDef {
-    return withMindcraftEnvironmentServices(this, () =>
-      BrainDef.fromJson(json, this.brainServices, this.buildDeserializeCatalogs())
-    );
+    return BrainDef.fromJson(json, this.brainServices, this.buildDeserializeCatalogs());
   }
 
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void {
@@ -830,9 +831,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
 
     this.contextData = contextData;
     this.refreshLinkEnvironment();
-    withMindcraftEnvironmentServices(this.environment, () => {
-      super.initialize(contextData);
-    });
+    super.initialize(contextData);
     this.refreshLinkedActionRevisions();
     this.status = "active";
 
@@ -870,9 +869,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
     }
 
     this.refreshLinkEnvironment();
-    withMindcraftEnvironmentServices(this.environment, () => {
-      super.initialize(this.contextData);
-    });
+    super.initialize(this.contextData);
     this.refreshLinkedActionRevisions();
 
     if (shouldRestart) {
@@ -978,6 +975,9 @@ export function getMindcraftEnvironmentServices(environment: MindcraftEnvironmen
   return environment.brainServices;
 }
 
-export function withMindcraftEnvironmentServices<T>(_environment: MindcraftEnvironment, callback: () => T): T {
-  return callback();
+export function withMindcraftEnvironmentServices<T>(
+  environment: MindcraftEnvironment,
+  callback: (services: BrainServices) => T
+): T {
+  return callback(environment.brainServices);
 }

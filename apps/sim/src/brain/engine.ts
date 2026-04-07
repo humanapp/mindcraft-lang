@@ -1,9 +1,7 @@
-import { withMindcraftEnvironmentServices } from "@mindcraft-lang/core";
 import type { BrainDef } from "@mindcraft-lang/core/brain/model";
 import * as ECS from "miniplex";
 import type { Playground } from "@/game/scenes/Playground";
 import { flushPendingBrainRebuilds } from "../services/brain-runtime";
-import { getMindcraftEnvironment } from "../services/mindcraft-environment";
 import { Actor, type Archetype } from "./actor";
 import { ARCHETYPES, createArchetypeFallbackBrain } from "./archetypes";
 import { BLIP_DAMAGE, BLIP_RADIUS, BLIP_SPEED, type Blip, BlipPool } from "./blip";
@@ -117,8 +115,7 @@ export class Engine {
 
     // Initialize brains: localStorage -> pre-loaded default .brain asset -> empty brain
     const loadBrain = (archetype: Archetype): BrainDef => {
-      const cloneBrain = (brainDef: BrainDef): BrainDef =>
-        withMindcraftEnvironmentServices(getMindcraftEnvironment(), () => brainDef.clone());
+      const cloneBrain = (brainDef: BrainDef): BrainDef => brainDef.clone();
 
       const fromStorage = loadBrainFromLocalStorage(archetype);
       if (fromStorage) return fromStorage;

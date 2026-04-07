@@ -1,5 +1,5 @@
 import type { TileDefinitionInput } from "@mindcraft-lang/core";
-import { type HydratedTileMetadataSnapshot, logger, withMindcraftEnvironmentServices } from "@mindcraft-lang/core";
+import { type HydratedTileMetadataSnapshot, logger } from "@mindcraft-lang/core";
 import type { ITypeRegistry } from "@mindcraft-lang/core/brain";
 import { type BrainActionCallSpec, mkCallDef } from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
@@ -233,9 +233,9 @@ function getParameterId(tileName: string, param: ExtractedParam): string {
 
 function buildHydratedSnapshot(revision: string, metadata: readonly UserTileMetadata[]): HydratedTileMetadataSnapshot {
   const environment = getMindcraftEnvironment();
-  const { types } = environment.brainServices;
 
-  return withMindcraftEnvironmentServices(environment, () => {
+  return environment.withServices((services) => {
+    const { types } = services;
     const tiles = new Map<string, TileDefinitionInput>();
 
     for (const entry of metadata) {
