@@ -1,4 +1,4 @@
-import { BrainDef, brainJsonFromPlain, stream } from "@mindcraft-lang/core/app";
+import { BrainDef, brainJsonFromPlain } from "@mindcraft-lang/core/app";
 import type { Archetype } from "@/brain/actor";
 import { getMindcraftEnvironment } from "./mindcraft-environment";
 
@@ -35,9 +35,7 @@ export function deserializeBrainFromArrayBuffer(buffer: ArrayBuffer): BrainDef |
       const text = new TextDecoder().decode(uint8Array);
       brainDef = normalizeBrainDef(environment.deserializeBrainJson(brainJsonFromPlain(JSON.parse(text) as unknown)));
     } else {
-      const byteArray = stream.byteArrayFromUint8Array(uint8Array);
-      const memStream = new stream.MemoryStream(byteArray);
-      brainDef = normalizeBrainDef(environment.deserializeBrain(memStream));
+      brainDef = normalizeBrainDef(environment.deserializeBrainFromBytes(uint8Array));
     }
 
     return brainDef;
@@ -70,18 +68,9 @@ export function getDefaultBrain(archetype: Archetype): BrainDef | undefined {
  */
 export function saveBrainToLocalStorage(archetype: Archetype, brainDef: BrainDef): void {
   try {
-    // Serialize the brain to binary
-    const memStream = new stream.MemoryStream();
-    brainDef.serialize(memStream);
-    const byteArray = memStream.toBytes();
-
-    // Convert to Uint8Array
-    const bytes = stream.byteArrayToUint8Array(byteArray);
-
-    // Convert to base64 for storage
+    const bytes = getMindcraftEnvironment().serializeBrainToBytes(brainDef) as Uint8Array;
     const base64 = uint8ArrayToBase64(bytes);
 
-    // Store in localStorage with archetype-specific key
     const key = `${STORAGE_KEY_PREFIX}${archetype}`;
     localStorage.setItem(key, base64);
 
@@ -104,15 +93,8 @@ export function loadBrainFromLocalStorage(archetype: Archetype): BrainDef | unde
       return undefined;
     }
 
-    // Convert base64 back to Uint8Array
     const bytes = base64ToUint8Array(base64);
-
-    // Convert to IByteArray
-    const byteArray = stream.byteArrayFromUint8Array(bytes);
-
-    // Deserialize the brain from binary
-    const memStream = new stream.MemoryStream(byteArray);
-    const brainDef = normalizeBrainDef(getMindcraftEnvironment().deserializeBrain(memStream));
+    const brainDef = normalizeBrainDef(getMindcraftEnvironment().deserializeBrainFromBytes(bytes));
 
     console.log(`Brain loaded from localStorage for archetype: ${archetype}`);
     return brainDef;
