@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/brain";
 import {
+  type BrainServices,
   HandleTable,
   mkNumberValue,
   NativeType,
@@ -14,6 +15,8 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
+
+let services: BrainServices;
 
 function mkCtx(): ExecutionContext {
   return {
@@ -56,7 +59,7 @@ function compileAndRun(source: string): Value {
 
   const prog = result.program!;
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(prog, handles);
+  const vm = new runtime.VM(services, prog, handles);
   const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
   fiber.instrBudget = 1000;
 
@@ -74,7 +77,7 @@ function compileAndRunNumber(body: string): number {
 
 describe("Math constants", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("Math.PI", () => {
@@ -120,7 +123,7 @@ describe("Math constants", () => {
 
 describe("Math unary methods", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("Math.abs(-5) -> 5", () => {
@@ -216,7 +219,7 @@ describe("Math unary methods", () => {
 
 describe("Math binary methods", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("Math.max(3, 7) -> 7", () => {
@@ -262,7 +265,7 @@ describe("Math binary methods", () => {
 
 describe("Math.random", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("Math.random() returns a number", () => {
@@ -274,7 +277,7 @@ describe("Math.random", () => {
 
 describe("Math expressions", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("Math methods compose with arithmetic", () => {
@@ -309,7 +312,7 @@ describe("Math expressions", () => {
 
 describe("Math diagnostics", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("Math.abs() with no args produces TS error", () => {

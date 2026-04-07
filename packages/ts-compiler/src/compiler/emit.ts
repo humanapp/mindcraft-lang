@@ -2,6 +2,7 @@ import {
   compiler,
   type FunctionBytecode,
   getBrainServices,
+  type IFunctionRegistry,
   mkFunctionValue,
   mkStringValue,
   type TypeId,
@@ -31,11 +32,13 @@ export function emitFunction(
   functionTable?: Map<string, number>,
   injectCtxTypeId?: TypeId,
   scopeMetadata?: readonly ScopeMetadata[],
-  localMetadata?: readonly LocalMetadata[]
+  localMetadata?: readonly LocalMetadata[],
+  hostFunctions?: IFunctionRegistry
 ): EmitResult {
   const emitter = new compiler.BytecodeEmitter();
   const diagnostics: CompileDiagnostic[] = [];
   const labelMap = new Map<number, number>();
+  const fns = hostFunctions ?? getBrainServices().functions;
 
   const spans: DebugSpan[] = [];
   const pcToSpanIndex: number[] = [];
@@ -117,7 +120,7 @@ export function emitFunction(
         emitter.call(node.funcIndex, node.argc);
         break;
       case "HostCallArgs": {
-        const fnId = getBrainServices().functions.get(node.fnName)?.id;
+        const fnId = fns.get(node.fnName)?.id;
         if (fnId === undefined) {
           diagnostics.push({
             code: EmitDiagCode.CannotResolveHostFunction,
@@ -141,7 +144,7 @@ export function emitFunction(
         break;
       }
       case "HostCallArgsAsync": {
-        const fnId = getBrainServices().functions.get(node.fnName)?.id;
+        const fnId = fns.get(node.fnName)?.id;
         if (fnId === undefined) {
           diagnostics.push({
             code: EmitDiagCode.CannotResolveHostFunction,

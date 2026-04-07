@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   CoreOpId,
   CoreTypeIds,
   type ExecutionContext,
@@ -23,6 +24,8 @@ import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";
+
+let services: BrainServices;
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
@@ -57,7 +60,7 @@ function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsite
     return;
   }
 
-  const vm = new runtime.VM(prog, handles);
+  const vm = new runtime.VM(services, prog, handles);
   const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
   fiber.callsiteVars = callsiteVars;
   fiber.instrBudget = 1000;
@@ -68,7 +71,7 @@ function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsite
 
 describe("multi-file: helper module variables", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("entry-point reads a constant from a helper module", () => {
@@ -105,7 +108,7 @@ export default Sensor({
     runActivation(prog, handles, callsiteVars);
 
     {
-      const vm = new runtime.VM(prog, handles);
+      const vm = new runtime.VM(services, prog, handles);
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -154,7 +157,7 @@ export default Sensor({
     runActivation(prog, handles, callsiteVars);
 
     for (let expected = 1; expected <= 3; expected++) {
-      const vm = new runtime.VM(prog, handles);
+      const vm = new runtime.VM(services, prog, handles);
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -219,7 +222,7 @@ export default Sensor({
     runActivation(prog, handles, callsiteVars);
 
     {
-      const vm = new runtime.VM(prog, handles);
+      const vm = new runtime.VM(services, prog, handles);
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -268,7 +271,7 @@ export default Sensor({
     runActivation(prog, handles, callsiteVars);
 
     {
-      const vm = new runtime.VM(prog, handles);
+      const vm = new runtime.VM(services, prog, handles);
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -363,7 +366,7 @@ export default Sensor({
     runActivation(progB, handles, varsB);
 
     {
-      const vm = new runtime.VM(progA, handles);
+      const vm = new runtime.VM(services, progA, handles);
       const fiber = vm.spawnFiber(1, progA.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = varsA;
       fiber.instrBudget = 1000;
@@ -373,7 +376,7 @@ export default Sensor({
     }
 
     {
-      const vm = new runtime.VM(progA, handles);
+      const vm = new runtime.VM(services, progA, handles);
       const fiber = vm.spawnFiber(1, progA.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = varsA;
       fiber.instrBudget = 1000;
@@ -383,7 +386,7 @@ export default Sensor({
     }
 
     {
-      const vm = new runtime.VM(progB, handles);
+      const vm = new runtime.VM(services, progB, handles);
       const fiber = vm.spawnFiber(1, progB.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = varsB;
       fiber.instrBudget = 1000;
@@ -398,7 +401,7 @@ export default Sensor({
 
 describe("multi-file: importing symbols across files", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("one file imports a function symbol from another file", () => {
@@ -432,7 +435,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -474,7 +477,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -575,7 +578,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -589,7 +592,7 @@ export default Sensor({
 
 describe("multi-file: imported enums", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("imported enum member works across files", () => {
@@ -622,7 +625,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -662,7 +665,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -675,7 +678,7 @@ export default Sensor({
 
 describe("multi-file: enum recompilation cleanup", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("deleting a user enum removes its registered type and derived artifacts", () => {
@@ -822,7 +825,7 @@ export default Sensor({
 
 describe("multi-file: module-qualified TypeIds (M2)", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("same-named classes in different files get distinct TypeIds", () => {
@@ -958,7 +961,7 @@ export default Sensor({
 
 describe("multi-file: descriptor qualified types (M3)", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("sensor output type resolves to qualified class name", () => {
@@ -1056,7 +1059,7 @@ export default Sensor({
 
 describe("multi-file: export-only collection", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("non-exported functions in imported files are not collected", () => {
@@ -1126,7 +1129,7 @@ export default Sensor({
 
 describe("multi-file: collision diagnostics (C3.5 D2)", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("two imported files exporting same-named function -> collision diagnostic", () => {
@@ -1225,7 +1228,7 @@ export default Sensor({
 
 describe("multi-file: cross-file class support (C4)", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("class defined in helper, instantiated in entry", () => {
@@ -1263,7 +1266,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 2000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1312,7 +1315,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 3000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1361,7 +1364,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 3000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1402,7 +1405,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 2000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1448,7 +1451,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 3000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1493,7 +1496,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 5000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1610,7 +1613,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, handles);
+    const vm = new runtime.VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 3000;
     const r = vm.runFiber(fiber, mkScheduler());

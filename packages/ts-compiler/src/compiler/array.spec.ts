@@ -4,6 +4,7 @@ import { List } from "@mindcraft-lang/core";
 import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/brain";
 import {
   type BooleanValue,
+  type BrainServices,
   getBrainServices,
   HandleTable,
   isListValue,
@@ -23,10 +24,11 @@ import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
 
 let ambientSource: string;
+let services: BrainServices;
 
 function ensureSetup(): void {
   if (!ambientSource) {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
 
     const types = getBrainServices().types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
@@ -123,7 +125,7 @@ function compileAndRun(source: string): Value {
 
   const prog = result.program!;
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(prog, handles);
+  const vm = new runtime.VM(services, prog, handles);
   const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
   fiber.instrBudget = 10_000;
 

@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/brain";
 import {
+  type BrainServices,
   HandleTable,
   isListValue,
   mkNumberValue,
@@ -16,6 +17,8 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
+
+let services: BrainServices;
 
 function mkCtx(): ExecutionContext {
   return {
@@ -72,7 +75,7 @@ function compileAndRun(source: string): Value {
 
   const prog = result.program!;
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(prog, handles);
+  const vm = new runtime.VM(services, prog, handles);
   const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
   fiber.instrBudget = 1000;
 
@@ -96,7 +99,7 @@ function compileAndRunNumber(body: string): number {
 
 describe("String.length", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"hello".length -> 5', () => {
@@ -120,7 +123,7 @@ describe("String.length", () => {
 
 describe("String.charAt", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"abc".charAt(0) -> "a"', () => {
@@ -136,7 +139,7 @@ describe("String.charAt", () => {
 
 describe("String.charCodeAt", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"A".charCodeAt(0) -> 65', () => {
@@ -152,7 +155,7 @@ describe("String.charCodeAt", () => {
 
 describe("String.indexOf", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"hello world".indexOf("world") -> 6', () => {
@@ -173,7 +176,7 @@ describe("String.indexOf", () => {
 
 describe("String.lastIndexOf", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"abcabc".lastIndexOf("abc") -> 3', () => {
@@ -194,7 +197,7 @@ describe("String.lastIndexOf", () => {
 
 describe("String.slice", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"hello".slice(1) -> "ello"', () => {
@@ -215,7 +218,7 @@ describe("String.slice", () => {
 
 describe("String.substring", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"hello".substring(1) -> "ello"', () => {
@@ -231,7 +234,7 @@ describe("String.substring", () => {
 
 describe("String.toLowerCase / toUpperCase", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"Hello".toLowerCase() -> "hello"', () => {
@@ -252,7 +255,7 @@ describe("String.toLowerCase / toUpperCase", () => {
 
 describe("String.trim", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"  hello  ".trim() -> "hello"', () => {
@@ -268,7 +271,7 @@ describe("String.trim", () => {
 
 describe("String.split", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"a,b,c".split(",") -> ["a","b","c"]', () => {
@@ -290,7 +293,7 @@ describe("String.split", () => {
 
 describe("String.concat", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"hello".concat(" world") -> "hello world"', () => {
@@ -311,7 +314,7 @@ describe("String.concat", () => {
 
 describe("String.toString / valueOf", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"hello".toString() -> "hello"', () => {
@@ -327,7 +330,7 @@ describe("String.toString / valueOf", () => {
 
 describe("String bracket access", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test('"abc"[0] -> "a"', () => {
@@ -349,7 +352,7 @@ describe("String bracket access", () => {
 
 describe("String expressions", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("string methods compose", () => {
@@ -391,7 +394,7 @@ describe("String expressions", () => {
 
 describe("String diagnostics", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("unsupported string method produces diagnostic", () => {
