@@ -1,15 +1,18 @@
-import { type AppBridge, type AppBridgeState, createAppBridge } from "@mindcraft-lang/bridge-app";
-import { createCompilationFeature } from "@mindcraft-lang/bridge-app/compilation";
+import type { AppBridge, AppBridgeState } from "@mindcraft-lang/bridge-app";
+import { type AppProjectHandle, createAppProject } from "@mindcraft-lang/bridge-app/compilation";
+import { logger } from "@mindcraft-lang/core";
+import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
+import { getMindcraftEnvironment } from "./mindcraft-environment";
 import { getUiPreferences } from "./ui-preferences";
-import { getWorkspaceCompiler, initUserTileCompiler } from "./user-tile-compiler";
-import { getWorkspaceStore, initWorkspaceStore } from "./workspace-store";
+import { applyCompiledUserTiles } from "./user-tile-registration";
+import { initWorkspaceStore } from "./workspace-store";
 
 type ConnectionStatus = AppBridgeState;
 type StatusListener = (status: ConnectionStatus) => void;
 type JoinCodeListener = (joinCode: string | undefined) => void;
 
-let bridge: AppBridge | undefined;
+let project: AppProjectHandle | undefined;
 let currentStatus: ConnectionStatus = "disconnected";
 let currentJoinCode: string | undefined;
 
@@ -52,8 +55,47 @@ function wireBridgeState(activeBridge: AppBridge): void {
   applyBridgeSnapshot(activeBridge);
 }
 
-function createBridge(): AppBridge {
-  return createAppBridge({
+function logWorkspaceCompile(result: WorkspaceCompileResult): void {
+  const resultsByPath = result.projectResult.results;
+
+  for (const [path, diagnostics] of result.files) {
+    if (diagnostics.length > 0) {
+      logger.warn(`[user-tile-compiler] ${path}: ${diagnostics.length} diagnostic(s)`);
+      for (const diagnostic of diagnostics) {
+        const range = diagnostic.range;
+        logger.warn(`  ${path}:${range.startLine}:${range.startColumn} - ${diagnostic.message}`);
+      }
+      continue;
+    }
+
+    const program = resultsByPath.get(path)?.program;
+    if (program) {
+      logger.info(`[user-tile-compiler] ${path}: compiled ${program.kind} "${program.name}"`);
+    }
+  }
+}
+
+function recreateBridge(shouldStart: boolean): void {
+  if (!project) {
+    return;
+  }
+
+  bridgeStateUnsub?.();
+  bridgeStateUnsub = undefined;
+
+  project.recreateBridge(getAppSettings().vscodeBridgeUrl);
+  wireBridgeState(project.bridge);
+
+  if (shouldStart) {
+    project.bridge.start();
+  }
+}
+
+export function initProject(): void {
+  const workspace = initWorkspaceStore();
+
+  project = createAppProject({
+    environment: getMindcraftEnvironment(),
     app: {
       id: "sim",
       name: "Sim",
@@ -61,49 +103,31 @@ function createBridge(): AppBridge {
       projectName: "Sim",
     },
     bridgeUrl: getAppSettings().vscodeBridgeUrl,
-    workspace: getWorkspaceStore(),
-    features: [
-      createCompilationFeature({
-        compiler: getWorkspaceCompiler(),
-      }),
-    ],
+    workspace,
+    onDidCompile(result) {
+      logWorkspaceCompile(result);
+      applyCompiledUserTiles(result);
+    },
   });
-}
 
-function recreateBridge(shouldStart: boolean): void {
-  bridgeStateUnsub?.();
-  bridgeStateUnsub = undefined;
-
-  bridge?.stop();
-
-  bridge = createBridge();
-  wireBridgeState(bridge);
-
-  if (shouldStart) {
-    bridge.start();
-  }
-}
-
-export function initProject(): void {
-  const workspace = initWorkspaceStore();
-  initUserTileCompiler(workspace.exportSnapshot());
-  recreateBridge(false);
+  project.initialize();
+  wireBridgeState(project.bridge);
 }
 
 export function connectBridge(): void {
-  if (!bridge) {
+  if (!project) {
     initProject();
   }
 
-  if (!bridge || bridge.snapshot().status !== "disconnected") {
+  if (!project || project.bridge.snapshot().status !== "disconnected") {
     return;
   }
 
-  bridge.start();
+  project.bridge.start();
 }
 
 export function disconnectBridge(): void {
-  bridge?.stop();
+  project?.bridge.stop();
 }
 
 export function getBridgeStatus(): ConnectionStatus {

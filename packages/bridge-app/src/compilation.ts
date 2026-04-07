@@ -1,12 +1,21 @@
 import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
+import type { MindcraftEnvironment } from "@mindcraft-lang/core";
+import {
+  createWorkspaceCompiler,
+  type WorkspaceCompiler as TsWorkspaceCompiler,
+  type WorkspaceCompileResult,
+} from "@mindcraft-lang/ts-compiler";
 import type {
+  AppBridge,
   AppBridgeFeature,
   AppBridgeFeatureContext,
   AppBridgeFeatureStatus,
   DiagnosticEntry,
+  WorkspaceAdapter,
   WorkspaceChange,
   WorkspaceSnapshot,
 } from "./app-bridge.js";
+import { createAppBridge } from "./app-bridge.js";
 
 export interface DiagnosticSnapshot {
   files: ReadonlyMap<string, readonly DiagnosticEntry[]>;
@@ -261,4 +270,65 @@ export class CompilationManager {
       },
     });
   }
+}
+
+export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+
+export interface CreateAppProjectOptions {
+  environment: MindcraftEnvironment;
+  app: {
+    id: string;
+    name: string;
+    projectId: string;
+    projectName: string;
+  };
+  bridgeUrl: string;
+  workspace: WorkspaceAdapter;
+  onDidCompile?: (result: WorkspaceCompileResult) => void;
+}
+
+export interface AppProjectHandle {
+  readonly compiler: TsWorkspaceCompiler;
+  readonly bridge: AppBridge;
+  initialize(): void;
+  recreateBridge(bridgeUrl: string): void;
+}
+
+export function createAppProject(options: CreateAppProjectOptions): AppProjectHandle {
+  const { environment, workspace } = options;
+
+  const compiler = createWorkspaceCompiler({ environment });
+
+  if (options.onDidCompile) {
+    compiler.onDidCompile(options.onDidCompile);
+  }
+
+  let currentBridge = buildBridge(options, compiler);
+
+  return {
+    compiler,
+    get bridge() {
+      return currentBridge;
+    },
+    initialize() {
+      compiler.replaceWorkspace(workspace.exportSnapshot());
+      compiler.compile();
+    },
+    recreateBridge(bridgeUrl: string) {
+      currentBridge.stop();
+      currentBridge = buildBridge({ ...options, bridgeUrl }, compiler);
+    },
+  };
+}
+
+function buildBridge(
+  options: Pick<CreateAppProjectOptions, "app" | "bridgeUrl" | "workspace">,
+  compiler: TsWorkspaceCompiler
+): AppBridge {
+  return createAppBridge({
+    app: options.app,
+    bridgeUrl: options.bridgeUrl,
+    workspace: options.workspace,
+    features: [createCompilationFeature({ compiler })],
+  });
 }
