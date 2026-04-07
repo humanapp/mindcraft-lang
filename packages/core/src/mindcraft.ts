@@ -35,7 +35,7 @@ import type {
   UnionTypeShape,
   UserActionArtifact,
 } from "./brain/interfaces";
-import { NativeType } from "./brain/interfaces";
+import { CoreOpId, NativeType, NIL_VALUE } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
 import { BrainDef } from "./brain/model";
 import { Brain } from "./brain/runtime";
@@ -286,6 +286,15 @@ function assertRegisteredTypeId(actual: string, expected: string, name: string):
   return actual;
 }
 
+const assignNoop: HostSyncFn = { exec: () => NIL_VALUE };
+
+function autoRegisterAssignment(services: BrainServices, typeId: TypeId): void {
+  if (services.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId])) {
+    return;
+  }
+  services.operatorOverloads.binary(CoreOpId.Assign, typeId, typeId, typeId, assignNoop, false);
+}
+
 function registerMindcraftTypeDefinition(services: BrainServices, definition: MindcraftTypeDefinition): string {
   const nullableDef = definition as NullableTypeDef;
   if (definition.nullable && nullableDef.baseTypeId !== undefined) {
@@ -295,6 +304,8 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
       nullableDef.name
     );
   }
+
+  let registeredTypeId: string;
 
   switch (definition.coreType) {
     case NativeType.Void:
@@ -309,7 +320,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
       return assertRegisteredTypeId(services.types.addStringType(definition.name), definition.typeId, definition.name);
     case NativeType.Enum: {
       const enumDef = definition as EnumTypeDef;
-      return assertRegisteredTypeId(
+      registeredTypeId = assertRegisteredTypeId(
         services.types.addEnumType(enumDef.name, {
           symbols: enumDef.symbols,
           defaultKey: enumDef.defaultKey,
@@ -317,26 +328,29 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         enumDef.typeId,
         enumDef.name
       );
+      break;
     }
     case NativeType.List: {
       const listDef = definition as ListTypeDef;
-      return assertRegisteredTypeId(
+      registeredTypeId = assertRegisteredTypeId(
         services.types.addListType(listDef.name, { elementTypeId: listDef.elementTypeId }),
         listDef.typeId,
         listDef.name
       );
+      break;
     }
     case NativeType.Map: {
       const mapDef = definition as MapTypeDef;
-      return assertRegisteredTypeId(
+      registeredTypeId = assertRegisteredTypeId(
         services.types.addMapType(mapDef.name, { valueTypeId: mapDef.valueTypeId }),
         mapDef.typeId,
         mapDef.name
       );
+      break;
     }
     case NativeType.Struct: {
       const structDef = definition as StructTypeDef;
-      return assertRegisteredTypeId(
+      registeredTypeId = assertRegisteredTypeId(
         services.types.addStructType(structDef.name, {
           fields: structDef.fields,
           nominal: structDef.nominal,
@@ -348,6 +362,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         structDef.typeId,
         structDef.name
       );
+      break;
     }
     case NativeType.Any:
       return assertRegisteredTypeId(services.types.addAnyType(definition.name), definition.typeId, definition.name);
@@ -380,6 +395,9 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     default:
       throw new Error(`Unsupported mindcraft type '${definition.name}' (coreType: ${definition.coreType})`);
   }
+
+  autoRegisterAssignment(services, registeredTypeId);
+  return registeredTypeId;
 }
 
 function registerOperatorDefinition(services: BrainServices, definition: OperatorDefinition): void {

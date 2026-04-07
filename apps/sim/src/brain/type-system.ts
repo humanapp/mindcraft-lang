@@ -1,5 +1,4 @@
 import {
-  CoreOpId,
   CoreTypeIds,
   Dict,
   type ExecutionContext,
@@ -11,7 +10,6 @@ import {
   mkStructValue,
   mkTypeId,
   NativeType,
-  NIL_VALUE,
   type NumberValue,
   type StructValue,
   TypeUtils,
@@ -151,22 +149,6 @@ export function registerTypes(api: MindcraftModuleApi) {
     ]),
     fieldGetter: actorRefFieldGetter,
     snapshotNative: actorRefSnapshotNative,
-  });
-
-  api.registerOperator({
-    spec: { id: CoreOpId.Assign, parse: { fixity: "infix", precedence: 0, assoc: "right" } },
-    overloads: [
-      {
-        argTypes: [MyTypeIds.Vector2, MyTypeIds.Vector2],
-        resultType: MyTypeIds.Vector2,
-        fn: { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
-      },
-      {
-        argTypes: [MyTypeIds.ActorRef, MyTypeIds.ActorRef],
-        resultType: MyTypeIds.ActorRef,
-        fn: { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
-      },
-    ],
   });
 
   const anonCallDef = mkCallDef({
