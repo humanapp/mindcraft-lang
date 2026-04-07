@@ -10,6 +10,8 @@ export type {
   CompiledActionBundle,
   ConversionDefinition,
   CreateBrainOptions,
+  CreateHostActuatorOptions,
+  CreateHostSensorOptions,
   HostActuatorDefinition,
   HostFunctionDefinition,
   HostSensorDefinition,
@@ -24,7 +26,13 @@ export type {
   OperatorOverloadDefinition,
   TileDefinitionInput,
 } from "./mindcraft";
-export { coreModule, createMindcraftEnvironment, withMindcraftEnvironmentServices } from "./mindcraft";
+export {
+  coreModule,
+  createHostActuator,
+  createHostSensor,
+  createMindcraftEnvironment,
+  withMindcraftEnvironmentServices,
+} from "./mindcraft";
 export { Dict } from "./platform/dict";
 export { Error } from "./platform/error";
 // Platform utilities

@@ -1,6 +1,6 @@
+import type { CreateHostActuatorOptions } from "@mindcraft-lang/core";
 import {
   bag,
-  CoreTypeIds,
   type ExecutionContext,
   FALSE_VALUE,
   getCallSiteState,
@@ -17,7 +17,6 @@ import {
 import { ARCHETYPES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
-import type { ActionDef } from "./action-def";
 import { resolveTargetActor } from "./utils";
 
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
@@ -81,10 +80,9 @@ export function execEat(ctx: ExecutionContext, args: MapValue): Value {
 }
 
 export default {
-  tileId: TileIds.Actuator.Eat,
+  key: TileIds.Actuator.Eat,
   callDef,
   fn: { exec: execEat },
   isAsync: false,
-  returnType: CoreTypeIds.Void,
   visual: { label: "eat", iconUrl: "/assets/brain/icons/eat.svg" },
-} satisfies ActionDef;
+} satisfies CreateHostActuatorOptions;

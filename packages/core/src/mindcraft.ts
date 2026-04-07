@@ -3,6 +3,7 @@ import type {
   ActionDescriptor,
   BrainActionCallDef,
   BrainActionResolver,
+  BrainTileDefCreateOptions,
   Conversion,
   EnumTypeDef,
   EnumTypeShape,
@@ -17,6 +18,7 @@ import type {
   IBrainDef,
   IBrainTileDef,
   ITileCatalog,
+  ITileVisual,
   ListTypeDef,
   ListTypeShape,
   MapTypeDef,
@@ -39,7 +41,9 @@ import { BrainDef } from "./brain/model";
 import { Brain } from "./brain/runtime";
 import type { BrainServices } from "./brain/services";
 import { createBrainServices } from "./brain/services-factory";
+import { BrainTileActuatorDef } from "./brain/tiles/actuators";
 import { TileCatalog } from "./brain/tiles/catalog";
+import { BrainTileSensorDef } from "./brain/tiles/sensors";
 import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
 import { List } from "./platform/list";
@@ -78,6 +82,66 @@ export interface HostActuatorDefinition {
   readonly descriptor: ActionDescriptor;
   readonly function: HostFunctionDefinition;
   readonly tile: IBrainActionTileDef;
+}
+
+type HostActionOptionsBase = {
+  readonly key: string;
+  readonly callDef: BrainActionCallDef;
+  readonly visual?: ITileVisual;
+  readonly capabilities?: BrainTileDefCreateOptions["capabilities"];
+};
+
+type SyncHostActionOptions = HostActionOptionsBase & {
+  readonly fn: HostSyncFn;
+  readonly isAsync?: false;
+};
+
+type AsyncHostActionOptions = HostActionOptionsBase & {
+  readonly fn: HostAsyncFn;
+  readonly isAsync: true;
+};
+
+export type CreateHostSensorOptions = (SyncHostActionOptions | AsyncHostActionOptions) & {
+  readonly outputType: TypeId;
+};
+
+export type CreateHostActuatorOptions = SyncHostActionOptions | AsyncHostActionOptions;
+
+export function createHostSensor(options: CreateHostSensorOptions): HostSensorDefinition {
+  const isAsync = options.isAsync ?? false;
+  const descriptor: ActionDescriptor = {
+    key: options.key,
+    kind: "sensor",
+    callDef: options.callDef,
+    isAsync,
+    outputType: options.outputType,
+  };
+  return {
+    descriptor,
+    function: { name: options.key, isAsync, fn: options.fn, callDef: options.callDef },
+    tile: new BrainTileSensorDef(options.key, descriptor, {
+      visual: options.visual,
+      capabilities: options.capabilities,
+    }),
+  };
+}
+
+export function createHostActuator(options: CreateHostActuatorOptions): HostActuatorDefinition {
+  const isAsync = options.isAsync ?? false;
+  const descriptor: ActionDescriptor = {
+    key: options.key,
+    kind: "actuator",
+    callDef: options.callDef,
+    isAsync,
+  };
+  return {
+    descriptor,
+    function: { name: options.key, isAsync, fn: options.fn, callDef: options.callDef },
+    tile: new BrainTileActuatorDef(options.key, descriptor, {
+      visual: options.visual,
+      capabilities: options.capabilities,
+    }),
+  };
 }
 
 export interface OperatorOverloadDefinition {

@@ -1,6 +1,6 @@
+import type { CreateHostActuatorOptions } from "@mindcraft-lang/core";
 import {
   bag,
-  CoreTypeIds,
   choice,
   type ExecutionContext,
   FALSE_VALUE,
@@ -20,7 +20,6 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
-import type { ActionDef } from "./action-def";
 import { resolveTargetActor } from "./utils";
 
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
@@ -120,10 +119,9 @@ export function execShoot(ctx: ExecutionContext, args: MapValue): Value {
 }
 
 export default {
-  tileId: TileIds.Actuator.Shoot,
+  key: TileIds.Actuator.Shoot,
   callDef,
   fn: { exec: execShoot },
   isAsync: false,
-  returnType: CoreTypeIds.Boolean,
   visual: { label: "shoot", iconUrl: "/assets/brain/icons/shoot.svg" },
-} satisfies ActionDef;
+} satisfies CreateHostActuatorOptions;

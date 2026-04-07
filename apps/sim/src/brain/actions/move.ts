@@ -1,8 +1,8 @@
+import type { CreateHostActuatorOptions } from "@mindcraft-lang/core";
 import { type List, Vector2 } from "@mindcraft-lang/core";
 import {
   type BrainActionCallChoiceSpec,
   bag,
-  CoreTypeIds,
   choice,
   conditional,
   type ExecutionContext,
@@ -22,7 +22,6 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
-import type { ActionDef } from "@/brain/actions/action-def";
 import { resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
@@ -238,10 +237,9 @@ function execMove(ctx: ExecutionContext, args: MapValue): Value {
 }
 
 export default {
-  tileId: TileIds.Actuator.Move,
+  key: TileIds.Actuator.Move,
   callDef,
   fn: { exec: execMove },
   isAsync: false,
-  returnType: CoreTypeIds.Void,
   visual: { label: "move", iconUrl: "/assets/brain/icons/move2.svg" },
-} satisfies ActionDef;
+} satisfies CreateHostActuatorOptions;

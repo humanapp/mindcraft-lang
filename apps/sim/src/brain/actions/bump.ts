@@ -1,3 +1,4 @@
+import type { CreateHostSensorOptions } from "@mindcraft-lang/core";
 import {
   bag,
   CoreTypeIds,
@@ -13,7 +14,6 @@ import {
   TRUE_VALUE,
   type Value,
 } from "@mindcraft-lang/core/brain";
-import type { ActionDef } from "@/brain/actions/action-def";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { TargetActorCapabilityBitSet, TileIds } from "@/brain/tileids";
@@ -81,13 +81,13 @@ function execBump(ctx: ExecutionContext, args: MapValue): Value {
 }
 
 export default {
-  tileId: TileIds.Sensor.Bump,
+  key: TileIds.Sensor.Bump,
   callDef,
   fn: {
     exec: execBump,
   },
   isAsync: false,
-  returnType: CoreTypeIds.Boolean, // TODO: Return bumped actor, not just a boolean
+  outputType: CoreTypeIds.Boolean,
   visual: { label: "bump", iconUrl: "/assets/brain/icons/bump.svg" },
-  capabilities: TargetActorCapabilityBitSet, // Indicates that this sensor provides a "targetActor" for tiles that require it
-} satisfies ActionDef;
+  capabilities: TargetActorCapabilityBitSet,
+} satisfies CreateHostSensorOptions;

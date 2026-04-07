@@ -1,7 +1,7 @@
+import type { CreateHostActuatorOptions } from "@mindcraft-lang/core";
 import {
   type BrainActionCallChoiceSpec,
   bag,
-  CoreTypeIds,
   choice,
   conditional,
   type ExecutionContext,
@@ -16,7 +16,6 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
-import type { ActionDef } from "@/brain/actions/action-def";
 import { resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
@@ -182,10 +181,9 @@ function execTurn(ctx: ExecutionContext, args: MapValue): Value {
 }
 
 export default {
-  tileId: TileIds.Actuator.Turn,
+  key: TileIds.Actuator.Turn,
   callDef,
   fn: { exec: execTurn },
   isAsync: false,
-  returnType: CoreTypeIds.Void,
   visual: { label: "turn", iconUrl: "/assets/brain/icons/turn.svg" },
-} satisfies ActionDef;
+} satisfies CreateHostActuatorOptions;

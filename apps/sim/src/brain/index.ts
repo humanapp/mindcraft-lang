@@ -1,5 +1,9 @@
-import type { MindcraftModule, MindcraftModuleApi } from "@mindcraft-lang/core";
-import { toHostActuatorDef, toHostSensorDef } from "./actions/action-def";
+import {
+  createHostActuator,
+  createHostSensor,
+  type MindcraftModule,
+  type MindcraftModuleApi,
+} from "@mindcraft-lang/core";
 import fnBump from "./actions/bump";
 import fnEat from "./actions/eat";
 import fnMove from "./actions/move";
@@ -16,14 +20,14 @@ export function createSimModule(): MindcraftModule {
     install(api: MindcraftModuleApi): void {
       registerTypes(api);
 
-      api.registerHostSensor(toHostSensorDef(fnBump));
-      api.registerHostSensor(toHostSensorDef(fnSee));
+      api.registerHostSensor(createHostSensor(fnBump));
+      api.registerHostSensor(createHostSensor(fnSee));
 
-      api.registerHostActuator(toHostActuatorDef(fnEat));
-      api.registerHostActuator(toHostActuatorDef(fnMove));
-      api.registerHostActuator(toHostActuatorDef(fnSay));
-      api.registerHostActuator(toHostActuatorDef(fnShoot));
-      api.registerHostActuator(toHostActuatorDef(fnTurn));
+      api.registerHostActuator(createHostActuator(fnEat));
+      api.registerHostActuator(createHostActuator(fnMove));
+      api.registerHostActuator(createHostActuator(fnSay));
+      api.registerHostActuator(createHostActuator(fnShoot));
+      api.registerHostActuator(createHostActuator(fnTurn));
 
       registerTiles(api);
     },

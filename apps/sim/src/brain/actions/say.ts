@@ -1,7 +1,7 @@
+import type { CreateHostActuatorOptions } from "@mindcraft-lang/core";
 import {
   bag,
   CoreParameterId,
-  CoreTypeIds,
   type ExecutionContext,
   extractNumberValue,
   extractStringValue,
@@ -13,7 +13,6 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
-import type { ActionDef } from "@/brain/actions/action-def";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
 
@@ -50,10 +49,9 @@ function execSay(ctx: ExecutionContext, args: MapValue): Value {
 }
 
 export default {
-  tileId: TileIds.Actuator.Say,
+  key: TileIds.Actuator.Say,
   callDef,
   fn: { exec: execSay },
   isAsync: false,
-  returnType: CoreTypeIds.Void,
   visual: { label: "say", iconUrl: "/assets/brain/icons/say.svg" },
-} satisfies ActionDef;
+} satisfies CreateHostActuatorOptions;

@@ -1,3 +1,4 @@
+import type { CreateHostSensorOptions } from "@mindcraft-lang/core";
 import { List, Vector2 } from "@mindcraft-lang/core";
 import {
   bag,
@@ -21,7 +22,6 @@ import {
   TRUE_VALUE,
   type Value,
 } from "@mindcraft-lang/core/brain";
-import type { ActionDef } from "@/brain/actions/action-def";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { TargetActorCapabilityBitSet, TileIds } from "@/brain/tileids";
@@ -212,13 +212,13 @@ function execSee(ctx: ExecutionContext, args: MapValue): Value {
 }
 
 export default {
-  tileId: TileIds.Sensor.See,
+  key: TileIds.Sensor.See,
   callDef,
   fn: {
     exec: execSee,
   },
   isAsync: false,
-  returnType: CoreTypeIds.Boolean,
+  outputType: CoreTypeIds.Boolean,
   visual: { label: "see", iconUrl: "/assets/brain/icons/see.svg" },
   capabilities: TargetActorCapabilityBitSet,
-} satisfies ActionDef;
+} satisfies CreateHostSensorOptions;
