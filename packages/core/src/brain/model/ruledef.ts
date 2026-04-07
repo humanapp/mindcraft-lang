@@ -16,7 +16,6 @@ import {
   type ITileCatalog,
   RuleSide,
 } from "../interfaces";
-import { getBrainServices } from "../services";
 import { BrainTileSet } from "./tileset";
 
 export interface RuleJson {
@@ -59,7 +58,9 @@ function buildBinaryDeserializationCatalogs(brain: IBrainDef | undefined): List<
   if (brain?.catalog()) {
     catalogs.push(brain.catalog());
   }
-  catalogs.push(getBrainServices().tiles);
+  if (brain) {
+    catalogs.push(brain.servicesTiles());
+  }
   return catalogs;
 }
 
@@ -164,10 +165,11 @@ export class BrainRuleDef implements IBrainRuleDef {
 
   private gatherCatalogs(): List<ITileCatalog> {
     const catalogs = List.empty<ITileCatalog>();
-    // push global catalog
-    catalogs.push(getBrainServices().tiles);
-    // push brain catalog
-    const brainCatalog = this.page()?.brain()?.catalog();
+    const brain = this.page()?.brain();
+    if (brain) {
+      catalogs.push(brain.servicesTiles());
+    }
+    const brainCatalog = brain?.catalog();
     if (brainCatalog) {
       catalogs.push(brainCatalog);
     }
@@ -599,7 +601,7 @@ export class BrainRuleDef implements IBrainRuleDef {
   static fromJson(json: RuleJson, page: IBrainPageDef, brain: IBrainDef): BrainRuleDef {
     const catalogs = new List<ITileCatalog>();
     catalogs.push(brain.catalog());
-    catalogs.push(getBrainServices().tiles);
+    catalogs.push(brain.servicesTiles());
     const rule = new BrainRuleDef();
     rule.setPage(page);
     rule.deserializeJson(json, catalogs);

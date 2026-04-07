@@ -17,6 +17,7 @@ import {
   mkPageTileId,
 } from "../interfaces";
 import { Brain } from "../runtime";
+import type { BrainServices } from "../services";
 import { getBrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";
@@ -55,6 +56,7 @@ const STags = {
 
 function buildDeserializationCatalogs(
   brainCatalog: ITileCatalog,
+  servicesTiles: ITileCatalog,
   extraCatalogs?: List<ITileCatalog>
 ): List<ITileCatalog> {
   const catalogs = new List<ITileCatalog>();
@@ -66,7 +68,7 @@ function buildDeserializationCatalogs(
   }
 
   catalogs.push(brainCatalog);
-  catalogs.push(getBrainServices().tiles);
+  catalogs.push(servicesTiles);
   return catalogs;
 }
 
@@ -125,6 +127,19 @@ export class BrainDef implements IBrainDef {
   private readonly emitter_ = new EventEmitter<BrainDefEvents>();
   private readonly pageSubscriptions_ = new Dict<BrainPageDef, () => void>();
   private readonly catalog_ = new TileCatalog();
+  private servicesTiles_: ITileCatalog | undefined;
+
+  constructor(services?: BrainServices) {
+    this.servicesTiles_ = services?.tiles;
+  }
+
+  servicesTiles(): ITileCatalog {
+    return this.servicesTiles_ ?? getBrainServices().tiles;
+  }
+
+  setServicesTiles(tiles: ITileCatalog): void {
+    this.servicesTiles_ = tiles;
+  }
 
   static emptyBrainDef(name?: string): BrainDef {
     const brainDef = new BrainDef();
@@ -308,7 +323,7 @@ export class BrainDef implements IBrainDef {
 
     const catalogs = new List<ITileCatalog>();
     catalogs.push(this.catalog_);
-    catalogs.push(getBrainServices().tiles);
+    catalogs.push(this.servicesTiles());
 
     for (let i = 0; i < json.pages.size(); i++) {
       const pageJson = json.pages.get(i);
@@ -347,7 +362,7 @@ export class BrainDef implements IBrainDef {
     brain.catalog_.deserializeJson(json.catalog);
 
     // Build the catalog chain: local catalog + global catalog
-    const catalogs = buildDeserializationCatalogs(brain.catalog_, extraCatalogs);
+    const catalogs = buildDeserializationCatalogs(brain.catalog_, brain.servicesTiles(), extraCatalogs);
 
     // Restore pages
     for (let i = 0; i < json.pages.size(); i++) {
@@ -384,7 +399,7 @@ export class BrainDef implements IBrainDef {
       this.setName(name);
       this.catalog_.deserialize(stream);
       const pageCount = stream.readTaggedU32(STags.PGCT);
-      const catalogs = buildDeserializationCatalogs(this.catalog_, extraCatalogs);
+      const catalogs = buildDeserializationCatalogs(this.catalog_, this.servicesTiles(), extraCatalogs);
       for (let i = 0; i < pageCount; i++) {
         const page = new BrainPageDef();
         this.addPage(page); // add before deserializing to set up brain associateion, so rules can read local catalog

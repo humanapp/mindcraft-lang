@@ -533,7 +533,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
 
   deserializeBrain(stream: IReadStream): IBrainDef {
     return withMindcraftEnvironmentServices(this, () => {
-      const definition = new BrainDef();
+      const definition = new BrainDef(this.brainServices);
       definition.deserialize(stream, this.buildDeserializeCatalogs());
       return definition;
     });

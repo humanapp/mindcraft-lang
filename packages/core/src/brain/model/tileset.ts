@@ -15,7 +15,6 @@ import {
   type ITileCatalog,
   RuleSide,
 } from "../interfaces";
-import { getBrainServices } from "../services";
 
 // Maximum allowed number of tiles in a tileset.
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
@@ -92,10 +91,11 @@ export class BrainTileSet implements IBrainTileSet {
 
   gatherCatalogs(): List<ITileCatalog> {
     const catalogs = List.empty<ITileCatalog>();
-    // push global catalog
-    catalogs.push(getBrainServices().tiles);
-    // push brain catalog
-    const brainCatalog = this.rule_?.page()?.brain()?.catalog();
+    const brain = this.rule_?.page()?.brain();
+    if (brain) {
+      catalogs.push(brain.servicesTiles());
+    }
+    const brainCatalog = brain?.catalog();
     if (brainCatalog) {
       catalogs.push(brainCatalog);
     }

@@ -21,6 +21,7 @@ export interface IBrainDef {
   pages(): ReadonlyList<IBrainPageDef>;
   events(): EventEmitterConsumer<BrainDefEvents>;
   catalog(): ITileCatalog;
+  servicesTiles(): ITileCatalog;
   typecheck(): void;
   compile(): IBrain;
   appendNewPage(): OpResult<{ page: IBrainPageDef; index: number }>;
