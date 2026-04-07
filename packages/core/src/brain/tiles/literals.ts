@@ -48,11 +48,13 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
   readonly valueType: TypeId;
   readonly value: unknown;
   readonly displayFormat: LiteralDisplayFormat;
+  private readonly services_?: BrainServices;
 
-  constructor(valueType: TypeId, value: unknown, opts: BrainTileLiteralDefOptions = {}) {
+  constructor(valueType: TypeId, value: unknown, opts: BrainTileLiteralDefOptions = {}, services?: BrainServices) {
     if (opts.placement === undefined) opts.placement = TilePlacement.EitherSide;
     if (opts.persist === undefined) opts.persist = true;
-    const typeDef = getBrainServices().types.get(valueType);
+    const svc = services ?? getBrainServices();
+    const typeDef = svc.types.get(valueType);
     if (!typeDef) {
       throw new Error(`BrainTileLiteralDef.deserialize: unknown value type ${valueType}`);
     }
@@ -64,12 +66,17 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
     this.value = value;
     this.valueLabel = valueStr;
     this.displayFormat = fmt;
+    this.services_ = services;
+  }
+
+  private getServices(): BrainServices {
+    return this.services_ ?? getBrainServices();
   }
 
   // -- JSON serialization (parallel to binary below) -------------------------
 
   toJson(): LiteralTileJson {
-    const typeDef = getBrainServices().types.get(this.valueType);
+    const typeDef = this.getServices().types.get(this.valueType);
     if (!typeDef) {
       throw new Error(`BrainTileLiteralDef.toJson: unknown value type ${this.valueType}`);
     }
@@ -84,20 +91,26 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
     };
   }
 
-  static fromJson(json: LiteralTileJson, catalog: ITileCatalog): BrainTileLiteralDef {
+  static fromJson(json: LiteralTileJson, catalog: ITileCatalog, services?: BrainServices): BrainTileLiteralDef {
     if (json.version !== kVersion) {
       throw new Error(`BrainTileLiteralDef.fromJson: unsupported version ${json.version}`);
     }
     if (catalog.has(json.tileId)) return catalog.get(json.tileId) as BrainTileLiteralDef;
-    const typeDef = getBrainServices().types.get(json.valueType as TypeId);
+    const svc = services ?? getBrainServices();
+    const typeDef = svc.types.get(json.valueType as TypeId);
     if (!typeDef) {
       throw new Error(`BrainTileLiteralDef.fromJson: unknown value type ${json.valueType}`);
     }
     const value = literalValueFromJson(typeDef, json.value);
-    const tileDef = getBrainServices().tileBuilder.createLiteralTileDef(json.valueType as TypeId, value, {
-      valueLabel: json.valueLabel,
-      displayFormat: json.displayFormat,
-    });
+    const tileDef = new BrainTileLiteralDef(
+      json.valueType as TypeId,
+      value,
+      {
+        valueLabel: json.valueLabel,
+        displayFormat: json.displayFormat,
+      },
+      services
+    );
     catalog.registerTileDef(tileDef);
     return tileDef as BrainTileLiteralDef;
   }
@@ -105,7 +118,7 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
   // -- Binary serialization ---------------------------------------------------
 
   serialize(stream: IWriteStream): void {
-    const typeDef = getBrainServices().types.get(this.valueType);
+    const typeDef = this.getServices().types.get(this.valueType);
     if (!typeDef) {
       throw new Error(`BrainTileLiteralDef.serialize: unknown value type ${this.valueType}`);
     }
@@ -152,7 +165,11 @@ function literalValueFromJson(typeDef: TypeDef, json: unknown): unknown {
   }
 }
 
-export function BrainTileLiteralDef_deserialize(stream: IReadStream, catalog: ITileCatalog): BrainTileLiteralDef {
+export function BrainTileLiteralDef_deserialize(
+  stream: IReadStream,
+  catalog: ITileCatalog,
+  services?: BrainServices
+): BrainTileLiteralDef {
   const { kind, tileId } = BrainTileDefBase_deserializeHeader(stream);
   if (kind !== "literal") {
     throw new Error(`BrainTileLiteralDef.deserialize: invalid kind ${kind}`);
@@ -161,8 +178,9 @@ export function BrainTileLiteralDef_deserialize(stream: IReadStream, catalog: IT
   if (version < 1 || version > kVersion) {
     throw new Error(`BrainTileLiteralDef.deserialize: unsupported version ${version}`);
   }
+  const svc = services ?? getBrainServices();
   const valueType = stream.readString();
-  const typeEntry = getBrainServices().types.get(valueType);
+  const typeEntry = svc.types.get(valueType);
   if (!typeEntry) {
     throw new Error(`BrainTileLiteralDef.deserialize: unknown value type ${valueType}`);
   }
@@ -175,7 +193,7 @@ export function BrainTileLiteralDef_deserialize(stream: IReadStream, catalog: IT
   if (tileDef && tileDef.kind === "literal") {
     return tileDef as BrainTileLiteralDef;
   }
-  tileDef = new BrainTileLiteralDef(valueType, value, { valueLabel, displayFormat });
+  tileDef = new BrainTileLiteralDef(valueType, value, { valueLabel, displayFormat }, services);
   catalog.registerTileDef(tileDef);
   return tileDef;
 }
@@ -218,9 +236,9 @@ export function registerCoreLiteralFactoryTileDefs(services: BrainServices) {
   registerLiteralFactoryTileDef(CoreLiteralFactoryId.String, CoreTypeIds.String, {}, services);
   // --------------------------------------------------------------
   // Well-known Literals
-  const trueTileDef = new BrainTileLiteralDef(CoreTypeIds.Boolean, true, { persist: false });
-  const falseTileDef = new BrainTileLiteralDef(CoreTypeIds.Boolean, false, { persist: false });
-  const nilTileDef = new BrainTileLiteralDef(CoreTypeIds.Nil, undefined, { persist: false });
+  const trueTileDef = new BrainTileLiteralDef(CoreTypeIds.Boolean, true, { persist: false }, services);
+  const falseTileDef = new BrainTileLiteralDef(CoreTypeIds.Boolean, false, { persist: false }, services);
+  const nilTileDef = new BrainTileLiteralDef(CoreTypeIds.Nil, undefined, { persist: false }, services);
   tiles.registerTileDef(trueTileDef);
   tiles.registerTileDef(falseTileDef);
   tiles.registerTileDef(nilTileDef);

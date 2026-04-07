@@ -4,6 +4,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { fourCC } from "../../primitives";
 import type { IBrainTileDef, ITileCatalog } from "../interfaces";
+import type { BrainServices } from "../services";
 import { getBrainServices } from "../services";
 import { BrainTileLiteralDef, type LiteralTileJson } from "./literals";
 import { BrainTileMissingDef, type MissingTileJson } from "./missing";
@@ -93,15 +94,15 @@ export class TileCatalog implements ITileCatalog {
     return result;
   }
 
-  deserializeJson(json: ReadonlyList<CatalogTileJson>): void {
+  deserializeJson(json: ReadonlyList<CatalogTileJson>, services?: BrainServices): void {
     for (let i = 0; i < json.size(); i++) {
       const entry = json.get(i);
       switch (entry.kind) {
         case "literal":
-          BrainTileLiteralDef.fromJson(entry, this);
+          BrainTileLiteralDef.fromJson(entry, this, services);
           break;
         case "variable":
-          BrainTileVariableDef.fromJson(entry, this);
+          BrainTileVariableDef.fromJson(entry, this, services);
           break;
         case "page":
           BrainTilePageDef.fromJson(entry, this);
@@ -128,14 +129,15 @@ export class TileCatalog implements ITileCatalog {
     stream.popChunk();
   }
 
-  deserialize(stream: IReadStream) {
+  deserialize(stream: IReadStream, services?: BrainServices) {
     const version = stream.enterChunk(STags.TCAT);
     if (version !== kVersion) {
       throw new Error(`TileCatalog.deserialize: unsupported version ${version}`);
     }
+    const svc = services ?? getBrainServices();
     const tileCount = stream.readTaggedU32(STags.TCNT);
     for (let i = 0; i < tileCount; i++) {
-      const tileDef = getBrainServices().tileBuilder.deserializeTileDef(stream, this);
+      const tileDef = svc.tileBuilder.deserializeTileDef(stream, this);
       if (!this.has(tileDef.tileId)) {
         this.registerTileDef(tileDef);
       }

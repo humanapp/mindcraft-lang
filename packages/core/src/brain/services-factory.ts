@@ -114,7 +114,7 @@ export function createBrainServices(): BrainServices {
   const { operatorTable, operatorOverloads } = createOperatorRegistries(functions);
   const tileBuilder = createTileBuilder();
 
-  return new BrainServices({
+  const services = new BrainServices({
     tiles,
     actions,
     operatorTable,
@@ -124,4 +124,8 @@ export function createBrainServices(): BrainServices {
     functions,
     conversions,
   });
+
+  (tileBuilder as BrainTileDefBuilder).setServices(services);
+
+  return services;
 }

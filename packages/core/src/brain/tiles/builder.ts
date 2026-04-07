@@ -9,6 +9,7 @@ import type {
   TypeId,
 } from "../interfaces";
 import { BrainTileDef_deserialize, BrainTileDefBase_peekHeader } from "../model/tiledef";
+import type { BrainServices } from "../services";
 import { BrainTileControlFlowDef, BrainTileControlFlowDef_deserialize } from "./controlflow";
 import { BrainTileLiteralDef, BrainTileLiteralDef_deserialize } from "./literals";
 import { BrainTileMissingDef_deserialize } from "./missing";
@@ -17,9 +18,15 @@ import { BrainTilePageDef_deserialize } from "./pagetiles";
 import { BrainTileVariableDef, BrainTileVariableDef_deserialize } from "./variables";
 
 export class BrainTileDefBuilder implements IBrainTileDefBuilder {
+  private services_?: BrainServices;
+
+  setServices(services: BrainServices): void {
+    this.services_ = services;
+  }
+
   // Operator Tiles
   createOperatorTileDef(opId: string, opts: BrainTileDefCreateOptions = {}): IBrainTileDef {
-    return new BrainTileOperatorDef(opId, opts);
+    return new BrainTileOperatorDef(opId, opts, this.services_);
   }
   deserializeOperatorTileDef(stream: IReadStream, catalog: ITileCatalog): IBrainTileDef {
     return BrainTileOperatorDef_deserialize(stream, catalog);
@@ -49,10 +56,10 @@ export class BrainTileDefBuilder implements IBrainTileDefBuilder {
 
   // Literal Tiles
   createLiteralTileDef(valueType: TypeId, value: unknown, opts: BrainTileLiteralDefOptions = {}): IBrainTileDef {
-    return new BrainTileLiteralDef(valueType, value, opts);
+    return new BrainTileLiteralDef(valueType, value, opts, this.services_);
   }
   deserializeLiteralTileDef(stream: IReadStream, catalog: ITileCatalog): IBrainTileDef {
-    return BrainTileLiteralDef_deserialize(stream, catalog);
+    return BrainTileLiteralDef_deserialize(stream, catalog, this.services_);
   }
 
   // top-level deserialize (delegates to specific tile type deserializers)

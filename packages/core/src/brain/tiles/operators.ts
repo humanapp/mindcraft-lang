@@ -20,9 +20,9 @@ export class BrainTileOperatorDef extends BrainTileDefBase {
   readonly kind = "operator";
   readonly op: IReadOnlyRegisteredOperator;
 
-  constructor(opId: string, opts: BrainTileDefCreateOptions = {}) {
+  constructor(opId: string, opts: BrainTileDefCreateOptions = {}, services?: BrainServices) {
     super(mkOperatorTileId(opId), opts);
-    this.op = getBrainServices().operatorTable.get(opId)!;
+    this.op = (services ?? getBrainServices()).operatorTable.get(opId)!;
     if (!this.op) {
       throw new Error(`BrainTileOperatorDef: unknown opId ${opId}. Did you forget to register it?`);
     }
@@ -55,7 +55,7 @@ export function BrainTileOperatorDef_deserialize(stream: IReadStream, catalog: I
 export function registerCoreOperatorTileDefs(services: BrainServices) {
   const tiles = services.tiles;
   const registerCoreOperatorTileDef = (opId: string, opts: BrainTileDefCreateOptions = {}) => {
-    const tileDef = new BrainTileOperatorDef(opId, opts);
+    const tileDef = new BrainTileOperatorDef(opId, opts, services);
     tiles.registerTileDef(tileDef);
   };
 

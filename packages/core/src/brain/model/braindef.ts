@@ -127,18 +127,14 @@ export class BrainDef implements IBrainDef {
   private readonly emitter_ = new EventEmitter<BrainDefEvents>();
   private readonly pageSubscriptions_ = new Dict<BrainPageDef, () => void>();
   private readonly catalog_ = new TileCatalog();
-  private servicesTiles_: ITileCatalog | undefined;
+  private services_: BrainServices | undefined;
 
   constructor(services?: BrainServices) {
-    this.servicesTiles_ = services?.tiles;
+    this.services_ = services;
   }
 
   servicesTiles(): ITileCatalog {
-    return this.servicesTiles_ ?? getBrainServices().tiles;
-  }
-
-  setServicesTiles(tiles: ITileCatalog): void {
-    this.servicesTiles_ = tiles;
+    return this.services_?.tiles ?? getBrainServices().tiles;
   }
 
   static emptyBrainDef(name?: string): BrainDef {
@@ -319,7 +315,7 @@ export class BrainDef implements IBrainDef {
     this.catalog_.clear();
 
     this.setName(json.name);
-    this.catalog_.deserializeJson(json.catalog);
+    this.catalog_.deserializeJson(json.catalog, this.services_);
 
     const catalogs = new List<ITileCatalog>();
     catalogs.push(this.catalog_);
@@ -359,7 +355,7 @@ export class BrainDef implements IBrainDef {
     brain.setName(json.name);
 
     // Restore the local catalog first so tile references can be resolved
-    brain.catalog_.deserializeJson(json.catalog);
+    brain.catalog_.deserializeJson(json.catalog, brain.services_);
 
     // Build the catalog chain: local catalog + global catalog
     const catalogs = buildDeserializationCatalogs(brain.catalog_, brain.servicesTiles(), extraCatalogs);
@@ -397,7 +393,7 @@ export class BrainDef implements IBrainDef {
     try {
       const name = stream.readTaggedString(STags.NAME);
       this.setName(name);
-      this.catalog_.deserialize(stream);
+      this.catalog_.deserialize(stream, this.services_);
       const pageCount = stream.readTaggedU32(STags.PGCT);
       const catalogs = buildDeserializationCatalogs(this.catalog_, this.servicesTiles(), extraCatalogs);
       for (let i = 0; i < pageCount; i++) {

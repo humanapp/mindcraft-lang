@@ -25,7 +25,6 @@ export interface VariableTileJson {
 }
 
 import type { BrainServices } from "../services";
-import { getBrainServices } from "../services";
 import { BrainTileFactoryDef } from "./factories";
 
 // Current serialization version -- shared by both binary and JSON codepaths.
@@ -69,18 +68,12 @@ export class BrainTileVariableDef extends BrainTileDefBase {
     };
   }
 
-  static fromJson(json: VariableTileJson, catalog: ITileCatalog): BrainTileVariableDef {
+  static fromJson(json: VariableTileJson, catalog: ITileCatalog, _services?: BrainServices): BrainTileVariableDef {
     if (json.version !== kVersion) {
       throw new Error(`BrainTileVariableDef.fromJson: unsupported version ${json.version}`);
     }
     if (catalog.has(json.tileId)) return catalog.get(json.tileId) as BrainTileVariableDef;
-    const tileDef = getBrainServices().tileBuilder.createVariableTileDef(
-      json.tileId,
-      json.varName,
-      json.varType as TypeId,
-      json.uniqueId,
-      {}
-    );
+    const tileDef = new BrainTileVariableDef(json.tileId, json.varName, json.varType as TypeId, json.uniqueId, {});
     catalog.registerTileDef(tileDef);
     return tileDef as BrainTileVariableDef;
   }
