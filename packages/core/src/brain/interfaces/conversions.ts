@@ -9,7 +9,7 @@ export type Conversion = {
   toType: TypeId;
   cost: number;
   fn: HostSyncFn;
-  callDef: BrainActionCallDef;
+  callDef?: BrainActionCallDef;
 };
 
 export interface IConversionRegistry {

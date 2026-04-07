@@ -5,7 +5,6 @@ import {
   List,
   type MapValue,
   type MindcraftModuleApi,
-  mkCallDef,
   mkNumberValue,
   mkStructValue,
   mkTypeId,
@@ -151,12 +150,6 @@ export function registerTypes(api: MindcraftModuleApi) {
     snapshotNative: actorRefSnapshotNative,
   });
 
-  const anonCallDef = mkCallDef({
-    type: "arg",
-    tileId: "",
-    anonymous: true,
-  });
-
   api.registerConversion({
     fromType: MyTypeIds.ActorRef,
     toType: CoreTypeIds.Number,
@@ -168,7 +161,6 @@ export function registerTypes(api: MindcraftModuleApi) {
         return mkNumberValue(actor ? actor.actorId : 0);
       },
     },
-    callDef: anonCallDef,
   });
   api.registerConversion({
     fromType: MyTypeIds.ActorRef,
@@ -184,7 +176,6 @@ export function registerTypes(api: MindcraftModuleApi) {
         return mkVector2Value(new Vector2(0, 0));
       },
     },
-    callDef: anonCallDef,
   });
   api.registerConversion({
     fromType: MyTypeIds.Vector2,
@@ -200,6 +191,5 @@ export function registerTypes(api: MindcraftModuleApi) {
         };
       },
     },
-    callDef: anonCallDef,
   });
 }

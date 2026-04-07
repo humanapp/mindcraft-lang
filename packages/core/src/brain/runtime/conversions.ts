@@ -49,7 +49,8 @@ export class ConversionRegistry implements IConversionRegistry {
         `ConversionRegistry.register: conversion from ${conversion.fromType} to ${conversion.toType} already exists`
       );
     }
-    const funcEntry = this.functions.register(name, false, conversion.fn, conversion.callDef);
+    const callDef = conversion.callDef ?? anonConversionCallDef;
+    const funcEntry = this.functions.register(name, false, conversion.fn, callDef);
     conversion.id = funcEntry.id;
 
     // Store in conversions map for pathfinding
@@ -161,25 +162,7 @@ export class ConversionRegistry implements IConversionRegistry {
   }
 }
 
-const anonNumberCallDef = mkCallDef({
-  type: "arg",
-  tileId: "",
-  anonymous: true,
-});
-
-const anonStringCallDef = mkCallDef({
-  type: "arg",
-  tileId: "",
-  anonymous: true,
-});
-
-const anonBooleanCallDef = mkCallDef({
-  type: "arg",
-  tileId: "",
-  anonymous: true,
-});
-
-const anonEnumCallDef = mkCallDef({
+const anonConversionCallDef = mkCallDef({
   type: "arg",
   tileId: "",
   anonymous: true,
@@ -212,7 +195,6 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
           };
         },
       },
-      callDef: anonEnumCallDef,
     });
   }
 
@@ -233,7 +215,6 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
           };
         },
       },
-      callDef: anonEnumCallDef,
     });
   }
 }
@@ -268,7 +249,6 @@ export function registerCoreConversions(services: BrainServices) {
         };
       },
     },
-    callDef: anonNumberCallDef,
   });
   // String -> Number conversion
   conversionRegistry.register({
@@ -285,7 +265,6 @@ export function registerCoreConversions(services: BrainServices) {
         };
       },
     },
-    callDef: anonStringCallDef,
   });
   // Number -> Boolean conversion
   conversionRegistry.register({
@@ -301,7 +280,6 @@ export function registerCoreConversions(services: BrainServices) {
         };
       },
     },
-    callDef: anonNumberCallDef,
   });
   // Boolean -> Number conversion
   conversionRegistry.register({
@@ -317,7 +295,6 @@ export function registerCoreConversions(services: BrainServices) {
         };
       },
     },
-    callDef: anonBooleanCallDef,
   });
   // String -> Boolean conversion
   conversionRegistry.register({
@@ -333,7 +310,6 @@ export function registerCoreConversions(services: BrainServices) {
         };
       },
     },
-    callDef: anonStringCallDef,
   });
   // Boolean -> String conversion
   conversionRegistry.register({
@@ -349,6 +325,5 @@ export function registerCoreConversions(services: BrainServices) {
         };
       },
     },
-    callDef: anonBooleanCallDef,
   });
 }
