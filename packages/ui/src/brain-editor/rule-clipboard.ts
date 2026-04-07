@@ -1,5 +1,6 @@
 import { List, logger, type ReadonlyList } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   getPageIdFromTileId,
   type IBrainTileDef,
   type ITileCatalog,
@@ -151,9 +152,10 @@ function remapTileSet(
 export function deserializeRuleFromClipboard(
   destBrain: BrainDef,
   withBrainServices?: BrainServicesRunner,
-  serviceTileCatalog?: ITileCatalog
+  serviceTileCatalog?: ITileCatalog,
+  brainServices?: BrainServices
 ): BrainRuleDef | undefined {
-  const rules = deserializeAllRulesFromClipboard(destBrain, withBrainServices, serviceTileCatalog);
+  const rules = deserializeAllRulesFromClipboard(destBrain, withBrainServices, serviceTileCatalog, brainServices);
   return rules.length > 0 ? rules[0] : undefined;
 }
 
@@ -167,7 +169,8 @@ export function deserializeRuleFromClipboard(
 export function deserializeAllRulesFromClipboard(
   destBrain: BrainDef,
   withBrainServices?: BrainServicesRunner,
-  serviceTileCatalog?: ITileCatalog
+  serviceTileCatalog?: ITileCatalog,
+  brainServices?: BrainServices
 ): BrainRuleDef[] {
   if (!clipboardData) return [];
   const currentClipboardData = clipboardData;
@@ -176,7 +179,7 @@ export function deserializeAllRulesFromClipboard(
     const destCatalog = destBrain.catalog();
 
     const tempCatalog = new TileCatalog();
-    tempCatalog.deserializeJson(currentClipboardData.catalogJson);
+    if (brainServices) tempCatalog.deserializeJson(currentClipboardData.catalogJson, brainServices);
 
     const destPageIds = new Set<string>();
     const destPageByName = new Map<string, IBrainTileDef>();

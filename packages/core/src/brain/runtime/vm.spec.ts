@@ -23,7 +23,6 @@ import {
   FiberState,
   type FunctionBytecode,
   type FunctionValue,
-  getBrainServices,
   getCallSiteState,
   HandleState,
   HandleTable,
@@ -1120,7 +1119,7 @@ describe("VM -- action calls", () => {
     const fakeRule = { name: "caller-rule" } as unknown as IBrainRule;
     let seenRule: unknown;
 
-    const hostFnEntry = getBrainServices().functions.register(
+    const hostFnEntry = services.functions.register(
       "test-vm-bytecode-action-rule-host",
       false,
       {

@@ -69,7 +69,7 @@ export default Sensor({
 }
 
 function compileAndRun(source: string): Value {
-  const result = compileUserTile(source);
+  const result = compileUserTile(source, { services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program, "expected program");
 
@@ -399,7 +399,7 @@ describe("String diagnostics", () => {
 
   test("unsupported string method produces diagnostic", () => {
     const source = sensorReturningString('return "hello".padStart(10);');
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(
       result.diagnostics.some(
         (d) => d.code === LoweringDiagCode.UnsupportedStringMethod || d.code === CompileDiagCode.TypeScriptError

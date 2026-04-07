@@ -156,6 +156,6 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
 
 export function createArchetypeFallbackBrain(archetype: Archetype): BrainDef {
   return withMindcraftEnvironmentServices(getMindcraftEnvironment(), () =>
-    BrainDef.emptyBrainDef(ARCHETYPES[archetype].brainName)
+    BrainDef.emptyBrainDef(getMindcraftEnvironment().brainServices, ARCHETYPES[archetype].brainName)
   );
 }

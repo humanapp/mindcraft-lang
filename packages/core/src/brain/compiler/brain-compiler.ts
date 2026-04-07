@@ -11,6 +11,7 @@ import {
   type IBrainDef,
   type IBrainPageDef,
   type IBrainRuleDef,
+  type IConversionRegistry,
   type Instr,
   type ITileCatalog,
   NIL_VALUE,
@@ -149,6 +150,7 @@ export class BrainCompiler {
   private pages: List<PageMetadata>;
   private nextFuncId: number;
   private catalogs: ReadonlyList<ITileCatalog>;
+  private conversions: IConversionRegistry;
   /** Global variable name pool for LOAD_VAR/STORE_VAR instructions */
   private variableNames: List<string>;
   /** Maps variable names to their index in variableNames */
@@ -160,13 +162,14 @@ export class BrainCompiler {
   /** Counter for unique call-site IDs (shared across all rules for uniqueness) */
   private nextCallSiteIdCounter: { value: number };
 
-  constructor(catalogs: ReadonlyList<ITileCatalog>) {
+  constructor(catalogs: ReadonlyList<ITileCatalog>, conversions: IConversionRegistry) {
     this.constantPool = new ConstantPool();
     this.functions = List.empty();
     this.ruleIndex = Dict.empty();
     this.pages = List.empty();
     this.nextFuncId = 0;
     this.catalogs = catalogs;
+    this.conversions = conversions;
     this.variableNames = List.empty();
     this.variableIndices = Dict.empty();
     this.actionRefs = List.empty();
@@ -387,10 +390,10 @@ export class BrainCompiler {
     }
 
     for (let i = 0; i < whenParseResult.exprs.size(); i++) {
-      computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv);
+      computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions);
     }
     for (let i = 0; i < doParseResult.exprs.size(); i++) {
-      computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv);
+      computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions);
     }
 
     // Create emitter for this rule's function
@@ -490,7 +493,11 @@ export class BrainCompiler {
  * @param catalogs - Tile catalogs for type resolution
  * @returns A complete BrainProgram
  */
-export function compileBrain(brainDef: IBrainDef, catalogs: ReadonlyList<ITileCatalog>): UnlinkedBrainProgram {
-  const compiler = new BrainCompiler(catalogs);
+export function compileBrain(
+  brainDef: IBrainDef,
+  catalogs: ReadonlyList<ITileCatalog>,
+  conversions: IConversionRegistry
+): UnlinkedBrainProgram {
+  const compiler = new BrainCompiler(catalogs, conversions);
   return compiler.compile(brainDef);
 }

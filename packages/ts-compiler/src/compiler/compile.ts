@@ -20,7 +20,7 @@ export type {
   SuspendSiteInfo,
 } from "./types.js";
 
-export function compileUserTile(source: string, options?: CompileOptions) {
+export function compileUserTile(source: string, options: CompileOptions) {
   const project = new UserTileProject(options);
   project.updateFile("user-code.ts", source);
   const result = project.compileAll();

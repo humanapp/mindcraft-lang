@@ -3,8 +3,8 @@ import { before, describe, test } from "node:test";
 
 import { List, stream } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   CoreTypeIds,
-  getBrainServices,
   type ITileCatalog,
   registerCoreBrainComponents,
 } from "@mindcraft-lang/core/brain";
@@ -13,8 +13,10 @@ import { BrainTileLiteralDef, TileCatalog } from "@mindcraft-lang/core/brain/til
 
 const { MemoryStream } = stream;
 
+let services: BrainServices;
+
 before(() => {
-  registerCoreBrainComponents();
+  services = registerCoreBrainComponents();
 });
 
 type TileSetDeserializer = {
@@ -37,7 +39,7 @@ function captureBinaryCatalogs(catalogs?: List<ITileCatalog>): {
   brainCatalog: ITileCatalog;
   capturedCatalogs: List<ITileCatalog>;
 } {
-  const brain = new BrainDef();
+  const brain = new BrainDef(services);
   const page = new BrainPageDef();
   brain.addPage(page);
 
@@ -81,19 +83,19 @@ describe("BrainRuleDef binary deserialization", () => {
 
     assert.equal(capturedCatalogs.size(), 2);
     assert.equal(capturedCatalogs.get(0), brainCatalog);
-    assert.equal(capturedCatalogs.get(1), getBrainServices().tiles);
+    assert.equal(capturedCatalogs.get(1), services.tiles);
   });
 
   test("clone resolves both global and brain-local tiles", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     const page = new BrainPageDef();
     brain.addPage(page);
 
     const rule = page.appendNewRule() as BrainRuleDef;
-    const globalTile = getBrainServices().tiles.get("tile.op->add");
+    const globalTile = services.tiles.get("tile.op->add");
     assert.ok(globalTile);
 
-    const literalTile = new BrainTileLiteralDef(CoreTypeIds.Number, 1);
+    const literalTile = new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services);
     brain.catalog().registerTileDef(literalTile);
 
     rule.when().appendTile(globalTile);

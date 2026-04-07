@@ -1,9 +1,9 @@
 import { List } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   ContextTypeIds,
   CoreOpId,
   CoreTypeIds,
-  getBrainServices,
   mkNumberValue,
   mkStringValue,
   NativeType,
@@ -100,6 +100,7 @@ interface LoopContext {
 }
 
 interface LowerContext {
+  services: BrainServices;
   checker: ts.TypeChecker;
   paramsSymbol: ts.Symbol | undefined;
   paramLocals: Map<string, number>;
@@ -133,24 +134,24 @@ function popLoopContext(ctx: LowerContext): void {
   ctx.breakStack.pop();
 }
 
-function resolveOperator(opId: string, argTypes: string[]): string | undefined {
-  return getBrainServices().operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
+function resolveOperator(opId: string, argTypes: string[], services: BrainServices): string | undefined {
+  return services.operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
 }
 
 // Operator resolution with type expansion: if a direct overload lookup fails,
 // expand union/struct types into their constituent members and check whether
 // ALL members map to the same operator function. This allows e.g. (A | B) + Number
 // to resolve when both A + Number and B + Number use the same underlying function.
-function resolveOperatorWithExpansion(opId: string, argTypes: string[]): string | undefined {
-  const direct = resolveOperator(opId, argTypes);
+function resolveOperatorWithExpansion(opId: string, argTypes: string[], services: BrainServices): string | undefined {
+  const direct = resolveOperator(opId, argTypes, services);
   if (direct) return direct;
 
   if (argTypes.length === 1) {
-    const members = expandTypeIdMembers(argTypes[0]);
+    const members = expandTypeIdMembers(argTypes[0], services);
     if (members.length === 1 && members[0] === argTypes[0]) return undefined;
     let resolved: string | undefined;
     for (const m of members) {
-      const fn = resolveOperator(opId, [m]);
+      const fn = resolveOperator(opId, [m], services);
       if (!fn) return undefined;
       if (resolved === undefined) {
         resolved = fn;
@@ -162,8 +163,8 @@ function resolveOperatorWithExpansion(opId: string, argTypes: string[]): string 
   }
 
   if (argTypes.length === 2) {
-    const lhsMembers = expandTypeIdMembers(argTypes[0]);
-    const rhsMembers = expandTypeIdMembers(argTypes[1]);
+    const lhsMembers = expandTypeIdMembers(argTypes[0], services);
+    const rhsMembers = expandTypeIdMembers(argTypes[1], services);
     if (
       lhsMembers.length === 1 &&
       lhsMembers[0] === argTypes[0] &&
@@ -175,7 +176,7 @@ function resolveOperatorWithExpansion(opId: string, argTypes: string[]): string 
     let resolved: string | undefined;
     for (const l of lhsMembers) {
       for (const r of rhsMembers) {
-        const fn = resolveOperator(opId, [l, r]);
+        const fn = resolveOperator(opId, [l, r], services);
         if (!fn) return undefined;
         if (resolved === undefined) {
           resolved = fn;
@@ -207,12 +208,16 @@ type TargetTypedConversionResolution =
   | { kind: "missing" }
   | { kind: "ambiguous" };
 
-function resolveRegisteredEnumTypeIdFromSymbol(sym: ts.Symbol, checker?: ts.TypeChecker): string | undefined {
+function resolveRegisteredEnumTypeIdFromSymbol(
+  sym: ts.Symbol,
+  services: BrainServices,
+  checker?: ts.TypeChecker
+): string | undefined {
   const resolvedSym = resolveAliasedSymbol(sym, checker);
   if (!resolvedSym) return undefined;
 
-  const registry = getBrainServices().types;
-  const typeId = registry.resolveByName(resolveRegistryName(resolvedSym, checker));
+  const registry = services.types;
+  const typeId = registry.resolveByName(resolveRegistryName(resolvedSym, services, checker));
   if (!typeId) return undefined;
 
   const typeDef = registry.get(typeId);
@@ -223,10 +228,14 @@ function resolveRegisteredEnumTypeIdFromSymbol(sym: ts.Symbol, checker?: ts.Type
   return typeId;
 }
 
-function resolveRegisteredEnumTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undefined {
+function resolveRegisteredEnumTypeId(
+  type: ts.Type,
+  services: BrainServices,
+  checker?: ts.TypeChecker
+): string | undefined {
   const sym = type.getSymbol() ?? type.aliasSymbol;
   if (!sym) return undefined;
-  return resolveRegisteredEnumTypeIdFromSymbol(sym, checker);
+  return resolveRegisteredEnumTypeIdFromSymbol(sym, services, checker);
 }
 
 function unwrapTypeResolutionExpression(expr: ts.Expression): ts.Expression {
@@ -250,7 +259,7 @@ function resolveDeclaredEnumTypeId(exprNode: ts.Expression, ctx: LowerContext): 
   }
 
   const declaredType = ctx.checker.getTypeOfSymbolAtLocation(symbol, declaration);
-  return resolveRegisteredEnumTypeId(declaredType, ctx.checker);
+  return resolveRegisteredEnumTypeId(declaredType, ctx.services, ctx.checker);
 }
 
 function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): string | undefined {
@@ -274,15 +283,19 @@ function resolveExpressionTypeId(exprNode: ts.Expression, ctx: LowerContext): st
   }
 
   const exprType = ctx.checker.getTypeAtLocation(exprNode);
-  return tsTypeToTypeId(exprType, ctx.checker);
+  return tsTypeToTypeId(exprType, ctx.checker, ctx.services);
 }
 
-function resolveSingleStepConversion(fromTypeId: string, toTypeId: string): SingleStepConversionResolution | undefined {
+function resolveSingleStepConversion(
+  fromTypeId: string,
+  toTypeId: string,
+  services: BrainServices
+): SingleStepConversionResolution | undefined {
   if (fromTypeId === toTypeId) {
     return undefined;
   }
 
-  const conversionPath = getBrainServices().conversions.findBestPath(fromTypeId, toTypeId, 1);
+  const conversionPath = services.conversions.findBestPath(fromTypeId, toTypeId, 1);
   const conversion = conversionPath?.get(0);
   if (!conversion) {
     return undefined;
@@ -299,8 +312,8 @@ function emitSingleStepConversion(fnName: string, ctx: LowerContext): void {
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
 }
 
-function resolveExpandedTargetTypeIds(expectedTypeId: TypeId): TypeId[] {
-  const registry = getBrainServices().types;
+function resolveExpandedTargetTypeIds(expectedTypeId: TypeId, services: BrainServices): TypeId[] {
+  const registry = services.types;
   const typeDef = registry.get(expectedTypeId);
   if (!typeDef) {
     return [expectedTypeId];
@@ -321,12 +334,16 @@ function resolveExpandedTargetTypeIds(expectedTypeId: TypeId): TypeId[] {
   return [expectedTypeId];
 }
 
-function isSatisfiedWithoutTargetTypeConversion(sourceTypeId: TypeId, expectedTypeId: TypeId): boolean {
+function isSatisfiedWithoutTargetTypeConversion(
+  sourceTypeId: TypeId,
+  expectedTypeId: TypeId,
+  services: BrainServices
+): boolean {
   if (sourceTypeId === expectedTypeId || expectedTypeId === CoreTypeIds.Any) {
     return true;
   }
 
-  const registry = getBrainServices().types;
+  const registry = services.types;
   const sourceDef = registry.get(sourceTypeId);
   const expectedDef = registry.get(expectedTypeId);
   if (!sourceDef || !expectedDef) {
@@ -352,21 +369,25 @@ function isSatisfiedWithoutTargetTypeConversion(sourceTypeId: TypeId, expectedTy
   return false;
 }
 
-function resolveTargetTypedConversion(sourceTypeId: TypeId, expectedTypeId: TypeId): TargetTypedConversionResolution {
-  if (isSatisfiedWithoutTargetTypeConversion(sourceTypeId, expectedTypeId)) {
+function resolveTargetTypedConversion(
+  sourceTypeId: TypeId,
+  expectedTypeId: TypeId,
+  services: BrainServices
+): TargetTypedConversionResolution {
+  if (isSatisfiedWithoutTargetTypeConversion(sourceTypeId, expectedTypeId, services)) {
     return { kind: "none" };
   }
 
-  const candidateTypeIds = resolveExpandedTargetTypeIds(expectedTypeId);
+  const candidateTypeIds = resolveExpandedTargetTypeIds(expectedTypeId, services);
   for (const candidateTypeId of candidateTypeIds) {
-    if (isSatisfiedWithoutTargetTypeConversion(sourceTypeId, candidateTypeId)) {
+    if (isSatisfiedWithoutTargetTypeConversion(sourceTypeId, candidateTypeId, services)) {
       return { kind: "none" };
     }
   }
 
   const candidateConversions: SingleStepConversionResolution[] = [];
   for (const candidateTypeId of candidateTypeIds) {
-    const conversion = resolveSingleStepConversion(sourceTypeId, candidateTypeId);
+    const conversion = resolveSingleStepConversion(sourceTypeId, candidateTypeId, services);
     if (conversion) {
       candidateConversions.push(conversion);
     }
@@ -415,7 +436,7 @@ function lowerExpressionWithExpectedType(
     return;
   }
 
-  const resolution = resolveTargetTypedConversion(sourceTypeId, expectedTypeId);
+  const resolution = resolveTargetTypedConversion(sourceTypeId, expectedTypeId, ctx.services);
   if (resolution.kind === "none") {
     return;
   }
@@ -437,19 +458,20 @@ function lowerExpressionWithExpectedType(
 
 function resolveSignatureReturnTypeId(
   signatureDecl: ts.SignatureDeclarationBase,
-  checker: ts.TypeChecker
+  checker: ts.TypeChecker,
+  services: BrainServices
 ): TypeId | undefined {
   const signature = checker.getSignatureFromDeclaration(signatureDecl as ts.SignatureDeclaration);
   if (!signature) {
     return undefined;
   }
 
-  return tsTypeToTypeId(checker.getReturnTypeOfSignature(signature), checker);
+  return tsTypeToTypeId(checker.getReturnTypeOfSignature(signature), checker, services);
 }
 
 function resolveVariableDeclarationTargetTypeId(decl: ts.VariableDeclaration, ctx: LowerContext): TypeId | undefined {
   const targetType = ctx.checker.getTypeAtLocation(decl.name);
-  return tsTypeToTypeId(targetType, ctx.checker);
+  return tsTypeToTypeId(targetType, ctx.checker, ctx.services);
 }
 
 function resolveCallArgumentTargetTypeId(
@@ -480,7 +502,7 @@ function resolveCallArgumentTargetTypeId(
   const parameter = parameters[parameterIndex];
   const parameterLocation = parameter.valueDeclaration ?? parameter.declarations?.[0] ?? callExpr.expression;
   const parameterType = ctx.checker.getTypeOfSymbolAtLocation(parameter, parameterLocation);
-  return tsTypeToTypeId(parameterType, ctx.checker);
+  return tsTypeToTypeId(parameterType, ctx.checker, ctx.services);
 }
 
 function lowerCallArgumentsWithTargetTypes(callExpr: ts.CallExpression, ctx: LowerContext): void {
@@ -509,16 +531,17 @@ function resolveBinaryOperatorCandidate(
   opId: string,
   leftTypeId: string,
   rightTypeId: string,
-  operand: "left" | "right"
+  operand: "left" | "right",
+  services: BrainServices
 ): BinaryOperatorResolution | undefined {
   const sourceTypeId = operand === "left" ? leftTypeId : rightTypeId;
   const targetTypeId = operand === "left" ? rightTypeId : leftTypeId;
-  const conversion = resolveSingleStepConversion(sourceTypeId, targetTypeId);
+  const conversion = resolveSingleStepConversion(sourceTypeId, targetTypeId, services);
   if (!conversion) {
     return undefined;
   }
 
-  const operatorFnName = resolveOperatorWithExpansion(opId, [targetTypeId, targetTypeId]);
+  const operatorFnName = resolveOperatorWithExpansion(opId, [targetTypeId, targetTypeId], services);
   if (!operatorFnName) {
     return undefined;
   }
@@ -557,14 +580,14 @@ function emitBinaryOperatorForNodes(
     return false;
   }
 
-  const directResolution = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
+  const directResolution = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
   if (directResolution) {
     ctx.ir.push({ kind: "HostCallArgs", fnName: directResolution, argc: 2 });
     return true;
   }
 
-  const rightCandidate = resolveBinaryOperatorCandidate(opId, lhsTypeId, rhsTypeId, "right");
-  const leftCandidate = resolveBinaryOperatorCandidate(opId, lhsTypeId, rhsTypeId, "left");
+  const rightCandidate = resolveBinaryOperatorCandidate(opId, lhsTypeId, rhsTypeId, "right", ctx.services);
+  const leftCandidate = resolveBinaryOperatorCandidate(opId, lhsTypeId, rhsTypeId, "left", ctx.services);
 
   if (rightCandidate && leftCandidate) {
     ctx.diagnostics.push(
@@ -601,6 +624,7 @@ export function lowerProgram(
   sourceFile: ts.SourceFile,
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
+  services: BrainServices,
   importedFunctions?: ImportedFunction[],
   importedVariables?: ImportedVariable[],
   moduleInitOrder?: string[],
@@ -720,10 +744,10 @@ export function lowerProgram(
 
   const functions: FunctionEntry[] = [];
 
-  registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics);
+  registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services);
 
   for (const ci of classInfos) {
-    registerClassStructType(ci, checker, diagnostics);
+    registerClassStructType(ci, checker, diagnostics, services);
   }
 
   const onExecEntry = lowerOnExecuteBody(
@@ -733,7 +757,8 @@ export function lowerProgram(
     functionTable,
     diagnostics,
     funcIdCounter,
-    closureFunctions
+    closureFunctions,
+    services
   );
   functions.push(onExecEntry);
 
@@ -745,7 +770,8 @@ export function lowerProgram(
       functionTable,
       diagnostics,
       funcIdCounter,
-      closureFunctions
+      closureFunctions,
+      services
     );
     functions.push(entry);
   }
@@ -758,7 +784,8 @@ export function lowerProgram(
       functionTable,
       diagnostics,
       funcIdCounter,
-      closureFunctions
+      closureFunctions,
+      services
     );
     functions.push(...classEntries);
   }
@@ -771,7 +798,8 @@ export function lowerProgram(
       functionTable,
       diagnostics,
       funcIdCounter,
-      closureFunctions
+      closureFunctions,
+      services
     );
     functions.push(entry);
   }
@@ -786,7 +814,8 @@ export function lowerProgram(
       funcIdCounter,
       closureFunctions,
       importedVariables ?? [],
-      moduleInitOrder ?? []
+      moduleInitOrder ?? [],
+      services
     );
     functions.push(initEntry);
   }
@@ -818,7 +847,8 @@ function lowerOnPageEnteredBody(
   functionTable: Map<string, number>,
   sharedDiagnostics: CompileDiagnostic[],
   funcIdCounter: { value: number },
-  closureFunctions: Map<number, FunctionEntry>
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const funcNode = descriptor.onPageEnteredNode!;
@@ -837,6 +867,7 @@ function lowerOnPageEnteredBody(
   }
 
   const ctx: LowerContext = {
+    services,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -851,7 +882,7 @@ function lowerOnPageEnteredBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onPageEntered`,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
   };
 
   const body = funcNode.body;
@@ -949,7 +980,8 @@ function lowerOnExecuteBody(
   functionTable: Map<string, number>,
   sharedDiagnostics: CompileDiagnostic[],
   funcIdCounter: { value: number },
-  closureFunctions: Map<number, FunctionEntry>
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const hasParams = descriptor.params.length > 0;
@@ -1016,6 +1048,7 @@ function lowerOnExecuteBody(
   }
 
   const ctx: LowerContext = {
+    services,
     checker,
     paramsSymbol,
     paramLocals,
@@ -1030,7 +1063,7 @@ function lowerOnExecuteBody(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onExecute`,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
   };
 
   const body = funcNode.body;
@@ -1082,7 +1115,8 @@ function lowerHelperFunction(
   functionTable: Map<string, number>,
   sharedDiagnostics: CompileDiagnostic[],
   funcIdCounter: { value: number },
-  closureFunctions: Map<number, FunctionEntry>
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const paramLocals = new Map<string, number>();
@@ -1107,6 +1141,7 @@ function lowerHelperFunction(
   }
 
   const ctx: LowerContext = {
+    services,
     checker,
     paramsSymbol: undefined,
     paramLocals,
@@ -1121,7 +1156,7 @@ function lowerHelperFunction(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: funcName,
-    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker),
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -1178,13 +1213,15 @@ function generateModuleInitWithImports(
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
   importedVariables: ImportedVariable[],
-  moduleInitOrder: string[]
+  moduleInitOrder: string[],
+  services: BrainServices
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const scopeStack = new ScopeStack(0);
   scopeStack.initFunctionScope(0, "<module-init>");
 
   const ctx: LowerContext = {
+    services,
     checker,
     paramsSymbol: undefined,
     paramLocals: new Map(),
@@ -1502,7 +1539,7 @@ function lowerObjectRestElement(
   ctx: LowerContext
 ): void {
   const restType = ctx.checker.getTypeAtLocation(element.name);
-  const typeId = tsTypeToTypeId(restType, ctx.checker) ?? "struct:<anonymous>";
+  const typeId = tsTypeToTypeId(restType, ctx.checker, ctx.services) ?? "struct:<anonymous>";
 
   ctx.ir.push({ kind: "LoadLocal", index: srcLocal });
 
@@ -1603,20 +1640,20 @@ function lowerArrayRestElement(
   ctx: LowerContext
 ): void {
   const restType = ctx.checker.getTypeAtLocation(element.name);
-  let listTypeId = tsTypeToTypeId(restType, ctx.checker);
+  let listTypeId = tsTypeToTypeId(restType, ctx.checker, ctx.services);
   if (!listTypeId) {
     const srcType = ctx.checker.getTypeAtLocation(element.parent);
-    listTypeId = tsTypeToTypeId(srcType, ctx.checker) ?? "list:any";
+    listTypeId = tsTypeToTypeId(srcType, ctx.checker, ctx.services) ?? "list:any";
   }
 
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve < operator for rest pattern", element)
     );
     return;
   }
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve + operator for rest pattern", element)
@@ -1805,13 +1842,13 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
     return;
   }
 
-  const structDef = resolveStructType(iteratedType);
+  const structDef = resolveStructType(iteratedType, ctx.services);
   if (structDef) {
     lowerForInOverKeyList(
       stmt,
       bindingName,
       () => {
-        const keyListTypeId = getBrainServices().types.instantiate("List", List.from([CoreTypeIds.String]));
+        const keyListTypeId = ctx.services.types.instantiate("List", List.from([CoreTypeIds.String]));
         ctx.ir.push({ kind: "ListNew", typeId: keyListTypeId });
         for (const field of structDef.fields.toArray()) {
           ctx.ir.push({ kind: "PushConst", value: mkStringValue(field.name) });
@@ -1856,7 +1893,7 @@ function lowerForInOverList(stmt: ts.ForInStatement, bindingName: string, ctx: L
   ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
   ctx.ir.push({ kind: "LoadLocal", index: listLocal });
   ctx.ir.push({ kind: "ListLen" });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForInCannotResolveOperator, "Cannot resolve < operator for `for...in`", stmt)
@@ -1882,7 +1919,7 @@ function lowerForInOverList(stmt: ts.ForInStatement, bindingName: string, ctx: L
 
   ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForInCannotResolveOperator, "Cannot resolve + operator for `for...in`", stmt)
@@ -1926,7 +1963,7 @@ function lowerForInOverKeyList(
   ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
   ctx.ir.push({ kind: "LoadLocal", index: keyListLocal });
   ctx.ir.push({ kind: "ListLen" });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForInCannotResolveOperator, "Cannot resolve < operator for `for...in`", stmt)
@@ -1949,7 +1986,7 @@ function lowerForInOverKeyList(
 
   ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForInCannotResolveOperator, "Cannot resolve + operator for `for...in`", stmt)
@@ -2024,7 +2061,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
   ctx.ir.push({ kind: "LoadLocal", index: listLocal });
   ctx.ir.push({ kind: "ListLen" });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve < operator for `for...of`", stmt)
@@ -2049,7 +2086,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
 
   ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.ForOfCannotResolveOperator, "Cannot resolve + operator for `for...of`", stmt)
@@ -2254,7 +2291,7 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
 
   const enumSymbol = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(expr), ctx.checker);
   if (enumSymbol && resolveEnumDeclaration(enumSymbol, ctx.checker)) {
-    const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.checker);
+    const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.checker);
     if (typeId) {
       ctx.diagnostics.push(
         makeDiag(
@@ -2368,7 +2405,7 @@ function lowerStructMethodCall(
   ctx: LowerContext
 ): boolean {
   const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
-  const structDef = resolveStructType(receiverType);
+  const structDef = resolveStructType(receiverType, ctx.services);
   if (!structDef) return false;
 
   const methodName = propAccess.name.text;
@@ -2390,7 +2427,7 @@ function lowerStructMethodCall(
     return true;
   }
 
-  const fnEntry = getBrainServices().functions.get(fnName);
+  const fnEntry = ctx.services.functions.get(fnName);
   if (!fnEntry) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.UnknownStructMethod, `Unknown struct method: '${bareName}.${methodName}'`, propAccess)
@@ -2549,6 +2586,7 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
   }
 
   const closureCtx: LowerContext = {
+    services: ctx.services,
     checker: ctx.checker,
     paramsSymbol: undefined,
     paramLocals: closureParamLocals,
@@ -2564,7 +2602,7 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     funcIdCounter: ctx.funcIdCounter,
     closureFunctions: ctx.closureFunctions,
     currentFunctionName: closureName,
-    currentReturnTypeId: resolveSignatureReturnTypeId(expr, ctx.checker),
+    currentReturnTypeId: resolveSignatureReturnTypeId(expr, ctx.checker, ctx.services),
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -2658,11 +2696,11 @@ function emitStore(
 }
 
 function checkStructAssignmentCompat(lhsNode: ts.Node, rhsNode: ts.Node, diagNode: ts.Node, ctx: LowerContext): void {
-  const registry = getBrainServices().types;
+  const registry = ctx.services.types;
   const lhsType = ctx.checker.getTypeAtLocation(lhsNode);
   const rhsType = ctx.checker.getTypeAtLocation(rhsNode);
-  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
-  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
+  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
+  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
   if (!lhsTypeId || !rhsTypeId || lhsTypeId === rhsTypeId) return;
 
   const lhsDef = registry.get(lhsTypeId);
@@ -2734,8 +2772,8 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
 
     const lhsType = ctx.checker.getTypeAtLocation(expr.left);
     const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
-    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
 
     if (!lhsTypeId || !rhsTypeId) {
       ctx.diagnostics.push(
@@ -2748,7 +2786,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
       return;
     }
 
-    const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
+    const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
     if (!fnName) {
       ctx.diagnostics.push(
         makeDiag(
@@ -2796,8 +2834,8 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
 
     const lhsType = ctx.checker.getTypeAtLocation(expr.left);
     const rhsType = ctx.checker.getTypeAtLocation(expr.right);
-    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker);
-    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
 
     if (!lhsTypeId || !rhsTypeId) {
       ctx.diagnostics.push(
@@ -2810,7 +2848,7 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
       return;
     }
 
-    const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId]);
+    const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
     if (!fnName) {
       ctx.diagnostics.push(
         makeDiag(
@@ -2863,7 +2901,7 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
       ctx.ir.push({ kind: "PushConst", value: mkNumberValue(-Number(expr.operand.text)) });
     } else {
       lowerExpression(expr.operand, ctx);
-      const fnName = resolveOperator(CoreOpId.Negate, [CoreTypeIds.Number]);
+      const fnName = resolveOperator(CoreOpId.Negate, [CoreTypeIds.Number], ctx.services);
       if (!fnName) {
         ctx.diagnostics.push(makeDiag(LoweringDiagCode.NoOperatorOverload, "No operator overload for negation", expr));
         return;
@@ -2873,14 +2911,14 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
   } else if (expr.operator === ts.SyntaxKind.ExclamationToken) {
     lowerExpression(expr.operand, ctx);
     const operandType = ctx.checker.getTypeAtLocation(expr.operand);
-    const operandTypeId = tsTypeToTypeId(operandType, ctx.checker);
+    const operandTypeId = tsTypeToTypeId(operandType, ctx.checker, ctx.services);
     if (!operandTypeId) {
       ctx.diagnostics.push(
         makeDiag(LoweringDiagCode.CannotDetermineTypeForNotOperand, "Cannot determine type for `!` operand", expr)
       );
       return;
     }
-    const fnName = resolveOperatorWithExpansion(CoreOpId.Not, [operandTypeId]);
+    const fnName = resolveOperatorWithExpansion(CoreOpId.Not, [operandTypeId], ctx.services);
     if (!fnName) {
       ctx.diagnostics.push(
         makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for !(${operandTypeId})`, expr)
@@ -2922,7 +2960,7 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
 
   const opId = expr.operator === ts.SyntaxKind.PlusPlusToken ? CoreOpId.Add : CoreOpId.Subtract;
   const typeId = CoreTypeIds.Number;
-  const fnName = resolveOperator(opId, [typeId, typeId]);
+  const fnName = resolveOperator(opId, [typeId, typeId], ctx.services);
   if (!fnName) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for ${opId}(${typeId}, ${typeId})`, expr)
@@ -2959,7 +2997,7 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
 
   const opId = expr.operator === ts.SyntaxKind.PlusPlusToken ? CoreOpId.Add : CoreOpId.Subtract;
   const typeId = CoreTypeIds.Number;
-  const fnName = resolveOperator(opId, [typeId, typeId]);
+  const fnName = resolveOperator(opId, [typeId, typeId], ctx.services);
   if (!fnName) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for ${opId}(${typeId}, ${typeId})`, expr)
@@ -3040,7 +3078,7 @@ function emitToStringIfNeeded(exprNode: ts.Expression, ctx: LowerContext): void 
     return;
   }
   if (typeId !== CoreTypeIds.String) {
-    const conversion = resolveSingleStepConversion(typeId, CoreTypeIds.String);
+    const conversion = resolveSingleStepConversion(typeId, CoreTypeIds.String, ctx.services);
     if (!conversion) {
       ctx.diagnostics.push(
         makeDiag(LoweringDiagCode.NoConversionToString, `No conversion from ${typeId} to string`, exprNode)
@@ -3052,7 +3090,7 @@ function emitToStringIfNeeded(exprNode: ts.Expression, ctx: LowerContext): void 
 }
 
 function lowerTemplateLiteral(expr: ts.TemplateExpression, ctx: LowerContext): void {
-  const addFnName = resolveOperator(CoreOpId.Add, [CoreTypeIds.String, CoreTypeIds.String]);
+  const addFnName = resolveOperator(CoreOpId.Add, [CoreTypeIds.String, CoreTypeIds.String], ctx.services);
   if (!addFnName) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.NoOverloadForStringConcat, "No operator overload for string concatenation", expr)
@@ -3153,7 +3191,7 @@ function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): bo
 
   if (op === ts.SyntaxKind.ExclamationEqualsEqualsToken || op === ts.SyntaxKind.ExclamationEqualsToken) {
     const operandTypeId = CoreTypeIds.Boolean;
-    const fnName = resolveOperator(CoreOpId.Not, [operandTypeId]);
+    const fnName = resolveOperator(CoreOpId.Not, [operandTypeId], ctx.services);
     if (!fnName) {
       ctx.diagnostics.push(makeDiag(LoweringDiagCode.NoOperatorOverload, "No operator overload for !(boolean)", expr));
       return true;
@@ -3178,7 +3216,7 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
     ctx.ir.push({ kind: "MapGet" });
     return;
   }
-  if (resolveStructType(objType)) {
+  if (resolveStructType(objType, ctx.services)) {
     lowerExpression(expr.expression, ctx);
     lowerExpression(expr.argumentExpression, ctx);
     emitToStringIfNeeded(expr.argumentExpression, ctx);
@@ -3592,7 +3630,7 @@ function lowerListSplice(
     lowerExpression(propAccess.expression, ctx);
     ctx.ir.push({ kind: "ListLen" });
     ctx.ir.push({ kind: "LoadLocal", index: startLocal });
-    const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number]);
+    const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
     if (!subFn) {
       ctx.diagnostics.push(
         makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve - operator for .splice()", expr)
@@ -3609,7 +3647,7 @@ function lowerListSplice(
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
   ctx.ir.push({ kind: "StoreLocal", index: iLocal });
 
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .splice()", expr)
@@ -3633,7 +3671,7 @@ function lowerListSplice(
 
   ctx.ir.push({ kind: "LoadLocal", index: iLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .splice()", expr)
@@ -3703,28 +3741,28 @@ function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   ctx.ir.push({ kind: "ListLen" });
   ctx.ir.push({ kind: "StoreLocal", index: lenLocal });
 
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .sort()", expr)
     );
     return;
   }
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .sort()", expr)
     );
     return;
   }
-  const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!subFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve - operator for .sort()", expr)
     );
     return;
   }
-  const leFn = resolveOperator(CoreOpId.LessThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const leFn = resolveOperator(CoreOpId.LessThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!leFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve <= operator for .sort()", expr)
@@ -3857,7 +3895,7 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .indexOf()", expr)
@@ -3873,8 +3911,8 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker);
-  const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId]) : undefined;
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services);
+  const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId], ctx.services) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve === operator for .indexOf()", expr)
@@ -3886,7 +3924,7 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .indexOf()", expr)
@@ -3960,7 +3998,7 @@ function lowerListFilter(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .filter()", expr)
@@ -3997,7 +4035,7 @@ function lowerListFilter(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .filter()", expr)
@@ -4067,7 +4105,7 @@ function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .map()", expr)
@@ -4091,7 +4129,7 @@ function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .map()", expr)
@@ -4144,7 +4182,7 @@ function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccess
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .forEach()", expr)
@@ -4164,7 +4202,7 @@ function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccess
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .forEach()", expr)
@@ -4219,7 +4257,7 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .includes()", expr)
@@ -4235,8 +4273,8 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker);
-  const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId]) : undefined;
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services);
+  const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId], ctx.services) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(
       makeDiag(
@@ -4252,7 +4290,7 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .includes()", expr)
@@ -4312,7 +4350,7 @@ function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .some()", expr)
@@ -4332,7 +4370,7 @@ function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .some()", expr)
@@ -4392,7 +4430,7 @@ function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .every()", expr)
@@ -4412,7 +4450,7 @@ function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .every()", expr)
@@ -4475,7 +4513,7 @@ function lowerListFind(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .find()", expr)
@@ -4498,7 +4536,7 @@ function lowerListFind(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .find()", expr)
@@ -4567,7 +4605,7 @@ function emitPushAllFromList(srcExpr: ts.Expression, resultLocal: number, ctx: L
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(
@@ -4590,7 +4628,7 @@ function emitPushAllFromList(srcExpr: ts.Expression, resultLocal: number, ctx: L
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(
@@ -4624,7 +4662,7 @@ function lowerListJoinWithSeparator(
   ctx: LowerContext,
   diagNode: ts.Node
 ): void {
-  const addFnName = resolveOperator(CoreOpId.Add, [CoreTypeIds.String, CoreTypeIds.String]);
+  const addFnName = resolveOperator(CoreOpId.Add, [CoreTypeIds.String, CoreTypeIds.String], ctx.services);
   if (!addFnName) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.NoOverloadForStringConcat, "Cannot resolve string concatenation for .join()", diagNode)
@@ -4662,7 +4700,7 @@ function lowerListJoinWithSeparator(
   ctx.ir.push({ kind: "ListLen" });
   ctx.ir.push({ kind: "StoreLocal", index: lenLocal });
 
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .join()", diagNode)
@@ -4670,7 +4708,7 @@ function lowerListJoinWithSeparator(
     return;
   }
 
-  const eqFn = resolveOperator(CoreOpId.EqualTo, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const eqFn = resolveOperator(CoreOpId.EqualTo, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!eqFn) {
     ctx.diagnostics.push(
       makeDiag(
@@ -4682,7 +4720,7 @@ function lowerListJoinWithSeparator(
     return;
   }
 
-  const addNumFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addNumFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addNumFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .join()", diagNode)
@@ -4731,7 +4769,7 @@ function lowerListJoinWithSeparator(
 }
 
 function emitToStringForJoinElement(ctx: LowerContext, diagNode: ts.Node): void {
-  const conversion = resolveSingleStepConversion(CoreTypeIds.Number, CoreTypeIds.String);
+  const conversion = resolveSingleStepConversion(CoreTypeIds.Number, CoreTypeIds.String, ctx.services);
   if (!conversion) {
     ctx.diagnostics.push(
       makeDiag(
@@ -4779,7 +4817,7 @@ function lowerListReverse(
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
   ctx.ir.push({ kind: "ListLen" });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!subFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve - operator for .reverse()", expr)
@@ -4789,7 +4827,7 @@ function lowerListReverse(
   ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
 
-  const geqFn = resolveOperator(CoreOpId.GreaterThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const geqFn = resolveOperator(CoreOpId.GreaterThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!geqFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve >= operator for .reverse()", expr)
@@ -4870,7 +4908,7 @@ function lowerListSlice(
   }
   ctx.ir.push({ kind: "StoreLocal", index: endLocal });
 
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .slice()", expr)
@@ -4878,7 +4916,7 @@ function lowerListSlice(
     return;
   }
 
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .slice()", expr)
@@ -4939,7 +4977,7 @@ function lowerListLastIndexOf(
   ctx.ir.push({ kind: "LoadLocal", index: listLocal });
   ctx.ir.push({ kind: "ListLen" });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const subFn = resolveOperator(CoreOpId.Subtract, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!subFn) {
     ctx.diagnostics.push(
       makeDiag(
@@ -4953,7 +4991,7 @@ function lowerListLastIndexOf(
   ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
 
-  const geFn = resolveOperator(CoreOpId.GreaterThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const geFn = resolveOperator(CoreOpId.GreaterThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!geFn) {
     ctx.diagnostics.push(
       makeDiag(
@@ -4978,8 +5016,8 @@ function lowerListLastIndexOf(
   ctx.ir.push({ kind: "LoadLocal", index: searchLocal });
 
   const searchType = ctx.checker.getTypeAtLocation(expr.arguments[0]);
-  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker);
-  const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId]) : undefined;
+  const searchTypeId = tsTypeToTypeId(searchType, ctx.checker, ctx.services);
+  const eqFn = searchTypeId ? resolveOperator(CoreOpId.EqualTo, [searchTypeId, searchTypeId], ctx.services) : undefined;
   if (!eqFn) {
     ctx.diagnostics.push(
       makeDiag(
@@ -5044,7 +5082,7 @@ function lowerListFindIndex(expr: ts.CallExpression, propAccess: ts.PropertyAcce
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .findIndex()", expr)
@@ -5064,7 +5102,7 @@ function lowerListFindIndex(expr: ts.CallExpression, propAccess: ts.PropertyAcce
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .findIndex()", expr)
@@ -5128,7 +5166,7 @@ function lowerListReduce(expr: ts.CallExpression, propAccess: ts.PropertyAccessE
     ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   }
 
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for .reduce()", expr)
@@ -5136,7 +5174,7 @@ function lowerListReduce(expr: ts.CallExpression, propAccess: ts.PropertyAccessE
     return;
   }
 
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for .reduce()", expr)
@@ -5362,7 +5400,7 @@ function lowerArrayFromCall(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!ltFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve < operator for Array.from()", expr)
@@ -5392,7 +5430,7 @@ function lowerArrayFromCall(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
   if (!addFn) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.CannotResolveOperatorForArrayMethod, "Cannot resolve + operator for Array.from()", expr)
@@ -5513,7 +5551,7 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
   }
 
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
-  const structDef = resolveStructType(objType);
+  const structDef = resolveStructType(objType, ctx.services);
   if (structDef) {
     const fieldName = expr.name.text;
     const hasField = structDef.fields.toArray().some((f) => f.name === fieldName);
@@ -5543,31 +5581,31 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UnsupportedPropertyAccess, "Unsupported property access", expr));
 }
 
-function resolveRegistryName(sym: ts.Symbol, checker?: ts.TypeChecker): string {
+function resolveRegistryName(sym: ts.Symbol, services: BrainServices, checker?: ts.TypeChecker): string {
   const resolvedSym = resolveAliasedSymbol(sym, checker) ?? sym;
   const name = resolvedSym.getName();
   const decls = resolvedSym.getDeclarations();
   if (decls && decls.length > 0 && isUserSourceDecl(decls[0])) {
     const qualName = qualifiedClassName(decls[0].getSourceFile().fileName, name);
-    if (getBrainServices().types.resolveByName(qualName)) {
+    if (services.types.resolveByName(qualName)) {
       return qualName;
     }
   }
   return name;
 }
 
-function resolveStructType(type: ts.Type): StructTypeDef | undefined {
-  const registry = getBrainServices().types;
+function resolveStructType(type: ts.Type, services: BrainServices): StructTypeDef | undefined {
+  const registry = services.types;
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     if (nonNullish.length === 1) {
-      return resolveStructType(nonNullish[0]);
+      return resolveStructType(nonNullish[0], services);
     }
     return undefined;
   }
   const sym = type.getSymbol() ?? type.aliasSymbol;
   if (!sym) return undefined;
-  const resolvedName = resolveRegistryName(sym);
+  const resolvedName = resolveRegistryName(sym, services);
   const typeId = registry.resolveByName(resolvedName);
   if (!typeId) return undefined;
   const def = registry.get(typeId);
@@ -5595,7 +5633,8 @@ function registerUserEnumTypes(
   localEnumNodes: ts.EnumDeclaration[],
   importedEnums: ImportedEnum[],
   checker: ts.TypeChecker,
-  diagnostics: CompileDiagnostic[]
+  diagnostics: CompileDiagnostic[],
+  services: BrainServices
 ): void {
   const seenNames = new Set<string>();
 
@@ -5605,7 +5644,7 @@ function registerUserEnumTypes(
       continue;
     }
     seenNames.add(qualifiedName);
-    registerUserEnumType(enumNode, checker, diagnostics);
+    registerUserEnumType(enumNode, checker, diagnostics, services);
   }
 
   for (const importedEnum of importedEnums) {
@@ -5614,16 +5653,17 @@ function registerUserEnumTypes(
       continue;
     }
     seenNames.add(qualifiedName);
-    registerUserEnumType(importedEnum.node, checker, diagnostics);
+    registerUserEnumType(importedEnum.node, checker, diagnostics, services);
   }
 }
 
 function registerUserEnumType(
   enumNode: ts.EnumDeclaration,
   checker: ts.TypeChecker,
-  diagnostics: CompileDiagnostic[]
+  diagnostics: CompileDiagnostic[],
+  services: BrainServices
 ): void {
-  const registry = getBrainServices().types;
+  const registry = services.types;
   const qualifiedName = qualifiedClassName(enumNode.getSourceFile().fileName, enumNode.name.text);
   if (registry.resolveByName(qualifiedName)) {
     return;
@@ -5705,7 +5745,7 @@ function resolveEnumPropertyAccess(
     return undefined;
   }
 
-  const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.checker);
+  const typeId = resolveRegisteredEnumTypeIdFromSymbol(enumSymbol, ctx.services, ctx.checker);
   if (!typeId) {
     return undefined;
   }
@@ -5717,7 +5757,7 @@ function resolveEnumPropertyAccess(
   }
 
   const key = getEnumMemberKey(memberDecl);
-  if (!key || !getBrainServices().types.getEnumSymbol(typeId, key)) {
+  if (!key || !ctx.services.types.getEnumSymbol(typeId, key)) {
     return { kind: "unsupported" };
   }
 
@@ -5744,7 +5784,7 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     return;
   }
 
-  const structDef = resolveStructType(contextualType);
+  const structDef = resolveStructType(contextualType, ctx.services);
   if (structDef) {
     if (isNativeBackedStruct(structDef)) {
       ctx.diagnostics.push(
@@ -5846,7 +5886,7 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
 }
 
 function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined {
-  const registry = getBrainServices().types;
+  const registry = ctx.services.types;
 
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
@@ -5868,7 +5908,7 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
 
   const indexType = type.getStringIndexType();
   if (indexType) {
-    const valueTypeId = tsTypeToTypeId(indexType, ctx.checker);
+    const valueTypeId = tsTypeToTypeId(indexType, ctx.checker, ctx.services);
     if (valueTypeId) {
       return registry.instantiate("Map", List.from([valueTypeId]));
     }
@@ -5878,7 +5918,7 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
 }
 
 function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | undefined {
-  const registry = getBrainServices().types;
+  const registry = ctx.services.types;
 
   const sym = arrayType.aliasSymbol ?? arrayType.getSymbol();
   if (sym) {
@@ -5896,7 +5936,7 @@ function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | unde
   if (!typeArgs || typeArgs.length === 0) return undefined;
 
   const elementType = typeArgs[0];
-  const elementTypeId = tsTypeToTypeId(elementType, ctx.checker);
+  const elementTypeId = tsTypeToTypeId(elementType, ctx.checker, ctx.services);
   if (!elementTypeId) return undefined;
 
   return registry.instantiate("List", List.from([elementTypeId]));
@@ -5953,8 +5993,8 @@ function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {
   }
 }
 
-function expandTypeIdMembers(typeId: string): string[] {
-  const registry = getBrainServices().types;
+function expandTypeIdMembers(typeId: string, services: BrainServices): string[] {
+  const registry = services.types;
   const def = registry.get(typeId);
   if (!def) return [typeId];
   if (def.coreType === NativeType.Union) {
@@ -5973,15 +6013,19 @@ function expandTypeIdMembers(typeId: string): string[] {
 function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value | undefined {
   const contextualType = ctx.checker.getContextualType(expr);
   if (!contextualType) return undefined;
-  const typeId = resolveRegisteredEnumTypeId(contextualType, ctx.checker);
+  const typeId = resolveRegisteredEnumTypeId(contextualType, ctx.services, ctx.checker);
   if (!typeId) return undefined;
-  const registry = getBrainServices().types;
+  const registry = ctx.services.types;
   const typeDef = registry.get(typeId);
   if (!typeDef || typeDef.coreType !== NativeType.Enum) return undefined;
   return { t: NativeType.Enum, typeId, v: expr.text };
 }
 
-function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undefined {
+function tsTypeToTypeId(
+  type: ts.Type,
+  checker: ts.TypeChecker | undefined,
+  services: BrainServices
+): string | undefined {
   if (type.flags & ts.TypeFlags.NumberLike) {
     return CoreTypeIds.Number;
   }
@@ -5997,7 +6041,7 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
   if (type.flags & ts.TypeFlags.Void) {
     return CoreTypeIds.Void;
   }
-  const enumTypeId = resolveRegisteredEnumTypeId(type, checker);
+  const enumTypeId = resolveRegisteredEnumTypeId(type, services, checker);
   if (enumTypeId) {
     return enumTypeId;
   }
@@ -6008,7 +6052,7 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
     let allResolved = true;
     for (const param of sig.parameters) {
       const paramType = checker.getTypeOfSymbol(param);
-      const paramTid = tsTypeToTypeId(paramType, checker);
+      const paramTid = tsTypeToTypeId(paramType, checker, services);
       if (!paramTid) {
         allResolved = false;
         break;
@@ -6017,9 +6061,9 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
     }
     if (allResolved) {
       const retType = sig.getReturnType();
-      const retTid = tsTypeToTypeId(retType, checker);
+      const retTid = tsTypeToTypeId(retType, checker, services);
       if (retTid) {
-        return getBrainServices().types.getOrCreateFunctionType({
+        return services.types.getOrCreateFunctionType({
           paramTypeIds,
           returnTypeId: retTid,
         });
@@ -6034,17 +6078,17 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     const hasNullish = nonNullish.length < type.types.length;
     if (nonNullish.length === 1) {
-      const baseTypeId = tsTypeToTypeId(nonNullish[0], checker);
+      const baseTypeId = tsTypeToTypeId(nonNullish[0], checker, services);
       if (!baseTypeId) return undefined;
       if (hasNullish) {
-        return getBrainServices().types.addNullableType(baseTypeId);
+        return services.types.addNullableType(baseTypeId);
       }
       return baseTypeId;
     }
     if (nonNullish.length >= 2) {
       const memberIds = new List<string>();
       for (const t of nonNullish) {
-        const id = tsTypeToTypeId(t, checker);
+        const id = tsTypeToTypeId(t, checker, services);
         if (!id) return CoreTypeIds.Any;
         memberIds.push(id);
       }
@@ -6056,7 +6100,7 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
         deduped.add(id);
       });
       if (deduped.size >= 2) {
-        return getBrainServices().types.getOrCreateUnionType(List.from([...deduped]));
+        return services.types.getOrCreateUnionType(List.from([...deduped]));
       }
       if (deduped.size === 1) {
         return [...deduped][0];
@@ -6065,13 +6109,13 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
   }
   const sym = type.getSymbol() ?? type.aliasSymbol;
   if (sym) {
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const symName = sym.getName();
 
     if (symName === "Array" && checker) {
       const typeArgs = (type as ts.TypeReference).typeArguments ?? checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length > 0) {
-        const elementTypeId = tsTypeToTypeId(typeArgs[0], checker);
+        const elementTypeId = tsTypeToTypeId(typeArgs[0], checker, services);
         if (elementTypeId) {
           return registry.instantiate("List", List.from([elementTypeId]));
         }
@@ -6081,23 +6125,23 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
     if (symName === "Map" && checker) {
       const typeArgs = (type as ts.TypeReference).typeArguments ?? checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length >= 2) {
-        const valueTypeId = tsTypeToTypeId(typeArgs[1], checker);
+        const valueTypeId = tsTypeToTypeId(typeArgs[1], checker, services);
         if (valueTypeId) {
           return registry.instantiate("Map", List.from([valueTypeId]));
         }
       }
     }
 
-    const typeId = registry.resolveByName(resolveRegistryName(sym));
+    const typeId = registry.resolveByName(resolveRegistryName(sym, services));
     if (typeId) return typeId;
   }
 
   if (checker) {
     const indexType = type.getStringIndexType();
     if (indexType) {
-      const valueTypeId = tsTypeToTypeId(indexType, checker);
+      const valueTypeId = tsTypeToTypeId(indexType, checker, services);
       if (valueTypeId) {
-        return getBrainServices().types.instantiate("Map", List.from([valueTypeId]));
+        return services.types.instantiate("Map", List.from([valueTypeId]));
       }
     }
   }
@@ -6108,7 +6152,8 @@ function tsTypeToTypeId(type: ts.Type, checker?: ts.TypeChecker): string | undef
 function extractClassFields(
   classNode: ts.ClassDeclaration,
   checker: ts.TypeChecker,
-  diagnostics: CompileDiagnostic[]
+  diagnostics: CompileDiagnostic[],
+  services: BrainServices
 ): List<{ name: string; typeId: TypeId }> | undefined {
   const fields = new List<{ name: string; typeId: TypeId }>();
   const seen = new Set<string>();
@@ -6121,7 +6166,7 @@ function extractClassFields(
     seen.add(fieldName);
 
     const memberType = checker.getTypeAtLocation(member);
-    const fieldTypeId = tsTypeToTypeId(memberType, checker);
+    const fieldTypeId = tsTypeToTypeId(memberType, checker, services);
     if (!fieldTypeId) {
       diagnostics.push(
         makeDiag(
@@ -6150,7 +6195,7 @@ function extractClassFields(
       seen.add(fieldName);
 
       const assignType = checker.getTypeAtLocation(expr.left);
-      const fieldTypeId = tsTypeToTypeId(assignType, checker);
+      const fieldTypeId = tsTypeToTypeId(assignType, checker, services);
       if (!fieldTypeId) {
         diagnostics.push(
           makeDiag(
@@ -6170,7 +6215,8 @@ function extractClassFields(
 
 function extractClassMethodDecls(
   classNode: ts.ClassDeclaration,
-  checker: ts.TypeChecker
+  checker: ts.TypeChecker,
+  services: BrainServices
 ): List<{ name: string; params: List<{ name: string; typeId: TypeId }>; returnTypeId: TypeId }> {
   const methods = new List<{
     name: string;
@@ -6188,12 +6234,12 @@ function extractClassMethodDecls(
     const params = new List<{ name: string; typeId: TypeId }>();
     for (const param of sig.parameters) {
       const paramType = checker.getTypeOfSymbol(param);
-      const paramTypeId = tsTypeToTypeId(paramType, checker) ?? CoreTypeIds.Any;
+      const paramTypeId = tsTypeToTypeId(paramType, checker, services) ?? CoreTypeIds.Any;
       params.push({ name: param.getName(), typeId: paramTypeId });
     }
 
     const retType = sig.getReturnType();
-    const returnTypeId = tsTypeToTypeId(retType, checker) ?? CoreTypeIds.Void;
+    const returnTypeId = tsTypeToTypeId(retType, checker, services) ?? CoreTypeIds.Void;
 
     methods.push({ name: member.name.text, params, returnTypeId });
   }
@@ -6201,16 +6247,21 @@ function extractClassMethodDecls(
   return methods;
 }
 
-function registerClassStructType(ci: ClassInfo, checker: ts.TypeChecker, diagnostics: CompileDiagnostic[]): void {
-  const registry = getBrainServices().types;
+function registerClassStructType(
+  ci: ClassInfo,
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[],
+  services: BrainServices
+): void {
+  const registry = services.types;
   const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
   const existing = registry.resolveByName(qualName);
   if (existing) return;
 
-  const fields = extractClassFields(ci.node, checker, diagnostics);
+  const fields = extractClassFields(ci.node, checker, diagnostics, services);
   if (!fields) return;
 
-  const methods = extractClassMethodDecls(ci.node, checker);
+  const methods = extractClassMethodDecls(ci.node, checker, services);
 
   registry.addStructType(qualName, { fields, methods });
 }
@@ -6222,11 +6273,12 @@ function lowerClassDeclaration(
   functionTable: Map<string, number>,
   diagnostics: CompileDiagnostic[],
   funcIdCounter: { value: number },
-  closureFunctions: Map<number, FunctionEntry>
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices
 ): FunctionEntry[] {
   const entries: FunctionEntry[] = [];
 
-  const registry = getBrainServices().types;
+  const registry = services.types;
   const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
   const typeId = registry.resolveByName(qualName);
 
@@ -6255,6 +6307,7 @@ function lowerClassDeclaration(
   }
 
   const ctorCtx: LowerContext = {
+    services,
     checker,
     paramsSymbol: undefined,
     paramLocals: ctorParamLocals,
@@ -6270,7 +6323,7 @@ function lowerClassDeclaration(
     closureFunctions,
     thisLocalIndex: thisLocal,
     currentFunctionName: `${ci.name}$new`,
-    currentReturnTypeId: ctor ? resolveSignatureReturnTypeId(ctor, checker) : undefined,
+    currentReturnTypeId: ctor ? resolveSignatureReturnTypeId(ctor, checker, services) : undefined,
   };
 
   if (typeId) {
@@ -6343,6 +6396,7 @@ function lowerClassDeclaration(
     }
 
     const methodCtx: LowerContext = {
+      services,
       checker,
       paramsSymbol: undefined,
       paramLocals: methodParamLocals,
@@ -6358,7 +6412,7 @@ function lowerClassDeclaration(
       closureFunctions,
       thisLocalIndex: 0,
       currentFunctionName: `${ci.name}.${methodName}`,
-      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker),
+      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
     };
 
     for (let i = 0; i < userParamCount; i++) {

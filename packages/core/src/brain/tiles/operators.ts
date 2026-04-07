@@ -10,7 +10,6 @@ import {
 import type { ITileCatalog } from "../interfaces/catalog";
 import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
 import type { BrainServices } from "../services";
-import { getBrainServices } from "../services";
 
 /**
  * Tile definition for operator tiles in the brain system.
@@ -20,9 +19,9 @@ export class BrainTileOperatorDef extends BrainTileDefBase {
   readonly kind = "operator";
   readonly op: IReadOnlyRegisteredOperator;
 
-  constructor(opId: string, opts: BrainTileDefCreateOptions = {}, services?: BrainServices) {
+  constructor(opId: string, opts: BrainTileDefCreateOptions = {}, services: BrainServices) {
     super(mkOperatorTileId(opId), opts);
-    this.op = (services ?? getBrainServices()).operatorTable.get(opId)!;
+    this.op = services.operatorTable.get(opId)!;
     if (!this.op) {
       throw new Error(`BrainTileOperatorDef: unknown opId ${opId}. Did you forget to register it?`);
     }

@@ -1,5 +1,6 @@
 import { logger, type ReadonlyList } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   getPageIdFromTileId,
   type IBrainDef,
   type IBrainTileDef,
@@ -105,7 +106,8 @@ export function hasTileInClipboard(): boolean {
  */
 export function importTileFromClipboard(
   destBrain: IBrainDef,
-  withBrainServices?: BrainServicesRunner
+  withBrainServices?: BrainServicesRunner,
+  brainServices?: BrainServices
 ): IBrainTileDef | undefined {
   if (!tileClipboardData) return undefined;
   const currentClipboardData = tileClipboardData;
@@ -118,7 +120,7 @@ export function importTileFromClipboard(
 
   const tempCatalog = runWithBrainServices(withBrainServices, () => {
     const catalog = new TileCatalog();
-    catalog.deserializeJson(currentClipboardData.catalogJson);
+    if (brainServices) catalog.deserializeJson(currentClipboardData.catalogJson, brainServices);
     return catalog;
   });
 

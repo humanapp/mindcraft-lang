@@ -49,6 +49,7 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
     () => ({
       ...buildBrainEditorConfig(archetype ?? undefined),
       withBrainServices: withSimBrainServices,
+      brainServices: getMindcraftEnvironment().brainServices,
       tileCatalog: getMindcraftEnvironment().brainServices.tiles,
       onTileHelp: openDocsForTile,
       docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
@@ -154,6 +155,7 @@ function App() {
     <DocsSidebarProvider
       registry={docsRegistry}
       tileCatalog={docsTileCatalog}
+      brainServices={getMindcraftEnvironment().brainServices}
       resolveTileVisual={genVisualForTile}
       withBrainServices={withSimBrainServices}
     >

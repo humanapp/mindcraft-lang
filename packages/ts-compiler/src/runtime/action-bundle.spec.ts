@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, type HydratedTileMetadataSnapshot } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   CoreTypeIds,
   mkActuatorTileId,
   mkParameterTileId,
@@ -26,14 +27,16 @@ function resolveCoreTypeId(typeName: string): string | undefined {
 }
 
 function compileProject(files: ReadonlyMap<string, string>) {
-  const project = new UserTileProject();
+  const project = new UserTileProject({ services });
   project.setFiles(files);
   return project.compileAll();
 }
 
+let services: BrainServices;
+
 describe("buildCompiledActionBundle", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("builds a full-snapshot bundle with deduped shared parameter tiles", () => {
@@ -87,7 +90,7 @@ export default Actuator({
       ])
     );
 
-    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId });
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
 
     assert.ok(bundle);
     assert.deepEqual(bundle.actions.keys().toArray(), ["user.actuator.move", "user.actuator.turn", "user.sensor.scan"]);
@@ -119,7 +122,7 @@ export default Sensor({
       ])
     );
 
-    assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId }), undefined);
+    assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services }), undefined);
   });
 
   test("returns no bundle when a program parameter type cannot be resolved at bundle time", () => {
@@ -148,7 +151,7 @@ export default Actuator({
 
     entry.program.params[0]!.type = "vector2";
 
-    assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId }), undefined);
+    assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services }), undefined);
   });
 
   test("bundle tiles can hydrate deserialization before executable actions are installed", () => {
@@ -171,13 +174,13 @@ export default Sensor({
       ])
     );
 
-    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId });
+    const bundle = buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services });
     assert.ok(bundle);
 
     const sensorTile = bundle.tiles.find((tile) => tile.tileId === mkSensorTileId("user.sensor.probe"));
     assert.ok(sensorTile);
 
-    const brainDef = BrainDef.emptyBrainDef("Probe Brain");
+    const brainDef = BrainDef.emptyBrainDef(services, "Probe Brain");
     brainDef.pages().get(0)!.children().get(0)!.when().appendTile(sensorTile!);
 
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });

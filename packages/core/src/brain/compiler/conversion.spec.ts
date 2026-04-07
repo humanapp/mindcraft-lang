@@ -8,12 +8,12 @@ import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   CoreParameterId,
   CoreTypeIds,
   type EnumSymbolDef,
   type EnumValue,
   type ExecutionContext,
-  getBrainServices,
   mkActionDescriptor,
   mkCallDef,
   NativeType,
@@ -27,12 +27,14 @@ import {
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
 import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 
+let services: BrainServices;
+
 before(() => {
-  registerCoreBrainComponents();
+  services = registerCoreBrainComponents();
 });
 
 function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
-  const registry = getBrainServices().types;
+  const registry = services.types;
   const existing = registry.resolveByName(name);
   if (existing) {
     return existing;
@@ -54,7 +56,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
 }
 
 function execEnumConversion(fromType: string, toType: string, input: EnumValue) {
-  const conversion = getBrainServices().conversions.get(fromType, toType);
+  const conversion = services.conversions.get(fromType, toType);
   assert.ok(conversion, `Expected conversion ${fromType} -> ${toType}`);
 
   const args = new ValueDict();
@@ -73,21 +75,16 @@ function testConversion(
 ): void {
   test(label, () => {
     const actuatorId = `test.conv.${Date.now()}.${Math.random()}`;
-    const fnEntry = getBrainServices().functions.register(
-      actuatorId,
-      false,
-      { exec: () => VOID_VALUE },
-      actuatorCallDef
-    );
+    const fnEntry = services.functions.register(actuatorId, false, { exec: () => VOID_VALUE }, actuatorCallDef);
 
     const sayTile = new BrainTileActuatorDef(actuatorId, mkActionDescriptor("actuator", fnEntry), {});
-    const literal = new BrainTileLiteralDef(literalType, literalValue);
+    const literal = new BrainTileLiteralDef(literalType, literalValue, {}, services);
 
     const tiles = List.from([sayTile as unknown, literal as unknown]) as List<never>;
     const emptyTiles = List.empty<never>();
-    const catalogs = List.from([getBrainServices().tiles]);
+    const catalogs = List.from([services.tiles]);
 
-    const result = parseRule(tiles, emptyTiles, catalogs);
+    const result = parseRule(tiles, emptyTiles, catalogs, services.conversions);
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "actuator", "Expected actuator expression");
@@ -185,7 +182,7 @@ describe("Conversion: enum values", () => {
       "On"
     );
 
-    const path = getBrainServices().conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    const path = services.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
     assert.ok(path);
     assert.equal(path.size(), 1);
 
@@ -209,11 +206,11 @@ describe("Conversion: enum values", () => {
       "Up"
     );
 
-    const numberPath = getBrainServices().conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+    const numberPath = services.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
     assert.ok(numberPath);
     assert.equal(numberPath.size(), 1);
 
-    const stringPath = getBrainServices().conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    const stringPath = services.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
     assert.ok(stringPath);
     assert.equal(stringPath.size(), 1);
 
@@ -244,15 +241,15 @@ describe("Conversion: enum values", () => {
       "North"
     );
 
-    const path = getBrainServices().conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+    const path = services.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
     assert.equal(path, undefined);
   });
 
   test("empty enums do not expose enum conversions", () => {
     const typeId = ensureEnumType("ConversionSpecEmptyEnum", List.empty<EnumSymbolDef>());
 
-    const stringPath = getBrainServices().conversions.findBestPath(typeId, CoreTypeIds.String, 1);
-    const numberPath = getBrainServices().conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+    const stringPath = services.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    const numberPath = services.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
 
     assert.equal(stringPath, undefined);
     assert.equal(numberPath, undefined);

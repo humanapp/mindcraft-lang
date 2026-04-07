@@ -1,12 +1,12 @@
 import { List } from "@mindcraft-lang/core";
-import { type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
+import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
 import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 import { setClipboardFromJson } from "@mindcraft-lang/ui/brain-editor/rule-clipboard";
 import { ClipboardCopy } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 import { DocsRuleBlock, type DocsRuleData, DocsTileChip } from "./DocsRule";
-import { useDocsSidebar, useDocsTileCatalog, useDocsWithBrainServices } from "./DocsSidebarContext";
+import { useDocsBrainServices, useDocsSidebar, useDocsTileCatalog, useDocsWithBrainServices } from "./DocsSidebarContext";
 
 // ---------------------------------------------------------------------------
 // Meta string parsing
@@ -93,12 +93,13 @@ function collectCatalogEntries(rules: PlainRule[], topLevel?: CatalogTileJson[])
  */
 function buildLocalCatalog(
   entries: CatalogTileJson[],
-  withBrainServices: <T>(callback: () => T) => T
+  withBrainServices: <T>(callback: () => T) => T,
+  brainServices: BrainServices | undefined
 ): TileCatalog | undefined {
   if (entries.length === 0) return undefined;
   return withBrainServices(() => {
     const catalog = new TileCatalog();
-    catalog.deserializeJson(List.from(entries));
+    if (brainServices) catalog.deserializeJson(List.from(entries), brainServices);
     return catalog;
   });
 }
@@ -183,13 +184,14 @@ export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
   const { close } = useDocsSidebar();
   const tileCatalog = useDocsTileCatalog();
   const withBrainServices = useDocsWithBrainServices();
+  const brainServices = useDocsBrainServices();
   const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const fenceMeta = useMemo(() => parseMeta(meta), [meta]);
 
   const parsed = useMemo(() => {
     const block = parseBrainBlock(content);
     if (!block) return null;
-    const localCatalog = buildLocalCatalog(block.catalogEntries, withBrainServices);
+    const localCatalog = buildLocalCatalog(block.catalogEntries, withBrainServices, brainServices);
     if (block.kind === "tiles") {
       const side = block.side === "do" ? RuleSide.Do : block.side === "when" ? RuleSide.When : fenceMeta.side;
       return { kind: "tiles" as const, tiles: resolveTiles(block.tileIds, tileCatalog, localCatalog), side };

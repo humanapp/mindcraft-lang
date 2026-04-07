@@ -22,7 +22,7 @@ import {
   type Value,
   VmStatus,
 } from "../interfaces";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 import { linkBrainProgram } from "./linker";
 import { BrainPage } from "./page";
 import type { BrainRule } from "./rule";
@@ -114,6 +114,7 @@ export class Brain implements IBrain {
 
   constructor(
     public readonly brainDef: IBrainDef,
+    private readonly services: BrainServices,
     private readonly linkEnvironment?: BrainLinkEnvironment
   ) {
     this.handles = new HandleTable(100000);
@@ -137,7 +138,7 @@ export class Brain implements IBrain {
     const linkEnvironment = this.getLinkEnvironment();
 
     // Compile the entire brain into an unlinked program, then link actions.
-    this.compiledProgram = compileBrain(this.brainDef, linkEnvironment.catalogs);
+    this.compiledProgram = compileBrain(this.brainDef, linkEnvironment.catalogs, this.services.conversions);
     this.program = linkBrainProgram(
       this.compiledProgram,
       this.brainDef,
@@ -146,7 +147,7 @@ export class Brain implements IBrain {
     );
 
     // Create VM with the linked executable program.
-    this.vm = new VM(getBrainServices(), this.program, this.handles);
+    this.vm = new VM(this.services, this.program, this.handles);
 
     // Create scheduler
     this.scheduler = new FiberScheduler(this.vm, {
@@ -597,10 +598,9 @@ export class Brain implements IBrain {
       return this.linkEnvironment;
     }
 
-    const services = getBrainServices();
     return {
-      catalogs: List.from([services.tiles]),
-      actionResolver: services.actions,
+      catalogs: List.from([this.services.tiles]),
+      actionResolver: this.services.actions,
     };
   }
 

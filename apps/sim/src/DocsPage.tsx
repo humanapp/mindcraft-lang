@@ -13,6 +13,7 @@ export default function DocsPage() {
     <SharedDocsPage
       registry={docsRegistry}
       tileCatalog={docsTileCatalog}
+      brainServices={getMindcraftEnvironment().brainServices}
       resolveTileVisual={genVisualForTile}
       withBrainServices={withSimBrainServices}
       backLabel="Sim"

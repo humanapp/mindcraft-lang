@@ -45,7 +45,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
   const availableCapabilities = useRuleCapabilities(ruleDef);
-  const { onTileHelp, withBrainServices } = useBrainEditorConfig();
+  const { onTileHelp, withBrainServices, brainServices } = useBrainEditorConfig();
 
   const isNumericLiteral =
     tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
@@ -80,7 +80,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   };
 
   const handlePasteTileBefore = () => {
-    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex, withBrainServices);
+    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex, withBrainServices, brainServices);
     commandHistory.executeCommand(command);
   };
 
@@ -134,7 +134,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
         new BrainTileLiteralDef(literalDef.valueType, literalDef.value, {
           valueLabel: literalDef.valueLabel,
           displayFormat: newFormat,
-        })
+        }, brainServices!)
     );
     const catalog = ruleDef.brain()?.catalog();
     if (catalog) {

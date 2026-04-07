@@ -1,9 +1,8 @@
 import {
+  type BrainServices,
   type IBrainTileDef,
   type ITileCatalog,
   LiteralDisplayFormats,
-  peekBrainServices,
-  runWithBrainServices,
 } from "@mindcraft-lang/core/brain";
 import {
   applyDisplayFormat,
@@ -23,6 +22,7 @@ interface DocsSidebarContextValue {
   activeTab: DocTab;
   registry: DocsRegistry;
   tileCatalog: ITileCatalog | undefined;
+  brainServices: BrainServices | undefined;
   resolveTileVisual: (tileDef: IBrainTileDef) => TileVisual | undefined;
   withBrainServices: <T>(callback: () => T) => T;
   /** The key of the entry currently shown in detail view, or null for list view. */
@@ -67,6 +67,7 @@ interface DocsSidebarProviderProps {
   children: ReactNode;
   registry?: DocsRegistry;
   tileCatalog?: ITileCatalog;
+  brainServices?: BrainServices;
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   withBrainServices?: <T>(callback: () => T) => T;
   /** Initial active tab (defaults to "tiles"). */
@@ -81,6 +82,7 @@ export function DocsSidebarProvider({
   children,
   registry: externalRegistry,
   tileCatalog: externalTileCatalog,
+  brainServices: externalBrainServices,
   resolveTileVisual: resolveTileVisualProp,
   withBrainServices: withBrainServicesProp,
   initialTab,
@@ -92,7 +94,7 @@ export function DocsSidebarProvider({
   const [navKey, setNavKey] = useState<string | null>(initialNavKey ?? null);
   const [navTab, setNavTab] = useState<DocTab | null>(initialNavTab ?? null);
   const registry = useMemo(() => externalRegistry ?? new DocsRegistry(), [externalRegistry]);
-  const tileCatalog = useMemo(() => externalTileCatalog ?? peekBrainServices()?.tiles, [externalTileCatalog]);
+  const tileCatalog = useMemo(() => externalTileCatalog, [externalTileCatalog]);
   const resolveTileVisual = useCallback(
     (tileDef: IBrainTileDef): TileVisual | undefined => {
       const intrinsicVisual = tileDef.visual as TileVisual | undefined;
@@ -115,11 +117,6 @@ export function DocsSidebarProvider({
     function withBrainServicesImpl<T>(callback: () => T): T {
       if (withBrainServicesProp) {
         return withBrainServicesProp(callback);
-      }
-
-      const services = peekBrainServices();
-      if (services) {
-        return runWithBrainServices(services, callback);
       }
 
       return callback();
@@ -172,6 +169,7 @@ export function DocsSidebarProvider({
     activeTab,
     registry,
     tileCatalog,
+    brainServices: externalBrainServices,
     resolveTileVisual,
     withBrainServices,
     navKey,
@@ -206,4 +204,8 @@ export function useDocsResolveTileVisual(): (tileDef: IBrainTileDef) => TileVisu
 
 export function useDocsWithBrainServices(): <T>(callback: () => T) => T {
   return useDocsSidebar().withBrainServices;
+}
+
+export function useDocsBrainServices(): BrainServices | undefined {
+  return useDocsSidebar().brainServices;
 }

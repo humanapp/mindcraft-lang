@@ -1,6 +1,5 @@
 import { type CompiledActionBundle, Dict } from "@mindcraft-lang/core";
 import type { BrainServices, IBrainTileDef } from "@mindcraft-lang/core/brain";
-import { getBrainServices } from "@mindcraft-lang/core/brain";
 import type { ProjectCompileResult } from "../compiler/compile.js";
 import type { UserAuthoredProgram } from "../compiler/types.js";
 import { buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-metadata.js";
@@ -8,11 +7,7 @@ import { buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-me
 export interface BuildCompiledActionBundleOptions {
   resolveTypeId?: UserTileTypeResolver;
   revision?: string;
-  services?: BrainServices;
-}
-
-function defaultResolveTypeId(typeName: string): string | undefined {
-  return getBrainServices().types.resolveByName(typeName);
+  services: BrainServices;
 }
 
 function hashText(text: string): string {
@@ -70,15 +65,13 @@ function addTiles(target: Map<string, IBrainTileDef>, tiles: readonly IBrainTile
 
 export function buildCompiledActionBundle(
   result: ProjectCompileResult,
-  options: BuildCompiledActionBundleOptions = {}
+  options: BuildCompiledActionBundleOptions
 ): CompiledActionBundle | undefined {
   if (hasBlockingDiagnostics(result)) {
     return undefined;
   }
 
-  const resolveTypeId =
-    options.resolveTypeId ??
-    (options.services ? (typeName: string) => options.services!.types.resolveByName(typeName) : defaultResolveTypeId);
+  const resolveTypeId = options.resolveTypeId ?? ((typeName: string) => options.services.types.resolveByName(typeName));
   const programs = collectPrograms(result);
   const actions = new Dict<string, UserAuthoredProgram>();
   const tileMap = new Map<string, IBrainTileDef>();

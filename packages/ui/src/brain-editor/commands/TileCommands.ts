@@ -1,4 +1,4 @@
-import type { IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import type { BrainServices, IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainServicesRunner } from "../brain-services";
 import { importTileFromClipboard } from "../tile-clipboard";
@@ -133,13 +133,14 @@ export class PasteTileBeforeCommand implements BrainCommand {
     private rule: BrainRuleDef,
     private side: RuleSide,
     private tileIndex: number,
-    private readonly withBrainServices?: BrainServicesRunner
+    private readonly withBrainServices?: BrainServicesRunner,
+    private readonly brainServices?: BrainServices
   ) {}
 
   execute(): void {
     const brain = this.rule.brain();
     if (!brain) return;
-    const tileDef = importTileFromClipboard(brain, this.withBrainServices);
+    const tileDef = importTileFromClipboard(brain, this.withBrainServices, this.brainServices);
     if (tileDef) {
       this.importedTileDef = tileDef;
       this.rule.side(this.side).insertTileAtIndex(this.tileIndex, tileDef);

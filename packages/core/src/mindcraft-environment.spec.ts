@@ -257,8 +257,8 @@ function createActionBundle(
   };
 }
 
-function createSensorBrainDef(name: string, sensorTile: BrainTileSensorDef): BrainDef {
-  const brainDef = BrainDef.emptyBrainDef(name);
+function createSensorBrainDef(services: BrainServices, name: string, sensorTile: BrainTileSensorDef): BrainDef {
+  const brainDef = BrainDef.emptyBrainDef(services, name);
   const rule = brainDef.pages().get(0)!.children().get(0)!;
   rule.when().appendTile(sensorTile);
   return brainDef;
@@ -296,7 +296,7 @@ describe("mindcraft environment", () => {
     assert.ok(servicesA.operatorTable.get("alpha_eq"));
     assert.equal(servicesB.operatorTable.get("alpha_eq"), undefined);
 
-    const brainDef = BrainDef.emptyBrainDef("Alpha Brain");
+    const brainDef = BrainDef.emptyBrainDef(servicesA, "Alpha Brain");
     const rule = brainDef.pages().get(0)!.children().get(0)!;
     rule.when().appendTile(capture.sensorTile!);
 
@@ -312,7 +312,7 @@ describe("mindcraft environment", () => {
 
   test("creates independent runnable brains from one definition", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
-    const sharedDefinition = BrainDef.emptyBrainDef("Reusable Brain");
+    const sharedDefinition = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Reusable Brain");
     sharedDefinition.appendNewPage();
 
     const firstPageId = sharedDefinition.pages().get(0)!.pageId();
@@ -344,7 +344,7 @@ describe("mindcraft environment", () => {
     } = {};
     const environment = createMindcraftEnvironment({ modules: [coreModule(), createAlphaModule(capture)] });
 
-    const brainDef = BrainDef.emptyBrainDef("Persisted Brain");
+    const brainDef = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Persisted Brain");
     const rule = brainDef.pages().get(0)!.children().get(0)!;
     const variableTile = new BrainTileVariableDef(
       mkVariableTileId("counter-id"),
@@ -374,7 +374,7 @@ describe("mindcraft environment", () => {
   test("deserializes persisted brains against hydrated and bundled tile metadata", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const bundled = createBundleSensor("bundle.persisted");
-    const brainDef = createSensorBrainDef("Hydrated Brain", bundled.tile);
+    const brainDef = createSensorBrainDef(getEnvironmentServices(environment), "Hydrated Brain", bundled.tile);
 
     assert.throws(() => environment.deserializeBrainJson(brainDef.toJson()), /bundle\.persisted/);
 
@@ -420,7 +420,7 @@ describe("mindcraft environment", () => {
 
     const localShared = createBundleSensor("local.shared", "shared-order").tile;
     const localLayered = createBundleSensor("local.layered", "layered-order").tile;
-    const brainDef = BrainDef.emptyBrainDef("Catalog Order Brain");
+    const brainDef = BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Catalog Order Brain");
     brainDef.catalog().registerTileDef(localShared);
     brainDef.catalog().registerTileDef(localLayered);
 
@@ -487,9 +487,15 @@ describe("mindcraft environment", () => {
 
     environment.replaceActionBundle(createActionBundle("bundle.rev1", [alpha, beta]));
 
-    const alphaBrain = environment.createBrain(createSensorBrainDef("Alpha Brain", alpha.tile));
-    const betaBrain = environment.createBrain(createSensorBrainDef("Beta Brain", beta.tile));
-    const localBrain = environment.createBrain(BrainDef.emptyBrainDef("Local Brain"));
+    const alphaBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Alpha Brain", alpha.tile)
+    );
+    const betaBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Beta Brain", beta.tile)
+    );
+    const localBrain = environment.createBrain(
+      BrainDef.emptyBrainDef(getEnvironmentServices(environment), "Local Brain")
+    );
 
     const events: {
       changedActionKeys: readonly string[];
@@ -542,8 +548,12 @@ describe("mindcraft environment", () => {
 
     environment.replaceActionBundle(createActionBundle("bundle.rev1", [alpha, beta]));
 
-    const alphaBrain = environment.createBrain(createSensorBrainDef("Alpha Brain", alpha.tile));
-    const betaBrain = environment.createBrain(createSensorBrainDef("Beta Brain", beta.tile));
+    const alphaBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Alpha Brain", alpha.tile)
+    );
+    const betaBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Beta Brain", beta.tile)
+    );
 
     const firstUpdate = environment.replaceActionBundle(
       createActionBundle("bundle.rev2", [
@@ -583,8 +593,12 @@ describe("mindcraft environment", () => {
 
     environment.replaceActionBundle(createActionBundle("bundle.rev1", [alpha, beta]));
 
-    const alphaBrain = environment.createBrain(createSensorBrainDef("Alpha Brain", alpha.tile));
-    const betaBrain = environment.createBrain(createSensorBrainDef("Beta Brain", beta.tile));
+    const alphaBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Alpha Brain", alpha.tile)
+    );
+    const betaBrain = environment.createBrain(
+      createSensorBrainDef(getEnvironmentServices(environment), "Beta Brain", beta.tile)
+    );
 
     assert.equal(internals.trackedBrains.size(), 2);
     assert.equal(internals.invalidatedBrains.size(), 0);
@@ -635,7 +649,7 @@ describe("mindcraft environment", () => {
     envA.replaceActionBundle(createActionBundle("bundle.visual.revA", [bundleA]));
     envB.replaceActionBundle(createActionBundle("bundle.visual.revB", [bundleB]));
 
-    const json = createSensorBrainDef("Visual Brain", bundleA.tile).toJson();
+    const json = createSensorBrainDef(getEnvironmentServices(envA), "Visual Brain", bundleA.tile).toJson();
     const restoredA = envA.deserializeBrainJson(json);
     const restoredB = envB.deserializeBrainJson(json);
     const restoredTileA = restoredA.pages().get(0)!.children().get(0)!.when().tiles().get(0)!;

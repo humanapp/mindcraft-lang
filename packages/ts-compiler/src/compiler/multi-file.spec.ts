@@ -6,7 +6,6 @@ import {
   CoreOpId,
   CoreTypeIds,
   type ExecutionContext,
-  getBrainServices,
   HandleTable,
   mkNumberValue,
   NativeType,
@@ -49,8 +48,8 @@ function mkScheduler(): Scheduler {
 }
 
 function compileProject(files: Record<string, string>) {
-  const ambientSource = buildAmbientDeclarations();
-  const project = new UserTileProject({ ambientSource });
+  const ambientSource = buildAmbientDeclarations(services.types);
+  const project = new UserTileProject({ ambientSource, services });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -682,7 +681,7 @@ describe("multi-file: enum recompilation cleanup", () => {
   });
 
   test("deleting a user enum removes its registered type and derived artifacts", () => {
-    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations() });
+    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations(services.types), services });
     project.setFiles(
       new Map(
         Object.entries({
@@ -715,12 +714,12 @@ export default Sensor({
     assert.ok(entry);
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
 
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const typeId = registry.resolveByName("/helpers/mode.ts::Mode");
     assert.ok(typeId, "Mode should be registered before deletion");
-    assert.ok(getBrainServices().conversions.get(typeId!, CoreTypeIds.String));
-    assert.ok(getBrainServices().conversions.get(typeId!, CoreTypeIds.Number));
-    assert.ok(getBrainServices().operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]));
+    assert.ok(services.conversions.get(typeId!, CoreTypeIds.String));
+    assert.ok(services.conversions.get(typeId!, CoreTypeIds.Number));
+    assert.ok(services.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]));
 
     project.deleteFile("helpers/mode.ts");
     project.updateFile(
@@ -745,13 +744,13 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
 
     assert.equal(registry.resolveByName("/helpers/mode.ts::Mode"), undefined);
-    assert.equal(getBrainServices().conversions.get(typeId!, CoreTypeIds.String), undefined);
-    assert.equal(getBrainServices().conversions.get(typeId!, CoreTypeIds.Number), undefined);
-    assert.equal(getBrainServices().operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]), undefined);
+    assert.equal(services.conversions.get(typeId!, CoreTypeIds.String), undefined);
+    assert.equal(services.conversions.get(typeId!, CoreTypeIds.Number), undefined);
+    assert.equal(services.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]), undefined);
   });
 
   test("changing a user enum between numeric and string forms refreshes conversions", () => {
-    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations() });
+    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations(services.types), services });
     project.setFiles(
       new Map(
         Object.entries({
@@ -781,10 +780,10 @@ export default Sensor({
     let result = project.compileAll();
     assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
 
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const typeId = registry.resolveByName("/helpers/mode.ts::Mode");
     assert.ok(typeId, "Mode should be registered before recompilation");
-    assert.ok(getBrainServices().conversions.get(typeId!, CoreTypeIds.Number));
+    assert.ok(services.conversions.get(typeId!, CoreTypeIds.Number));
 
     project.updateFile(
       "helpers/mode.ts",
@@ -818,8 +817,8 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
 
     assert.equal(registry.resolveByName("/helpers/mode.ts::Mode"), typeId);
-    assert.ok(getBrainServices().conversions.get(typeId!, CoreTypeIds.String));
-    assert.equal(getBrainServices().conversions.get(typeId!, CoreTypeIds.Number), undefined);
+    assert.ok(services.conversions.get(typeId!, CoreTypeIds.String));
+    assert.equal(services.conversions.get(typeId!, CoreTypeIds.Number), undefined);
   });
 });
 
@@ -878,7 +877,7 @@ export default Sensor({
     assert.deepStrictEqual(entryB.diagnostics, [], `b.ts diagnostics: ${JSON.stringify(entryB.diagnostics)}`);
     assert.ok(entryB.program);
 
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const typeIdA = registry.resolveByName("/sensors/a.ts::Foo");
     const typeIdB = registry.resolveByName("/sensors/b.ts::Foo");
     assert.ok(typeIdA, "Foo from a.ts should be registered");
@@ -914,7 +913,7 @@ export default Sensor({
 `,
     });
 
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const boolTypeId = registry.resolveByName("boolean");
     assert.ok(boolTypeId, "boolean should still resolve with bare name");
     const def = registry.get(boolTypeId!);
@@ -950,7 +949,7 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, []);
     assert.ok(entry.program);
 
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const typeId = registry.resolveByName("/sensors/single.ts::Point");
     assert.ok(typeId, "Point should be registered with qualified name");
 
@@ -990,7 +989,7 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
     assert.ok(entry.program);
 
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const qualifiedTypeId = registry.resolveByName("/sensors/detect.ts::Result");
     assert.ok(qualifiedTypeId, "Result should be registered with qualified name");
     assert.equal(entry.program!.outputType, qualifiedTypeId, "program outputType should use qualified TypeId");

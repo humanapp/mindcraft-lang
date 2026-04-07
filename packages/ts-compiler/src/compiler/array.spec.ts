@@ -5,7 +5,6 @@ import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/brain";
 import {
   type BooleanValue,
   type BrainServices,
-  getBrainServices,
   HandleTable,
   isListValue,
   type ListValue,
@@ -30,7 +29,7 @@ function ensureSetup(): void {
   if (!ambientSource) {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const numListName = "NumberList";
     const numListTypeId = mkTypeId(NativeType.List, numListName);
@@ -38,7 +37,7 @@ function ensureSetup(): void {
       types.addListType(numListName, { elementTypeId: numTypeId });
     }
 
-    ambientSource = buildAmbientDeclarations();
+    ambientSource = buildAmbientDeclarations(services.types);
   }
 }
 
@@ -119,7 +118,7 @@ export default Sensor({
 }
 
 function compileAndRun(source: string): Value {
-  const result = compileUserTile(source, { ambientSource });
+  const result = compileUserTile(source, { ambientSource, services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program, "expected program");
 
@@ -786,7 +785,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0);
   });
 });

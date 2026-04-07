@@ -53,7 +53,7 @@ export default Sensor({
 }
 
 function compileAndRun(source: string): Value {
-  const result = compileUserTile(source);
+  const result = compileUserTile(source, { services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program, "expected program");
 
@@ -317,31 +317,31 @@ describe("Math diagnostics", () => {
 
   test("Math.abs() with no args produces TS error", () => {
     const source = sensorReturningNumber("return Math.abs();");
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("Math.abs(1, 2) with too many args produces TS error", () => {
     const source = sensorReturningNumber("return Math.abs(1, 2);");
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("Math.max(1) with too few args produces lowering diagnostic", () => {
     const source = sensorReturningNumber("return Math.max(1);");
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.MathMinMaxRequiresTwoArgs));
   });
 
   test("Math.pow(1, 2, 3) with too many args produces TS error", () => {
     const source = sensorReturningNumber("return Math.pow(1, 2, 3);");
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
   test("Math.nonexistent() produces TS error", () => {
     const source = sensorReturningNumber("return Math.nonexistent();");
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 });

@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
+import { type BrainServices, registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
 import { compileUserTile } from "./compile.js";
+
+let services: BrainServices;
 
 describe("scope and variable metadata", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("function with nested blocks -> correct scope tree", () => {
@@ -27,7 +29,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -73,7 +75,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -110,7 +112,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -138,7 +140,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -164,7 +166,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -193,7 +195,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -227,7 +229,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -260,7 +262,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -293,7 +295,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -332,7 +334,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -368,7 +370,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -394,7 +396,7 @@ export default Actuator({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 

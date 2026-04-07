@@ -8,7 +8,6 @@ import {
   CoreTypeIds,
   type EnumValue,
   type ExecutionContext,
-  getBrainServices,
   HandleTable,
   isEnumValue,
   isListValue,
@@ -107,7 +106,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -144,7 +143,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -178,7 +177,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -211,7 +210,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -240,7 +239,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -272,7 +271,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -306,7 +305,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.program);
 
     const prog = result.program!;
@@ -322,7 +321,7 @@ export default Sensor({
   });
 
   test("invalid output type produces diagnostic for unregistered type", () => {
-    const appAmbient = buildAmbientDeclarations().replace(
+    const appAmbient = buildAmbientDeclarations(services.types).replace(
       "string: string;",
       "string: string;\n    unknownType: unknown;"
     );
@@ -339,20 +338,21 @@ export default Sensor({
 `;
     const result = compileUserTile(source, {
       ambientSource: appAmbient,
+      services,
     });
     assert.equal(result.diagnostics.length, 1);
     assert.equal(result.diagnostics[0].code, CompileDiagCode.UnknownOutputType);
   });
 
   test("app-defined output type resolves via registry", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const actorRefTypeId = mkTypeId(NativeType.Struct, "actorRef");
     if (!types.get(actorRefTypeId)) {
       types.addStructType("actorRef", {
         fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number") }]),
       });
     }
-    const appAmbient = buildAmbientDeclarations();
+    const appAmbient = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -366,6 +366,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, {
       ambientSource: appAmbient,
+      services,
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
@@ -384,7 +385,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
     assert.equal(result.program!.outputType, "struct:<actorRef>");
@@ -393,12 +394,7 @@ export default Sensor({
 
 describe("buildCallDef", () => {
   before(() => {
-    if (!getBrainServices) return;
-    try {
-      getBrainServices();
-    } catch {
-      services = registerCoreBrainComponents();
-    }
+    services = registerCoreBrainComponents();
   });
 
   test("empty params produces empty bag", () => {
@@ -477,7 +473,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -515,7 +511,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -550,7 +546,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -589,7 +585,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -627,7 +623,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -663,7 +659,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -698,7 +694,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -735,7 +731,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -772,7 +768,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -811,7 +807,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -849,7 +845,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -890,7 +886,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -932,7 +928,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -971,7 +967,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1009,7 +1005,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1048,7 +1044,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1119,7 +1115,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1197,7 +1193,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1237,7 +1233,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1269,7 +1265,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1324,7 +1320,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1366,7 +1362,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.program);
 
     const prog = result.program!;
@@ -1430,7 +1426,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1477,7 +1473,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -1500,7 +1496,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1542,7 +1538,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1581,7 +1577,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1643,7 +1639,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1695,7 +1691,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1750,7 +1746,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1786,7 +1782,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -1816,7 +1812,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1860,7 +1856,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1897,7 +1893,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1931,7 +1927,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -1969,7 +1965,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2001,7 +1997,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2034,7 +2030,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2065,7 +2061,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2096,7 +2092,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2126,7 +2122,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2164,7 +2160,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2199,7 +2195,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2237,7 +2233,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2272,7 +2268,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2300,7 +2296,7 @@ export default Sensor({
   },
 });
 `;
-    const result2 = compileUserTile(source2);
+    const result2 = compileUserTile(source2, { services });
     assert.deepStrictEqual(result2.diagnostics, []);
     assert.ok(result2.program);
 
@@ -2329,7 +2325,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2359,7 +2355,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2390,7 +2386,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2422,7 +2418,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2452,7 +2448,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2483,7 +2479,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.CannotConvertToString),
@@ -2503,7 +2499,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.NoConversionToString),
@@ -2516,7 +2512,7 @@ describe("binary operator implicit conversions", () => {
   before(() => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
       types.addEnumType("Direction", {
@@ -2547,7 +2543,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2582,7 +2578,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2616,7 +2612,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.NoOperatorOverload),
@@ -2641,7 +2637,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0, "expected an ambiguity diagnostic");
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.AmbiguousImplicitBinaryConversion),
@@ -2650,7 +2646,7 @@ export default Sensor({
   });
 
   test("enum values concatenate with strings through enum-to-string conversion", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -2666,7 +2662,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2689,7 +2685,7 @@ describe("target-typed implicit conversions", () => {
   before(() => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const signalTypeId = mkTypeId(NativeType.Enum, "Signal");
     if (!types.get(signalTypeId)) {
       types.addEnumType("Signal", {
@@ -2714,7 +2710,7 @@ describe("target-typed implicit conversions", () => {
   });
 
   test("return statement converts a pre-registered enum value to string", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Signal } from "mindcraft";
 
@@ -2727,7 +2723,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2746,7 +2742,7 @@ export default Sensor({
   });
 
   test("function-call arguments convert enum values to the declared parameter type", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Signal } from "mindcraft";
 
@@ -2763,7 +2759,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2782,7 +2778,7 @@ export default Sensor({
   });
 
   test("variable initializers and simple assignments convert numeric enum values to number", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Throttle } from "mindcraft";
 
@@ -2800,7 +2796,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2835,7 +2831,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0, "expected a lowering diagnostic");
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.NoConversionToTargetType),
@@ -2848,7 +2844,7 @@ describe("struct literal compilation", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -2879,7 +2875,7 @@ describe("struct literal compilation", () => {
   });
 
   test("struct literal with type annotation compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -2892,7 +2888,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2917,7 +2913,7 @@ export default Sensor({
   });
 
   test("struct literal as return value (contextual type from return annotation)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -2929,7 +2925,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2953,7 +2949,7 @@ export default Sensor({
   });
 
   test("nested struct literal compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
@@ -2966,7 +2962,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -2993,7 +2989,7 @@ export default Sensor({
   });
 
   test("native-backed struct object literal produces compile error", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NativeObj } from "mindcraft";
 
@@ -3006,12 +3002,12 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for native-backed struct");
   });
 
   test("untyped object literal produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -3024,7 +3020,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected diagnostic for untyped object literal");
   });
 });
@@ -3033,7 +3029,7 @@ describe("array/list literal compilation", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
 
@@ -3067,7 +3063,7 @@ describe("array/list literal compilation", () => {
   });
 
   test("array literal with 3 elements compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -3080,7 +3076,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3106,7 +3102,7 @@ export default Sensor({
   });
 
   test("empty array compiles to empty list", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -3119,7 +3115,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3142,7 +3138,7 @@ export default Sensor({
   });
 
   test("array as return value (contextual type from return annotation)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -3154,7 +3150,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3179,7 +3175,7 @@ export default Sensor({
   });
 
   test("nested arrays compile to nested list construction", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2, type Vector2List } from "mindcraft";
 
@@ -3192,7 +3188,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3227,7 +3223,7 @@ describe("mixed-type list compilation (AnyList)", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const anyTypeId = mkTypeId(NativeType.Any, "any");
     if (!types.get(anyTypeId)) {
       types.addAnyType("any");
@@ -3246,7 +3242,7 @@ describe("mixed-type list compilation (AnyList)", () => {
   });
 
   test("mixed-type array literal compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type AnyList } from "mindcraft";
 
@@ -3259,7 +3255,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3285,7 +3281,7 @@ export default Sensor({
   });
 
   test("homogeneous array still resolves to NumberList, not AnyList", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -3298,7 +3294,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3322,7 +3318,7 @@ export default Sensor({
   });
 
   test("empty array with AnyList annotation compiles correctly", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type AnyList } from "mindcraft";
 
@@ -3335,7 +3331,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3358,7 +3354,7 @@ export default Sensor({
   });
 
   test("buildAmbientDeclarations includes AnyList type alias", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     assert.ok(
       ambientSource.includes("export type AnyList = Array<number | string | boolean | null>;"),
       "AnyList type alias should be in ambient declarations"
@@ -3386,7 +3382,7 @@ export default Sensor({
   },
 });
 `;
-    const types = getBrainServices().types;
+    const types = services.types;
     const nullableNumberId = types.addNullableType(mkTypeId(NativeType.Number, "number"));
     const nullableDef = types.get(nullableNumberId);
     assert.ok(nullableDef);
@@ -3395,7 +3391,7 @@ export default Sensor({
   });
 
   test("tsTypeToTypeId returns nullable TypeId for string | undefined", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const nullableStringId = types.addNullableType(mkTypeId(NativeType.String, "string"));
     assert.equal(nullableStringId, "string:<string?>");
     const def = types.get(nullableStringId);
@@ -3404,16 +3400,16 @@ export default Sensor({
   });
 
   test("multi-member non-null union resolves to Any (not nullable)", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const anyId = types.get(mkTypeId(NativeType.Any, "any"));
     assert.ok(anyId);
     assert.equal(anyId.nullable, undefined);
   });
 
   test("ambient output includes | null for nullable types", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     types.addNullableType(mkTypeId(NativeType.Number, "number"));
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     assert.ok(
       ambientSource.includes("number?") && ambientSource.includes("number | null"),
       "ambient declarations should include nullable type with | null"
@@ -3425,7 +3421,7 @@ describe("auto-instantiated list types", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -3440,7 +3436,7 @@ describe("auto-instantiated list types", () => {
   });
 
   test("Vector2[] compiles via auto-instantiation without pre-registered Vector2List", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -3453,7 +3449,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3475,9 +3471,9 @@ export default Sensor({
   });
 
   test("ambient generation skips auto-instantiated types", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     types.instantiate("List", List.from([CoreTypeIds.Number]));
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     assert.ok(
       !ambientSource.includes("List<number:<number>>"),
       "auto-instantiated type name should not appear in ambient"
@@ -3491,7 +3487,7 @@ describe("union types", () => {
   });
 
   test("tsTypeToTypeId returns a union TypeId for number | string (not Any)", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const unionId = types.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     assert.ok(unionId);
     assert.notEqual(unionId, CoreTypeIds.Any);
@@ -3501,7 +3497,7 @@ describe("union types", () => {
   });
 
   test("[1, 'hello'] compiles to a list with a union element type, not AnyList", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -3514,7 +3510,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3536,14 +3532,14 @@ export default Sensor({
   });
 
   test("ambient output for a union type emits member1 | member2", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     types.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     assert.ok(!ambientSource.includes("union:<"), "union type internal name should not appear in ambient output");
   });
 
   test("operator resolution works through union expansion: (number | string) + number", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -3556,7 +3552,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3584,7 +3580,7 @@ describe("typeof lowering", () => {
   });
 
   test("typeof x === 'number' compiles and returns true for number", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -3597,7 +3593,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3618,7 +3614,7 @@ export default Sensor({
   });
 
   test("typeof x !== 'string' produces negated result", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -3631,7 +3627,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3652,7 +3648,7 @@ export default Sensor({
   });
 
   test("reversed form: 'boolean' === typeof x", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -3665,7 +3661,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3686,7 +3682,7 @@ export default Sensor({
   });
 
   test("typeof x === 'undefined' for nil value", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -3699,7 +3695,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3719,7 +3715,7 @@ export default Sensor({
   });
 
   test("typeof x === 'object' produces a diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -3732,7 +3728,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected a diagnostic for unsupported typeof comparison");
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.UnsupportedTypeofComparison),
@@ -3741,7 +3737,7 @@ export default Sensor({
   });
 
   test("typeof in if-statement for runtime narrowing", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -3757,7 +3753,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -3810,7 +3806,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -3852,7 +3848,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -3902,7 +3898,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -3944,7 +3940,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -3985,7 +3981,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -4024,7 +4020,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -4066,7 +4062,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
 
@@ -4093,7 +4089,7 @@ describe("list element access and methods", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
 
@@ -4109,7 +4105,7 @@ describe("list element access and methods", () => {
   });
 
   test("element access reads from list by index", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4122,7 +4118,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4140,7 +4136,7 @@ export default Sensor({
   });
 
   test("element access with variable index", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4156,7 +4152,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4175,7 +4171,7 @@ export default Sensor({
   });
 
   test("element access on list supports stringified indexes", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4188,7 +4184,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4206,7 +4202,7 @@ export default Sensor({
   });
 
   test('element access on list supports "length" like JS', () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4219,7 +4215,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4237,7 +4233,7 @@ export default Sensor({
   });
 
   test("element access on string supports stringified indexes", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -4250,7 +4246,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4268,7 +4264,7 @@ export default Sensor({
   });
 
   test('element access on string supports "length" like JS', () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -4281,7 +4277,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4299,7 +4295,7 @@ export default Sensor({
   });
 
   test("element assignment sets value at index", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4313,7 +4309,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4336,7 +4332,7 @@ export default Sensor({
   });
 
   test(".push() appends element to list", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4350,7 +4346,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4371,7 +4367,7 @@ export default Sensor({
   });
 
   test(".indexOf() returns index of matching element", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4384,7 +4380,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4402,7 +4398,7 @@ export default Sensor({
   });
 
   test(".indexOf() returns -1 when element not found", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4415,7 +4411,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4433,7 +4429,7 @@ export default Sensor({
   });
 
   test(".filter() creates new list with matching elements", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4446,7 +4442,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4468,7 +4464,7 @@ export default Sensor({
   });
 
   test(".filter() with closure capturing threshold variable", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4485,7 +4481,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4508,7 +4504,7 @@ export default Sensor({
   });
 
   test(".map() transforms each element", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4521,7 +4517,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4544,7 +4540,7 @@ export default Sensor({
   });
 
   test(".map() with closure capturing multiplier", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4561,7 +4557,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4585,7 +4581,7 @@ export default Sensor({
   });
 
   test(".forEach() iterates over all elements", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4602,7 +4598,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4620,7 +4616,7 @@ export default Sensor({
   });
 
   test("for...of iterates over list elements", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4637,7 +4633,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4655,7 +4651,7 @@ export default Sensor({
   });
 
   test("for...in iterates over list keys", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4672,7 +4668,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4690,7 +4686,7 @@ export default Sensor({
   });
 
   test("for...of with break exits early", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4710,7 +4706,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4728,7 +4724,7 @@ export default Sensor({
   });
 
   test("for...of with continue skips iteration", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4748,7 +4744,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4767,7 +4763,7 @@ export default Sensor({
   });
 
   test("for...of over empty list executes no body", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4784,7 +4780,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4802,7 +4798,7 @@ export default Sensor({
   });
 
   test(".includes() returns true when element found", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4815,7 +4811,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4833,7 +4829,7 @@ export default Sensor({
   });
 
   test(".includes() returns false when element not found", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4846,7 +4842,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4864,7 +4860,7 @@ export default Sensor({
   });
 
   test(".some() returns true when any element matches", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4877,7 +4873,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4895,7 +4891,7 @@ export default Sensor({
   });
 
   test(".some() returns false when no element matches", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4908,7 +4904,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4926,7 +4922,7 @@ export default Sensor({
   });
 
   test(".every() returns true when all elements match", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4939,7 +4935,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4957,7 +4953,7 @@ export default Sensor({
   });
 
   test(".every() returns false when any element fails", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -4970,7 +4966,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -4988,7 +4984,7 @@ export default Sensor({
   });
 
   test(".find() returns matching element", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -5005,7 +5001,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5023,7 +5019,7 @@ export default Sensor({
   });
 
   test(".find() returns undefined when no match", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -5040,7 +5036,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5058,7 +5054,7 @@ export default Sensor({
   });
 
   test(".concat() merges two lists", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -5072,7 +5068,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5096,7 +5092,7 @@ export default Sensor({
   });
 
   test(".reverse() creates reversed list", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -5109,7 +5105,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5132,7 +5128,7 @@ export default Sensor({
   });
 
   test(".slice() extracts sub-array", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -5145,7 +5141,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5168,7 +5164,7 @@ export default Sensor({
   });
 
   test(".slice() with no args copies entire list", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -5181,7 +5177,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5204,7 +5200,7 @@ export default Sensor({
   });
 
   test(".join() concatenates elements with separator", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -5217,7 +5213,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5235,7 +5231,7 @@ export default Sensor({
   });
 
   test("unsupported array method produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -5248,7 +5244,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "Expected at least one diagnostic for .sort()");
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.SortRequiresComparatorFn),
@@ -5287,7 +5283,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5306,7 +5302,7 @@ export default Sensor({
   });
 
   test("different callback signatures resolve to different function TypeIds", () => {
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const id1 = registry.getOrCreateFunctionType({
       paramTypeIds: List.from([CoreTypeIds.Number]),
       returnTypeId: CoreTypeIds.Number,
@@ -5342,7 +5338,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5365,7 +5361,7 @@ describe("map literal compilation", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
 
@@ -5393,7 +5389,7 @@ describe("map literal compilation", () => {
   });
 
   test("map literal with 2 entries compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberMap } from "mindcraft";
 
@@ -5406,7 +5402,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5431,7 +5427,7 @@ export default Sensor({
   });
 
   test("for...in iterates over map keys", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberMap } from "mindcraft";
 
@@ -5448,7 +5444,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5466,7 +5462,7 @@ export default Sensor({
   });
 
   test("for...in iterates over registered struct keys", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -5484,7 +5480,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5502,7 +5498,7 @@ export default Sensor({
   });
 
   test("empty map compiles to MAP_NEW only", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberMap } from "mindcraft";
 
@@ -5515,7 +5511,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5539,7 +5535,7 @@ export default Sensor({
   });
 
   test("map as return value compiles correctly via contextual type", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type StringMap } from "mindcraft";
 
@@ -5551,7 +5547,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5575,16 +5571,16 @@ export default Sensor({
   });
 
   test("nested struct-in-map compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     const vec2MapName = "Vector2Map";
     const vec2MapTypeId = mkTypeId(NativeType.Map, vec2MapName);
     if (!types.get(vec2MapTypeId)) {
       types.addMapType(vec2MapName, { valueTypeId: vec2TypeId });
     }
-    const ambientWithVec2Map = buildAmbientDeclarations();
+    const ambientWithVec2Map = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context, type Vector2Map, type Vector2 } from "mindcraft";
@@ -5598,7 +5594,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource: ambientWithVec2Map });
+    const result = compileUserTile(source, { ambientSource: ambientWithVec2Map, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5628,7 +5624,7 @@ export default Sensor({
   });
 
   test("struct-typed object literal still compiles to STRUCT_NEW (regression)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -5641,7 +5637,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5666,7 +5662,7 @@ export default Sensor({
   });
 
   test("map with array value type: Record<string, number[]>", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const numListTypeId = types.instantiate("List", List.from([numTypeId]));
     const numListMapName = "NumberListMap";
@@ -5674,7 +5670,7 @@ export default Sensor({
     if (!types.get(numListMapTypeId)) {
       types.addMapType(numListMapName, { valueTypeId: numListTypeId });
     }
-    const amb = buildAmbientDeclarations();
+    const amb = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context, type NumberListMap } from "mindcraft";
@@ -5688,7 +5684,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource: amb });
+    const result = compileUserTile(source, { ambientSource: amb, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5735,7 +5731,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5785,7 +5781,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5825,7 +5821,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5858,7 +5854,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5880,7 +5876,7 @@ export default Sensor({
 describe("enum value literals", () => {
   before(async () => {
     services = registerCoreBrainComponents();
-    const types = getBrainServices().types;
+    const types = services.types;
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
       types.addEnumType("Direction", {
@@ -5896,7 +5892,7 @@ describe("enum value literals", () => {
   });
 
   test("string literal with enum type annotation produces EnumValue", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -5909,7 +5905,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5933,7 +5929,7 @@ export default Sensor({
   });
 
   test("enum value as function argument", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -5949,7 +5945,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -5973,7 +5969,7 @@ export default Sensor({
   });
 
   test("enum value as return value", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -5985,7 +5981,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6009,7 +6005,7 @@ export default Sensor({
   });
 
   test("plain string literal without enum context produces StringValue", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6021,7 +6017,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6043,7 +6039,7 @@ export default Sensor({
   });
 
   test("enum equality (===) returns true for matching values", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -6057,7 +6053,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6079,7 +6075,7 @@ export default Sensor({
   });
 
   test("enum equality (===) returns false for different values", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -6095,7 +6091,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6117,7 +6113,7 @@ export default Sensor({
   });
 
   test("enum inequality (!==) returns true for different values", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -6133,7 +6129,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6159,8 +6155,8 @@ describe("property access chains + host calls", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
-    const fns = getBrainServices().functions;
+    const types = services.types;
+    const fns = services.functions;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
 
@@ -6215,7 +6211,7 @@ describe("property access chains + host calls", () => {
   });
 
   test("struct property access compiles to GET_FIELD", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -6228,7 +6224,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6249,7 +6245,7 @@ export default Sensor({
   });
 
   test("chained struct property access (entity.position.x)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
@@ -6262,7 +6258,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6283,7 +6279,7 @@ export default Sensor({
   });
 
   test("ctx.time compiles to GET_FIELD", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6295,7 +6291,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6316,7 +6312,7 @@ export default Sensor({
   });
 
   test("ctx.dt compiles to GET_FIELD", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6328,7 +6324,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6349,7 +6345,7 @@ export default Sensor({
   });
 
   test("ctx.self.getVariable compiles to struct method call", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6362,7 +6358,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6383,7 +6379,7 @@ export default Sensor({
   });
 
   test("ctx.self.setVariable compiles to struct method call", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6396,13 +6392,13 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
   });
 
   test("ctx.engine.queryNearby compiles to struct method call", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -6416,13 +6412,13 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
   });
 
   test("unknown engine method produces compile error", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6435,12 +6431,12 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "Expected compile error for unknown engine method");
   });
 
   test("params.speed still resolves to LoadLocal (regression)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6455,7 +6451,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6477,7 +6473,7 @@ export default Sensor({
   });
 
   test("list.length still resolves to ListLen (regression)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6490,7 +6486,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6511,7 +6507,7 @@ export default Sensor({
   });
 
   test("native-backed struct field access uses GET_FIELD (same bytecode)", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const nativeActorId = mkTypeId(NativeType.Struct, "NativeActor");
     if (!types.get(nativeActorId)) {
@@ -6524,7 +6520,7 @@ export default Sensor({
       });
     }
 
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NativeActor } from "mindcraft";
 
@@ -6539,13 +6535,13 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
   });
 
   test("unknown struct field produces compile error (caught by TS checker)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -6558,7 +6554,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "Expected compile error for unknown struct field");
     assert.ok(
       result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError),
@@ -6567,7 +6563,7 @@ export default Sensor({
   });
 
   test("ctx alias resolves ctx.time correctly", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6580,7 +6576,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6601,7 +6597,7 @@ export default Sensor({
   });
 
   test("ctx alias resolves ctx.self.getVariable correctly", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -6615,7 +6611,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
   });
@@ -6625,8 +6621,8 @@ describe("struct method calls", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
-    const fns = getBrainServices().functions;
+    const types = services.types;
+    const fns = services.functions;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const voidTypeId = mkTypeId(NativeType.Void, "void");
@@ -6719,7 +6715,7 @@ describe("struct method calls", () => {
   });
 
   test("struct method with one arg compiles to HostCallArgs with argc 2", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -6734,13 +6730,13 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
   });
 
   test("struct method with no args compiles to HostCallArgs with argc 1", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -6756,13 +6752,13 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
   });
 
   test("struct method with multiple args compiles with correct argc", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -6777,13 +6773,13 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
   });
 
   test("unknown method name on struct produces compile diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -6798,7 +6794,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "Expected compile error for unknown struct method");
     assert.ok(
       result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError),
@@ -6807,7 +6803,7 @@ export default Sensor({
   });
 
   test("end-to-end: struct method call executes and returns correct value", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -6822,7 +6818,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6847,7 +6843,7 @@ export default Sensor({
   });
 
   test("end-to-end: struct method with multiple args returns correct value", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -6862,7 +6858,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6887,14 +6883,14 @@ export default Sensor({
   });
 
   test("ambient declarations include method signatures for structs with methods", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     assert.ok(ambientSource.includes("getValue(key: string): number;"), "Expected getValue method signature");
     assert.ok(ambientSource.includes("reset(): void;"), "Expected reset method signature");
     assert.ok(ambientSource.includes("add(a: number, b: number): number;"), "Expected add method signature");
   });
 
   test("async method declaration generates Promise<T> return type in ambient output", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     assert.ok(
       ambientSource.includes("fetchData(url: string): Promise<string>;"),
       "Expected async method with Promise return type"
@@ -6902,7 +6898,7 @@ export default Sensor({
   });
 
   test("calling async host function emits HOST_CALL_ARGS_ASYNC", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -6918,7 +6914,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6931,7 +6927,7 @@ export default Sensor({
   });
 
   test("calling sync host function emits HOST_CALL_ARGS (not HOST_CALL_ARGS_ASYNC)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -6946,7 +6942,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6959,7 +6955,7 @@ export default Sensor({
   });
 
   test(".pop() removes and returns last element", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -6973,7 +6969,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -6991,7 +6987,7 @@ export default Sensor({
   });
 
   test(".pop() on empty list returns nil", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7005,7 +7001,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7024,7 +7020,7 @@ export default Sensor({
   });
 
   test(".shift() removes and returns first element", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7038,7 +7034,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7056,7 +7052,7 @@ export default Sensor({
   });
 
   test(".unshift() adds element at beginning", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7070,7 +7066,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7093,7 +7089,7 @@ export default Sensor({
   });
 
   test(".splice(1, 2) removes 2 elements at index 1", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7107,7 +7103,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7129,7 +7125,7 @@ export default Sensor({
   });
 
   test(".sort((a, b) => a - b) sorts ascending", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7142,7 +7138,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7165,7 +7161,7 @@ export default Sensor({
   });
 
   test(".sort((a, b) => b - a) sorts descending", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7178,7 +7174,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7201,7 +7197,7 @@ export default Sensor({
   });
 
   test(".sort() on already-sorted list is unchanged", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7214,7 +7210,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7237,7 +7233,7 @@ export default Sensor({
   });
 
   test(".sort() on single-element list is unchanged", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7250,7 +7246,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7271,7 +7267,7 @@ export default Sensor({
   });
 
   test(".sort() on empty list is unchanged", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7284,7 +7280,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7304,7 +7300,7 @@ export default Sensor({
   });
 
   test(".sort() without comparator emits diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7317,13 +7313,13 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0);
     assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.SortRequiresComparatorFn));
   });
 
   test(".sort() mutates the original array", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -7337,7 +7333,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7371,7 +7367,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7401,7 +7397,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7434,7 +7430,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7478,7 +7474,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7509,7 +7505,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7540,7 +7536,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7571,7 +7567,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7602,7 +7598,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7625,8 +7621,8 @@ describe("await expression", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
-    const fns = getBrainServices().functions;
+    const types = services.types;
+    const fns = services.functions;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const voidTypeId = mkTypeId(NativeType.Void, "void");
@@ -7689,7 +7685,7 @@ describe("await expression", () => {
   });
 
   test("single await: fiber suspends, resolves, and returns value", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -7705,7 +7701,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7737,7 +7733,7 @@ export default Sensor({
   });
 
   test("two consecutive awaits: fiber suspends twice and produces correct result", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -7754,7 +7750,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7794,7 +7790,7 @@ export default Sensor({
   });
 
   test("local variable survives across await point", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -7811,7 +7807,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7836,7 +7832,7 @@ export default Sensor({
   });
 
   test("await on sync function call produces compile error", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Widget } from "mindcraft";
 
@@ -7852,7 +7848,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "Expected compile error for await on sync call");
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.AwaitOnNonAsyncHostCall),
@@ -7865,7 +7861,7 @@ describe("destructuring", () => {
   before(async () => {
     services = registerCoreBrainComponents();
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -7880,7 +7876,7 @@ describe("destructuring", () => {
   });
 
   test("object destructuring: const { x, y } = { x: 1, y: 2 }", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -7894,7 +7890,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7913,7 +7909,7 @@ export default Sensor({
   });
 
   test("array destructuring: const [a, b] = [10, 20]", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -7927,7 +7923,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7946,9 +7942,9 @@ export default Sensor({
   });
 
   test("nested object destructuring: const { inner: { x, y } } = obj", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
@@ -7974,7 +7970,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -7993,9 +7989,9 @@ export default Sensor({
   });
 
   test("nested array-in-object destructuring: const { pos: [x, y] } = entity", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const numListTypeId = types.instantiate("List", List.from([numTypeId]));
     const coordTypeId = mkTypeId(NativeType.Struct, "Coord");
@@ -8022,7 +8018,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8041,9 +8037,9 @@ export default Sensor({
   });
 
   test("mixed nesting: object containing array", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const numListTypeId = types.instantiate("List", List.from([numTypeId]));
     const pairHolderTypeId = mkTypeId(NativeType.Struct, "PairHolder");
@@ -8070,7 +8066,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8089,9 +8085,9 @@ export default Sensor({
   });
 
   test("three levels of nesting: array in object in object", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
-    const types = getBrainServices().types;
+    const types = services.types;
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     const wrapperTypeId = mkTypeId(NativeType.Struct, "Wrapper");
@@ -8121,7 +8117,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8140,7 +8136,7 @@ export default Sensor({
   });
 
   test("array rest pattern: const [first, ...rest] = arr", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -8154,7 +8150,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8173,7 +8169,7 @@ export default Sensor({
   });
 
   test("array rest pattern: const [a, b, ...tail] = arr", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -8187,7 +8183,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8206,7 +8202,7 @@ export default Sensor({
   });
 
   test("array rest pattern: const [...all] = arr copies the array", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -8220,7 +8216,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8239,7 +8235,7 @@ export default Sensor({
   });
 
   test("object rest pattern: const { x, ...rest } = obj extracts x", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -8253,7 +8249,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8272,7 +8268,7 @@ export default Sensor({
   });
 
   test("object rest pattern: rest contains remaining fields", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -8286,7 +8282,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8308,7 +8304,7 @@ export default Sensor({
   });
 
   test("nested destructuring with rest on inner struct: const { pos: { x, ...posRest } } = entity", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
@@ -8317,7 +8313,7 @@ export default Sensor({
         fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
       });
     }
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
@@ -8336,7 +8332,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8355,7 +8351,7 @@ export default Sensor({
   });
 
   test("rest on outer struct with 3 fields: const { name, ...rest } = player", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -8369,7 +8365,7 @@ export default Sensor({
         ]),
       });
     }
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
@@ -8384,7 +8380,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8408,7 +8404,7 @@ export default Sensor({
   });
 
   test("nested destructure + rest at outer level: const { pos: { x }, ...rest } = player", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -8422,7 +8418,7 @@ export default Sensor({
         ]),
       });
     }
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
@@ -8437,7 +8433,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8456,7 +8452,7 @@ export default Sensor({
   });
 
   test("property access on object rest variable: rest.y after const { x, ...rest } = obj", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -8470,7 +8466,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8489,7 +8485,7 @@ export default Sensor({
   });
 
   test("property access on rest variable from 3-field struct: rest.health after const { name, ...rest } = player", () => {
-    const types = getBrainServices().types;
+    const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -8503,7 +8499,7 @@ export default Sensor({
         ]),
       });
     }
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
@@ -8518,7 +8514,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8537,7 +8533,7 @@ export default Sensor({
   });
 
   test("computed property name in destructuring: const { ['x']: val } = obj", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -8551,7 +8547,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8570,7 +8566,7 @@ export default Sensor({
   });
 
   test("computed property name with variable key: const key = 'y'; const { [key]: val } = obj", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -8585,7 +8581,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8604,7 +8600,7 @@ export default Sensor({
   });
 
   test("computed property name combined with rest pattern: const { ['x']: val, ...rest } = obj", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -8618,7 +8614,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8637,7 +8633,7 @@ export default Sensor({
   });
 
   test("object destructuring with default value uses default when field is present", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -8651,7 +8647,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8670,7 +8666,7 @@ export default Sensor({
   });
 
   test("object destructuring with rename: const { x: posX } = pos", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -8684,7 +8680,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8703,7 +8699,7 @@ export default Sensor({
   });
 
   test("array destructuring with omitted elements: const [, b] = arr", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -8717,7 +8713,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8736,7 +8732,7 @@ export default Sensor({
   });
 
   test("helper function with object destructuring in parameter: function f({ x, y }: Point)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
@@ -8754,7 +8750,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8773,7 +8769,7 @@ export default Sensor({
   });
 
   test("helper function with array destructuring in parameter: function f([a, b]: number[])", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -8791,7 +8787,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8810,7 +8806,7 @@ export default Sensor({
   });
 
   test("closure with object destructuring in parameter: ({ x }: Point) => x", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
@@ -8828,7 +8824,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8847,7 +8843,7 @@ export default Sensor({
   });
 
   test("closure with destructured param that also captures an outer variable", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
@@ -8866,7 +8862,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -8885,7 +8881,7 @@ export default Sensor({
   });
 
   test("destructuring in onExecute parameter position produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -8898,7 +8894,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for onExecute destructuring");
     assert.ok(
       result.diagnostics.some((d) => d.code === LoweringDiagCode.DestructuringInOnExecuteNotSupported),
@@ -8913,7 +8909,7 @@ describe("class declarations", () => {
   });
 
   test("class with constructor and method compiles without errors (stub bodies)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -8937,13 +8933,13 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
   });
 
   test("class registers struct type with correct fields", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -8964,10 +8960,10 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const typeId = registry.resolveByName("/user-code.ts::Vec2");
     assert.ok(typeId, "Vec2 struct type should be registered");
     const def = registry.get(typeId!);
@@ -8984,7 +8980,7 @@ export default Sensor({
   });
 
   test("class registers method declarations on struct type", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9009,10 +9005,10 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = getBrainServices().types;
+    const registry = services.types;
     const typeId = registry.resolveByName("/user-code.ts::Counter");
     assert.ok(typeId, "Counter struct type should be registered");
     const def = registry.get(typeId!) as StructTypeDef;
@@ -9027,7 +9023,7 @@ export default Sensor({
   });
 
   test("function table contains constructor and method entries", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9051,7 +9047,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9065,7 +9061,7 @@ export default Sensor({
   });
 
   test("class with extends produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9087,7 +9083,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for extends");
     assert.ok(
       result.diagnostics.some((d) => d.code === ValidatorDiagCode.ClassInheritanceNotSupported),
@@ -9096,7 +9092,7 @@ export default Sensor({
   });
 
   test("class with static member produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9112,7 +9108,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for static");
     assert.ok(
       result.diagnostics.some((d) => d.code === ValidatorDiagCode.StaticMembersNotSupported),
@@ -9121,7 +9117,7 @@ export default Sensor({
   });
 
   test("class with private field produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9138,12 +9134,12 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   });
 
   test("class with no constructor compiles (zero-arg stub)", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9159,7 +9155,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9172,7 +9168,7 @@ export default Sensor({
   });
 
   test("class with getter produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9190,7 +9186,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for getter");
     assert.ok(
       result.diagnostics.some((d) => d.code === ValidatorDiagCode.ClassGettersSettersNotSupported),
@@ -9199,7 +9195,7 @@ export default Sensor({
   });
 
   test("new ClassName(args) creates struct with correct field values", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9221,7 +9217,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9242,7 +9238,7 @@ export default Sensor({
   });
 
   test("property initializer sets default value", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9261,7 +9257,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9282,7 +9278,7 @@ export default Sensor({
   });
 
   test("property initializer runs before constructor body", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9302,7 +9298,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9323,7 +9319,7 @@ export default Sensor({
   });
 
   test("new expression with unknown class produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9336,12 +9332,12 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for unknown class");
   });
 
   test("this outside class context produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9357,12 +9353,12 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for this outside class");
   });
 
   test("constructor returns struct value directly", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9384,7 +9380,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9405,7 +9401,7 @@ export default Sensor({
   });
 
   test("class with no explicit constructor uses property initializers", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9422,7 +9418,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9443,7 +9439,7 @@ export default Sensor({
   });
 
   test("method body reads this.x correctly", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9466,7 +9462,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9487,7 +9483,7 @@ export default Sensor({
   });
 
   test("method body writes this.x with store-back pattern", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9512,7 +9508,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9533,7 +9529,7 @@ export default Sensor({
   });
 
   test("obj.method(args) calls a user-compiled method", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9556,7 +9552,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9577,7 +9573,7 @@ export default Sensor({
   });
 
   test("method calls another method on this", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9603,7 +9599,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9624,7 +9620,7 @@ export default Sensor({
   });
 
   test("method returns a computed value", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9649,7 +9645,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9670,7 +9666,7 @@ export default Sensor({
   });
 
   test("method with no explicit return returns nil", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9694,7 +9690,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9715,7 +9711,7 @@ export default Sensor({
   });
 
   test("multiple methods on the same class", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9746,7 +9742,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9767,7 +9763,7 @@ export default Sensor({
   });
 
   test("compound assignment this.x += value reads, computes, and writes back", () => {
-    const ambientSource = buildAmbientDeclarations();
+    const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -9792,7 +9788,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource });
+    const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -9829,11 +9825,11 @@ export default Sensor({
   },
 });
 `;
-    const resultV1 = compileUserTile(sourceV1);
+    const resultV1 = compileUserTile(sourceV1, { services });
     assert.deepStrictEqual(resultV1.diagnostics, [], `V1 diagnostics: ${JSON.stringify(resultV1.diagnostics)}`);
     assert.ok(resultV1.program);
 
-    const registryV1 = getBrainServices().types;
+    const registryV1 = services.types;
     const typeIdV1 = registryV1.resolveByName("/user-code.ts::ShapeEvol");
     assert.ok(typeIdV1, "ShapeEvol should be registered after V1");
     const defV1 = registryV1.get(typeIdV1!) as StructTypeDef;
@@ -9856,11 +9852,11 @@ export default Sensor({
   },
 });
 `;
-    const resultV2 = compileUserTile(sourceV2);
+    const resultV2 = compileUserTile(sourceV2, { services });
     assert.deepStrictEqual(resultV2.diagnostics, [], `V2 diagnostics: ${JSON.stringify(resultV2.diagnostics)}`);
     assert.ok(resultV2.program);
 
-    const registryV2 = getBrainServices().types;
+    const registryV2 = services.types;
     const typeIdV2 = registryV2.resolveByName("/user-code.ts::ShapeEvol");
     assert.ok(typeIdV2, "ShapeEvol should be registered after V2");
     const defV2 = registryV2.get(typeIdV2!) as StructTypeDef;

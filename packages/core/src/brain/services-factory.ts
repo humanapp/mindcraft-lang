@@ -126,6 +126,7 @@ export function createBrainServices(): BrainServices {
   });
 
   (tileBuilder as BrainTileDefBuilder).setServices(services);
+  (types as TypeRegistry).setServices(services);
 
   return services;
 }

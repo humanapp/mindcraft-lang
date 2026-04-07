@@ -30,7 +30,7 @@ export interface LinkedUserProgram {
 
 export interface CompileOptions {
   ambientSource?: string;
-  services?: BrainServices;
+  services: BrainServices;
 }
 
 export interface ExtractedDescriptor {

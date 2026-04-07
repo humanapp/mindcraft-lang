@@ -3,6 +3,7 @@ import type { IReadStream, IWriteStream } from "../../platform/stream";
 import type { EventEmitterConsumer } from "../../util/event-emitter";
 import type { OpResult } from "../../util/op-result";
 import type { ITileCatalog } from "./catalog";
+import type { IConversionRegistry } from "./conversions";
 import type { IBrain } from "./runtime";
 import type { IBrainTileDef, RuleSide } from "./tiles";
 
@@ -22,6 +23,7 @@ export interface IBrainDef {
   events(): EventEmitterConsumer<BrainDefEvents>;
   catalog(): ITileCatalog;
   servicesTiles(): ITileCatalog;
+  servicesConversions(): IConversionRegistry;
   typecheck(): void;
   compile(): IBrain;
   appendNewPage(): OpResult<{ page: IBrainPageDef; index: number }>;

@@ -12,13 +12,13 @@ import {
   type IBrain,
   type IBrainDef,
   type IBrainPageDef,
+  type IConversionRegistry,
   type ITileCatalog,
   isPageTileId,
   mkPageTileId,
 } from "../interfaces";
 import { Brain } from "../runtime";
 import type { BrainServices } from "../services";
-import { getBrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";
 import { BrainPageDef, type PageJson } from "./pagedef";
@@ -127,18 +127,22 @@ export class BrainDef implements IBrainDef {
   private readonly emitter_ = new EventEmitter<BrainDefEvents>();
   private readonly pageSubscriptions_ = new Dict<BrainPageDef, () => void>();
   private readonly catalog_ = new TileCatalog();
-  private services_: BrainServices | undefined;
+  private readonly services_: BrainServices;
 
-  constructor(services?: BrainServices) {
+  constructor(services: BrainServices) {
     this.services_ = services;
   }
 
   servicesTiles(): ITileCatalog {
-    return this.services_?.tiles ?? getBrainServices().tiles;
+    return this.services_.tiles;
   }
 
-  static emptyBrainDef(name?: string): BrainDef {
-    const brainDef = new BrainDef();
+  servicesConversions(): IConversionRegistry {
+    return this.services_.conversions;
+  }
+
+  static emptyBrainDef(services: BrainServices, name?: string): BrainDef {
+    const brainDef = new BrainDef(services);
     if (name) {
       brainDef.setName(name);
     }
@@ -182,7 +186,7 @@ export class BrainDef implements IBrainDef {
   }
 
   compile(): IBrain {
-    return new Brain(this);
+    return new Brain(this, this.services_);
   }
 
   appendNewPage(): OpResult<{ page: BrainPageDef; index: number }> {
@@ -279,7 +283,7 @@ export class BrainDef implements IBrainDef {
   clone(): BrainDef {
     const stream = new MemoryStream();
     this.serialize(stream);
-    const newBrain = new BrainDef();
+    const newBrain = new BrainDef(this.services_);
     newBrain.deserialize(stream);
     return newBrain;
   }
@@ -346,12 +350,12 @@ export class BrainDef implements IBrainDef {
     return { version: kVersion, name: this.name_, catalog: this.catalog_.toJson(), pages };
   }
 
-  static fromJson(json: BrainJson, extraCatalogs?: List<ITileCatalog>): BrainDef {
+  static fromJson(json: BrainJson, services: BrainServices, extraCatalogs?: List<ITileCatalog>): BrainDef {
     if (json.version !== kVersion) {
       throw new Error(`BrainDef.fromJson: unsupported version ${json.version}`);
     }
 
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.setName(json.name);
 
     // Restore the local catalog first so tile references can be resolved

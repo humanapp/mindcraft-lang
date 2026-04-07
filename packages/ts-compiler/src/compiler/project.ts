@@ -1,6 +1,6 @@
 import { List } from "@mindcraft-lang/core";
 import type { ITypeRegistry } from "@mindcraft-lang/core/brain";
-import { type BrainServices, compiler, getBrainServices } from "@mindcraft-lang/core/brain";
+import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
@@ -108,11 +108,11 @@ export function isCompilerControlledPath(path: string): boolean {
 export class UserTileProject {
   private _files = new Map<string, string>();
   private readonly _ambientSource: string | undefined;
-  private readonly _services: BrainServices | undefined;
+  private readonly _services: BrainServices;
 
-  constructor(options?: CompileOptions) {
-    this._ambientSource = options?.ambientSource;
-    this._services = options?.services;
+  constructor(options: CompileOptions) {
+    this._ambientSource = options.ambientSource;
+    this._services = options.services;
   }
 
   setFiles(files: ReadonlyMap<string, string>): void {
@@ -215,7 +215,7 @@ export class UserTileProject {
     const checker = tsProgram.getTypeChecker();
     const results = new Map<string, CompileResult>();
 
-    const services = this._services ?? getBrainServices();
+    const services = this._services;
     services.types.removeUserTypes();
 
     for (const compilerPath of userRootFiles) {
@@ -251,7 +251,7 @@ export class UserTileProject {
       return this._ambientSource;
     }
 
-    return buildAmbientDeclarations(this._services?.types);
+    return buildAmbientDeclarations(this._services.types);
   }
 
   private _compileEntryPoint(
@@ -276,6 +276,7 @@ export class UserTileProject {
       sourceFile,
       descriptor,
       checker,
+      services,
       imported.functions,
       imported.variables,
       imported.moduleInitOrder,
@@ -301,7 +302,8 @@ export class UserTileProject {
         programResult.functionTable,
         func.injectCtxTypeId,
         func.scopeMetadata,
-        func.localMetadata
+        func.localMetadata,
+        services.functions
       );
       if (emitResult.diagnostics.length > 0) {
         return { diagnostics: emitResult.diagnostics };

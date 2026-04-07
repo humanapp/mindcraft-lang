@@ -94,7 +94,7 @@ export function BrainTilePickerDialog({
   onCancel,
 }: BrainTilePickerDialogProps) {
   const editorConfig = useBrainEditorConfig();
-  const { withBrainServices, tileCatalog: servicesTiles } = editorConfig;
+  const { withBrainServices, brainServices, tileCatalog: servicesTiles } = editorConfig;
   const [filter, setFilter] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -125,7 +125,7 @@ export function BrainTilePickerDialog({
         availableCapabilities,
         unclosedParenDepth,
       };
-      const result = suggestTiles(context, catalogs);
+      const result = brainServices ? suggestTiles(context, catalogs, brainServices) : { exact: List.empty<TileSuggestion>(), withConversion: List.empty<TileSuggestion>() };
 
       const tileToGroup = (tileDef: IBrainTileDef): TileGroup => {
         if (
@@ -233,6 +233,7 @@ export function BrainTilePickerDialog({
     existingTiles,
     catalogs,
     withBrainServices,
+    brainServices,
   ]);
 
   const filterGroups = (groups: [TileGroup, TileSuggestion[]][]): [TileGroup, TileSuggestion[]][] => {

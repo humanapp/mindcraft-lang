@@ -1,5 +1,6 @@
 import type { List } from "../../platform/list";
 import type { IReadStream, IWriteStream } from "../../platform/stream";
+import type { BrainServices } from "../services";
 import type { BrainTileDefCreateOptions, BrainTileLiteralDefOptions, IBrainTileDef, TileId } from "./tiles";
 import type { TypeId } from "./type-system";
 
@@ -15,7 +16,7 @@ export interface ITileCatalog {
   getAll(): List<IBrainTileDef>;
   find(predicate: (tileDef: IBrainTileDef) => boolean): IBrainTileDef | undefined;
   serialize(stream: IWriteStream): void;
-  deserialize(stream: IReadStream): void;
+  deserialize(stream: IReadStream, services: BrainServices): void;
   registerTileDef(tile: IBrainTileDef): void;
 }
 

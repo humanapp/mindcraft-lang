@@ -60,7 +60,7 @@ export interface BrainEditorDialogProps {
 }
 
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
-  const { getDefaultBrain, docsIntegration, withBrainServices } = useBrainEditorConfig();
+  const { getDefaultBrain, docsIntegration, withBrainServices, brainServices } = useBrainEditorConfig();
   const isDocsOpen = docsIntegration?.isOpen ?? false;
   const toggleDocs = docsIntegration?.toggle;
   const closeDocs = docsIntegration?.close;
@@ -68,7 +68,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   const createEditableBrain = useCallback(
     (sourceBrainDef?: BrainDef): BrainDef => {
       return runWithBrainServices(withBrainServices, () => {
-        const nextBrainDef = sourceBrainDef ? sourceBrainDef.clone() : BrainDef.emptyBrainDef();
+        const nextBrainDef = sourceBrainDef ? sourceBrainDef.clone() : BrainDef.emptyBrainDef(brainServices!);
         if (nextBrainDef.pages().size() === 0) {
           nextBrainDef.appendNewPage();
         }
@@ -310,11 +310,11 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
         if (uint8Array[0] === 0x7b) {
           const text = new TextDecoder().decode(uint8Array);
-          nextBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown));
+          nextBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown), brainServices!);
         } else {
           const byteArray = stream.byteArrayFromUint8Array(uint8Array);
           const memStream = new stream.MemoryStream(byteArray);
-          nextBrain = new BrainDef();
+          nextBrain = new BrainDef(brainServices!);
           nextBrain.deserialize(memStream);
         }
 

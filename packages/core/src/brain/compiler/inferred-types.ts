@@ -6,7 +6,6 @@ import {
   type IConversionRegistry,
   type ITileCatalog,
 } from "../interfaces";
-import { getBrainServices } from "../services";
 import type { BrainTileParameterDef } from "../tiles";
 import { TypeDiagCode } from "./diag-codes";
 import type {
@@ -34,9 +33,9 @@ class InferredTypeVisitor implements ExprVisitor<void> {
   constructor(
     private readonly catalogs: ReadonlyList<ITileCatalog>,
     private readonly env: TypeEnv,
-    conversions?: IConversionRegistry
+    conversions: IConversionRegistry
   ) {
-    this.conversions = conversions ?? getBrainServices().conversions;
+    this.conversions = conversions;
   }
 
   private ensureTypeInfo(nodeId: number): TypeInfo {
@@ -398,7 +397,7 @@ export function computeInferredTypes(
   expr: Expr,
   catalogs: ReadonlyList<ITileCatalog>,
   env: TypeEnv,
-  conversions?: IConversionRegistry
+  conversions: IConversionRegistry
 ): List<TypeInfoDiag> {
   const visitor = new InferredTypeVisitor(catalogs, env, conversions);
   acceptExprVisitor(expr, visitor);

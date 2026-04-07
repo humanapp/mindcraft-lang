@@ -9,10 +9,8 @@ export * as runtime from "./runtime";
 export { ContextTypeIds, ContextTypeNames } from "./runtime/context-types";
 export {
   BrainServices,
-  getBrainServices,
   getDefaultBrainServices,
   hasBrainServices,
-  peekBrainServices,
   resetBrainServices,
   runWithBrainServices,
   setBrainServices,
@@ -21,21 +19,13 @@ export * from "./services-factory";
 export * as tiles from "./tiles";
 
 import { registerCoreRuntimeComponents } from "./runtime";
-import {
-  type BrainServices,
-  getDefaultBrainServices,
-  hasBrainServices,
-  runWithBrainServices,
-  setBrainServices,
-} from "./services";
+import { type BrainServices, getDefaultBrainServices, hasBrainServices, setBrainServices } from "./services";
 import { createBrainServices } from "./services-factory";
 import { registerCoreTileComponents } from "./tiles";
 
 export function installCoreBrainComponents(services: BrainServices): BrainServices {
-  runWithBrainServices(services, () => {
-    registerCoreRuntimeComponents(services);
-    registerCoreTileComponents(services);
-  });
+  registerCoreRuntimeComponents(services);
+  registerCoreTileComponents(services);
   return services;
 }
 
@@ -57,7 +47,6 @@ export function registerCoreBrainComponents(): BrainServices {
   // Create all registries
   const services = createBrainServices();
 
-  // Set as global BEFORE registration so tiles can use getBrainServices()
   setBrainServices(services);
 
   return installCoreBrainComponents(services);

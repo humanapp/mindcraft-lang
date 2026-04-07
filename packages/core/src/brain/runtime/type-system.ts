@@ -37,7 +37,6 @@ import {
   type UnionTypeDef,
 } from "../interfaces";
 import type { BrainServices } from "../services";
-import { peekBrainServices } from "../services";
 import { registerEnumConversions } from "./conversions";
 
 export class TypeRegistry implements ITypeRegistry {
@@ -45,6 +44,11 @@ export class TypeRegistry implements ITypeRegistry {
   private nameToId = new Dict<string, TypeId>();
   private constructors = new Dict<string, TypeConstructor>();
   private compatCache = new Dict<string, boolean>();
+  private services_?: BrainServices;
+
+  setServices(services: BrainServices): void {
+    this.services_ = services;
+  }
 
   private add(def: TypeDef) {
     if (this.defs.has(def.typeId)) {
@@ -161,14 +165,12 @@ export class TypeRegistry implements ITypeRegistry {
   }
 
   private registerEnumConversions(typeId: TypeId): void {
-    const services = peekBrainServices();
-    if (!services) return;
-    registerEnumConversions(typeId, services);
+    if (!this.services_) return;
+    registerEnumConversions(typeId, this.services_);
   }
 
   private registerEnumOperators(typeId: TypeId): void {
-    const services = peekBrainServices();
-    if (!services) return;
+    if (!this.services_) return;
     const def = this.get(typeId);
     if (!def || def.coreType !== NativeType.Enum) {
       return;
@@ -176,7 +178,7 @@ export class TypeRegistry implements ITypeRegistry {
     if ((def as EnumTypeDef).symbols.size() === 0) {
       return;
     }
-    const overloads = services.operatorOverloads;
+    const overloads = this.services_.operatorOverloads;
     overloads.binary(
       CoreOpId.EqualTo,
       typeId,
@@ -224,12 +226,11 @@ export class TypeRegistry implements ITypeRegistry {
   }
 
   private unregisterEnumArtifacts(typeId: TypeId): void {
-    const services = peekBrainServices();
-    if (!services) return;
-    services.conversions.remove(typeId, CoreTypeIds.String);
-    services.conversions.remove(typeId, CoreTypeIds.Number);
-    services.operatorOverloads.remove(CoreOpId.EqualTo, [typeId, typeId]);
-    services.operatorOverloads.remove(CoreOpId.NotEqualTo, [typeId, typeId]);
+    if (!this.services_) return;
+    this.services_.conversions.remove(typeId, CoreTypeIds.String);
+    this.services_.conversions.remove(typeId, CoreTypeIds.Number);
+    this.services_.operatorOverloads.remove(CoreOpId.EqualTo, [typeId, typeId]);
+    this.services_.operatorOverloads.remove(CoreOpId.NotEqualTo, [typeId, typeId]);
   }
 
   addListType(name: string, shape: ListTypeShape): TypeId {

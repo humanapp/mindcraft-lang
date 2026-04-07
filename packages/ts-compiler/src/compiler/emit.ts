@@ -1,7 +1,6 @@
 import {
   compiler,
   type FunctionBytecode,
-  getBrainServices,
   type IFunctionRegistry,
   mkFunctionValue,
   mkStringValue,
@@ -29,16 +28,16 @@ export function emitFunction(
   numLocals: number,
   name: string,
   pool: compiler.ConstantPool,
-  functionTable?: Map<string, number>,
-  injectCtxTypeId?: TypeId,
-  scopeMetadata?: readonly ScopeMetadata[],
-  localMetadata?: readonly LocalMetadata[],
-  hostFunctions?: IFunctionRegistry
+  functionTable: Map<string, number> | undefined,
+  injectCtxTypeId: TypeId | undefined,
+  scopeMetadata: readonly ScopeMetadata[] | undefined,
+  localMetadata: readonly LocalMetadata[] | undefined,
+  hostFunctions: IFunctionRegistry
 ): EmitResult {
   const emitter = new compiler.BytecodeEmitter();
   const diagnostics: CompileDiagnostic[] = [];
   const labelMap = new Map<number, number>();
-  const fns = hostFunctions ?? getBrainServices().functions;
+  const fns = hostFunctions;
 
   const spans: DebugSpan[] = [];
   const pcToSpanIndex: number[] = [];

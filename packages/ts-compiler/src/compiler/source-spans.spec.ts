@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
+import { type BrainServices, registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
 import { compileUserTile } from "./compile.js";
 import type { DebugSpan } from "./types.js";
 
+let services: BrainServices;
+
 describe("source span tracking", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("pcToSpanIndex has an entry for every PC", () => {
@@ -23,7 +25,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
     assert.ok(result.functionDebugInfo);
@@ -58,7 +60,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -80,7 +82,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -106,7 +108,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -135,7 +137,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -168,7 +170,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -194,7 +196,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -216,7 +218,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -248,7 +250,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -274,7 +276,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
     assert.ok(result.functionDebugInfo!.length >= 2, "expected at least 2 functions (onExecute + wrapper/init)");
@@ -301,7 +303,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 
@@ -330,7 +332,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.functionDebugInfo);
 

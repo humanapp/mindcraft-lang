@@ -541,7 +541,9 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   }
 
   deserializeBrainJson(json: BrainJson): IBrainDef {
-    return withMindcraftEnvironmentServices(this, () => BrainDef.fromJson(json, this.buildDeserializeCatalogs()));
+    return withMindcraftEnvironmentServices(this, () =>
+      BrainDef.fromJson(json, this.brainServices, this.buildDeserializeCatalogs())
+    );
   }
 
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void {
@@ -768,7 +770,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
       catalogs: environment.buildCatalogChain(definition, overlayCatalogs),
       actionResolver: environment.actionBindings(),
     };
-    super(definition, linkEnvironment);
+    super(definition, environment.brainServices, linkEnvironment);
     this.linkEnvironmentRef = linkEnvironment;
     this.overlayCatalogs = overlayCatalogs;
   }

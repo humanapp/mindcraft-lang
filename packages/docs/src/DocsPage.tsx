@@ -1,4 +1,4 @@
-import type { IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
+import type { BrainServices, IBrainTileDef, ITileCatalog } from "@mindcraft-lang/core/brain";
 import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { BookOpen, ChevronLeft, Printer } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
@@ -139,6 +139,8 @@ export interface DocsPageProps {
   registry: DocsRegistry;
   /** Optional tile catalog for label/icon resolution without global brain services. */
   tileCatalog?: ITileCatalog;
+  /** Optional BrainServices instance for direct access. */
+  brainServices?: BrainServices;
   /** Optional tile visual resolver for app-provided labels, icons, and colors. */
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Optional callback for running local catalog deserialization with initialized brain services. */
@@ -154,6 +156,7 @@ export interface DocsPageProps {
 export function DocsPage({
   registry,
   tileCatalog,
+  brainServices,
   resolveTileVisual,
   withBrainServices,
   backLabel,
@@ -166,6 +169,7 @@ export function DocsPage({
     <DocsSidebarProvider
       registry={registry}
       tileCatalog={tileCatalog}
+      brainServices={brainServices}
       resolveTileVisual={resolveTileVisual}
       withBrainServices={withBrainServices}
       initialTab={tab}

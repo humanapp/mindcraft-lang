@@ -4,8 +4,8 @@ import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import {
   type ActionDescriptor,
+  type BrainServices,
   BYTECODE_VERSION,
-  getBrainServices,
   mkCallDef,
   mkNumberValue,
   Op,
@@ -17,12 +17,14 @@ import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { linkBrainProgram } from "@mindcraft-lang/core/brain/runtime";
 import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
 
+let services: BrainServices;
+
 before(() => {
-  registerCoreBrainComponents();
+  services = registerCoreBrainComponents();
 });
 
 function buildBrainWithBytecodeActuator(action: ActionDescriptor): BrainDef {
-  const brainDef = new BrainDef();
+  const brainDef = new BrainDef(services);
   const pageResult = brainDef.appendNewPage();
   assert.ok(pageResult.success);
 
@@ -76,8 +78,8 @@ describe("linkBrainProgram", () => {
     };
 
     const brainDef = buildBrainWithBytecodeActuator(action);
-    const catalogs = List.from([getBrainServices().tiles, brainDef.catalog()]);
-    const compiled = compileBrain(brainDef, catalogs);
+    const catalogs = List.from([services.tiles, brainDef.catalog()]);
+    const compiled = compileBrain(brainDef, catalogs, services.conversions);
     const unlinked = {
       ...compiled,
       variableNames: List.from(["brainVar"]),

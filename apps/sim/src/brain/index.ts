@@ -1,4 +1,5 @@
 import type { MindcraftModule, MindcraftModuleApi } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { toHostActuatorDef, toHostSensorDef } from "./actions/action-def";
 import fnBump from "./actions/bump";
 import fnEat from "./actions/eat";
@@ -14,6 +15,7 @@ export function createSimModule(): MindcraftModule {
   return {
     id: "mindcraft.sim",
     install(api: MindcraftModuleApi): void {
+      const services = (api as unknown as { unsafeGetBrainServicesForInstall(): BrainServices }).unsafeGetBrainServicesForInstall();
       registerTypes(api);
 
       api.registerHostSensor(toHostSensorDef(fnBump));
@@ -25,7 +27,7 @@ export function createSimModule(): MindcraftModule {
       api.registerHostActuator(toHostActuatorDef(fnShoot));
       api.registerHostActuator(toHostActuatorDef(fnTurn));
 
-      registerTiles(api);
+      registerTiles(api, services);
     },
   };
 }

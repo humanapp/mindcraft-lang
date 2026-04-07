@@ -1,3 +1,4 @@
+import { Error } from "../../platform/error";
 import type { IReadStream } from "../../platform/stream";
 import type {
   BrainTileDefCreateOptions,
@@ -24,9 +25,16 @@ export class BrainTileDefBuilder implements IBrainTileDefBuilder {
     this.services_ = services;
   }
 
+  private requireServices(): BrainServices {
+    if (!this.services_) {
+      throw new Error("BrainTileDefBuilder: services not initialized. Call setServices() first.");
+    }
+    return this.services_;
+  }
+
   // Operator Tiles
   createOperatorTileDef(opId: string, opts: BrainTileDefCreateOptions = {}): IBrainTileDef {
-    return new BrainTileOperatorDef(opId, opts, this.services_);
+    return new BrainTileOperatorDef(opId, opts, this.requireServices());
   }
   deserializeOperatorTileDef(stream: IReadStream, catalog: ITileCatalog): IBrainTileDef {
     return BrainTileOperatorDef_deserialize(stream, catalog);
@@ -56,10 +64,10 @@ export class BrainTileDefBuilder implements IBrainTileDefBuilder {
 
   // Literal Tiles
   createLiteralTileDef(valueType: TypeId, value: unknown, opts: BrainTileLiteralDefOptions = {}): IBrainTileDef {
-    return new BrainTileLiteralDef(valueType, value, opts, this.services_);
+    return new BrainTileLiteralDef(valueType, value, opts, this.requireServices());
   }
   deserializeLiteralTileDef(stream: IReadStream, catalog: ITileCatalog): IBrainTileDef {
-    return BrainTileLiteralDef_deserialize(stream, catalog, this.services_);
+    return BrainTileLiteralDef_deserialize(stream, catalog, this.requireServices());
   }
 
   // top-level deserialize (delegates to specific tile type deserializers)

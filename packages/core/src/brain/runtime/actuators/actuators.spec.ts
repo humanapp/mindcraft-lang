@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import {
+  type BrainServices,
   type BrainSyncFunctionEntry,
   CoreActuatorId,
   type ExecutionContext,
-  getBrainServices,
   type HostSyncFn,
   type MapValue,
   mkNumberValue,
@@ -33,15 +33,17 @@ function mkArgs(): MapValue {
   return { t: NativeType.Map, typeId: "", v: new ValueDict() };
 }
 
+let services: BrainServices;
+
 function getSyncEntry(name: string): BrainSyncFunctionEntry {
-  const entry = getBrainServices().functions.get(name);
+  const entry = services.functions.get(name);
   assert.ok(entry, `function '${name}' not found in registry`);
   assert.equal(entry.isAsync, false);
   return entry as BrainSyncFunctionEntry;
 }
 
 before(() => {
-  registerCoreBrainComponents();
+  services = registerCoreBrainComponents();
 });
 
 // -- switch-page actuator --

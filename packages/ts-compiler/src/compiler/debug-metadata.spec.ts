@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainProgram,
+  type BrainServices,
   BYTECODE_VERSION,
   type FunctionBytecode,
   mkNumberValue,
@@ -16,9 +17,11 @@ import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 import { UserTileProject } from "./project.js";
 
+let services: BrainServices;
+
 function compileProject(files: Record<string, string>) {
-  const ambientSource = buildAmbientDeclarations();
-  const project = new UserTileProject({ ambientSource });
+  const ambientSource = buildAmbientDeclarations(services.types);
+  const project = new UserTileProject({ ambientSource, services });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -47,7 +50,7 @@ function mkEmptyBrainProgram(): BrainProgram {
 
 describe("debug metadata assembly", () => {
   before(() => {
-    registerCoreBrainComponents();
+    services = registerCoreBrainComponents();
   });
 
   test("compiled program has debugMetadata with correct file and function counts", () => {
@@ -62,7 +65,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
     assert.ok(result.program!.debugMetadata);
@@ -90,7 +93,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     const dm = result.program!.debugMetadata!;
 
@@ -121,7 +124,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     const dm = result.program!.debugMetadata!;
 
@@ -148,7 +151,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     const dm = result.program!.debugMetadata!;
 
@@ -186,7 +189,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     const dm = result.program!.debugMetadata!;
 
@@ -258,7 +261,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
     assert.ok(result.program!.debugMetadata);
@@ -312,7 +315,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     const dm = result.program!.debugMetadata!;
 
@@ -345,7 +348,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     const dm = result.program!.debugMetadata!;
 
@@ -366,7 +369,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program!.revisionId);
     assert.ok(result.program!.revisionId.length > 0);
@@ -386,7 +389,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     const dm = result.program!.debugMetadata!;
 
@@ -414,7 +417,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     const dm = result.program!.debugMetadata!;
 

@@ -132,7 +132,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -170,7 +170,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -199,7 +199,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.program);
 
@@ -241,7 +241,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -288,8 +288,8 @@ export default Sensor({
   },
 });
 `;
-    const result1 = compileUserTile(source1);
-    const result2 = compileUserTile(source2);
+    const result1 = compileUserTile(source1, { services });
+    const result2 = compileUserTile(source2, { services });
     assert.deepStrictEqual(result1.diagnostics, []);
     assert.deepStrictEqual(result2.diagnostics, []);
     assert.ok(result1.program);
@@ -348,7 +348,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -380,7 +380,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.ok(result.program);
 
     const { linkedProgram } = linkUserPrograms(brainProg, [result.program!]);
@@ -425,7 +425,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source);
+    const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 

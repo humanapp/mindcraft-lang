@@ -13,6 +13,7 @@ import {
   type IBrainPageDef,
   type IBrainRuleDef,
   type IBrainTileSet,
+  type IConversionRegistry,
   type ITileCatalog,
   RuleSide,
 } from "../interfaces";
@@ -187,13 +188,14 @@ export class BrainRuleDef implements IBrainRuleDef {
       const catalogs = this.gatherCatalogs();
       const whenTiles = this.when_.tiles();
       const doTiles = this.do_.tiles();
+      const brain = this.page()?.brain();
+      const conversions = brain?.servicesConversions();
 
-      // Compile both sides together
-      const typecheckResult = parseRule(whenTiles, doTiles, catalogs);
-
-      // Update both tilesets with the result
-      this.when_.setTypecheckResult(typecheckResult);
-      this.do_.setTypecheckResult(typecheckResult);
+      if (conversions) {
+        const typecheckResult = parseRule(whenTiles, doTiles, catalogs, conversions);
+        this.when_.setTypecheckResult(typecheckResult);
+        this.do_.setTypecheckResult(typecheckResult);
+      }
     }
 
     // Compile children

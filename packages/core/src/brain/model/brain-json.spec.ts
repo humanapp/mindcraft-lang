@@ -11,8 +11,8 @@ import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   CoreTypeIds,
-  getBrainServices,
   mkPageTileId,
   mkVariableTileId,
   registerCoreBrainComponents,
@@ -20,8 +20,10 @@ import {
 import { BrainDef, type BrainJson, BrainRuleDef, type PageJson, type RuleJson } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, BrainTileVariableDef, type CatalogTileJson } from "@mindcraft-lang/core/brain/tiles";
 
+let services: BrainServices;
+
 before(() => {
-  registerCoreBrainComponents();
+  services = registerCoreBrainComponents();
 });
 
 // -- Plain-object conversion helpers -----------------------------------------
@@ -95,38 +97,38 @@ function brainJsonFromPlain(plain: unknown): BrainJson {
 // -- Helpers --
 
 function mkLiteral(n: number) {
-  return new BrainTileLiteralDef(CoreTypeIds.Number, n);
+  return new BrainTileLiteralDef(CoreTypeIds.Number, n, {}, services);
 }
 function mkBoolLiteral(b: boolean) {
-  return new BrainTileLiteralDef(CoreTypeIds.Boolean, b);
+  return new BrainTileLiteralDef(CoreTypeIds.Boolean, b, {}, services);
 }
 function mkStringLiteral(s: string) {
-  return new BrainTileLiteralDef(CoreTypeIds.String, s);
+  return new BrainTileLiteralDef(CoreTypeIds.String, s, {}, services);
 }
 
 describe("brain-json", () => {
   test("empty brain round-trips through JSON", () => {
-    const original = BrainDef.emptyBrainDef("Test Brain");
+    const original = BrainDef.emptyBrainDef(services, "Test Brain");
     const json = original.toJson();
 
     assert.equal(json.version, 1);
     assert.equal(json.name, "Test Brain");
     assert.equal(json.pages.size(), 1);
 
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     assert.equal(restored.name(), "Test Brain");
     assert.equal(restored.pages().size(), 1);
   });
 
   test("brain name is preserved", () => {
-    const original = BrainDef.emptyBrainDef("My Custom Brain");
+    const original = BrainDef.emptyBrainDef(services, "My Custom Brain");
     const json = original.toJson();
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     assert.equal(restored.name(), "My Custom Brain");
   });
 
   test("multiple pages round-trip", () => {
-    const original = new BrainDef();
+    const original = new BrainDef(services);
     original.appendNewPage();
     original.appendNewPage();
     original.appendNewPage();
@@ -142,7 +144,7 @@ describe("brain-json", () => {
     assert.equal(json.pages.get(1).name, "Page B");
     assert.equal(json.pages.get(2).name, "Page C");
 
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     assert.equal(restored.pages().size(), 3);
     assert.equal(restored.pages().get(0)!.name(), "Page A");
     assert.equal(restored.pages().get(1)!.name(), "Page B");
@@ -150,18 +152,18 @@ describe("brain-json", () => {
   });
 
   test("page IDs are preserved", () => {
-    const original = BrainDef.emptyBrainDef();
+    const original = BrainDef.emptyBrainDef(services);
     const origPageId = original.pages().get(0)!.pageId();
 
     const json = original.toJson();
     assert.equal(json.pages.get(0).pageId, origPageId);
 
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     assert.equal(restored.pages().get(0)!.pageId(), origPageId);
   });
 
   test("rules with literal tiles round-trip", () => {
-    const original = new BrainDef();
+    const original = new BrainDef(services);
     original.appendNewPage();
     const page = original.pages().get(0)!;
     const rule = page.children().get(0)!;
@@ -188,7 +190,7 @@ describe("brain-json", () => {
     assert.equal(firstRule.when.get(0), numLit.tileId);
     assert.equal(firstRule.do.size(), 2);
 
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     const restoredRule = restored.pages().get(0)!.children().get(0)!;
     assert.equal(restoredRule.when().tiles().size(), 1);
     assert.equal(restoredRule.when().tiles().get(0).tileId, numLit.tileId);
@@ -198,7 +200,7 @@ describe("brain-json", () => {
   });
 
   test("literal values are correctly preserved", () => {
-    const original = new BrainDef();
+    const original = new BrainDef(services);
     original.appendNewPage();
 
     const numLit = mkLiteral(3.14);
@@ -215,7 +217,7 @@ describe("brain-json", () => {
   });
 
   test("variable tiles round-trip", () => {
-    const original = new BrainDef();
+    const original = new BrainDef(services);
     original.appendNewPage();
     const page = original.pages().get(0)!;
     const rule = page.children().get(0)!;
@@ -234,7 +236,7 @@ describe("brain-json", () => {
       assert.equal(varEntry.uniqueId, "test-var-1");
     }
 
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     const restoredRule = restored.pages().get(0)!.children().get(0)!;
     assert.equal(restoredRule.when().tiles().size(), 1);
     const restoredVar = restoredRule.when().tiles().get(0);
@@ -243,12 +245,12 @@ describe("brain-json", () => {
   });
 
   test("operator tiles (non-persistent) round-trip via global catalog", () => {
-    const original = new BrainDef();
+    const original = new BrainDef(services);
     original.appendNewPage();
     const page = original.pages().get(0)!;
     const rule = page.children().get(0)!;
 
-    const addOp = getBrainServices().tiles.get("tile.op->add");
+    const addOp = services.tiles.get("tile.op->add");
     assert.ok(addOp, "add operator should be in global catalog");
 
     const lit1 = mkLiteral(1);
@@ -267,14 +269,14 @@ describe("brain-json", () => {
     const opInCatalog = json.catalog.find((t: CatalogTileJson) => t.tileId === "tile.op->add");
     assert.equal(opInCatalog, undefined);
 
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     const restoredRule = restored.pages().get(0)!.children().get(0)!;
     assert.equal(restoredRule.when().tiles().size(), 3);
     assert.equal(restoredRule.when().tiles().get(1).tileId, "tile.op->add");
   });
 
   test("child rules round-trip", () => {
-    const original = new BrainDef();
+    const original = new BrainDef(services);
     original.appendNewPage();
     const page = original.pages().get(0)!;
     const parentRule = page.children().get(0)!;
@@ -289,7 +291,7 @@ describe("brain-json", () => {
     assert.equal(firstRule.children.size(), 1);
     assert.equal(firstRule.children.get(0).when.get(0), lit.tileId);
 
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     const restoredParent = restored.pages().get(0)!.children().get(0)!;
     assert.equal(restoredParent.children().size(), 1);
     const restoredChild = restoredParent.children().get(0);
@@ -298,7 +300,7 @@ describe("brain-json", () => {
   });
 
   test("nested child rules round-trip", () => {
-    const original = new BrainDef();
+    const original = new BrainDef(services);
     original.appendNewPage();
     const page = original.pages().get(0)!;
     const rootRule = page.children().get(0)!;
@@ -313,14 +315,14 @@ describe("brain-json", () => {
     const json = original.toJson();
     assert.equal(json.pages.get(0).rules.get(0).children.get(0).children.get(0).do.get(0), lit.tileId);
 
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     const restoredGrandchild = restored.pages().get(0)!.children().get(0)!.children().get(0).children().get(0);
     assert.equal(restoredGrandchild.do().tiles().size(), 1);
     assert.equal(restoredGrandchild.do().tiles().get(0).tileId, lit.tileId);
   });
 
   test("JSON round-trips through JSON.stringify/parse via brainJsonFromPlain", () => {
-    const original = BrainDef.emptyBrainDef("Stringify Test");
+    const original = BrainDef.emptyBrainDef(services, "Stringify Test");
     const json = original.toJson();
 
     // Serialize to a JSON string and parse back to a plain object
@@ -333,7 +335,7 @@ describe("brain-json", () => {
     assert.equal(parsed.name, "Stringify Test");
     assert.equal(parsed.pages.size(), 1);
 
-    const restored = BrainDef.fromJson(parsed);
+    const restored = BrainDef.fromJson(parsed, services);
     assert.equal(restored.name(), "Stringify Test");
   });
 
@@ -345,18 +347,18 @@ describe("brain-json", () => {
       pages: List.empty<PageJson>(),
     };
 
-    assert.throws(() => BrainDef.fromJson(json), /unsupported version/);
+    assert.throws(() => BrainDef.fromJson(json, services), /unsupported version/);
   });
 
   test("full round-trip preserves compilability", () => {
-    const original = new BrainDef();
+    const original = new BrainDef(services);
     original.appendNewPage();
     const page = original.pages().get(0)!;
     const rule = page.children().get(0)!;
 
     const lit1 = mkLiteral(10);
     const lit2 = mkLiteral(20);
-    const addOp = getBrainServices().tiles.get("tile.op->add")!;
+    const addOp = services.tiles.get("tile.op->add")!;
     original.catalog().registerTileDef(lit1);
     original.catalog().registerTileDef(lit2);
 
@@ -365,14 +367,14 @@ describe("brain-json", () => {
     rule.when().appendTile(lit2);
 
     const json = original.toJson();
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
 
     const brain = restored.compile();
     assert.ok(brain);
   });
 
   test("binary and JSON round-trips produce equivalent brains", () => {
-    const original = new BrainDef();
+    const original = new BrainDef(services);
     original.appendNewPage();
     const page = original.pages().get(0)!;
     const rule = page.children().get(0)!;
@@ -386,7 +388,7 @@ describe("brain-json", () => {
     rule.do().appendTile(varTile);
 
     // JSON round-trip
-    const jsonBrain = BrainDef.fromJson(original.toJson());
+    const jsonBrain = BrainDef.fromJson(original.toJson(), services);
 
     // Binary round-trip
     const binaryBrain = original.clone();
@@ -407,7 +409,7 @@ describe("brain-json", () => {
   // -- Rule-level serialization ------------------------------------------------
 
   test("toJson serializes a single rule", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const page = brain.pages().get(0)!;
     const rule = page.children().get(0)! as BrainRuleDef;
@@ -424,7 +426,7 @@ describe("brain-json", () => {
   });
 
   test("BrainRuleDef.fromJson deserializes a single rule", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const page = brain.pages().get(0)!;
     const rule = page.children().get(0)! as BrainRuleDef;
@@ -441,7 +443,7 @@ describe("brain-json", () => {
   });
 
   test("toJson/fromJson round-trips child rules", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const page = brain.pages().get(0)!;
     const parentRule = page.children().get(0)! as BrainRuleDef;
@@ -479,13 +481,13 @@ describe("brain-json", () => {
   });
 
   test("toJson round-trips through JSON.stringify/parse", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const page = brain.pages().get(0)!;
     const rule = page.children().get(0)! as BrainRuleDef;
 
     const lit = mkLiteral(11);
-    const addOp = getBrainServices().tiles.get("tile.op->add")!;
+    const addOp = services.tiles.get("tile.op->add")!;
     brain.catalog().registerTileDef(lit);
     rule.when().appendTile(lit);
     rule.when().appendTile(addOp);
@@ -503,33 +505,33 @@ describe("brain-json", () => {
   // -- Comment field ----------------------------------------------------------
 
   test("rule comment round-trips through JSON", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const page = brain.pages().get(0)!;
     const rule = page.children().get(0)! as BrainRuleDef;
     rule.setComment("This rule handles the main attack logic");
 
     const json = brain.toJson();
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     const restoredRule = restored.pages().get(0)!.children().get(0)!;
     assert.equal(restoredRule.comment(), "This rule handles the main attack logic");
   });
 
   test("rule with no comment round-trips through JSON with undefined", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const page = brain.pages().get(0)!;
     const rule = page.children().get(0)! as BrainRuleDef;
     assert.equal(rule.comment(), undefined);
 
     const json = brain.toJson();
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     const restoredRule = restored.pages().get(0)!.children().get(0)!;
     assert.equal(restoredRule.comment(), undefined);
   });
 
   test("rule comment round-trips through binary (clone)", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const page = brain.pages().get(0)!;
     const rule = page.children().get(0)! as BrainRuleDef;
@@ -541,7 +543,7 @@ describe("brain-json", () => {
   });
 
   test("rule comment round-trips through JSON.stringify/parse via brainJsonFromPlain", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const page = brain.pages().get(0)!;
     const rule = page.children().get(0)! as BrainRuleDef;
@@ -549,13 +551,13 @@ describe("brain-json", () => {
 
     const jsonStr = JSON.stringify(brain.toJson());
     const parsed = brainJsonFromPlain(JSON.parse(jsonStr));
-    const restored = BrainDef.fromJson(parsed);
+    const restored = BrainDef.fromJson(parsed, services);
     const restoredRule = restored.pages().get(0)!.children().get(0)!;
     assert.equal(restoredRule.comment(), "Stringify comment");
   });
 
   test("purgeUnusedTiles removes orphaned page tiles from deleted pages", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     brain.appendNewPage();
 
@@ -593,7 +595,7 @@ describe("brain-json", () => {
   });
 
   test("setComment truncates to kMaxBrainRuleCommentLength", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const rule = brain.pages().get(0)!.children().get(0)! as BrainRuleDef;
     const longComment = "x".repeat(600);
@@ -602,14 +604,14 @@ describe("brain-json", () => {
   });
 
   test("child rule comment round-trips through JSON", () => {
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
     brain.appendNewPage();
     const parentRule = brain.pages().get(0)!.children().get(0)! as BrainRuleDef;
     const childRule = parentRule.appendNewRule() as BrainRuleDef;
     childRule.setComment("Child rule comment");
 
     const json = brain.toJson();
-    const restored = BrainDef.fromJson(json);
+    const restored = BrainDef.fromJson(json, services);
     const restoredChild = restored.pages().get(0)!.children().get(0)!.children().get(0);
     assert.equal(restoredChild.comment(), "Child rule comment");
   });

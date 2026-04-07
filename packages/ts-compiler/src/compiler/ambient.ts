@@ -9,7 +9,7 @@ import type {
   TypeDef,
   UnionTypeDef,
 } from "@mindcraft-lang/core/brain";
-import { getBrainServices, NativeType } from "@mindcraft-lang/core/brain";
+import { NativeType } from "@mindcraft-lang/core/brain";
 
 const AMBIENT_HEADER = `/// <reference no-default-lib="true"/>
 
@@ -485,6 +485,6 @@ function buildAmbientDeclarationsFromRegistry(registry: ITypeRegistry): string {
   return `${AMBIENT_HEADER}${AMBIENT_MODULE_START}${typeMapEntries}  }\n\n${typeDeclarations}${AMBIENT_MODULE_END}`;
 }
 
-export function buildAmbientDeclarations(types?: ITypeRegistry): string {
-  return buildAmbientDeclarationsFromRegistry(types ?? getBrainServices().types);
+export function buildAmbientDeclarations(types: ITypeRegistry): string {
+  return buildAmbientDeclarationsFromRegistry(types);
 }
