@@ -46,13 +46,13 @@ function snapshotEqual(a: ScoreSnapshot, b: ScoreSnapshot): boolean {
 function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype | null; children: React.ReactNode }) {
   const { openDocsForTile, isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs } = useDocsSidebar();
   const config = useMemo(
-    () => ({
-      ...buildBrainEditorConfig(archetype ?? undefined),
-      brainServices: getMindcraftEnvironment().brainServices,
-      tileCatalog: getMindcraftEnvironment().brainServices.tiles,
-      onTileHelp: openDocsForTile,
-      docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
-    }),
+    () =>
+      buildBrainEditorConfig({
+        environment: getMindcraftEnvironment(),
+        archetype: archetype ?? undefined,
+        onTileHelp: openDocsForTile,
+        docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
+      }),
     [archetype, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]
   );
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;

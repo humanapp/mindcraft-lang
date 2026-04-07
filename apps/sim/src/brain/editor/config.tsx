@@ -1,3 +1,4 @@
+import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { Vector2 } from "@mindcraft-lang/core/app";
 import type { BrainEditorConfig, CustomLiteralType } from "@mindcraft-lang/ui";
 import type { ReactNode } from "react";
@@ -91,11 +92,18 @@ const vector2LiteralType: CustomLiteralType = {
   },
 };
 
+interface BuildBrainEditorConfigOptions {
+  environment: MindcraftEnvironment;
+  archetype?: Archetype;
+  onTileHelp?: BrainEditorConfig["onTileHelp"];
+  docsIntegration?: BrainEditorConfig["docsIntegration"];
+}
+
 /**
- * Build the BrainEditorConfig for the sim app, scoped to the given archetype
- * for the "Load Default Brain" feature.
+ * Build the complete BrainEditorConfig for the sim app.
  */
-export function buildBrainEditorConfig(archetype?: Archetype): BrainEditorConfig {
+export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): BrainEditorConfig {
+  const { environment, archetype, onTileHelp, docsIntegration } = options;
   return {
     dataTypeIcons: dataTypeIconMap,
     dataTypeNames: dataTypeNameMap,
@@ -103,5 +111,9 @@ export function buildBrainEditorConfig(archetype?: Archetype): BrainEditorConfig
     isAppVariableFactoryTileId,
     customLiteralTypes: [vector2LiteralType],
     getDefaultBrain: archetype ? () => getDefaultBrain(archetype) : undefined,
+    brainServices: environment.brainServices,
+    tileCatalog: environment.brainServices.tiles,
+    onTileHelp,
+    docsIntegration,
   };
 }
