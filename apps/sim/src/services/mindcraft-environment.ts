@@ -1,4 +1,4 @@
-import { coreModule, createMindcraftEnvironment, type MindcraftEnvironment } from "@mindcraft-lang/core";
+import { coreModule, createMindcraftEnvironment, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { createSimModule } from "@/brain";
 
 let environment: MindcraftEnvironment | undefined;

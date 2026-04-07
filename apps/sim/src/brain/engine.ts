@@ -1,4 +1,4 @@
-import type { BrainDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainDef, Vector2 } from "@mindcraft-lang/core/app";
 import * as ECS from "miniplex";
 import type { Playground } from "@/game/scenes/Playground";
 import { flushPendingBrainRebuilds } from "../services/brain-runtime";
@@ -15,7 +15,6 @@ const PUPIL_REST_ANGLE = 0.39; // Resting angle in radians (~22 deg, slightly in
 const PUPIL_MAX_ANGLE = 0.75; // Max gaze rotation in radians (~43 deg) from rest
 const GAZE_SMOOTHING = 0.08; // Lerp factor per frame (lower = smoother)
 
-import type { Vector2 } from "@mindcraft-lang/core";
 import { heatColor } from "@/lib/color";
 import { getDefaultBrain, loadBrainFromLocalStorage } from "../services/brain-persistence";
 import { loadDesiredCounts } from "../services/population-persistence";

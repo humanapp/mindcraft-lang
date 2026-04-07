@@ -61,6 +61,26 @@
       },
       "default": "./dist/rbx/init.luau"
     },
+    "./app": {
+      "node": {
+        "import": {
+          "types": "./dist/node/app/index.d.ts",
+          "default": "./dist/node/app/index.js"
+        },
+        "require": {
+          "types": "./dist/node/app/index.d.ts",
+          "default": "./dist/node/app/index.js"
+        }
+      },
+      "browser": {
+        "types": "./dist/esm/app/index.d.ts",
+        "default": "./dist/esm/app/index.js"
+      },
+      "import": {
+        "types": "./dist/esm/app/index.d.ts",
+        "default": "./dist/esm/app/index.js"
+      }
+    },
     "./primitives": {
       "node": {
         "import": {

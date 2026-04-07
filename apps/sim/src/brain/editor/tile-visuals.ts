@@ -17,7 +17,7 @@ import {
   mkParameterTileId,
   mkSensorTileId,
   mkVariableFactoryTileId,
-} from "@mindcraft-lang/core/brain";
+} from "@mindcraft-lang/core/app";
 import { MyTypeIds } from "@/brain/type-system";
 import type { TileVisual } from "./types";
 

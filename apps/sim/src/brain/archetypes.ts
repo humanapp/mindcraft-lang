@@ -1,4 +1,4 @@
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { BrainDef } from "@mindcraft-lang/core/app";
 import { getMindcraftEnvironment } from "@/services/mindcraft-environment";
 import type { Archetype } from "./actor";
 import type { MoverConfig } from "./movement";

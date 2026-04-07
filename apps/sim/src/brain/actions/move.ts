@@ -1,8 +1,7 @@
-import type { CreateHostActuatorOptions } from "@mindcraft-lang/core";
-import { type List, Vector2 } from "@mindcraft-lang/core";
 import {
   type BrainActionCallChoiceSpec,
   bag,
+  type CreateHostActuatorOptions,
   choice,
   conditional,
   type ExecutionContext,
@@ -10,6 +9,7 @@ import {
   extractNumberValue,
   getCallSiteState,
   getSlotId,
+  type List,
   type ListValue,
   type MapValue,
   mkCallDef,
@@ -20,8 +20,9 @@ import {
   type StructValue,
   setCallSiteState,
   type Value,
+  Vector2,
   VOID_VALUE,
-} from "@mindcraft-lang/core/brain";
+} from "@mindcraft-lang/core/app";
 import { resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";

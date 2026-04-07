@@ -1,5 +1,5 @@
-import { Vector2 } from "@mindcraft-lang/core";
-import type { ExecutionContext, MapValue, NumberValue, StructValue } from "@mindcraft-lang/core/brain";
+import type { ExecutionContext, MapValue, NumberValue, StructValue } from "@mindcraft-lang/core/app";
+import { Vector2 } from "@mindcraft-lang/core/app";
 import type { Actor } from "@/brain/actor";
 import { getActor } from "@/brain/execution-context-types";
 import { extractVector2, resolveActor } from "@/brain/type-system";

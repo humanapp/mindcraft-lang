@@ -1,6 +1,6 @@
-import type { CreateHostActuatorOptions } from "@mindcraft-lang/core";
 import {
   bag,
+  type CreateHostActuatorOptions,
   type ExecutionContext,
   FALSE_VALUE,
   getCallSiteState,
@@ -13,7 +13,7 @@ import {
   TRUE_VALUE,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/brain";
+} from "@mindcraft-lang/core/app";
 import { ARCHETYPES } from "@/brain/archetypes";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";

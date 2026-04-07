@@ -1,4 +1,4 @@
-import type { BrainDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainDef } from "@mindcraft-lang/core/app";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
 import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@mindcraft-lang/ui";
 import { Menu, X } from "lucide-react";

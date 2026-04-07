@@ -1,6 +1,6 @@
 import type { AppBridge, AppBridgeState } from "@mindcraft-lang/bridge-app";
 import { type AppProjectHandle, createAppProject } from "@mindcraft-lang/bridge-app/compilation";
-import { logger } from "@mindcraft-lang/core";
+import { logger } from "@mindcraft-lang/core/app";
 import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
 import { getMindcraftEnvironment } from "./mindcraft-environment";

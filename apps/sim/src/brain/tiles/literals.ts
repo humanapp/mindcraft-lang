@@ -1,6 +1,4 @@
-import type { MindcraftModuleApi } from "@mindcraft-lang/core";
-import { mkNativeStructValue } from "@mindcraft-lang/core/brain";
-import { BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
+import { BrainTileLiteralDef, type MindcraftModuleApi, mkNativeStructValue } from "@mindcraft-lang/core/app";
 import { getSelf, getTargetActor } from "../execution-context-types";
 import { TargetActorCapabilityBitSet } from "../tileids";
 import { MyTypeIds } from "../type-system";

@@ -1,4 +1,4 @@
-import type { BrainTileKind } from "@mindcraft-lang/core/brain";
+import type { BrainTileKind } from "@mindcraft-lang/core/app";
 import type { TileColorDef } from "./types";
 
 export const tileColorMap = new Map<BrainTileKind, TileColorDef>([

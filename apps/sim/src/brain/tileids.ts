@@ -1,5 +1,4 @@
-import { BitSet } from "@mindcraft-lang/core";
-import { APP_CAPABILITY_BIT_OFFSET } from "@mindcraft-lang/core/brain";
+import { APP_CAPABILITY_BIT_OFFSET, BitSet } from "@mindcraft-lang/core/app";
 
 export const TileIds = {
   Modifier: {

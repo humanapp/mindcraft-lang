@@ -1,6 +1,4 @@
-import type { MindcraftModuleApi } from "@mindcraft-lang/core";
-import { CoreTypeIds } from "@mindcraft-lang/core/brain";
-import { createAccessorTileDef } from "@mindcraft-lang/core/brain/tiles";
+import { CoreTypeIds, createAccessorTileDef, type MindcraftModuleApi } from "@mindcraft-lang/core/app";
 import { MyTypeIds } from "../type-system";
 
 export function registerAccessorTiles(api: MindcraftModuleApi) {

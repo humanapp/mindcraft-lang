@@ -1,6 +1,8 @@
-import type { MindcraftModuleApi } from "@mindcraft-lang/core";
-import { mkVariableFactoryTileId } from "@mindcraft-lang/core/brain";
-import { createVariableFactoryTileDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  createVariableFactoryTileDef,
+  type MindcraftModuleApi,
+  mkVariableFactoryTileId,
+} from "@mindcraft-lang/core/app";
 import { MyTypeIds } from "../type-system";
 
 const appVariableFactoryTileIds = new Set([

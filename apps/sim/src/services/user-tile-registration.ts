@@ -1,8 +1,14 @@
-import type { TileDefinitionInput } from "@mindcraft-lang/core";
-import { type HydratedTileMetadataSnapshot, logger } from "@mindcraft-lang/core";
-import type { ITypeRegistry } from "@mindcraft-lang/core/brain";
-import { type BrainActionCallSpec, mkCallDef } from "@mindcraft-lang/core/brain";
-import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  type BrainActionCallSpec,
+  BrainTileActuatorDef,
+  BrainTileParameterDef,
+  BrainTileSensorDef,
+  type HydratedTileMetadataSnapshot,
+  type ITypeRegistry,
+  logger,
+  mkCallDef,
+  type TileDefinitionInput,
+} from "@mindcraft-lang/core/app";
 import type { ExtractedParam, UserAuthoredProgram, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { getMindcraftEnvironment } from "./mindcraft-environment";
 

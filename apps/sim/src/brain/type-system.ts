@@ -1,10 +1,11 @@
-import type { MindcraftModuleApi } from "@mindcraft-lang/core";
-import { Dict, List, TypeUtils, Vector2 } from "@mindcraft-lang/core";
 import {
   CoreOpId,
   CoreTypeIds,
+  Dict,
   type ExecutionContext,
+  List,
   type MapValue,
+  type MindcraftModuleApi,
   mkCallDef,
   mkNumberValue,
   mkStructValue,
@@ -13,8 +14,10 @@ import {
   NIL_VALUE,
   type NumberValue,
   type StructValue,
+  TypeUtils,
   type Value,
-} from "@mindcraft-lang/core/brain";
+  Vector2,
+} from "@mindcraft-lang/core/app";
 import type { Actor } from "./actor";
 
 export const MyTypeNames = {

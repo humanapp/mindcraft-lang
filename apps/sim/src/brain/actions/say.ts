@@ -1,7 +1,7 @@
-import type { CreateHostActuatorOptions } from "@mindcraft-lang/core";
 import {
   bag,
   CoreParameterId,
+  type CreateHostActuatorOptions,
   type ExecutionContext,
   extractNumberValue,
   extractStringValue,
@@ -12,7 +12,7 @@ import {
   param,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/brain";
+} from "@mindcraft-lang/core/app";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
 

@@ -1,4 +1,4 @@
-import { CoreTypeIds } from "@mindcraft-lang/core/brain";
+import { CoreTypeIds } from "@mindcraft-lang/core/app";
 import { MyTypeIds } from "@/brain/type-system";
 
 export const dataTypeIconMap = new Map<string, string>([

@@ -1,5 +1,5 @@
-import type { MindcraftBrain, Vector2 } from "@mindcraft-lang/core";
-import { type IBrainDef, mkSensorTileId } from "@mindcraft-lang/core/brain";
+import type { MindcraftBrain, Vector2 } from "@mindcraft-lang/core/app";
+import { type IBrainDef, mkSensorTileId } from "@mindcraft-lang/core/app";
 import { createSimBrain } from "@/services/brain-runtime";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";

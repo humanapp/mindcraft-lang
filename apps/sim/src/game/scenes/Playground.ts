@@ -1,5 +1,4 @@
-import { Vector2 } from "@mindcraft-lang/core";
-import type { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { type BrainDef, Vector2 } from "@mindcraft-lang/core/app";
 import { Scene } from "phaser";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPES, type ArchetypePhysicsConfig } from "@/brain/archetypes";

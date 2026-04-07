@@ -3,7 +3,7 @@ import {
   createHostSensor,
   type MindcraftModule,
   type MindcraftModuleApi,
-} from "@mindcraft-lang/core";
+} from "@mindcraft-lang/core/app";
 import fnBump from "./actions/bump";
 import fnEat from "./actions/eat";
 import fnMove from "./actions/move";

@@ -1,4 +1,4 @@
-import { Vector2 } from "@mindcraft-lang/core";
+import { Vector2 } from "@mindcraft-lang/core/app";
 import type { BrainEditorConfig, CustomLiteralType } from "@mindcraft-lang/ui";
 import type { ReactNode } from "react";
 import type { Archetype } from "@/brain/actor";

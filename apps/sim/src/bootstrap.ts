@@ -1,4 +1,4 @@
-import { LogLevel, logger } from "@mindcraft-lang/core";
+import { LogLevel, logger } from "@mindcraft-lang/core/app";
 import { enableClipboardLogging } from "@mindcraft-lang/ui";
 import { initBrainRuntime } from "./services/brain-runtime";
 import { initMindcraftEnvironment } from "./services/mindcraft-environment";

@@ -1,5 +1,4 @@
-import { stream } from "@mindcraft-lang/core";
-import { BrainDef, brainJsonFromPlain } from "@mindcraft-lang/core/brain/model";
+import { BrainDef, brainJsonFromPlain, stream } from "@mindcraft-lang/core/app";
 import type { Archetype } from "@/brain/actor";
 import { getMindcraftEnvironment } from "./mindcraft-environment";
 

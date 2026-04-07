@@ -1,5 +1,4 @@
-import type { MindcraftModuleApi } from "@mindcraft-lang/core";
-import { BrainTileModifierDef } from "@mindcraft-lang/core/brain/tiles";
+import { BrainTileModifierDef, type MindcraftModuleApi } from "@mindcraft-lang/core/app";
 import { TileIds } from "@/brain/tileids";
 
 export function registerModifierTiles(api: MindcraftModuleApi) {

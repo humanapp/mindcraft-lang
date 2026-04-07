@@ -1,14 +1,14 @@
-import type { CreateHostSensorOptions } from "@mindcraft-lang/core";
-import { List, Vector2 } from "@mindcraft-lang/core";
 import {
   bag,
   CoreTypeIds,
+  type CreateHostSensorOptions,
   choice,
   type ExecutionContext,
   extractNumberValue,
   FALSE_VALUE,
   getCallSiteState,
   getSlotId,
+  List,
   type MapValue,
   mkCallDef,
   mkListValue,
@@ -21,7 +21,8 @@ import {
   setCallSiteState,
   TRUE_VALUE,
   type Value,
-} from "@mindcraft-lang/core/brain";
+  Vector2,
+} from "@mindcraft-lang/core/app";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { TargetActorCapabilityBitSet, TileIds } from "@/brain/tileids";

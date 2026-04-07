@@ -1,6 +1,4 @@
-import type { MindcraftModuleApi } from "@mindcraft-lang/core";
-import { CoreTypeIds } from "@mindcraft-lang/core/brain";
-import { BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
+import { BrainTileParameterDef, CoreTypeIds, type MindcraftModuleApi } from "@mindcraft-lang/core/app";
 import { TileIds } from "@/brain/tileids";
 import { MyTypeIds } from "@/brain/type-system";
 

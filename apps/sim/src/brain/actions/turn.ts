@@ -1,7 +1,7 @@
-import type { CreateHostActuatorOptions } from "@mindcraft-lang/core";
 import {
   type BrainActionCallChoiceSpec,
   bag,
+  type CreateHostActuatorOptions,
   choice,
   conditional,
   type ExecutionContext,
@@ -15,7 +15,7 @@ import {
   repeated,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/brain";
+} from "@mindcraft-lang/core/app";
 import { resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";

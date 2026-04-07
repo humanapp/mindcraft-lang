@@ -1,4 +1,4 @@
-import type { ITileVisual } from "@mindcraft-lang/core/brain";
+import type { ITileVisual } from "@mindcraft-lang/core/app";
 
 export type TileColorDef = { when: string; do: string };
 

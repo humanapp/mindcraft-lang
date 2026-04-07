@@ -1,5 +1,4 @@
-import type { MindcraftBrain } from "@mindcraft-lang/core";
-import type { IBrainDef } from "@mindcraft-lang/core/brain";
+import type { IBrainDef, MindcraftBrain } from "@mindcraft-lang/core/app";
 import { getMindcraftEnvironment } from "./mindcraft-environment";
 
 let pendingBrainRebuild = false;

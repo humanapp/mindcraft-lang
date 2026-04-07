@@ -1,10 +1,10 @@
-import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
-import {
-  type BrainTileAccessorDef,
-  type BrainTileLiteralDef,
-  type BrainTileVariableDef,
-  getCatalogFallbackLabel,
-} from "@mindcraft-lang/core/brain/tiles";
+import type {
+  BrainTileAccessorDef,
+  BrainTileLiteralDef,
+  BrainTileVariableDef,
+  IBrainTileDef,
+} from "@mindcraft-lang/core/app";
+import { getCatalogFallbackLabel } from "@mindcraft-lang/core/app";
 import { dataTypeIconMap } from "./data-type-icons";
 import { tileColorMap } from "./tile-colors";
 import { tileVisuals } from "./tile-visuals";

@@ -1,4 +1,4 @@
-import type { MindcraftModuleApi } from "@mindcraft-lang/core";
+import type { MindcraftModuleApi } from "@mindcraft-lang/core/app";
 import { registerAccessorTiles } from "./accessors";
 import { registerLiteralTiles } from "./literals";
 import { registerModifierTiles } from "./modifiers";
