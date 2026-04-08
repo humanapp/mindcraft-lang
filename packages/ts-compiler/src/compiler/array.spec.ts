@@ -971,3 +971,119 @@ describe("nested array literal types", () => {
     assert.equal(v, 5);
   });
 });
+
+describe("Generic function body - list operations", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("generic identity returns list unchanged", () => {
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+function identity<T>(items: T[]): T[] {
+  return items;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const arr: NumberList = [1, 2, 3];
+    return identity(arr);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+  });
+
+  test("generic element access via index", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function first<T>(items: T[]): T {
+  return items[0];
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [42, 99];
+    return first(arr);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+  });
+
+  test("generic list length", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function count<T>(items: T[]): number {
+  return items.length;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [1, 2, 3, 4];
+    return count(arr);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+  });
+
+  test("generic for-of iteration", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function countItems<T>(items: T[]): number {
+  let n = 0;
+  for (const _item of items) {
+    n = n + 1;
+  }
+  return n;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [10, 20, 30];
+    return countItems(arr);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+  });
+
+  test("generic push appends element", () => {
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+function appendValue<T>(items: T[], value: T): T[] {
+  items.push(value);
+  return items;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "NumberList",
+  onExecute(ctx: Context): NumberList {
+    const arr: NumberList = [1, 2];
+    return appendValue(arr, 3);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+  });
+});
