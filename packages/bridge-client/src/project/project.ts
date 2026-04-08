@@ -137,6 +137,10 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
 
   async requestSync(): Promise<void> {
     const response = await this._session.request("filesystem:sync", undefined, this._outboundSeq);
+    if (response.type === "session:error" || response.type === "error") {
+      const msg = (response.payload as { message?: string } | undefined)?.message ?? "sync failed";
+      throw new ProtocolError(ErrorCode.SYNC_FAILED, msg);
+    }
     if (response.seq !== undefined) this._peerSeq = response.seq;
     const payload = response.payload as FilesystemSyncPayload | undefined;
     if (payload?.entries) {

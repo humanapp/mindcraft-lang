@@ -1,4 +1,5 @@
 import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang/core";
+import { buildAmbientDeclarations } from "./compiler/ambient.js";
 import type { ProjectCompileResult } from "./compiler/compile.js";
 import { UserTileProject } from "./compiler/project.js";
 import type { CompileDiagnostic, DiagnosticSeverity } from "./compiler/types.js";
@@ -82,6 +83,7 @@ export interface WorkspaceCompiler {
   applyWorkspaceChange(change: WorkspaceChange): void;
   compile(): WorkspaceCompileResult;
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void;
+  getCompilerControlledFiles(): ReadonlyMap<string, string>;
 }
 
 function mapDiagnostic(diagnostic: CompileDiagnostic): WorkspaceDiagnosticEntry {
@@ -189,7 +191,31 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
       this.compileListeners.delete(listener);
     };
   }
+
+  getCompilerControlledFiles(): ReadonlyMap<string, string> {
+    const files = new Map<string, string>();
+    const ambient =
+      this.options.ambientSource ?? buildAmbientDeclarations(this.options.environment.brainServices.types);
+    files.set("mindcraft.d.ts", ambient);
+    files.set("tsconfig.json", TSCONFIG_CONTENT);
+    return files;
+  }
 }
+
+const TSCONFIG_CONTENT = JSON.stringify(
+  {
+    compilerOptions: {
+      target: "ES2016",
+      module: "ES2020",
+      moduleResolution: "Bundler",
+      strict: true,
+      noEmit: true,
+      skipLibCheck: true,
+    },
+  },
+  undefined,
+  2
+);
 
 export function createWorkspaceCompiler(options: CreateWorkspaceCompilerOptions): WorkspaceCompiler {
   return new WorkspaceCompilerController(options);

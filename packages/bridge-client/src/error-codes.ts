@@ -13,6 +13,7 @@ export const ErrorCode = {
   PROJECT_NAME_REQUIRED: "PROJECT_NAME_REQUIRED",
   BRIDGE_URL_REQUIRED: "BRIDGE_URL_REQUIRED",
   INVALID_CLIENT_ROLE: "INVALID_CLIENT_ROLE",
+  SYNC_FAILED: "SYNC_FAILED",
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

@@ -50,8 +50,15 @@ const filesystemSync: WsHandler = (ws, payload, id, seq) => {
 
   const extensions = getExtensionsByAppSessionId(appSession.id);
   if (extensions.length === 0) {
+    logger.info({ appSessionId: appSession.id, id }, "filesystem:sync response from app but no extensions bound");
     return;
   }
+
+  const entryCount = parsed.data.entries?.length ?? 0;
+  logger.info(
+    { appSessionId: appSession.id, id, entryCount, extensionCount: extensions.length },
+    "relaying filesystem:sync response to extensions"
+  );
 
   const msg: FilesystemSyncMessage = { type: "filesystem:sync", id, payload: parsed.data, seq };
   const raw = JSON.stringify(msg);

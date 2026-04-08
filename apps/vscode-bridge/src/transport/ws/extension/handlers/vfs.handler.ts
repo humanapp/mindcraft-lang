@@ -64,19 +64,27 @@ const filesystemSync: WsHandler = (ws, _payload, id, seq) => {
   const extSession = getExtensionSession(ws);
   if (!extSession) {
     logger.warn("filesystem:sync from unregistered extension session");
+    sendChangeError(ws, id, "unregistered session");
     return;
   }
 
   if (!extSession.appSessionId) {
     logger.warn({ sessionId: extSession.id }, "filesystem:sync from extension with no paired app");
+    sendChangeError(ws, id, "no paired app");
     return;
   }
 
   const appSession = getAppSessionById(extSession.appSessionId);
   if (!appSession) {
     logger.warn({ appSessionId: extSession.appSessionId }, "paired app session not found");
+    sendChangeError(ws, id, "app offline");
     return;
   }
+
+  logger.info(
+    { extensionSessionId: extSession.id, appSessionId: appSession.id, id },
+    "relaying filesystem:sync request to app"
+  );
 
   const msg: FilesystemSyncMessage = { type: "filesystem:sync", id, seq };
   if (!safeSend(appSession.ws, JSON.stringify(msg))) {
@@ -84,6 +92,7 @@ const filesystemSync: WsHandler = (ws, _payload, id, seq) => {
       { appSessionId: extSession.appSessionId, extensionSessionId: extSession.id },
       "failed to relay filesystem:sync to app"
     );
+    sendChangeError(ws, id, "relay failed");
   }
 };
 

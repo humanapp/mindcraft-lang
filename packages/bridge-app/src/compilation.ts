@@ -303,7 +303,8 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
     compiler.onDidCompile(options.onDidCompile);
   }
 
-  let currentBridge = buildBridge(options, compiler);
+  const augmented = augmentWorkspace(workspace, compiler);
+  let currentBridge = buildBridge({ ...options, workspace: augmented }, compiler);
 
   return {
     compiler,
@@ -316,7 +317,26 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
     },
     recreateBridge(bridgeUrl: string) {
       currentBridge.stop();
-      currentBridge = buildBridge({ ...options, bridgeUrl }, compiler);
+      currentBridge = buildBridge({ ...options, bridgeUrl, workspace: augmented }, compiler);
+    },
+  };
+}
+
+function augmentWorkspace(workspace: WorkspaceAdapter, compiler: TsWorkspaceCompiler): WorkspaceAdapter {
+  return {
+    exportSnapshot(): WorkspaceSnapshot {
+      const snapshot = workspace.exportSnapshot();
+      const controlledFiles = compiler.getCompilerControlledFiles();
+      for (const [path, content] of controlledFiles) {
+        snapshot.set(path, { kind: "file", content, etag: "compiler-controlled", isReadonly: true });
+      }
+      return snapshot;
+    },
+    applyRemoteChange(change: WorkspaceChange): void {
+      workspace.applyRemoteChange(change);
+    },
+    onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
+      return workspace.onLocalChange(listener);
     },
   };
 }
