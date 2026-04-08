@@ -6,6 +6,7 @@
 // -- Environment & module API ---------------------------------------------------
 
 export type {
+  BrainJsonMigration,
   CreateBrainOptions,
   CreateHostActuatorOptions,
   CreateHostSensorOptions,

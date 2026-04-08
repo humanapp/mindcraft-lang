@@ -1,4 +1,4 @@
-import { BrainDef, brainJsonFromPlain } from "@mindcraft-lang/core/app";
+import { BrainDef } from "@mindcraft-lang/core/app";
 import type { Archetype } from "@/brain/actor";
 import { getMindcraftEnvironment } from "./mindcraft-environment";
 
@@ -28,9 +28,7 @@ export function deserializeBrainFromArrayBuffer(buffer: ArrayBuffer): BrainDef |
   try {
     const text = new TextDecoder().decode(new Uint8Array(buffer));
     const environment = getMindcraftEnvironment();
-    const brainDef = normalizeBrainDef(
-      environment.deserializeBrainJson(brainJsonFromPlain(JSON.parse(text) as unknown))
-    );
+    const brainDef = normalizeBrainDef(environment.deserializeBrainJsonFromPlain(JSON.parse(text) as unknown));
     return brainDef;
   } catch (err) {
     console.error("Failed to deserialize brain from ArrayBuffer:", err);
@@ -87,9 +85,7 @@ export function loadBrainFromLocalStorage(archetype: Archetype): BrainDef | unde
     }
 
     const environment = getMindcraftEnvironment();
-    const brainDef = normalizeBrainDef(
-      environment.deserializeBrainJson(brainJsonFromPlain(JSON.parse(stored) as unknown))
-    );
+    const brainDef = normalizeBrainDef(environment.deserializeBrainJsonFromPlain(JSON.parse(stored) as unknown));
 
     console.log(`Brain loaded from localStorage for archetype: ${archetype}`);
     return brainDef;

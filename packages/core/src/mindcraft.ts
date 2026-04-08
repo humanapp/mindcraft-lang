@@ -37,7 +37,7 @@ import type {
 } from "./brain/interfaces";
 import { CoreOpId, NativeType, NIL_VALUE } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
-import { BrainDef } from "./brain/model";
+import { BrainDef, brainJsonFromPlain } from "./brain/model";
 import { Brain } from "./brain/runtime";
 import type { BrainServices } from "./brain/services";
 import { createBrainServices } from "./brain/services-factory";
@@ -184,9 +184,12 @@ export interface MindcraftBrain extends IBrain {
   dispose(): void;
 }
 
+export type BrainJsonMigration = (json: unknown) => void;
+
 export interface MindcraftModule {
   readonly id: string;
   install(api: MindcraftModuleApi): void;
+  migrateBrainJson?: BrainJsonMigration;
 }
 
 export interface MindcraftModuleApi {
@@ -239,6 +242,7 @@ export interface MindcraftEnvironment {
   withServices<T>(callback: (services: BrainServices) => T): T;
   createCatalog(): MindcraftCatalog;
   deserializeBrainJson(json: BrainJson): IBrainDef;
+  deserializeBrainJsonFromPlain(plain: unknown): IBrainDef;
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void;
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain;
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate;
@@ -639,6 +643,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   private readonly invalidatedBrains = List.empty<ManagedMindcraftBrain>();
   private readonly invalidationListeners = List.empty<(event: BrainInvalidationEvent) => void>();
   private readonly actionResolver: BrainActionResolver;
+  private readonly brainJsonMigrations_ = List.empty<BrainJsonMigration>();
 
   constructor(modules: readonly MindcraftModule[]) {
     this.brainServices = createBrainServices();
@@ -656,6 +661,13 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
 
   deserializeBrainJson(json: BrainJson): IBrainDef {
     return BrainDef.fromJson(json, this.brainServices, this.buildDeserializeCatalogs());
+  }
+
+  deserializeBrainJsonFromPlain(plain: unknown): IBrainDef {
+    for (let i = 0; i < this.brainJsonMigrations_.size(); i++) {
+      this.brainJsonMigrations_.get(i)!(plain);
+    }
+    return this.deserializeBrainJson(brainJsonFromPlain(plain));
   }
 
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void {
@@ -823,6 +835,9 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
 
       const api = new EnvironmentModuleApi(this.brainServices);
       module.install(api);
+      if (module.migrateBrainJson) {
+        this.brainJsonMigrations_.push(module.migrateBrainJson);
+      }
     }
   }
 

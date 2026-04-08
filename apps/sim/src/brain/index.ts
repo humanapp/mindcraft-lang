@@ -12,12 +12,14 @@ import fnSee, { modifiers as seeModifiers } from "./actions/see";
 import fnShoot, { parameters as shootParameters } from "./actions/shoot";
 import fnTurn, { modifiers as turnModifiers, parameters as turnParameters } from "./actions/turn";
 import { registerEngineContext } from "./engine-context";
+import { migrateSimBrainJson } from "./migrations";
 import { registerTiles } from "./tiles";
 import { registerTypes } from "./type-system";
 
 export function createSimModule(): MindcraftModule {
   return {
     id: "mindcraft.sim",
+    migrateBrainJson: migrateSimBrainJson,
     install(api: MindcraftModuleApi): void {
       registerTypes(api);
       registerEngineContext(api);
