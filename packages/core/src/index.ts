@@ -41,8 +41,6 @@ export type { LogEntry, Logger } from "./platform/logger";
 export { createLogger, LogLevel, logger } from "./platform/logger";
 export { MathOps } from "./platform/math";
 export * as stream from "./platform/stream";
-// Stream utilities (also available via stream namespace)
-export { byteArrayFromUint8Array, byteArrayToUint8Array } from "./platform/stream";
 export { StringUtils } from "./platform/string";
 export { task, thread } from "./platform/task";
 export { TypeUtils } from "./platform/types";

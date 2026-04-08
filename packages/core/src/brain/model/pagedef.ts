@@ -1,9 +1,7 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
-import { type IReadStream, type IWriteStream, MemoryStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
-import { fourCC } from "../../primitives";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import type { BrainPageDefEvents, IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
 import { BrainRuleDef, type RuleJson } from "./ruledef";
@@ -19,18 +17,10 @@ export interface PageJson {
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
 export const kMaxPageNameLength = 100; // never reduce this value!
 
-// Current serialization version -- shared by both binary and JSON codepaths.
+// Current serialization version.
 // v1: initial format (binary only, no pageId)
 // v2: added stable pageId
 const kVersion = 2;
-
-// Serialization tags
-const STags = {
-  PAGE: fourCC("PAGE"), // Brain page chunk
-  NAME: fourCC("NAME"), // Page name
-  PGID: fourCC("PGID"), // Stable page ID (UUID)
-  RLCT: fourCC("RLCT"), // Rule count
-};
 
 export class BrainPageDef implements IBrainPageDef {
   private name_: string = "Unnamed Page"; // TODO: i18n
@@ -82,47 +72,17 @@ export class BrainPageDef implements IBrainPageDef {
   }
 
   clone(): BrainPageDef {
-    const stream = new MemoryStream();
-    this.serialize(stream);
+    const json = this.toJson();
     const newPage = new BrainPageDef();
-    newPage.deserialize(stream);
-    // Note: new page is unbrained (brain_ is undefined)
+    const catalogs = new List<ITileCatalog>();
+    const brain = this.brain_;
+    if (brain) {
+      catalogs.push(brain.catalog());
+      catalogs.push(brain.servicesTiles());
+    }
+    newPage.deserializeJson(json, catalogs);
     return newPage;
   }
-
-  serialize(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.PAGE, kVersion);
-    stream.writeTaggedString(STags.NAME, this.name_);
-    stream.writeTaggedString(STags.PGID, this.pageId_);
-    stream.writeTaggedU32(STags.RLCT, this.children_.size());
-    this.children_.forEach((child) => {
-      child.serialize(stream);
-    });
-  }
-
-  deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void {
-    const version = stream.readTaggedU8(STags.PAGE);
-    if (version < 1 || version > kVersion) {
-      throw new Error(`Unsupported BrainPageDef version: ${version}`);
-    }
-    this.name_ = stream.readTaggedString(STags.NAME);
-    if (version >= kVersion) {
-      // Version 2+: read the stable page ID. Overwrite the constructor-generated one.
-      (this as unknown as { pageId_: string }).pageId_ = stream.readTaggedString(STags.PGID);
-    }
-    // Version 1 pages keep the constructor-generated pageId_ (new UUID)
-    const childCount = stream.readTaggedU32(STags.RLCT);
-    for (let i = 0; i < childCount; i++) {
-      const child = new BrainRuleDef();
-      child.setPage(this); // set page before deserializing so rule can read brain's local catalog
-      child.deserialize(stream, catalogs);
-      this.children_.push(child);
-      this.subscribeToRule_(child);
-    }
-  }
-
-  // -- JSON serialization (parallel to binary above) -------------------------
-
   toJson(): PageJson {
     const rules = new List<RuleJson>();
     for (let i = 0; i < this.children_.size(); i++) {

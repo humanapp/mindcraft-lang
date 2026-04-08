@@ -1,5 +1,4 @@
 import { Error } from "../../platform/error";
-import type { IReadStream } from "../../platform/stream";
 import {
   type BrainTileDefCreateOptions,
   CoreOpId,
@@ -7,8 +6,7 @@ import {
   mkOperatorTileId,
   TilePlacement,
 } from "../interfaces";
-import type { ITileCatalog } from "../interfaces/catalog";
-import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
+import { BrainTileDefBase } from "../model/tiledef";
 import type { BrainServices } from "../services";
 
 /**
@@ -26,25 +24,6 @@ export class BrainTileOperatorDef extends BrainTileDefBase {
       throw new Error(`BrainTileOperatorDef: unknown opId ${opId}. Did you forget to register it?`);
     }
   }
-}
-
-/**
- * Deserializes an operator tile definition from a stream.
- * @param stream - The stream to read from
- * @param catalog - The tile catalog to look up the tile definition
- * @returns The deserialized operator tile definition
- * @throws {Error} If the kind is invalid or the tile ID is not found in the catalog
- */
-export function BrainTileOperatorDef_deserialize(stream: IReadStream, catalog: ITileCatalog): BrainTileOperatorDef {
-  const { kind, tileId } = BrainTileDefBase_deserializeHeader(stream);
-  if (kind !== "operator") {
-    throw new Error(`BrainTileOperatorDef.deserialize: invalid kind ${kind}`);
-  }
-  const tileDef = catalog.get(tileId);
-  if (tileDef && tileDef.kind === "operator") {
-    return tileDef as BrainTileOperatorDef;
-  }
-  throw new Error(`BrainTileOperatorDef.deserialize: unknown tileId ${tileId}`);
 }
 
 /**

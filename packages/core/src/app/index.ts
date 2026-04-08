@@ -122,8 +122,6 @@ export { Dict } from "../platform/dict";
 export type { ReadonlyList } from "../platform/list";
 export { List } from "../platform/list";
 export { LogLevel, logger } from "../platform/logger";
-export * as stream from "../platform/stream";
-export { byteArrayFromUint8Array, byteArrayToUint8Array } from "../platform/stream";
 export { TypeUtils } from "../platform/types";
 export { Vector2 } from "../platform/vector2";
 export { BitSet } from "../util/bitset";

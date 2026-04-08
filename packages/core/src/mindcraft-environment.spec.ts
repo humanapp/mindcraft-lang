@@ -10,7 +10,6 @@ import {
   List,
   type MindcraftEnvironment,
   type MindcraftModule,
-  stream,
 } from "@mindcraft-lang/core";
 import {
   type BrainServices,
@@ -361,14 +360,6 @@ describe("mindcraft environment", () => {
     const restoredJsonRule = restoredFromJson.pages().get(0)!.children().get(0)!;
     assert.equal(restoredJsonRule.when().tiles().get(0)!.tileId, capture.sensorTile!.tileId);
     assert.equal(restoredJsonRule.do().tiles().get(0)!.tileId, variableTile.tileId);
-
-    const memoryStream = new stream.MemoryStream();
-    brainDef.serialize(memoryStream);
-
-    const restoredFromBinary = environment.deserializeBrain(memoryStream);
-    const restoredBinaryRule = restoredFromBinary.pages().get(0)!.children().get(0)!;
-    assert.equal(restoredBinaryRule.when().tiles().get(0)!.tileId, capture.sensorTile!.tileId);
-    assert.equal(restoredBinaryRule.do().tiles().get(0)!.tileId, variableTile.tileId);
   });
 
   test("deserializes persisted brains against hydrated and bundled tile metadata", () => {
@@ -386,15 +377,6 @@ describe("mindcraft environment", () => {
     const restoredFromJson = environment.deserializeBrainJson(brainDef.toJson());
     assert.equal(
       restoredFromJson.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId,
-      bundled.tile.tileId
-    );
-
-    const memoryStream = new stream.MemoryStream();
-    brainDef.serialize(memoryStream);
-
-    const restoredFromBinary = environment.deserializeBrain(memoryStream);
-    assert.equal(
-      restoredFromBinary.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId,
       bundled.tile.tileId
     );
 

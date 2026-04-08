@@ -1,4 +1,3 @@
-import { stream } from "@mindcraft-lang/core";
 import { BrainDef, type BrainPageDef, brainJsonFromPlain } from "@mindcraft-lang/core/brain/model";
 import {
   BookOpen,
@@ -300,19 +299,10 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
       const file = await handle.getFile();
       const arrayBuffer = await file.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
+      const text = new TextDecoder().decode(new Uint8Array(arrayBuffer));
 
       let loadedBrain: BrainDef;
-
-      if (uint8Array[0] === 0x7b) {
-        const text = new TextDecoder().decode(uint8Array);
-        loadedBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown), brainServices!);
-      } else {
-        const byteArray = stream.byteArrayFromUint8Array(uint8Array);
-        const memStream = new stream.MemoryStream(byteArray);
-        loadedBrain = new BrainDef(brainServices!);
-        loadedBrain.deserialize(memStream);
-      }
+      loadedBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown), brainServices!);
 
       if (loadedBrain.pages().size() === 0) {
         loadedBrain.appendNewPage();

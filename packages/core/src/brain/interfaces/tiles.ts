@@ -1,5 +1,4 @@
 import { MathOps } from "../../platform/math";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
 import type { ActionDescriptor } from "./functions";
@@ -133,8 +132,6 @@ export interface IBrainTileDef {
   persist?: boolean;
   capabilities(): ReadonlyBitSet;
   requirements(): ReadonlyBitSet;
-  serializeHeader(stream: IWriteStream): void;
-  serialize(stream: IWriteStream): void;
 }
 
 export interface IBrainActionTileDef extends IBrainTileDef {

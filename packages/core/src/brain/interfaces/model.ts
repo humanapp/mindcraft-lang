@@ -1,5 +1,4 @@
 import type { List, ReadonlyList } from "../../platform/list";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
 import type { EventEmitterConsumer } from "../../util/event-emitter";
 import type { OpResult } from "../../util/op-result";
 import type { ITileCatalog } from "./catalog";
@@ -49,8 +48,6 @@ export interface IBrainPageDef {
   events(): EventEmitterConsumer<BrainPageDefEvents>;
   clone(): IBrainPageDef;
   typecheck(): void;
-  serialize(stream: IWriteStream): void;
-  deserialize(stream: IReadStream): void;
   appendNewRule(): IBrainRuleDef | undefined;
   addRuleAtIndex(index: number, rule: IBrainRuleDef): void;
   removeRuleAtIndex(index: number): IBrainRuleDef | undefined;
@@ -90,8 +87,6 @@ export interface IBrainRuleDef {
   outdent(): void;
   isEmpty(inclChildren: boolean): boolean;
   clone(): IBrainRuleDef;
-  serialize(stream: IWriteStream): void;
-  deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void;
 }
 
 export type BrainTileSetEvents = {
@@ -112,6 +107,4 @@ export interface IBrainTileSet {
   removeTileAtIndex(index: number): void;
   containsTileId(tileId: string): boolean;
   isEmpty(): boolean;
-  serialize(stream: IWriteStream): void;
-  deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void;
 }

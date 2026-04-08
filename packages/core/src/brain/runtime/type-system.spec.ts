@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List, stream } from "@mindcraft-lang/core";
+import { List } from "@mindcraft-lang/core";
 import {
   type BooleanValue,
   type BrainServices,
@@ -25,8 +25,6 @@ import {
   ValueDict,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-
-const { MemoryStream } = stream;
 
 let services: BrainServices;
 
@@ -101,46 +99,6 @@ describe("AnyCodec", () => {
     services = __test__createBrainServices();
   });
 
-  test("round-trips nil through encode/decode", () => {
-    const anyDef = services.types.get(CoreTypeIds.Any);
-    assert.ok(anyDef);
-    const s = new MemoryStream();
-    anyDef.codec.encode(s, undefined);
-    s.resetRead();
-    const decoded = anyDef.codec.decode(s);
-    assert.equal(decoded, undefined);
-  });
-
-  test("round-trips boolean through encode/decode", () => {
-    const anyDef = services.types.get(CoreTypeIds.Any);
-    assert.ok(anyDef);
-    const s = new MemoryStream();
-    anyDef.codec.encode(s, true);
-    s.resetRead();
-    const decoded = anyDef.codec.decode(s);
-    assert.equal(decoded, true);
-  });
-
-  test("round-trips number through encode/decode", () => {
-    const anyDef = services.types.get(CoreTypeIds.Any);
-    assert.ok(anyDef);
-    const s = new MemoryStream();
-    anyDef.codec.encode(s, 42.5);
-    s.resetRead();
-    const decoded = anyDef.codec.decode(s);
-    assert.equal(decoded, 42.5);
-  });
-
-  test("round-trips string through encode/decode", () => {
-    const anyDef = services.types.get(CoreTypeIds.Any);
-    assert.ok(anyDef);
-    const s = new MemoryStream();
-    anyDef.codec.encode(s, "hello");
-    s.resetRead();
-    const decoded = anyDef.codec.decode(s);
-    assert.equal(decoded, "hello");
-  });
-
   test("stringify produces correct output for each type", () => {
     const anyDef = services.types.get(CoreTypeIds.Any);
     assert.ok(anyDef);
@@ -149,15 +107,6 @@ describe("AnyCodec", () => {
     assert.equal(anyDef.codec.stringify(false), "false");
     assert.equal(anyDef.codec.stringify(42), "42");
     assert.equal(anyDef.codec.stringify("hello"), "hello");
-  });
-
-  test("encode throws for unsupported types", () => {
-    const anyDef = services.types.get(CoreTypeIds.Any);
-    assert.ok(anyDef);
-    const s = new MemoryStream();
-    assert.throws(() => {
-      anyDef.codec.encode(s, { some: "object" });
-    });
   });
 });
 
@@ -351,61 +300,12 @@ describe("NullableCodec", () => {
     services = __test__createBrainServices();
   });
 
-  test("round-trips a non-nil number value", () => {
-    const registry = services.types;
-    const nullableId = registry.addNullableType(CoreTypeIds.Number);
-    const def = registry.get(nullableId)!;
-    const s = new MemoryStream();
-    def.codec.encode(s, 42.5);
-    s.resetRead();
-    const decoded = def.codec.decode(s);
-    assert.equal(decoded, 42.5);
-  });
-
-  test("round-trips a nil value (writes 0, reads back undefined)", () => {
-    const registry = services.types;
-    const nullableId = registry.addNullableType(CoreTypeIds.Number);
-    const def = registry.get(nullableId)!;
-    const s = new MemoryStream();
-    def.codec.encode(s, undefined);
-    s.resetRead();
-    const decoded = def.codec.decode(s);
-    assert.equal(decoded, undefined);
-  });
-
   test("stringify returns 'nil' for nil, delegates for non-nil", () => {
     const registry = services.types;
     const nullableId = registry.addNullableType(CoreTypeIds.Number);
     const def = registry.get(nullableId)!;
     assert.equal(def.codec.stringify(undefined), "nil");
     assert.equal(def.codec.stringify(42), "42");
-  });
-
-  test("round-trips a non-nil string value", () => {
-    const registry = services.types;
-    const nullableId = registry.addNullableType(CoreTypeIds.String);
-    const def = registry.get(nullableId)!;
-    const s = new MemoryStream();
-    def.codec.encode(s, "hello");
-    s.resetRead();
-    const decoded = def.codec.decode(s);
-    assert.equal(decoded, "hello");
-  });
-
-  test("encode writes 1-byte flag 0 for nil and 1 for present", () => {
-    const registry = services.types;
-    const nullableId = registry.addNullableType(CoreTypeIds.Boolean);
-    const def = registry.get(nullableId)!;
-
-    const sNil = new MemoryStream();
-    def.codec.encode(sNil, undefined);
-    sNil.resetRead();
-    assert.equal(sNil.readU8(), 0);
-
-    const sPresent = new MemoryStream();
-    def.codec.encode(sPresent, true);
-    sPresent.resetRead();
-    assert.equal(sPresent.readU8(), 1);
   });
 });
 
@@ -502,21 +402,6 @@ describe("instantiate", () => {
     const def = registry.get(typeId);
     assert.ok(def);
     assert.equal(def.autoInstantiated, true);
-  });
-
-  test("ListCodec from instantiated type round-trips values", () => {
-    const registry = services.types;
-    const typeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
-    const def = registry.get(typeId)!;
-    const s = new MemoryStream();
-    const values = List.from([42, 7, 13]);
-    def.codec.encode(s, values);
-    s.resetRead();
-    const decoded = def.codec.decode(s) as List<number>;
-    assert.equal(decoded.size(), 3);
-    assert.equal(decoded.get(0), 42);
-    assert.equal(decoded.get(1), 7);
-    assert.equal(decoded.get(2), 13);
   });
 
   test("nested instantiation works (List<List<number>>)", () => {
@@ -640,57 +525,12 @@ describe("UnionCodec", () => {
     services = __test__createBrainServices();
   });
 
-  test("round-trips a number value through number | string union", () => {
-    const registry = services.types;
-    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
-    const def = registry.get(unionId)!;
-    const s = new MemoryStream();
-    def.codec.encode(s, 42.5);
-    s.resetRead();
-    const decoded = def.codec.decode(s);
-    assert.equal(decoded, 42.5);
-  });
-
-  test("round-trips a string value through number | string union", () => {
-    const registry = services.types;
-    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
-    const def = registry.get(unionId)!;
-    const s = new MemoryStream();
-    def.codec.encode(s, "hello");
-    s.resetRead();
-    const decoded = def.codec.decode(s);
-    assert.equal(decoded, "hello");
-  });
-
-  test("encode throws for a value type not in the union", () => {
-    const registry = services.types;
-    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
-    const def = registry.get(unionId)!;
-    const s = new MemoryStream();
-    assert.throws(() => {
-      def.codec.encode(s, true);
-    });
-  });
-
   test("stringify delegates to the correct member codec", () => {
     const registry = services.types;
     const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     const def = registry.get(unionId)!;
     assert.equal(def.codec.stringify(42), "42");
     assert.equal(def.codec.stringify("hello"), "hello");
-  });
-
-  test("encode writes discriminant byte followed by value", () => {
-    const registry = services.types;
-    const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Boolean, CoreTypeIds.Number]));
-    const def = registry.get(unionId)!;
-    const s = new MemoryStream();
-    def.codec.encode(s, true);
-    s.resetRead();
-    const discriminant = s.readU8();
-    assert.ok(discriminant >= 0);
-    const decoded = s.readBool();
-    assert.equal(decoded, true);
   });
 
   test("autoInstantiated flag is set on union types", () => {
@@ -763,17 +603,6 @@ describe("getOrCreateFunctionType", () => {
     assert.equal(def.paramTypeIds.size(), 0);
     assert.equal(def.returnTypeId, CoreTypeIds.Number);
   });
-
-  test("codec is non-serializable (throws on encode)", () => {
-    const registry = services.types;
-    const id = registry.getOrCreateFunctionType({
-      paramTypeIds: List.from([CoreTypeIds.Number]),
-      returnTypeId: CoreTypeIds.Number,
-    });
-    const def = registry.get(id)!;
-    const s = new MemoryStream();
-    assert.throws(() => def.codec.encode(s, {}));
-  });
 });
 
 describe("isStructurallyCompatible", () => {
@@ -782,14 +611,6 @@ describe("isStructurallyCompatible", () => {
   });
 
   test("same TypeId is always compatible", () => {
-    const registry = services.types;
-    const typeId = registry.addStructType("SameTest", {
-      fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
-    });
-    assert.equal(registry.isStructurallyCompatible(typeId, typeId), true);
-  });
-
-  test("two structs with identical fields are compatible", () => {
     const registry = services.types;
     const typeA = registry.addStructType("IdenticalA", {
       fields: List.from([

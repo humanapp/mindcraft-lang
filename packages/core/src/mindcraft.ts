@@ -51,8 +51,6 @@ import { registerVariableFactoryTileDef } from "./brain/tiles/variables";
 import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
 import { List } from "./platform/list";
-import type { IReadStream } from "./platform/stream";
-import { byteArrayFromUint8Array, byteArrayToUint8Array, MemoryStream } from "./platform/stream";
 
 export type TileDefinitionInput = IBrainTileDef;
 export type ConversionDefinition = Omit<Conversion, "id">;
@@ -240,10 +238,7 @@ export interface MindcraftEnvironment {
   readonly brainServices: BrainServices;
   withServices<T>(callback: (services: BrainServices) => T): T;
   createCatalog(): MindcraftCatalog;
-  deserializeBrain(stream: IReadStream): IBrainDef;
   deserializeBrainJson(json: BrainJson): IBrainDef;
-  serializeBrainToBytes(brainDef: IBrainDef): unknown;
-  deserializeBrainFromBytes(bytes: unknown): IBrainDef;
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void;
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain;
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate;
@@ -659,26 +654,8 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     return new MindcraftCatalogImpl();
   }
 
-  deserializeBrain(stream: IReadStream): IBrainDef {
-    const definition = new BrainDef(this.brainServices);
-    definition.deserialize(stream, this.buildDeserializeCatalogs());
-    return definition;
-  }
-
   deserializeBrainJson(json: BrainJson): IBrainDef {
     return BrainDef.fromJson(json, this.brainServices, this.buildDeserializeCatalogs());
-  }
-
-  serializeBrainToBytes(brainDef: IBrainDef): unknown {
-    const memStream = new MemoryStream();
-    (brainDef as BrainDef).serialize(memStream);
-    return byteArrayToUint8Array(memStream.toBytes());
-  }
-
-  deserializeBrainFromBytes(bytes: unknown): IBrainDef {
-    const byteArray = byteArrayFromUint8Array(bytes);
-    const memStream = new MemoryStream(byteArray);
-    return this.deserializeBrain(memStream);
   }
 
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void {

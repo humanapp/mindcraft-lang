@@ -1,6 +1,4 @@
 import { Error } from "../../platform/error";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
-import { fourCC } from "../../primitives";
 import {
   type BrainTileDefCreateOptions,
   type BrainTileLiteralDefOptions,
@@ -17,7 +15,7 @@ import {
   type TypeDef,
   type TypeId,
 } from "../interfaces";
-import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
+import { BrainTileDefBase } from "../model/tiledef";
 
 export interface LiteralTileJson {
   version: number;
@@ -32,14 +30,10 @@ export interface LiteralTileJson {
 import type { BrainServices } from "../services";
 import { BrainTileFactoryDef } from "./factories";
 
-// Current serialization version -- shared by both binary and JSON codepaths.
+// Current serialization version.
 // v1: initial binary format
 // v2: added displayFormat
 const kVersion = 2;
-
-const STags = {
-  BLIT: fourCC("BLIT"), // Brain literal tile chunk
-};
 
 export class BrainTileLiteralDef extends BrainTileDefBase {
   readonly kind = "literal";
@@ -67,7 +61,7 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
     this.services_ = services;
   }
 
-  // -- JSON serialization (parallel to binary below) -------------------------
+  // -- JSON serialization ----------------------------------------------------
 
   toJson(): LiteralTileJson {
     const typeDef = this.services_.types.get(this.valueType);
@@ -107,22 +101,6 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
     catalog.registerTileDef(tileDef);
     return tileDef as BrainTileLiteralDef;
   }
-
-  // -- Binary serialization ---------------------------------------------------
-
-  serialize(stream: IWriteStream): void {
-    const typeDef = this.services_.types.get(this.valueType);
-    if (!typeDef) {
-      throw new Error(`BrainTileLiteralDef.serialize: unknown value type ${this.valueType}`);
-    }
-    super.serialize(stream);
-    stream.pushChunk(STags.BLIT, kVersion);
-    stream.writeString(this.valueType);
-    (typeDef.codec as TypeCodec).encode(stream, this.value);
-    stream.writeString(this.valueLabel);
-    stream.writeString(this.displayFormat);
-    stream.popChunk();
-  }
 }
 
 // -- Literal value helpers ---------------------------------------------------
@@ -156,38 +134,6 @@ function literalValueFromJson(typeDef: TypeDef, json: unknown): unknown {
     default:
       throw new Error(`literalValueFromJson: unsupported coreType ${typeDef.coreType} (typeId: ${typeDef.typeId})`);
   }
-}
-
-export function BrainTileLiteralDef_deserialize(
-  stream: IReadStream,
-  catalog: ITileCatalog,
-  services: BrainServices
-): BrainTileLiteralDef {
-  const { kind, tileId } = BrainTileDefBase_deserializeHeader(stream);
-  if (kind !== "literal") {
-    throw new Error(`BrainTileLiteralDef.deserialize: invalid kind ${kind}`);
-  }
-  const version = stream.enterChunk(STags.BLIT);
-  if (version < 1 || version > kVersion) {
-    throw new Error(`BrainTileLiteralDef.deserialize: unsupported version ${version}`);
-  }
-  const valueType = stream.readString();
-  const typeEntry = services.types.get(valueType);
-  if (!typeEntry) {
-    throw new Error(`BrainTileLiteralDef.deserialize: unknown value type ${valueType}`);
-  }
-  const value = typeEntry.codec.decode(stream);
-  const valueLabel = stream.readString();
-  const displayFormat: LiteralDisplayFormat = version >= kVersion ? stream.readString() : LiteralDisplayFormats.Default;
-  stream.leaveChunk();
-
-  let tileDef = catalog.get(tileId) as BrainTileLiteralDef | undefined;
-  if (tileDef && tileDef.kind === "literal") {
-    return tileDef as BrainTileLiteralDef;
-  }
-  tileDef = new BrainTileLiteralDef(valueType, value, { valueLabel, displayFormat }, services);
-  catalog.registerTileDef(tileDef);
-  return tileDef;
 }
 
 export function registerLiteralFactoryTileDef(

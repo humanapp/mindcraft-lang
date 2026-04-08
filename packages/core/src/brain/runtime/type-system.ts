@@ -1,7 +1,6 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import { UniqueSet } from "../../platform/uniqueset";
@@ -619,103 +618,36 @@ export function registerCoreTypes(services: BrainServices) {
 // Codecs
 
 class VoidCodec implements TypeCodec {
-  encode(w: IWriteStream, value: undefined): void {
-    // No-op
-  }
-  decode(r: IReadStream): void {
-    return;
-  }
   stringify(value: undefined): string {
     return "void";
   }
 }
 
 class NilCodec implements TypeCodec {
-  encode(w: IWriteStream, value: undefined): void {
-    // No-op
-  }
-  decode(r: IReadStream): undefined {
-    return undefined;
-  }
   stringify(value: undefined): string {
     return "nil";
   }
 }
 
 class BooleanCodec implements TypeCodec {
-  encode(w: IWriteStream, value: boolean): void {
-    w.writeBool(value);
-  }
-  decode(r: IReadStream): boolean {
-    return r.readBool();
-  }
   stringify(value: boolean): string {
     return SU.toString(value);
   }
 }
 
 class NumberCodec implements TypeCodec {
-  encode(w: IWriteStream, value: number): void {
-    w.writeF64(value);
-  }
-  decode(r: IReadStream): number {
-    return r.readF64();
-  }
   stringify(value: number): string {
     return SU.toString(value);
   }
 }
 
 class StringCodec implements TypeCodec {
-  encode(w: IWriteStream, value: string): void {
-    w.writeString(value);
-  }
-  decode(r: IReadStream): string {
-    return r.readString();
-  }
   stringify(value: string): string {
     return value;
   }
 }
 
 class AnyCodec implements TypeCodec {
-  encode(w: IWriteStream, value: unknown): void {
-    if (value === undefined) {
-      w.writeU8(NativeType.Nil);
-      return;
-    }
-    if (TypeUtils.isBoolean(value)) {
-      w.writeU8(NativeType.Boolean);
-      w.writeBool(value);
-      return;
-    }
-    if (TypeUtils.isNumber(value)) {
-      w.writeU8(NativeType.Number);
-      w.writeF64(value);
-      return;
-    }
-    if (TypeUtils.isString(value)) {
-      w.writeU8(NativeType.String);
-      w.writeString(value);
-      return;
-    }
-    throw new Error("AnyCodec: unsupported value type");
-  }
-  decode(r: IReadStream): unknown {
-    const tag = r.readU8();
-    switch (tag) {
-      case NativeType.Nil:
-        return undefined;
-      case NativeType.Boolean:
-        return r.readBool();
-      case NativeType.Number:
-        return r.readF64();
-      case NativeType.String:
-        return r.readString();
-      default:
-        throw new Error(`AnyCodec: unsupported type tag ${SU.toString(tag)}`);
-    }
-  }
   stringify(value: unknown): string {
     if (value === undefined) {
       return "nil";
@@ -734,12 +666,6 @@ class AnyCodec implements TypeCodec {
 }
 
 class FunctionCodec implements TypeCodec {
-  encode(_w: IWriteStream, _value: unknown): void {
-    throw new Error("Function values cannot be serialized");
-  }
-  decode(_r: IReadStream): unknown {
-    throw new Error("Function values cannot be deserialized");
-  }
   stringify(value: unknown): string {
     if (value !== undefined) {
       const v = value as { funcId?: number };
@@ -753,17 +679,6 @@ class FunctionCodec implements TypeCodec {
 
 class EnumCodec implements TypeCodec {
   constructor(private readonly symbols: List<EnumSymbolDef>) {}
-  encode(w: IWriteStream, value: string): void {
-    w.writeString(value);
-  }
-  decode(r: IReadStream): string {
-    const key = r.readString();
-    const symbol = findEnumSymbol(this.symbols, key);
-    if (!symbol) {
-      throw new Error(`Unknown enum key: ${key}`);
-    }
-    return key;
-  }
   stringify(value: string): string {
     const symbol = findEnumSymbol(this.symbols, value);
     if (!symbol) {
@@ -848,23 +763,6 @@ function stringifyEnumPrimitiveValue(value: EnumPrimitiveValue): string {
 
 class ListCodec implements TypeCodec {
   constructor(private elementCodec: TypeCodec) {}
-  encode(w: IWriteStream, value: List<unknown>): void {
-    const elementCodec = this.elementCodec;
-    w.writeU32(value.size());
-    value.forEach((item) => {
-      elementCodec.encode(w, item);
-    });
-  }
-  decode(r: IReadStream): List<unknown> {
-    const elementCodec = this.elementCodec;
-    const size = r.readU32();
-    const list = new List<unknown>();
-    for (let i = 0; i < size; i++) {
-      const item = elementCodec.decode(r);
-      list.push(item);
-    }
-    return list;
-  }
   stringify(value: List<unknown>): string {
     const elementCodec = this.elementCodec;
     const items: string[] = [];
@@ -877,27 +775,6 @@ class ListCodec implements TypeCodec {
 
 class MapCodec implements TypeCodec {
   constructor(private valueCodec: TypeCodec) {}
-  encode(w: IWriteStream, value: Dict<string, unknown>): void {
-    const valueCodec = this.valueCodec;
-    const keys = value.keys().sort();
-    w.writeU32(keys.size());
-    keys.forEach((key) => {
-      w.writeString(key);
-      const v = value.get(key);
-      valueCodec.encode(w, v);
-    });
-  }
-  decode(r: IReadStream): Dict<string, unknown> {
-    const valueCodec = this.valueCodec;
-    const size = r.readU32();
-    const dict = new Dict<string, unknown>();
-    for (let i = 0; i < size; i++) {
-      const key = r.readString();
-      const v = valueCodec.decode(r);
-      dict.set(key, v);
-    }
-    return dict;
-  }
   stringify(value: Dict<string, unknown>): string {
     const valueCodec = this.valueCodec;
     const items: string[] = [];
@@ -912,32 +789,6 @@ class MapCodec implements TypeCodec {
 
 class StructCodec implements TypeCodec {
   constructor(private fieldCodecs: Dict<string, TypeCodec>) {}
-  encode(w: IWriteStream, value: Dict<string, unknown>): void {
-    const fieldCodecs = this.fieldCodecs;
-    const fieldNames = fieldCodecs.keys().sort();
-    w.writeU32(fieldNames.size());
-    fieldNames.forEach((fieldName) => {
-      w.writeString(fieldName);
-      const codec = fieldCodecs.get(fieldName)!;
-      const v = value.get(fieldName);
-      codec.encode(w, v);
-    });
-  }
-  decode(r: IReadStream): Dict<string, unknown> {
-    const fieldCodecs = this.fieldCodecs;
-    const size = r.readU32();
-    const dict = new Dict<string, unknown>();
-    for (let i = 0; i < size; i++) {
-      const fieldName = r.readString();
-      const codec = fieldCodecs.get(fieldName);
-      if (!codec) {
-        throw new Error(`Unknown field name ${fieldName} in struct decoding`);
-      }
-      const v = codec.decode(r);
-      dict.set(fieldName, v);
-    }
-    return dict;
-  }
   stringify(value: Dict<string, unknown>): string {
     const fieldCodecs = this.fieldCodecs;
     const items: string[] = [];
@@ -953,21 +804,6 @@ class StructCodec implements TypeCodec {
 
 class NullableCodec implements TypeCodec {
   constructor(private baseCodec: TypeCodec) {}
-  encode(w: IWriteStream, value: unknown): void {
-    if (value === undefined) {
-      w.writeU8(0);
-    } else {
-      w.writeU8(1);
-      this.baseCodec.encode(w, value);
-    }
-  }
-  decode(r: IReadStream): unknown {
-    const flag = r.readU8();
-    if (flag === 0) {
-      return undefined;
-    }
-    return this.baseCodec.decode(r);
-  }
   stringify(value: unknown): string {
     if (value === undefined) {
       return "nil";
@@ -1019,23 +855,6 @@ class UnionCodec implements TypeCodec {
       return -1;
     }
     return -1;
-  }
-
-  encode(w: IWriteStream, value: unknown): void {
-    const idx = this.findMemberIndex(value);
-    if (idx < 0) {
-      throw new Error("UnionCodec: value does not match any union member");
-    }
-    w.writeU8(idx);
-    this.memberCodecs.get(idx)!.encode(w, value);
-  }
-
-  decode(r: IReadStream): unknown {
-    const idx = r.readU8();
-    if (idx >= this.memberCodecs.size()) {
-      throw new Error(`UnionCodec: invalid discriminant ${SU.toString(idx)}`);
-    }
-    return this.memberCodecs.get(idx)!.decode(r);
   }
 
   stringify(value: unknown): string {

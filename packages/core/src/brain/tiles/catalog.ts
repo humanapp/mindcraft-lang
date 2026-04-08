@@ -1,8 +1,6 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
-import { fourCC } from "../../primitives";
 import type { IBrainTileDef, ITileCatalog } from "../interfaces";
 import type { BrainServices } from "../services";
 import { BrainTileLiteralDef, type LiteralTileJson } from "./literals";
@@ -11,15 +9,6 @@ import { BrainTilePageDef, type PageTileJson } from "./pagetiles";
 import { BrainTileVariableDef, type VariableTileJson } from "./variables";
 
 export type CatalogTileJson = LiteralTileJson | VariableTileJson | PageTileJson | MissingTileJson;
-
-// Current serialization version (binary only -- JSON catalog is unversioned).
-const kVersion = 1;
-
-// Serialization tags
-const STags = {
-  TCAT: fourCC("TCAT"), // Tile catalog
-  TCNT: fourCC("TCNT"), // Tile count
-};
 
 export function getCatalogFallbackLabel(tileDef: IBrainTileDef): string {
   return tileDef.tileId.split(".").pop() || tileDef.tileId;
@@ -65,7 +54,7 @@ export class TileCatalog implements ITileCatalog {
     return undefined;
   }
 
-  // -- JSON serialization (parallel to binary below) -------------------------
+  // -- JSON serialization ----------------------------------------------------
 
   toJson(): List<CatalogTileJson> {
     const result = new List<CatalogTileJson>();
@@ -112,34 +101,6 @@ export class TileCatalog implements ITileCatalog {
           throw new Error(`TileCatalog.deserializeJson: unsupported tile kind '${(entry as CatalogTileJson).kind}'`);
       }
     }
-  }
-
-  // -- Binary serialization ---------------------------------------------------
-
-  serialize(stream: IWriteStream) {
-    stream.pushChunk(STags.TCAT, kVersion);
-    const tileList = this.tiles.values().filter((tile) => !!tile.persist);
-    stream.writeTaggedU32(STags.TCNT, tileList.size());
-    for (let i = 0; i < tileList.size(); i++) {
-      const tile = tileList.get(i);
-      tile.serialize(stream);
-    }
-    stream.popChunk();
-  }
-
-  deserialize(stream: IReadStream, services: BrainServices) {
-    const version = stream.enterChunk(STags.TCAT);
-    if (version !== kVersion) {
-      throw new Error(`TileCatalog.deserialize: unsupported version ${version}`);
-    }
-    const tileCount = stream.readTaggedU32(STags.TCNT);
-    for (let i = 0; i < tileCount; i++) {
-      const tileDef = services.tileBuilder.deserializeTileDef(stream, this);
-      if (!this.has(tileDef.tileId)) {
-        this.registerTileDef(tileDef);
-      }
-    }
-    stream.leaveChunk();
   }
 
   registerTileDef(tile: IBrainTileDef) {

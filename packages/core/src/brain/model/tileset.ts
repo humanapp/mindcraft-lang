@@ -1,8 +1,6 @@
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { logger } from "../../platform/logger";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
-import { fourCC } from "../../primitives";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import type { TypecheckResult } from "../compiler";
 import { printExpr } from "../compiler/expr-printer";
@@ -19,15 +17,6 @@ import {
 // Maximum allowed number of tiles in a tileset.
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
 export const kMaxTileSetSize = 20; // never reduce this value!
-
-// Current serialization version (binary only -- JSON tile sets are unversioned arrays).
-const kVersion = 1;
-
-// Serialization tags
-const STags = {
-  TSET: fourCC("TSET"), // TileSet chunk
-  TCNT: fourCC("TCNT"), // Tile count
-};
 
 export class BrainTileSet implements IBrainTileSet {
   private readonly tiles_ = new List<IBrainTileDef>();
@@ -199,50 +188,6 @@ export class BrainTileSet implements IBrainTileSet {
         throw new Error(`BrainTileSet.deserializeJson: tileId '${tileId}' not found in provided catalogs`);
       }
       this.tiles_.push(tileDef);
-    }
-  }
-
-  // -- Binary serialization ---------------------------------------------------
-
-  serialize(stream: IWriteStream): void {
-    stream.pushChunk(STags.TSET, kVersion);
-    try {
-      stream.writeTaggedU32(STags.TCNT, this.tiles_.size());
-      this.tiles_.forEach((tileDef) => {
-        stream.writeString(tileDef.tileId);
-      });
-    } finally {
-      stream.popChunk();
-    }
-  }
-
-  deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void {
-    if (this.tiles_.size() > 0) {
-      throw new Error("BrainTileSet.deserialize: tileset is not empty");
-    }
-    const version = stream.enterChunk(STags.TSET);
-    try {
-      if (version !== kVersion) {
-        throw new Error(`BrainTileSet.deserialize: unsupported version ${version}`);
-      }
-      const tileCount = stream.readTaggedU32(STags.TCNT);
-      for (let i = 0; i < tileCount; i++) {
-        const tileId = stream.readString();
-        let tileDef: IBrainTileDef | undefined;
-        if (catalogs) {
-          for (let j = 0; j < catalogs.size(); j++) {
-            const catalog = catalogs.get(j);
-            tileDef = catalog.get(tileId) as IBrainTileDef | undefined;
-            if (tileDef) break;
-          }
-        }
-        if (!tileDef) {
-          throw new Error(`BrainTileSet.deserialize: tileId '${tileId}' not found in provided catalogs`);
-        }
-        this.tiles_.push(tileDef);
-      }
-    } finally {
-      stream.leaveChunk();
     }
   }
 }

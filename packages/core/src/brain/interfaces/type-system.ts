@@ -1,5 +1,4 @@
 import type { List } from "../../platform/list";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
 import type { StructFieldGetterFn, StructFieldSetterFn, StructSnapshotNativeFn } from "./vm";
 
 // ----------------------------------------------------
@@ -59,8 +58,6 @@ export function nativeTypeToString(coreType: NativeType): string {
 }
 
 export interface TypeCodec {
-  encode(w: IWriteStream, value: unknown): void;
-  decode(r: IReadStream): unknown;
   stringify(value: unknown): string;
 }
 

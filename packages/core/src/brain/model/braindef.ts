@@ -1,9 +1,7 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
-import { type IReadStream, type IWriteStream, MemoryStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
-import { fourCC } from "../../primitives";
 import { EventEmitter, type EventEmitterConsumer } from "../../util/event-emitter";
 import { type OpResult, opFailure, opSuccess } from "../../util/op-result";
 import {
@@ -44,15 +42,8 @@ export enum BrainDefWarningCode {
   PageIndexOutOfBounds = "PageIndexOutOfBounds",
 }
 
-// Current serialization version -- shared by both binary and JSON codepaths.
+// Current serialization version.
 const kVersion = 1;
-
-// Serialization tags
-const STags = {
-  BRAN: fourCC("BRAN"), // Brain chunk
-  NAME: fourCC("NAME"), // Brain name
-  PGCT: fourCC("PGCT"), // Page count
-};
 
 function buildDeserializationCatalogs(
   brainCatalog: ITileCatalog,
@@ -281,11 +272,8 @@ export class BrainDef implements IBrainDef {
   }
 
   clone(): BrainDef {
-    const stream = new MemoryStream();
-    this.serialize(stream);
-    const newBrain = new BrainDef(this.services_);
-    newBrain.deserialize(stream);
-    return newBrain;
+    const json = this.toJson();
+    return BrainDef.fromJson(json, this.services_);
   }
 
   /**
@@ -373,54 +361,6 @@ export class BrainDef implements IBrainDef {
     }
 
     return brain;
-  }
-
-  serialize(stream: IWriteStream): void {
-    stream.pushChunk(STags.BRAN, kVersion);
-    stream.writeTaggedString(STags.NAME, this.name_);
-    this.catalog_.serialize(stream);
-    stream.writeTaggedU32(STags.PGCT, this.pages_.size());
-    this.pages_.forEach((page) => {
-      page.serialize(stream);
-    });
-    stream.popChunk();
-  }
-
-  deserialize(stream: IReadStream, extraCatalogs?: List<ITileCatalog>): void {
-    if (this.pages_.size() > 0) {
-      throw new Error(`BrainDef.deserialize: BrainDef must be empty before deserializing`);
-    }
-    const version = stream.enterChunk(STags.BRAN);
-    if (version !== kVersion) {
-      throw new Error(`BrainDef.deserialize: unsupported version ${version}`);
-    }
-    try {
-      const name = stream.readTaggedString(STags.NAME);
-      this.setName(name);
-      this.catalog_.deserialize(stream, this.services_);
-      const pageCount = stream.readTaggedU32(STags.PGCT);
-      const catalogs = buildDeserializationCatalogs(this.catalog_, this.servicesTiles(), extraCatalogs);
-      for (let i = 0; i < pageCount; i++) {
-        const page = new BrainPageDef();
-        this.addPage(page); // add before deserializing to set up brain associateion, so rules can read local catalog
-        page.deserialize(stream, catalogs);
-      }
-      // Reconcile page tiles after all pages are loaded (handles v1 saves that
-      // lack page tiles, and ensures visual labels match deserialized page names)
-      this.syncPageTiles_();
-    } catch (e) {
-      // Clean up partially deserialized pages
-      this.pages_.forEach((page) => {
-        this.unsubscribeFromPage_(page);
-        page.setBrain(undefined);
-      });
-      this.pages_.clear();
-      throw e;
-    } finally {
-      try {
-        stream.leaveChunk();
-      } catch {}
-    }
   }
 
   /**
