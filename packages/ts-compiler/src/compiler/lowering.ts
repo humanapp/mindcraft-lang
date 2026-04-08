@@ -505,12 +505,61 @@ function resolveCallArgumentTargetTypeId(
   return tsTypeToTypeId(parameterType, ctx.checker, ctx.services);
 }
 
-function lowerCallArgumentsWithTargetTypes(callExpr: ts.CallExpression, ctx: LowerContext): void {
-  for (let argIndex = 0; argIndex < callExpr.arguments.length; argIndex++) {
+interface RestParamInfo {
+  restIndex: number;
+  listTypeId: string;
+}
+
+function resolveRestParamInfo(callExpr: ts.CallExpression, ctx: LowerContext): RestParamInfo | undefined {
+  const signature = ctx.checker.getResolvedSignature(callExpr);
+  if (!signature) return undefined;
+
+  const parameters = signature.getParameters();
+  if (parameters.length === 0) return undefined;
+
+  const lastParam = parameters[parameters.length - 1];
+  const lastDeclaration = lastParam.valueDeclaration ?? lastParam.declarations?.[0];
+  if (!lastDeclaration || !ts.isParameter(lastDeclaration) || !lastDeclaration.dotDotDotToken) {
+    return undefined;
+  }
+
+  const paramType = ctx.checker.getTypeOfSymbolAtLocation(lastParam, lastDeclaration);
+  const listTypeId = resolveListTypeId(paramType, ctx);
+  if (!listTypeId) return undefined;
+
+  return { restIndex: parameters.length - 1, listTypeId };
+}
+
+function lowerCallArgumentsWithTargetTypes(callExpr: ts.CallExpression, ctx: LowerContext): number {
+  const restInfo = resolveRestParamInfo(callExpr, ctx);
+
+  if (!restInfo || callExpr.arguments.length <= restInfo.restIndex) {
+    for (let argIndex = 0; argIndex < callExpr.arguments.length; argIndex++) {
+      const argument = callExpr.arguments[argIndex];
+      const expectedTypeId = resolveCallArgumentTargetTypeId(callExpr, argIndex, ctx);
+      lowerExpressionWithExpectedType(argument, expectedTypeId, `function argument ${argIndex + 1}`, argument, ctx);
+    }
+    if (restInfo && callExpr.arguments.length === restInfo.restIndex) {
+      ctx.ir.push({ kind: "ListNew", typeId: restInfo.listTypeId });
+      return restInfo.restIndex + 1;
+    }
+    return callExpr.arguments.length;
+  }
+
+  for (let argIndex = 0; argIndex < restInfo.restIndex; argIndex++) {
     const argument = callExpr.arguments[argIndex];
     const expectedTypeId = resolveCallArgumentTargetTypeId(callExpr, argIndex, ctx);
     lowerExpressionWithExpectedType(argument, expectedTypeId, `function argument ${argIndex + 1}`, argument, ctx);
   }
+
+  ctx.ir.push({ kind: "ListNew", typeId: restInfo.listTypeId });
+  for (let argIndex = restInfo.restIndex; argIndex < callExpr.arguments.length; argIndex++) {
+    const argument = callExpr.arguments[argIndex];
+    lowerExpression(argument, ctx);
+    ctx.ir.push({ kind: "ListPush" });
+  }
+
+  return restInfo.restIndex + 1;
 }
 
 function emitOperandConversion(
@@ -2353,8 +2402,8 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
   if (ts.isIdentifier(expr.expression)) {
     const funcId = ctx.functionTable.get(expr.expression.text);
     if (funcId !== undefined) {
-      lowerCallArgumentsWithTargetTypes(expr, ctx);
-      ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: expr.arguments.length });
+      const argc = lowerCallArgumentsWithTargetTypes(expr, ctx);
+      ctx.ir.push({ kind: "Call", funcIndex: funcId, argc });
       return;
     }
   }
@@ -2385,8 +2434,8 @@ function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
     if (ctx.ir.length === irLenBefore) {
       return;
     }
-    lowerCallArgumentsWithTargetTypes(expr, ctx);
-    ctx.ir.push({ kind: "CallIndirect", argc: expr.arguments.length });
+    const argc = lowerCallArgumentsWithTargetTypes(expr, ctx);
+    ctx.ir.push({ kind: "CallIndirect", argc });
     return;
   }
 
@@ -2421,8 +2470,7 @@ function lowerStructMethodCall(
   const userFuncId = ctx.functionTable.get(fnName);
   if (userFuncId !== undefined) {
     lowerExpression(propAccess.expression, ctx);
-    lowerCallArgumentsWithTargetTypes(expr, ctx);
-    const argc = expr.arguments.length + 1;
+    const argc = lowerCallArgumentsWithTargetTypes(expr, ctx) + 1;
     ctx.ir.push({ kind: "Call", funcIndex: userFuncId, argc });
     return true;
   }
@@ -2436,8 +2484,7 @@ function lowerStructMethodCall(
   }
 
   lowerExpression(propAccess.expression, ctx);
-  lowerCallArgumentsWithTargetTypes(expr, ctx);
-  const argc = expr.arguments.length + 1;
+  const argc = lowerCallArgumentsWithTargetTypes(expr, ctx) + 1;
   if (fnEntry.isAsync) {
     ctx.ir.push({ kind: "HostCallArgsAsync", fnName, argc });
   } else {

@@ -1605,3 +1605,116 @@ export default Sensor({
     assert.equal((runResult.result as StringValue).v, "hello");
   });
 });
+
+describe("rest parameters", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  function restTestSource(helperFns: string, callBody: string): string {
+    return `
+import { Sensor, type Context } from "mindcraft";
+
+${helperFns}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    ${callBody}
+  },
+});
+`;
+  }
+
+  function compileAndRunRestTest(helperFns: string, callBody: string): number {
+    const source = restTestSource(helperFns, callBody);
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    return (runResult.result as NumberValue).v;
+  }
+
+  test("function with rest param called with excess args", () => {
+    const v = compileAndRunRestTest(
+      `function sum(first: number, ...rest: number[]): number {
+  let total = first;
+  for (let i = 0; i < rest.length; i++) {
+    total = total + rest[i];
+  }
+  return total;
+}`,
+      "return sum(10, 20, 30);"
+    );
+    assert.equal(v, 60);
+  });
+
+  test("function with rest param called with no rest args", () => {
+    const v = compileAndRunRestTest(
+      `function sum(first: number, ...rest: number[]): number {
+  return first + rest.length;
+}`,
+      "return sum(42);"
+    );
+    assert.equal(v, 42);
+  });
+
+  test("function with only rest param", () => {
+    const v = compileAndRunRestTest(
+      `function total(...nums: number[]): number {
+  let s = 0;
+  for (let i = 0; i < nums.length; i++) {
+    s = s + nums[i];
+  }
+  return s;
+}`,
+      "return total(1, 2, 3, 4);"
+    );
+    assert.equal(v, 10);
+  });
+
+  test("function with only rest param called with no args", () => {
+    const v = compileAndRunRestTest(
+      `function total(...nums: number[]): number {
+  return nums.length;
+}`,
+      "return total();"
+    );
+    assert.equal(v, 0);
+  });
+
+  test("rest param passed to another function", () => {
+    const v = compileAndRunRestTest(
+      `function sumList(arr: number[]): number {
+  let s = 0;
+  for (let i = 0; i < arr.length; i++) {
+    s = s + arr[i];
+  }
+  return s;
+}
+function wrapper(...nums: number[]): number {
+  return sumList(nums);
+}`,
+      "return wrapper(5, 10, 15);"
+    );
+    assert.equal(v, 30);
+  });
+
+  test("rest param element access", () => {
+    const v = compileAndRunRestTest(
+      `function pick(index: number, ...items: number[]): number {
+  return items[index];
+}`,
+      "return pick(2, 100, 200, 300, 400);"
+    );
+    assert.equal(v, 300);
+  });
+});
