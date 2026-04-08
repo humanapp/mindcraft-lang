@@ -303,6 +303,10 @@ export enum LoweringDiagCode {
   EnumObjectUsageNotSupported = 3145,
   /** Cannot resolve the list type for a rest parameter */
   CannotResolveRestParamListType = 3146,
+  /** Spread argument must be the last argument in a function call */
+  SpreadMustBeLastArgument = 3147,
+  /** Spread in a function call requires the target to have a rest parameter */
+  SpreadRequiresRestTarget = 3148,
 }
 
 /**

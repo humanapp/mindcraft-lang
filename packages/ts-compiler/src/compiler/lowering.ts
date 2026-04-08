@@ -538,6 +538,60 @@ function resolveRestParamInfo(callExpr: ts.CallExpression, ctx: LowerContext): R
 function lowerCallArgumentsWithTargetTypes(callExpr: ts.CallExpression, ctx: LowerContext): number {
   const restInfo = resolveRestParamInfo(callExpr, ctx);
 
+  const spreadIndex = callExpr.arguments.findIndex((arg) => ts.isSpreadElement(arg));
+
+  if (spreadIndex >= 0) {
+    if (spreadIndex < callExpr.arguments.length - 1) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SpreadMustBeLastArgument,
+          "Spread argument must be the last argument",
+          callExpr.arguments[spreadIndex]
+        )
+      );
+      return callExpr.arguments.length;
+    }
+
+    if (!restInfo) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.SpreadRequiresRestTarget,
+          "Spread in function call requires target to have a rest parameter",
+          callExpr.arguments[spreadIndex]
+        )
+      );
+      return callExpr.arguments.length;
+    }
+
+    const spreadElement = callExpr.arguments[spreadIndex] as ts.SpreadElement;
+
+    for (let argIndex = 0; argIndex < Math.min(restInfo.restIndex, spreadIndex); argIndex++) {
+      const argument = callExpr.arguments[argIndex];
+      const expectedTypeId = resolveCallArgumentTargetTypeId(callExpr, argIndex, ctx);
+      lowerExpressionWithExpectedType(argument, expectedTypeId, `function argument ${argIndex + 1}`, argument, ctx);
+    }
+
+    if (spreadIndex === restInfo.restIndex) {
+      lowerExpression(spreadElement.expression, ctx);
+    } else {
+      const restListLocal = ctx.scopeStack.allocLocal();
+      ctx.ir.push({ kind: "ListNew", typeId: restInfo.listTypeId });
+      ctx.ir.push({ kind: "StoreLocal", index: restListLocal });
+
+      for (let argIndex = restInfo.restIndex; argIndex < spreadIndex; argIndex++) {
+        ctx.ir.push({ kind: "LoadLocal", index: restListLocal });
+        lowerExpression(callExpr.arguments[argIndex], ctx);
+        ctx.ir.push({ kind: "ListPush" });
+        ctx.ir.push({ kind: "StoreLocal", index: restListLocal });
+      }
+
+      emitPushAllFromList(spreadElement.expression, restListLocal, ctx, callExpr);
+      ctx.ir.push({ kind: "LoadLocal", index: restListLocal });
+    }
+
+    return restInfo.restIndex + 1;
+  }
+
   if (!restInfo || callExpr.arguments.length <= restInfo.restIndex) {
     for (let argIndex = 0; argIndex < callExpr.arguments.length; argIndex++) {
       const argument = callExpr.arguments[argIndex];

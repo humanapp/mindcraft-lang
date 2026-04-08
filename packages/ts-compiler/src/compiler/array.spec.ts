@@ -1788,3 +1788,125 @@ describe("spread in array literals", () => {
     assert.deepStrictEqual(v, [10, 20]);
   });
 });
+
+describe("spread in function calls", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  function compileAndRunSpreadCall(helperFns: string, callBody: string): number {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+${helperFns}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    ${callBody}
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    return (runResult.result as NumberValue).v;
+  }
+
+  test("spread list into rest-only function", () => {
+    const v = compileAndRunSpreadCall(
+      `function total(...nums: number[]): number {
+  let s = 0;
+  for (let i = 0; i < nums.length; i++) {
+    s = s + nums[i];
+  }
+  return s;
+}`,
+      `const args: number[] = [1, 2, 3];
+      return total(...args);`
+    );
+    assert.equal(v, 6);
+  });
+
+  test("spread list after regular args", () => {
+    const v = compileAndRunSpreadCall(
+      `function sum(first: number, ...rest: number[]): number {
+  let total = first;
+  for (let i = 0; i < rest.length; i++) {
+    total = total + rest[i];
+  }
+  return total;
+}`,
+      `const extras: number[] = [20, 30];
+      return sum(10, ...extras);`
+    );
+    assert.equal(v, 60);
+  });
+
+  test("spread empty list into rest param", () => {
+    const v = compileAndRunSpreadCall(
+      `function total(...nums: number[]): number {
+  return nums.length;
+}`,
+      `const args: number[] = [];
+      return total(...args);`
+    );
+    assert.equal(v, 0);
+  });
+
+  test("spread with individual args before rest position", () => {
+    const v = compileAndRunSpreadCall(
+      `function sum(a: number, b: number, ...rest: number[]): number {
+  let total = a + b;
+  for (let i = 0; i < rest.length; i++) {
+    total = total + rest[i];
+  }
+  return total;
+}`,
+      `const extras: number[] = [30, 40];
+      return sum(10, 20, ...extras);`
+    );
+    assert.equal(v, 100);
+  });
+
+  test("spread with mixed individual and spread rest args", () => {
+    const v = compileAndRunSpreadCall(
+      `function sum(first: number, ...rest: number[]): number {
+  let total = first;
+  for (let i = 0; i < rest.length; i++) {
+    total = total + rest[i];
+  }
+  return total;
+}`,
+      `const extras: number[] = [30, 40];
+      return sum(10, 20, ...extras);`
+    );
+    assert.equal(v, 100);
+  });
+
+  test("spread forwarding between rest functions", () => {
+    const v = compileAndRunSpreadCall(
+      `function inner(...nums: number[]): number {
+  let s = 0;
+  for (let i = 0; i < nums.length; i++) {
+    s = s + nums[i];
+  }
+  return s;
+}
+function outer(...nums: number[]): number {
+  return inner(...nums);
+}`,
+      `return outer(5, 10, 15);`
+    );
+    assert.equal(v, 30);
+  });
+});
