@@ -72,6 +72,7 @@ export function Sidebar({
     () => getUiPreferences().collapsedArchetypes
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bridgeEnabled, setBridgeEnabled] = useState(() => getUiPreferences().bridgeEnabled);
   const [bridgeStatus, setBridgeStatus] = useState(getBridgeStatus);
   const [joinCode, setJoinCode] = useState(getBridgeJoinCode);
   const [copied, setCopied] = useState(false);
@@ -79,10 +80,10 @@ export function Sidebar({
   useEffect(() => onBridgeStatusChange(setBridgeStatus), []);
   useEffect(() => onBridgeJoinCodeChange(setJoinCode), []);
   useEffect(() => {
-    if (getUiPreferences().bridgeEnabled) {
+    if (bridgeEnabled) {
       connectBridge();
     }
-  }, []);
+  }, [bridgeEnabled]);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toggle: toggleDocs, isOpen: isDocsOpen, open: openDocs, navigateToEntry } = useDocsSidebar();
@@ -313,12 +314,11 @@ export function Sidebar({
               </label>
               <Switch
                 id="bridge-toggle"
-                checked={bridgeStatus !== "disconnected"}
+                checked={bridgeEnabled}
                 onCheckedChange={(checked) => {
+                  setBridgeEnabled(checked);
                   updateUiPreferences({ bridgeEnabled: checked });
-                  if (checked) {
-                    connectBridge();
-                  } else {
+                  if (!checked) {
                     disconnectBridge();
                   }
                 }}
@@ -336,7 +336,7 @@ export function Sidebar({
             >
               {bridgeStatus}
             </span>
-            {joinCode && (
+            {joinCode && (bridgeStatus === "connected" || bridgeStatus === "reconnecting") && (
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-mono text-slate-300 truncate">{joinCode}</span>
                 <button
