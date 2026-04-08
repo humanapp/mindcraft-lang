@@ -1718,3 +1718,73 @@ function wrapper(...nums: number[]): number {
     assert.equal(v, 300);
   });
 });
+
+describe("spread in array literals", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("spread single array", () => {
+    const v = compileAndRunNumberList(`
+      const a: number[] = [1, 2, 3];
+      const b: number[] = [...a];
+      return b;
+    `);
+    assert.deepStrictEqual(v, [1, 2, 3]);
+  });
+
+  test("spread with leading elements", () => {
+    const v = compileAndRunNumberList(`
+      const a: number[] = [3, 4];
+      const b: number[] = [1, 2, ...a];
+      return b;
+    `);
+    assert.deepStrictEqual(v, [1, 2, 3, 4]);
+  });
+
+  test("spread with trailing elements", () => {
+    const v = compileAndRunNumberList(`
+      const a: number[] = [1, 2];
+      const b: number[] = [...a, 3, 4];
+      return b;
+    `);
+    assert.deepStrictEqual(v, [1, 2, 3, 4]);
+  });
+
+  test("spread between elements", () => {
+    const v = compileAndRunNumberList(`
+      const a: number[] = [2, 3];
+      const b: number[] = [1, ...a, 4];
+      return b;
+    `);
+    assert.deepStrictEqual(v, [1, 2, 3, 4]);
+  });
+
+  test("multiple spreads", () => {
+    const v = compileAndRunNumberList(`
+      const a: number[] = [1, 2];
+      const c: number[] = [5, 6];
+      const d: number[] = [...a, 3, 4, ...c];
+      return d;
+    `);
+    assert.deepStrictEqual(v, [1, 2, 3, 4, 5, 6]);
+  });
+
+  test("spread empty array", () => {
+    const v = compileAndRunNumberList(`
+      const a: number[] = [];
+      const b: number[] = [1, ...a, 2];
+      return b;
+    `);
+    assert.deepStrictEqual(v, [1, 2]);
+  });
+
+  test("spread into empty literal", () => {
+    const v = compileAndRunNumberList(`
+      const a: number[] = [10, 20];
+      const b: number[] = [...a];
+      return b;
+    `);
+    assert.deepStrictEqual(v, [10, 20]);
+  });
+});

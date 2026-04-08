@@ -525,7 +525,12 @@ function resolveRestParamInfo(callExpr: ts.CallExpression, ctx: LowerContext): R
 
   const paramType = ctx.checker.getTypeOfSymbolAtLocation(lastParam, lastDeclaration);
   const listTypeId = resolveListTypeId(paramType, ctx);
-  if (!listTypeId) return undefined;
+  if (!listTypeId) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.CannotResolveRestParamListType, "Cannot resolve list type for rest parameter", callExpr)
+    );
+    return undefined;
+  }
 
   return { restIndex: parameters.length - 1, listTypeId };
 }
@@ -6005,12 +6010,33 @@ function lowerArrayLiteral(expr: ts.ArrayLiteralExpression, ctx: LowerContext): 
     return;
   }
 
+  const hasSpread = expr.elements.some(ts.isSpreadElement);
+
+  if (!hasSpread) {
+    ctx.ir.push({ kind: "ListNew", typeId: listTypeId });
+    for (const element of expr.elements) {
+      lowerExpression(element, ctx);
+      ctx.ir.push({ kind: "ListPush" });
+    }
+    return;
+  }
+
+  const resultLocal = ctx.scopeStack.allocLocal();
   ctx.ir.push({ kind: "ListNew", typeId: listTypeId });
+  ctx.ir.push({ kind: "StoreLocal", index: resultLocal });
 
   for (const element of expr.elements) {
-    lowerExpression(element, ctx);
-    ctx.ir.push({ kind: "ListPush" });
+    if (ts.isSpreadElement(element)) {
+      emitPushAllFromList(element.expression, resultLocal, ctx, expr);
+    } else {
+      ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
+      lowerExpression(element, ctx);
+      ctx.ir.push({ kind: "ListPush" });
+      ctx.ir.push({ kind: "StoreLocal", index: resultLocal });
+    }
   }
+
+  ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
 }
 
 function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {

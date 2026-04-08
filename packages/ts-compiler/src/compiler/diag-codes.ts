@@ -301,6 +301,8 @@ export enum LoweringDiagCode {
   NewExpressionNotIdentifier = 3144,
   /** Enum objects cannot be used as runtime values; only direct member access is supported */
   EnumObjectUsageNotSupported = 3145,
+  /** Cannot resolve the list type for a rest parameter */
+  CannotResolveRestParamListType = 3146,
 }
 
 /**
