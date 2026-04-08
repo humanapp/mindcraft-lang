@@ -70,6 +70,20 @@ This will release `core`, then `bridge-protocol`, then `bridge-client` -- each b
 `patch`, each waiting for CI before proceeding. For a leaf package like `core` with no
 local deps, only `core` itself is released.
 
+### Bundled Apps (sim)
+
+Bundled apps like `sim` are `"private": true` and deployed from their build output, not
+published to npm. Their `release:*` scripts pass `--skip-deps` so upstream packages are
+not published as a side effect:
+
+```sh
+cd apps/sim
+npm run release:patch
+```
+
+This bumps `sim`'s version, commits, tags (`sim-v<version>`), and pushes. The tag triggers
+the `deploy-sim` GitHub Actions workflow which builds and deploys to S3/CloudFront.
+
 ### Prerequisites
 
 - **Clean working tree** -- the script aborts if there are uncommitted changes.

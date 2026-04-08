@@ -39,9 +39,9 @@
     "check": "biome check ./src --write",
     "typecheck": "tsc --noEmit",
     "format": "biome format ./src --write",
-    "release:patch": "node ../../scripts/release.js patch",
-    "release:minor": "node ../../scripts/release.js minor",
-    "release:major": "node ../../scripts/release.js major"
+    "release:patch": "node ../../scripts/release.js patch --skip-deps",
+    "release:minor": "node ../../scripts/release.js minor --skip-deps",
+    "release:major": "node ../../scripts/release.js major --skip-deps"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",

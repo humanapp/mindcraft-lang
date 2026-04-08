@@ -2,12 +2,17 @@
 
 // Shared release script for @mindcraft-lang packages.
 //
-// Usage: node scripts/release.js <patch|minor|major>
+// Usage: node scripts/release.js <patch|minor|major> [--skip-deps]
 //
 // Run from a package directory (or via the package's npm release:* scripts).
 // Walks the file: dependency tree, releasing upstream packages first in
 // topological order and waiting for each CI workflow to succeed before
 // proceeding. Private packages are skipped.
+//
+// Flags:
+//   --skip-deps  Skip releasing upstream dependencies. Only bump, tag, and
+//                push the current package. Useful for bundled apps like sim
+//                whose dependencies do not need to be published to npm.
 //
 // Per-package steps:
 //   1. Runs the package's pre-release checks (build, lint)
@@ -128,9 +133,11 @@ function waitForWorkflow(tag, repoDir) {
 const pkgDir = process.cwd();
 const repoDir = resolve(pkgDir, runQuiet("git rev-parse --show-cdup", pkgDir) || ".");
 
-const bump = process.argv[2];
-if (!VALID_BUMPS.includes(bump)) {
-  console.error(`Usage: node scripts/release.js <${VALID_BUMPS.join("|")}>`);
+const args = process.argv.slice(2);
+const skipDeps = args.includes("--skip-deps");
+const bump = args.find((a) => !a.startsWith("--"));
+if (!bump || !VALID_BUMPS.includes(bump)) {
+  console.error(`Usage: node scripts/release.js <${VALID_BUMPS.join("|")}> [--skip-deps]`);
   process.exit(1);
 }
 
@@ -150,6 +157,11 @@ collectReleaseDeps(pkgDir, visited, releaseOrder, true);
 if (releaseOrder.length === 0) {
   console.error("Error: no releasable package found.");
   process.exit(1);
+}
+
+// With --skip-deps, only release the root package (last in topological order).
+if (skipDeps && releaseOrder.length > 1) {
+  releaseOrder.splice(0, releaseOrder.length - 1);
 }
 
 const isMulti = releaseOrder.length > 1;
