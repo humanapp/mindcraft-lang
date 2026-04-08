@@ -18,7 +18,7 @@ import {
   mkSensorTileId,
   mkVariableFactoryTileId,
 } from "@mindcraft-lang/core/app";
-import { MyTypeIds } from "@/brain/type-system";
+import { SimTypeIds } from "@/brain/type-system";
 import type { TileVisual } from "./types";
 
 // Visual definitions for well-known tiles
@@ -48,8 +48,8 @@ export const tileVisuals = new Map<string, Partial<TileVisual>>([
   [mkVariableFactoryTileId(CoreVariableFactoryId.Boolean), { label: "create a boolean variable", iconUrl: "/assets/brain/icons/switch.svg" }],
   [mkVariableFactoryTileId(CoreVariableFactoryId.Number), { label: "create a number variable", iconUrl: "/assets/brain/icons/number.svg" }],
   [mkVariableFactoryTileId(CoreVariableFactoryId.String), { label: "create a text variable", iconUrl: "/assets/brain/icons/text.svg" }],
-  [mkVariableFactoryTileId(MyTypeIds.Vector2), { label: "create a vector2 variable", iconUrl: "/assets/brain/icons/vector2.svg" }],
-  [mkVariableFactoryTileId(MyTypeIds.ActorRef), { label: "create an actor variable", iconUrl: "/assets/brain/icons/actor-mask.svg" }],
+  [mkVariableFactoryTileId(SimTypeIds.Vector2), { label: "create a vector2 variable", iconUrl: "/assets/brain/icons/vector2.svg" }],
+  [mkVariableFactoryTileId(SimTypeIds.ActorRef), { label: "create an actor variable", iconUrl: "/assets/brain/icons/actor-mask.svg" }],
   // Literal Factories
   [mkLiteralFactoryTileId(CoreLiteralFactoryId.Number), { label: "create a number tile", iconUrl: "/assets/brain/icons/number.svg" }],
   [mkLiteralFactoryTileId(CoreLiteralFactoryId.String), { label: "create a text tile", iconUrl: "/assets/brain/icons/text.svg" }],
@@ -70,6 +70,6 @@ export const tileVisuals = new Map<string, Partial<TileVisual>>([
   [mkActuatorTileId(CoreActuatorId.RestartPage), { label: "restart page", iconUrl: "/assets/brain/icons/restart-page.svg" }],
   [mkActuatorTileId(CoreActuatorId.Yield), { label: "yield", iconUrl: "/assets/brain/icons/yield.svg" }],
   // Field Accessors
-  [mkAccessorTileId(MyTypeIds.Vector2, "x"), { label: "x", iconUrl: "/assets/brain/icons/vector2_x.svg" }],
-  [mkAccessorTileId(MyTypeIds.Vector2, "y"), { label: "y", iconUrl: "/assets/brain/icons/vector2_y.svg" }],
+  [mkAccessorTileId(SimTypeIds.Vector2, "x"), { label: "x", iconUrl: "/assets/brain/icons/vector2_x.svg" }],
+  [mkAccessorTileId(SimTypeIds.Vector2, "y"), { label: "y", iconUrl: "/assets/brain/icons/vector2_y.svg" }],
 ]);

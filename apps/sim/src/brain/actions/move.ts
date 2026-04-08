@@ -31,7 +31,7 @@ import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { type Steering, steerAvoid, steerAwayFrom, steerForward, steerToward } from "@/brain/movement";
 import { TileIds } from "@/brain/tileids";
-import { extractVector2, MyTypeIds, mkVector2Value } from "@/brain/type-system";
+import { extractVector2, mkVector2Value, SimTypeIds } from "@/brain/type-system";
 
 // ---------------------------------------------------------------------------
 // Call definition & slot IDs
@@ -259,7 +259,7 @@ export const modifiers: ModifierTileInput[] = [
 ];
 
 export const parameters: ParameterTileInput[] = [
-  { id: TileIds.Parameter.AnonymousActorRef, dataType: MyTypeIds.ActorRef, hidden: true },
+  { id: TileIds.Parameter.AnonymousActorRef, dataType: SimTypeIds.ActorRef, hidden: true },
   {
     id: TileIds.Parameter.Priority,
     dataType: CoreTypeIds.Number,

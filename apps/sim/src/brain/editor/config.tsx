@@ -3,7 +3,7 @@ import { Vector2 } from "@mindcraft-lang/core/app";
 import type { BrainEditorConfig, CustomLiteralType } from "@mindcraft-lang/ui";
 import type { ReactNode } from "react";
 import type { Archetype } from "@/brain/actor";
-import { MyTypeIds } from "@/brain/type-system";
+import { SimTypeIds } from "@/brain/type-system";
 import { getDefaultBrain } from "@/services/brain-persistence";
 import { dataTypeIconMap, dataTypeNameMap } from "./data-type-icons";
 import { genVisualForTile } from "./visual-provider";
@@ -12,7 +12,7 @@ const inputClass =
   "col-span-3 flex h-10 w-full rounded-lg border-2 border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50";
 
 const vector2LiteralType: CustomLiteralType = {
-  typeId: MyTypeIds.Vector2,
+  typeId: SimTypeIds.Vector2,
   description: "Enter X and Y coordinates for the vector.",
 
   isValid(state: Record<string, string>): boolean {

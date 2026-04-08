@@ -15,14 +15,14 @@ import {
 } from "@mindcraft-lang/core/app";
 import type { Archetype } from "./actor";
 import { getSelf } from "./execution-context-types";
-import { MyTypeIds } from "./type-system";
+import { SimTypeIds } from "./type-system";
 
 const VALID_ARCHETYPES = new Set<string>(["carnivore", "herbivore", "plant"]);
 
 export function registerEngineContext(api: MindcraftModuleApi) {
   const { types, functions } = api.brainServices;
 
-  const actorRefListTypeId = types.instantiate("List", List.from([MyTypeIds.ActorRef]));
+  const actorRefListTypeId = types.instantiate("List", List.from([SimTypeIds.ActorRef]));
 
   types.addStructMethods(
     ContextTypeIds.EngineContext,
@@ -35,7 +35,7 @@ export function registerEngineContext(api: MindcraftModuleApi) {
       {
         name: "getActorById",
         params: List.from([{ name: "id", typeId: CoreTypeIds.Number }]),
-        returnTypeId: MyTypeIds.ActorRef,
+        returnTypeId: SimTypeIds.ActorRef,
       },
     ])
   );
@@ -54,7 +54,7 @@ export function registerEngineContext(api: MindcraftModuleApi) {
           return mkListValue(actorRefListTypeId, List.empty());
         }
         const actors = self.engine.getActorsByArchetype(archetypeStr as Archetype);
-        const refs = List.from(actors.map((actor) => mkNativeStructValue(MyTypeIds.ActorRef, actor)));
+        const refs = List.from(actors.map((actor) => mkNativeStructValue(SimTypeIds.ActorRef, actor)));
         return mkListValue(actorRefListTypeId, refs);
       },
     },
@@ -72,7 +72,7 @@ export function registerEngineContext(api: MindcraftModuleApi) {
         if (id === undefined) return NIL_VALUE;
         const actor = self.engine.getActorById(id);
         if (!actor) return NIL_VALUE;
-        return mkNativeStructValue(MyTypeIds.ActorRef, actor);
+        return mkNativeStructValue(SimTypeIds.ActorRef, actor);
       },
     },
     emptyCallDef

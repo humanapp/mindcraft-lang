@@ -17,14 +17,14 @@ import {
 } from "@mindcraft-lang/core/app";
 import type { Actor } from "./actor";
 
-export const MyTypeNames = {
-  ActorRef: "actorRef",
-  Vector2: "vector2",
+export const SimTypeNames = {
+  ActorRef: "ActorRef",
+  Vector2: "Vector2",
 };
 
-export const MyTypeIds = {
-  ActorRef: mkTypeId(NativeType.Struct, MyTypeNames.ActorRef),
-  Vector2: mkTypeId(NativeType.Struct, MyTypeNames.Vector2),
+export const SimTypeIds = {
+  ActorRef: mkTypeId(NativeType.Struct, SimTypeNames.ActorRef),
+  Vector2: mkTypeId(NativeType.Struct, SimTypeNames.Vector2),
 };
 
 // -------------------------------------------------------
@@ -33,7 +33,7 @@ export const MyTypeIds = {
 
 export function mkVector2Value(v: Vector2) {
   return mkStructValue(
-    MyTypeIds.Vector2,
+    SimTypeIds.Vector2,
     new Dict([
       ["x", mkNumberValue(v.X)],
       ["y", mkNumberValue(v.Y)],
@@ -42,7 +42,7 @@ export function mkVector2Value(v: Vector2) {
 }
 
 export function extractVector2(value: StructValue): Vector2 | undefined {
-  if (value.t !== NativeType.Struct || value.typeId !== MyTypeIds.Vector2) {
+  if (value.t !== NativeType.Struct || value.typeId !== SimTypeIds.Vector2) {
     return undefined;
   }
   const xField = value.v?.get("x") as NumberValue | undefined;
@@ -130,7 +130,7 @@ function actorRefFieldSetter(source: StructValue, fieldName: string, value: Valu
  * Example: `mkActorRefResolver(getSelf)` for the [me] tile.
  */
 export function mkActorRefResolver(resolver: (ctx: ExecutionContext) => Actor | undefined): StructValue {
-  return mkStructValue(MyTypeIds.ActorRef, new Dict(), resolver);
+  return mkStructValue(SimTypeIds.ActorRef, new Dict(), resolver);
 }
 
 /**
@@ -138,14 +138,14 @@ export function mkActorRefResolver(resolver: (ctx: ExecutionContext) => Actor | 
  * Use this for literal actor tiles where the user picked a specific actor.
  */
 export function mkActorRefDirect(actor: Actor): StructValue {
-  return mkStructValue(MyTypeIds.ActorRef, new Dict(), actor);
+  return mkStructValue(SimTypeIds.ActorRef, new Dict(), actor);
 }
 
 export function registerTypes(api: MindcraftModuleApi) {
   api.defineType({
     coreType: NativeType.Struct,
-    typeId: MyTypeIds.Vector2,
-    name: MyTypeNames.Vector2,
+    typeId: SimTypeIds.Vector2,
+    name: SimTypeNames.Vector2,
     fields: List.from([
       { name: "x", typeId: CoreTypeIds.Number },
       { name: "y", typeId: CoreTypeIds.Number },
@@ -156,11 +156,11 @@ export function registerTypes(api: MindcraftModuleApi) {
 
   api.defineType({
     coreType: NativeType.Struct,
-    typeId: MyTypeIds.ActorRef,
-    name: MyTypeNames.ActorRef,
+    typeId: SimTypeIds.ActorRef,
+    name: SimTypeNames.ActorRef,
     fields: List.from([
       { name: "id", typeId: CoreTypeIds.Number },
-      { name: "position", typeId: MyTypeIds.Vector2 },
+      { name: "position", typeId: SimTypeIds.Vector2 },
       { name: "energy pct", typeId: CoreTypeIds.Number },
     ]),
     fieldGetter: actorRefFieldGetter,
@@ -171,7 +171,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   });
 
   api.registerConversion({
-    fromType: MyTypeIds.ActorRef,
+    fromType: SimTypeIds.ActorRef,
     toType: CoreTypeIds.Number,
     cost: 2,
     fn: {
@@ -183,8 +183,8 @@ export function registerTypes(api: MindcraftModuleApi) {
     },
   });
   api.registerConversion({
-    fromType: MyTypeIds.ActorRef,
-    toType: MyTypeIds.Vector2,
+    fromType: SimTypeIds.ActorRef,
+    toType: SimTypeIds.Vector2,
     cost: 2,
     fn: {
       exec: (ctx: ExecutionContext, args: MapValue) => {
@@ -198,7 +198,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     },
   });
   api.registerConversion({
-    fromType: MyTypeIds.Vector2,
+    fromType: SimTypeIds.Vector2,
     toType: CoreTypeIds.String,
     cost: 3,
     fn: {

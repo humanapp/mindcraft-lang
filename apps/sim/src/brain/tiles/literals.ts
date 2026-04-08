@@ -1,7 +1,7 @@
 import { BrainTileLiteralDef, type MindcraftModuleApi, mkNativeStructValue } from "@mindcraft-lang/core/app";
 import { getSelf, getTargetActor } from "../execution-context-types";
 import { TargetActorCapabilityBitSet } from "../tileids";
-import { MyTypeIds } from "../type-system";
+import { SimTypeIds } from "../type-system";
 
 export function registerLiteralTiles(api: MindcraftModuleApi) {
   const meVisual = {
@@ -15,8 +15,8 @@ export function registerLiteralTiles(api: MindcraftModuleApi) {
 
   api.registerTile(
     new BrainTileLiteralDef(
-      MyTypeIds.ActorRef,
-      mkNativeStructValue(MyTypeIds.ActorRef, getSelf),
+      SimTypeIds.ActorRef,
+      mkNativeStructValue(SimTypeIds.ActorRef, getSelf),
       {
         visual: meVisual,
         persist: false,
@@ -27,8 +27,8 @@ export function registerLiteralTiles(api: MindcraftModuleApi) {
   );
   api.registerTile(
     new BrainTileLiteralDef(
-      MyTypeIds.ActorRef,
-      mkNativeStructValue(MyTypeIds.ActorRef, getTargetActor),
+      SimTypeIds.ActorRef,
+      mkNativeStructValue(SimTypeIds.ActorRef, getTargetActor),
       {
         visual: itVisual,
         persist: false,

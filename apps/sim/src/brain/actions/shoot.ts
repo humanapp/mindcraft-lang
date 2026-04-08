@@ -22,7 +22,7 @@ import {
 } from "@mindcraft-lang/core/app";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
-import { MyTypeIds } from "@/brain/type-system";
+import { SimTypeIds } from "@/brain/type-system";
 import { resolveTargetActor } from "./utils";
 
 const AnonActorRef = param(TileIds.Parameter.AnonymousActorRef, {
@@ -130,7 +130,7 @@ export default {
 } satisfies CreateHostActuatorOptions;
 
 export const parameters: ParameterTileInput[] = [
-  { id: TileIds.Parameter.AnonymousActorRef, dataType: MyTypeIds.ActorRef, hidden: true },
+  { id: TileIds.Parameter.AnonymousActorRef, dataType: SimTypeIds.ActorRef, hidden: true },
   {
     id: TileIds.Parameter.Rate,
     dataType: CoreTypeIds.Number,

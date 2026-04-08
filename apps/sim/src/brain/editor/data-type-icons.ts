@@ -1,18 +1,18 @@
 import { CoreTypeIds } from "@mindcraft-lang/core/app";
-import { MyTypeIds } from "@/brain/type-system";
+import { SimTypeIds } from "@/brain/type-system";
 
 export const dataTypeIconMap = new Map<string, string>([
   [CoreTypeIds.Boolean, "/assets/brain/icons/switch.svg"],
   [CoreTypeIds.Number, "/assets/brain/icons/number.svg"],
   [CoreTypeIds.String, "/assets/brain/icons/text.svg"],
-  [MyTypeIds.Vector2, "/assets/brain/icons/vector2.svg"],
-  [MyTypeIds.ActorRef, "/assets/brain/icons/actor-mask.svg"],
+  [SimTypeIds.Vector2, "/assets/brain/icons/vector2.svg"],
+  [SimTypeIds.ActorRef, "/assets/brain/icons/actor-mask.svg"],
 ]);
 
 export const dataTypeNameMap = new Map<string, string>([
   [CoreTypeIds.Boolean, "boolean"],
   [CoreTypeIds.Number, "number"],
   [CoreTypeIds.String, "text"],
-  [MyTypeIds.Vector2, "vec2"],
-  [MyTypeIds.ActorRef, "actor"],
+  [SimTypeIds.Vector2, "vec2"],
+  [SimTypeIds.ActorRef, "actor"],
 ]);
