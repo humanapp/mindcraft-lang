@@ -6041,6 +6041,15 @@ function tsTypeToTypeId(
   if (type.flags & ts.TypeFlags.Void) {
     return CoreTypeIds.Void;
   }
+  if (type.flags & ts.TypeFlags.TypeParameter) {
+    if (checker) {
+      const constraint = checker.getBaseConstraintOfType(type);
+      if (constraint) {
+        return tsTypeToTypeId(constraint, checker, services);
+      }
+    }
+    return CoreTypeIds.Any;
+  }
   const enumTypeId = resolveRegisteredEnumTypeId(type, services, checker);
   if (enumTypeId) {
     return enumTypeId;
