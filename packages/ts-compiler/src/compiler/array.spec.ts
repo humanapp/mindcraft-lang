@@ -1177,3 +1177,94 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   });
 });
+
+describe("Generic function body - struct field access", () => {
+  let structAmbient: string;
+  let structServices: BrainServices;
+
+  before(() => {
+    structServices = __test__createBrainServices();
+    const types = structServices.types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+
+    const numListName = "NumberList";
+    const numListTypeId = mkTypeId(NativeType.List, numListName);
+    if (!types.get(numListTypeId)) {
+      types.addListType(numListName, { elementTypeId: numTypeId });
+    }
+
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    if (!types.get(vec2TypeId)) {
+      types.addStructType("Vector2", {
+        fields: List.from([
+          { name: "x", typeId: numTypeId },
+          { name: "y", typeId: numTypeId },
+        ]),
+      });
+    }
+
+    structAmbient = buildAmbientDeclarations(structServices.types);
+  });
+
+  test("generic function reads struct field via constrained T", () => {
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+function getX<T extends Vector2>(obj: T): number {
+  return obj.x;
+}
+
+export default Sensor({
+  name: "struct-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const v: Vector2 = { x: 5, y: 10 };
+    return getX(v);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource: structAmbient, services: structServices });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(structServices, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 5);
+  });
+
+  test("generic function reads multiple struct fields", () => {
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+function sum<T extends Vector2>(obj: T): number {
+  return obj.x + obj.y;
+}
+
+export default Sensor({
+  name: "struct-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const v: Vector2 = { x: 3, y: 7 };
+    return sum(v);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource: structAmbient, services: structServices });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(structServices, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 10);
+  });
+});
