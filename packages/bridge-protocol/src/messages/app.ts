@@ -11,6 +11,7 @@ import type {
 } from "./shared.js";
 
 export interface AppSessionWelcomePayload {
+  protocolVersion: number;
   sessionId: string;
   joinCode: string;
   bindingToken?: string;

@@ -11,6 +11,7 @@ import type {
 } from "./shared.js";
 
 export interface ExtensionSessionWelcomePayload {
+  protocolVersion: number;
   sessionId: string;
 }
 

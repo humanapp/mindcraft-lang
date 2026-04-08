@@ -3,7 +3,7 @@ import type {
   ExtensionSessionWelcomeMessage,
   SessionErrorMessage,
 } from "@mindcraft-lang/bridge-protocol";
-import { sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-protocol";
+import { PROTOCOL_VERSION, sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-protocol";
 import { createBindingToken } from "#core/binding-token.js";
 import { logger } from "#core/logging/logger.js";
 import {
@@ -41,6 +41,21 @@ const hello: WsHandler = (ws, payload, id) => {
   }
 
   const helloPayload = parsed.data;
+
+  const clientVersion = helloPayload?.protocolVersion;
+  if (clientVersion === undefined || clientVersion < 1 || clientVersion > PROTOCOL_VERSION) {
+    logger.warn({ clientVersion, serverVersion: PROTOCOL_VERSION }, "extension protocol version mismatch");
+    const err: SessionErrorMessage = {
+      type: "session:error",
+      id,
+      payload: {
+        message: `unsupported protocol version ${clientVersion}; server supports 1..${PROTOCOL_VERSION}`,
+      },
+    };
+    safeSend(ws, JSON.stringify(err));
+    return;
+  }
+
   const session =
     (helloPayload?.sessionId && reclaimExtensionSession(helloPayload.sessionId, ws)) ||
     registerExtensionSession(ws, helloPayload?.joinCode, helloPayload?.bindingToken);
@@ -54,7 +69,7 @@ const hello: WsHandler = (ws, payload, id) => {
   const welcome: ExtensionSessionWelcomeMessage = {
     type: "session:welcome",
     id,
-    payload: { sessionId: session.id },
+    payload: { protocolVersion: clientVersion, sessionId: session.id },
   };
   safeSend(ws, JSON.stringify(welcome));
 

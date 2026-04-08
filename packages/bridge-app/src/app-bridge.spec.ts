@@ -187,7 +187,7 @@ describe("createAppBridge", () => {
     socket.simulateOpen();
     socket.simulateMessage({
       type: "session:welcome",
-      payload: { sessionId: "session-1", joinCode: "JOIN-1" },
+      payload: { protocolVersion: 1, sessionId: "session-1", joinCode: "JOIN-1" },
     });
     socket.simulateMessage({
       type: "session:joinCode",

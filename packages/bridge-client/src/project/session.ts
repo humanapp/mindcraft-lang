@@ -1,4 +1,4 @@
-import type { WsMessage } from "@mindcraft-lang/bridge-protocol";
+import { PROTOCOL_VERSION, type WsMessage } from "@mindcraft-lang/bridge-protocol";
 import { WsClient } from "../ws-client.js";
 
 type InternalHandler = (msg: WsMessage) => void;
@@ -35,7 +35,8 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
     this._joinCode = joinCode;
     this.addEventListener("status", (status) => {
       if (status === "connected") {
-        const payload: Record<string, string> = {
+        const payload: Record<string, string | number> = {
+          protocolVersion: PROTOCOL_VERSION,
           appName: this._meta.appName,
           projectId: this._meta.projectId,
           projectName: this._meta.projectName,
@@ -74,7 +75,18 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
 
     this._clientUnsubs.push(
       this._client.on("session:welcome", (msg: WsMessage) => {
-        const payload = msg.payload as { sessionId?: string; bindingToken?: string } | undefined;
+        const payload = msg.payload as
+          | { protocolVersion?: number; sessionId?: string; bindingToken?: string }
+          | undefined;
+        if (payload?.protocolVersion !== PROTOCOL_VERSION) {
+          this._client!.send({
+            type: "session:goodbye",
+          });
+          this._client!.close();
+          this._client = undefined;
+          this.setStatus("disconnected");
+          return;
+        }
         if (payload?.sessionId) {
           this._sessionId = payload.sessionId;
         }

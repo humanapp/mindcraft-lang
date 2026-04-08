@@ -1,5 +1,5 @@
 import type { AppSessionWelcomeMessage, SessionErrorMessage } from "@mindcraft-lang/bridge-protocol";
-import { sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-protocol";
+import { PROTOCOL_VERSION, sessionHelloPayloadSchema } from "@mindcraft-lang/bridge-protocol";
 import { createBindingToken } from "#core/binding-token.js";
 import { logger } from "#core/logging/logger.js";
 import {
@@ -37,6 +37,21 @@ const hello: WsHandler = (ws, payload, id) => {
   }
 
   const helloPayload = parsed.data;
+
+  const clientVersion = helloPayload?.protocolVersion;
+  if (clientVersion === undefined || clientVersion < 1 || clientVersion > PROTOCOL_VERSION) {
+    logger.warn({ clientVersion, serverVersion: PROTOCOL_VERSION }, "app protocol version mismatch");
+    const err: SessionErrorMessage = {
+      type: "session:error",
+      id,
+      payload: {
+        message: `unsupported protocol version ${clientVersion}; server supports 1..${PROTOCOL_VERSION}`,
+      },
+    };
+    safeSend(ws, JSON.stringify(err));
+    return;
+  }
+
   const meta: AppSessionMeta = {
     appName: helloPayload?.appName,
     projectId: helloPayload?.projectId,
@@ -56,6 +71,7 @@ const hello: WsHandler = (ws, payload, id) => {
     type: "session:welcome",
     id,
     payload: {
+      protocolVersion: clientVersion,
       sessionId: session.id,
       joinCode: session.joinCode,
       bindingToken: createBindingToken(session.bindingId),
