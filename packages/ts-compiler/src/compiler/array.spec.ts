@@ -1268,3 +1268,340 @@ export default Sensor({
     assert.equal((runResult.result as NumberValue).v, 10);
   });
 });
+
+describe("Generic function - multiple type parameters", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("two type params <A, B> with different concrete types at call site", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function pickFirst<A, B>(a: A, b: B): A {
+  return a;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return pickFirst(7, "hello");
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 7);
+  });
+
+  test("two type params <A, B> returning second param", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function pickSecond<A, B>(a: A, b: B): B {
+  return b;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "string",
+  onExecute(ctx: Context): string {
+    return pickSecond(42, "world");
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.String);
+    assert.equal((runResult.result as StringValue).v, "world");
+  });
+});
+
+describe("Generic function - higher-order / callbacks", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("generic function accepting a callback", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function apply<T>(value: T, fn: (x: T) => T): T {
+  return fn(value);
+}
+
+function doubleNum(n: number): number {
+  return n * 2;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return apply(21, doubleNum);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 42);
+  });
+
+  test("generic function with arrow callback at call site", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function transform<T>(value: T, fn: (x: T) => T): T {
+  return fn(value);
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return transform(10, (x) => x + 5);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 15);
+  });
+});
+
+describe("Generic function - call site resolution", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("same generic function called with different concrete types", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function identity<T>(value: T): T {
+  return value;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const a: number = identity(10);
+    const b: string = identity("hello");
+    return a + b.length;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 15);
+  });
+
+  test("generic function returning list preserves element type at call site", () => {
+    const source = `
+import { Sensor, type Context, type NumberList } from "mindcraft";
+
+function wrap<T>(value: T): T[] {
+  const arr: T[] = [];
+  arr.push(value);
+  return arr;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const nums: NumberList = wrap(42);
+    return nums[0];
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 42);
+  });
+
+  test("chained generic calls", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function identity<T>(value: T): T {
+  return value;
+}
+
+function addOne(n: number): number {
+  return n + 1;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return addOne(identity(identity(9)));
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 10);
+  });
+});
+
+describe("Generic function - Map operations", () => {
+  let mapAmbient: string;
+  let mapServices: BrainServices;
+
+  before(() => {
+    mapServices = __test__createBrainServices();
+    const types = mapServices.types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const strTypeId = mkTypeId(NativeType.String, "string");
+
+    const numListName = "NumberList";
+    const numListTypeId = mkTypeId(NativeType.List, numListName);
+    if (!types.get(numListTypeId)) {
+      types.addListType(numListName, { elementTypeId: numTypeId });
+    }
+
+    const numMapName = "NumberMap";
+    const numMapTypeId = mkTypeId(NativeType.Map, numMapName);
+    if (!types.get(numMapTypeId)) {
+      types.addMapType(numMapName, { valueTypeId: numTypeId });
+    }
+
+    const strMapName = "StringMap";
+    const strMapTypeId = mkTypeId(NativeType.Map, strMapName);
+    if (!types.get(strMapTypeId)) {
+      types.addMapType(strMapName, { valueTypeId: strTypeId });
+    }
+
+    mapAmbient = buildAmbientDeclarations(mapServices.types);
+  });
+
+  test("generic function with concrete Map operations", () => {
+    const source = `
+import { Sensor, type Context, type NumberMap } from "mindcraft";
+
+function identity<T>(value: T): T {
+  return value;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const m: NumberMap = { a: 10, b: 20 };
+    const copy: NumberMap = identity(m);
+    return copy["a"];
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource: mapAmbient, services: mapServices });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(mapServices, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 10);
+  });
+
+  test("generic identity preserves Map type at call site", () => {
+    const source = `
+import { Sensor, type Context, type StringMap } from "mindcraft";
+
+function passThrough<T>(value: T): T {
+  return value;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const m: StringMap = { greeting: "hello" };
+    const same: StringMap = passThrough(m);
+    return same["greeting"];
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource: mapAmbient, services: mapServices });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(mapServices, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.String);
+    assert.equal((runResult.result as StringValue).v, "hello");
+  });
+});
