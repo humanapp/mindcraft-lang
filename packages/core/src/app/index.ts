@@ -74,6 +74,10 @@ export {
   CoreVariableFactoryId,
 } from "../brain/interfaces";
 
+// -- Context type IDs (for extending EngineContext, SelfContext, etc.) ----------
+
+export { ContextTypeIds, ContextTypeNames } from "../brain/runtime/context-types";
+
 // -- Type system ----------------------------------------------------------------
 
 export type { ITypeRegistry } from "../brain/interfaces";

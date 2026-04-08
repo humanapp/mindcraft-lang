@@ -342,6 +342,11 @@ export class Engine {
     return this.world.entity(actorId) || undefined;
   }
 
+  getActorsByArchetype(archetype: Archetype): readonly Actor[] {
+    const query = this.actors[archetype];
+    return query ? query.entities : [];
+  }
+
   /** Set the desired population target for an archetype (0-100). */
   setDesiredCount(archetype: Archetype, count: number): void {
     this.desiredCounts[archetype] = Math.max(0, Math.min(100, Math.round(count)));

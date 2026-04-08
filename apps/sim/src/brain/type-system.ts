@@ -107,6 +107,21 @@ function actorRefFieldGetter(source: StructValue, fieldName: string, ctx: Execut
   }
 }
 
+function actorRefFieldSetter(source: StructValue, fieldName: string, value: Value, ctx: ExecutionContext): boolean {
+  const actor = resolveActor(source, ctx);
+  if (!actor) return false;
+  switch (fieldName) {
+    case "position": {
+      const vec = extractVector2(value as StructValue);
+      if (!vec) return false;
+      actor.sprite.setPosition(vec.X, vec.Y);
+      return true;
+    }
+    default:
+      return false;
+  }
+}
+
 /**
  * Create an actorRef value backed by a resolver function.
  * The resolver is called with the ExecutionContext at field-access time,
@@ -149,6 +164,7 @@ export function registerTypes(api: MindcraftModuleApi) {
       { name: "energy pct", typeId: CoreTypeIds.Number },
     ]),
     fieldGetter: actorRefFieldGetter,
+    fieldSetter: actorRefFieldSetter,
     snapshotNative: actorRefSnapshotNative,
     accessors: { readOnly: ["id", "energy pct"] },
     variableFactory: true,

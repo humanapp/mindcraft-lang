@@ -11,6 +11,7 @@ import fnSay, { parameters as sayParameters } from "./actions/say";
 import fnSee, { modifiers as seeModifiers } from "./actions/see";
 import fnShoot, { parameters as shootParameters } from "./actions/shoot";
 import fnTurn, { modifiers as turnModifiers, parameters as turnParameters } from "./actions/turn";
+import { registerEngineContext } from "./engine-context";
 import { registerTiles } from "./tiles";
 import { registerTypes } from "./type-system";
 
@@ -19,6 +20,7 @@ export function createSimModule(): MindcraftModule {
     id: "mindcraft.sim",
     install(api: MindcraftModuleApi): void {
       registerTypes(api);
+      registerEngineContext(api);
 
       api.registerHostSensor(createHostSensor(fnBump));
       api.registerHostSensor(createHostSensor(fnSee));
