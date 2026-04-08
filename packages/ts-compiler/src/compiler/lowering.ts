@@ -339,7 +339,7 @@ function isSatisfiedWithoutTargetTypeConversion(
   expectedTypeId: TypeId,
   services: BrainServices
 ): boolean {
-  if (sourceTypeId === expectedTypeId || expectedTypeId === CoreTypeIds.Any) {
+  if (sourceTypeId === expectedTypeId || expectedTypeId === CoreTypeIds.Any || sourceTypeId === CoreTypeIds.Any) {
     return true;
   }
 

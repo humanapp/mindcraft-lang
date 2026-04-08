@@ -1087,3 +1087,93 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   });
 });
+
+describe("Generic function body - coercion and runtime", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("generic identity executes correctly at runtime", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function identity<T>(value: T): T {
+  return value;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return identity(42);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 42);
+  });
+
+  test("generic first-element executes correctly at runtime", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function first<T>(items: T[]): T {
+  return items[0];
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [99, 1, 2];
+    return first(arr);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program");
+
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, result.program!, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10_000;
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    assert.equal(runResult.result?.t, NativeType.Number);
+    assert.equal((runResult.result as NumberValue).v, 99);
+  });
+
+  test("generic local variable assignment compiles without coercion errors", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+function swapFirst<T>(items: T[], replacement: T): T {
+  const original: T = items[0];
+  items[0] = replacement;
+  return original;
+}
+
+export default Sensor({
+  name: "arr-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const arr: number[] = [10, 20, 30];
+    return swapFirst(arr, 99);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+  });
+});
