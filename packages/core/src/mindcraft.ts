@@ -41,11 +41,13 @@ import { BrainDef } from "./brain/model";
 import { Brain } from "./brain/runtime";
 import type { BrainServices } from "./brain/services";
 import { createBrainServices } from "./brain/services-factory";
+import { registerAccessorTileDef } from "./brain/tiles/accessors";
 import { BrainTileActuatorDef } from "./brain/tiles/actuators";
 import { TileCatalog } from "./brain/tiles/catalog";
 import { BrainTileModifierDef } from "./brain/tiles/modifiers";
 import { BrainTileParameterDef } from "./brain/tiles/parameters";
 import { BrainTileSensorDef } from "./brain/tiles/sensors";
+import { registerVariableFactoryTileDef } from "./brain/tiles/variables";
 import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
 import { List } from "./platform/list";
@@ -57,9 +59,14 @@ export type ConversionDefinition = Omit<Conversion, "id">;
 
 type TypeDefInput = Omit<TypeDef, "codec">;
 
+interface StructDefineOptions {
+  accessors?: boolean | { readOnly?: string[] };
+  variableFactory?: boolean;
+}
+
 export type MindcraftTypeDefinition =
   | TypeDefInput
-  | (TypeDefInput & StructTypeShape)
+  | (TypeDefInput & StructTypeShape & StructDefineOptions)
   | (TypeDefInput & EnumTypeShape)
   | (TypeDefInput & ListTypeShape)
   | (TypeDefInput & MapTypeShape)
@@ -349,7 +356,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
       break;
     }
     case NativeType.Struct: {
-      const structDef = definition as StructTypeDef;
+      const structDef = definition as StructTypeDef & StructDefineOptions;
       registeredTypeId = assertRegisteredTypeId(
         services.types.addStructType(structDef.name, {
           fields: structDef.fields,
@@ -362,6 +369,23 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         structDef.typeId,
         structDef.name
       );
+      if (structDef.accessors) {
+        const readOnlyFields = structDef.accessors === true ? undefined : structDef.accessors.readOnly;
+        for (let i = 0; i < structDef.fields.size(); i++) {
+          const field = structDef.fields.get(i);
+          const readOnly = readOnlyFields ? readOnlyFields.indexOf(field.name) !== -1 : false;
+          registerAccessorTileDef(
+            registeredTypeId,
+            field.name,
+            field.typeId,
+            readOnly ? { readOnly } : undefined,
+            services
+          );
+        }
+      }
+      if (structDef.variableFactory) {
+        registerVariableFactoryTileDef(registeredTypeId, registeredTypeId, {}, services);
+      }
       break;
     }
     case NativeType.Any:

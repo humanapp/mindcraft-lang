@@ -41,7 +41,7 @@ export interface BrainEditorConfig {
   /** Resolves app-owned tile presentation without mutating core semantic catalogs. */
   resolveTileVisual?: (tileDef: IBrainTileDef) => TileVisual | undefined;
   /** Returns true if the given tile ID is an app-specific variable factory tile. */
-  isAppVariableFactoryTileId: (tileId: string) => boolean;
+  isAppVariableFactoryTileId?: (tileId: string) => boolean;
   /** Custom literal types beyond the core String/Number. */
   customLiteralTypes: ReadonlyArray<CustomLiteralType>;
   /** Optional callback to load a default brain (replaces the archetype-specific load). */

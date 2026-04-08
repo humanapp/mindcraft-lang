@@ -1,7 +1,7 @@
 import {
   type IBrainTileDef,
   isCoreLiteralFactoryTileId,
-  isCoreVariableFactoryTileId,
+  isVariableFactoryTileId,
   type LiteralDisplayFormat,
   type RuleSide,
 } from "@mindcraft-lang/core/brain";
@@ -22,7 +22,6 @@ interface UseTileSelectionOptions {
  */
 export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelectionOptions) {
   const editorConfig = useBrainEditorConfig();
-  const { isAppVariableFactoryTileId } = editorConfig;
 
   const [showCreateVariableDialog, setShowCreateVariableDialog] = useState(false);
   const [showCreateLiteralDialog, setShowCreateLiteralDialog] = useState(false);
@@ -40,7 +39,7 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
   const handleTileSelected = useCallback(
     (tileDef: IBrainTileDef, action: (tileDef: IBrainTileDef) => void) => {
       if (tileDef.kind === "factory") {
-        if (isCoreVariableFactoryTileId(tileDef.tileId) || isAppVariableFactoryTileId(tileDef.tileId)) {
+        if (isVariableFactoryTileId(tileDef.tileId)) {
           const factoryTileDef = tileDef as BrainTileFactoryDef;
           setPendingFactoryTile(factoryTileDef);
           setPendingTileAction(() => action);
@@ -59,7 +58,7 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
       onComplete?.();
       return true;
     },
-    [onComplete, isAppVariableFactoryTileId]
+    [onComplete]
   );
 
   const handleVariableNameSubmit = useCallback(

@@ -135,6 +135,8 @@ export function registerTypes(api: MindcraftModuleApi) {
       { name: "x", typeId: CoreTypeIds.Number },
       { name: "y", typeId: CoreTypeIds.Number },
     ]),
+    accessors: true,
+    variableFactory: true,
   });
 
   api.defineType({
@@ -148,6 +150,8 @@ export function registerTypes(api: MindcraftModuleApi) {
     ]),
     fieldGetter: actorRefFieldGetter,
     snapshotNative: actorRefSnapshotNative,
+    accessors: { readOnly: ["id", "energy pct"] },
+    variableFactory: true,
   });
 
   api.registerConversion({

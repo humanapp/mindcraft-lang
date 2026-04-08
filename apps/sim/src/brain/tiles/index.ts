@@ -1,8 +1,6 @@
 import { CoreTypeIds, type MindcraftModuleApi } from "@mindcraft-lang/core/app";
 import { TileIds } from "@/brain/tileids";
-import { registerAccessorTiles } from "./accessors";
 import { registerLiteralTiles } from "./literals";
-import { registerVariableFactoryTiles } from "./variables";
 
 export function registerTiles(api: MindcraftModuleApi) {
   api.registerModifiers([
@@ -17,7 +15,5 @@ export function registerTiles(api: MindcraftModuleApi) {
       iconUrl: "/assets/brain/icons/delay.svg",
     },
   ]);
-  registerVariableFactoryTiles(api);
   registerLiteralTiles(api);
-  registerAccessorTiles(api);
 }

@@ -3,7 +3,6 @@ import { Vector2 } from "@mindcraft-lang/core/app";
 import type { BrainEditorConfig, CustomLiteralType } from "@mindcraft-lang/ui";
 import type { ReactNode } from "react";
 import type { Archetype } from "@/brain/actor";
-import { isAppVariableFactoryTileId } from "@/brain/tiles/variables";
 import { MyTypeIds } from "@/brain/type-system";
 import { getDefaultBrain } from "@/services/brain-persistence";
 import { dataTypeIconMap, dataTypeNameMap } from "./data-type-icons";
@@ -108,7 +107,6 @@ export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): 
     dataTypeIcons: dataTypeIconMap,
     dataTypeNames: dataTypeNameMap,
     resolveTileVisual: genVisualForTile,
-    isAppVariableFactoryTileId,
     customLiteralTypes: [vector2LiteralType],
     getDefaultBrain: archetype ? () => getDefaultBrain(archetype) : undefined,
     brainServices: environment.brainServices,

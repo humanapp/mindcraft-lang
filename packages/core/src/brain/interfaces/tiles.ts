@@ -289,6 +289,10 @@ export function isCoreVariableFactoryTileId(tileId: string): boolean {
   return CoreVariableFactoryTileIds.includes(tileId);
 }
 
+export function isVariableFactoryTileId(tileId: string): boolean {
+  return SU.startsWith(tileId, "tile.var.factory->");
+}
+
 export const CoreLiteralFactoryTileIds: string[] = [
   mkLiteralFactoryTileId(CoreLiteralFactoryId.Boolean),
   mkLiteralFactoryTileId(CoreLiteralFactoryId.Number),
