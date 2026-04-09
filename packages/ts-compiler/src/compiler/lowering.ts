@@ -80,6 +80,7 @@ interface ClassInfo {
   constructorFuncId: number;
   methodFuncIds: Map<string, number>;
   staticFieldSlots: Map<string, number>;
+  staticMethodFuncIds: Map<string, number>;
 }
 
 interface InterfaceInfo {
@@ -844,7 +845,24 @@ export function lowerProgram(
           staticFieldSlots.set(member.name.text, nextCallsiteVar++);
         }
       }
-      classInfos.push({ node: stmt, name: className, sourceFile, constructorFuncId, methodFuncIds, staticFieldSlots });
+      const staticMethodFuncIds = new Map<string, number>();
+      for (const member of stmt.members) {
+        if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name) && hasStaticModifier(member)) {
+          const methodName = member.name.text;
+          const methodFuncId = funcIdCounter.value++;
+          functionTable.set(`${className}$${methodName}`, methodFuncId);
+          staticMethodFuncIds.set(methodName, methodFuncId);
+        }
+      }
+      classInfos.push({
+        node: stmt,
+        name: className,
+        sourceFile,
+        constructorFuncId,
+        methodFuncIds,
+        staticFieldSlots,
+        staticMethodFuncIds,
+      });
     } else if (ts.isInterfaceDeclaration(stmt) && stmt.name) {
       interfaceInfos.push({ node: stmt, name: stmt.name.text, sourceFile });
     } else if (ts.isTypeAliasDeclaration(stmt) && stmt.name) {
@@ -904,6 +922,15 @@ export function lowerProgram(
           staticFieldSlots.set(member.name.text, nextCallsiteVar++);
         }
       }
+      const staticMethodFuncIds = new Map<string, number>();
+      for (const member of ic.node.members) {
+        if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name) && hasStaticModifier(member)) {
+          const methodName = member.name.text;
+          const methodFuncId = funcIdCounter.value++;
+          functionTable.set(`${className}$${methodName}`, methodFuncId);
+          staticMethodFuncIds.set(methodName, methodFuncId);
+        }
+      }
       classInfos.push({
         node: ic.node,
         name: className,
@@ -911,6 +938,7 @@ export function lowerProgram(
         constructorFuncId,
         methodFuncIds,
         staticFieldSlots,
+        staticMethodFuncIds,
       });
     }
   }
@@ -7043,6 +7071,84 @@ function lowerClassDeclaration(
       numParams: totalParamCount,
       numLocals: methodScope.nextLocal,
       name: `${ci.name}.${methodName}`,
+      scopeMetadata: [...methodScope.scopeMetadata],
+      localMetadata: [...methodScope.localMetadata],
+      isGenerated: false,
+      sourceFileName: ci.sourceFile.fileName,
+      functionSpan: spanFromNode(member),
+    });
+  }
+
+  for (const member of ci.node.members) {
+    if (!ts.isMethodDeclaration(member)) continue;
+    if (!hasStaticModifier(member)) continue;
+    if (!ts.isIdentifier(member.name)) continue;
+
+    const methodName = member.name.text;
+    const userParamCount = member.parameters.length;
+
+    const methodIr: IrNode[] = [];
+    const methodParamLocals = new Map<string, number>();
+
+    for (let i = 0; i < userParamCount; i++) {
+      const p = member.parameters[i];
+      if (ts.isIdentifier(p.name)) {
+        methodParamLocals.set(p.name.text, i);
+      }
+    }
+
+    const methodScope = new ScopeStack(userParamCount);
+    const methodFuncScopeId = methodScope.initFunctionScope(0, `${ci.name}$${methodName}`);
+
+    for (let i = 0; i < userParamCount; i++) {
+      const p = member.parameters[i];
+      if (ts.isIdentifier(p.name)) {
+        methodScope.addParameterMetadata(p.name.text, i, methodFuncScopeId);
+      }
+    }
+
+    const methodCtx: LowerContext = {
+      services,
+      checker,
+      paramsSymbol: undefined,
+      paramLocals: methodParamLocals,
+      scopeStack: methodScope,
+      ir: methodIr,
+      diagnostics,
+      loopStack: [],
+      breakStack: [],
+      nextLabelId: 0,
+      callsiteVars,
+      functionTable,
+      funcIdCounter,
+      closureFunctions,
+      thisLocalIndex: undefined,
+      currentFunctionName: `${ci.name}$${methodName}`,
+      currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+    };
+
+    for (let i = 0; i < userParamCount; i++) {
+      const p = member.parameters[i];
+      if (ts.isObjectBindingPattern(p.name)) {
+        lowerObjectBindingPattern(p.name, i, methodCtx);
+      } else if (ts.isArrayBindingPattern(p.name)) {
+        lowerArrayBindingPattern(p.name, i, methodCtx);
+      }
+    }
+
+    if (member.body) {
+      lowerStatements(member.body.statements, methodCtx);
+    }
+
+    methodIr.push({ kind: "PushConst", value: NIL_VALUE });
+    methodIr.push({ kind: "Return" });
+
+    methodScope.finalizeFunctionScope(methodIr.length);
+    entries.push({
+      ir: methodIr,
+      numParams: userParamCount,
+      numLocals: methodScope.nextLocal,
+      name: `${ci.name}$${methodName}`,
       scopeMetadata: [...methodScope.scopeMetadata],
       localMetadata: [...methodScope.localMetadata],
       isGenerated: false,

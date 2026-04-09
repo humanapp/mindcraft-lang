@@ -1,6 +1,6 @@
 # Static Class Members -- Phased Implementation Plan
 
-**Status:** S2 complete
+**Status:** S3 complete
 **Created:** 2026-06-15
 **Related:**
 
@@ -50,10 +50,16 @@ infrastructure inventory. Relevant highlights:
   with the `static` modifier via `hasStaticModifier()` continue guards.
 - Validator no longer rejects `static` keyword. The `StaticMembersNotSupported`
   diagnostic (code 1017) is defined but unreferenced.
-- `lowerClassDeclaration` skips static members in both its constructor property
-  init loop and method body compilation loop.
+- `lowerClassDeclaration` skips static members in its constructor property init
+  loop but compiles static method bodies in a dedicated loop after instance
+  methods. Static methods use `thisLocalIndex: undefined` and
+  `numParams = userParamCount` (no implicit `this`). `this` usage in a static
+  method produces `ThisOutsideClassContext`.
 - Top-level `lowerProgram` function-table registration loops (local and imported
-  classes) skip static methods.
+  classes) register static methods as `"ClassName$methodName"` (dollar-separated,
+  like constructors, distinguishing from dot-separated instance methods).
+- `ClassInfo` has `staticMethodFuncIds: Map<string, number>` mapping method
+  names to function table IDs.
 - `ClassInfo` has `staticFieldSlots: Map<string, number>` mapping field names to
   callsite var indices.
 - Static fields are allocated as callsite vars with qualified names
@@ -625,3 +631,45 @@ without modification.
   variables or call functions work without additional plumbing.
 
 **Test results:** 650 tests, 0 failures.
+
+### S3 -- Static Method Registration and Compilation
+
+**Date:** 2026-04-09
+
+**Files changed:**
+
+- `lowering.ts` -- extended `ClassInfo` interface with
+  `staticMethodFuncIds: Map<string, number>`. In both local and imported class
+  scan blocks, added loops to iterate static method declarations and allocate
+  function table entries with dollar-separated names (`"ClassName$methodName"`),
+  matching the constructor naming convention (`ClassName$new`) and distinguishing
+  from instance methods (`ClassName.methodName`). In `lowerClassDeclaration`,
+  added a static method body compilation loop after the existing instance method
+  loop. Key differences from instance methods: `thisLocalIndex` is `undefined`
+  (not 0), `numParams` equals user-visible parameter count (no +1 for `this`),
+  parameters map to locals starting at index 0, and function/scope names use `$`
+  separator.
+- `codegen.spec.ts` -- added three tests: static method appears in function
+  table with `$` separator alongside `$new` and `.method` entries; static method
+  `numParams` matches user param count while instance method includes `this`;
+  `this` usage inside a static method produces `ThisOutsideClassContext`
+  diagnostic.
+
+**Observations:**
+
+- The static method body compilation loop is structurally parallel to the
+  instance method loop but with the `this`-related setup removed. Setting
+  `thisLocalIndex: undefined` means the existing `ThisOutsideClassContext`
+  diagnostic fires naturally for `this` usage in static methods -- no new
+  diagnostic code was needed.
+- The `this` test initially used `return this` in a static method returning
+  `number`, but TypeScript itself raises error 5002 (type mismatch) before
+  lowering runs. The fix used `const x = this` inside a `void`-returning static
+  method to bypass the TS type error and reach the lowering diagnostic.
+- No silent failure paths were identified in the audit. All guards in the new
+  codepaths are either redundant safety nets for validator-enforced constraints
+  (computed property names) or have correct fallthrough behavior (destructuring
+  params handled by subsequent pattern-lowering calls, bodyless methods
+  impossible per TS enforcement).
+
+**Test results:** 653 tests, 0 failures.

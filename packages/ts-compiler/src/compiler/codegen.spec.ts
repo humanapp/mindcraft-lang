@@ -9301,6 +9301,102 @@ export default Sensor({
     );
   });
 
+  test("static method registered in function table with dollar separator", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Utils {
+  static double(x: number): number { return x * 2; }
+  getValue(): number { return 0; }
+}
+
+export default Sensor({
+  name: "static-method-reg",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const funcNames: string[] = [];
+    prog.functions.forEach((f) => {
+      if (f.name) funcNames.push(f.name);
+    });
+    assert.ok(funcNames.includes("Utils$double"), `expected Utils$double in functions, got: ${funcNames.join(", ")}`);
+    assert.ok(funcNames.includes("Utils$new"), `expected Utils$new in functions, got: ${funcNames.join(", ")}`);
+    assert.ok(
+      funcNames.includes("Utils.getValue"),
+      `expected Utils.getValue in functions, got: ${funcNames.join(", ")}`
+    );
+  });
+
+  test("static method compiled with correct argc (no this parameter)", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class MathHelper {
+  static add(a: number, b: number): number { return a + b; }
+  multiply(x: number): number { return x * 2; }
+}
+
+export default Sensor({
+  name: "static-argc",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    let staticFunc: { numParams: number; name?: string } | undefined;
+    let instanceFunc: { numParams: number; name?: string } | undefined;
+    prog.functions.forEach((f) => {
+      if (f.name === "MathHelper$add") staticFunc = { numParams: f.numParams, name: f.name };
+      if (f.name === "MathHelper.multiply") instanceFunc = { numParams: f.numParams, name: f.name };
+    });
+    assert.ok(staticFunc, "expected MathHelper$add function");
+    assert.equal(staticFunc!.numParams, 2, "static method numParams should be 2 (user params only, no this)");
+    assert.ok(instanceFunc, "expected MathHelper.multiply function");
+    assert.equal(instanceFunc!.numParams, 2, "instance method numParams should be 2 (1 user param + this)");
+  });
+
+  test("this usage inside static method produces diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Broken {
+  value: number;
+  constructor() { this.value = 0; }
+  static bad(): void { const x = this; }
+}
+
+export default Sensor({
+  name: "static-this",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.ok(
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.ThisOutsideClassContext),
+      `Expected ThisOutsideClassContext diagnostic, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
+    );
+  });
+
   test("class with private field produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
