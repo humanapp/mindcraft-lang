@@ -2628,7 +2628,7 @@ function isDescendantOf(node: ts.Node, ancestor: ts.Node): boolean {
 }
 
 function findCapturedVariables(
-  closureNode: ts.ArrowFunction | ts.FunctionExpression,
+  closureNode: ts.ArrowFunction | ts.FunctionExpression | ts.MethodDeclaration,
   closureParamNames: Set<string>,
   ctx: LowerContext
 ): CaptureInfo[] {
@@ -2675,11 +2675,16 @@ function findCapturedVariables(
     ts.forEachChild(node, visit);
   }
 
-  visit(closureNode.body);
+  if (closureNode.body) {
+    visit(closureNode.body);
+  }
   return captures;
 }
 
-function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, ctx: LowerContext): void {
+function lowerClosureExpression(
+  expr: ts.ArrowFunction | ts.FunctionExpression | ts.MethodDeclaration,
+  ctx: LowerContext
+): void {
   const numParams = expr.parameters.length;
   const closureParamNames = new Set<string>();
   const closureParamLocals = new Map<string, number>();
@@ -2768,18 +2773,16 @@ function lowerClosureExpression(expr: ts.ArrowFunction | ts.FunctionExpression, 
     }
   }
 
-  if (ts.isBlock(expr.body)) {
-    lowerStatements(expr.body.statements, closureCtx);
+  const body = expr.body;
+  if (!body) {
+    closureIr.push({ kind: "PushConst", value: NIL_VALUE });
+    closureIr.push({ kind: "Return" });
+  } else if (ts.isBlock(body)) {
+    lowerStatements(body.statements, closureCtx);
     closureIr.push({ kind: "PushConst", value: NIL_VALUE });
     closureIr.push({ kind: "Return" });
   } else {
-    lowerExpressionWithExpectedType(
-      expr.body,
-      closureCtx.currentReturnTypeId,
-      "return statement",
-      expr.body,
-      closureCtx
-    );
+    lowerExpressionWithExpectedType(body, closureCtx.currentReturnTypeId, "return statement", body, closureCtx);
     closureIr.push({ kind: "Return" });
   }
 
@@ -5977,6 +5980,27 @@ function lowerObjectLiteralAsStruct(
   ctx.ir.push({ kind: "StructNew", typeId: structDef.typeId });
 
   for (const prop of expr.properties) {
+    if (ts.isMethodDeclaration(prop)) {
+      let fieldName: string;
+      if (ts.isIdentifier(prop.name)) {
+        fieldName = prop.name.text;
+      } else if (ts.isStringLiteral(prop.name)) {
+        fieldName = prop.name.text;
+      } else {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.UnsupportedPropertyNameInObjectLiteral,
+            "Unsupported property name in object literal",
+            prop
+          )
+        );
+        return;
+      }
+      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      lowerClosureExpression(prop, ctx);
+      ctx.ir.push({ kind: "StructSet" });
+      continue;
+    }
     if (!ts.isPropertyAssignment(prop)) {
       ctx.diagnostics.push(
         makeDiag(
