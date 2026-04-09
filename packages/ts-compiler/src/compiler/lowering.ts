@@ -876,12 +876,24 @@ export function lowerProgram(
     registerClassStructType(ci, checker, diagnostics, services);
   }
 
+  const reservedInterfaces: { info: InterfaceInfo; typeId: string }[] = [];
   for (const ii of interfaceInfos) {
-    registerInterfaceStructType(ii, checker, diagnostics, services);
+    const typeId = reserveInterfaceStructType(ii, checker, diagnostics, services);
+    if (typeId) reservedInterfaces.push({ info: ii, typeId });
   }
 
+  const reservedTypeAliases: { info: TypeAliasInfo; typeId: string }[] = [];
   for (const tai of typeAliasInfos) {
-    registerTypeAliasStructType(tai, checker, diagnostics, services);
+    const typeId = reserveTypeAliasStructType(tai, checker, diagnostics, services);
+    if (typeId) reservedTypeAliases.push({ info: tai, typeId });
+  }
+
+  for (const { info, typeId } of reservedInterfaces) {
+    finalizeInterfaceStructType(info, typeId, checker, diagnostics, services);
+  }
+
+  for (const { info, typeId } of reservedTypeAliases) {
+    finalizeTypeAliasStructType(info, typeId, checker, diagnostics, services);
   }
 
   const onExecEntry = lowerOnExecuteBody(
@@ -6438,12 +6450,12 @@ function registerClassStructType(
   registry.addStructType(qualName, { fields, methods });
 }
 
-function registerInterfaceStructType(
+function reserveInterfaceStructType(
   ii: InterfaceInfo,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
   services: BrainServices
-): void {
+): string | undefined {
   const registry = services.types;
   const qualName = qualifiedClassName(ii.sourceFile.fileName, ii.name);
 
@@ -6455,14 +6467,14 @@ function registerInterfaceStructType(
         ii.node
       )
     );
-    return;
+    return undefined;
   }
 
   // TS merges multiple interface declarations with the same name. The checker
   // already returns the merged type, so the first declaration we process
   // registers the full field set. Subsequent declarations are safe to skip.
   const existing = registry.resolveByName(qualName);
-  if (existing) return;
+  if (existing) return undefined;
 
   if (ii.node.typeParameters && ii.node.typeParameters.length > 0) {
     diagnostics.push(
@@ -6472,22 +6484,32 @@ function registerInterfaceStructType(
         ii.node
       )
     );
-    return;
+    return undefined;
   }
 
-  const type = checker.getTypeAtLocation(ii.node);
-  const fields = extractInterfaceFields(type, ii.node, checker, diagnostics, services);
-  if (!fields) return;
-
-  registry.addStructType(qualName, { fields });
+  return registry.reserveStructType(qualName);
 }
 
-function registerTypeAliasStructType(
-  tai: TypeAliasInfo,
+function finalizeInterfaceStructType(
+  ii: InterfaceInfo,
+  typeId: string,
   checker: ts.TypeChecker,
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): void {
+  const type = checker.getTypeAtLocation(ii.node);
+  const fields = extractInterfaceFields(type, ii.node, checker, diagnostics, services);
+  if (!fields) return;
+
+  services.types.finalizeStructType(typeId, { fields });
+}
+
+function reserveTypeAliasStructType(
+  tai: TypeAliasInfo,
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[],
+  services: BrainServices
+): string | undefined {
   const registry = services.types;
   const qualName = qualifiedClassName(tai.sourceFile.fileName, tai.name);
 
@@ -6499,11 +6521,11 @@ function registerTypeAliasStructType(
         tai.node
       )
     );
-    return;
+    return undefined;
   }
 
   const existing = registry.resolveByName(qualName);
-  if (existing) return;
+  if (existing) return undefined;
 
   if (tai.node.typeParameters && tai.node.typeParameters.length > 0) {
     diagnostics.push(
@@ -6513,17 +6535,26 @@ function registerTypeAliasStructType(
         tai.node
       )
     );
-    return;
+    return undefined;
   }
 
-  if (!ts.isTypeLiteralNode(tai.node.type)) return;
+  if (!ts.isTypeLiteralNode(tai.node.type)) return undefined;
 
+  return registry.reserveStructType(qualName);
+}
+
+function finalizeTypeAliasStructType(
+  tai: TypeAliasInfo,
+  typeId: string,
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[],
+  services: BrainServices
+): void {
   const type = checker.getTypeAtLocation(tai.node);
-
   const fields = extractInterfaceFields(type, tai.node, checker, diagnostics, services);
   if (!fields) return;
 
-  registry.addStructType(qualName, { fields });
+  services.types.finalizeStructType(typeId, { fields });
 }
 
 function extractInterfaceFields(

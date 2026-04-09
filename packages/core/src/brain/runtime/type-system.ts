@@ -310,6 +310,54 @@ export class TypeRegistry implements ITypeRegistry {
     return typeId;
   }
 
+  reserveStructType(name: string): TypeId {
+    this.validateTypeName(name);
+    const typeId = mkTypeId(NativeType.Struct, name);
+    this.validateTypeNotRegistered(typeId);
+    const placeholder: StructTypeDef = {
+      coreType: NativeType.Struct,
+      typeId,
+      codec: new StructCodec(new Dict<string, TypeCodec>()),
+      name,
+      fields: List.empty<{ name: string; typeId: TypeId }>(),
+    };
+    this.add(placeholder);
+    return typeId;
+  }
+
+  finalizeStructType(typeId: TypeId, shape: StructTypeShape): void {
+    const existing = this.get(typeId);
+    if (!existing) {
+      throw new Error(`Cannot finalize unknown type: ${typeId}`);
+    }
+    if (existing.coreType !== NativeType.Struct) {
+      throw new Error(`Cannot finalize non-struct type: ${typeId}`);
+    }
+    const fieldNames = new UniqueSet<string>();
+    shape.fields.forEach((field) => {
+      if (fieldNames.has(field.name)) {
+        throw new Error(`Struct type ${typeId} has duplicate field name: ${field.name}`);
+      }
+      fieldNames.add(field.name);
+    });
+    const fieldCodecs = new Dict<string, TypeCodec>();
+    shape.fields.forEach((field) => {
+      const fieldTypeDef = this.get(field.typeId);
+      if (!fieldTypeDef) {
+        throw new Error(`Struct type ${typeId} has field ${field.name} with unknown type: ${field.typeId}`);
+      }
+      fieldCodecs.set(field.name, fieldTypeDef.codec);
+    });
+    const structDef = existing as StructTypeDef;
+    structDef.fields = shape.fields;
+    structDef.codec = new StructCodec(fieldCodecs);
+    if (shape.nominal !== undefined) structDef.nominal = shape.nominal;
+    if (shape.fieldGetter) structDef.fieldGetter = shape.fieldGetter;
+    if (shape.fieldSetter) structDef.fieldSetter = shape.fieldSetter;
+    if (shape.snapshotNative) structDef.snapshotNative = shape.snapshotNative;
+    if (shape.methods) structDef.methods = shape.methods;
+  }
+
   addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void {
     const typeDef = this.get(typeId);
     if (!typeDef) {

@@ -168,6 +168,8 @@ export interface ITypeRegistry {
   addListType(name: string, shape: ListTypeShape): TypeId;
   addMapType(name: string, shape: MapTypeShape): TypeId;
   addStructType(name: string, shape: StructTypeShape): TypeId;
+  reserveStructType(name: string): TypeId;
+  finalizeStructType(typeId: TypeId, shape: StructTypeShape): void;
   addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void;
   addAnyType(name: string): TypeId;
   addFunctionType(name: string): TypeId;
