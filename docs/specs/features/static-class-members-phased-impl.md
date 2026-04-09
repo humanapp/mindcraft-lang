@@ -1,6 +1,6 @@
 # Static Class Members -- Phased Implementation Plan
 
-**Status:** S4 complete
+**Status:** S5 complete
 **Created:** 2026-06-15
 **Related:**
 
@@ -87,6 +87,17 @@ infrastructure inventory. Relevant highlights:
   `ClassName.field` or `new ClassName()`.
 - Diagnostic codes: `ClassObjectUsageNotSupported = 3156`,
   `NoSuchStaticMember = 3157`.
+- `lowerCallExpressionCore` dispatches property-access calls through:
+  ArrayFrom, Math, String, **StaticMethod**, StructMethod, List, then
+  callable-type fallback. `lowerStaticMethodCall` sits before
+  `lowerStructMethodCall` to intercept `ClassName.method()` before the instance
+  receiver path.
+- `lowerStaticMethodCall(expr, propAccess, ctx)` calls
+  `resolveStaticMemberAccess`. For `kind === "method"`: looks up funcName in
+  `functionTable`, emits `Call(funcId, argc)` with no receiver. If funcId is
+  undefined (function not in table), emits `UnsupportedFunctionCall` diagnostic.
+  For `kind === "field"`: emits diagnostic ("is a static field, not a method").
+  For `kind === "no-such-member"`: emits `NoSuchStaticMember` diagnostic.
 - `resolveStructType` resolves instance types to `StructTypeDef` but does not
   handle constructor types (`typeof ClassName`).
 - Callsite variables (`callsiteVars` map) persist across invocations per tile.
@@ -741,3 +752,50 @@ without modification.
   access.
 
 **Test results:** 657 tests, 0 failures.
+
+### S5 -- Static Method Calls (`ClassName.method()`)
+
+**Date:** 2026-04-09
+
+**Files changed:**
+
+- `lowering.ts` -- added `lowerStaticMethodCall(expr, propAccess, ctx)` function
+  near `lowerStructMethodCall`. Calls `resolveStaticMemberAccess`; for
+  `kind === "method"`, looks up `funcName` in `ctx.functionTable` and emits
+  `Call(funcId, argc)` with no receiver pushed. For `kind === "field"`, emits
+  `UnsupportedFunctionCall` diagnostic ("is a static field, not a method"). For
+  `kind === "no-such-member"`, emits `NoSuchStaticMember` diagnostic. Added
+  dispatch call in `lowerCallExpressionCore`'s property-access branch, positioned
+  after `lowerStringMethodCall` and before `lowerStructMethodCall`.
+- `codegen.spec.ts` -- added four tests: static method call emits direct
+  `Op.CALL` instruction and `MathUtils$double` function exists in table; static
+  method with multiple arguments compiles cleanly; calling non-existent static
+  method produces diagnostic; static method accessing static field compiles
+  cleanly.
+
+**Observations:**
+
+- The dispatch ordering (ArrayFrom -> Math -> String -> **StaticMethod** ->
+  StructMethod -> List) is important. `lowerStaticMethodCall` must precede
+  `lowerStructMethodCall` because the struct path expects an instance receiver
+  on the stack. The static path emits no receiver.
+- The non-existent method test (`Foo.fake()`) revealed that TypeScript's own
+  type checker catches missing methods (error code 5002) before lowering runs.
+  The `NoSuchStaticMember` diagnostic from `lowerStaticMethodCall` is effectively
+  unreachable for truly missing methods, but it serves as a safety net. The test
+  was adjusted to check `result.diagnostics.length > 0` rather than a specific
+  diagnostic code.
+- Post-implementation audit found one silent failure path: when
+  `staticAccess.kind === "method"` but `funcId === undefined` (function name
+  not found in `functionTable`), the code fell through without emitting IR or a
+  diagnostic. This was fixed by adding an `UnsupportedFunctionCall` diagnostic
+  in the else branch of the `funcId !== undefined` check. In practice this path
+  is unreachable (S3 guarantees all static methods are registered), but it
+  prevents a silent no-op if the invariant is ever broken.
+- The `lowerCallArgumentsWithTargetTypes` call handles argument lowering and
+  type coercion identically to instance method calls. No special argument
+  handling was needed.
+- No new diagnostic codes were added. The function reuses
+  `UnsupportedFunctionCall` (existing) and `NoSuchStaticMember` (added in S4).
+
+**Test results:** 661 tests, 0 failures.

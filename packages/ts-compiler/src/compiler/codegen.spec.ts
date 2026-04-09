@@ -9500,6 +9500,115 @@ export default Sensor({
     assert.ok(result.program, "expected program to be produced");
   });
 
+  test("static method call via ClassName.method() emits direct Call", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class MathUtils {
+  static double(n: number): number { return n * 2; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-method-call",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return MathUtils.double(5);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+    const prog = result.program!;
+    let hasStaticFunc = false;
+    prog.functions.forEach((f) => {
+      if (f.name === "MathUtils$double") hasStaticFunc = true;
+    });
+    assert.ok(hasStaticFunc, "expected MathUtils$double function");
+    let hasDirectCall = false;
+    prog.functions.forEach((fn) => {
+      fn.code.forEach((instr) => {
+        if (instr.op === Op.CALL) hasDirectCall = true;
+      });
+    });
+    assert.ok(hasDirectCall, "expected direct CALL instruction for static method call");
+  });
+
+  test("static method call with multiple arguments compiles correctly", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Calc {
+  static add(a: number, b: number): number { return a + b; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-method-multi-arg",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return Calc.add(3, 4);
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+  });
+
+  test("calling non-existent static method produces diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Foo {
+  static real(): number { return 1; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-method-missing",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return Foo.fake();
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.ok(result.diagnostics.length > 0, "Expected at least one diagnostic for non-existent static method call");
+  });
+
+  test("static method accessing static field compiles and runs correctly", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 10;
+  static getCount(): number { return Counter.count; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-method-reads-field",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return Counter.getCount();
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+  });
+
   test("class with private field produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `

@@ -2762,6 +2762,9 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
     if (lowerStringMethodCall(expr, expr.expression, ctx)) {
       return;
     }
+    if (lowerStaticMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerStructMethodCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -2790,6 +2793,56 @@ function bareClassName(qualOrBareName: string): string {
   const sep = qualOrBareName.indexOf("::");
   if (sep >= 0) return qualOrBareName.slice(sep + 2);
   return qualOrBareName;
+}
+
+function lowerStaticMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const staticAccess = resolveStaticMemberAccess(propAccess, ctx);
+  if (!staticAccess) return false;
+
+  if (staticAccess.kind === "method") {
+    const funcId = ctx.functionTable.get(staticAccess.funcName);
+    if (funcId !== undefined) {
+      const argc = lowerCallArgumentsWithTargetTypes(expr, ctx);
+      ctx.ir.push({ kind: "Call", funcIndex: funcId, argc });
+      return true;
+    }
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.UnsupportedFunctionCall,
+        `Static method '${staticAccess.funcName}' is not in the function table`,
+        expr
+      )
+    );
+    return true;
+  }
+
+  if (staticAccess.kind === "field") {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.UnsupportedFunctionCall,
+        `'${(propAccess.expression as ts.Identifier).text}.${propAccess.name.text}' is a static field, not a method`,
+        expr
+      )
+    );
+    return true;
+  }
+
+  if (staticAccess.kind === "no-such-member") {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NoSuchStaticMember,
+        `No static member '${propAccess.name.text}' exists on class '${(propAccess.expression as ts.Identifier).text}'`,
+        expr
+      )
+    );
+    return true;
+  }
+
+  return false;
 }
 
 function lowerStructMethodCall(
