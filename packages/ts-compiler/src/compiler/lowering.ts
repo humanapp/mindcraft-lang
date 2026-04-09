@@ -61,6 +61,18 @@ export interface ImportedEnum {
   sourceFile: ts.SourceFile;
 }
 
+export interface ImportedInterface {
+  node: ts.InterfaceDeclaration;
+  name: string;
+  sourceFile: ts.SourceFile;
+}
+
+export interface ImportedTypeAlias {
+  node: ts.TypeAliasDeclaration;
+  name: string;
+  sourceFile: ts.SourceFile;
+}
+
 interface ClassInfo {
   node: ts.ClassDeclaration;
   name: string;
@@ -749,7 +761,9 @@ export function lowerProgram(
   importedVariables?: ImportedVariable[],
   moduleInitOrder?: string[],
   importedClasses?: ImportedClass[],
-  importedEnums?: ImportedEnum[]
+  importedEnums?: ImportedEnum[],
+  importedInterfaces?: ImportedInterface[],
+  importedTypeAliases?: ImportedTypeAlias[]
 ): ProgramLoweringResult {
   const diagnostics: CompileDiagnostic[] = [];
   const callsiteVars = new Map<string, number>();
@@ -847,6 +861,22 @@ export function lowerProgram(
         constructorFuncId,
         methodFuncIds,
       });
+    }
+  }
+
+  if (importedInterfaces) {
+    for (const ii of importedInterfaces) {
+      if (!interfaceInfos.some((existing) => existing.name === ii.name)) {
+        interfaceInfos.push({ node: ii.node, name: ii.name, sourceFile: ii.sourceFile });
+      }
+    }
+  }
+
+  if (importedTypeAliases) {
+    for (const ita of importedTypeAliases) {
+      if (!typeAliasInfos.some((existing) => existing.name === ita.name)) {
+        typeAliasInfos.push({ node: ita.node, name: ita.name, sourceFile: ita.sourceFile });
+      }
     }
   }
 

@@ -7,7 +7,15 @@ import { buildCallDef } from "./call-def-builder.js";
 import { extractDescriptor } from "./descriptor.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { emitFunction } from "./emit.js";
-import type { FunctionEntry, ImportedClass, ImportedEnum, ImportedFunction, ImportedVariable } from "./lowering.js";
+import type {
+  FunctionEntry,
+  ImportedClass,
+  ImportedEnum,
+  ImportedFunction,
+  ImportedInterface,
+  ImportedTypeAlias,
+  ImportedVariable,
+} from "./lowering.js";
 import { lowerProgram, qualifiedClassName } from "./lowering.js";
 import type {
   CallSiteInfo,
@@ -281,7 +289,9 @@ export class UserTileProject {
       imported.variables,
       imported.moduleInitOrder,
       imported.classes,
-      imported.enums
+      imported.enums,
+      imported.interfaces,
+      imported.typeAliases
     );
     if (programResult.diagnostics.length > 0) {
       return { diagnostics: programResult.diagnostics };
@@ -489,6 +499,8 @@ interface CollectResult {
   variables: ImportedVariable[];
   classes: ImportedClass[];
   enums: ImportedEnum[];
+  interfaces: ImportedInterface[];
+  typeAliases: ImportedTypeAlias[];
   moduleInitOrder: string[];
   diagnostics: CompileDiagnostic[];
 }
@@ -503,6 +515,8 @@ function collectImports(
   const variables: ImportedVariable[] = [];
   const classes: ImportedClass[] = [];
   const enums: ImportedEnum[] = [];
+  const interfaces: ImportedInterface[] = [];
+  const typeAliases: ImportedTypeAlias[] = [];
   const diagnostics: CompileDiagnostic[] = [];
   const visitedFiles = new Set<string>();
   const moduleInitOrder: string[] = [];
@@ -541,6 +555,12 @@ function collectImports(
       }
       if (ts.isEnumDeclaration(stmt) && hasExportModifier(stmt)) {
         enums.push({ node: stmt, name: stmt.name.text, sourceFile });
+      }
+      if (ts.isInterfaceDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
+        interfaces.push({ node: stmt, name: stmt.name.text, sourceFile });
+      }
+      if (ts.isTypeAliasDeclaration(stmt) && stmt.name && hasExportModifier(stmt)) {
+        typeAliases.push({ node: stmt, name: stmt.name.text, sourceFile });
       }
     }
 
@@ -625,7 +645,37 @@ function collectImports(
     }
   }
 
-  return { functions, variables, classes, enums, moduleInitOrder, diagnostics };
+  const interfaceSources = new Map<string, string>();
+  for (const i of interfaces) {
+    const source = i.sourceFile.fileName;
+    const existing = interfaceSources.get(i.name);
+    if (existing && existing !== source) {
+      diagnostics.push({
+        code: CompileDiagCode.DuplicateImportedSymbol,
+        message: `Duplicate imported symbol '${i.name}' from '${existing}' and '${source}'`,
+        severity: "error",
+      });
+    } else {
+      interfaceSources.set(i.name, source);
+    }
+  }
+
+  const typeAliasSources = new Map<string, string>();
+  for (const ta of typeAliases) {
+    const source = ta.sourceFile.fileName;
+    const existing = typeAliasSources.get(ta.name);
+    if (existing && existing !== source) {
+      diagnostics.push({
+        code: CompileDiagCode.DuplicateImportedSymbol,
+        message: `Duplicate imported symbol '${ta.name}' from '${existing}' and '${source}'`,
+        severity: "error",
+      });
+    } else {
+      typeAliasSources.set(ta.name, source);
+    }
+  }
+
+  return { functions, variables, classes, enums, interfaces, typeAliases, moduleInitOrder, diagnostics };
 }
 
 function hasExportModifier(node: ts.Node): boolean {
