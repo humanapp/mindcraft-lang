@@ -307,6 +307,14 @@ export enum LoweringDiagCode {
   SpreadMustBeLastArgument = 3147,
   /** Spread in a function call requires the target to have a rest parameter */
   SpreadRequiresRestTarget = 3148,
+  /** Cannot resolve the type of an interface field */
+  UnresolvableInterfaceFieldType = 3150,
+  /** Interface has unsupported members (index signatures, call signatures, etc.) */
+  UnsupportedInterfaceMember = 3151,
+  /** Generic interfaces are not supported */
+  GenericInterfaceNotSupported = 3152,
+  /** User interface name collides with an ambient (runtime-registered) type */
+  InterfaceCollidesWithAmbientType = 3153,
 }
 
 /**

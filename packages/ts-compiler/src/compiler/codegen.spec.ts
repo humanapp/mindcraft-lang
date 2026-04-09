@@ -7947,8 +7947,6 @@ export default Sensor({
   });
 
   test("nested object destructuring: const { inner: { x, y } } = obj", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
-
     const types = services.types;
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
@@ -7957,13 +7955,10 @@ export default Sensor({
         fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
       });
     }
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
-
-interface Entity {
-  pos: Vector2;
-}
+import { Sensor, type Context, type Vector2, type Entity } from "mindcraft";
 
 export default Sensor({
   name: "nested-obj-destructure",
@@ -7994,8 +7989,6 @@ export default Sensor({
   });
 
   test("nested array-in-object destructuring: const { pos: [x, y] } = entity", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
-
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const numListTypeId = types.instantiate("List", List.from([numTypeId]));
@@ -8005,13 +7998,10 @@ export default Sensor({
         fields: List.from([{ name: "pos", typeId: numListTypeId }]),
       });
     }
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
-import { Sensor, type Context } from "mindcraft";
-
-interface Coord {
-  pos: number[];
-}
+import { Sensor, type Context, type Coord } from "mindcraft";
 
 export default Sensor({
   name: "nested-arr-in-obj",
@@ -8042,8 +8032,6 @@ export default Sensor({
   });
 
   test("mixed nesting: object containing array", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
-
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const numListTypeId = types.instantiate("List", List.from([numTypeId]));
@@ -8053,13 +8041,10 @@ export default Sensor({
         fields: List.from([{ name: "items", typeId: numListTypeId }]),
       });
     }
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
-import { Sensor, type Context } from "mindcraft";
-
-interface PairHolder {
-  items: number[];
-}
+import { Sensor, type Context, type PairHolder } from "mindcraft";
 
 export default Sensor({
   name: "mixed-nesting",
@@ -8090,8 +8075,6 @@ export default Sensor({
   });
 
   test("three levels of nesting: array in object in object", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
-
     const types = services.types;
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
@@ -8101,16 +8084,10 @@ export default Sensor({
         fields: List.from([{ name: "entity", typeId: entityTypeId }]),
       });
     }
+    const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
-
-interface Entity {
-  pos: Vector2;
-}
-interface Wrapper {
-  entity: Entity;
-}
+import { Sensor, type Context, type Vector2, type Entity, type Wrapper } from "mindcraft";
 
 export default Sensor({
   name: "deep-nesting",
@@ -8321,11 +8298,7 @@ export default Sensor({
     const ambientSource = buildAmbientDeclarations(services.types);
 
     const source = `
-import { Sensor, type Context, type Vector2 } from "mindcraft";
-
-interface Entity {
-  pos: Vector2;
-}
+import { Sensor, type Context, type Vector2, type Entity } from "mindcraft";
 
 export default Sensor({
   name: "nested-rest-inner",
