@@ -9397,6 +9397,109 @@ export default Sensor({
     );
   });
 
+  test("static field access via ClassName.field compiles without diagnostics", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 0;
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-field-access",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return Counter.count;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+  });
+
+  test("static field access inside constructor body compiles without diagnostics", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 0;
+  value: number;
+  constructor() {
+    this.value = Counter.count;
+  }
+}
+
+export default Sensor({
+  name: "static-field-ctor",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const c = new Counter();
+    return c.value;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+  });
+
+  test("bare class name produces ClassObjectUsageNotSupported diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Foo {
+  static x: number = 1;
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "bare-class",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const f = Foo;
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.ok(
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.ClassObjectUsageNotSupported),
+      `Expected ClassObjectUsageNotSupported, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
+    );
+  });
+
+  test("static method reference via ClassName.method compiles without diagnostics", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Utils {
+  static double(n: number): number { return n * 2; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-method-ref",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const fn = Utils.double;
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+  });
+
   test("class with private field produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `

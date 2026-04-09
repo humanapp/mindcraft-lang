@@ -145,6 +145,7 @@ interface LowerContext {
   currentFunctionName: string;
   currentReturnTypeId?: TypeId;
   optionalChainSubstitution?: { targetExpr: ts.Expression; localIndex: number };
+  classInfos: ClassInfo[];
 }
 
 function allocLabel(ctx: LowerContext): number {
@@ -1014,7 +1015,8 @@ export function lowerProgram(
     diagnostics,
     funcIdCounter,
     closureFunctions,
-    services
+    services,
+    classInfos
   );
   functions.push(onExecEntry);
 
@@ -1027,7 +1029,8 @@ export function lowerProgram(
       diagnostics,
       funcIdCounter,
       closureFunctions,
-      services
+      services,
+      classInfos
     );
     functions.push(entry);
   }
@@ -1041,7 +1044,8 @@ export function lowerProgram(
       diagnostics,
       funcIdCounter,
       closureFunctions,
-      services
+      services,
+      classInfos
     );
     functions.push(...classEntries);
   }
@@ -1055,7 +1059,8 @@ export function lowerProgram(
       diagnostics,
       funcIdCounter,
       closureFunctions,
-      services
+      services,
+      classInfos
     );
     functions.push(entry);
   }
@@ -1105,7 +1110,8 @@ function lowerOnPageEnteredBody(
   sharedDiagnostics: CompileDiagnostic[],
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
-  services: BrainServices
+  services: BrainServices,
+  classInfos: ClassInfo[]
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const funcNode = descriptor.onPageEnteredNode!;
@@ -1140,6 +1146,7 @@ function lowerOnPageEnteredBody(
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onPageEntered`,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    classInfos,
   };
 
   const body = funcNode.body;
@@ -1238,7 +1245,8 @@ function lowerOnExecuteBody(
   sharedDiagnostics: CompileDiagnostic[],
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
-  services: BrainServices
+  services: BrainServices,
+  classInfos: ClassInfo[]
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const hasParams = descriptor.params.length > 0;
@@ -1321,6 +1329,7 @@ function lowerOnExecuteBody(
     closureFunctions,
     currentFunctionName: `${descriptor.name}.onExecute`,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    classInfos,
   };
 
   const body = funcNode.body;
@@ -1373,7 +1382,8 @@ function lowerHelperFunction(
   sharedDiagnostics: CompileDiagnostic[],
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
-  services: BrainServices
+  services: BrainServices,
+  classInfos: ClassInfo[]
 ): FunctionEntry {
   const ir: IrNode[] = [];
   const paramLocals = new Map<string, number>();
@@ -1414,6 +1424,7 @@ function lowerHelperFunction(
     closureFunctions,
     currentFunctionName: funcName,
     currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    classInfos,
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -1494,6 +1505,7 @@ function generateModuleInitWithImports(
     funcIdCounter,
     closureFunctions,
     currentFunctionName: "<module-init>",
+    classInfos,
   };
 
   for (const moduleName of moduleInitOrder) {
@@ -2624,6 +2636,21 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
     }
   }
 
+  const classSymbol = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(expr), ctx.checker);
+  if (classSymbol) {
+    const classDecl = resolveClassDeclaration(classSymbol, ctx.checker);
+    if (classDecl && ctx.classInfos.some((c) => c.node === classDecl)) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ClassObjectUsageNotSupported,
+          "Class objects are not supported as runtime values; use property access like Counter.count or new Counter()",
+          expr
+        )
+      );
+      return;
+    }
+  }
+
   ctx.diagnostics.push(makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.text}`, expr));
 }
 
@@ -2972,6 +2999,7 @@ function lowerClosureExpression(
     closureFunctions: ctx.closureFunctions,
     currentFunctionName: closureName,
     currentReturnTypeId: resolveSignatureReturnTypeId(expr, ctx.checker, ctx.services),
+    classInfos: ctx.classInfos,
   };
 
   for (let i = 0; i < numParams; i++) {
@@ -5917,6 +5945,26 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     return;
   }
 
+  const staticAccess = resolveStaticMemberAccess(expr, ctx);
+  if (staticAccess) {
+    if (staticAccess.kind === "field") {
+      ctx.ir.push({ kind: "LoadCallsiteVar", index: staticAccess.callsiteVarIndex });
+      return;
+    }
+    if (staticAccess.kind === "method") {
+      ctx.ir.push({ kind: "PushFunctionRef", funcName: staticAccess.funcName });
+      return;
+    }
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NoSuchStaticMember,
+        `No static member '${expr.name.text}' exists on class '${(expr.expression as ts.Identifier).text}'`,
+        expr
+      )
+    );
+    return;
+  }
+
   const isOptChain = ts.isOptionalChain(expr);
   const rawObjType = ctx.checker.getTypeAtLocation(expr.expression);
   const objType = isOptChain ? ctx.checker.getNonNullableType(rawObjType) : rawObjType;
@@ -6012,6 +6060,15 @@ function resolveEnumDeclaration(sym: ts.Symbol, checker?: ts.TypeChecker): ts.En
     return undefined;
   }
   return declarations.find(ts.isEnumDeclaration);
+}
+
+function resolveClassDeclaration(sym: ts.Symbol, checker?: ts.TypeChecker): ts.ClassDeclaration | undefined {
+  const resolvedSym = resolveAliasedSymbol(sym, checker);
+  const declarations = resolvedSym?.getDeclarations();
+  if (!declarations) {
+    return undefined;
+  }
+  return declarations.find(ts.isClassDeclaration);
 }
 
 function getEnumMemberKey(member: ts.EnumMember): string | undefined {
@@ -6157,6 +6214,42 @@ function resolveEnumPropertyAccess(
     kind: "member",
     value: { t: NativeType.Enum, typeId, v: key },
   };
+}
+
+type StaticMemberAccessResolution =
+  | { kind: "field"; callsiteVarIndex: number }
+  | { kind: "method"; funcName: string }
+  | { kind: "no-such-member" }
+  | undefined;
+
+function resolveStaticMemberAccess(expr: ts.PropertyAccessExpression, ctx: LowerContext): StaticMemberAccessResolution {
+  if (!ts.isIdentifier(expr.expression)) return undefined;
+
+  const lhsSymbol = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(expr.expression), ctx.checker);
+  if (!lhsSymbol) return undefined;
+
+  const classDecl = resolveClassDeclaration(lhsSymbol, ctx.checker);
+  if (!classDecl) return undefined;
+
+  const className = classDecl.name?.text;
+  if (!className) return undefined;
+
+  const ci = ctx.classInfos.find((c) => c.name === className && c.node === classDecl);
+  if (!ci) return undefined;
+
+  const memberName = expr.name.text;
+
+  const fieldSlot = ci.staticFieldSlots.get(memberName);
+  if (fieldSlot !== undefined) {
+    return { kind: "field", callsiteVarIndex: fieldSlot };
+  }
+
+  const methodFuncId = ci.staticMethodFuncIds.get(memberName);
+  if (methodFuncId !== undefined) {
+    return { kind: "method", funcName: `${className}$${memberName}` };
+  }
+
+  return { kind: "no-such-member" };
 }
 
 function isNativeBackedStruct(def: StructTypeDef): boolean {
@@ -6906,7 +6999,8 @@ function lowerClassDeclaration(
   diagnostics: CompileDiagnostic[],
   funcIdCounter: { value: number },
   closureFunctions: Map<number, FunctionEntry>,
-  services: BrainServices
+  services: BrainServices,
+  classInfos: ClassInfo[]
 ): FunctionEntry[] {
   const entries: FunctionEntry[] = [];
 
@@ -6956,6 +7050,7 @@ function lowerClassDeclaration(
     thisLocalIndex: thisLocal,
     currentFunctionName: `${ci.name}$new`,
     currentReturnTypeId: ctor ? resolveSignatureReturnTypeId(ctor, checker, services) : undefined,
+    classInfos,
   };
 
   if (typeId) {
@@ -7047,6 +7142,7 @@ function lowerClassDeclaration(
       thisLocalIndex: 0,
       currentFunctionName: `${ci.name}.${methodName}`,
       currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+      classInfos,
     };
 
     for (let i = 0; i < userParamCount; i++) {
@@ -7125,6 +7221,7 @@ function lowerClassDeclaration(
       thisLocalIndex: undefined,
       currentFunctionName: `${ci.name}$${methodName}`,
       currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+      classInfos,
     };
 
     for (let i = 0; i < userParamCount; i++) {

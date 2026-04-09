@@ -319,6 +319,10 @@ export enum LoweringDiagCode {
   GenericTypeAliasNotSupported = 3154,
   /** User type alias name collides with an ambient (runtime-registered) type */
   TypeAliasCollidesWithAmbientType = 3155,
+  /** Class objects cannot be used as runtime values; only property access and `new` are supported */
+  ClassObjectUsageNotSupported = 3156,
+  /** No static member with this name exists on the class */
+  NoSuchStaticMember = 3157,
 }
 
 /**

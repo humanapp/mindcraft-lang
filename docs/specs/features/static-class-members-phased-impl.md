@@ -1,6 +1,6 @@
 # Static Class Members -- Phased Implementation Plan
 
-**Status:** S3 complete
+**Status:** S4 complete
 **Created:** 2026-06-15
 **Related:**
 
@@ -68,10 +68,25 @@ infrastructure inventory. Relevant highlights:
   initialization: initializer expressions are lowered with expected type;
   uninitialized fields get type-appropriate defaults (number->0, boolean->false,
   string->"", else nil). Unresolvable types emit `UnresolvableClassFieldType`.
-- `lowerPropertyAccess` dispatches to params, Math, enum, `.length`, struct
-  field, and generic TS property paths. No path exists for `ClassName.staticMember`.
-- `lowerIdentifier` treats bare `ClassName` as an error ("Undefined variable")
-  unless it appears in a `new` expression.
+- `LowerContext` includes `classInfos: ClassInfo[]`, threaded through all 8
+  context construction sites and 5 function signatures.
+- `resolveClassDeclaration(sym, checker)` resolves a symbol to a
+  `ts.ClassDeclaration`, parallel to `resolveEnumDeclaration`.
+- `resolveStaticMemberAccess(expr, ctx)` returns a discriminated union:
+  `{ kind: "field"; callsiteVarIndex }` | `{ kind: "method"; funcName }` |
+  `{ kind: "no-such-member" }` | `undefined`. Guards with
+  `ts.isIdentifier(expr.expression)` to avoid false positives on `this.x` and
+  `obj.field`.
+- `lowerPropertyAccess` dispatches to params, Math, enum, static member access,
+  `.length`, struct field, and generic TS property paths. Static field access
+  emits `LoadCallsiteVar(slot)`. Static method reference emits
+  `PushFunctionRef(funcName)`. Unknown static member emits `NoSuchStaticMember`
+  diagnostic.
+- `lowerIdentifier` detects bare `ClassName` (via `resolveClassDeclaration`)
+  and emits `ClassObjectUsageNotSupported` diagnostic, guiding the user toward
+  `ClassName.field` or `new ClassName()`.
+- Diagnostic codes: `ClassObjectUsageNotSupported = 3156`,
+  `NoSuchStaticMember = 3157`.
 - `resolveStructType` resolves instance types to `StructTypeDef` but does not
   handle constructor types (`typeof ClassName`).
 - Callsite variables (`callsiteVars` map) persist across invocations per tile.
@@ -673,3 +688,56 @@ without modification.
   impossible per TS enforcement).
 
 **Test results:** 653 tests, 0 failures.
+
+### S4 -- Static Field Access (`ClassName.field`)
+
+**Date:** 2026-04-09
+
+**Files changed:**
+
+- `lowering.ts` -- added `classInfos: ClassInfo[]` to `LowerContext` interface.
+  Threaded the field through 8 context construction sites (top-level onExecute,
+  helper function, onPageEntered, class declaration, constructor, instance
+  method, static method, closure) and 5 function signatures
+  (`lowerOnExecuteBody`, `lowerHelperFunction`, `lowerOnPageEnteredBody`,
+  `lowerClassDeclaration`, `generateModuleInitWithImports`). Added
+  `resolveClassDeclaration(sym, checker)` helper parallel to
+  `resolveEnumDeclaration`. Added `resolveStaticMemberAccess(expr, ctx)` with
+  discriminated union return type. Added static member dispatch in
+  `lowerPropertyAccess` after enum access: emits `LoadCallsiteVar` for fields,
+  `PushFunctionRef` for methods, `NoSuchStaticMember` diagnostic for unknown
+  members. Added `ClassObjectUsageNotSupported` diagnostic in `lowerIdentifier`
+  for bare class name usage (collapsed from redundant double
+  `resolveClassDeclaration` call during audit).
+- `diag-codes.ts` -- added `ClassObjectUsageNotSupported = 3156` and
+  `NoSuchStaticMember = 3157` to `LoweringDiagCode` enum.
+- `codegen.spec.ts` -- added four tests: static field access via
+  `ClassName.field` compiles without diagnostics; static field access inside
+  constructor body compiles without diagnostics; bare class name produces
+  `ClassObjectUsageNotSupported` diagnostic; static method reference via
+  `ClassName.method` compiles without diagnostics.
+
+**Observations:**
+
+- The critical guard `ts.isIdentifier(expr.expression)` was discovered during
+  debugging. Without it, `resolveStaticMemberAccess` triggered on ALL property
+  access expressions including `this.x` (because `getSymbolAtLocation(this)`
+  can resolve to the class symbol inside a method), causing 15 test failures.
+  Only bare identifier class names (e.g., `Counter` in `Counter.count`) should
+  enter the static path.
+- The `!ci` guard in `resolveStaticMemberAccess` (class found in TS but not in
+  `classInfos`) is defensive but unreachable in practice. The pipeline
+  guarantees: `collectImports` follows the import chain (including `.d.ts`
+  files) and collects every exported class; ambient declarations generate zero
+  `ClassDeclaration` nodes; TS errors (e.g., unresolvable imports) cause
+  `_compile()` to abort before lowering runs. This matches the enum path's
+  equivalent guard.
+- No silent failure paths exist. Every code path terminates with either an IR
+  emission or a diagnostic push. The catch-all `UnsupportedPropertyAccess` and
+  `UndefinedVariable` diagnostics cover the (unreachable) unlinked-class edge
+  case.
+- The initial constructor test included `Counter.count = Counter.count + 1`
+  which is static field assignment (S6, not S4). It was corrected to read-only
+  access.
+
+**Test results:** 657 tests, 0 failures.
