@@ -151,17 +151,6 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
         addDiag(ValidatorDiagCode.ClassGettersSettersNotSupported, member, "Class getters/setters are not supported");
       }
 
-      if (ts.canHaveModifiers(member)) {
-        const modifiers = ts.getModifiers(member);
-        if (modifiers) {
-          for (const mod of modifiers) {
-            if (mod.kind === ts.SyntaxKind.StaticKeyword) {
-              addDiag(ValidatorDiagCode.StaticMembersNotSupported, member, "Static class members are not supported");
-            }
-          }
-        }
-      }
-
       if (ts.isPropertyDeclaration(member) || ts.isMethodDeclaration(member)) {
         if (ts.isPrivateIdentifier(member.name)) {
           addDiag(ValidatorDiagCode.PrivateFieldsNotSupported, member, "Private fields (#name) are not supported");

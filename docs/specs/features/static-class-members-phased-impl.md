@@ -1,6 +1,6 @@
 # Static Class Members -- Phased Implementation Plan
 
-**Status:** Not started
+**Status:** S1 complete
 **Created:** 2026-06-15
 **Related:**
 
@@ -46,10 +46,14 @@ infrastructure inventory. Relevant highlights:
 - Constructors registered as `ClassName$new` in the function table.
 - Instance methods registered as `ClassName.methodName` in the function table.
 - Instance methods receive `this` as implicit local 0 (argc is user params + 1).
-- `extractClassFields` and `extractClassMethodDecls` in lowering.ts extract all
-  members without filtering by `static` modifier.
-- Validator actively rejects `static` keyword via `StaticMembersNotSupported`
-  (code 1017) in validator.ts.
+- `extractClassFields` and `extractClassMethodDecls` in lowering.ts skip members
+  with the `static` modifier via `hasStaticModifier()` continue guards.
+- Validator no longer rejects `static` keyword. The `StaticMembersNotSupported`
+  diagnostic (code 1017) is defined but unreferenced.
+- `lowerClassDeclaration` skips static members in both its constructor property
+  init loop and method body compilation loop.
+- Top-level `lowerProgram` function-table registration loops (local and imported
+  classes) skip static methods.
 - `lowerPropertyAccess` dispatches to params, Math, enum, `.length`, struct
   field, and generic TS property paths. No path exists for `ClassName.staticMember`.
 - `lowerIdentifier` treats bare `ClassName` as an error ("Undefined variable")
@@ -538,4 +542,36 @@ signatures for cross-file type checking.
 
 ## Phase Log
 
-(Written during post-mortem only. Do not fill in during implementation.)
+### S1 -- Lift Validator Ban and Filter Static Members
+
+**Date:** 2026-04-09
+
+**Files changed:**
+
+- `validator.ts` -- removed `StaticKeyword` rejection block from
+  `validateClassDeclaration`.
+- `lowering.ts` -- added `hasStaticModifier(node)` helper; added `continue`
+  guards in `extractClassFields`, `extractClassMethodDecls`,
+  `lowerClassDeclaration` (constructor init loop and method body loop), and both
+  function-table registration loops (local and imported classes).
+- `codegen.spec.ts` -- replaced old "class with static member produces
+  diagnostic" test with three new tests: static field passes validation, static
+  fields excluded from struct type, static methods excluded from method
+  declarations.
+- `diag-codes.ts` -- `StaticMembersNotSupported = 1017` left defined but
+  unreferenced (reserved slot).
+
+**Observations:**
+
+- Six total `continue` guard sites were needed, not three. Beyond the two
+  extraction helpers, `lowerClassDeclaration` has its own iteration loops for
+  constructor property init and method body compilation, and the top-level
+  `lowerProgram` scan has two function-table registration loops (local classes
+  and imported classes). All required filtering.
+- All new codepaths are skip guards only. No new error paths or diagnostics were
+  needed. User code that references static members still gets a generic
+  "Undefined variable" from `lowerIdentifier`, which S4/S5 will improve.
+- The `hasStaticModifier` helper is reusable for S2/S3.
+
+**Test results:** 646 tests, 0 failures. All existing class tests passed
+without modification.

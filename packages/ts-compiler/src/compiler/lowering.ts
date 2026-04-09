@@ -828,7 +828,7 @@ export function lowerProgram(
       functionTable.set(`${className}$new`, constructorFuncId);
       const methodFuncIds = new Map<string, number>();
       for (const member of stmt.members) {
-        if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name)) {
+        if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name) && !hasStaticModifier(member)) {
           const methodName = member.name.text;
           const methodFuncId = funcIdCounter.value++;
           functionTable.set(`${className}.${methodName}`, methodFuncId);
@@ -880,7 +880,7 @@ export function lowerProgram(
       functionTable.set(`${className}$new`, constructorFuncId);
       const methodFuncIds = new Map<string, number>();
       for (const member of ic.node.members) {
-        if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name)) {
+        if (ts.isMethodDeclaration(member) && ts.isIdentifier(member.name) && !hasStaticModifier(member)) {
           const methodName = member.name.text;
           const methodFuncId = funcIdCounter.value++;
           functionTable.set(`${className}.${methodName}`, methodFuncId);
@@ -6507,6 +6507,12 @@ function tsTypeToTypeId(
   return undefined;
 }
 
+function hasStaticModifier(node: ts.ClassElement): boolean {
+  if (!ts.canHaveModifiers(node)) return false;
+  const mods = ts.getModifiers(node);
+  return mods?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+}
+
 function extractClassFields(
   classNode: ts.ClassDeclaration,
   checker: ts.TypeChecker,
@@ -6518,6 +6524,7 @@ function extractClassFields(
 
   for (const member of classNode.members) {
     if (!ts.isPropertyDeclaration(member)) continue;
+    if (hasStaticModifier(member)) continue;
     if (!ts.isIdentifier(member.name)) continue;
     const fieldName = member.name.text;
     if (seen.has(fieldName)) continue;
@@ -6584,6 +6591,7 @@ function extractClassMethodDecls(
 
   for (const member of classNode.members) {
     if (!ts.isMethodDeclaration(member)) continue;
+    if (hasStaticModifier(member)) continue;
     if (!ts.isIdentifier(member.name)) continue;
 
     const sig = checker.getSignatureFromDeclaration(member);
@@ -6864,6 +6872,7 @@ function lowerClassDeclaration(
 
   for (const member of ci.node.members) {
     if (!ts.isPropertyDeclaration(member)) continue;
+    if (hasStaticModifier(member)) continue;
     if (!ts.isIdentifier(member.name)) continue;
     if (!member.initializer) continue;
 
@@ -6897,6 +6906,7 @@ function lowerClassDeclaration(
 
   for (const member of ci.node.members) {
     if (!ts.isMethodDeclaration(member)) continue;
+    if (hasStaticModifier(member)) continue;
     if (!ts.isIdentifier(member.name)) continue;
 
     const methodName = member.name.text;

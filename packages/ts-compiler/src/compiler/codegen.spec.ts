@@ -9069,13 +9069,15 @@ export default Sensor({
     );
   });
 
-  test("class with static member produces diagnostic", () => {
+  test("class with static field passes validation", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
 class Foo {
   static count: number = 0;
+  value: number;
+  constructor(v: number) { this.value = v; }
 }
 
 export default Sensor({
@@ -9087,11 +9089,86 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, { ambientSource, services });
-    assert.ok(result.diagnostics.length > 0, "expected diagnostics for static");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === ValidatorDiagCode.StaticMembersNotSupported),
-      `expected static error, got: ${JSON.stringify(result.diagnostics)}`
-    );
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+  });
+
+  test("static fields excluded from struct type registration", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Mixed {
+  static total: number = 0;
+  name: string;
+  age: number;
+  constructor(name: string, age: number) {
+    this.name = name;
+    this.age = age;
+  }
+}
+
+export default Sensor({
+  name: "static-field-filter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+
+    const registry = services.types;
+    const typeId = registry.resolveByName("/user-code.ts::Mixed");
+    assert.ok(typeId, "Mixed struct type should be registered");
+    const def = registry.get(typeId!) as StructTypeDef;
+
+    const fieldNames: string[] = [];
+    def.fields.forEach((f) => {
+      fieldNames.push(f.name);
+    });
+    assert.ok(fieldNames.includes("name"), "should have instance field name");
+    assert.ok(fieldNames.includes("age"), "should have instance field age");
+    assert.ok(!fieldNames.includes("total"), "should NOT have static field total");
+    assert.equal(def.fields.size(), 2, "should have exactly 2 instance fields");
+  });
+
+  test("static methods excluded from struct method declarations", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  value: number;
+  constructor(v: number) { this.value = v; }
+  static reset(): void {}
+  increment(): number { return this.value + 1; }
+}
+
+export default Sensor({
+  name: "static-method-filter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+
+    const registry = services.types;
+    const typeId = registry.resolveByName("/user-code.ts::Counter");
+    assert.ok(typeId, "Counter struct type should be registered");
+    const def = registry.get(typeId!) as StructTypeDef;
+    assert.ok(def.methods, "Counter should have methods");
+
+    const methodNames: string[] = [];
+    def.methods!.forEach((m) => {
+      methodNames.push(m.name);
+    });
+    assert.ok(methodNames.includes("increment"), "should have instance method increment");
+    assert.ok(!methodNames.includes("reset"), "should NOT have static method reset");
+    assert.equal(def.methods!.size(), 1, "should have exactly 1 instance method");
   });
 
   test("class with private field produces diagnostic", () => {
