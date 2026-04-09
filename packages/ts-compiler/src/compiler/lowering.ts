@@ -75,6 +75,12 @@ interface InterfaceInfo {
   sourceFile: ts.SourceFile;
 }
 
+interface TypeAliasInfo {
+  node: ts.TypeAliasDeclaration;
+  name: string;
+  sourceFile: ts.SourceFile;
+}
+
 export function qualifiedClassName(fileName: string, className: string): string {
   return `${fileName}::${className}`;
 }
@@ -751,6 +757,7 @@ export function lowerProgram(
   const helperNodes: ts.FunctionDeclaration[] = [];
   const classInfos: ClassInfo[] = [];
   const interfaceInfos: InterfaceInfo[] = [];
+  const typeAliasInfos: TypeAliasInfo[] = [];
   const localEnumNodes: ts.EnumDeclaration[] = [];
   const funcIdCounter = { value: 0 };
   const closureFunctions = new Map<number, FunctionEntry>();
@@ -784,6 +791,8 @@ export function lowerProgram(
       classInfos.push({ node: stmt, name: className, sourceFile, constructorFuncId, methodFuncIds });
     } else if (ts.isInterfaceDeclaration(stmt) && stmt.name) {
       interfaceInfos.push({ node: stmt, name: stmt.name.text, sourceFile });
+    } else if (ts.isTypeAliasDeclaration(stmt) && stmt.name) {
+      typeAliasInfos.push({ node: stmt, name: stmt.name.text, sourceFile });
     } else if (ts.isVariableStatement(stmt) && !isInsideDescriptor(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
         if (ts.isIdentifier(decl.name)) {
@@ -869,6 +878,10 @@ export function lowerProgram(
 
   for (const ii of interfaceInfos) {
     registerInterfaceStructType(ii, checker, diagnostics, services);
+  }
+
+  for (const tai of typeAliasInfos) {
+    registerTypeAliasStructType(tai, checker, diagnostics, services);
   }
 
   const onExecEntry = lowerOnExecuteBody(
@@ -1466,6 +1479,8 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     // no-op: class declarations are pre-processed in lowerProgram
   } else if (ts.isInterfaceDeclaration(stmt)) {
     // no-op: interface declarations are pre-processed in lowerProgram
+  } else if (ts.isTypeAliasDeclaration(stmt)) {
+    // no-op: type alias declarations are pre-processed in lowerProgram
   } else {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.UnsupportedStatement, `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`, stmt)
@@ -1476,7 +1491,8 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     !ts.isBlock(stmt) &&
     stmt.kind !== ts.SyntaxKind.EmptyStatement &&
     !ts.isClassDeclaration(stmt) &&
-    !ts.isInterfaceDeclaration(stmt)
+    !ts.isInterfaceDeclaration(stmt) &&
+    !ts.isTypeAliasDeclaration(stmt)
   ) {
     annotateFirstNode(ctx.ir, irStart, stmt, true);
   }
@@ -5729,7 +5745,7 @@ function resolveStructType(type: ts.Type, services: BrainServices): StructTypeDe
     }
     return undefined;
   }
-  const sym = type.getSymbol() ?? type.aliasSymbol;
+  const sym = type.aliasSymbol ?? type.getSymbol();
   if (!sym) return undefined;
   const resolvedName = resolveRegistryName(sym, services);
   const typeId = registry.resolveByName(resolvedName);
@@ -6263,7 +6279,7 @@ function tsTypeToTypeId(
       }
     }
   }
-  const sym = type.getSymbol() ?? type.aliasSymbol;
+  const sym = type.aliasSymbol ?? type.getSymbol();
   if (sym) {
     const registry = services.types;
     const symName = sym.getName();
@@ -6461,6 +6477,50 @@ function registerInterfaceStructType(
 
   const type = checker.getTypeAtLocation(ii.node);
   const fields = extractInterfaceFields(type, ii.node, checker, diagnostics, services);
+  if (!fields) return;
+
+  registry.addStructType(qualName, { fields });
+}
+
+function registerTypeAliasStructType(
+  tai: TypeAliasInfo,
+  checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[],
+  services: BrainServices
+): void {
+  const registry = services.types;
+  const qualName = qualifiedClassName(tai.sourceFile.fileName, tai.name);
+
+  if (registry.resolveByName(tai.name)) {
+    diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.TypeAliasCollidesWithAmbientType,
+        `Type alias '${tai.name}' collides with an ambient (runtime-registered) type`,
+        tai.node
+      )
+    );
+    return;
+  }
+
+  const existing = registry.resolveByName(qualName);
+  if (existing) return;
+
+  if (tai.node.typeParameters && tai.node.typeParameters.length > 0) {
+    diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.GenericTypeAliasNotSupported,
+        `Generic type aliases are not supported: '${tai.name}'`,
+        tai.node
+      )
+    );
+    return;
+  }
+
+  if (!ts.isTypeLiteralNode(tai.node.type)) return;
+
+  const type = checker.getTypeAtLocation(tai.node);
+
+  const fields = extractInterfaceFields(type, tai.node, checker, diagnostics, services);
   if (!fields) return;
 
   registry.addStructType(qualName, { fields });

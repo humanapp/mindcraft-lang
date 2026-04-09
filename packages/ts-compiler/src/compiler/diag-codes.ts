@@ -315,6 +315,10 @@ export enum LoweringDiagCode {
   GenericInterfaceNotSupported = 3152,
   /** User interface name collides with an ambient (runtime-registered) type */
   InterfaceCollidesWithAmbientType = 3153,
+  /** Generic type aliases are not supported */
+  GenericTypeAliasNotSupported = 3154,
+  /** User type alias name collides with an ambient (runtime-registered) type */
+  TypeAliasCollidesWithAmbientType = 3155,
 }
 
 /**
