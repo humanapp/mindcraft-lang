@@ -1,6 +1,6 @@
 # Static Class Members -- Phased Implementation Plan
 
-**Status:** S1 complete
+**Status:** S2 complete
 **Created:** 2026-06-15
 **Related:**
 
@@ -54,6 +54,14 @@ infrastructure inventory. Relevant highlights:
   init loop and method body compilation loop.
 - Top-level `lowerProgram` function-table registration loops (local and imported
   classes) skip static methods.
+- `ClassInfo` has `staticFieldSlots: Map<string, number>` mapping field names to
+  callsite var indices.
+- Static fields are allocated as callsite vars with qualified names
+  (`"ClassName.fieldName"`) in both local and imported class scan blocks.
+- `generateModuleInitWithImports` accepts `classInfos` and emits static field
+  initialization: initializer expressions are lowered with expected type;
+  uninitialized fields get type-appropriate defaults (number->0, boolean->false,
+  string->"", else nil). Unresolvable types emit `UnresolvableClassFieldType`.
 - `lowerPropertyAccess` dispatches to params, Math, enum, `.length`, struct
   field, and generic TS property paths. No path exists for `ClassName.staticMember`.
 - `lowerIdentifier` treats bare `ClassName` as an error ("Undefined variable")
@@ -575,3 +583,45 @@ signatures for cross-file type checking.
 
 **Test results:** 646 tests, 0 failures. All existing class tests passed
 without modification.
+
+### S2 -- Static Field Storage and Initialization
+
+**Date:** 2026-04-09
+
+**Files changed:**
+
+- `lowering.ts` -- extended `ClassInfo` interface with
+  `staticFieldSlots: Map<string, number>`. In both local and imported class scan
+  blocks, added loops to iterate static property declarations and allocate
+  callsite vars with qualified names (`"ClassName.fieldName"`). Expanded
+  `initFuncId` condition to also trigger when `classInfos` has static fields.
+  Added `classInfos` parameter to `generateModuleInitWithImports` and appended a
+  loop that emits static field initialization: lowers initializer expression with
+  expected type for fields with initializers, pushes type-appropriate defaults
+  (number->0, boolean->false, string->"", else nil) for fields without, followed
+  by `StoreCallsiteVar(slot)`. Added `UnresolvableClassFieldType` diagnostic for
+  uninitialized static fields whose type cannot be resolved (matching the
+  existing non-static field behavior in `extractClassFields`).
+- `codegen.spec.ts` -- added four tests: static field with initializer stores
+  correct runtime value via callsite var, uninitialized static fields get
+  type-appropriate defaults, STORE_CALLSITE_VAR bytecode appears in module-init
+  function, uninitialized static field with unresolvable type emits diagnostic.
+
+**Observations:**
+
+- Qualified names with dots (`"Counter.count"`) are safe for callsite var keys
+  since TypeScript identifiers cannot contain dots, avoiding collisions with
+  module-level variables.
+- The `initFuncId` condition needed expansion because a file with only static
+  fields (no module-level variable initializers) would otherwise skip module-init
+  function generation entirely.
+- The `lowerExpressionWithExpectedType` function gracefully handles
+  `undefined` expectedTypeId (skips conversion but still lowers the expression),
+  so the initialized-field path works even with unresolvable types. The
+  uninitialized-field path needed an explicit diagnostic because it would
+  otherwise silently default to nil.
+- `generateModuleInitWithImports` already had access to the full `callsiteVars`
+  map and checker context, so static field initializers that reference other
+  variables or call functions work without additional plumbing.
+
+**Test results:** 650 tests, 0 failures.

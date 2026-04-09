@@ -9171,6 +9171,136 @@ export default Sensor({
     assert.equal(def.methods!.size(), 1, "should have exactly 1 instance method");
   });
 
+  test("static field with initializer stored as callsite var during module init", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 42;
+  value: number;
+  constructor(v: number) { this.value = v; }
+}
+
+export default Sensor({
+  name: "static-init",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.numStateSlots > 0, "expected callsite var slots for static field");
+    assert.ok(prog.activationFuncId !== undefined, "expected activationFuncId for module init");
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const stored = callsiteVars.get(0) as NumberValue;
+    assert.equal(stored.t, NativeType.Number);
+    assert.equal(stored.v, 42, "static field should be initialized to 42");
+  });
+
+  test("static field without initializer gets default value during module init", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Tracker {
+  static total: number;
+  static active: boolean;
+  value: number;
+  constructor(v: number) { this.value = v; }
+}
+
+export default Sensor({
+  name: "static-defaults",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.numStateSlots >= 2, "expected at least 2 callsite var slots for 2 static fields");
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const totalVal = callsiteVars.get(0) as NumberValue;
+    assert.equal(totalVal.t, NativeType.Number, "default number should be Number type");
+    assert.equal(totalVal.v, 0, "default number should be 0");
+
+    const activeVal = callsiteVars.get(1) as BooleanValue;
+    assert.equal(activeVal.t, NativeType.Boolean, "default boolean should be Boolean type");
+    assert.equal(activeVal.v, false, "default boolean should be false");
+  });
+
+  test("static field init emits STORE_CALLSITE_VAR in module-init function", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Foo {
+  static x: number = 10;
+}
+
+export default Sensor({
+  name: "static-ir-check",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const hasStoreCallsiteVar = prog.functions.some((fn) =>
+      fn.code.some((instr) => instr.op === Op.STORE_CALLSITE_VAR)
+    );
+    assert.ok(hasStoreCallsiteVar, "should have STORE_CALLSITE_VAR instruction for static field init");
+  });
+
+  test("uninitialized static field with unresolvable type emits diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+type Opaque = number & { __brand: "opaque" };
+
+class Holder {
+  static data: Opaque;
+}
+
+export default Sensor({
+  name: "unresolvable-static",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.ok(
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.UnresolvableClassFieldType),
+      `Expected UnresolvableClassFieldType diagnostic, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
+    );
+  });
+
   test("class with private field produces diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `

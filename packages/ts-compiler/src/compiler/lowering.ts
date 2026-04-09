@@ -79,6 +79,7 @@ interface ClassInfo {
   sourceFile: ts.SourceFile;
   constructorFuncId: number;
   methodFuncIds: Map<string, number>;
+  staticFieldSlots: Map<string, number>;
 }
 
 interface InterfaceInfo {
@@ -835,7 +836,15 @@ export function lowerProgram(
           methodFuncIds.set(methodName, methodFuncId);
         }
       }
-      classInfos.push({ node: stmt, name: className, sourceFile, constructorFuncId, methodFuncIds });
+      const staticFieldSlots = new Map<string, number>();
+      for (const member of stmt.members) {
+        if (ts.isPropertyDeclaration(member) && hasStaticModifier(member) && ts.isIdentifier(member.name)) {
+          const qualifiedName = `${className}.${member.name.text}`;
+          callsiteVars.set(qualifiedName, nextCallsiteVar);
+          staticFieldSlots.set(member.name.text, nextCallsiteVar++);
+        }
+      }
+      classInfos.push({ node: stmt, name: className, sourceFile, constructorFuncId, methodFuncIds, staticFieldSlots });
     } else if (ts.isInterfaceDeclaration(stmt) && stmt.name) {
       interfaceInfos.push({ node: stmt, name: stmt.name.text, sourceFile });
     } else if (ts.isTypeAliasDeclaration(stmt) && stmt.name) {
@@ -887,12 +896,21 @@ export function lowerProgram(
           methodFuncIds.set(methodName, methodFuncId);
         }
       }
+      const staticFieldSlots = new Map<string, number>();
+      for (const member of ic.node.members) {
+        if (ts.isPropertyDeclaration(member) && hasStaticModifier(member) && ts.isIdentifier(member.name)) {
+          const qualifiedName = `${className}.${member.name.text}`;
+          callsiteVars.set(qualifiedName, nextCallsiteVar);
+          staticFieldSlots.set(member.name.text, nextCallsiteVar++);
+        }
+      }
       classInfos.push({
         node: ic.node,
         name: className,
         sourceFile: ic.sourceFile,
         constructorFuncId,
         methodFuncIds,
+        staticFieldSlots,
       });
     }
   }
@@ -920,8 +938,9 @@ export function lowerProgram(
 
   const hasInitializers = hasTopLevelInitializers(sourceFile);
   const hasImportedInitializers = importedVariables?.some((iv) => iv.initializer) ?? false;
+  const hasStaticFields = classInfos.some((ci) => ci.staticFieldSlots.size > 0);
   let initFuncId: number | undefined;
-  if (hasInitializers || hasImportedInitializers) {
+  if (hasInitializers || hasImportedInitializers || hasStaticFields) {
     initFuncId = funcIdCounter.value++;
   }
 
@@ -1024,6 +1043,7 @@ export function lowerProgram(
       closureFunctions,
       importedVariables ?? [],
       moduleInitOrder ?? [],
+      classInfos,
       services
     );
     functions.push(initEntry);
@@ -1423,6 +1443,7 @@ function generateModuleInitWithImports(
   closureFunctions: Map<number, FunctionEntry>,
   importedVariables: ImportedVariable[],
   moduleInitOrder: string[],
+  classInfos: ClassInfo[],
   services: BrainServices
 ): FunctionEntry {
   const ir: IrNode[] = [];
@@ -1484,6 +1505,52 @@ function generateModuleInitWithImports(
           }
         }
       }
+    }
+  }
+
+  for (const ci of classInfos) {
+    for (const member of ci.node.members) {
+      if (!ts.isPropertyDeclaration(member)) continue;
+      if (!hasStaticModifier(member)) continue;
+      if (!ts.isIdentifier(member.name)) continue;
+      const fieldName = member.name.text;
+      const slot = ci.staticFieldSlots.get(fieldName);
+      if (slot === undefined) continue;
+
+      if (member.initializer) {
+        const memberType = checker.getTypeAtLocation(member);
+        const fieldTypeId = tsTypeToTypeId(memberType, checker, services);
+        lowerExpressionWithExpectedType(
+          member.initializer,
+          fieldTypeId,
+          `static field initializer for '${ci.name}.${fieldName}'`,
+          member.initializer,
+          ctx
+        );
+      } else {
+        const memberType = checker.getTypeAtLocation(member);
+        const fieldTypeId = tsTypeToTypeId(memberType, checker, services);
+        if (!fieldTypeId) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.UnresolvableClassFieldType,
+              `Cannot resolve type of static field '${ci.name}.${fieldName}'`,
+              member
+            )
+          );
+          continue;
+        }
+        if (fieldTypeId === CoreTypeIds.Number) {
+          ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+        } else if (fieldTypeId === CoreTypeIds.Boolean) {
+          ir.push({ kind: "PushConst", value: FALSE_VALUE });
+        } else if (fieldTypeId === CoreTypeIds.String) {
+          ir.push({ kind: "PushConst", value: mkStringValue("") });
+        } else {
+          ir.push({ kind: "PushConst", value: NIL_VALUE });
+        }
+      }
+      ir.push({ kind: "StoreCallsiteVar", index: slot });
     }
   }
 
