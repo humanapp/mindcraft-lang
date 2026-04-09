@@ -6324,8 +6324,10 @@ function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {
     case ts.SyntaxKind.GreaterThanEqualsToken:
       return CoreOpId.GreaterThanOrEqualTo;
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
+    case ts.SyntaxKind.EqualsEqualsToken:
       return CoreOpId.EqualTo;
     case ts.SyntaxKind.ExclamationEqualsEqualsToken:
+    case ts.SyntaxKind.ExclamationEqualsToken:
       return CoreOpId.NotEqualTo;
     case ts.SyntaxKind.PlusToken:
       return CoreOpId.Add;
