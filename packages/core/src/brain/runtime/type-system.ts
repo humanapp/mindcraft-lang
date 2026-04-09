@@ -417,6 +417,7 @@ export class TypeRegistry implements ITypeRegistry {
       name: nullableName,
       nullable: true,
       baseTypeId,
+      autoInstantiated: baseDef.autoInstantiated,
     };
     this.add(nullableDef);
     return typeId;

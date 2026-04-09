@@ -142,6 +142,7 @@ interface LowerContext {
   thisLocalIndex?: number;
   currentFunctionName: string;
   currentReturnTypeId?: TypeId;
+  optionalChainSubstitution?: { targetExpr: ts.Expression; localIndex: number };
 }
 
 function allocLabel(ctx: LowerContext): number {
@@ -156,6 +157,38 @@ function pushLoopContext(continueLabel: number, breakLabel: number, ctx: LowerCo
 function popLoopContext(ctx: LowerContext): void {
   ctx.loopStack.pop();
   ctx.breakStack.pop();
+}
+
+function emitNilGuard(ctx: LowerContext): { endLabel: number } {
+  const keepLabel = allocLabel(ctx);
+  const endLabel = allocLabel(ctx);
+  ctx.ir.push({ kind: "Dup" });
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: keepLabel });
+  ctx.ir.push({ kind: "Pop" });
+  ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ctx.ir.push({ kind: "Jump", labelId: endLabel });
+  ctx.ir.push({ kind: "Label", labelId: keepLabel });
+  return { endLabel };
+}
+
+function findOptionalChainRoot(
+  expr: ts.Expression
+): ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.CallExpression | undefined {
+  let current: ts.Expression = expr;
+  while (true) {
+    if (
+      (ts.isPropertyAccessExpression(current) ||
+        ts.isElementAccessExpression(current) ||
+        ts.isCallExpression(current)) &&
+      ts.isOptionalChain(current)
+    ) {
+      if (current.questionDotToken) return current;
+      current = current.expression;
+    } else {
+      return undefined;
+    }
+  }
 }
 
 function resolveOperator(opId: string, argTypes: string[], services: BrainServices): string | undefined {
@@ -2364,6 +2397,12 @@ function lowerContinueStatement(stmt: ts.ContinueStatement, ctx: LowerContext): 
 function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
   const irStart = ctx.ir.length;
 
+  if (ctx.optionalChainSubstitution?.targetExpr === expr) {
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.optionalChainSubstitution.localIndex });
+    annotateFirstNode(ctx.ir, irStart, expr, false);
+    return;
+  }
+
   if (ts.isNumericLiteral(expr)) {
     ctx.ir.push({ kind: "PushConst", value: mkNumberValue(Number(expr.text)) });
   } else if (expr.kind === ts.SyntaxKind.TrueKeyword) {
@@ -2536,6 +2575,52 @@ function lowerNewExpression(expr: ts.NewExpression, ctx: LowerContext): void {
 }
 
 function lowerCallExpression(expr: ts.CallExpression, ctx: LowerContext): void {
+  if (ts.isOptionalChain(expr)) {
+    lowerOptionalChainCall(expr, ctx);
+    return;
+  }
+  lowerCallExpressionCore(expr, ctx);
+}
+
+function lowerOptionalChainCall(expr: ts.CallExpression, ctx: LowerContext): void {
+  if (expr.questionDotToken) {
+    lowerExpression(expr.expression, ctx);
+    const { endLabel } = emitNilGuard(ctx);
+    const argc = lowerCallArgumentsWithTargetTypes(expr, ctx);
+    ctx.ir.push({ kind: "CallIndirect", argc });
+    ctx.ir.push({ kind: "Label", labelId: endLabel });
+    return;
+  }
+
+  const root = findOptionalChainRoot(expr.expression);
+  if (!root) {
+    lowerCallExpressionCore(expr, ctx);
+    return;
+  }
+
+  const guardExpr = root.expression;
+  const tempLocal = ctx.scopeStack.allocLocal();
+  const keepLabel = allocLabel(ctx);
+  const endLabel = allocLabel(ctx);
+
+  lowerExpression(guardExpr, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: keepLabel });
+  ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ctx.ir.push({ kind: "Jump", labelId: endLabel });
+  ctx.ir.push({ kind: "Label", labelId: keepLabel });
+
+  const savedSub = ctx.optionalChainSubstitution;
+  ctx.optionalChainSubstitution = { targetExpr: guardExpr, localIndex: tempLocal };
+  lowerCallExpressionCore(expr, ctx);
+  ctx.optionalChainSubstitution = savedSub;
+
+  ctx.ir.push({ kind: "Label", labelId: endLabel });
+}
+
+function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): void {
   if (ts.isIdentifier(expr.expression)) {
     const funcId = ctx.functionTable.get(expr.expression.text);
     if (funcId !== undefined) {
@@ -3390,24 +3475,32 @@ function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): bo
 }
 
 function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext): void {
-  const objType = ctx.checker.getTypeAtLocation(expr.expression);
+  const isOptChain = ts.isOptionalChain(expr);
+  const rawObjType = ctx.checker.getTypeAtLocation(expr.expression);
+  const objType = isOptChain ? ctx.checker.getNonNullableType(rawObjType) : rawObjType;
   if (isStringType(objType)) {
     lowerExpression(expr.expression, ctx);
+    const guard = isOptChain ? emitNilGuard(ctx) : undefined;
     lowerExpression(expr.argumentExpression, ctx);
     ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_get_js", argc: 2 });
+    if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
   if (resolveMapTypeId(objType, ctx)) {
     lowerExpression(expr.expression, ctx);
+    const guard = isOptChain ? emitNilGuard(ctx) : undefined;
     lowerExpression(expr.argumentExpression, ctx);
     ctx.ir.push({ kind: "MapGet" });
+    if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
   if (resolveStructType(objType, ctx.services)) {
     lowerExpression(expr.expression, ctx);
+    const guard = isOptChain ? emitNilGuard(ctx) : undefined;
     lowerExpression(expr.argumentExpression, ctx);
     emitToStringIfNeeded(expr.argumentExpression, ctx);
     ctx.ir.push({ kind: "GetFieldDynamic" });
+    if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
   if (!resolveListTypeId(objType, ctx)) {
@@ -3421,8 +3514,10 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
     return;
   }
   lowerExpression(expr.expression, ctx);
+  const guard = isOptChain ? emitNilGuard(ctx) : undefined;
   lowerExpression(expr.argumentExpression, ctx);
   ctx.ir.push({ kind: "HostCallArgs", fnName: "$$list_get_js", argc: 2 });
+  if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
 }
 
 function lowerElementAccessAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
@@ -3446,7 +3541,12 @@ function lowerElementAccessAssignment(expr: ts.BinaryExpression, ctx: LowerConte
 }
 
 function isStringType(type: ts.Type): boolean {
-  return (type.flags & ts.TypeFlags.StringLike) !== 0;
+  if ((type.flags & ts.TypeFlags.StringLike) !== 0) return true;
+  if (type.isUnion()) {
+    const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
+    return nonNullish.length === 1 && (nonNullish[0].flags & ts.TypeFlags.StringLike) !== 0;
+  }
+  return false;
 }
 
 function lowerStringMethodCall(
@@ -5722,22 +5822,28 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     return;
   }
 
+  const isOptChain = ts.isOptionalChain(expr);
+  const rawObjType = ctx.checker.getTypeAtLocation(expr.expression);
+  const objType = isOptChain ? ctx.checker.getNonNullableType(rawObjType) : rawObjType;
+
   if (expr.name.text === "length") {
-    const objType = ctx.checker.getTypeAtLocation(expr.expression);
     if (isStringType(objType)) {
       lowerExpression(expr.expression, ctx);
+      const guard = isOptChain ? emitNilGuard(ctx) : undefined;
       ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_length", argc: 1 });
+      if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
       return;
     }
     const listTypeId = resolveListTypeId(objType, ctx);
     if (listTypeId) {
       lowerExpression(expr.expression, ctx);
+      const guard = isOptChain ? emitNilGuard(ctx) : undefined;
       ctx.ir.push({ kind: "ListLen" });
+      if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
       return;
     }
   }
 
-  const objType = ctx.checker.getTypeAtLocation(expr.expression);
   const structDef = resolveStructType(objType, ctx.services);
   if (structDef) {
     const fieldName = expr.name.text;
@@ -5753,7 +5859,9 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
       return;
     }
     lowerExpression(expr.expression, ctx);
+    const guard = isOptChain ? emitNilGuard(ctx) : undefined;
     ctx.ir.push({ kind: "GetField", fieldName });
+    if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
 
@@ -5761,7 +5869,9 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
   const tsProps = objType.getProperties();
   if (tsProps.length > 0 && tsProps.some((p) => p.getName() === fieldName)) {
     lowerExpression(expr.expression, ctx);
+    const guard = isOptChain ? emitNilGuard(ctx) : undefined;
     ctx.ir.push({ kind: "GetField", fieldName });
+    if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
 
@@ -6127,6 +6237,14 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
 
 function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | undefined {
   const registry = ctx.services.types;
+
+  if (arrayType.isUnion()) {
+    const nonNullish = arrayType.types.filter(
+      (t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined)
+    );
+    if (nonNullish.length === 1) return resolveListTypeId(nonNullish[0], ctx);
+    return undefined;
+  }
 
   const sym = arrayType.aliasSymbol ?? arrayType.getSymbol();
   if (sym) {
