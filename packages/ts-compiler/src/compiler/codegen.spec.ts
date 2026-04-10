@@ -9705,6 +9705,157 @@ export default Sensor({
     );
   });
 
+  test("instance getter desugars to function call at call site", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Box {
+  _width: number;
+  constructor(w: number) { this._width = w; }
+  get width(): number { return this._width; }
+}
+
+export default Sensor({
+  name: "instance-getter-callsite",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const b = new Box(42);
+    return b.width;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 42);
+    }
+  });
+
+  test("this.x getter inside instance method desugars correctly", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Rect {
+  _w: number;
+  _h: number;
+  constructor(w: number, h: number) { this._w = w; this._h = h; }
+  get w(): number { return this._w; }
+  get h(): number { return this._h; }
+  area(): number { return this.w * this.h; }
+}
+
+export default Sensor({
+  name: "this-getter-in-method",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const r = new Rect(3, 7);
+    return r.area();
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 21);
+    }
+  });
+
+  test("static getter desugars to function call at call site", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Config {
+  static _limit: number = 99;
+  static get limit(): number { return Config._limit; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-getter-callsite",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return Config.limit;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 99);
+    }
+  });
+
+  test("getter returning computed value (not just backing field)", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Circle {
+  _radius: number;
+  constructor(r: number) { this._radius = r; }
+  get diameter(): number { return this._radius * 2; }
+}
+
+export default Sensor({
+  name: "computed-getter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const c = new Circle(5);
+    return c.diameter;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 10);
+    }
+  });
+
   test("new ClassName(args) creates struct with correct field values", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `

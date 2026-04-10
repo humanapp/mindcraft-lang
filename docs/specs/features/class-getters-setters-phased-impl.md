@@ -1,6 +1,6 @@
 # Class Getters and Setters -- Phased Implementation Plan
 
-**Status:** G2 complete, G3 next
+**Status:** G3 complete, G4 next
 **Created:** 2026-04-09
 **Related:**
 
@@ -44,7 +44,8 @@ As part of each phase, you MUST audit your changes to lowering.ts to verify that
 
 ## Current State
 
-Accessor funcIds are registered and their bodies are lowered to FunctionEntry:
+Accessor funcIds are registered, bodies are lowered, and getter call sites are
+desugared to function calls:
 
 - `validator.ts` no longer blocks `GetAccessorDeclaration` or
   `SetAccessorDeclaration` class members.
@@ -56,7 +57,19 @@ Accessor funcIds are registered and their bodies are lowered to FunctionEntry:
 - `lowerClassDeclaration` compiles accessor bodies into FunctionEntry using the
   same infrastructure as instance/static methods. Instance accessors receive
   `this` as param 0; static accessors have no implicit receiver.
-- Call sites are not yet desugared -- property reads/writes still go through
+- `StaticMemberAccessResolution` has a `"getter"` variant:
+  `{ kind: "getter"; funcName: string }`.
+- `resolveStaticMemberAccess` and `resolveThisStaticAccess` check
+  `staticGetterFuncIds` after field/method checks.
+- `lowerPropertyAccess` desugars getter reads:
+  - Static: `ClassName.x` -> `Call(funcId, 0)`
+  - This-static: `this.x` in static context -> `Call(funcId, 0)`
+  - Instance: `obj.x` -> `lowerExpression(receiver) / Call(funcId, 1)`,
+    with optional chaining support.
+- Assignment/increment paths (`lowerStaticFieldAssignment`,
+  `lowerPrefixIncDec`, `lowerPostfixIncDec`) treat getter-only properties
+  as non-assignable (same diagnostic as methods).
+- Setter call sites are not yet desugared -- property writes still go through
   the field/static-field paths.
 
 Relevant existing infrastructure:
@@ -562,3 +575,40 @@ what methods already have.
 **Lesson:** `prog.functions` is a `List<FunctionBytecode>`, not a native array.
 `List.map()` returns a `List` which lacks `.includes()`. Used `.some()` for
 assertion checks instead.
+
+### G3 -- Getter call-site desugaring
+
+**Files changed:**
+
+- `lowering.ts`:
+  - Added `{ kind: "getter"; funcName: string }` variant to
+    `StaticMemberAccessResolution` type union.
+  - `resolveStaticMemberAccess`: checks `ci.staticGetterFuncIds.has()` after
+    field/method, returns getter variant.
+  - `resolveThisStaticAccess`: same pattern for `this.x` in static methods.
+  - `lowerPropertyAccess` static handler: emits `Call(funcId, 0)` for getter.
+  - `lowerPropertyAccess` this-static handler: same.
+  - `lowerPropertyAccess` struct path: before `hasField` check, looks up
+    receiver's ClassInfo via `bareClassName()`, checks `getterFuncIds`, emits
+    `lowerExpression(receiver) / Call(funcId, 1)` with optional chaining.
+  - `lowerStaticFieldAssignment`: added `"getter"` to the `"method"` diagnostic
+    branch (not assignable).
+  - `lowerPrefixIncDec` / `lowerPostfixIncDec`: added `"getter"` to the
+    `"method"` diagnostic branch (not incrementable).
+- `codegen.spec.ts`: Four new runtime tests:
+  - Instance getter reads via function call (`b.width` returns 42).
+  - `this.x` getter inside a method (`r.area()` uses getters for w/h).
+  - Static getter reads via function call (`Config.limit` returns 99).
+  - Getter returning computed value (`c.diameter` returns radius * 2).
+
+**Silent-failure audit:** All new codepaths emit IR or produce a diagnostic.
+Defensive `funcId !== undefined` guards in the static/this-static/instance
+paths fall through to existing `NoSuchStaticMember` or `PropertyNotOnStruct`
+diagnostics if the function table lookup fails (which cannot happen in practice
+because G1 registers funcIds in both ClassInfo maps and the function table
+simultaneously).
+
+**Lesson:** Adding a new variant to the `StaticMemberAccessResolution` union
+broke three other consumers (`lowerStaticFieldAssignment`, `lowerPrefixIncDec`,
+`lowerPostfixIncDec`) that exhaustively checked the union. These needed getter
+handling added (diagnostic: not assignable) before typecheck would pass.

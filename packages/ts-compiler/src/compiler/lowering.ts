@@ -3477,7 +3477,7 @@ function lowerStaticFieldAssignment(
   staticAccess: NonNullable<StaticMemberAccessResolution>,
   ctx: LowerContext
 ): void {
-  if (staticAccess.kind === "method") {
+  if (staticAccess.kind === "method" || staticAccess.kind === "getter") {
     const lhsText = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : "this";
     ctx.diagnostics.push(
       makeDiag(
@@ -3627,7 +3627,7 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
   if (ts.isPropertyAccessExpression(expr.operand)) {
     const staticAccess = resolveStaticMemberAccess(expr.operand, ctx) ?? resolveThisStaticAccess(expr.operand, ctx);
     if (staticAccess) {
-      if (staticAccess.kind === "method") {
+      if (staticAccess.kind === "method" || staticAccess.kind === "getter") {
         ctx.diagnostics.push(
           makeDiag(
             LoweringDiagCode.IncrDecrTargetNotVariable,
@@ -3706,7 +3706,7 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   if (ts.isPropertyAccessExpression(expr.operand)) {
     const staticAccess = resolveStaticMemberAccess(expr.operand, ctx) ?? resolveThisStaticAccess(expr.operand, ctx);
     if (staticAccess) {
-      if (staticAccess.kind === "method") {
+      if (staticAccess.kind === "method" || staticAccess.kind === "getter") {
         ctx.diagnostics.push(
           makeDiag(
             LoweringDiagCode.IncrDecrTargetNotVariable,
@@ -6325,6 +6325,13 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
       ctx.ir.push({ kind: "PushFunctionRef", funcName: staticAccess.funcName });
       return;
     }
+    if (staticAccess.kind === "getter") {
+      const funcId = ctx.functionTable.get(staticAccess.funcName);
+      if (funcId !== undefined) {
+        ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: 0 });
+        return;
+      }
+    }
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.NoSuchStaticMember,
@@ -6344,6 +6351,13 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     if (thisStatic.kind === "method") {
       ctx.ir.push({ kind: "PushFunctionRef", funcName: thisStatic.funcName });
       return;
+    }
+    if (thisStatic.kind === "getter") {
+      const funcId = ctx.functionTable.get(thisStatic.funcName);
+      if (funcId !== undefined) {
+        ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: 0 });
+        return;
+      }
     }
     ctx.diagnostics.push(
       makeDiag(
@@ -6380,6 +6394,19 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
   const structDef = resolveStructType(objType, ctx.services);
   if (structDef) {
     const fieldName = expr.name.text;
+    const className = bareClassName(structDef.name);
+    const ci = ctx.classInfos.find((c) => c.name === className);
+    if (ci?.getterFuncIds.has(fieldName)) {
+      const funcName = `${className}$get_${fieldName}`;
+      const funcId = ctx.functionTable.get(funcName);
+      if (funcId !== undefined) {
+        lowerExpression(expr.expression, ctx);
+        const guard = isOptChain ? emitNilGuard(ctx) : undefined;
+        ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: 1 });
+        if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
+        return;
+      }
+    }
     const hasField = structDef.fields.toArray().some((f) => f.name === fieldName);
     if (!hasField) {
       ctx.diagnostics.push(
@@ -6609,6 +6636,7 @@ function resolveEnumPropertyAccess(
 type StaticMemberAccessResolution =
   | { kind: "field"; callsiteVarIndex: number }
   | { kind: "method"; funcName: string }
+  | { kind: "getter"; funcName: string }
   | { kind: "no-such-member" }
   | undefined;
 
@@ -6639,6 +6667,10 @@ function resolveStaticMemberAccess(expr: ts.PropertyAccessExpression, ctx: Lower
     return { kind: "method", funcName: `${className}$${memberName}` };
   }
 
+  if (ci.staticGetterFuncIds.has(memberName)) {
+    return { kind: "getter", funcName: `${className}$get_${memberName}` };
+  }
+
   return { kind: "no-such-member" };
 }
 
@@ -6657,6 +6689,10 @@ function resolveThisStaticAccess(expr: ts.PropertyAccessExpression, ctx: LowerCo
   const methodFuncId = ci.staticMethodFuncIds.get(memberName);
   if (methodFuncId !== undefined) {
     return { kind: "method", funcName: `${ci.name}$${memberName}` };
+  }
+
+  if (ci.staticGetterFuncIds.has(memberName)) {
+    return { kind: "getter", funcName: `${ci.name}$get_${memberName}` };
   }
 
   return { kind: "no-such-member" };
