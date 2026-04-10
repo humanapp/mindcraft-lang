@@ -604,6 +604,158 @@ export default Sensor({
     }
   });
 
+  test("do...while loop runs at least once", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-do-while",
+  output: "number",
+  onExecute(ctx: Context): number {
+    let count = 0;
+    do {
+      count = count + 1;
+    } while (false);
+    return count;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 1);
+    }
+  });
+
+  test("do...while loop with multiple iterations", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-do-while-multi",
+  output: "number",
+  params: {
+    n: { type: "number" },
+  },
+  onExecute(ctx: Context, params: { n: number }): number {
+    let sum = 0;
+    let i = 0;
+    do {
+      sum = sum + i;
+      i = i + 1;
+    } while (i < params.n);
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+
+    const args = mkArgsMap({ 0: mkNumberValue(4) });
+    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      // 0 + 1 + 2 + 3 = 6
+      assert.equal((runResult.result as NumberValue).v, 6);
+    }
+  });
+
+  test("break in do...while loop", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-do-while-break",
+  output: "number",
+  onExecute(ctx: Context): number {
+    let i = 0;
+    do {
+      if (i >= 3) {
+        break;
+      }
+      i = i + 1;
+    } while (true);
+    return i;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as NumberValue).v, 3);
+    }
+  });
+
+  test("continue in do...while loop", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "test-do-while-continue",
+  output: "number",
+  onExecute(ctx: Context): number {
+    let sum = 0;
+    let i = 0;
+    do {
+      i = i + 1;
+      if (i === 2 || i === 4 || i === 6) {
+        continue;
+      }
+      sum = sum + i;
+    } while (i < 6);
+    return sum;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 10000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      // odd numbers 1..6: 1 + 3 + 5 = 9
+      assert.equal((runResult.result as NumberValue).v, 9);
+    }
+  });
+
   test("for loop runs correct number of iterations", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";

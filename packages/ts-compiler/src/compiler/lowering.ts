@@ -1715,6 +1715,8 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     lowerIfStatement(stmt, ctx);
   } else if (ts.isWhileStatement(stmt)) {
     lowerWhileStatement(stmt, ctx);
+  } else if (ts.isDoStatement(stmt)) {
+    lowerDoWhileStatement(stmt, ctx);
   } else if (ts.isForStatement(stmt)) {
     lowerForStatement(stmt, ctx);
   } else if (ts.isForInStatement(stmt)) {
@@ -2149,6 +2151,25 @@ function lowerWhileStatement(stmt: ts.WhileStatement, ctx: LowerContext): void {
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
   lowerStatement(stmt.statement, ctx);
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+
+  popLoopContext(ctx);
+}
+
+function lowerDoWhileStatement(stmt: ts.DoStatement, ctx: LowerContext): void {
+  const loopStart = allocLabel(ctx);
+  const continueTarget = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  pushLoopContext(continueTarget, loopEnd, ctx);
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+  lowerStatement(stmt.statement, ctx);
+  ctx.ir.push({ kind: "Label", labelId: continueTarget });
+  const condStart = ctx.ir.length;
+  lowerExpression(stmt.expression, ctx);
+  annotateFirstNode(ctx.ir, condStart, stmt.expression, true);
+  ctx.ir.push({ kind: "JumpIfTrue", labelId: loopStart });
   ctx.ir.push({ kind: "Label", labelId: loopEnd });
 
   popLoopContext(ctx);
