@@ -149,10 +149,10 @@ function remapTileSet(
  */
 export function deserializeRuleFromClipboard(
   destBrain: BrainDef,
-  serviceTileCatalog?: ITileCatalog,
+  serviceTileCatalogs?: readonly ITileCatalog[],
   brainServices?: BrainServices
 ): BrainRuleDef | undefined {
-  const rules = deserializeAllRulesFromClipboard(destBrain, serviceTileCatalog, brainServices);
+  const rules = deserializeAllRulesFromClipboard(destBrain, serviceTileCatalogs, brainServices);
   return rules.length > 0 ? rules[0] : undefined;
 }
 
@@ -165,7 +165,7 @@ export function deserializeRuleFromClipboard(
  */
 export function deserializeAllRulesFromClipboard(
   destBrain: BrainDef,
-  serviceTileCatalog?: ITileCatalog,
+  serviceTileCatalogs?: readonly ITileCatalog[],
   brainServices?: BrainServices
 ): BrainRuleDef[] {
   if (!clipboardData) return [];
@@ -216,7 +216,12 @@ export function deserializeAllRulesFromClipboard(
     }
   }
 
-  const catalogs = serviceTileCatalog ? List.from([destCatalog, serviceTileCatalog]) : List.from([destCatalog]);
+  const catalogs = List.from<ITileCatalog>([destCatalog]);
+  if (serviceTileCatalogs) {
+    for (let i = 0; i < serviceTileCatalogs.length; i++) {
+      catalogs.push(serviceTileCatalogs[i]);
+    }
+  }
   const results: BrainRuleDef[] = [];
 
   for (const ruleJson of currentClipboardData.ruleJsons) {

@@ -93,7 +93,7 @@ export function BrainTilePickerDialog({
   onCancel,
 }: BrainTilePickerDialogProps) {
   const editorConfig = useBrainEditorConfig();
-  const { brainServices, tileCatalog: servicesTiles } = editorConfig;
+  const { brainServices, tileCatalogs } = editorConfig;
   const [filter, setFilter] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -107,10 +107,10 @@ export function BrainTilePickerDialog({
   }, [isOpen]);
 
   const catalogs = React.useMemo(() => {
-    const list = servicesTiles ? List.from<ITileCatalog>([servicesTiles]) : List.empty<ITileCatalog>();
+    const list = tileCatalogs ? List.from<ITileCatalog>(tileCatalogs) : List.empty<ITileCatalog>();
     if (localCatalog) list.push(localCatalog);
     return list.asReadonly();
-  }, [localCatalog, servicesTiles]);
+  }, [localCatalog, tileCatalogs]);
 
   const { exactByKind, conversionByKind, hasConversions } = React.useMemo(() => {
     const expr = exprProp ?? (existingTiles ? parseTilesForSuggestions(existingTiles) : undefined);

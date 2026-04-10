@@ -224,7 +224,7 @@ export class PasteRuleAboveCommand implements BrainCommand {
 
   constructor(
     private targetRule: BrainRuleDef,
-    private readonly tileCatalog?: ITileCatalog,
+    private readonly tileCatalogs?: readonly ITileCatalog[],
     private readonly brainServices?: BrainServices
   ) {}
 
@@ -232,7 +232,7 @@ export class PasteRuleAboveCommand implements BrainCommand {
     const brain = this.targetRule.brain() as BrainDef | undefined;
     if (!brain) return;
 
-    const newRules = deserializeAllRulesFromClipboard(brain, this.tileCatalog, this.brainServices);
+    const newRules = deserializeAllRulesFromClipboard(brain, this.tileCatalogs, this.brainServices);
     if (newRules.length === 0) return;
 
     const state = getRuleState(this.targetRule);

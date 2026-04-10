@@ -44,7 +44,6 @@ const noopCodec = {
 
 type MindcraftEnvironmentInternals = {
   brainServices: BrainServices;
-  hydratedCatalog: ITileCatalog;
   bundleCatalog: ITileCatalog;
   trackedBrains: List<unknown>;
   invalidatedBrains: List<unknown>;
@@ -424,7 +423,7 @@ describe("mindcraft environment", () => {
     const hydratedChain = internals.buildCatalogChain(brainDef, List.from([overlayRaw]));
     assert.equal(hydratedChain.size(), 4);
     assert.equal(hydratedChain.get(0), internals.brainServices.tiles);
-    assert.equal(hydratedChain.get(1), internals.hydratedCatalog);
+    assert.equal(hydratedChain.get(1), internals.bundleCatalog);
     assert.equal(hydratedChain.get(2), overlayRaw);
     assert.equal(hydratedChain.get(3), brainDef.catalog());
     assert.equal(resolveTileFromChain(hydratedChain, sharedSensor.tile.tileId), sharedSensor.tile);
@@ -454,7 +453,7 @@ describe("mindcraft environment", () => {
       tiles: [hydrated.tile],
     });
 
-    assert.equal(internals.hydratedCatalog.get(hydrated.tile.tileId)?.visual, undefined);
+    assert.equal(internals.bundleCatalog.get(hydrated.tile.tileId)?.visual, undefined);
 
     const bundled = createBundleSensor("bundle.visual");
     environment.replaceActionBundle(createActionBundle("bundle.visual.rev1", [bundled]));

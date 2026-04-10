@@ -248,6 +248,7 @@ export interface MindcraftEnvironment {
   replaceActionBundle(bundle: CompiledActionBundle): ActionBundleUpdate;
   onBrainsInvalidated(listener: (event: BrainInvalidationEvent) => void): () => void;
   rebuildInvalidatedBrains(brains?: readonly MindcraftBrain[]): void;
+  tileCatalogs(): readonly ITileCatalog[];
 }
 
 type CreateMindcraftEnvironmentOptions = {
@@ -636,7 +637,6 @@ class EnvironmentActionResolver implements BrainActionResolver {
 
 class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   readonly brainServices: BrainServices;
-  private readonly hydratedCatalog = new TileCatalog();
   private readonly bundleCatalog = new TileCatalog();
   private readonly bundleResolver = new Dict<string, CompiledActionArtifact>();
   private readonly trackedBrains = List.empty<ManagedMindcraftBrain>();
@@ -655,6 +655,10 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     return withMindcraftEnvironmentServices(this, callback);
   }
 
+  tileCatalogs(): readonly ITileCatalog[] {
+    return [this.brainServices.tiles, this.bundleCatalog];
+  }
+
   createCatalog(): MindcraftCatalog {
     return new MindcraftCatalogImpl();
   }
@@ -671,7 +675,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   }
 
   hydrateTileMetadata(snapshot: HydratedTileMetadataSnapshot): void {
-    this.replaceCatalogContents(this.hydratedCatalog, List.from(snapshot.tiles));
+    this.replaceCatalogContents(this.bundleCatalog, List.from(snapshot.tiles));
   }
 
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain {
@@ -688,7 +692,6 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
     const changedActionKeySet = toActionKeySet(changedActionKeys);
     const hasChangedActions = !changedActionKeySet.isEmpty();
 
-    this.hydratedCatalog.clear();
     this.replaceCatalogContents(this.bundleCatalog, List.from(bundle.tiles));
 
     this.bundleResolver.clear();
@@ -752,9 +755,6 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   buildCatalogChain(definition: IBrainDef, overlays: List<ITileCatalog>): List<ITileCatalog> {
     const catalogs = List.empty<ITileCatalog>();
     catalogs.push(this.brainServices.tiles);
-    if (!this.hydratedCatalog.getAll().isEmpty()) {
-      catalogs.push(this.hydratedCatalog);
-    }
     if (!this.bundleCatalog.getAll().isEmpty()) {
       catalogs.push(this.bundleCatalog);
     }
@@ -768,9 +768,6 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   buildDeserializeCatalogs(): List<ITileCatalog> {
     const catalogs = List.empty<ITileCatalog>();
     catalogs.push(this.brainServices.tiles);
-    if (!this.hydratedCatalog.getAll().isEmpty()) {
-      catalogs.push(this.hydratedCatalog);
-    }
     if (!this.bundleCatalog.getAll().isEmpty()) {
       catalogs.push(this.bundleCatalog);
     }
