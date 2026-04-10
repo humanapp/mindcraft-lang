@@ -323,6 +323,8 @@ export enum LoweringDiagCode {
   ClassObjectUsageNotSupported = 3156,
   /** No static member with this name exists on the class */
   NoSuchStaticMember = 3157,
+  /** Compound assignment or increment/decrement requires both a getter and a setter */
+  CompoundAssignRequiresGetterAndSetter = 3158,
 }
 
 /**

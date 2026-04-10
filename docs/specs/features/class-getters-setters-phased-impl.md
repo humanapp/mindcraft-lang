@@ -1,6 +1,6 @@
 # Class Getters and Setters -- Phased Implementation Plan
 
-**Status:** G4 complete, G5 next
+**Status:** G5 complete (all phases done)
 **Created:** 2026-04-09
 **Related:**
 
@@ -82,9 +82,24 @@ desugared to function calls:
   via ClassInfo when the resolve result is `"getter"` (since resolve returns
   getter before setter). If a companion setter exists, it redirects to the
   setter Call path.
-- Compound assignment on setter-only properties produces a diagnostic
-  (deferred to G5 for full getter+setter compound support).
-- Prefix/postfix increment on setter-only properties produces a diagnostic.
+- Compound assignment (`+=`, `-=`, etc.) on getter+setter properties:
+  - Instance `this.x += v`: `LoadLocal(this) / Call(getter, 1) / [RHS] /
+    HostCallArgs(op, 2) / Dup / LoadLocal(this) / Swap / Call(setter, 2) / Pop`.
+  - Instance `obj.x += v`: receiver evaluated once into a temp local via
+    `allocLocal()`, then used for both getter and setter calls.
+  - Static `ClassName.x += v`: `Call(getter, 0) / [RHS] / HostCallArgs(op, 2) /
+    Dup / Call(setter, 1) / Pop`.
+  - Compound on setter-only (no getter) emits diagnostic 3158
+    (`CompoundAssignRequiresGetterAndSetter`).
+- Prefix/postfix increment/decrement on getter+setter properties:
+  - Six helper functions: `resolveStaticGetterSetterPair`,
+    `resolveInstanceGetterSetterPair`, `lowerPrefixIncDecStaticGetterSetter`,
+    `lowerPostfixIncDecStaticGetterSetter`, `lowerPrefixIncDecInstanceGetterSetter`,
+    `lowerPostfixIncDecInstanceGetterSetter`.
+  - Prefix: get -> +1 -> dup (new value) -> set. Postfix: get -> dup (old value)
+    -> +1 -> set.
+  - Instance helpers return `true | undefined` to signal whether they handled
+    the operation, allowing fallthrough to existing field-based inc/dec paths.
 
 Relevant existing infrastructure:
 
@@ -669,3 +684,51 @@ The assignment handler (`lowerStaticFieldAssignment`) must perform a secondary
 ClassInfo lookup for a companion setter when it receives a `"getter"` result
 in a write context. A single resolve function cannot serve both read and write
 contexts without this secondary check.
+
+### G5 -- Compound assignment and increment/decrement
+
+**Files changed:**
+
+- `diag-codes.ts`: Added `CompoundAssignRequiresGetterAndSetter = 3158`.
+- `lowering.ts`:
+  - `lowerThisFieldAssignment`: Compound path now detects getter+setter pair
+    via `resolveStructType` + `bareClassName` + `ClassInfo`. Emits
+    `LoadLocal(this) / Call(getter, 1) / [RHS] / HostCallArgs(op, 2) / Dup /
+    LoadLocal(this) / Swap / Call(setter, 2) / Pop`.
+  - `lowerAssignment` (obj.X compound path): Evaluates receiver once into a
+    temp local via `ctx.scopeStack.allocLocal()`, then uses it for both getter
+    and setter calls. Emits `StoreLocal(temp) / LoadLocal(temp) / Call(getter, 1) /
+    [RHS] / HostCallArgs(op, 2) / Dup / LoadLocal(temp) / Swap / Call(setter, 2) /
+    Pop`.
+  - `lowerStaticFieldAssignment` (getter branch): Compound path resolves
+    companion setter via `resolveStaticGetterSetterPair`. Emits
+    `Call(getter, 0) / [RHS] / HostCallArgs(op, 2) / Dup / Call(setter, 1) / Pop`.
+    Setter-only compound emits diagnostic 3158.
+  - Six new helper functions:
+    - `resolveStaticGetterSetterPair`: Finds getter+setter funcId pair for
+      static properties.
+    - `resolveInstanceGetterSetterPair`: Same for instance properties via
+      `resolveStructType` + `bareClassName` + `ClassInfo`.
+    - `lowerPrefixIncDecStaticGetterSetter`: Static prefix inc/dec.
+    - `lowerPostfixIncDecStaticGetterSetter`: Static postfix inc/dec.
+    - `lowerPrefixIncDecInstanceGetterSetter`: Instance prefix inc/dec
+      (returns `true | undefined`).
+    - `lowerPostfixIncDecInstanceGetterSetter`: Instance postfix inc/dec
+      (returns `true | undefined`).
+  - `lowerPrefixIncDec`: Dispatches `"getter"` kind to static helper, then
+    falls through to instance helper for property access expressions.
+  - `lowerPostfixIncDec`: Same pattern.
+- `codegen.spec.ts`: Six new tests:
+  - Instance compound: `obj.x += 5` (expects 15).
+  - Instance `this.x -= 1` inside a method (Wallet.spend, expects 55).
+  - Instance postfix/prefix: `c.count++` and `++c.count` (expects 22).
+  - Static compound: `ClassName.x += 5` (expects 18).
+  - Static postfix/prefix: `Stats.total++` and `++Stats.total` (expects 577).
+  - Getter-only compound error: produces diagnostic.
+
+**Silent-failure audit:** All new codepaths emit IR or produce a diagnostic.
+No pre-existing silent failures found in the areas touched.
+
+**Lesson:** The `return void_function()` pattern triggers biome's
+`noVoidTypeReturn` lint. Void-returning helpers dispatched from void-returning
+callers must be separated into `helper(); return;` instead of `return helper();`.

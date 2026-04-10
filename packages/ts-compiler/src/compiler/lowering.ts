@@ -3328,14 +3328,71 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
       const ci = ctx.classInfos.find((c) => c.name === clsName);
       if (ci?.setterFuncIds.has(fName)) {
         if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
-          ctx.diagnostics.push(
-            makeDiag(
-              LoweringDiagCode.UnsupportedCompoundAssignOperator,
-              "Compound assignment on setter properties requires both a getter and setter (not yet supported)",
-              expr.operatorToken
-            )
-          );
-          return;
+          const getterFuncName = `${clsName}$get_${fName}`;
+          const getterFuncId = ctx.functionTable.get(getterFuncName);
+          if (!ci.getterFuncIds.has(fName) || getterFuncId === undefined) {
+            ctx.diagnostics.push(
+              makeDiag(
+                LoweringDiagCode.CompoundAssignRequiresGetterAndSetter,
+                `Compound assignment on '${fName}' requires both a getter and a setter`,
+                expr.operatorToken
+              )
+            );
+            return;
+          }
+          const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
+          if (!opId) {
+            ctx.diagnostics.push(
+              makeDiag(
+                LoweringDiagCode.UnsupportedCompoundAssignOperator,
+                "Unsupported compound assignment operator",
+                expr.operatorToken
+              )
+            );
+            return;
+          }
+          const lhsType = ctx.checker.getTypeAtLocation(expr.left);
+          const rhsType = ctx.checker.getTypeAtLocation(expr.right);
+          const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
+          const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+          if (!lhsTypeId || !rhsTypeId) {
+            ctx.diagnostics.push(
+              makeDiag(
+                LoweringDiagCode.CannotDetermineTypesForCompoundAssign,
+                "Cannot determine types for compound assignment",
+                expr
+              )
+            );
+            return;
+          }
+          const opFnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
+          if (!opFnName) {
+            ctx.diagnostics.push(
+              makeDiag(
+                LoweringDiagCode.NoOperatorOverload,
+                `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+                expr
+              )
+            );
+            return;
+          }
+          const setterFuncName = `${clsName}$set_${fName}`;
+          const setterFuncId = ctx.functionTable.get(setterFuncName);
+          if (setterFuncId !== undefined) {
+            const tempLocal = ctx.scopeStack.allocLocal();
+            lowerExpression(expr.left.expression, ctx);
+            ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+            ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
+            ctx.ir.push({ kind: "Call", funcIndex: getterFuncId, argc: 1 });
+            lowerExpression(expr.right, ctx);
+            ctx.ir.push({ kind: "HostCallArgs", fnName: opFnName, argc: 2 });
+            ctx.ir.push({ kind: "Dup" });
+            ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
+            ctx.ir.push({ kind: "Swap" });
+            ctx.ir.push({ kind: "Call", funcIndex: setterFuncId, argc: 2 });
+            ctx.ir.push({ kind: "Pop" });
+            return;
+          }
         }
         const setterFuncName = `${clsName}$set_${fName}`;
         const funcId = ctx.functionTable.get(setterFuncName);
@@ -3448,14 +3505,68 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
     const ci = ctx.classInfos.find((c) => c.name === className);
     if (ci?.setterFuncIds.has(fieldName)) {
       if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
-        ctx.diagnostics.push(
-          makeDiag(
-            LoweringDiagCode.UnsupportedCompoundAssignOperator,
-            "Compound assignment on setter properties requires both a getter and setter (not yet supported)",
-            expr.operatorToken
-          )
-        );
-        return;
+        const getterFuncName = `${className}$get_${fieldName}`;
+        const getterFuncId = ctx.functionTable.get(getterFuncName);
+        if (!ci.getterFuncIds.has(fieldName) || getterFuncId === undefined) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.CompoundAssignRequiresGetterAndSetter,
+              `Compound assignment on '${fieldName}' requires both a getter and a setter`,
+              expr.operatorToken
+            )
+          );
+          return;
+        }
+        const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
+        if (!opId) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.UnsupportedCompoundAssignOperator,
+              "Unsupported compound assignment operator",
+              expr.operatorToken
+            )
+          );
+          return;
+        }
+        const lhsType = ctx.checker.getTypeAtLocation(expr.left);
+        const rhsType = ctx.checker.getTypeAtLocation(expr.right);
+        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
+        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+        if (!lhsTypeId || !rhsTypeId) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.CannotDetermineTypesForCompoundAssign,
+              "Cannot determine types for compound assignment",
+              expr
+            )
+          );
+          return;
+        }
+        const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
+        if (!fnName) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.NoOperatorOverload,
+              `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+              expr
+            )
+          );
+          return;
+        }
+        const setterFuncName = `${className}$set_${fieldName}`;
+        const setterFuncId = ctx.functionTable.get(setterFuncName);
+        if (setterFuncId !== undefined) {
+          ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+          ctx.ir.push({ kind: "Call", funcIndex: getterFuncId, argc: 1 });
+          lowerExpression(expr.right, ctx);
+          ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+          ctx.ir.push({ kind: "Dup" });
+          ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+          ctx.ir.push({ kind: "Swap" });
+          ctx.ir.push({ kind: "Call", funcIndex: setterFuncId, argc: 2 });
+          ctx.ir.push({ kind: "Pop" });
+          return;
+        }
       }
       const funcName = `${className}$set_${fieldName}`;
       const funcId = ctx.functionTable.get(funcName);
@@ -3570,14 +3681,53 @@ function lowerStaticFieldAssignment(
     }
     if (setterFuncName) {
       if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
-        ctx.diagnostics.push(
-          makeDiag(
-            LoweringDiagCode.UnsupportedCompoundAssignOperator,
-            "Compound assignment on setter properties requires both a getter and setter (not yet supported)",
-            expr.operatorToken
-          )
-        );
-        return;
+        const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
+        if (!opId) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.UnsupportedCompoundAssignOperator,
+              "Unsupported compound assignment operator",
+              expr.operatorToken
+            )
+          );
+          return;
+        }
+        const lhsType = ctx.checker.getTypeAtLocation(expr.left);
+        const rhsType = ctx.checker.getTypeAtLocation(expr.right);
+        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
+        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+        if (!lhsTypeId || !rhsTypeId) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.CannotDetermineTypesForCompoundAssign,
+              "Cannot determine types for compound assignment",
+              expr
+            )
+          );
+          return;
+        }
+        const opFnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
+        if (!opFnName) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.NoOperatorOverload,
+              `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+              expr
+            )
+          );
+          return;
+        }
+        const getterFuncId = ctx.functionTable.get(staticAccess.funcName);
+        const setterFuncId = ctx.functionTable.get(setterFuncName);
+        if (getterFuncId !== undefined && setterFuncId !== undefined) {
+          ctx.ir.push({ kind: "Call", funcIndex: getterFuncId, argc: 0 });
+          lowerExpression(expr.right, ctx);
+          ctx.ir.push({ kind: "HostCallArgs", fnName: opFnName, argc: 2 });
+          ctx.ir.push({ kind: "Dup" });
+          ctx.ir.push({ kind: "Call", funcIndex: setterFuncId, argc: 1 });
+          ctx.ir.push({ kind: "Pop" });
+          return;
+        }
       }
       const funcId = ctx.functionTable.get(setterFuncName);
       if (funcId !== undefined) {
@@ -3602,8 +3752,8 @@ function lowerStaticFieldAssignment(
     if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
       ctx.diagnostics.push(
         makeDiag(
-          LoweringDiagCode.UnsupportedCompoundAssignOperator,
-          "Compound assignment on setter properties requires both a getter and setter (not yet supported)",
+          LoweringDiagCode.CompoundAssignRequiresGetterAndSetter,
+          `Compound assignment on '${propAccess.name.text}' requires both a getter and a setter`,
           expr.operatorToken
         )
       );
@@ -3758,6 +3908,230 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
   }
 }
 
+function resolveStaticGetterSetterPair(
+  propAccess: ts.PropertyAccessExpression,
+  staticAccess: { kind: "getter"; funcName: string },
+  ctx: LowerContext
+): { getterFuncId: number; setterFuncId: number } | undefined {
+  const memberName = propAccess.name.text;
+  let setterFuncName: string | undefined;
+  if (propAccess.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    const ci = ctx.staticClassInfo;
+    if (ci?.staticSetterFuncIds.has(memberName)) {
+      setterFuncName = `${ci.name}$set_${memberName}`;
+    }
+  } else if (ts.isIdentifier(propAccess.expression)) {
+    const sym = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(propAccess.expression), ctx.checker);
+    const classDecl = sym ? resolveClassDeclaration(sym, ctx.checker) : undefined;
+    const className = classDecl?.name?.text;
+    if (className) {
+      const ci = ctx.classInfos.find((c) => c.name === className && c.node === classDecl);
+      if (ci?.staticSetterFuncIds.has(memberName)) {
+        setterFuncName = `${className}$set_${memberName}`;
+      }
+    }
+  }
+  if (!setterFuncName) return undefined;
+  const getterFuncId = ctx.functionTable.get(staticAccess.funcName);
+  const setterFuncId = ctx.functionTable.get(setterFuncName);
+  if (getterFuncId === undefined || setterFuncId === undefined) return undefined;
+  return { getterFuncId, setterFuncId };
+}
+
+function lowerPrefixIncDecStaticGetterSetter(
+  expr: ts.PrefixUnaryExpression,
+  operand: ts.PropertyAccessExpression,
+  staticAccess: { kind: "getter"; funcName: string },
+  ctx: LowerContext
+): void {
+  const pair = resolveStaticGetterSetterPair(operand, staticAccess, ctx);
+  if (!pair) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CompoundAssignRequiresGetterAndSetter,
+        `Increment/decrement on '${operand.name.text}' requires both a getter and a setter`,
+        operand
+      )
+    );
+    return;
+  }
+  const opId = expr.operator === ts.SyntaxKind.PlusPlusToken ? CoreOpId.Add : CoreOpId.Subtract;
+  const typeId = CoreTypeIds.Number;
+  const fnName = resolveOperator(opId, [typeId, typeId], ctx.services);
+  if (!fnName) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for ${opId}(${typeId}, ${typeId})`, expr)
+    );
+    return;
+  }
+  ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 0 });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  ctx.ir.push({ kind: "Dup" });
+  ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 1 });
+  ctx.ir.push({ kind: "Pop" });
+}
+
+function lowerPostfixIncDecStaticGetterSetter(
+  expr: ts.PostfixUnaryExpression,
+  operand: ts.PropertyAccessExpression,
+  staticAccess: { kind: "getter"; funcName: string },
+  ctx: LowerContext
+): void {
+  const pair = resolveStaticGetterSetterPair(operand, staticAccess, ctx);
+  if (!pair) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CompoundAssignRequiresGetterAndSetter,
+        `Increment/decrement on '${operand.name.text}' requires both a getter and a setter`,
+        operand
+      )
+    );
+    return;
+  }
+  const opId = expr.operator === ts.SyntaxKind.PlusPlusToken ? CoreOpId.Add : CoreOpId.Subtract;
+  const typeId = CoreTypeIds.Number;
+  const fnName = resolveOperator(opId, [typeId, typeId], ctx.services);
+  if (!fnName) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for ${opId}(${typeId}, ${typeId})`, expr)
+    );
+    return;
+  }
+  ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 0 });
+  ctx.ir.push({ kind: "Dup" });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 1 });
+  ctx.ir.push({ kind: "Pop" });
+}
+
+function resolveInstanceGetterSetterPair(
+  operand: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): { getterFuncId: number; setterFuncId: number; isThis: boolean } | undefined {
+  const fieldName = operand.name.text;
+  const objType = ctx.checker.getTypeAtLocation(operand.expression);
+  const structDef = resolveStructType(objType, ctx.services);
+  if (!structDef) return undefined;
+  const className = bareClassName(structDef.name);
+  const ci = ctx.classInfos.find((c) => c.name === className);
+  if (!ci?.getterFuncIds.has(fieldName) || !ci.setterFuncIds.has(fieldName)) return undefined;
+  const getterFuncName = `${className}$get_${fieldName}`;
+  const setterFuncName = `${className}$set_${fieldName}`;
+  const getterFuncId = ctx.functionTable.get(getterFuncName);
+  const setterFuncId = ctx.functionTable.get(setterFuncName);
+  if (getterFuncId === undefined || setterFuncId === undefined) return undefined;
+  const isThis = operand.expression.kind === ts.SyntaxKind.ThisKeyword;
+  return { getterFuncId, setterFuncId, isThis };
+}
+
+function lowerPrefixIncDecInstanceGetterSetter(
+  expr: ts.PrefixUnaryExpression,
+  operand: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): true | undefined {
+  const pair = resolveInstanceGetterSetterPair(operand, ctx);
+  if (!pair) return undefined;
+  const opId = expr.operator === ts.SyntaxKind.PlusPlusToken ? CoreOpId.Add : CoreOpId.Subtract;
+  const typeId = CoreTypeIds.Number;
+  const fnName = resolveOperator(opId, [typeId, typeId], ctx.services);
+  if (!fnName) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for ${opId}(${typeId}, ${typeId})`, expr)
+    );
+    return true;
+  }
+  if (pair.isThis) {
+    if (ctx.thisLocalIndex === undefined) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ThisOutsideClassContext,
+          "'this' can only be used inside a class constructor or method",
+          operand.expression
+        )
+      );
+      return true;
+    }
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+    ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 1 });
+    ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "Dup" });
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+    ctx.ir.push({ kind: "Swap" });
+    ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 2 });
+    ctx.ir.push({ kind: "Pop" });
+  } else {
+    const tempLocal = ctx.scopeStack.allocLocal();
+    lowerExpression(operand.expression, ctx);
+    ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+    ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
+    ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 1 });
+    ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "Dup" });
+    ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
+    ctx.ir.push({ kind: "Swap" });
+    ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 2 });
+    ctx.ir.push({ kind: "Pop" });
+  }
+  return true;
+}
+
+function lowerPostfixIncDecInstanceGetterSetter(
+  expr: ts.PostfixUnaryExpression,
+  operand: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): true | undefined {
+  const pair = resolveInstanceGetterSetterPair(operand, ctx);
+  if (!pair) return undefined;
+  const opId = expr.operator === ts.SyntaxKind.PlusPlusToken ? CoreOpId.Add : CoreOpId.Subtract;
+  const typeId = CoreTypeIds.Number;
+  const fnName = resolveOperator(opId, [typeId, typeId], ctx.services);
+  if (!fnName) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.NoOperatorOverload, `No operator overload for ${opId}(${typeId}, ${typeId})`, expr)
+    );
+    return true;
+  }
+  if (pair.isThis) {
+    if (ctx.thisLocalIndex === undefined) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ThisOutsideClassContext,
+          "'this' can only be used inside a class constructor or method",
+          operand.expression
+        )
+      );
+      return true;
+    }
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+    ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 1 });
+    ctx.ir.push({ kind: "Dup" });
+    ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+    ctx.ir.push({ kind: "Swap" });
+    ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 2 });
+    ctx.ir.push({ kind: "Pop" });
+  } else {
+    const tempLocal = ctx.scopeStack.allocLocal();
+    lowerExpression(operand.expression, ctx);
+    ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+    ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
+    ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 1 });
+    ctx.ir.push({ kind: "Dup" });
+    ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
+    ctx.ir.push({ kind: "Swap" });
+    ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 2 });
+    ctx.ir.push({ kind: "Pop" });
+  }
+  return true;
+}
+
 function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): void {
   let loadEmit: () => void;
   let storeEmit: () => void;
@@ -3765,7 +4139,11 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
   if (ts.isPropertyAccessExpression(expr.operand)) {
     const staticAccess = resolveStaticMemberAccess(expr.operand, ctx) ?? resolveThisStaticAccess(expr.operand, ctx);
     if (staticAccess) {
-      if (staticAccess.kind === "method" || staticAccess.kind === "getter" || staticAccess.kind === "setter") {
+      if (staticAccess.kind === "getter") {
+        lowerPrefixIncDecStaticGetterSetter(expr, expr.operand, staticAccess, ctx);
+        return;
+      }
+      if (staticAccess.kind === "method" || staticAccess.kind === "setter") {
         ctx.diagnostics.push(
           makeDiag(
             LoweringDiagCode.IncrDecrTargetNotVariable,
@@ -3789,6 +4167,8 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
       loadEmit = () => ctx.ir.push({ kind: "LoadCallsiteVar", index });
       storeEmit = () => ctx.ir.push({ kind: "StoreCallsiteVar", index });
     } else {
+      const incDecResult = lowerPrefixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
+      if (incDecResult !== undefined) return;
       ctx.diagnostics.push(
         makeDiag(
           LoweringDiagCode.IncrDecrTargetNotVariable,
@@ -3844,7 +4224,11 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   if (ts.isPropertyAccessExpression(expr.operand)) {
     const staticAccess = resolveStaticMemberAccess(expr.operand, ctx) ?? resolveThisStaticAccess(expr.operand, ctx);
     if (staticAccess) {
-      if (staticAccess.kind === "method" || staticAccess.kind === "getter" || staticAccess.kind === "setter") {
+      if (staticAccess.kind === "getter") {
+        lowerPostfixIncDecStaticGetterSetter(expr, expr.operand, staticAccess, ctx);
+        return;
+      }
+      if (staticAccess.kind === "method" || staticAccess.kind === "setter") {
         ctx.diagnostics.push(
           makeDiag(
             LoweringDiagCode.IncrDecrTargetNotVariable,
@@ -3868,6 +4252,8 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
       loadEmit = () => ctx.ir.push({ kind: "LoadCallsiteVar", index });
       storeEmit = () => ctx.ir.push({ kind: "StoreCallsiteVar", index });
     } else {
+      const incDecResult = lowerPostfixIncDecInstanceGetterSetter(expr, expr.operand, ctx);
+      if (incDecResult !== undefined) return;
       ctx.diagnostics.push(
         makeDiag(
           LoweringDiagCode.IncrDecrTargetNotVariable,

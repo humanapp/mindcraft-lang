@@ -10060,6 +10060,236 @@ export default Sensor({
     }
   });
 
+  test("obj.x += value with getter and setter", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Score {
+  _points: number;
+  constructor(p: number) { this._points = p; }
+  get points(): number { return this._points; }
+  set points(v: number) { this._points = v; }
+}
+
+export default Sensor({
+  name: "compound-getter-setter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const s = new Score(10);
+    s.points += 5;
+    return s.points;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 15);
+    }
+  });
+
+  test("this.x -= value inside a method with getter and setter", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Wallet {
+  _balance: number;
+  constructor(b: number) { this._balance = b; }
+  get balance(): number { return this._balance; }
+  set balance(v: number) { this._balance = v; }
+  spend(amount: number): void { this.balance -= amount; }
+}
+
+export default Sensor({
+  name: "this-compound-getter-setter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const w = new Wallet(100);
+    w.spend(30);
+    w.spend(15);
+    return w.balance;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 4000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 55);
+    }
+  });
+
+  test("obj.x++ and ++obj.x with getter and setter", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  _count: number;
+  constructor() { this._count = 0; }
+  get count(): number { return this._count; }
+  set count(v: number) { this._count = v; }
+}
+
+export default Sensor({
+  name: "inc-dec-getter-setter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const c = new Counter();
+    const a = c.count++;
+    const b = ++c.count;
+    return a * 100 + b * 10 + c.count;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 4000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 22);
+    }
+  });
+
+  test("ClassName.x += value with static getter and setter", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Stats {
+  static _total: number = 0;
+  static get total(): number { return Stats._total; }
+  static set total(v: number) { Stats._total = v; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-compound-getter-setter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Stats.total = 10;
+    Stats.total += 5;
+    Stats.total += 3;
+    return Stats.total;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 18);
+    }
+  });
+
+  test("static ++ClassName.x and ClassName.x++ with getter and setter", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Stats {
+  static _total: number = 0;
+  static get total(): number { return Stats._total; }
+  static set total(v: number) { Stats._total = v; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-incdec-getter-setter",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Stats.total = 5;
+    const a = Stats.total++;
+    const b = ++Stats.total;
+    return a * 100 + b * 10 + Stats.total;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 577);
+    }
+  });
+
+  test("getter-only property rejects compound assignment", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class ReadOnly {
+  _val: number;
+  constructor() { this._val = 5; }
+  get val(): number { return this._val; }
+}
+
+export default Sensor({
+  name: "getter-only-compound",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const r = new ReadOnly();
+    r.val += 10;
+    return r.val;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.ok(result.diagnostics.length > 0, "Expected at least one diagnostic");
+  });
+
   test("new ClassName(args) creates struct with correct field values", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
