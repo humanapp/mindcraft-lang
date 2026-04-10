@@ -149,6 +149,184 @@ These require iteration or callback dispatch. Recommended approach: inline lower
 
 ---
 
+## Phase G1.5 -- Migrate maps to standard `Map<K, V>` interface
+
+**Goal:** Replace the `Record<string, V>` ambient representation and named map type
+aliases (`NumberMap`, `StringMap`, etc.) with a proper `Map<K, V>` interface that
+matches standard TypeScript. This gives users method autocomplete, typed return
+values (enabling `m.keys().length` via variable), and familiar `new Map()` syntax.
+
+### Background
+
+Map types are currently declared in the ambient module as type aliases:
+```ts
+export type NumberMap = Record<string, number>;
+```
+
+`Record<string, V>` is a plain mapped type with no method signatures. The lowering
+pass handles `.has()`, `.delete()`, `.keys()`, etc. by detecting map-typed
+expressions and emitting IR directly -- but TS intellisense cannot autocomplete
+these methods, and return types of `.keys()`/`.values()` are untyped (preventing
+`const k = m.keys(); k.length`).
+
+Standard TypeScript uses `Map<K, V>` as a class with `new Map()` construction and
+`.get()`/`.set()` for element access (no bracket access). Aligning with this
+standard resolves all ambient type limitations.
+
+### API changes for user code
+
+| Before | After |
+|--------|-------|
+| `const m: NumberMap = { a: 1, b: 2 }` | `const m = new Map<string, number>([["a", 1], ["b", 2]])` |
+| `m["key"]` | `m.get("key")` |
+| `m["key"] = 5` | `m.set("key", 5)` |
+| `.has()`, `.delete()`, `.keys()`, `.values()`, `.forEach()`, `.clear()`, `.size` | Same (unchanged) |
+| `m.keys()` (no chaining) | `m.keys().length` (now works via variable too) |
+
+No back-compat concerns -- no external users exist.
+
+### Deliverables
+
+**G1.5a -- Ambient `Map<K, V>` interface**
+
+Add to the ambient header in `ambient.ts` (following the `Array<T>` pattern):
+
+```ts
+interface Map<K, V> {
+  get(key: K): V | undefined;
+  set(key: K, value: V): this;
+  has(key: K): boolean;
+  delete(key: K): boolean;
+  clear(): void;
+  keys(): K[];
+  values(): V[];
+  forEach(callbackfn: (value: V, key: K) => void): void;
+  readonly size: number;
+}
+
+interface MapConstructor {
+  new <K, V>(): Map<K, V>;
+  new <K, V>(entries: readonly (readonly [K, V])[]): Map<K, V>;
+}
+declare var Map: MapConstructor;
+```
+
+Notes:
+- `keys()` returns `K[]` (not `IterableIterator<K>`) so `m.keys().length` works
+  through existing list infrastructure.
+- `values()` returns `V[]` for the same reason.
+- `delete()` returns `boolean` (matching standard TS).
+- `set()` returns `this` for chaining.
+- No index signature -- bracket access is not part of standard `Map`.
+- Key type is generic `K`, but the runtime only supports string keys. Diagnostic
+  for non-string K can be emitted during lowering.
+
+**G1.5b -- `new Map()` constructor lowering**
+
+In `lowerNewExpression` (lowering.ts), add special-case handling before the
+function table lookup:
+
+1. Detect `className === "Map"`.
+2. No-arg form: `new Map<string, number>()` -- resolve the map type from the
+   TS type of the expression (`ctx.checker.getTypeAtLocation(expr)`), emit
+   `{ kind: "MapNew", typeId }`.
+3. Array-of-tuples form: `new Map<string, number>([["a", 1], ["b", 2]])` --
+   emit `MapNew`, then for each tuple element emit `PushConst(key)`,
+   `lowerExpression(value)`, `MapSet`. The argument must be an array literal
+   of array literals (`[[k, v], ...]`).
+4. Dynamic form (variable as argument): emit diagnostic for now. Can be
+   supported later.
+5. Resolve the map type ID via `resolveMapTypeId` or the TS type checker's
+   type arguments for `Map<K, V>`.
+
+**G1.5c -- `.get(key)` method**
+
+Add `"get"` case to `lowerMapMethodCall`: one argument, lower the map expression
+and key, emit `{ kind: "MapGet" }`. Return type is naturally `V | undefined` per
+the ambient declaration.
+
+**G1.5d -- Update `resolveMapTypeId`**
+
+`resolveMapTypeId` currently recognizes map types by:
+1. Symbol name lookup in the type registry (for named aliases like `NumberMap`).
+2. String index type fallback (`{ [key: string]: V }`).
+
+Add a third path: recognize the `Map` symbol from its TS declaration. When the
+type's symbol is `Map`, extract the value type from the second type argument and
+use `registry.instantiate("Map", [valueTypeId])`.
+
+**G1.5e -- Remove named map type aliases**
+
+1. `ambient.ts`: Remove `generateMapInterface` (if it was added) and the
+   `NativeType.Map` branch in `buildAmbientDeclarationsFromRegistry` that
+   generates `export type NumberMap = ...`.
+2. `ambient.ts`: Remove `NativeType.Map` from `typeDefToTs` (no longer needed
+   for ambient generation -- but keep it if other callers use it).
+3. Update `lowerObjectLiteral` -- map literals (`{ a: 1 }`) without a contextual
+   `Map<K, V>` type should no longer resolve as maps. Object literals are for
+   structs; maps use `new Map(...)`.
+
+**G1.5f -- Remove `.keys().length` hack**
+
+The special-case detection in `lowerPropertyAccess` for `.keys()`/`.values()`
+chaining on map types (added in G1) can be removed. With `keys()` returning
+`K[]` in the ambient declaration, `resolveListTypeId` will naturally recognize
+the return type and `ListLen` will be emitted through the standard path.
+
+**G1.5g -- Update tests**
+
+Rewrite `map-methods.spec.ts` and update map-related tests in `codegen.spec.ts`
+and `array.spec.ts`:
+- Replace `types.addMapType("NumberMap", ...)` with appropriate type registration
+  for `Map<string, number>`.
+- Replace `const m: NumberMap = { a: 1 }` with `const m = new Map<string, number>([["a", 1]])`.
+- Replace `m["key"]` reads with `m.get("key")`.
+- Replace `m["key"] = value` writes with `m.set("key", value)`.
+- Add tests for `new Map()` (empty), `new Map([...])` (with entries).
+- Add test for `.get()` returning value.
+- Test `const k = m.keys(); k.length` (previously broken, now works).
+- Test that `.delete()` returns boolean.
+
+**G1.5h -- Remove `for...in` on maps, use `for...of m.keys()` instead**
+
+`lowerForInStatement` uses `resolveMapTypeId` to detect map iteration and emits
+a `$$map_keys` loop. With the standard `Map<K, V>` interface, `for...in` on a
+`Map` is not valid standard TypeScript.
+
+Remove the map branch from `lowerForInStatement`. Users should write
+`for (const k of m.keys())` instead. Since `keys()` returns `K[]` (a list),
+`lowerForOfStatement` handles it naturally via `resolveListTypeId` -- no new
+code is needed on the `for...of` side.
+
+If the `for...in` map branch is hit after removal, it falls through to the
+struct or error paths, which will emit an appropriate diagnostic.
+
+### Risks
+
+- **Type registry instantiation:** The runtime uses `addMapType("NumberMap", ...)`
+  to register named map types. With generic `Map<string, V>`, the type registry
+  must handle generic instantiation. `registry.instantiate("Map", [valueTypeId])`
+  already exists -- verify it works for the `Map<K, V>` case when K is string.
+- **`for...in` removal:** `for (const k in map)` will no longer work on maps.
+  Users must use `for (const k of m.keys())`. This is the standard TS pattern.
+  Update any existing tests that use `for...in` on maps.
+- **Map literal sugar:** Removing `{ a: 1 }` as map syntax means users lose a
+  concise initialization syntax. `new Map([["a", 1], ["b", 2]])` is more verbose.
+  Acceptable trade-off for standard TS alignment.
+- **Brain tile language:** The tile editor may reference named map types. Verify
+  that tile compilation still works when the type registry uses instantiated
+  generic map types instead of named aliases. The tile language compiles through
+  the brain compiler (not ts-compiler), so this phase should not affect it.
+
+### Tests
+
+- `map-methods.spec.ts`: complete rewrite with `new Map(...)` syntax.
+- Regression test: `for (const k in m)` (or replacement pattern).
+- New: `m.get("key")`, `new Map()`, `new Map([...])`, `.delete()` returns boolean,
+  `const k = m.keys(); k.length`.
+
+---
+
 ## Phase G2 -- Exponentiation operator (`**`)
 
 **Goal:** Support `a ** b` as a binary operator. Add a `CoreOpId` but do not register
@@ -603,15 +781,16 @@ to be folded into G2 if convenient. Included in G2's deliverables as item 4.
 | Phase | Depends on | Estimated scope |
 |-------|------------|-----------------|
 | G1 -- Map mutation | None | Medium (multiple sub-deliverables) |
+| G1.5 -- Standard Map\<K,V\> | G1 | Medium (ambient + constructor + test rewrite) |
 | G2 -- Exponentiation | None | Small |
 | G3 -- Bitwise operators | None (but rescales precedence table) | Medium |
 | G4 -- Nullish/logical assignment + `%=` | None | Medium (short-circuit lowering) |
 | G5 -- `instanceof` | None | Medium (new VM opcode) |
 | G6 -- `**=` compound | G2 | Trivial (fold into G2) |
 
-G1-G5 have no inter-dependencies and can be implemented in any order. G6 depends
-on G2. Recommended order: G2 -> G4 -> G1 -> G3 -> G5, prioritizing commonly-used
-operators first and deferring the more architecturally complex items.
+G1.5 depends on G1 (builds on the mutation method infrastructure). All other phases
+are independent. G6 depends on G2. Recommended order: G1 -> G1.5 -> G2 -> G4 -> G3
+-> G5.
 
 ---
 
