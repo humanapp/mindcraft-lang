@@ -7665,6 +7665,247 @@ function lowerClassDeclaration(
     });
   }
 
+  for (const member of ci.node.members) {
+    if (!ts.isGetAccessorDeclaration(member)) continue;
+    if (!ts.isIdentifier(member.name)) continue;
+    const isStatic = hasStaticModifier(member);
+    const propName = member.name.text;
+
+    if (isStatic) {
+      const funcName = `${ci.name}$get_${propName}`;
+      const getterIr: IrNode[] = [];
+      const getterScope = new ScopeStack(0);
+      getterScope.initFunctionScope(0, funcName);
+
+      const getterCtx: LowerContext = {
+        services,
+        checker,
+        paramsSymbol: undefined,
+        paramLocals: new Map(),
+        scopeStack: getterScope,
+        ir: getterIr,
+        diagnostics,
+        loopStack: [],
+        breakStack: [],
+        nextLabelId: 0,
+        callsiteVars,
+        functionTable,
+        funcIdCounter,
+        closureFunctions,
+        thisLocalIndex: undefined,
+        staticClassInfo: ci,
+        currentFunctionName: funcName,
+        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+        classInfos,
+      };
+
+      if (member.body) {
+        lowerStatements(member.body.statements, getterCtx);
+      }
+
+      getterIr.push({ kind: "PushConst", value: NIL_VALUE });
+      getterIr.push({ kind: "Return" });
+
+      getterScope.finalizeFunctionScope(getterIr.length);
+      entries.push({
+        ir: getterIr,
+        numParams: 0,
+        numLocals: getterScope.nextLocal,
+        name: funcName,
+        scopeMetadata: [...getterScope.scopeMetadata],
+        localMetadata: [...getterScope.localMetadata],
+        isGenerated: false,
+        sourceFileName: ci.sourceFile.fileName,
+        functionSpan: spanFromNode(member),
+      });
+    } else {
+      const funcName = `${ci.name}$get_${propName}`;
+      const getterIr: IrNode[] = [];
+      const getterScope = new ScopeStack(1);
+      const getterFuncScopeId = getterScope.initFunctionScope(0, funcName);
+      getterScope.addParameterMetadata("this", 0, getterFuncScopeId);
+
+      const getterCtx: LowerContext = {
+        services,
+        checker,
+        paramsSymbol: undefined,
+        paramLocals: new Map(),
+        scopeStack: getterScope,
+        ir: getterIr,
+        diagnostics,
+        loopStack: [],
+        breakStack: [],
+        nextLabelId: 0,
+        callsiteVars,
+        functionTable,
+        funcIdCounter,
+        closureFunctions,
+        thisLocalIndex: 0,
+        currentFunctionName: funcName,
+        currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
+        classInfos,
+      };
+
+      if (member.body) {
+        lowerStatements(member.body.statements, getterCtx);
+      }
+
+      getterIr.push({ kind: "PushConst", value: NIL_VALUE });
+      getterIr.push({ kind: "Return" });
+
+      getterScope.finalizeFunctionScope(getterIr.length);
+      entries.push({
+        ir: getterIr,
+        numParams: 1,
+        numLocals: getterScope.nextLocal,
+        name: funcName,
+        scopeMetadata: [...getterScope.scopeMetadata],
+        localMetadata: [...getterScope.localMetadata],
+        isGenerated: false,
+        sourceFileName: ci.sourceFile.fileName,
+        functionSpan: spanFromNode(member),
+      });
+    }
+  }
+
+  for (const member of ci.node.members) {
+    if (!ts.isSetAccessorDeclaration(member)) continue;
+    if (!ts.isIdentifier(member.name)) continue;
+    const isStatic = hasStaticModifier(member);
+    const propName = member.name.text;
+
+    if (isStatic) {
+      const funcName = `${ci.name}$set_${propName}`;
+      const userParamCount = member.parameters.length;
+      const setterIr: IrNode[] = [];
+      const setterParamLocals = new Map<string, number>();
+
+      for (let i = 0; i < userParamCount; i++) {
+        const p = member.parameters[i];
+        if (ts.isIdentifier(p.name)) {
+          setterParamLocals.set(p.name.text, i);
+        }
+      }
+
+      const setterScope = new ScopeStack(userParamCount);
+      const setterFuncScopeId = setterScope.initFunctionScope(0, funcName);
+
+      for (let i = 0; i < userParamCount; i++) {
+        const p = member.parameters[i];
+        if (ts.isIdentifier(p.name)) {
+          setterScope.addParameterMetadata(p.name.text, i, setterFuncScopeId);
+        }
+      }
+
+      const setterCtx: LowerContext = {
+        services,
+        checker,
+        paramsSymbol: undefined,
+        paramLocals: setterParamLocals,
+        scopeStack: setterScope,
+        ir: setterIr,
+        diagnostics,
+        loopStack: [],
+        breakStack: [],
+        nextLabelId: 0,
+        callsiteVars,
+        functionTable,
+        funcIdCounter,
+        closureFunctions,
+        thisLocalIndex: undefined,
+        staticClassInfo: ci,
+        currentFunctionName: funcName,
+        currentReturnTypeId: undefined,
+        classInfos,
+      };
+
+      if (member.body) {
+        lowerStatements(member.body.statements, setterCtx);
+      }
+
+      setterIr.push({ kind: "PushConst", value: NIL_VALUE });
+      setterIr.push({ kind: "Return" });
+
+      setterScope.finalizeFunctionScope(setterIr.length);
+      entries.push({
+        ir: setterIr,
+        numParams: userParamCount,
+        numLocals: setterScope.nextLocal,
+        name: funcName,
+        scopeMetadata: [...setterScope.scopeMetadata],
+        localMetadata: [...setterScope.localMetadata],
+        isGenerated: false,
+        sourceFileName: ci.sourceFile.fileName,
+        functionSpan: spanFromNode(member),
+      });
+    } else {
+      const funcName = `${ci.name}$set_${propName}`;
+      const userParamCount = member.parameters.length;
+      const totalParamCount = userParamCount + 1;
+      const setterIr: IrNode[] = [];
+      const setterParamLocals = new Map<string, number>();
+
+      for (let i = 0; i < userParamCount; i++) {
+        const p = member.parameters[i];
+        if (ts.isIdentifier(p.name)) {
+          setterParamLocals.set(p.name.text, i + 1);
+        }
+      }
+
+      const setterScope = new ScopeStack(totalParamCount);
+      const setterFuncScopeId = setterScope.initFunctionScope(0, funcName);
+      setterScope.addParameterMetadata("this", 0, setterFuncScopeId);
+
+      for (let i = 0; i < userParamCount; i++) {
+        const p = member.parameters[i];
+        if (ts.isIdentifier(p.name)) {
+          setterScope.addParameterMetadata(p.name.text, i + 1, setterFuncScopeId);
+        }
+      }
+
+      const setterCtx: LowerContext = {
+        services,
+        checker,
+        paramsSymbol: undefined,
+        paramLocals: setterParamLocals,
+        scopeStack: setterScope,
+        ir: setterIr,
+        diagnostics,
+        loopStack: [],
+        breakStack: [],
+        nextLabelId: 0,
+        callsiteVars,
+        functionTable,
+        funcIdCounter,
+        closureFunctions,
+        thisLocalIndex: 0,
+        currentFunctionName: funcName,
+        currentReturnTypeId: undefined,
+        classInfos,
+      };
+
+      if (member.body) {
+        lowerStatements(member.body.statements, setterCtx);
+      }
+
+      setterIr.push({ kind: "PushConst", value: NIL_VALUE });
+      setterIr.push({ kind: "Return" });
+
+      setterScope.finalizeFunctionScope(setterIr.length);
+      entries.push({
+        ir: setterIr,
+        numParams: totalParamCount,
+        numLocals: setterScope.nextLocal,
+        name: funcName,
+        scopeMetadata: [...setterScope.scopeMetadata],
+        localMetadata: [...setterScope.localMetadata],
+        isGenerated: false,
+        sourceFileName: ci.sourceFile.fileName,
+        functionSpan: spanFromNode(member),
+      });
+    }
+  }
+
   return entries;
 }
 

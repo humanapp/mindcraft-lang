@@ -9685,6 +9685,24 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.strictEqual(result.diagnostics.length, 0, `unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
+
+    const prog = result.program!;
+    assert.ok(
+      prog.functions.some((f) => f.name === "Foo$get_x"),
+      "expected Foo$get_x"
+    );
+    assert.ok(
+      prog.functions.some((f) => f.name === "Foo$set_x"),
+      "expected Foo$set_x"
+    );
+    assert.ok(
+      prog.functions.some((f) => f.name === "Foo$get_count"),
+      "expected Foo$get_count"
+    );
+    assert.ok(
+      prog.functions.some((f) => f.name === "Foo$set_count"),
+      "expected Foo$set_count"
+    );
   });
 
   test("new ClassName(args) creates struct with correct field values", () => {
