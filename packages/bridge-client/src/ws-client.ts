@@ -210,17 +210,17 @@ export class WsClient {
 
   private scheduleReconnect(): void {
     this.clearReconnectTimer();
-    // Apply random jitter (50-100% of base delay) to prevent thundering herd
-    // when many clients reconnect simultaneously after an outage/restart.
-    const jitter = this.reconnectDelay * (0.5 + Math.random() * 0.5);
+    const delay = this.reconnectDelay;
+    this.reconnectDelay = Math.min(
+      this.maxReconnectDelay,
+      this.initialReconnectDelay + Math.random() * (this.reconnectDelay * 3 - this.initialReconnectDelay)
+    );
     this.reconnectTimer = setTimeout(() => {
       if (this.state !== "reconnecting") {
         return;
       }
       this.openSocket();
-    }, jitter);
-
-    this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxReconnectDelay);
+    }, delay);
   }
 
   private clearReconnectTimer(): void {
