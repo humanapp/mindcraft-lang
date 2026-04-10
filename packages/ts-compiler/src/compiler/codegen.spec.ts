@@ -9631,6 +9631,37 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   });
 
+  test("class with computed property name produces diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+const key = "hello";
+
+class Foo {
+  [key]: number;
+  constructor() { this[key] = 0; }
+}
+
+export default Sensor({
+  name: "computed-name-test",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.ok(
+      result.diagnostics.some(
+        (d) =>
+          d.code === ValidatorDiagCode.ComputedPropertyNamesNotSupported ||
+          d.code === LoweringDiagCode.ComputedClassMemberNameNotSupported
+      ),
+      `Expected computed property name diagnostic, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
+    );
+  });
+
   test("class with no constructor compiles (zero-arg stub)", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `

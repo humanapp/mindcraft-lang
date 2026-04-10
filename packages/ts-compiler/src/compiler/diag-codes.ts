@@ -325,6 +325,8 @@ export enum LoweringDiagCode {
   NoSuchStaticMember = 3157,
   /** Compound assignment or increment/decrement requires both a getter and a setter */
   CompoundAssignRequiresGetterAndSetter = 3158,
+  /** Computed property names are not supported in class members */
+  ComputedClassMemberNameNotSupported = 3159,
 }
 
 /**

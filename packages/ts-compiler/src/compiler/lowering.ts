@@ -1619,7 +1619,16 @@ function generateModuleInitWithImports(
     for (const member of ci.node.members) {
       if (!ts.isPropertyDeclaration(member)) continue;
       if (!hasStaticModifier(member)) continue;
-      if (!ts.isIdentifier(member.name)) continue;
+      if (!ts.isIdentifier(member.name)) {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.ComputedClassMemberNameNotSupported,
+            "Computed property names are not supported in class declarations",
+            member.name
+          )
+        );
+        continue;
+      }
       const fieldName = member.name.text;
       const slot = ci.staticFieldSlots.get(fieldName);
       if (slot === undefined) continue;
@@ -7692,7 +7701,16 @@ function extractClassFields(
   for (const member of classNode.members) {
     if (!ts.isPropertyDeclaration(member)) continue;
     if (hasStaticModifier(member)) continue;
-    if (!ts.isIdentifier(member.name)) continue;
+    if (!ts.isIdentifier(member.name)) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ComputedClassMemberNameNotSupported,
+          "Computed property names are not supported in class declarations",
+          member.name
+        )
+      );
+      continue;
+    }
     const fieldName = member.name.text;
     if (seen.has(fieldName)) continue;
     seen.add(fieldName);
@@ -7748,6 +7766,7 @@ function extractClassFields(
 function extractClassMethodDecls(
   classNode: ts.ClassDeclaration,
   checker: ts.TypeChecker,
+  diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): List<{ name: string; params: List<{ name: string; typeId: TypeId }>; returnTypeId: TypeId }> {
   const methods = new List<{
@@ -7759,7 +7778,16 @@ function extractClassMethodDecls(
   for (const member of classNode.members) {
     if (!ts.isMethodDeclaration(member)) continue;
     if (hasStaticModifier(member)) continue;
-    if (!ts.isIdentifier(member.name)) continue;
+    if (!ts.isIdentifier(member.name)) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ComputedClassMemberNameNotSupported,
+          "Computed property names are not supported in class declarations",
+          member.name
+        )
+      );
+      continue;
+    }
 
     const sig = checker.getSignatureFromDeclaration(member);
     if (!sig) continue;
@@ -7794,7 +7822,7 @@ function registerClassStructType(
   const fields = extractClassFields(ci.node, checker, diagnostics, services);
   if (!fields) return;
 
-  const methods = extractClassMethodDecls(ci.node, checker, services);
+  const methods = extractClassMethodDecls(ci.node, checker, diagnostics, services);
 
   registry.addStructType(qualName, { fields, methods });
 }
@@ -8157,7 +8185,16 @@ function lowerClassDeclaration(
   for (const member of ci.node.members) {
     if (!ts.isMethodDeclaration(member)) continue;
     if (!hasStaticModifier(member)) continue;
-    if (!ts.isIdentifier(member.name)) continue;
+    if (!ts.isIdentifier(member.name)) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ComputedClassMemberNameNotSupported,
+          "Computed property names are not supported in class declarations",
+          member.name
+        )
+      );
+      continue;
+    }
 
     const methodName = member.name.text;
     const userParamCount = member.parameters.length;
@@ -8236,7 +8273,16 @@ function lowerClassDeclaration(
 
   for (const member of ci.node.members) {
     if (!ts.isGetAccessorDeclaration(member)) continue;
-    if (!ts.isIdentifier(member.name)) continue;
+    if (!ts.isIdentifier(member.name)) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ComputedClassMemberNameNotSupported,
+          "Computed property names are not supported in class declarations",
+          member.name
+        )
+      );
+      continue;
+    }
     const isStatic = hasStaticModifier(member);
     const propName = member.name.text;
 
@@ -8339,7 +8385,16 @@ function lowerClassDeclaration(
 
   for (const member of ci.node.members) {
     if (!ts.isSetAccessorDeclaration(member)) continue;
-    if (!ts.isIdentifier(member.name)) continue;
+    if (!ts.isIdentifier(member.name)) {
+      diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ComputedClassMemberNameNotSupported,
+          "Computed property names are not supported in class declarations",
+          member.name
+        )
+      );
+      continue;
+    }
     const isStatic = hasStaticModifier(member);
     const propName = member.name.text;
 
