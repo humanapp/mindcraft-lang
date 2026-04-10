@@ -151,6 +151,7 @@ interface LowerContext {
   currentReturnTypeId?: TypeId;
   optionalChainSubstitution?: { targetExpr: ts.Expression; localIndex: number };
   classInfos: ClassInfo[];
+  hoistedFunctionNodes?: Set<ts.Node>;
 }
 
 function allocLabel(ctx: LowerContext): number {
@@ -1687,8 +1688,109 @@ function generateModuleInitWithImports(
 }
 
 function lowerStatements(stmts: ts.NodeArray<ts.Statement>, ctx: LowerContext): void {
+  hoistNestedFunctionDeclarations(stmts, ctx);
   for (const stmt of stmts) {
     lowerStatement(stmt, ctx);
+  }
+}
+
+function nestedFuncNeedsCaptures(
+  func: ts.FunctionDeclaration,
+  siblingFuncNames: Set<string>,
+  ctx: LowerContext
+): boolean {
+  const ownParamNames = new Set<string>();
+  for (const p of func.parameters) {
+    if (ts.isIdentifier(p.name)) {
+      ownParamNames.add(p.name.text);
+    } else if (ts.isObjectBindingPattern(p.name) || ts.isArrayBindingPattern(p.name)) {
+      for (const name of collectBindingNames(p.name)) {
+        ownParamNames.add(name);
+      }
+    }
+  }
+
+  let result = false;
+
+  function visit(node: ts.Node): void {
+    if (result) return;
+    if (ts.isIdentifier(node) && isIdentifierReference(node)) {
+      const name = node.text;
+      if (name === "undefined" || ownParamNames.has(name) || siblingFuncNames.has(name)) return;
+      if (ctx.functionTable.has(name) || ctx.callsiteVars.has(name)) return;
+
+      const sym = ctx.checker.getSymbolAtLocation(node);
+      if (!sym) return;
+      const decls = sym.getDeclarations();
+      if (!decls || decls.length === 0) return;
+      const decl0 = decls[0];
+      if (isDescendantOf(decl0, func)) return;
+      const parentBody = func.parent;
+      if (parentBody && isDescendantOf(decl0, parentBody)) {
+        result = true;
+      }
+    }
+    if (!result) ts.forEachChild(node, visit);
+  }
+
+  if (func.body) ts.forEachChild(func.body, visit);
+  return result;
+}
+
+function hoistNestedFunctionDeclarations(stmts: ts.NodeArray<ts.Statement>, ctx: LowerContext): void {
+  const nestedFuncs: ts.FunctionDeclaration[] = [];
+  for (const stmt of stmts) {
+    if (ts.isFunctionDeclaration(stmt) && stmt.name && stmt.body) {
+      nestedFuncs.push(stmt);
+    }
+  }
+  if (nestedFuncs.length === 0) return;
+
+  const siblingNames = new Set<string>();
+  for (const func of nestedFuncs) {
+    siblingNames.add(func.name!.text);
+  }
+
+  const hoistable: ts.FunctionDeclaration[] = [];
+  const capturing: ts.FunctionDeclaration[] = [];
+  for (const func of nestedFuncs) {
+    if (nestedFuncNeedsCaptures(func, siblingNames, ctx)) {
+      capturing.push(func);
+    } else {
+      hoistable.push(func);
+    }
+  }
+
+  for (const func of hoistable) {
+    const name = func.name!.text;
+    ctx.functionTable.set(name, ctx.funcIdCounter.value++);
+  }
+
+  for (const func of hoistable) {
+    const name = func.name!.text;
+    const funcId = ctx.functionTable.get(name)!;
+    const localIdx = ctx.scopeStack.declareLocal(name);
+    const entry = lowerHelperFunction(
+      func,
+      ctx.checker,
+      ctx.callsiteVars,
+      ctx.functionTable,
+      ctx.diagnostics,
+      ctx.funcIdCounter,
+      ctx.closureFunctions,
+      ctx.services,
+      ctx.classInfos
+    );
+    ctx.closureFunctions.set(funcId, entry);
+    ctx.ir.push({ kind: "PushFunctionRef", funcName: name });
+    ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+    ctx.scopeStack.setLocalIrStart(localIdx, ctx.ir.length);
+    if (!ctx.hoistedFunctionNodes) ctx.hoistedFunctionNodes = new Set();
+    ctx.hoistedFunctionNodes.add(func);
+  }
+
+  for (const func of capturing) {
+    ctx.scopeStack.declareLocal(func.name!.text);
   }
 }
 
@@ -1741,6 +1843,16 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     // no-op: interface declarations are pre-processed in lowerProgram
   } else if (ts.isTypeAliasDeclaration(stmt)) {
     // no-op: type alias declarations are pre-processed in lowerProgram
+  } else if (ts.isFunctionDeclaration(stmt)) {
+    if (stmt.name && stmt.body && !ctx.hoistedFunctionNodes?.has(stmt)) {
+      let localIdx = ctx.scopeStack.resolveLocal(stmt.name.text);
+      if (localIdx === undefined) {
+        localIdx = ctx.scopeStack.declareLocal(stmt.name.text);
+      }
+      lowerClosureExpression(stmt, ctx);
+      ctx.ir.push({ kind: "StoreLocal", index: localIdx });
+      ctx.scopeStack.setLocalIrStart(localIdx, ctx.ir.length);
+    }
   } else {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.UnsupportedStatement, `Unsupported statement: ${ts.SyntaxKind[stmt.kind]}`, stmt)
@@ -1752,7 +1864,8 @@ function lowerStatement(stmt: ts.Statement, ctx: LowerContext): void {
     stmt.kind !== ts.SyntaxKind.EmptyStatement &&
     !ts.isClassDeclaration(stmt) &&
     !ts.isInterfaceDeclaration(stmt) &&
-    !ts.isTypeAliasDeclaration(stmt)
+    !ts.isTypeAliasDeclaration(stmt) &&
+    !ts.isFunctionDeclaration(stmt)
   ) {
     annotateFirstNode(ctx.ir, irStart, stmt, true);
   }
@@ -3147,7 +3260,7 @@ function isDescendantOf(node: ts.Node, ancestor: ts.Node): boolean {
 }
 
 function findCapturedVariables(
-  closureNode: ts.ArrowFunction | ts.FunctionExpression | ts.MethodDeclaration,
+  closureNode: ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration | ts.MethodDeclaration,
   closureParamNames: Set<string>,
   ctx: LowerContext
 ): CaptureInfo[] {
@@ -3201,7 +3314,7 @@ function findCapturedVariables(
 }
 
 function lowerClosureExpression(
-  expr: ts.ArrowFunction | ts.FunctionExpression | ts.MethodDeclaration,
+  expr: ts.ArrowFunction | ts.FunctionExpression | ts.FunctionDeclaration | ts.MethodDeclaration,
   ctx: LowerContext
 ): void {
   const numParams = expr.parameters.length;
@@ -3240,7 +3353,8 @@ function lowerClosureExpression(
   }
 
   const closureFuncId = ctx.funcIdCounter.value++;
-  const closureName = `<closure#${closureFuncId}>`;
+  const declaredName = ts.isFunctionDeclaration(expr) && expr.name ? expr.name.text : undefined;
+  const closureName = declaredName ? `<local-fn:${declaredName}#${closureFuncId}>` : `<closure#${closureFuncId}>`;
   ctx.functionTable.set(closureName, closureFuncId);
 
   if (captureInfos.length > 0) {
