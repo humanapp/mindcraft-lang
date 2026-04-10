@@ -3313,6 +3313,7 @@ function isAssignmentOperator(kind: ts.SyntaxKind): boolean {
     case ts.SyntaxKind.MinusEqualsToken:
     case ts.SyntaxKind.AsteriskEqualsToken:
     case ts.SyntaxKind.SlashEqualsToken:
+    case ts.SyntaxKind.AsteriskAsteriskEqualsToken:
       return true;
     default:
       return false;
@@ -3945,6 +3946,8 @@ function compoundAssignmentToOpId(kind: ts.SyntaxKind): string | undefined {
       return CoreOpId.Divide;
     case ts.SyntaxKind.PercentEqualsToken:
       return CoreOpId.Modulo;
+    case ts.SyntaxKind.AsteriskAsteriskEqualsToken:
+      return CoreOpId.Power;
     default:
       return undefined;
   }
@@ -7905,6 +7908,8 @@ function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {
       return CoreOpId.Divide;
     case ts.SyntaxKind.PercentToken:
       return CoreOpId.Modulo;
+    case ts.SyntaxKind.AsteriskAsteriskToken:
+      return CoreOpId.Power;
     default:
       return undefined;
   }

@@ -22,6 +22,7 @@ export const CoreOpId = {
   LessThanOrEqualTo: "le",
   GreaterThan: "gt",
   GreaterThanOrEqualTo: "ge",
+  Power: "pow",
   Assign: "assign",
 } as const;
 

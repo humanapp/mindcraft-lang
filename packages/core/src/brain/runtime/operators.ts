@@ -1,6 +1,7 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
+import { MathOps } from "../../platform/math";
 import {
   type BooleanValue,
   BrainFunctionEntry,
@@ -49,6 +50,7 @@ const Precedence: { [key: string]: OpParse } = {
   // ---------------------------------------------------------------------------
   [CoreOpId.Not]: { fixity: "prefix", precedence: 30 },
   [CoreOpId.Negate]: { fixity: "prefix", precedence: 30 },
+  [CoreOpId.Power]: { fixity: "infix", precedence: 25, assoc: "right" },
   [CoreOpId.Multiply]: { fixity: "infix", precedence: 20, assoc: "left" },
   [CoreOpId.Divide]: { fixity: "infix", precedence: 20, assoc: "left" },
   [CoreOpId.Modulo]: { fixity: "infix", precedence: 20, assoc: "left" },
@@ -286,6 +288,7 @@ export function registerCoreOperators(services: BrainServices) {
   operatorTable.add({ id: CoreOpId.Multiply, parse: Precedence[CoreOpId.Multiply] });
   operatorTable.add({ id: CoreOpId.Divide, parse: Precedence[CoreOpId.Divide] });
   operatorTable.add({ id: CoreOpId.Modulo, parse: Precedence[CoreOpId.Modulo] });
+  operatorTable.add({ id: CoreOpId.Power, parse: Precedence[CoreOpId.Power] });
   operatorTable.add({ id: CoreOpId.Negate, parse: Precedence[CoreOpId.Negate] });
 
   operatorTable.add({ id: CoreOpId.EqualTo, parse: Precedence[CoreOpId.EqualTo] });
@@ -415,6 +418,20 @@ export function registerCoreOperators(services: BrainServices) {
           throw new Error("Division by zero");
         }
         return mkNumberValue(a.v % b.v);
+      },
+    },
+    false
+  );
+  operatorOverloads.binary(
+    CoreOpId.Power,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const a = args.v.get(0) as NumberValue;
+        const b = args.v.get(1) as NumberValue;
+        return mkNumberValue(MathOps.pow(a.v, b.v));
       },
     },
     false
