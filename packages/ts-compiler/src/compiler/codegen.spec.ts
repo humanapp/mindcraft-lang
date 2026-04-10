@@ -346,9 +346,9 @@ export default Sensor({
 
   test("app-defined output type resolves via registry", () => {
     const types = services.types;
-    const actorRefTypeId = mkTypeId(NativeType.Struct, "actorRef");
+    const actorRefTypeId = mkTypeId(NativeType.Struct, "ActorRef");
     if (!types.get(actorRefTypeId)) {
-      types.addStructType("actorRef", {
+      types.addStructType("ActorRef", {
         fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number") }]),
       });
     }
@@ -358,7 +358,7 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nearest",
-  output: "actorRef",
+  output: "ActorRef",
   onExecute(ctx: Context): unknown {
     return 0;
   },
@@ -370,7 +370,7 @@ export default Sensor({
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
-    assert.equal(result.program!.outputType, "struct:<actorRef>");
+    assert.equal(result.program!.outputType, "struct:<ActorRef>");
   });
 
   test("app-defined output type resolves without explicit ambientSource", () => {
@@ -379,7 +379,7 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nearest",
-  output: "actorRef",
+  output: "ActorRef",
   onExecute(ctx: Context): unknown {
     return null;
   },
@@ -388,7 +388,7 @@ export default Sensor({
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
-    assert.equal(result.program!.outputType, "struct:<actorRef>");
+    assert.equal(result.program!.outputType, "struct:<ActorRef>");
   });
 });
 
@@ -424,23 +424,23 @@ describe("buildCallDef", () => {
   });
 
   test("anonymous param uses anon tile id", () => {
-    const callDef = buildCallDef("chase", [{ name: "target", type: "actorRef", required: true, anonymous: true }]);
+    const callDef = buildCallDef("chase", [{ name: "target", type: "ActorRef", required: true, anonymous: true }]);
     assert.equal(callDef.argSlots.size(), 1);
     const slot = callDef.argSlots.get(0)!;
-    assert.equal(slot.argSpec.tileId, "tile.parameter->anon.actorRef");
+    assert.equal(slot.argSpec.tileId, "tile.parameter->anon.ActorRef");
     assert.equal(slot.argSpec.anonymous, true);
   });
 
   test("mixed required, optional, and anonymous params", () => {
     const callDef = buildCallDef("chase", [
-      { name: "target", type: "actorRef", required: true, anonymous: true },
+      { name: "target", type: "ActorRef", required: true, anonymous: true },
       { name: "speed", type: "number", defaultValue: 1, required: false, anonymous: false },
     ]);
     assert.equal(callDef.argSlots.size(), 2);
 
     const slot0 = callDef.argSlots.get(0)!;
     assert.equal(slot0.slotId, 0);
-    assert.equal(slot0.argSpec.tileId, "tile.parameter->anon.actorRef");
+    assert.equal(slot0.argSpec.tileId, "tile.parameter->anon.ActorRef");
     assert.equal(slot0.argSpec.anonymous, true);
 
     const slot1 = callDef.argSlots.get(1)!;

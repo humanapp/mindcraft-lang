@@ -315,7 +315,7 @@ All LLM output is applied through the existing `BrainCommand` infrastructure:
 **Parameters** (8):
 
 - Core: `tile.parameter->anon.number`, `tile.parameter->anon.string`, `tile.parameter->anon.boolean`
-- Sim: `anon.actorRef`, `parameter.duration`, `parameter.priority`, `parameter.rate`, `parameter.delay.ms`
+- Sim: `anon.ActorRef`, `parameter.duration`, `parameter.priority`, `parameter.rate`, `parameter.delay.ms`
 
 **Literals**:
 

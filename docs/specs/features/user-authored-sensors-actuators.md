@@ -223,7 +223,7 @@ This produces:
 
 | Param    | callDef arg spec                              | Tile def                                                        |
 | -------- | --------------------------------------------- | --------------------------------------------------------------- |
-| `target` | `param("anon.actorRef", { anonymous: true })` | Reuses or auto-creates `BrainTileParameterDef("anon.actorRef")` |
+| `target` | `param("anon.ActorRef", { anonymous: true })` | Reuses or auto-creates `BrainTileParameterDef("anon.ActorRef")` |
 | `speed`  | `optional(param("user.chase.speed"))`         | New `BrainTileParameterDef("user.chase.speed", Number)`         |
 
 ---
@@ -945,8 +945,8 @@ app-defined tiles:
 | Actuator tileId        | `"tile.actuator->user.actuator.chase"`      |
 | Named param `speed`    | `"user.chase.speed"`                        |
 | Named param tileId     | `"tile.parameter->user.chase.speed"`        |
-| Anon param `target`    | `"anon.actorRef"` (shared, not tile-scoped) |
-| Anon param tileId      | `"tile.parameter->anon.actorRef"`           |
+| Anon param `target`    | `"anon.ActorRef"` (shared, not tile-scoped) |
+| Anon param tileId      | `"tile.parameter->anon.ActorRef"`           |
 
 Sensors use the `user.sensor.<name>` prefix (e.g., `user.sensor.chase`). Actuators
 use `user.actuator.<name>`. This avoids collisions if a sensor and actuator share

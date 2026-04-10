@@ -25,7 +25,7 @@ export const TileIds = {
     Slowly: "modifier.slowly",
   } as const,
   Parameter: {
-    AnonymousActorRef: "anon.actorRef",
+    AnonymousActorRef: "anon.ActorRef",
     DelayMs: "parameter.delay.ms",
     Duration: "parameter.duration",
     Priority: "parameter.priority",
