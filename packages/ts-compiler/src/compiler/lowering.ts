@@ -3889,6 +3889,8 @@ function compoundAssignmentToOpId(kind: ts.SyntaxKind): string | undefined {
       return CoreOpId.Multiply;
     case ts.SyntaxKind.SlashEqualsToken:
       return CoreOpId.Divide;
+    case ts.SyntaxKind.PercentEqualsToken:
+      return CoreOpId.Modulo;
     default:
       return undefined;
   }
@@ -7534,6 +7536,8 @@ function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {
       return CoreOpId.Multiply;
     case ts.SyntaxKind.SlashToken:
       return CoreOpId.Divide;
+    case ts.SyntaxKind.PercentToken:
+      return CoreOpId.Modulo;
     default:
       return undefined;
   }

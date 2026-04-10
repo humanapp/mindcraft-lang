@@ -14,6 +14,7 @@ export const CoreOpId = {
   Subtract: "sub",
   Multiply: "mul",
   Divide: "div",
+  Modulo: "mod",
   Negate: "neg",
   EqualTo: "eq",
   NotEqualTo: "ne",

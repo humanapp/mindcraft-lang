@@ -51,6 +51,7 @@ const Precedence: { [key: string]: OpParse } = {
   [CoreOpId.Negate]: { fixity: "prefix", precedence: 30 },
   [CoreOpId.Multiply]: { fixity: "infix", precedence: 20, assoc: "left" },
   [CoreOpId.Divide]: { fixity: "infix", precedence: 20, assoc: "left" },
+  [CoreOpId.Modulo]: { fixity: "infix", precedence: 20, assoc: "left" },
   [CoreOpId.Add]: { fixity: "infix", precedence: 10, assoc: "left" },
   [CoreOpId.Subtract]: { fixity: "infix", precedence: 10, assoc: "left" },
   [CoreOpId.LessThan]: { fixity: "infix", precedence: 5, assoc: "none" },
@@ -284,6 +285,7 @@ export function registerCoreOperators(services: BrainServices) {
   operatorTable.add({ id: CoreOpId.Subtract, parse: Precedence[CoreOpId.Subtract] });
   operatorTable.add({ id: CoreOpId.Multiply, parse: Precedence[CoreOpId.Multiply] });
   operatorTable.add({ id: CoreOpId.Divide, parse: Precedence[CoreOpId.Divide] });
+  operatorTable.add({ id: CoreOpId.Modulo, parse: Precedence[CoreOpId.Modulo] });
   operatorTable.add({ id: CoreOpId.Negate, parse: Precedence[CoreOpId.Negate] });
 
   operatorTable.add({ id: CoreOpId.EqualTo, parse: Precedence[CoreOpId.EqualTo] });
@@ -396,6 +398,23 @@ export function registerCoreOperators(services: BrainServices) {
           throw new Error("Division by zero");
         }
         return mkNumberValue(a.v / b.v);
+      },
+    },
+    false
+  );
+  operatorOverloads.binary(
+    CoreOpId.Modulo,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const a = args.v.get(0) as NumberValue;
+        const b = args.v.get(1) as NumberValue;
+        if (b.v === 0) {
+          throw new Error("Division by zero");
+        }
+        return mkNumberValue(a.v % b.v);
       },
     },
     false
