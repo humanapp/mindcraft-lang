@@ -1,6 +1,6 @@
 # Class Getters and Setters -- Phased Implementation Plan
 
-**Status:** G3 complete, G4 next
+**Status:** G4 complete, G5 next
 **Created:** 2026-04-09
 **Related:**
 
@@ -66,11 +66,25 @@ desugared to function calls:
   - This-static: `this.x` in static context -> `Call(funcId, 0)`
   - Instance: `obj.x` -> `lowerExpression(receiver) / Call(funcId, 1)`,
     with optional chaining support.
-- Assignment/increment paths (`lowerStaticFieldAssignment`,
-  `lowerPrefixIncDec`, `lowerPostfixIncDec`) treat getter-only properties
-  as non-assignable (same diagnostic as methods).
-- Setter call sites are not yet desugared -- property writes still go through
-  the field/static-field paths.
+- `StaticMemberAccessResolution` has a `"setter"` variant:
+  `{ kind: "setter"; funcName: string }`.
+- `resolveStaticMemberAccess` and `resolveThisStaticAccess` check
+  `staticSetterFuncIds` after getter checks.
+- Setter call sites are desugared:
+  - Static: `ClassName.x = v` -> `[lower v] / Dup / Call(setterFuncId, 1) / Pop`
+  - This-static: `this.x = v` in static context -> same pattern.
+  - Instance `this.x = v`: checks `setterFuncIds` via `resolveStructType` +
+    `bareClassName`, emits `[lower v] / Dup / LoadLocal(this) / Swap /
+    Call(setterFuncId, 2) / Pop`.
+  - Instance `obj.x = v`: same pattern with `lowerExpression(receiver)` instead
+    of `LoadLocal(this)`.
+- `lowerStaticFieldAssignment` getter branch performs a companion-setter lookup
+  via ClassInfo when the resolve result is `"getter"` (since resolve returns
+  getter before setter). If a companion setter exists, it redirects to the
+  setter Call path.
+- Compound assignment on setter-only properties produces a diagnostic
+  (deferred to G5 for full getter+setter compound support).
+- Prefix/postfix increment on setter-only properties produces a diagnostic.
 
 Relevant existing infrastructure:
 
@@ -612,3 +626,46 @@ simultaneously).
 broke three other consumers (`lowerStaticFieldAssignment`, `lowerPrefixIncDec`,
 `lowerPostfixIncDec`) that exhaustively checked the union. These needed getter
 handling added (diagnostic: not assignable) before typecheck would pass.
+
+### G4 -- Setter call-site desugaring
+
+**Files changed:**
+
+- `lowering.ts`:
+  - Added `{ kind: "setter"; funcName: string }` variant to
+    `StaticMemberAccessResolution` type union.
+  - `resolveStaticMemberAccess`: checks `ci.staticSetterFuncIds.has()` after
+    getter, returns setter variant.
+  - `resolveThisStaticAccess`: same pattern.
+  - `lowerStaticFieldAssignment`: split method/getter into separate branches.
+    New setter branch emits `[lower RHS] / Dup / Call(funcId, 1) / Pop`.
+    Getter branch checks for companion setter via ClassInfo lookup and
+    redirects to setter path if found.
+  - `lowerThisFieldAssignment`: added instance setter check before field
+    assignment via `resolveStructType(thisType)` + `bareClassName()` +
+    `ClassInfo.setterFuncIds`. Emits `[lower RHS] / Dup / LoadLocal(this) /
+    Swap / Call(funcId, 2) / Pop`.
+  - `lowerAssignment`: added `obj.X = v` instance setter path after static
+    member check, before variable target. Uses `resolveStructType` +
+    `ClassInfo.setterFuncIds`.
+  - `lowerPrefixIncDec` / `lowerPostfixIncDec`: added `"setter"` to
+    method/getter diagnostic branch.
+- `codegen.spec.ts`: Five new runtime tests:
+  - Instance setter (`b.width = 42`).
+  - `this.x` setter inside a method (Counter.increment mutates via setter).
+  - Static setter (`Config.limit = 77`).
+  - Expression-position assignment (`y = (b.width = 99)`).
+  - Clamping setter (setter body clamps value to range).
+
+**Silent-failure audit:** All new codepaths emit IR or produce a diagnostic.
+The `"setter"` kind in `lowerPrefixIncDec`/`lowerPostfixIncDec` falls into the
+existing method/getter diagnostic branch. The companion-setter check in the
+getter branch of `lowerStaticFieldAssignment` either finds the setter (emits
+Call) or falls through to the existing "getter not assignable" diagnostic.
+
+**Lesson:** `resolveStaticMemberAccess` checks getter before setter, so for
+properties with both a getter and setter, the resolve result is `"getter"`.
+The assignment handler (`lowerStaticFieldAssignment`) must perform a secondary
+ClassInfo lookup for a companion setter when it receives a `"getter"` result
+in a write context. A single resolve function cannot serve both read and write
+contexts without this secondary check.

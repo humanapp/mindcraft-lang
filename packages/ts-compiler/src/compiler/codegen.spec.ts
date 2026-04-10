@@ -9856,6 +9856,210 @@ export default Sensor({
     }
   });
 
+  test("instance setter desugars obj.x = value to function call", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Box {
+  _width: number;
+  constructor(w: number) { this._width = w; }
+  get width(): number { return this._width; }
+  set width(v: number) { this._width = v; }
+}
+
+export default Sensor({
+  name: "instance-setter-callsite",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const b = new Box(10);
+    b.width = 42;
+    return b.width;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 42);
+    }
+  });
+
+  test("this.x = value through setter inside instance method", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  _count: number;
+  constructor() { this._count = 0; }
+  get count(): number { return this._count; }
+  set count(v: number) { this._count = v; }
+  reset(): void { this.count = 0; }
+  increment(): void { this.count = this.count + 1; }
+}
+
+export default Sensor({
+  name: "this-setter-in-method",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const c = new Counter();
+    c.increment();
+    c.increment();
+    c.increment();
+    return c.count;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 3);
+    }
+  });
+
+  test("static setter desugars ClassName.x = value to function call", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Config {
+  static _limit: number = 0;
+  static get limit(): number { return Config._limit; }
+  static set limit(v: number) { Config._limit = v; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-setter-callsite",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Config.limit = 77;
+    return Config.limit;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 77);
+    }
+  });
+
+  test("expression-position setter assignment evaluates to RHS value", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Box {
+  _width: number;
+  constructor() { this._width = 0; }
+  get width(): number { return this._width; }
+  set width(v: number) { this._width = v; }
+}
+
+export default Sensor({
+  name: "setter-expr-position",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const b = new Box();
+    const y = (b.width = 99);
+    return y;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 99);
+    }
+  });
+
+  test("setter that validates/clamps input", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Clamped {
+  _val: number;
+  constructor() { this._val = 0; }
+  get val(): number { return this._val; }
+  set val(v: number) {
+    if (v > 100) {
+      this._val = 100;
+    } else {
+      this._val = v;
+    }
+  }
+}
+
+export default Sensor({
+  name: "setter-clamp",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const c = new Clamped();
+    c.val = 200;
+    return c.val;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 100);
+    }
+  });
+
   test("new ClassName(args) creates struct with correct field values", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `

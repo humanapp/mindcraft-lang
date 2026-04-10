@@ -3319,6 +3319,37 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
       lowerStaticFieldAssignment(expr, expr.left, staticAccess, ctx);
       return;
     }
+
+    const lhsObjType = ctx.checker.getTypeAtLocation(expr.left.expression);
+    const lhsStruct = resolveStructType(lhsObjType, ctx.services);
+    if (lhsStruct) {
+      const fName = expr.left.name.text;
+      const clsName = bareClassName(lhsStruct.name);
+      const ci = ctx.classInfos.find((c) => c.name === clsName);
+      if (ci?.setterFuncIds.has(fName)) {
+        if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.UnsupportedCompoundAssignOperator,
+              "Compound assignment on setter properties requires both a getter and setter (not yet supported)",
+              expr.operatorToken
+            )
+          );
+          return;
+        }
+        const setterFuncName = `${clsName}$set_${fName}`;
+        const funcId = ctx.functionTable.get(setterFuncName);
+        if (funcId !== undefined) {
+          lowerExpression(expr.right, ctx);
+          ctx.ir.push({ kind: "Dup" });
+          lowerExpression(expr.left.expression, ctx);
+          ctx.ir.push({ kind: "Swap" });
+          ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: 2 });
+          ctx.ir.push({ kind: "Pop" });
+          return;
+        }
+      }
+    }
   }
 
   if (!ts.isIdentifier(expr.left)) {
@@ -3410,6 +3441,36 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
     return;
   }
 
+  const thisType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  const structDef = resolveStructType(thisType, ctx.services);
+  if (structDef) {
+    const className = bareClassName(structDef.name);
+    const ci = ctx.classInfos.find((c) => c.name === className);
+    if (ci?.setterFuncIds.has(fieldName)) {
+      if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.UnsupportedCompoundAssignOperator,
+            "Compound assignment on setter properties requires both a getter and setter (not yet supported)",
+            expr.operatorToken
+          )
+        );
+        return;
+      }
+      const funcName = `${className}$set_${fieldName}`;
+      const funcId = ctx.functionTable.get(funcName);
+      if (funcId !== undefined) {
+        lowerExpression(expr.right, ctx);
+        ctx.ir.push({ kind: "Dup" });
+        ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
+        ctx.ir.push({ kind: "Swap" });
+        ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: 2 });
+        ctx.ir.push({ kind: "Pop" });
+        return;
+      }
+    }
+  }
+
   if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
     const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
     if (!opId) {
@@ -3477,12 +3538,89 @@ function lowerStaticFieldAssignment(
   staticAccess: NonNullable<StaticMemberAccessResolution>,
   ctx: LowerContext
 ): void {
-  if (staticAccess.kind === "method" || staticAccess.kind === "getter") {
+  if (staticAccess.kind === "method") {
     const lhsText = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : "this";
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.AssignmentTargetNotVariable,
         `'${lhsText}.${propAccess.name.text}' is a static method, not an assignable field`,
+        propAccess
+      )
+    );
+    return;
+  }
+  if (staticAccess.kind === "getter") {
+    const memberName = propAccess.name.text;
+    let setterFuncName: string | undefined;
+    if (propAccess.expression.kind === ts.SyntaxKind.ThisKeyword) {
+      const ci = ctx.staticClassInfo;
+      if (ci?.staticSetterFuncIds.has(memberName)) {
+        setterFuncName = `${ci.name}$set_${memberName}`;
+      }
+    } else if (ts.isIdentifier(propAccess.expression)) {
+      const sym = resolveAliasedSymbol(ctx.checker.getSymbolAtLocation(propAccess.expression), ctx.checker);
+      const classDecl = sym ? resolveClassDeclaration(sym, ctx.checker) : undefined;
+      const className = classDecl?.name?.text;
+      if (className) {
+        const ci = ctx.classInfos.find((c) => c.name === className && c.node === classDecl);
+        if (ci?.staticSetterFuncIds.has(memberName)) {
+          setterFuncName = `${className}$set_${memberName}`;
+        }
+      }
+    }
+    if (setterFuncName) {
+      if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.UnsupportedCompoundAssignOperator,
+            "Compound assignment on setter properties requires both a getter and setter (not yet supported)",
+            expr.operatorToken
+          )
+        );
+        return;
+      }
+      const funcId = ctx.functionTable.get(setterFuncName);
+      if (funcId !== undefined) {
+        lowerExpression(expr.right, ctx);
+        ctx.ir.push({ kind: "Dup" });
+        ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: 1 });
+        ctx.ir.push({ kind: "Pop" });
+        return;
+      }
+    }
+    const lhsText = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : "this";
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.AssignmentTargetNotVariable,
+        `'${lhsText}.${propAccess.name.text}' is a getter, not an assignable field`,
+        propAccess
+      )
+    );
+    return;
+  }
+  if (staticAccess.kind === "setter") {
+    if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnsupportedCompoundAssignOperator,
+          "Compound assignment on setter properties requires both a getter and setter (not yet supported)",
+          expr.operatorToken
+        )
+      );
+      return;
+    }
+    const funcId = ctx.functionTable.get(staticAccess.funcName);
+    if (funcId !== undefined) {
+      lowerExpression(expr.right, ctx);
+      ctx.ir.push({ kind: "Dup" });
+      ctx.ir.push({ kind: "Call", funcIndex: funcId, argc: 1 });
+      ctx.ir.push({ kind: "Pop" });
+      return;
+    }
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NoSuchStaticMember,
+        `No static member '${propAccess.name.text}' exists on class '${ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : "this"}'`,
         propAccess
       )
     );
@@ -3627,7 +3765,7 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
   if (ts.isPropertyAccessExpression(expr.operand)) {
     const staticAccess = resolveStaticMemberAccess(expr.operand, ctx) ?? resolveThisStaticAccess(expr.operand, ctx);
     if (staticAccess) {
-      if (staticAccess.kind === "method" || staticAccess.kind === "getter") {
+      if (staticAccess.kind === "method" || staticAccess.kind === "getter" || staticAccess.kind === "setter") {
         ctx.diagnostics.push(
           makeDiag(
             LoweringDiagCode.IncrDecrTargetNotVariable,
@@ -3706,7 +3844,7 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   if (ts.isPropertyAccessExpression(expr.operand)) {
     const staticAccess = resolveStaticMemberAccess(expr.operand, ctx) ?? resolveThisStaticAccess(expr.operand, ctx);
     if (staticAccess) {
-      if (staticAccess.kind === "method" || staticAccess.kind === "getter") {
+      if (staticAccess.kind === "method" || staticAccess.kind === "getter" || staticAccess.kind === "setter") {
         ctx.diagnostics.push(
           makeDiag(
             LoweringDiagCode.IncrDecrTargetNotVariable,
@@ -6637,6 +6775,7 @@ type StaticMemberAccessResolution =
   | { kind: "field"; callsiteVarIndex: number }
   | { kind: "method"; funcName: string }
   | { kind: "getter"; funcName: string }
+  | { kind: "setter"; funcName: string }
   | { kind: "no-such-member" }
   | undefined;
 
@@ -6671,6 +6810,10 @@ function resolveStaticMemberAccess(expr: ts.PropertyAccessExpression, ctx: Lower
     return { kind: "getter", funcName: `${className}$get_${memberName}` };
   }
 
+  if (ci.staticSetterFuncIds.has(memberName)) {
+    return { kind: "setter", funcName: `${className}$set_${memberName}` };
+  }
+
   return { kind: "no-such-member" };
 }
 
@@ -6693,6 +6836,10 @@ function resolveThisStaticAccess(expr: ts.PropertyAccessExpression, ctx: LowerCo
 
   if (ci.staticGetterFuncIds.has(memberName)) {
     return { kind: "getter", funcName: `${ci.name}$get_${memberName}` };
+  }
+
+  if (ci.staticSetterFuncIds.has(memberName)) {
+    return { kind: "setter", funcName: `${ci.name}$set_${memberName}` };
   }
 
   return { kind: "no-such-member" };
