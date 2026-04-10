@@ -2881,6 +2881,9 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
     if (lowerListMethodCall(expr, expr.expression, ctx)) {
       return;
     }
+    if (lowerMapMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
   }
 
   const calleeSym = ctx.checker.getSymbolAtLocation(expr.expression);
@@ -4572,21 +4575,124 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
 function lowerElementAccessAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
   const elemAccess = expr.left as ts.ElementAccessExpression;
   const objType = ctx.checker.getTypeAtLocation(elemAccess.expression);
+
+  const mapTypeId = resolveMapTypeId(objType, ctx);
+  if (mapTypeId) {
+    lowerElementAccessAssignmentForMap(expr, elemAccess, ctx);
+    return;
+  }
+
   const listTypeId = resolveListTypeId(objType, ctx);
   if (!listTypeId) {
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.ElementAccessAssignOnNonListType,
-        "Element access assignment is only supported on list types",
+        "Element access assignment is only supported on list and map types",
         expr.left
       )
     );
+    return;
+  }
+  lowerElementAccessAssignmentForList(expr, elemAccess, ctx);
+}
+
+function lowerElementAccessAssignmentForList(
+  expr: ts.BinaryExpression,
+  elemAccess: ts.ElementAccessExpression,
+  ctx: LowerContext
+): void {
+  if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+    lowerCompoundElementAccessAssignment(expr, elemAccess, "ListGet", "ListSet", ctx);
     return;
   }
   lowerExpression(elemAccess.expression, ctx);
   lowerExpression(elemAccess.argumentExpression, ctx);
   lowerExpression(expr.right, ctx);
   ctx.ir.push({ kind: "ListSet" });
+}
+
+function lowerElementAccessAssignmentForMap(
+  expr: ts.BinaryExpression,
+  elemAccess: ts.ElementAccessExpression,
+  ctx: LowerContext
+): void {
+  if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
+    lowerCompoundElementAccessAssignment(expr, elemAccess, "MapGet", "MapSet", ctx);
+    return;
+  }
+  lowerExpression(elemAccess.expression, ctx);
+  lowerExpression(elemAccess.argumentExpression, ctx);
+  lowerExpression(expr.right, ctx);
+  ctx.ir.push({ kind: "MapSet" });
+}
+
+function lowerCompoundElementAccessAssignment(
+  expr: ts.BinaryExpression,
+  elemAccess: ts.ElementAccessExpression,
+  getKind: "ListGet" | "MapGet",
+  setKind: "ListSet" | "MapSet",
+  ctx: LowerContext
+): void {
+  const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
+  if (!opId) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.UnsupportedCompoundAssignOperator,
+        "Unsupported compound assignment operator",
+        expr.operatorToken
+      )
+    );
+    return;
+  }
+
+  const lhsType = ctx.checker.getTypeAtLocation(elemAccess);
+  const rhsType = ctx.checker.getTypeAtLocation(expr.right);
+  const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
+  const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+  if (!lhsTypeId || !rhsTypeId) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotDetermineTypesForCompoundAssign,
+        "Cannot determine types for compound assignment",
+        expr
+      )
+    );
+    return;
+  }
+
+  const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
+  if (!fnName) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NoOperatorOverload,
+        `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+        expr
+      )
+    );
+    return;
+  }
+
+  const containerLocal = ctx.scopeStack.allocLocal();
+  const keyLocal = ctx.scopeStack.allocLocal();
+
+  lowerExpression(elemAccess.expression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: containerLocal });
+
+  lowerExpression(elemAccess.argumentExpression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: keyLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: containerLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: keyLocal });
+  ctx.ir.push({ kind: getKind });
+
+  lowerExpression(expr.right, ctx);
+  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+
+  ctx.ir.push({ kind: "LoadLocal", index: containerLocal });
+  ctx.ir.push({ kind: "Swap" });
+  ctx.ir.push({ kind: "LoadLocal", index: keyLocal });
+  ctx.ir.push({ kind: "Swap" });
+  ctx.ir.push({ kind: setKind });
 }
 
 function isStringType(type: ts.Type): boolean {
@@ -4782,6 +4888,180 @@ function lowerStringMethodCall(
       );
       return true;
   }
+}
+
+function lowerMapMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const objType = ctx.checker.getTypeAtLocation(propAccess.expression);
+  if (!resolveMapTypeId(objType, ctx)) return false;
+
+  const methodName = propAccess.name.text;
+
+  switch (methodName) {
+    case "has": {
+      if (expr.arguments.length !== 1) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.MapMethodWrongArgCount, ".has() requires exactly 1 argument", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      ctx.ir.push({ kind: "MapHas" });
+      return true;
+    }
+    case "delete": {
+      if (expr.arguments.length !== 1) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.MapMethodWrongArgCount, ".delete() requires exactly 1 argument", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      ctx.ir.push({ kind: "MapDelete" });
+      return true;
+    }
+    case "set": {
+      if (expr.arguments.length !== 2) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.MapMethodWrongArgCount, ".set() requires exactly 2 arguments", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      lowerExpression(expr.arguments[1], ctx);
+      ctx.ir.push({ kind: "MapSet" });
+      return true;
+    }
+    case "keys": {
+      if (expr.arguments.length !== 0) {
+        ctx.diagnostics.push(makeDiag(LoweringDiagCode.MapMethodWrongArgCount, ".keys() takes no arguments", expr));
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_keys", argc: 1 });
+      return true;
+    }
+    case "values": {
+      if (expr.arguments.length !== 0) {
+        ctx.diagnostics.push(makeDiag(LoweringDiagCode.MapMethodWrongArgCount, ".values() takes no arguments", expr));
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_values", argc: 1 });
+      return true;
+    }
+    case "clear": {
+      if (expr.arguments.length !== 0) {
+        ctx.diagnostics.push(makeDiag(LoweringDiagCode.MapMethodWrongArgCount, ".clear() takes no arguments", expr));
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_clear", argc: 1 });
+      return true;
+    }
+    case "forEach": {
+      if (expr.arguments.length !== 1) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.MapMethodWrongArgCount, ".forEach() requires exactly 1 argument", expr)
+        );
+        return true;
+      }
+      lowerMapForEach(expr, propAccess, ctx);
+      return true;
+    }
+    default:
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UnsupportedMapMethod, `Unsupported map method: .${methodName}()`, expr)
+      );
+      return true;
+  }
+}
+
+function lowerMapForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpression, ctx: LowerContext): void {
+  const loopStart = allocLabel(ctx);
+  const loopEnd = allocLabel(ctx);
+
+  const keysLocal = ctx.scopeStack.allocLocal();
+  const idxLocal = ctx.scopeStack.allocLocal();
+  const lenLocal = ctx.scopeStack.allocLocal();
+  const callbackLocal = ctx.scopeStack.allocLocal();
+  const mapLocal = ctx.scopeStack.allocLocal();
+
+  lowerExpression(propAccess.expression, ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: mapLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: mapLocal });
+  ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_keys", argc: 1 });
+  ctx.ir.push({ kind: "StoreLocal", index: keysLocal });
+
+  lowerExpression(expr.arguments[0], ctx);
+  ctx.ir.push({ kind: "StoreLocal", index: callbackLocal });
+
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: keysLocal });
+  ctx.ir.push({ kind: "ListLen" });
+  ctx.ir.push({ kind: "StoreLocal", index: lenLocal });
+
+  ctx.ir.push({ kind: "Label", labelId: loopStart });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
+  const ltFn = resolveOperator(CoreOpId.LessThan, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
+  if (!ltFn) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotResolveOperatorForArrayMethod,
+        "Cannot resolve < operator for map .forEach()",
+        expr
+      )
+    );
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
+
+  ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
+
+  ctx.ir.push({ kind: "LoadLocal", index: mapLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: keysLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "ListGet" });
+  ctx.ir.push({ kind: "MapGet" });
+
+  ctx.ir.push({ kind: "LoadLocal", index: keysLocal });
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "ListGet" });
+
+  ctx.ir.push({ kind: "CallIndirectArgs", argc: 2 });
+  ctx.ir.push({ kind: "Pop" });
+
+  ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
+  ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
+  const addFn = resolveOperator(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
+  if (!addFn) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.CannotResolveOperatorForArrayMethod,
+        "Cannot resolve + operator for map .forEach()",
+        expr
+      )
+    );
+    return;
+  }
+  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
+  ctx.ir.push({ kind: "Jump", labelId: loopStart });
+
+  ctx.ir.push({ kind: "Label", labelId: loopEnd });
+  ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
 }
 
 function lowerListMethodCall(
@@ -6942,6 +7222,31 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
       lowerExpression(expr.expression, ctx);
       const guard = isOptChain ? emitNilGuard(ctx) : undefined;
       ctx.ir.push({ kind: "ListLen" });
+      if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
+      return;
+    }
+    if (ts.isCallExpression(expr.expression) && ts.isPropertyAccessExpression(expr.expression.expression)) {
+      const methodName = expr.expression.expression.name.text;
+      if (methodName === "keys" || methodName === "values") {
+        const calleeObjType = ctx.checker.getTypeAtLocation(expr.expression.expression.expression);
+        const mapTypeId = resolveMapTypeId(calleeObjType, ctx);
+        if (mapTypeId) {
+          lowerExpression(expr.expression, ctx);
+          const guard = isOptChain ? emitNilGuard(ctx) : undefined;
+          ctx.ir.push({ kind: "ListLen" });
+          if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
+          return;
+        }
+      }
+    }
+  }
+
+  if (expr.name.text === "size") {
+    const mapTypeId = resolveMapTypeId(objType, ctx);
+    if (mapTypeId) {
+      lowerExpression(expr.expression, ctx);
+      const guard = isOptChain ? emitNilGuard(ctx) : undefined;
+      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_size", argc: 1 });
       if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
       return;
     }

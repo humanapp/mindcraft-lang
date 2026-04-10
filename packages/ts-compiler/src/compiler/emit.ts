@@ -189,6 +189,12 @@ export function emitFunction(
       case "MapSet":
         emitter.mapSet();
         break;
+      case "MapHas":
+        emitter.mapHas();
+        break;
+      case "MapDelete":
+        emitter.mapDelete();
+        break;
       case "StructNew": {
         const typeIdIdx = pool.add(mkStringValue(node.typeId));
         emitter.structNew(typeIdIdx);

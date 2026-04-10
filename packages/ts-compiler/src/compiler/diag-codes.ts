@@ -327,6 +327,10 @@ export enum LoweringDiagCode {
   CompoundAssignRequiresGetterAndSetter = 3158,
   /** Computed property names are not supported in class members */
   ComputedClassMemberNameNotSupported = 3159,
+  /** Map method called with wrong number of arguments */
+  MapMethodWrongArgCount = 3160,
+  /** Map method is not recognized */
+  UnsupportedMapMethod = 3161,
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   type MapValue,
   mkCallDef,
   mkListValue,
+  mkNumberValue,
   mkStringValue,
   type Value,
 } from "../interfaces";
@@ -37,6 +38,51 @@ export function registerMapBuiltins(services: BrainServices) {
         }
 
         return mkListValue(keyListTypeId, items);
+      },
+    },
+    mapCallDef
+  );
+
+  functions.register(
+    "$$map_values",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const map = args.v.get(0) as MapValue;
+        const valueListTypeId = types.instantiate("List", List.from([CoreTypeIds.Any]));
+        const items = new List<Value>();
+        const values = map.v.values();
+
+        for (let i = 0; i < values.size(); i++) {
+          items.push(values.get(i));
+        }
+
+        return mkListValue(valueListTypeId, items);
+      },
+    },
+    mapCallDef
+  );
+
+  functions.register(
+    "$$map_size",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const map = args.v.get(0) as MapValue;
+        return mkNumberValue(map.v.size());
+      },
+    },
+    mapCallDef
+  );
+
+  functions.register(
+    "$$map_clear",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const map = args.v.get(0) as MapValue;
+        map.v.clear();
+        return map;
       },
     },
     mapCallDef

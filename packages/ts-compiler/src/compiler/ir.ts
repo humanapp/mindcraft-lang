@@ -36,6 +36,8 @@ export type IrNode =
   | IrMapGet
   | IrMapNew
   | IrMapSet
+  | IrMapHas
+  | IrMapDelete
   | IrStructNew
   | IrStructSet
   | IrStructCopyExcept
@@ -129,6 +131,14 @@ export interface IrMapNew extends IrNodeBase {
 
 export interface IrMapSet extends IrNodeBase {
   kind: "MapSet";
+}
+
+export interface IrMapHas extends IrNodeBase {
+  kind: "MapHas";
+}
+
+export interface IrMapDelete extends IrNodeBase {
+  kind: "MapDelete";
 }
 
 export interface IrLabel extends IrNodeBase {

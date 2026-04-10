@@ -22,7 +22,9 @@ Each phase follows this loop:
 
 **"lowering.ts" audit:** As part of each phase, you MUST audit your changes to "lowering.ts" to verify that every new codepath added must either emit IR or push a diagnostic. No codepath may silently fall through without producing output. Verify this for each branch you add. You are REQUIRED to do this if you make any changes to lowering.ts.
 
-Implementation note: Avoid adding tests to "codegen.spec.ts". This file is huge, and fills up session context. Prefer to make feature-scoped spec files, e.g. "map-methods.spec.ts", "list-methods.spec.ts", etc. It's ok if the scope is imperfect (there can be overlap), main goal is to avoid filling context with largely irrelevant information.
+Additional Guidance:
+
+* Avoid adding tests to "codegen.spec.ts". This file is huge and fills up session context. Prefer to extend or introduce feature-scoped spec files, e.g. "map-methods.spec.ts", "optional-chaining.spec.ts", etc. It's ok if the scope is imperfect (there can be overlap), main goal is to avoid filling context with largely irrelevant information.
 
 ---
 
@@ -32,6 +34,13 @@ Implementation note: Avoid adding tests to "codegen.spec.ts". This file is huge,
 
 - Map literals: `{ key: value }` -> `MAP_NEW` + `MAP_SET`.
 - Map read via bracket: `map[key]` -> `MAP_GET`.
+- Map write via bracket: `map[key] = value` -> `MAP_SET`.
+- Map compound bracket assignment: `map[key] += 1` -> read-modify-write via
+  `MAP_GET` + operator + `MAP_SET`.
+- Map methods: `.has()` -> `MAP_HAS`, `.delete()` -> `MAP_DELETE`,
+  `.set(k, v)` -> `MAP_SET`, `.keys()` -> `$$map_keys`, `.values()` -> `$$map_values`,
+  `.clear()` -> `$$map_clear`, `.forEach(cb)` -> inline loop, `.size` -> `$$map_size`.
+- Map method chaining: `m.keys().length`, `m.values().length`.
 - `for (const k in map)` -> `$$map_keys` host function.
 - Arithmetic compound assignment: `+=`, `-=`, `*=`, `/=`.
 - `Math.pow(a, b)` via `$$math_pow` host function.
@@ -44,13 +53,12 @@ Implementation note: Avoid adding tests to "codegen.spec.ts". This file is huge,
 
 | Feature | Current behavior |
 |---------|-----------------|
-| Map mutation methods (`.has()`, `.set()`, `.delete()`, `.keys()`, `.values()`, `.forEach()`, `.size`, `.clear()`) | Unsupported function call diagnostic |
-| `map[key] = value` | `ElementAccessAssignOnNonListType` diagnostic |
 | `%=` | Not in `isAssignmentOperator`; falls through to binary expression path |
 | `??=`, `\|\|=`, `&&=` | Not recognized as assignment; falls through to binary path |
 | `instanceof` | `UnsupportedOperator` diagnostic |
 | `**` (exponentiation) | `UnsupportedOperator` diagnostic |
 | Bitwise operators (`&`, `\|`, `^`, `~`, `<<`, `>>`) | `UnsupportedOperator` diagnostic |
+| `const k = m.keys(); k.length` | Unsupported property access (TS infers `Record` index type, not list) |
 
 ---
 
@@ -609,4 +617,30 @@ operators first and deferring the more architecturally complex items.
 
 ## Phase Log
 
-(Written during post-mortem only. Do not fill in during implementation.)
+### G1 -- Map element access assignment and mutation methods
+
+**Date:** 2026-04-10
+
+**Files changed (7, +728 -2):**
+
+| File | Summary |
+|------|---------|
+| `packages/ts-compiler/src/compiler/lowering.ts` | +307: rewrote `lowerElementAccessAssignment` with map branch; added `lowerElementAccessAssignmentForList`, `lowerElementAccessAssignmentForMap`, `lowerCompoundElementAccessAssignment` (shared list/map read-modify-write); added `lowerMapMethodCall` dispatcher (has/delete/set/keys/values/clear/forEach + default diagnostic); added `lowerMapForEach` (inline $$map_keys loop with CallIndirectArgs); added `.size` detection in `lowerPropertyAccess`; added `.keys().length` / `.values().length` chaining detection in `.length` handler; wired `lowerMapMethodCall` into `lowerCallExpressionCore` |
+| `packages/ts-compiler/src/compiler/ir.ts` | +10: `IrMapHas`, `IrMapDelete` interfaces added to `IrNode` union |
+| `packages/ts-compiler/src/compiler/emit.ts` | +6: `MapHas` and `MapDelete` case handlers |
+| `packages/ts-compiler/src/compiler/diag-codes.ts` | +4: `MapMethodWrongArgCount=3160`, `UnsupportedMapMethod=3161` |
+| `packages/core/src/brain/runtime/map-builtins.ts` | +46: `$$map_values`, `$$map_size`, `$$map_clear` host functions |
+| `packages/ts-compiler/src/compiler/map-methods.spec.ts` | +353: new test file, 16 tests across 10 suites |
+| `docs/specs/features/ts-compiler-operator-and-map-gaps.md` | spec edits |
+
+**Delivered beyond spec:**
+
+- Compound element access assignment (`map[k] += 1`, `arr[i] += 1`) was broken for lists too -- the original code had no read-modify-write path. Fixed via `lowerCompoundElementAccessAssignment` shared by both list and map targets.
+- `m.keys().length` and `m.values().length` chaining -- added special-case detection in `lowerPropertyAccess` `.length` handler that recognizes `.keys()`/`.values()` calls on map-typed expressions and emits `ListLen`.
+
+**Known limitations:**
+
+- Storing `.keys()`/`.values()` result in a variable then accessing `.length` does not work (`const k = m.keys(); k.length`). TS infers the type from the `Record<string, V>` ambient alias, not as an array. Fixing this requires either changing the ambient type representation (which breaks object literal initialization) or adding a lowering-pass type tracker. Flagged for future follow-up.
+- Map types are declared as `Record<string, V>` in ambient declarations. TS does not know about `.has()`, `.delete()`, `.size`, etc. -- these are handled purely by the lowering pass detecting map-typed expressions. This means TS intellisense won't autocomplete these methods.
+
+**Audit result:** All new codepaths in lowering.ts verified -- every branch emits IR or pushes a diagnostic, no silent fallthroughs.
