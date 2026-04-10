@@ -427,7 +427,7 @@ describe("WsClient", () => {
       assert.equal(MockWebSocket.instances.length, 2, "new socket created after delay");
     });
 
-    it("applies exponential backoff on repeated failures", () => {
+    it("applies decorrelated jitter backoff on repeated failures", () => {
       const client = new WsClient({ initialReconnectDelay: 100, maxReconnectDelay: 1000 });
       client.connect("ws://localhost:9999");
       lastSocket().simulateOpen();
@@ -437,15 +437,15 @@ describe("WsClient", () => {
       assert.equal(MockWebSocket.instances.length, 2);
 
       lastSocket().simulateClose();
-      mock.timers.tick(100);
-      assert.equal(MockWebSocket.instances.length, 2, "not yet -- delay doubled to 200");
-      mock.timers.tick(100);
+      mock.timers.tick(299);
+      assert.equal(MockWebSocket.instances.length, 2, "not yet -- delay grew to 300");
+      mock.timers.tick(1);
       assert.equal(MockWebSocket.instances.length, 3);
 
       lastSocket().simulateClose();
-      mock.timers.tick(300);
-      assert.equal(MockWebSocket.instances.length, 3, "not yet -- delay doubled to 400");
-      mock.timers.tick(100);
+      mock.timers.tick(899);
+      assert.equal(MockWebSocket.instances.length, 3, "not yet -- delay grew to 900");
+      mock.timers.tick(1);
       assert.equal(MockWebSocket.instances.length, 4);
     });
 
