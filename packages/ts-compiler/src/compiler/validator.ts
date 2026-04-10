@@ -147,10 +147,6 @@ export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
     }
 
     for (const member of node.members) {
-      if (ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) {
-        addDiag(ValidatorDiagCode.ClassGettersSettersNotSupported, member, "Class getters/setters are not supported");
-      }
-
       if (ts.isPropertyDeclaration(member) || ts.isMethodDeclaration(member)) {
         if (ts.isPrivateIdentifier(member.name)) {
           addDiag(ValidatorDiagCode.PrivateFieldsNotSupported, member, "Private fields (#name) are not supported");

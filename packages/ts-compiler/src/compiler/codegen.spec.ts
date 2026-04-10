@@ -9660,7 +9660,7 @@ export default Sensor({
     assert.ok(funcNames.includes("Tag$new"), `expected Tag$new in functions, got: ${funcNames.join(", ")}`);
   });
 
-  test("class with getter produces diagnostic", () => {
+  test("class with getter registers accessor funcIds", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -9669,6 +9669,9 @@ class Foo {
   _x: number;
   constructor() { this._x = 0; }
   get x(): number { return this._x; }
+  set x(value: number) { this._x = value; }
+  static get count(): number { return 0; }
+  static set count(value: number) {}
 }
 
 export default Sensor({
@@ -9680,11 +9683,8 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, { ambientSource, services });
-    assert.ok(result.diagnostics.length > 0, "expected diagnostics for getter");
-    assert.ok(
-      result.diagnostics.some((d) => d.code === ValidatorDiagCode.ClassGettersSettersNotSupported),
-      `expected getter/setter error, got: ${JSON.stringify(result.diagnostics)}`
-    );
+    assert.strictEqual(result.diagnostics.length, 0, `unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
   });
 
   test("new ClassName(args) creates struct with correct field values", () => {

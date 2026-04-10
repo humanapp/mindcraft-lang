@@ -81,6 +81,10 @@ interface ClassInfo {
   methodFuncIds: Map<string, number>;
   staticFieldSlots: Map<string, number>;
   staticMethodFuncIds: Map<string, number>;
+  getterFuncIds: Map<string, number>;
+  setterFuncIds: Map<string, number>;
+  staticGetterFuncIds: Map<string, number>;
+  staticSetterFuncIds: Map<string, number>;
 }
 
 interface InterfaceInfo {
@@ -856,6 +860,33 @@ export function lowerProgram(
           staticMethodFuncIds.set(methodName, methodFuncId);
         }
       }
+      const getterFuncIds = new Map<string, number>();
+      const setterFuncIds = new Map<string, number>();
+      const staticGetterFuncIds = new Map<string, number>();
+      const staticSetterFuncIds = new Map<string, number>();
+      for (const member of stmt.members) {
+        if (ts.isGetAccessorDeclaration(member) && ts.isIdentifier(member.name)) {
+          const propName = member.name.text;
+          const funcId = funcIdCounter.value++;
+          if (hasStaticModifier(member)) {
+            functionTable.set(`${className}$get_${propName}`, funcId);
+            staticGetterFuncIds.set(propName, funcId);
+          } else {
+            functionTable.set(`${className}$get_${propName}`, funcId);
+            getterFuncIds.set(propName, funcId);
+          }
+        } else if (ts.isSetAccessorDeclaration(member) && ts.isIdentifier(member.name)) {
+          const propName = member.name.text;
+          const funcId = funcIdCounter.value++;
+          if (hasStaticModifier(member)) {
+            functionTable.set(`${className}$set_${propName}`, funcId);
+            staticSetterFuncIds.set(propName, funcId);
+          } else {
+            functionTable.set(`${className}$set_${propName}`, funcId);
+            setterFuncIds.set(propName, funcId);
+          }
+        }
+      }
       classInfos.push({
         node: stmt,
         name: className,
@@ -864,6 +895,10 @@ export function lowerProgram(
         methodFuncIds,
         staticFieldSlots,
         staticMethodFuncIds,
+        getterFuncIds,
+        setterFuncIds,
+        staticGetterFuncIds,
+        staticSetterFuncIds,
       });
     } else if (ts.isInterfaceDeclaration(stmt) && stmt.name) {
       interfaceInfos.push({ node: stmt, name: stmt.name.text, sourceFile });
@@ -933,6 +968,33 @@ export function lowerProgram(
           staticMethodFuncIds.set(methodName, methodFuncId);
         }
       }
+      const getterFuncIds = new Map<string, number>();
+      const setterFuncIds = new Map<string, number>();
+      const staticGetterFuncIds = new Map<string, number>();
+      const staticSetterFuncIds = new Map<string, number>();
+      for (const member of ic.node.members) {
+        if (ts.isGetAccessorDeclaration(member) && ts.isIdentifier(member.name)) {
+          const propName = member.name.text;
+          const funcId = funcIdCounter.value++;
+          if (hasStaticModifier(member)) {
+            functionTable.set(`${className}$get_${propName}`, funcId);
+            staticGetterFuncIds.set(propName, funcId);
+          } else {
+            functionTable.set(`${className}$get_${propName}`, funcId);
+            getterFuncIds.set(propName, funcId);
+          }
+        } else if (ts.isSetAccessorDeclaration(member) && ts.isIdentifier(member.name)) {
+          const propName = member.name.text;
+          const funcId = funcIdCounter.value++;
+          if (hasStaticModifier(member)) {
+            functionTable.set(`${className}$set_${propName}`, funcId);
+            staticSetterFuncIds.set(propName, funcId);
+          } else {
+            functionTable.set(`${className}$set_${propName}`, funcId);
+            setterFuncIds.set(propName, funcId);
+          }
+        }
+      }
       classInfos.push({
         node: ic.node,
         name: className,
@@ -941,6 +1003,10 @@ export function lowerProgram(
         methodFuncIds,
         staticFieldSlots,
         staticMethodFuncIds,
+        getterFuncIds,
+        setterFuncIds,
+        staticGetterFuncIds,
+        staticSetterFuncIds,
       });
     }
   }

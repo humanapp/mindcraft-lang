@@ -1,6 +1,6 @@
 # Class Getters and Setters -- Phased Implementation Plan
 
-**Status:** Not started
+**Status:** G1 complete, G2 next
 **Created:** 2026-04-09
 **Related:**
 
@@ -46,11 +46,17 @@ Verify this for each branch you add.
 
 ## Current State
 
-Getters and setters are explicitly forbidden by the validator:
+The validator ban is removed and accessor funcIds are registered:
 
-- `validator.ts` emits `ClassGettersSettersNotSupported` (code 1016) for any
-  `GetAccessorDeclaration` or `SetAccessorDeclaration` class member.
-- No lowering, emission, or type registration code exists for accessors.
+- `validator.ts` no longer blocks `GetAccessorDeclaration` or
+  `SetAccessorDeclaration` class members.
+- `ClassInfo` has four new maps: `getterFuncIds`, `setterFuncIds`,
+  `staticGetterFuncIds`, `staticSetterFuncIds`.
+- The class member scan (both local and imported classes) allocates funcIds for
+  accessors and registers them in the function table as
+  `ClassName$get_propName` / `ClassName$set_propName`.
+- Accessor bodies are not yet lowered -- funcIds exist in the table but produce
+  no `FunctionEntry`. Call sites are not yet desugared.
 
 Relevant existing infrastructure:
 
@@ -500,3 +506,24 @@ and a setter.
 ## Phase Log
 
 (Written during post-mortem, not during implementation.)
+
+### G1 -- Remove validator ban + register accessor funcIds
+
+**Files changed:**
+
+- `validator.ts`: Removed the `isGetAccessorDeclaration || isSetAccessorDeclaration`
+  diagnostic block from the class member loop.
+- `lowering.ts`: Added `getterFuncIds`, `setterFuncIds`, `staticGetterFuncIds`,
+  `staticSetterFuncIds` maps to `ClassInfo`. Added accessor scanning loops in
+  both the local class block and the imported class block, allocating funcIds
+  and registering them in the function table.
+- `codegen.spec.ts`: Replaced the "class with getter produces diagnostic" test
+  with a test that verifies a class containing instance + static getters and
+  setters compiles without diagnostics.
+
+**Kept unchanged:** `diag-codes.ts` -- `ClassGettersSettersNotSupported` enum
+value retained (unreferenced) to avoid shifting numeric codes.
+
+**Lesson:** The G1 test initially tried to assert accessor names in
+`prog.functions`, but those entries only appear after body lowering (G2).
+Adjusted to verify zero diagnostics + program produced.
