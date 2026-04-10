@@ -32,16 +32,19 @@ Additional Guidance:
 
 ### What works
 
-- Map literals: `{ key: value }` -> `MAP_NEW` + `MAP_SET`.
+- Map construction: `new Map()` -> `MAP_NEW`, `new Map([["a", 1]])` -> `MAP_NEW` + `MAP_SET`.
+- Map type: ambient `Map<K,V>` interface with full method signatures. TS provides
+  autocomplete and type checking for map methods.
 - Map read via bracket: `map[key]` -> `MAP_GET`.
+- Map read via method: `map.get(key)` -> `MAP_GET`.
 - Map write via bracket: `map[key] = value` -> `MAP_SET`.
 - Map compound bracket assignment: `map[key] += 1` -> read-modify-write via
   `MAP_GET` + operator + `MAP_SET`.
 - Map methods: `.has()` -> `MAP_HAS`, `.delete()` -> `MAP_DELETE`,
-  `.set(k, v)` -> `MAP_SET`, `.keys()` -> `$$map_keys`, `.values()` -> `$$map_values`,
-  `.clear()` -> `$$map_clear`, `.forEach(cb)` -> inline loop, `.size` -> `$$map_size`.
-- Map method chaining: `m.keys().length`, `m.values().length`.
-- `for (const k in map)` -> `$$map_keys` host function.
+  `.set(k, v)` -> `MAP_SET`, `.get(k)` -> `MAP_GET`, `.keys()` -> `$$map_keys`,
+  `.values()` -> `$$map_values`, `.clear()` -> `$$map_clear`,
+  `.forEach(cb)` -> inline loop, `.size` -> `$$map_size`.
+- Map iteration: `for (const k of m.keys())` -> `$$map_keys` + list iteration.
 - Arithmetic compound assignment: `+=`, `-=`, `*=`, `/=`.
 - `Math.pow(a, b)` via `$$math_pow` host function.
 - Binary operators: `+`, `-`, `*`, `/`, `%`, `<`, `>`, `<=`, `>=`, `==`/`===`,
@@ -823,3 +826,29 @@ are independent. G6 depends on G2. Recommended order: G1 -> G1.5 -> G2 -> G4 -> 
 - Map types are declared as `Record<string, V>` in ambient declarations. TS does not know about `.has()`, `.delete()`, `.size`, etc. -- these are handled purely by the lowering pass detecting map-typed expressions. This means TS intellisense won't autocomplete these methods.
 
 **Audit result:** All new codepaths in lowering.ts verified -- every branch emits IR or pushes a diagnostic, no silent fallthroughs.
+
+### G1.5 -- Migrate maps to standard Map\<K,V\> interface
+
+**Date:** 2026-04-11
+
+**Files changed (6):**
+
+| File | Summary |
+|------|---------|
+| `packages/ts-compiler/src/compiler/ambient.ts` | Added `Map<K,V>` interface + `MapConstructor` to AMBIENT_HEADER. `typeDefToTs` returns `Map<string, V>` instead of `Record<string, V>`. `buildAmbientDeclarationsFromRegistry` skips NativeType.Map (no longer generates named aliases). |
+| `packages/ts-compiler/src/compiler/lowering.ts` | Added `lowerNewMapExpression()` (empty + array-of-tuples constructor). `lowerNewExpression()` routes `"Map"` before function table lookup. `lowerMapMethodCall()` gained `"get"` case emitting MapGet IR. `resolveMapTypeId()` recognizes `Map` symbol. `resolveListTypeId()` guarded to `Array`/`ReadonlyArray` only. Removed `.keys().length` hack from `lowerPropertyAccess`. Removed `for...in` map branch from `lowerForInStatement`. |
+| `packages/ts-compiler/src/compiler/diag-codes.ts` | Added `MapConstructorBadArgument=3162`, `MapConstructorTooManyArgs=3163`, `MapConstructorUnresolvableType=3164`. |
+| `packages/ts-compiler/src/compiler/map-methods.spec.ts` | Complete rewrite using `new Map<string, number>([...])` syntax, `.get()` reads, `.set()` writes. |
+| `packages/ts-compiler/src/compiler/codegen.spec.ts` | Rewrote `"Map compilation"` describe block for `new Map()` syntax. |
+| `packages/ts-compiler/src/compiler/array.spec.ts` | Updated "Generic function - Map operations" tests. |
+
+**Delivered beyond spec:**
+
+- `resolveListTypeId` bug fix: the typeArguments fallback matched any generic type including `Map<K,V>`, causing false matches. Added `Array`/`ReadonlyArray` guard.
+
+**Known limitations:**
+
+- Map keys are always `string`. The `Map<K,V>` interface accepts any K but the runtime only supports string keys.
+- `for (const k in map)` no longer works on maps. Users must use `for (const k of m.keys())`.
+
+**Audit result:** All new codepaths in lowering.ts verified -- every branch emits IR or pushes a diagnostic, no silent fallthroughs. `lowerNewMapExpression` pushes diagnostics for invalid constructor arguments, too many arguments, and unresolvable type. `lowerMapMethodCall "get"` emits MapGet IR. Removed codepaths (`for...in` map, `.keys().length` hack) correctly fall through to existing error paths.

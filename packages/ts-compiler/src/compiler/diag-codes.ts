@@ -331,6 +331,12 @@ export enum LoweringDiagCode {
   MapMethodWrongArgCount = 3160,
   /** Map method is not recognized */
   UnsupportedMapMethod = 3161,
+  /** new Map() argument must be an array literal of [key, value] tuples */
+  MapConstructorBadArgument = 3162,
+  /** new Map() was called with too many arguments */
+  MapConstructorTooManyArgs = 3163,
+  /** Cannot determine map type for new Map() expression */
+  MapConstructorUnresolvableType = 3164,
 }
 
 /**

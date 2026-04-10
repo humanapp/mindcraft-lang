@@ -245,6 +245,24 @@ interface ArrayConstructor {
 }
 declare var Array: ArrayConstructor;
 
+interface Map<K, V> {
+  get(key: K): V | undefined;
+  set(key: K, value: V): this;
+  has(key: K): boolean;
+  delete(key: K): boolean;
+  clear(): void;
+  keys(): K[];
+  values(): V[];
+  forEach(callbackfn: (value: V, key: K) => void): void;
+  readonly size: number;
+}
+
+interface MapConstructor {
+  new <K, V>(): Map<K, V>;
+  new <K, V>(entries: readonly (readonly [K, V])[]): Map<K, V>;
+}
+declare var Map: MapConstructor;
+
 interface PromiseLike<T> {
   then<TResult1 = T, TResult2 = never>(
     onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | undefined | null,
@@ -380,7 +398,7 @@ function typeDefToTs(def: TypeDef, registry: ITypeRegistry): string {
       return `Array<${elemTs}>`;
     }
     case NativeType.Map:
-      return `Record<string, ${typeIdToTs((def as MapTypeDef).valueTypeId, registry)}>`;
+      return `Map<string, ${typeIdToTs((def as MapTypeDef).valueTypeId, registry)}>`;
     case NativeType.Function: {
       const fnDef = def as FunctionTypeDef;
       if (fnDef.paramTypeIds) {
@@ -475,7 +493,7 @@ function buildAmbientDeclarationsFromRegistry(registry: ITypeRegistry): string {
       def.coreType === NativeType.String
     ) {
       typeMapEntries += `    ${def.name}: ${typeDefToTs(def, registry)};\n`;
-    } else if (def.coreType === NativeType.List || def.coreType === NativeType.Map) {
+    } else if (def.coreType === NativeType.List) {
       const tsType = typeDefToTs(def, registry);
       typeDeclarations += `  export type ${def.name} = ${tsType};\n`;
       typeMapEntries += `    ${def.name}: ${def.name};\n`;

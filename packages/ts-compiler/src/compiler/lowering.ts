@@ -2251,20 +2251,6 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
     return;
   }
 
-  if (resolveMapTypeId(iteratedType, ctx)) {
-    lowerForInOverKeyList(
-      stmt,
-      bindingName,
-      () => {
-        lowerExpression(stmt.expression, ctx);
-        ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_keys", argc: 1 });
-      },
-      ctx
-    );
-    ctx.scopeStack.popScope(ctx.ir.length);
-    return;
-  }
-
   const structDef = resolveStructType(iteratedType, ctx.services);
   if (structDef) {
     lowerForInOverKeyList(
@@ -2287,7 +2273,7 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
   ctx.diagnostics.push(
     makeDiag(
       LoweringDiagCode.ForInOnUnsupportedType,
-      "`for...in` is only supported on list, map, and registered struct values",
+      "`for...in` is only supported on list and registered struct values",
       stmt.expression
     )
   );
@@ -2774,6 +2760,65 @@ function lowerAwaitExpression(expr: ts.AwaitExpression, ctx: LowerContext): void
   ctx.ir.push({ kind: "Await", span: spanFromNode(expr), isStatementBoundary: true });
 }
 
+function lowerNewMapExpression(expr: ts.NewExpression, ctx: LowerContext): void {
+  const exprType = ctx.checker.getTypeAtLocation(expr);
+  const mapTypeId = resolveMapTypeId(exprType, ctx);
+  if (!mapTypeId) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.MapConstructorUnresolvableType,
+        "Cannot determine map type for `new Map()` expression",
+        expr
+      )
+    );
+    return;
+  }
+
+  const args = expr.arguments ?? [];
+
+  if (args.length === 0) {
+    ctx.ir.push({ kind: "MapNew", typeId: mapTypeId });
+    return;
+  }
+
+  if (args.length > 1) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.MapConstructorTooManyArgs, "`new Map()` accepts at most 1 argument", expr)
+    );
+    return;
+  }
+
+  const arg = args[0];
+  if (!ts.isArrayLiteralExpression(arg)) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.MapConstructorBadArgument,
+        "`new Map()` argument must be an array literal of [key, value] tuples",
+        arg
+      )
+    );
+    return;
+  }
+
+  ctx.ir.push({ kind: "MapNew", typeId: mapTypeId });
+
+  for (const element of arg.elements) {
+    if (!ts.isArrayLiteralExpression(element) || element.elements.length !== 2) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.MapConstructorBadArgument,
+          "Each entry in `new Map(...)` must be a [key, value] tuple",
+          element
+        )
+      );
+      return;
+    }
+    lowerExpression(element.elements[0], ctx);
+    lowerExpression(element.elements[1], ctx);
+    ctx.ir.push({ kind: "MapSet" });
+  }
+}
+
 function lowerNewExpression(expr: ts.NewExpression, ctx: LowerContext): void {
   if (!ts.isIdentifier(expr.expression)) {
     ctx.diagnostics.push(
@@ -2787,6 +2832,12 @@ function lowerNewExpression(expr: ts.NewExpression, ctx: LowerContext): void {
   }
 
   const className = expr.expression.text;
+
+  if (className === "Map") {
+    lowerNewMapExpression(expr, ctx);
+    return;
+  }
+
   const ctorKey = `${className}$new`;
   const funcId = ctx.functionTable.get(ctorKey);
   if (funcId === undefined) {
@@ -4901,6 +4952,18 @@ function lowerMapMethodCall(
   const methodName = propAccess.name.text;
 
   switch (methodName) {
+    case "get": {
+      if (expr.arguments.length !== 1) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.MapMethodWrongArgCount, ".get() requires exactly 1 argument", expr)
+        );
+        return true;
+      }
+      lowerExpression(propAccess.expression, ctx);
+      lowerExpression(expr.arguments[0], ctx);
+      ctx.ir.push({ kind: "MapGet" });
+      return true;
+    }
     case "has": {
       if (expr.arguments.length !== 1) {
         ctx.diagnostics.push(
@@ -7225,20 +7288,6 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
       if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
       return;
     }
-    if (ts.isCallExpression(expr.expression) && ts.isPropertyAccessExpression(expr.expression.expression)) {
-      const methodName = expr.expression.expression.name.text;
-      if (methodName === "keys" || methodName === "values") {
-        const calleeObjType = ctx.checker.getTypeAtLocation(expr.expression.expression.expression);
-        const mapTypeId = resolveMapTypeId(calleeObjType, ctx);
-        if (mapTypeId) {
-          lowerExpression(expr.expression, ctx);
-          const guard = isOptChain ? emitNilGuard(ctx) : undefined;
-          ctx.ir.push({ kind: "ListLen" });
-          if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
-          return;
-        }
-      }
-    }
   }
 
   if (expr.name.text === "size") {
@@ -7721,6 +7770,18 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (sym) {
     const name = sym.getName();
+
+    if (name === "Map") {
+      const typeArgs =
+        (type as ts.TypeReference).typeArguments ?? ctx.checker.getTypeArguments(type as ts.TypeReference);
+      if (typeArgs && typeArgs.length >= 2) {
+        const valueTypeId = tsTypeToTypeId(typeArgs[1], ctx.checker, ctx.services);
+        if (valueTypeId) {
+          return registry.instantiate("Map", List.from([valueTypeId]));
+        }
+      }
+    }
+
     const typeId = registry.resolveByName(name);
     if (typeId) {
       const def = registry.get(typeId);
@@ -7758,6 +7819,7 @@ function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | unde
       const def = registry.get(typeId);
       if (def && def.coreType === NativeType.List) return def.typeId;
     }
+    if (name !== "Array" && name !== "ReadonlyArray") return undefined;
   }
 
   const checker = ctx.checker;

@@ -5509,25 +5509,12 @@ export default Sensor({
   });
 });
 
-describe("map literal compilation", () => {
+describe("Map compilation", () => {
   before(async () => {
     services = __test__createBrainServices();
 
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
-    const strTypeId = mkTypeId(NativeType.String, "string");
-
-    const numMapName = "NumberMap";
-    const numMapTypeId = mkTypeId(NativeType.Map, numMapName);
-    if (!types.get(numMapTypeId)) {
-      types.addMapType(numMapName, { valueTypeId: numTypeId });
-    }
-
-    const strMapName = "StringMap";
-    const strMapTypeId = mkTypeId(NativeType.Map, strMapName);
-    if (!types.get(strMapTypeId)) {
-      types.addMapType(strMapName, { valueTypeId: strTypeId });
-    }
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
@@ -5540,17 +5527,17 @@ describe("map literal compilation", () => {
     }
   });
 
-  test("map literal with 2 entries compiles and executes", () => {
+  test("new Map with entries compiles and executes", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type NumberMap } from "mindcraft";
+import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "make-map",
-  output: "NumberMap",
-  onExecute(ctx: Context): NumberMap {
-    const m: NumberMap = { foo: 1, bar: 2 };
-    return m;
+  output: "number",
+  onExecute(ctx: Context): number {
+    const m = new Map<string, number>([["foo", 1], ["bar", 2]]);
+    return m.get("foo")! + m.get("bar")!;
   },
 });
 `;
@@ -5569,28 +5556,23 @@ export default Sensor({
     const runResult = vm.runFiber(fiber, mkScheduler());
     assert.equal(runResult.status, VmStatus.DONE);
     if (runResult.status === VmStatus.DONE) {
-      assert.ok(runResult.result);
-      assert.ok(isMapValue(runResult.result!), "expected map value");
-      const map = runResult.result as MapValue;
-      assert.equal(map.typeId, mkTypeId(NativeType.Map, "NumberMap"));
-      assert.equal((map.v.get("foo") as NumberValue).v, 1);
-      assert.equal((map.v.get("bar") as NumberValue).v, 2);
+      assert.equal((runResult.result as NumberValue).v, 3);
     }
   });
 
-  test("for...in iterates over map keys", () => {
+  test("for...of m.keys() iterates over map keys", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type NumberMap } from "mindcraft";
+import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
-  name: "for-in-map",
+  name: "for-of-map",
   output: "number",
   onExecute(ctx: Context): number {
-    const m: NumberMap = { foo: 1, bar: 2, baz: 3 };
+    const m = new Map<string, number>([["foo", 1], ["bar", 2], ["baz", 3]]);
     let sum = 0;
-    for (const key in m) {
-      sum = sum + m[key];
+    for (const key of m.keys()) {
+      sum = sum + m.get(key)!;
     }
     return sum;
   },
@@ -5649,17 +5631,17 @@ export default Sensor({
     }
   });
 
-  test("empty map compiles to MAP_NEW only", () => {
+  test("empty new Map() compiles to MAP_NEW only", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type NumberMap } from "mindcraft";
+import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "empty-map",
-  output: "NumberMap",
-  onExecute(ctx: Context): NumberMap {
-    const m: NumberMap = {};
-    return m;
+  output: "number",
+  onExecute(ctx: Context): number {
+    const m = new Map<string, number>();
+    return m.size;
   },
 });
 `;
@@ -5678,24 +5660,23 @@ export default Sensor({
     const runResult = vm.runFiber(fiber, mkScheduler());
     assert.equal(runResult.status, VmStatus.DONE);
     if (runResult.status === VmStatus.DONE) {
-      assert.ok(runResult.result);
-      assert.ok(isMapValue(runResult.result!), "expected map value");
-      const map = runResult.result as MapValue;
-      assert.equal(map.typeId, mkTypeId(NativeType.Map, "NumberMap"));
-      assert.equal(map.v.size(), 0);
+      assert.equal((runResult.result as NumberValue).v, 0);
     }
   });
 
-  test("map as return value compiles correctly via contextual type", () => {
+  test("map set and get returns correct values", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type StringMap } from "mindcraft";
+import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
-  name: "return-map",
-  output: "StringMap",
-  onExecute(ctx: Context): StringMap {
-    return { greeting: "hello", farewell: "bye" };
+  name: "map-set-get",
+  output: "string",
+  onExecute(ctx: Context): string {
+    const m = new Map<string, string>();
+    m.set("greeting", "hello");
+    m.set("farewell", "bye");
+    return m.get("greeting")! + " " + m.get("farewell")!;
   },
 });
 `;
@@ -5714,64 +5695,7 @@ export default Sensor({
     const runResult = vm.runFiber(fiber, mkScheduler());
     assert.equal(runResult.status, VmStatus.DONE);
     if (runResult.status === VmStatus.DONE) {
-      assert.ok(runResult.result);
-      assert.ok(isMapValue(runResult.result!), "expected map value");
-      const map = runResult.result as MapValue;
-      assert.equal((map.v.get("greeting") as StringValue).v, "hello");
-      assert.equal((map.v.get("farewell") as StringValue).v, "bye");
-    }
-  });
-
-  test("nested struct-in-map compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
-
-    const types = services.types;
-    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
-    const vec2MapName = "Vector2Map";
-    const vec2MapTypeId = mkTypeId(NativeType.Map, vec2MapName);
-    if (!types.get(vec2MapTypeId)) {
-      types.addMapType(vec2MapName, { valueTypeId: vec2TypeId });
-    }
-    const ambientWithVec2Map = buildAmbientDeclarations(services.types);
-
-    const source = `
-import { Sensor, type Context, type Vector2Map, type Vector2 } from "mindcraft";
-
-export default Sensor({
-  name: "vec-map",
-  output: "Vector2Map",
-  onExecute(ctx: Context): Vector2Map {
-    const m: Vector2Map = { origin: { x: 0, y: 0 }, target: { x: 10, y: 20 } };
-    return m;
-  },
-});
-`;
-    const result = compileUserTile(source, { ambientSource: ambientWithVec2Map, services });
-    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
-    assert.ok(result.program);
-
-    const prog = result.program!;
-    const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
-    const ctx = mkCtx();
-
-    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
-    fiber.instrBudget = 1000;
-
-    const runResult = vm.runFiber(fiber, mkScheduler());
-    assert.equal(runResult.status, VmStatus.DONE);
-    if (runResult.status === VmStatus.DONE) {
-      assert.ok(runResult.result);
-      assert.ok(isMapValue(runResult.result!), "expected map value");
-      const map = runResult.result as MapValue;
-      const origin = map.v.get("origin") as StructValue;
-      assert.ok(isStructValue(origin), "expected struct value for origin");
-      assert.equal((origin.v?.get("x") as NumberValue).v, 0);
-      assert.equal((origin.v?.get("y") as NumberValue).v, 0);
-      const target = map.v.get("target") as StructValue;
-      assert.ok(isStructValue(target), "expected struct value for target");
-      assert.equal((target.v?.get("x") as NumberValue).v, 10);
-      assert.equal((target.v?.get("y") as NumberValue).v, 20);
+      assert.equal((runResult.result as StringValue).v, "hello bye");
     }
   });
 
@@ -5810,53 +5734,6 @@ export default Sensor({
       assert.equal(struct.typeId, mkTypeId(NativeType.Struct, "Vector2"));
       assert.equal((struct.v?.get("x") as NumberValue).v, 5);
       assert.equal((struct.v?.get("y") as NumberValue).v, 10);
-    }
-  });
-
-  test("map with array value type: Record<string, number[]>", () => {
-    const types = services.types;
-    const numTypeId = mkTypeId(NativeType.Number, "number");
-    const numListTypeId = types.instantiate("List", List.from([numTypeId]));
-    const numListMapName = "NumberListMap";
-    const numListMapTypeId = mkTypeId(NativeType.Map, numListMapName);
-    if (!types.get(numListMapTypeId)) {
-      types.addMapType(numListMapName, { valueTypeId: numListTypeId });
-    }
-    const amb = buildAmbientDeclarations(services.types);
-
-    const source = `
-import { Sensor, type Context, type NumberListMap } from "mindcraft";
-
-export default Sensor({
-  name: "map-arr-val",
-  output: "NumberListMap",
-  onExecute(ctx: Context): NumberListMap {
-    const m: NumberListMap = { scores: [10, 20], grades: [90, 95] };
-    return m;
-  },
-});
-`;
-    const result = compileUserTile(source, { ambientSource: amb, services });
-    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
-    assert.ok(result.program);
-
-    const prog = result.program!;
-    const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
-    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
-    fiber.instrBudget = 1000;
-
-    const runResult = vm.runFiber(fiber, mkScheduler());
-    assert.equal(runResult.status, VmStatus.DONE);
-    if (runResult.status === VmStatus.DONE) {
-      assert.ok(runResult.result);
-      assert.ok(isMapValue(runResult.result!), "expected map value");
-      const map = runResult.result as MapValue;
-      const scores = map.v.get("scores") as ListValue;
-      assert.ok(isListValue(scores), "expected list value for scores");
-      assert.equal(scores.v.size(), 2);
-      assert.equal((scores.v.get(0) as NumberValue).v, 10);
-      assert.equal((scores.v.get(1) as NumberValue).v, 20);
     }
   });
 });

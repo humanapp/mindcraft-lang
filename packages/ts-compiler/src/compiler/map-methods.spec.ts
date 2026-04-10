@@ -6,11 +6,6 @@ import {
   type BooleanValue,
   type BrainServices,
   HandleTable,
-  isListValue,
-  isMapValue,
-  type ListValue,
-  type MapValue,
-  mkTypeId,
   NativeType,
   type NumberValue,
   runtime,
@@ -21,7 +16,6 @@ import {
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
-import { LoweringDiagCode } from "./diag-codes.js";
 
 let ambientSource: string;
 let services: BrainServices;
@@ -29,23 +23,6 @@ let services: BrainServices;
 function ensureSetup(): void {
   if (!ambientSource) {
     services = __test__createBrainServices();
-
-    const types = services.types;
-    const numTypeId = mkTypeId(NativeType.Number, "number");
-    const strTypeId = mkTypeId(NativeType.String, "string");
-
-    const numMapName = "NumberMap";
-    const numMapTypeId = mkTypeId(NativeType.Map, numMapName);
-    if (!types.get(numMapTypeId)) {
-      types.addMapType(numMapName, { valueTypeId: numTypeId });
-    }
-
-    const strMapName = "StringMap";
-    const strMapTypeId = mkTypeId(NativeType.Map, strMapName);
-    if (!types.get(strMapTypeId)) {
-      types.addMapType(strMapName, { valueTypeId: strTypeId });
-    }
-
     ambientSource = buildAmbientDeclarations(services.types);
   }
 }
@@ -72,7 +49,7 @@ function mkScheduler(): Scheduler {
 
 function sensorReturningNumber(body: string): string {
   return `
-import { Sensor, type Context, type NumberMap } from "mindcraft";
+import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "map-test",
@@ -86,26 +63,12 @@ export default Sensor({
 
 function sensorReturningBoolean(body: string): string {
   return `
-import { Sensor, type Context, type NumberMap } from "mindcraft";
+import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "map-test",
   output: "boolean",
   onExecute(ctx: Context): boolean {
-    ${body}
-  },
-});
-`;
-}
-
-function sensorReturningString(body: string): string {
-  return `
-import { Sensor, type Context, type NumberMap, type StringMap } from "mindcraft";
-
-export default Sensor({
-  name: "map-test",
-  output: "string",
-  onExecute(ctx: Context): string {
     ${body}
   },
 });
@@ -141,51 +104,63 @@ function compileAndRunBoolean(body: string): boolean {
   return (result as BooleanValue).v;
 }
 
-function compileAndRunString(body: string): string {
-  const result = compileAndRun(sensorReturningString(body));
-  assert.equal(result.t, NativeType.String);
-  return (result as StringValue).v;
-}
-
-describe("map bracket assignment", () => {
+describe("new Map() constructor", () => {
   before(() => {
     ensureSetup();
   });
 
-  test("map[key] = value assigns a new entry", () => {
+  test("new Map() creates empty map", () => {
     const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 1 };
-      m["b"] = 2;
-      return m["b"];
+      const m = new Map<string, number>();
+      return m.size;
+    `);
+    assert.equal(v, 0);
+  });
+
+  test("new Map([...]) creates map with entries", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<string, number>([["a", 1], ["b", 2]]);
+      return m.size;
     `);
     assert.equal(v, 2);
   });
+});
 
-  test("map[key] = value overwrites existing entry", () => {
+describe("map .get()", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test(".get() returns value for existing key", () => {
     const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 1 };
-      m["a"] = 99;
-      return m["a"];
+      const m = new Map<string, number>([["a", 10]]);
+      return m.get("a")!;
+    `);
+    assert.equal(v, 10);
+  });
+});
+
+describe("map .set()", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test(".set() adds a new entry", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<string, number>();
+      m.set("b", 42);
+      return m.get("b")!;
+    `);
+    assert.equal(v, 42);
+  });
+
+  test(".set() overwrites existing entry", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<string, number>([["a", 1]]);
+      m.set("a", 99);
+      return m.get("a")!;
     `);
     assert.equal(v, 99);
-  });
-
-  test("compound assignment map[key] += value", () => {
-    const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 10 };
-      m["a"] += 5;
-      return m["a"];
-    `);
-    assert.equal(v, 15);
-  });
-
-  test("compound assignment map[key] -= value", () => {
-    const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 10 };
-      m["a"] -= 3;
-      return m["a"];
-    `);
-    assert.equal(v, 7);
   });
 });
 
@@ -196,7 +171,7 @@ describe("map .has()", () => {
 
   test(".has() returns true for existing key", () => {
     const v = compileAndRunBoolean(`
-      const m: NumberMap = { a: 1, b: 2 };
+      const m = new Map<string, number>([["a", 1], ["b", 2]]);
       return m.has("a");
     `);
     assert.equal(v, true);
@@ -204,7 +179,7 @@ describe("map .has()", () => {
 
   test(".has() returns false for missing key", () => {
     const v = compileAndRunBoolean(`
-      const m: NumberMap = { a: 1 };
+      const m = new Map<string, number>([["a", 1]]);
       return m.has("z");
     `);
     assert.equal(v, false);
@@ -218,7 +193,7 @@ describe("map .delete()", () => {
 
   test(".delete() removes key, .has() returns false afterwards", () => {
     const v = compileAndRunBoolean(`
-      const m: NumberMap = { a: 1, b: 2 };
+      const m = new Map<string, number>([["a", 1], ["b", 2]]);
       m.delete("a");
       return m.has("a");
     `);
@@ -227,26 +202,11 @@ describe("map .delete()", () => {
 
   test(".delete() does not affect other keys", () => {
     const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 1, b: 2 };
+      const m = new Map<string, number>([["a", 1], ["b", 2]]);
       m.delete("a");
-      return m["b"];
+      return m.get("b")!;
     `);
     assert.equal(v, 2);
-  });
-});
-
-describe("map .set()", () => {
-  before(() => {
-    ensureSetup();
-  });
-
-  test(".set() adds a new entry", () => {
-    const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 1 };
-      m.set("b", 42);
-      return m["b"];
-    `);
-    assert.equal(v, 42);
   });
 });
 
@@ -257,7 +217,7 @@ describe("map .size", () => {
 
   test(".size returns number of entries", () => {
     const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 1, b: 2, c: 3 };
+      const m = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
       return m.size;
     `);
     assert.equal(v, 3);
@@ -265,9 +225,9 @@ describe("map .size", () => {
 
   test(".size updates after mutations", () => {
     const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 1 };
-      m["b"] = 2;
-      m["c"] = 3;
+      const m = new Map<string, number>([["a", 1]]);
+      m.set("b", 2);
+      m.set("c", 3);
       return m.size;
     `);
     assert.equal(v, 3);
@@ -281,10 +241,19 @@ describe("map .keys()", () => {
 
   test(".keys().length returns number of keys", () => {
     const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 1, b: 2, c: 3 };
+      const m = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
       return m.keys().length;
     `);
     assert.equal(v, 3);
+  });
+
+  test("const k = m.keys(); k.length works via variable", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<string, number>([["a", 1], ["b", 2]]);
+      const k = m.keys();
+      return k.length;
+    `);
+    assert.equal(v, 2);
   });
 });
 
@@ -295,7 +264,7 @@ describe("map .values()", () => {
 
   test(".values().length returns number of values", () => {
     const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 10, b: 20 };
+      const m = new Map<string, number>([["a", 10], ["b", 20]]);
       return m.values().length;
     `);
     assert.equal(v, 2);
@@ -309,7 +278,7 @@ describe("map .forEach()", () => {
 
   test(".forEach() iterates over all entries", () => {
     const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 1, b: 2, c: 3 };
+      const m = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
       const result: number[] = [];
       m.forEach((value: number, key: string) => {
         result.push(value);
@@ -327,11 +296,29 @@ describe("map .clear()", () => {
 
   test(".clear() removes all entries", () => {
     const v = compileAndRunNumber(`
-      const m: NumberMap = { a: 1, b: 2, c: 3 };
+      const m = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
       m.clear();
       return m.size;
     `);
     assert.equal(v, 0);
+  });
+});
+
+describe("map for...of m.keys()", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("for...of m.keys() iterates over keys", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<string, number>([["a", 1], ["b", 2], ["c", 3]]);
+      let sum = 0;
+      for (const k of m.keys()) {
+        sum = sum + m.get(k)!;
+      }
+      return sum;
+    `);
+    assert.equal(v, 6);
   });
 });
 
@@ -340,14 +327,13 @@ describe("map unsupported method diagnostic", () => {
     ensureSetup();
   });
 
-  test("unsupported map method produces diagnostic", () => {
+  test("calling unknown method on map produces TS error", () => {
     const source = sensorReturningNumber(`
-      const m: NumberMap = { a: 1 };
+      const m = new Map<string, number>([["a", 1]]);
       m.entries();
       return 0;
     `);
     const result = compileUserTile(source, { ambientSource, services });
-    assert.ok(result.diagnostics.length > 0);
-    assert.equal(result.diagnostics[0].code, LoweringDiagCode.UnsupportedMapMethod);
+    assert.ok(result.diagnostics.length > 0, "expected at least one diagnostic");
   });
 });

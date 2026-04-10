@@ -1516,34 +1516,12 @@ describe("Generic function - Map operations", () => {
 
   before(() => {
     mapServices = __test__createBrainServices();
-    const types = mapServices.types;
-    const numTypeId = mkTypeId(NativeType.Number, "number");
-    const strTypeId = mkTypeId(NativeType.String, "string");
-
-    const numListName = "NumberList";
-    const numListTypeId = mkTypeId(NativeType.List, numListName);
-    if (!types.get(numListTypeId)) {
-      types.addListType(numListName, { elementTypeId: numTypeId });
-    }
-
-    const numMapName = "NumberMap";
-    const numMapTypeId = mkTypeId(NativeType.Map, numMapName);
-    if (!types.get(numMapTypeId)) {
-      types.addMapType(numMapName, { valueTypeId: numTypeId });
-    }
-
-    const strMapName = "StringMap";
-    const strMapTypeId = mkTypeId(NativeType.Map, strMapName);
-    if (!types.get(strMapTypeId)) {
-      types.addMapType(strMapName, { valueTypeId: strTypeId });
-    }
-
     mapAmbient = buildAmbientDeclarations(mapServices.types);
   });
 
   test("generic function with concrete Map operations", () => {
     const source = `
-import { Sensor, type Context, type NumberMap } from "mindcraft";
+import { Sensor, type Context } from "mindcraft";
 
 function identity<T>(value: T): T {
   return value;
@@ -1553,9 +1531,9 @@ export default Sensor({
   name: "arr-test",
   output: "number",
   onExecute(ctx: Context): number {
-    const m: NumberMap = { a: 10, b: 20 };
-    const copy: NumberMap = identity(m);
-    return copy["a"];
+    const m = new Map<string, number>([["a", 10], ["b", 20]]);
+    const copy = identity(m);
+    return copy.get("a")!;
   },
 });
 `;
@@ -1575,7 +1553,7 @@ export default Sensor({
 
   test("generic identity preserves Map type at call site", () => {
     const source = `
-import { Sensor, type Context, type StringMap } from "mindcraft";
+import { Sensor, type Context } from "mindcraft";
 
 function passThrough<T>(value: T): T {
   return value;
@@ -1585,9 +1563,9 @@ export default Sensor({
   name: "arr-test",
   output: "string",
   onExecute(ctx: Context): string {
-    const m: StringMap = { greeting: "hello" };
-    const same: StringMap = passThrough(m);
-    return same["greeting"];
+    const m = new Map<string, string>([["greeting", "hello"]]);
+    const same = passThrough(m);
+    return same.get("greeting")!;
   },
 });
 `;
