@@ -45,8 +45,9 @@ Additional Guidance:
   `.values()` -> `$$map_values`, `.clear()` -> `$$map_clear`,
   `.forEach(cb)` -> inline loop, `.size` -> `$$map_size`.
 - Map iteration: `for (const k of m.keys())` -> `$$map_keys` + list iteration.
-- Arithmetic compound assignment: `+=`, `-=`, `*=`, `/=`, `**=`.
+- Arithmetic compound assignment: `+=`, `-=`, `*=`, `/=`, `%=`, `**=`.
 - Bitwise compound assignment: `&=`, `|=`, `^=`, `<<=`, `>>=`.
+- Logical/nullish compound assignment: `??=`, `||=`, `&&=` (short-circuit semantics).
 - Exponentiation: `**` -> `CoreOpId.Power`, `**=` compound assignment.
 - `Math.pow(a, b)` via `$$math_pow` host function.
 - Binary operators: `+`, `-`, `*`, `/`, `%`, `**`, `<`, `>`, `<=`, `>=`, `==`/`===`,
@@ -59,8 +60,6 @@ Additional Guidance:
 
 | Feature | Current behavior |
 |---------|-----------------|
-| `%=` | Not in `isAssignmentOperator`; falls through to binary expression path |
-| `??=`, `\|\|=`, `&&=` | Not recognized as assignment; falls through to binary path |
 | `instanceof` | `UnsupportedOperator` diagnostic |
 | `>>>` (unsigned right shift) | `UnsupportedOperator` diagnostic (deferred) |
 

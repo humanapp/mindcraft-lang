@@ -3319,6 +3319,10 @@ function isAssignmentOperator(kind: ts.SyntaxKind): boolean {
     case ts.SyntaxKind.CaretEqualsToken:
     case ts.SyntaxKind.LessThanLessThanEqualsToken:
     case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
+    case ts.SyntaxKind.PercentEqualsToken:
+    case ts.SyntaxKind.QuestionQuestionEqualsToken:
+    case ts.SyntaxKind.BarBarEqualsToken:
+    case ts.SyntaxKind.AmpersandAmpersandEqualsToken:
       return true;
     default:
       return false;
@@ -3384,6 +3388,44 @@ function checkStructAssignmentCompat(lhsNode: ts.Node, rhsNode: ts.Node, diagNod
         diagNode
       )
     );
+  }
+}
+
+function lowerLogicalAssignment(
+  expr: ts.BinaryExpression,
+  target: { kind: "local"; index: number } | { kind: "callsiteVar"; index: number },
+  ctx: LowerContext
+): void {
+  const endLabel = allocLabel(ctx);
+
+  if (expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+    emitLoad(target, ctx);
+    ctx.ir.push({ kind: "Dup" });
+    ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+    ctx.ir.push({ kind: "JumpIfFalse", labelId: endLabel });
+    ctx.ir.push({ kind: "Pop" });
+    lowerExpression(expr.right, ctx);
+    ctx.ir.push({ kind: "Dup" });
+    emitStore(target, ctx);
+    ctx.ir.push({ kind: "Label", labelId: endLabel });
+  } else if (expr.operatorToken.kind === ts.SyntaxKind.BarBarEqualsToken) {
+    emitLoad(target, ctx);
+    ctx.ir.push({ kind: "Dup" });
+    ctx.ir.push({ kind: "JumpIfTrue", labelId: endLabel });
+    ctx.ir.push({ kind: "Pop" });
+    lowerExpression(expr.right, ctx);
+    ctx.ir.push({ kind: "Dup" });
+    emitStore(target, ctx);
+    ctx.ir.push({ kind: "Label", labelId: endLabel });
+  } else {
+    emitLoad(target, ctx);
+    ctx.ir.push({ kind: "Dup" });
+    ctx.ir.push({ kind: "JumpIfFalse", labelId: endLabel });
+    ctx.ir.push({ kind: "Pop" });
+    lowerExpression(expr.right, ctx);
+    ctx.ir.push({ kind: "Dup" });
+    emitStore(target, ctx);
+    ctx.ir.push({ kind: "Label", labelId: endLabel });
   }
 }
 
@@ -3511,6 +3553,15 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.left.text}`, expr.left)
     );
+    return;
+  }
+
+  if (
+    expr.operatorToken.kind === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+    expr.operatorToken.kind === ts.SyntaxKind.BarBarEqualsToken ||
+    expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken
+  ) {
+    lowerLogicalAssignment(expr, target, ctx);
     return;
   }
 
