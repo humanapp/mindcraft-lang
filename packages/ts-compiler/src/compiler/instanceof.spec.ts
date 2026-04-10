@@ -134,9 +134,7 @@ describe("instanceof operator", () => {
 
   test("instanceof in conditional", () => {
     assert.equal(
-      compileAndRunNumber(
-        numberSensor("const f = new Foo(42); if (f instanceof Foo) { return f.x; } return 0;")
-      ),
+      compileAndRunNumber(numberSensor("const f = new Foo(42); if (f instanceof Foo) { return f.x; } return 0;")),
       42
     );
   });
@@ -149,10 +147,7 @@ describe("instanceof operator", () => {
   });
 
   test("Bar instance is not instanceof Foo", () => {
-    assert.equal(
-      compileAndRunBool(boolSensor("const b = new Bar(\"hello\"); return b instanceof Foo;")),
-      false
-    );
+    assert.equal(compileAndRunBool(boolSensor('const b = new Bar("hello"); return b instanceof Foo;')), false);
   });
 });
 

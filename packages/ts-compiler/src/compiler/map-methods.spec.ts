@@ -75,6 +75,20 @@ export default Sensor({
 `;
 }
 
+function sensorReturningString(body: string): string {
+  return `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "map-test",
+  output: "string",
+  onExecute(ctx: Context): string {
+    ${body}
+  },
+});
+`;
+}
+
 function compileAndRun(source: string): Value {
   const result = compileUserTile(source, { ambientSource, services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
@@ -102,6 +116,12 @@ function compileAndRunBoolean(body: string): boolean {
   const result = compileAndRun(sensorReturningBoolean(body));
   assert.equal(result.t, NativeType.Boolean);
   return (result as BooleanValue).v;
+}
+
+function compileAndRunString(body: string): string {
+  const result = compileAndRun(sensorReturningString(body));
+  assert.equal(result.t, NativeType.String);
+  return (result as StringValue).v;
 }
 
 describe("new Map() constructor", () => {
@@ -335,5 +355,137 @@ describe("map unsupported method diagnostic", () => {
     `);
     const result = compileUserTile(source, { ambientSource, services });
     assert.ok(result.diagnostics.length > 0, "expected at least one diagnostic");
+  });
+});
+
+describe("Map<number, V> constructor", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("new Map<number, string>() creates empty map", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<number, string>();
+      return m.size;
+    `);
+    assert.equal(v, 0);
+  });
+
+  test("new Map<number, string>([[k, v]]) creates map with entries", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<number, string>([[1, "a"], [2, "b"]]);
+      return m.size;
+    `);
+    assert.equal(v, 2);
+  });
+});
+
+describe("Map<number, V> get/set/has/delete", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test(".get() with number key returns value", () => {
+    const v = compileAndRunString(`
+      const m = new Map<number, string>([[1, "hello"]]);
+      return m.get(1)!;
+    `);
+    assert.equal(v, "hello");
+  });
+
+  test(".set() with number key adds entry", () => {
+    const v = compileAndRunString(`
+      const m = new Map<number, string>();
+      m.set(42, "answer");
+      return m.get(42)!;
+    `);
+    assert.equal(v, "answer");
+  });
+
+  test(".has() with number key returns true for existing key", () => {
+    const v = compileAndRunBoolean(`
+      const m = new Map<number, string>([[7, "seven"]]);
+      return m.has(7);
+    `);
+    assert.equal(v, true);
+  });
+
+  test(".has() with number key returns false for missing key", () => {
+    const v = compileAndRunBoolean(`
+      const m = new Map<number, string>([[7, "seven"]]);
+      return m.has(99);
+    `);
+    assert.equal(v, false);
+  });
+
+  test(".delete() with number key removes entry", () => {
+    const v = compileAndRunBoolean(`
+      const m = new Map<number, string>([[1, "a"], [2, "b"]]);
+      m.delete(1);
+      return m.has(1);
+    `);
+    assert.equal(v, false);
+  });
+});
+
+describe("Map<number, V> .keys()", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test(".keys() returns list of number keys", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<number, string>([[10, "a"], [20, "b"], [30, "c"]]);
+      return m.keys().length;
+    `);
+    assert.equal(v, 3);
+  });
+
+  test(".keys() values are numbers usable in arithmetic", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<number, string>([[10, "a"], [20, "b"], [30, "c"]]);
+      let sum = 0;
+      for (const k of m.keys()) {
+        sum = sum + k;
+      }
+      return sum;
+    `);
+    assert.equal(v, 60);
+  });
+});
+
+describe("Map<number, V> for...of keys", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("for...of m.keys() iterates and can look up values", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<number, string>([[1, "ab"], [2, "cde"]]);
+      let totalLen = 0;
+      for (const k of m.keys()) {
+        totalLen = totalLen + m.get(k)!.length;
+      }
+      return totalLen;
+    `);
+    assert.equal(v, 5);
+  });
+});
+
+describe("Map<string, V> for...in", () => {
+  before(() => {
+    ensureSetup();
+  });
+
+  test("for...in iterates over string-keyed map", () => {
+    const v = compileAndRunNumber(`
+      const m = new Map<string, number>([["a", 10], ["b", 20], ["c", 30]]);
+      let sum = 0;
+      for (const k in m) {
+        sum = sum + m.get(k)!;
+      }
+      return sum;
+    `);
+    assert.equal(v, 60);
   });
 });

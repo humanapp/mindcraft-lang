@@ -318,7 +318,7 @@ describe("registerConstructor", () => {
     const registry = services.types;
     const listTypeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
     assert.ok(listTypeId);
-    const mapTypeId = registry.instantiate("Map", List.from([CoreTypeIds.Number]));
+    const mapTypeId = registry.instantiate("Map", List.from([CoreTypeIds.String, CoreTypeIds.Number]));
     assert.ok(mapTypeId);
   });
 
@@ -364,13 +364,14 @@ describe("instantiate", () => {
     assert.notEqual(numList, strList);
   });
 
-  test("instantiate('Map', [CoreTypeIds.Number]) works", () => {
+  test("instantiate('Map', [CoreTypeIds.String, CoreTypeIds.Number]) works", () => {
     const registry = services.types;
-    const typeId = registry.instantiate("Map", List.from([CoreTypeIds.Number]));
+    const typeId = registry.instantiate("Map", List.from([CoreTypeIds.String, CoreTypeIds.Number]));
     assert.ok(typeId);
     const def = registry.get(typeId);
     assert.ok(def);
     assert.equal(def.coreType, NativeType.Map);
+    assert.equal((def as MapTypeDef).keyTypeId, CoreTypeIds.String);
     assert.equal((def as MapTypeDef).valueTypeId, CoreTypeIds.Number);
   });
 

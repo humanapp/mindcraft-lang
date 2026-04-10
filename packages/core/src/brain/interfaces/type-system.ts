@@ -93,6 +93,7 @@ export interface ListTypeShape {
 export type ListTypeDef = TypeDef & ListTypeShape;
 
 export interface MapTypeShape {
+  keyTypeId: TypeId;
   valueTypeId: TypeId;
 }
 

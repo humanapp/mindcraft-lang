@@ -348,7 +348,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     case NativeType.Map: {
       const mapDef = definition as MapTypeDef;
       registeredTypeId = assertRegisteredTypeId(
-        services.types.addMapType(mapDef.name, { valueTypeId: mapDef.valueTypeId }),
+        services.types.addMapType(mapDef.name, { keyTypeId: mapDef.keyTypeId, valueTypeId: mapDef.valueTypeId }),
         mapDef.typeId,
         mapDef.name
       );

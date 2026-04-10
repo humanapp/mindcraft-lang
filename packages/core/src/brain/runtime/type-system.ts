@@ -260,9 +260,12 @@ export class TypeRegistry implements ITypeRegistry {
     this.validateTypeName(name);
     const typeId = mkTypeId(NativeType.Map, name);
     this.validateTypeNotRegistered(typeId);
-    const { valueTypeId } = shape;
+    const { keyTypeId, valueTypeId } = shape;
+    const keyTypeDef = this.get(keyTypeId);
+    if (!keyTypeDef) {
+      throw new Error(`${keyTypeId} is not a registered type`);
+    }
     const valueTypeDef = this.get(valueTypeId);
-    // Ensure value type exists
     if (!valueTypeDef) {
       throw new Error(`${valueTypeId} is not a registered type`);
     }
@@ -941,10 +944,15 @@ class ListConstructor implements TypeConstructor {
 
 class MapConstructor implements TypeConstructor {
   name = "Map";
-  arity = 1;
+  arity = 2;
   coreType = NativeType.Map;
   construct(registry: ITypeRegistry, args: List<TypeId>): TypeDef {
-    const valueTypeId = args.get(0)!;
+    const keyTypeId = args.get(0)!;
+    const valueTypeId = args.get(1)!;
+    const keyDef = registry.get(keyTypeId);
+    if (!keyDef) {
+      throw new Error(`${keyTypeId} is not a registered type`);
+    }
     const valueDef = registry.get(valueTypeId);
     if (!valueDef) {
       throw new Error(`${valueTypeId} is not a registered type`);
@@ -954,6 +962,7 @@ class MapConstructor implements TypeConstructor {
       typeId: "" as TypeId,
       codec: new MapCodec(valueDef.codec),
       name: "",
+      keyTypeId,
       valueTypeId,
     };
     return def;

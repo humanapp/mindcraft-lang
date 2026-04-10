@@ -397,8 +397,12 @@ function typeDefToTs(def: TypeDef, registry: ITypeRegistry): string {
       const elemTs = typeIdToTs((def as ListTypeDef).elementTypeId, registry);
       return `Array<${elemTs}>`;
     }
-    case NativeType.Map:
-      return `Map<string, ${typeIdToTs((def as MapTypeDef).valueTypeId, registry)}>`;
+    case NativeType.Map: {
+      const mapDef = def as MapTypeDef;
+      const keyTs = typeIdToTs(mapDef.keyTypeId, registry);
+      const valTs = typeIdToTs(mapDef.valueTypeId, registry);
+      return `Map<${keyTs}, ${valTs}>`;
+    }
     case NativeType.Function: {
       const fnDef = def as FunctionTypeDef;
       if (fnDef.paramTypeIds) {

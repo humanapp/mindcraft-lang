@@ -1,9 +1,9 @@
 import { List } from "../../platform/list";
-import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import {
   CoreTypeIds,
   type ExecutionContext,
+  type MapTypeDef,
   type MapValue,
   mkCallDef,
   mkListValue,
@@ -24,16 +24,18 @@ export function registerMapBuiltins(services: BrainServices) {
     {
       exec: (_ctx: ExecutionContext, args: MapValue) => {
         const map = args.v.get(0) as MapValue;
-        const keyListTypeId = types.instantiate("List", List.from([CoreTypeIds.String]));
+        const mapDef = types.get(map.typeId) as MapTypeDef | undefined;
+        const keyTypeId = mapDef?.keyTypeId ?? CoreTypeIds.String;
+        const keyListTypeId = types.instantiate("List", List.from([keyTypeId]));
         const items = new List<Value>();
         const keys = map.v.keys();
 
         for (let i = 0; i < keys.size(); i++) {
           const key = keys.get(i);
-          if (TypeUtils.isString(key)) {
+          if (TypeUtils.isNumber(key)) {
+            items.push(mkNumberValue(key));
+          } else if (TypeUtils.isString(key)) {
             items.push(mkStringValue(key));
-          } else if (TypeUtils.isNumber(key)) {
-            items.push(mkStringValue(SU.toString(key)));
           }
         }
 

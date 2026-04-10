@@ -2251,6 +2251,21 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
     return;
   }
 
+  const mapTypeId = resolveMapTypeId(iteratedType, ctx);
+  if (mapTypeId) {
+    lowerForInOverKeyList(
+      stmt,
+      bindingName,
+      () => {
+        lowerExpression(stmt.expression, ctx);
+        ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_keys", argc: 1 });
+      },
+      ctx
+    );
+    ctx.scopeStack.popScope(ctx.ir.length);
+    return;
+  }
+
   const structDef = resolveStructType(iteratedType, ctx.services);
   if (structDef) {
     lowerForInOverKeyList(
@@ -2273,7 +2288,7 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
   ctx.diagnostics.push(
     makeDiag(
       LoweringDiagCode.ForInOnUnsupportedType,
-      "`for...in` is only supported on list and registered struct values",
+      "`for...in` is only supported on list, map, and registered struct values",
       stmt.expression
     )
   );
@@ -7896,9 +7911,10 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
       const typeArgs =
         (type as ts.TypeReference).typeArguments ?? ctx.checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length >= 2) {
+        const keyTypeId = tsTypeToTypeId(typeArgs[0], ctx.checker, ctx.services) ?? CoreTypeIds.String;
         const valueTypeId = tsTypeToTypeId(typeArgs[1], ctx.checker, ctx.services);
         if (valueTypeId) {
-          return registry.instantiate("Map", List.from([valueTypeId]));
+          return registry.instantiate("Map", List.from([keyTypeId, valueTypeId]));
         }
       }
     }
@@ -7914,7 +7930,7 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
   if (indexType) {
     const valueTypeId = tsTypeToTypeId(indexType, ctx.checker, ctx.services);
     if (valueTypeId) {
-      return registry.instantiate("Map", List.from([valueTypeId]));
+      return registry.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
     }
   }
 
@@ -8184,9 +8200,10 @@ function tsTypeToTypeId(
     if (symName === "Map" && checker) {
       const typeArgs = (type as ts.TypeReference).typeArguments ?? checker.getTypeArguments(type as ts.TypeReference);
       if (typeArgs && typeArgs.length >= 2) {
+        const keyTypeId = tsTypeToTypeId(typeArgs[0], checker, services) ?? CoreTypeIds.String;
         const valueTypeId = tsTypeToTypeId(typeArgs[1], checker, services);
         if (valueTypeId) {
-          return registry.instantiate("Map", List.from([valueTypeId]));
+          return registry.instantiate("Map", List.from([keyTypeId, valueTypeId]));
         }
       }
     }
@@ -8200,7 +8217,7 @@ function tsTypeToTypeId(
     if (indexType) {
       const valueTypeId = tsTypeToTypeId(indexType, checker, services);
       if (valueTypeId) {
-        return services.types.instantiate("Map", List.from([valueTypeId]));
+        return services.types.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
       }
     }
   }
