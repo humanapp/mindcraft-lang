@@ -46,10 +46,12 @@ Additional Guidance:
   `.forEach(cb)` -> inline loop, `.size` -> `$$map_size`.
 - Map iteration: `for (const k of m.keys())` -> `$$map_keys` + list iteration.
 - Arithmetic compound assignment: `+=`, `-=`, `*=`, `/=`, `**=`.
+- Bitwise compound assignment: `&=`, `|=`, `^=`, `<<=`, `>>=`.
 - Exponentiation: `**` -> `CoreOpId.Power`, `**=` compound assignment.
 - `Math.pow(a, b)` via `$$math_pow` host function.
 - Binary operators: `+`, `-`, `*`, `/`, `%`, `**`, `<`, `>`, `<=`, `>=`, `==`/`===`,
-  `!=`/`!==`.
+  `!=`/`!==`, `&`, `|`, `^`, `<<`, `>>`.
+- Unary operators: `-`, `!`, `~`.
 - Logical short-circuit: `&&`, `||`, `??`.
 - `typeof` -> `TYPE_CHECK` opcode (checks `NativeType` tag).
 
@@ -60,7 +62,7 @@ Additional Guidance:
 | `%=` | Not in `isAssignmentOperator`; falls through to binary expression path |
 | `??=`, `\|\|=`, `&&=` | Not recognized as assignment; falls through to binary path |
 | `instanceof` | `UnsupportedOperator` diagnostic |
-| Bitwise operators (`&`, `\|`, `^`, `~`, `<<`, `>>`) | `UnsupportedOperator` diagnostic |
+| `>>>` (unsigned right shift) | `UnsupportedOperator` diagnostic (deferred) |
 
 ---
 

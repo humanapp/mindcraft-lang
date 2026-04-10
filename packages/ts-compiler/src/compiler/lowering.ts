@@ -3314,6 +3314,11 @@ function isAssignmentOperator(kind: ts.SyntaxKind): boolean {
     case ts.SyntaxKind.AsteriskEqualsToken:
     case ts.SyntaxKind.SlashEqualsToken:
     case ts.SyntaxKind.AsteriskAsteriskEqualsToken:
+    case ts.SyntaxKind.AmpersandEqualsToken:
+    case ts.SyntaxKind.BarEqualsToken:
+    case ts.SyntaxKind.CaretEqualsToken:
+    case ts.SyntaxKind.LessThanLessThanEqualsToken:
+    case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
       return true;
     default:
       return false;
@@ -3948,6 +3953,16 @@ function compoundAssignmentToOpId(kind: ts.SyntaxKind): string | undefined {
       return CoreOpId.Modulo;
     case ts.SyntaxKind.AsteriskAsteriskEqualsToken:
       return CoreOpId.Power;
+    case ts.SyntaxKind.AmpersandEqualsToken:
+      return CoreOpId.BitwiseAnd;
+    case ts.SyntaxKind.BarEqualsToken:
+      return CoreOpId.BitwiseOr;
+    case ts.SyntaxKind.CaretEqualsToken:
+      return CoreOpId.BitwiseXor;
+    case ts.SyntaxKind.LessThanLessThanEqualsToken:
+      return CoreOpId.LeftShift;
+    case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken:
+      return CoreOpId.RightShift;
     default:
       return undefined;
   }
@@ -3986,6 +4001,14 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
     ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
   } else if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
     lowerPrefixIncDec(expr, ctx);
+  } else if (expr.operator === ts.SyntaxKind.TildeToken) {
+    lowerExpression(expr.operand, ctx);
+    const fnName = resolveOperator(CoreOpId.BitwiseNot, [CoreTypeIds.Number], ctx.services);
+    if (!fnName) {
+      ctx.diagnostics.push(makeDiag(LoweringDiagCode.NoOperatorOverload, "No operator overload for bitwise NOT", expr));
+      return;
+    }
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
   } else {
     ctx.diagnostics.push(
       makeDiag(
@@ -7910,6 +7933,16 @@ function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {
       return CoreOpId.Modulo;
     case ts.SyntaxKind.AsteriskAsteriskToken:
       return CoreOpId.Power;
+    case ts.SyntaxKind.AmpersandToken:
+      return CoreOpId.BitwiseAnd;
+    case ts.SyntaxKind.BarToken:
+      return CoreOpId.BitwiseOr;
+    case ts.SyntaxKind.CaretToken:
+      return CoreOpId.BitwiseXor;
+    case ts.SyntaxKind.LessThanLessThanToken:
+      return CoreOpId.LeftShift;
+    case ts.SyntaxKind.GreaterThanGreaterThanToken:
+      return CoreOpId.RightShift;
     default:
       return undefined;
   }

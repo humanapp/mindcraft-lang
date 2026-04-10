@@ -1,3 +1,5 @@
+/// <reference types="@rbxts/types" />
+
 /**
  * Platform-agnostic math operations - Roblox implementation
  */
@@ -57,6 +59,12 @@ export const MathOps = {
   exp: (n: number) => math.exp(n),
   log: (n: number) => math.log(n),
   pow: (base: number, exp: number) => math.pow(base, exp),
+  bitAnd: (a: number, b: number) => bit32.band(a, b),
+  bitOr: (a: number, b: number) => bit32.bor(a, b),
+  bitXor: (a: number, b: number) => bit32.bxor(a, b),
+  bitNot: (a: number) => bit32.bnot(a),
+  leftShift: (a: number, b: number) => bit32.lshift(a, b),
+  rightShift: (a: number, b: number) => bit32.arshift(a, b),
   sin: (n: number) => math.sin(n),
   sqrt: (n: number) => math.sqrt(n),
   tan: (n: number) => math.tan(n),

@@ -23,6 +23,12 @@ export const CoreOpId = {
   GreaterThan: "gt",
   GreaterThanOrEqualTo: "ge",
   Power: "pow",
+  BitwiseAnd: "bitand",
+  BitwiseOr: "bitor",
+  BitwiseXor: "bitxor",
+  BitwiseNot: "bitnot",
+  LeftShift: "shl",
+  RightShift: "shr",
   Assign: "assign",
 } as const;
 

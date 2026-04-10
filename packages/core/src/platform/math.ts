@@ -19,6 +19,12 @@ export declare const MathOps: {
   exp: (n: number) => number;
   log: (n: number) => number;
   pow: (base: number, exp: number) => number;
+  bitAnd: (a: number, b: number) => number;
+  bitOr: (a: number, b: number) => number;
+  bitXor: (a: number, b: number) => number;
+  bitNot: (a: number) => number;
+  leftShift: (a: number, b: number) => number;
+  rightShift: (a: number, b: number) => number;
   sin: (n: number) => number;
   sqrt: (n: number) => number;
   tan: (n: number) => number;

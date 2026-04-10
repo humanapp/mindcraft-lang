@@ -38,33 +38,45 @@ import type { BrainServices } from "../services";
  */
 const Precedence: { [key: string]: OpParse } = {
   // ---------------------------------------------------------------------------
-  // Precedence (higher binds tighter), matching the scale:
+  // Precedence (higher binds tighter), matching JS operator precedence.
   //
-  // 30: prefix negation / prefix unary
-  // 20: * /
-  // 10: + -
-  //  5: < <= > >=
-  //  4: == !=
-  //  2: and
-  //  1: or
+  // 150: prefix unary (not, neg, bitnot)
+  // 140: **
+  // 130: * / %
+  // 120: + -
+  // 110: << >>
+  // 100: < <= > >=
+  //  90: == !=
+  //  80: &
+  //  70: ^
+  //  60: |
+  //  50: &&
+  //  40: ||
+  //  10: assign
   // ---------------------------------------------------------------------------
-  [CoreOpId.Not]: { fixity: "prefix", precedence: 30 },
-  [CoreOpId.Negate]: { fixity: "prefix", precedence: 30 },
-  [CoreOpId.Power]: { fixity: "infix", precedence: 25, assoc: "right" },
-  [CoreOpId.Multiply]: { fixity: "infix", precedence: 20, assoc: "left" },
-  [CoreOpId.Divide]: { fixity: "infix", precedence: 20, assoc: "left" },
-  [CoreOpId.Modulo]: { fixity: "infix", precedence: 20, assoc: "left" },
-  [CoreOpId.Add]: { fixity: "infix", precedence: 10, assoc: "left" },
-  [CoreOpId.Subtract]: { fixity: "infix", precedence: 10, assoc: "left" },
-  [CoreOpId.LessThan]: { fixity: "infix", precedence: 5, assoc: "none" },
-  [CoreOpId.LessThanOrEqualTo]: { fixity: "infix", precedence: 5, assoc: "none" },
-  [CoreOpId.GreaterThan]: { fixity: "infix", precedence: 5, assoc: "none" },
-  [CoreOpId.GreaterThanOrEqualTo]: { fixity: "infix", precedence: 5, assoc: "none" },
-  [CoreOpId.EqualTo]: { fixity: "infix", precedence: 4, assoc: "none" },
-  [CoreOpId.NotEqualTo]: { fixity: "infix", precedence: 4, assoc: "none" },
-  [CoreOpId.And]: { fixity: "infix", precedence: 2, assoc: "left" },
-  [CoreOpId.Or]: { fixity: "infix", precedence: 1, assoc: "left" },
-  [CoreOpId.Assign]: { fixity: "infix", precedence: 0, assoc: "right" },
+  [CoreOpId.Not]: { fixity: "prefix", precedence: 150 },
+  [CoreOpId.Negate]: { fixity: "prefix", precedence: 150 },
+  [CoreOpId.BitwiseNot]: { fixity: "prefix", precedence: 150 },
+  [CoreOpId.Power]: { fixity: "infix", precedence: 140, assoc: "right" },
+  [CoreOpId.Multiply]: { fixity: "infix", precedence: 130, assoc: "left" },
+  [CoreOpId.Divide]: { fixity: "infix", precedence: 130, assoc: "left" },
+  [CoreOpId.Modulo]: { fixity: "infix", precedence: 130, assoc: "left" },
+  [CoreOpId.Add]: { fixity: "infix", precedence: 120, assoc: "left" },
+  [CoreOpId.Subtract]: { fixity: "infix", precedence: 120, assoc: "left" },
+  [CoreOpId.LeftShift]: { fixity: "infix", precedence: 110, assoc: "left" },
+  [CoreOpId.RightShift]: { fixity: "infix", precedence: 110, assoc: "left" },
+  [CoreOpId.LessThan]: { fixity: "infix", precedence: 100, assoc: "none" },
+  [CoreOpId.LessThanOrEqualTo]: { fixity: "infix", precedence: 100, assoc: "none" },
+  [CoreOpId.GreaterThan]: { fixity: "infix", precedence: 100, assoc: "none" },
+  [CoreOpId.GreaterThanOrEqualTo]: { fixity: "infix", precedence: 100, assoc: "none" },
+  [CoreOpId.EqualTo]: { fixity: "infix", precedence: 90, assoc: "none" },
+  [CoreOpId.NotEqualTo]: { fixity: "infix", precedence: 90, assoc: "none" },
+  [CoreOpId.BitwiseAnd]: { fixity: "infix", precedence: 80, assoc: "left" },
+  [CoreOpId.BitwiseXor]: { fixity: "infix", precedence: 70, assoc: "left" },
+  [CoreOpId.BitwiseOr]: { fixity: "infix", precedence: 60, assoc: "left" },
+  [CoreOpId.And]: { fixity: "infix", precedence: 50, assoc: "left" },
+  [CoreOpId.Or]: { fixity: "infix", precedence: 40, assoc: "left" },
+  [CoreOpId.Assign]: { fixity: "infix", precedence: 10, assoc: "right" },
 } as const;
 
 function argsKey(argTypes: TypeId[]): string {
@@ -291,6 +303,13 @@ export function registerCoreOperators(services: BrainServices) {
   operatorTable.add({ id: CoreOpId.Power, parse: Precedence[CoreOpId.Power] });
   operatorTable.add({ id: CoreOpId.Negate, parse: Precedence[CoreOpId.Negate] });
 
+  operatorTable.add({ id: CoreOpId.BitwiseAnd, parse: Precedence[CoreOpId.BitwiseAnd] });
+  operatorTable.add({ id: CoreOpId.BitwiseOr, parse: Precedence[CoreOpId.BitwiseOr] });
+  operatorTable.add({ id: CoreOpId.BitwiseXor, parse: Precedence[CoreOpId.BitwiseXor] });
+  operatorTable.add({ id: CoreOpId.BitwiseNot, parse: Precedence[CoreOpId.BitwiseNot] });
+  operatorTable.add({ id: CoreOpId.LeftShift, parse: Precedence[CoreOpId.LeftShift] });
+  operatorTable.add({ id: CoreOpId.RightShift, parse: Precedence[CoreOpId.RightShift] });
+
   operatorTable.add({ id: CoreOpId.EqualTo, parse: Precedence[CoreOpId.EqualTo] });
   operatorTable.add({ id: CoreOpId.NotEqualTo, parse: Precedence[CoreOpId.NotEqualTo] });
   operatorTable.add({ id: CoreOpId.LessThan, parse: Precedence[CoreOpId.LessThan] });
@@ -444,6 +463,89 @@ export function registerCoreOperators(services: BrainServices) {
       exec: (_ctx: ExecutionContext, args: MapValue) => {
         const a = args.v.get(0) as NumberValue;
         return mkNumberValue(-a.v);
+      },
+    },
+    false
+  );
+
+  operatorOverloads.binary(
+    CoreOpId.BitwiseAnd,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const a = args.v.get(0) as NumberValue;
+        const b = args.v.get(1) as NumberValue;
+        return mkNumberValue(MathOps.bitAnd(a.v, b.v));
+      },
+    },
+    false
+  );
+  operatorOverloads.binary(
+    CoreOpId.BitwiseOr,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const a = args.v.get(0) as NumberValue;
+        const b = args.v.get(1) as NumberValue;
+        return mkNumberValue(MathOps.bitOr(a.v, b.v));
+      },
+    },
+    false
+  );
+  operatorOverloads.binary(
+    CoreOpId.BitwiseXor,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const a = args.v.get(0) as NumberValue;
+        const b = args.v.get(1) as NumberValue;
+        return mkNumberValue(MathOps.bitXor(a.v, b.v));
+      },
+    },
+    false
+  );
+  operatorOverloads.unary(
+    CoreOpId.BitwiseNot,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const a = args.v.get(0) as NumberValue;
+        return mkNumberValue(MathOps.bitNot(a.v));
+      },
+    },
+    false
+  );
+  operatorOverloads.binary(
+    CoreOpId.LeftShift,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const a = args.v.get(0) as NumberValue;
+        const b = args.v.get(1) as NumberValue;
+        return mkNumberValue(MathOps.leftShift(a.v, b.v));
+      },
+    },
+    false
+  );
+  operatorOverloads.binary(
+    CoreOpId.RightShift,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    CoreTypeIds.Number,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue) => {
+        const a = args.v.get(0) as NumberValue;
+        const b = args.v.get(1) as NumberValue;
+        return mkNumberValue(MathOps.rightShift(a.v, b.v));
       },
     },
     false
