@@ -10355,4 +10355,245 @@ export default Sensor({
     const defV2 = registryV2.get(typeIdV2!) as StructTypeDef;
     assert.equal(defV2.fields.size(), 2, "V2 should have 2 fields (x and y)");
   });
+
+  test("simple static field assignment compiles without diagnostics", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 0;
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-assign",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.count = 42;
+    return Counter.count;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+  });
+
+  test("compound static field assignment (+=) compiles without diagnostics", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 0;
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-compound-assign",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.count += 10;
+    return Counter.count;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+  });
+
+  test("prefix increment on static field compiles without diagnostics", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 0;
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-prefix-inc",
+  output: "number",
+  onExecute(ctx: Context): number {
+    ++Counter.count;
+    return Counter.count;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+  });
+
+  test("postfix increment on static field compiles without diagnostics", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 0;
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-postfix-inc",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.count++;
+    return Counter.count;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program, "expected program to be produced");
+  });
+
+  test("assigning to a static method produces AssignmentTargetNotVariable", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Utils {
+  static double(n: number): number { return n * 2; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-method-assign",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Utils.double = 5 as any;
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.ok(
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.AssignmentTargetNotVariable),
+      `Expected AssignmentTargetNotVariable, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
+    );
+  });
+
+  test("prefix increment on static method produces a diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Utils {
+  static double(n: number): number { return n * 2; }
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-method-prefix-inc",
+  output: "number",
+  onExecute(ctx: Context): number {
+    ++Utils.double;
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.ok(
+      result.diagnostics.length > 0,
+      `Expected at least one diagnostic for ++staticMethod, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
+    );
+  });
+
+  test("static field assignment and read produces correct runtime values", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 0;
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-assign-runtime",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.count = 7;
+    Counter.count += 3;
+    return Counter.count;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 10);
+    }
+  });
+
+  test("prefix and postfix increment on static field produce correct values", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 0;
+  value: number;
+  constructor() { this.value = 0; }
+}
+
+export default Sensor({
+  name: "static-incr-runtime",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.count = 5;
+    const a = ++Counter.count;
+    const b = Counter.count++;
+    return a + b + Counter.count;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      // count starts at 0, set to 5
+      // ++Counter.count -> count=6, a=6
+      // Counter.count++ -> b=6 (old value), count=7
+      // return 6 + 6 + 7 = 19
+      assert.equal((r.result as NumberValue).v, 19);
+    }
+  });
 });

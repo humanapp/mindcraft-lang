@@ -1,6 +1,6 @@
 # Static Class Members -- Phased Implementation Plan
 
-**Status:** S5 complete
+**Status:** S6 complete
 **Created:** 2026-06-15
 **Related:**
 
@@ -100,6 +100,21 @@ infrastructure inventory. Relevant highlights:
   For `kind === "no-such-member"`: emits `NoSuchStaticMember` diagnostic.
 - `resolveStructType` resolves instance types to `StructTypeDef` but does not
   handle constructor types (`typeof ClassName`).
+- `lowerAssignment` dispatches to `lowerStaticFieldAssignment` for
+  `ClassName.field = value` after the `this.field` check and before the
+  `!ts.isIdentifier` guard. `resolveStaticMemberAccess` returns non-null only
+  for recognized class names, so non-class property access falls through to
+  the generic `AssignmentTargetNotVariable` diagnostic.
+- `lowerStaticFieldAssignment(expr, propAccess, staticAccess, ctx)` handles
+  simple `=` (lower RHS, Dup, StoreCallsiteVar) and compound `+=`/`-=`/`*=`/`/=`
+  (LoadCallsiteVar, lower RHS, operator, Dup, StoreCallsiteVar). Method targets
+  produce `AssignmentTargetNotVariable`; unknown members produce
+  `NoSuchStaticMember`.
+- `lowerPrefixIncDec` and `lowerPostfixIncDec` support
+  `ts.isPropertyAccessExpression` operands via `resolveStaticMemberAccess`.
+  Static field targets use `LoadCallsiteVar`/`StoreCallsiteVar`. Method targets
+  and unknown members produce diagnostics. Non-class property access produces
+  `IncrDecrTargetNotVariable`.
 - Callsite variables (`callsiteVars` map) persist across invocations per tile.
 - Enum member access (`EnumName.Member`) works via `resolveEnumPropertyAccess`
   which detects the LHS as a type reference rather than a runtime value -- the
@@ -799,3 +814,54 @@ without modification.
   `UnsupportedFunctionCall` (existing) and `NoSuchStaticMember` (added in S4).
 
 **Test results:** 661 tests, 0 failures.
+
+### S6 -- Static Field Assignment and Compound Assignment
+
+**Date:** 2026-04-09
+
+**Files changed:**
+
+- `lowering.ts` -- added static field dispatch in `lowerAssignment` after
+  `this.field` check: calls `resolveStaticMemberAccess(expr.left, ctx)` and
+  routes to `lowerStaticFieldAssignment` when non-null. Added
+  `lowerStaticFieldAssignment(expr, propAccess, staticAccess, ctx)` function
+  after `lowerThisFieldAssignment`: handles simple `=` (lower RHS with expected
+  type, Dup, StoreCallsiteVar) and compound `+=`/`-=`/`*=`/`/=`
+  (LoadCallsiteVar, lower RHS, resolveOperatorWithExpansion, Dup,
+  StoreCallsiteVar). Method targets emit `AssignmentTargetNotVariable`;
+  `no-such-member` emits `NoSuchStaticMember`. Refactored `lowerPrefixIncDec`
+  and `lowerPostfixIncDec` from identifier-only to a three-branch structure:
+  property-access (static field via `resolveStaticMemberAccess`), identifier
+  (existing path via `resolveVarTarget`), and else (diagnostic). Static field
+  targets use `LoadCallsiteVar`/`StoreCallsiteVar` closures.
+- `codegen.spec.ts` -- added eight tests: simple assignment (`Counter.count =
+  42`); compound assignment (`Counter.count += 10`); prefix increment
+  (`++Counter.count`); postfix increment (`Counter.count++`); assign to static
+  method produces `AssignmentTargetNotVariable`; prefix increment on static
+  method produces a diagnostic; runtime: assign + compound returns correct
+  value (10); runtime: prefix/postfix increment sequence returns 19
+  (6 + 6 + 7).
+
+**Observations:**
+
+- The `lowerAssignment` dispatch falls through cleanly when
+  `resolveStaticMemberAccess` returns `undefined` (non-class property access
+  like `obj.field = 5`). The next guard `!ts.isIdentifier(expr.left)` catches
+  it with `AssignmentTargetNotVariable`, so no silent failure is possible.
+- Assignment-as-expression semantics are preserved: `Dup` before
+  `StoreCallsiteVar` leaves the assigned value on the stack, matching the
+  existing `lowerAssignment` and `lowerThisFieldAssignment` patterns.
+- The prefix/postfix increment test for static methods (`++Utils.double`)
+  revealed that TypeScript's own type checker catches the type mismatch
+  (function is not a number) before lowering runs, producing error code 5002.
+  The test was adjusted to assert `diagnostics.length > 0` rather than a
+  specific lowering diagnostic code.
+- The `LoadCallsiteVar`/`StoreCallsiteVar` IR nodes use the `index` field
+  (not `slot`). An initial draft used `{ kind: "LoadCallsiteVar", slot }` which
+  would have been silently wrong at runtime. Caught by cross-referencing the IR
+  type definitions in `ir.ts`.
+- All codepaths in the three new/modified functions were audited for silent
+  failure. Every path terminates with either IR emission or a diagnostic push.
+  No silent no-ops exist.
+
+**Test results:** 669 tests, 0 failures.

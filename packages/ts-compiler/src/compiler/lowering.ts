@@ -3178,6 +3178,14 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
     return;
   }
 
+  if (ts.isPropertyAccessExpression(expr.left)) {
+    const staticAccess = resolveStaticMemberAccess(expr.left, ctx);
+    if (staticAccess) {
+      lowerStaticFieldAssignment(expr, expr.left, staticAccess, ctx);
+      return;
+    }
+  }
+
   if (!ts.isIdentifier(expr.left)) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.AssignmentTargetNotVariable, "Assignment target must be a variable", expr.left)
@@ -3328,6 +3336,93 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
   ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
 }
 
+function lowerStaticFieldAssignment(
+  expr: ts.BinaryExpression,
+  propAccess: ts.PropertyAccessExpression,
+  staticAccess: NonNullable<StaticMemberAccessResolution>,
+  ctx: LowerContext
+): void {
+  if (staticAccess.kind === "method") {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.AssignmentTargetNotVariable,
+        `'${(propAccess.expression as ts.Identifier).text}.${propAccess.name.text}' is a static method, not an assignable field`,
+        propAccess
+      )
+    );
+    return;
+  }
+  if (staticAccess.kind === "no-such-member") {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NoSuchStaticMember,
+        `No static member '${propAccess.name.text}' exists on class '${(propAccess.expression as ts.Identifier).text}'`,
+        propAccess
+      )
+    );
+    return;
+  }
+
+  const slot = staticAccess.callsiteVarIndex;
+
+  if (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    lowerExpressionWithExpectedType(
+      expr.right,
+      resolveExpressionTypeId(propAccess, ctx),
+      `assignment to '${(propAccess.expression as ts.Identifier).text}.${propAccess.name.text}'`,
+      expr.right,
+      ctx
+    );
+  } else {
+    const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
+    if (!opId) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.UnsupportedCompoundAssignOperator,
+          "Unsupported compound assignment operator",
+          expr.operatorToken
+        )
+      );
+      return;
+    }
+
+    const lhsType = ctx.checker.getTypeAtLocation(expr.left);
+    const rhsType = ctx.checker.getTypeAtLocation(expr.right);
+    const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
+    const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+
+    if (!lhsTypeId || !rhsTypeId) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.CannotDetermineTypesForCompoundAssign,
+          "Cannot determine types for compound assignment",
+          expr
+        )
+      );
+      return;
+    }
+
+    const fnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
+    if (!fnName) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.NoOperatorOverload,
+          `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+          expr
+        )
+      );
+      return;
+    }
+
+    ctx.ir.push({ kind: "LoadCallsiteVar", index: slot });
+    lowerExpression(expr.right, ctx);
+    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  }
+
+  ctx.ir.push({ kind: "Dup" });
+  ctx.ir.push({ kind: "StoreCallsiteVar", index: slot });
+}
+
 function compoundAssignmentToOpId(kind: ts.SyntaxKind): string | undefined {
   switch (kind) {
     case ts.SyntaxKind.PlusEqualsToken:
@@ -3388,20 +3483,62 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
 }
 
 function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): void {
-  if (!ts.isIdentifier(expr.operand)) {
+  let loadEmit: () => void;
+  let storeEmit: () => void;
+
+  if (ts.isPropertyAccessExpression(expr.operand)) {
+    const staticAccess = resolveStaticMemberAccess(expr.operand, ctx);
+    if (staticAccess) {
+      if (staticAccess.kind === "method") {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.IncrDecrTargetNotVariable,
+            "Increment/decrement target must be a variable",
+            expr.operand
+          )
+        );
+        return;
+      }
+      if (staticAccess.kind === "no-such-member") {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.NoSuchStaticMember,
+            `No static member '${expr.operand.name.text}' on class '${expr.operand.expression.getText()}'`,
+            expr.operand
+          )
+        );
+        return;
+      }
+      const index = staticAccess.callsiteVarIndex;
+      loadEmit = () => ctx.ir.push({ kind: "LoadCallsiteVar", index });
+      storeEmit = () => ctx.ir.push({ kind: "StoreCallsiteVar", index });
+    } else {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.IncrDecrTargetNotVariable,
+          "Increment/decrement target must be a variable",
+          expr.operand
+        )
+      );
+      return;
+    }
+  } else if (ts.isIdentifier(expr.operand)) {
+    const target = resolveVarTarget(expr.operand.text, ctx);
+    if (!target) {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.operand.text}`, expr.operand)
+      );
+      return;
+    }
+    loadEmit = () => emitLoad(target, ctx);
+    storeEmit = () => emitStore(target, ctx);
+  } else {
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.IncrDecrTargetNotVariable,
         "Increment/decrement target must be a variable",
         expr.operand
       )
-    );
-    return;
-  }
-  const target = resolveVarTarget(expr.operand.text, ctx);
-  if (!target) {
-    ctx.diagnostics.push(
-      makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.operand.text}`, expr.operand)
     );
     return;
   }
@@ -3416,29 +3553,71 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
     return;
   }
 
-  emitLoad(target, ctx);
+  loadEmit();
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
   // Dup after arithmetic: leaves the new value on the stack as the expression result.
   ctx.ir.push({ kind: "Dup" });
-  emitStore(target, ctx);
+  storeEmit();
 }
 
 function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext): void {
-  if (!ts.isIdentifier(expr.operand)) {
+  let loadEmit: () => void;
+  let storeEmit: () => void;
+
+  if (ts.isPropertyAccessExpression(expr.operand)) {
+    const staticAccess = resolveStaticMemberAccess(expr.operand, ctx);
+    if (staticAccess) {
+      if (staticAccess.kind === "method") {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.IncrDecrTargetNotVariable,
+            "Increment/decrement target must be a variable",
+            expr.operand
+          )
+        );
+        return;
+      }
+      if (staticAccess.kind === "no-such-member") {
+        ctx.diagnostics.push(
+          makeDiag(
+            LoweringDiagCode.NoSuchStaticMember,
+            `No static member '${expr.operand.name.text}' on class '${expr.operand.expression.getText()}'`,
+            expr.operand
+          )
+        );
+        return;
+      }
+      const index = staticAccess.callsiteVarIndex;
+      loadEmit = () => ctx.ir.push({ kind: "LoadCallsiteVar", index });
+      storeEmit = () => ctx.ir.push({ kind: "StoreCallsiteVar", index });
+    } else {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.IncrDecrTargetNotVariable,
+          "Increment/decrement target must be a variable",
+          expr.operand
+        )
+      );
+      return;
+    }
+  } else if (ts.isIdentifier(expr.operand)) {
+    const target = resolveVarTarget(expr.operand.text, ctx);
+    if (!target) {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.operand.text}`, expr.operand)
+      );
+      return;
+    }
+    loadEmit = () => emitLoad(target, ctx);
+    storeEmit = () => emitStore(target, ctx);
+  } else {
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.IncrDecrTargetNotVariable,
         "Increment/decrement target must be a variable",
         expr.operand
       )
-    );
-    return;
-  }
-  const target = resolveVarTarget(expr.operand.text, ctx);
-  if (!target) {
-    ctx.diagnostics.push(
-      makeDiag(LoweringDiagCode.UndefinedVariable, `Undefined variable: ${expr.operand.text}`, expr.operand)
     );
     return;
   }
@@ -3453,13 +3632,13 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
     return;
   }
 
-  emitLoad(target, ctx);
+  loadEmit();
   // Dup before arithmetic: the old value copy stays on the stack as the expression
   // result while the new value is computed and stored over it.
   ctx.ir.push({ kind: "Dup" });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
   ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
-  emitStore(target, ctx);
+  storeEmit();
 }
 
 function lowerShortCircuit(expr: ts.BinaryExpression, ctx: LowerContext): void {
