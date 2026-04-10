@@ -252,6 +252,11 @@ export function emitFunction(
       case "TypeCheck":
         emitter.typeCheck(node.nativeType);
         break;
+      case "InstanceOf": {
+        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        emitter.instanceOf(typeIdIdx);
+        break;
+      }
       case "CallIndirect":
         emitter.callIndirect(node.argc);
         break;

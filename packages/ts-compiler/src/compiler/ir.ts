@@ -52,6 +52,7 @@ export type IrNode =
   | IrListInsert
   | IrListSwap
   | IrTypeCheck
+  | IrInstanceOf
   | IrLabel
   | IrJump
   | IrJumpIfFalse
@@ -220,6 +221,11 @@ export interface IrListSwap extends IrNodeBase {
 export interface IrTypeCheck extends IrNodeBase {
   kind: "TypeCheck";
   nativeType: number;
+}
+
+export interface IrInstanceOf extends IrNodeBase {
+  kind: "InstanceOf";
+  typeId: string;
 }
 
 export interface IrCallIndirect extends IrNodeBase {

@@ -4654,6 +4654,45 @@ function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): bo
   return true;
 }
 
+function lowerInstanceOf(expr: ts.BinaryExpression, ctx: LowerContext): void {
+  const rhsSym = ctx.checker.getSymbolAtLocation(expr.right);
+  if (!rhsSym) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.InstanceofRhsNotClass,
+        "instanceof requires a class name on the right-hand side",
+        expr.right
+      )
+    );
+    return;
+  }
+
+  const resolvedSym = rhsSym.flags & ts.SymbolFlags.Alias ? ctx.checker.getAliasedSymbol(rhsSym) : rhsSym;
+  const classDecl = resolvedSym.getDeclarations()?.find(ts.isClassDeclaration);
+  if (!classDecl) {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.InstanceofRhsNotClass,
+        "instanceof requires a class name on the right-hand side",
+        expr.right
+      )
+    );
+    return;
+  }
+
+  const instanceType = ctx.checker.getDeclaredTypeOfSymbol(resolvedSym);
+  const typeId = tsTypeToTypeId(instanceType, ctx.checker, ctx.services);
+  if (!typeId) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.InstanceofRhsNotClass, "Cannot resolve type for instanceof check", expr.right)
+    );
+    return;
+  }
+
+  lowerExpression(expr.left, ctx);
+  ctx.ir.push({ kind: "InstanceOf", typeId });
+}
+
 function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext): void {
   const isOptChain = ts.isOptionalChain(expr);
   const rawObjType = ctx.checker.getTypeAtLocation(expr.expression);
@@ -6988,6 +7027,11 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
   }
 
   if (lowerTypeofComparison(expr, ctx)) {
+    return;
+  }
+
+  if (expr.operatorToken.kind === ts.SyntaxKind.InstanceOfKeyword) {
+    lowerInstanceOf(expr, ctx);
     return;
   }
 

@@ -337,6 +337,8 @@ export enum LoweringDiagCode {
   MapConstructorTooManyArgs = 3163,
   /** Cannot determine map type for new Map() expression */
   MapConstructorUnresolvableType = 3164,
+  /** instanceof RHS must be a class name known at compile time */
+  InstanceofRhsNotClass = 3170,
 }
 
 /**

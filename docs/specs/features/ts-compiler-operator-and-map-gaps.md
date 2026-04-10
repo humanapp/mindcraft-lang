@@ -55,12 +55,12 @@ Additional Guidance:
 - Unary operators: `-`, `!`, `~`.
 - Logical short-circuit: `&&`, `||`, `??`.
 - `typeof` -> `TYPE_CHECK` opcode (checks `NativeType` tag).
+- `instanceof` -> `INSTANCE_OF` opcode (exact struct typeId check, no inheritance).
 
 ### What does not work
 
 | Feature | Current behavior |
 |---------|-----------------|
-| `instanceof` | `UnsupportedOperator` diagnostic |
 | `>>>` (unsigned right shift) | `UnsupportedOperator` diagnostic (deferred) |
 
 ---

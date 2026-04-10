@@ -44,7 +44,7 @@ The brain VM (`packages/core/src/brain/runtime/`) is a stack-based bytecode virt
 | 120-121 | Fields     | `GET_FIELD`, `SET_FIELD`                                                                             |
 | 130-131 | Locals     | `LOAD_LOCAL`, `STORE_LOCAL`                                                                          |
 | 140-141 | Callsite   | `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR`                                                            |
-| 150     | Types      | `TYPE_CHECK`                                                                                         |
+| 150-151 | Types      | `TYPE_CHECK`, `INSTANCE_OF`                                                                  |
 | 160-161 | Indirect   | `CALL_INDIRECT`, `CALL_INDIRECT_ARGS`                                                                |
 | 170-171 | Closures   | `MAKE_CLOSURE`, `LOAD_CAPTURE`                                                                       |
 

@@ -416,6 +416,10 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.TYPE_CHECK, a: nativeType });
   }
 
+  instanceOf(typeIdConstIdx: number): void {
+    this.emit({ op: Op.INSTANCE_OF, a: typeIdConstIdx });
+  }
+
   // ==========================================
   // Finalization
   // ==========================================

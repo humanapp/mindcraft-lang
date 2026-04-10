@@ -322,6 +322,7 @@ export enum Op {
 
   // Type introspection
   TYPE_CHECK = 150,
+  INSTANCE_OF,
 
   // Indirect function calls
   CALL_INDIRECT = 160,

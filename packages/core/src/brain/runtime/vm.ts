@@ -701,6 +701,8 @@ export class VM implements IVM {
           return this.execStoreCallsiteVar(fiber, ins, frame);
         case Op.TYPE_CHECK:
           return this.execTypeCheck(fiber, ins, frame);
+        case Op.INSTANCE_OF:
+          return this.execInstanceOf(fiber, ins, frame);
         case Op.CALL_INDIRECT:
           return this.execCallIndirect(fiber, ins, frame);
         case Op.CALL_INDIRECT_ARGS:
@@ -864,6 +866,23 @@ export class VM implements IVM {
   private execTypeCheck(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const value = this.pop(fiber);
     this.push(fiber, V.bool(value.t === (ins.a ?? 0)));
+    frame.pc++;
+    return undefined;
+  }
+
+  private execInstanceOf(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const value = this.pop(fiber);
+    const constIdx = ins.a ?? 0;
+    if (constIdx < 0 || constIdx >= this.prog.constants.size()) {
+      throw new Error(`INSTANCE_OF: constant index ${constIdx} out of bounds`);
+    }
+    const typeIdVal = this.prog.constants.get(constIdx)!;
+    if (!isStringValue(typeIdVal)) {
+      throw new Error("INSTANCE_OF: constant must be a string typeId");
+    }
+    const targetTypeId = typeIdVal.v;
+    const result = isStructValue(value) && value.typeId === targetTypeId;
+    this.push(fiber, V.bool(result));
     frame.pc++;
     return undefined;
   }
