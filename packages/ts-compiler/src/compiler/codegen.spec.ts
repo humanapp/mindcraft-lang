@@ -9392,8 +9392,8 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { ambientSource, services });
     assert.ok(
-      result.diagnostics.some((d) => d.code === LoweringDiagCode.ThisOutsideClassContext),
-      `Expected ThisOutsideClassContext diagnostic, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
+      result.diagnostics.some((d) => d.code === LoweringDiagCode.ClassObjectUsageNotSupported),
+      `Expected ClassObjectUsageNotSupported diagnostic for bare 'this' in static method, got: ${JSON.stringify(result.diagnostics.map((d) => d.code))}`
     );
   });
 
@@ -10594,6 +10594,207 @@ export default Sensor({
       // Counter.count++ -> b=6 (old value), count=7
       // return 6 + 6 + 7 = 19
       assert.equal((r.result as NumberValue).v, 19);
+    }
+  });
+
+  test("this.field read and this.method() call in static method", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Counter {
+  static count: number = 0;
+  static increment(): void {
+    this.count = this.count + 1;
+  }
+  static getCount(): number {
+    return this.count;
+  }
+}
+
+export default Sensor({
+  name: "this-static",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.increment();
+    Counter.increment();
+    Counter.increment();
+    return Counter.getCount();
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 5000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 3);
+    }
+  });
+
+  test("this.field compound assignment and increment in static method", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Acc {
+  static value: number = 10;
+  static addAndInc(): number {
+    this.value += 5;
+    ++this.value;
+    return this.value;
+  }
+}
+
+export default Sensor({
+  name: "this-compound",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return Acc.addAndInc();
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 5000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      // 10 + 5 = 15, then ++15 = 16
+      assert.equal((r.result as NumberValue).v, 16);
+    }
+  });
+
+  test("this.otherMethod() call chain in static methods", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Utils {
+  static base: number = 10;
+  static double(): number {
+    return this.base * 2;
+  }
+  static doublePlusFive(): number {
+    return this.double() + 5;
+  }
+}
+
+export default Sensor({
+  name: "this-chain",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return Utils.doublePlusFive();
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 5000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      // base=10, double()=20, doublePlusFive()=25
+      assert.equal((r.result as NumberValue).v, 25);
+    }
+  });
+
+  test("bare this in static method produces diagnostic", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Foo {
+  static getSelf(): number {
+    const x = this;
+    return 0;
+  }
+}
+
+export default Sensor({
+  name: "bare-this",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return Foo.getSelf();
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.ok(result.diagnostics.length > 0, "Should produce at least one diagnostic");
+  });
+
+  test("this.field postfix increment in static method", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+class Seq {
+  static val: number = 0;
+  static next(): number {
+    return this.val++;
+  }
+}
+
+export default Sensor({
+  name: "this-postfix",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const a = Seq.next();
+    const b = Seq.next();
+    const c = Seq.next();
+    return a + b + c;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 5000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      // next() returns old value then increments: 0, 1, 2 -> 0+1+2 = 3
+      assert.equal((r.result as NumberValue).v, 3);
     }
   });
 });

@@ -142,6 +142,7 @@ interface LowerContext {
   funcIdCounter: { value: number };
   closureFunctions: Map<number, FunctionEntry>;
   thisLocalIndex?: number;
+  staticClassInfo?: ClassInfo;
   currentFunctionName: string;
   currentReturnTypeId?: TypeId;
   optionalChainSubstitution?: { targetExpr: ts.Expression; localIndex: number };
@@ -2562,6 +2563,16 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
   } else if (ts.isAwaitExpression(expr)) {
     lowerAwaitExpression(expr, ctx);
   } else if (expr.kind === ts.SyntaxKind.ThisKeyword) {
+    if (ctx.staticClassInfo) {
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.ClassObjectUsageNotSupported,
+          "Bare 'this' in a static method is not supported; use 'this.field' or 'this.method()' to access static members",
+          expr
+        )
+      );
+      return;
+    }
     if (ctx.thisLocalIndex === undefined) {
       ctx.diagnostics.push(
         makeDiag(
@@ -2762,6 +2773,9 @@ function lowerCallExpressionCore(expr: ts.CallExpression, ctx: LowerContext): vo
     if (lowerStringMethodCall(expr, expr.expression, ctx)) {
       return;
     }
+    if (lowerThisStaticMethodCall(expr, expr.expression, ctx)) {
+      return;
+    }
     if (lowerStaticMethodCall(expr, expr.expression, ctx)) {
       return;
     }
@@ -2793,6 +2807,56 @@ function bareClassName(qualOrBareName: string): string {
   const sep = qualOrBareName.indexOf("::");
   if (sep >= 0) return qualOrBareName.slice(sep + 2);
   return qualOrBareName;
+}
+
+function lowerThisStaticMethodCall(
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  ctx: LowerContext
+): boolean {
+  const thisStatic = resolveThisStaticAccess(propAccess, ctx);
+  if (!thisStatic) return false;
+
+  if (thisStatic.kind === "method") {
+    const funcId = ctx.functionTable.get(thisStatic.funcName);
+    if (funcId !== undefined) {
+      const argc = lowerCallArgumentsWithTargetTypes(expr, ctx);
+      ctx.ir.push({ kind: "Call", funcIndex: funcId, argc });
+      return true;
+    }
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.UnsupportedFunctionCall,
+        `Static method '${thisStatic.funcName}' is not in the function table`,
+        expr
+      )
+    );
+    return true;
+  }
+
+  if (thisStatic.kind === "field") {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.UnsupportedFunctionCall,
+        `'this.${propAccess.name.text}' is a static field, not a method`,
+        expr
+      )
+    );
+    return true;
+  }
+
+  if (thisStatic.kind === "no-such-member") {
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NoSuchStaticMember,
+        `No static member '${propAccess.name.text}' exists on class '${ctx.staticClassInfo!.name}'`,
+        expr
+      )
+    );
+    return true;
+  }
+
+  return false;
 }
 
 function lowerStaticMethodCall(
@@ -3174,6 +3238,11 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
   }
 
   if (ts.isPropertyAccessExpression(expr.left) && expr.left.expression.kind === ts.SyntaxKind.ThisKeyword) {
+    const thisStatic = resolveThisStaticAccess(expr.left, ctx);
+    if (thisStatic) {
+      lowerStaticFieldAssignment(expr, expr.left, thisStatic, ctx);
+      return;
+    }
     lowerThisFieldAssignment(expr, ctx);
     return;
   }
@@ -3343,20 +3412,22 @@ function lowerStaticFieldAssignment(
   ctx: LowerContext
 ): void {
   if (staticAccess.kind === "method") {
+    const lhsText = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : "this";
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.AssignmentTargetNotVariable,
-        `'${(propAccess.expression as ts.Identifier).text}.${propAccess.name.text}' is a static method, not an assignable field`,
+        `'${lhsText}.${propAccess.name.text}' is a static method, not an assignable field`,
         propAccess
       )
     );
     return;
   }
   if (staticAccess.kind === "no-such-member") {
+    const lhsText = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : "this";
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.NoSuchStaticMember,
-        `No static member '${propAccess.name.text}' exists on class '${(propAccess.expression as ts.Identifier).text}'`,
+        `No static member '${propAccess.name.text}' exists on class '${lhsText}'`,
         propAccess
       )
     );
@@ -3366,10 +3437,11 @@ function lowerStaticFieldAssignment(
   const slot = staticAccess.callsiteVarIndex;
 
   if (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+    const lhsText = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : "this";
     lowerExpressionWithExpectedType(
       expr.right,
       resolveExpressionTypeId(propAccess, ctx),
-      `assignment to '${(propAccess.expression as ts.Identifier).text}.${propAccess.name.text}'`,
+      `assignment to '${lhsText}.${propAccess.name.text}'`,
       expr.right,
       ctx
     );
@@ -3487,7 +3559,7 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
   let storeEmit: () => void;
 
   if (ts.isPropertyAccessExpression(expr.operand)) {
-    const staticAccess = resolveStaticMemberAccess(expr.operand, ctx);
+    const staticAccess = resolveStaticMemberAccess(expr.operand, ctx) ?? resolveThisStaticAccess(expr.operand, ctx);
     if (staticAccess) {
       if (staticAccess.kind === "method") {
         ctx.diagnostics.push(
@@ -3566,7 +3638,7 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   let storeEmit: () => void;
 
   if (ts.isPropertyAccessExpression(expr.operand)) {
-    const staticAccess = resolveStaticMemberAccess(expr.operand, ctx);
+    const staticAccess = resolveStaticMemberAccess(expr.operand, ctx) ?? resolveThisStaticAccess(expr.operand, ctx);
     if (staticAccess) {
       if (staticAccess.kind === "method") {
         ctx.diagnostics.push(
@@ -6197,6 +6269,26 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     return;
   }
 
+  const thisStatic = resolveThisStaticAccess(expr, ctx);
+  if (thisStatic) {
+    if (thisStatic.kind === "field") {
+      ctx.ir.push({ kind: "LoadCallsiteVar", index: thisStatic.callsiteVarIndex });
+      return;
+    }
+    if (thisStatic.kind === "method") {
+      ctx.ir.push({ kind: "PushFunctionRef", funcName: thisStatic.funcName });
+      return;
+    }
+    ctx.diagnostics.push(
+      makeDiag(
+        LoweringDiagCode.NoSuchStaticMember,
+        `No static member '${expr.name.text}' exists on class '${ctx.staticClassInfo!.name}'`,
+        expr
+      )
+    );
+    return;
+  }
+
   const isOptChain = ts.isOptionalChain(expr);
   const rawObjType = ctx.checker.getTypeAtLocation(expr.expression);
   const objType = isOptChain ? ctx.checker.getNonNullableType(rawObjType) : rawObjType;
@@ -6479,6 +6571,26 @@ function resolveStaticMemberAccess(expr: ts.PropertyAccessExpression, ctx: Lower
   const methodFuncId = ci.staticMethodFuncIds.get(memberName);
   if (methodFuncId !== undefined) {
     return { kind: "method", funcName: `${className}$${memberName}` };
+  }
+
+  return { kind: "no-such-member" };
+}
+
+function resolveThisStaticAccess(expr: ts.PropertyAccessExpression, ctx: LowerContext): StaticMemberAccessResolution {
+  if (expr.expression.kind !== ts.SyntaxKind.ThisKeyword) return undefined;
+  const ci = ctx.staticClassInfo;
+  if (!ci) return undefined;
+
+  const memberName = expr.name.text;
+
+  const fieldSlot = ci.staticFieldSlots.get(memberName);
+  if (fieldSlot !== undefined) {
+    return { kind: "field", callsiteVarIndex: fieldSlot };
+  }
+
+  const methodFuncId = ci.staticMethodFuncIds.get(memberName);
+  if (methodFuncId !== undefined) {
+    return { kind: "method", funcName: `${ci.name}$${memberName}` };
   }
 
   return { kind: "no-such-member" };
@@ -7451,6 +7563,7 @@ function lowerClassDeclaration(
       funcIdCounter,
       closureFunctions,
       thisLocalIndex: undefined,
+      staticClassInfo: ci,
       currentFunctionName: `${ci.name}$${methodName}`,
       currentReturnTypeId: resolveSignatureReturnTypeId(member, checker, services),
       classInfos,
