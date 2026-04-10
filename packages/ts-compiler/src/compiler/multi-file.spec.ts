@@ -1622,3 +1622,352 @@ export default Sensor({
     }
   });
 });
+
+describe("multi-file: cross-file static members", () => {
+  before(() => {
+    services = __test__createBrainServices();
+  });
+
+  test("static field read from imported class", () => {
+    const result = compileProject({
+      "helpers/counter.ts": `
+export class Counter {
+  static count: number = 42;
+}
+`,
+      "sensors/read-static.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Counter } from "../helpers/counter";
+
+export default Sensor({
+  name: "read-static",
+  output: "number",
+  onExecute(ctx: Context): number {
+    return Counter.count;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/read-static.ts");
+    assert.ok(entry, "expected entry-point result");
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 42);
+    }
+  });
+
+  test("static method call on imported class", () => {
+    const result = compileProject({
+      "helpers/counter.ts": `
+export class Counter {
+  static count: number = 0;
+  static increment(): void {
+    Counter.count += 1;
+  }
+}
+`,
+      "sensors/call-static.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Counter } from "../helpers/counter";
+
+export default Sensor({
+  name: "call-static",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.increment();
+    Counter.increment();
+    Counter.increment();
+    return Counter.count;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/call-static.ts");
+    assert.ok(entry, "expected entry-point result");
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 3);
+    }
+  });
+
+  test("static field assignment from importing file", () => {
+    const result = compileProject({
+      "helpers/counter.ts": `
+export class Counter {
+  static count: number = 0;
+}
+`,
+      "sensors/assign-static.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Counter } from "../helpers/counter";
+
+export default Sensor({
+  name: "assign-static",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.count = 99;
+    return Counter.count;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/assign-static.ts");
+    assert.ok(entry, "expected entry-point result");
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 2000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 99);
+    }
+  });
+
+  test("static compound assignment and increment from importing file", () => {
+    const result = compileProject({
+      "helpers/counter.ts": `
+export class Counter {
+  static count: number = 10;
+}
+`,
+      "sensors/compound-static.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Counter } from "../helpers/counter";
+
+export default Sensor({
+  name: "compound-static",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.count += 5;
+    ++Counter.count;
+    return Counter.count;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/compound-static.ts");
+    assert.ok(entry, "expected entry-point result");
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 3000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 16);
+    }
+  });
+
+  test("type error caught for wrong static field type across files", () => {
+    const result = compileProject({
+      "helpers/counter.ts": `
+export class Counter {
+  static count: number = 0;
+}
+`,
+      "sensors/type-error.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Counter } from "../helpers/counter";
+
+export default Sensor({
+  name: "type-error",
+  output: "number",
+  onExecute(ctx: Context): number {
+    Counter.count = "hello";
+    return Counter.count;
+  },
+});
+`,
+    });
+
+    assert.ok(result.tsErrors.size > 0, "expected TS type error for string-to-number assignment");
+  });
+
+  test("class with both static and instance members accessed cross-file", () => {
+    const result = compileProject({
+      "helpers/tracker.ts": `
+export class Tracker {
+  static total: number = 0;
+  value: number;
+  constructor(v: number) {
+    this.value = v;
+    Tracker.total += v;
+  }
+}
+`,
+      "sensors/use-tracker.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { Tracker } from "../helpers/tracker";
+
+export default Sensor({
+  name: "use-tracker",
+  output: "number",
+  onExecute(ctx: Context): number {
+    const a = new Tracker(10);
+    const b = new Tracker(20);
+    return Tracker.total;
+  },
+});
+`,
+    });
+
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+    const entry = result.results.get("sensors/use-tracker.ts");
+    assert.ok(entry, "expected entry-point result");
+    assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
+    assert.ok(entry.program);
+
+    const prog = entry.program!;
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+    runActivation(prog, handles, callsiteVars);
+
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 5000;
+    const r = vm.runFiber(fiber, mkScheduler());
+    assert.equal(r.status, VmStatus.DONE);
+    if (r.status === VmStatus.DONE) {
+      assert.equal((r.result as NumberValue).v, 30);
+    }
+  });
+
+  test("two tiles importing same static class get independent callsite copies", () => {
+    const files = {
+      "helpers/state.ts": `
+export class State {
+  static value: number = 0;
+  static add(n: number): void {
+    State.value += n;
+  }
+}
+`,
+      "sensors/tile-a.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { State } from "../helpers/state";
+
+export default Sensor({
+  name: "tile-a",
+  output: "number",
+  onExecute(ctx: Context): number {
+    State.add(10);
+    State.add(20);
+    return State.value;
+  },
+});
+`,
+      "sensors/tile-b.ts": `
+import { Sensor, type Context } from "mindcraft";
+import { State } from "../helpers/state";
+
+export default Sensor({
+  name: "tile-b",
+  output: "number",
+  onExecute(ctx: Context): number {
+    State.add(100);
+    return State.value;
+  },
+});
+`,
+    };
+
+    const result = compileProject(files);
+    assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
+
+    const entryA = result.results.get("sensors/tile-a.ts");
+    assert.ok(entryA);
+    assert.deepStrictEqual(entryA.diagnostics, [], `tile-a diagnostics: ${JSON.stringify(entryA.diagnostics)}`);
+    assert.ok(entryA.program);
+
+    const entryB = result.results.get("sensors/tile-b.ts");
+    assert.ok(entryB);
+    assert.deepStrictEqual(entryB.diagnostics, [], `tile-b diagnostics: ${JSON.stringify(entryB.diagnostics)}`);
+    assert.ok(entryB.program);
+
+    const progA = entryA.program!;
+    const handlesA = new HandleTable(100);
+    const csvA = List.from<Value>(Array.from({ length: progA.numStateSlots }, () => NIL_VALUE));
+    runActivation(progA, handlesA, csvA);
+
+    const progB = entryB.program!;
+    const handlesB = new HandleTable(100);
+    const csvB = List.from<Value>(Array.from({ length: progB.numStateSlots }, () => NIL_VALUE));
+    runActivation(progB, handlesB, csvB);
+
+    {
+      const vm = new runtime.VM(services, progA, handlesA);
+      const fiber = vm.spawnFiber(1, progA.entryFuncId, List.empty<Value>(), mkCtx());
+      fiber.callsiteVars = csvA;
+      fiber.instrBudget = 5000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) {
+        assert.equal((r.result as NumberValue).v, 30, "tile-a: 0 + 10 + 20 = 30");
+      }
+    }
+
+    {
+      const vm = new runtime.VM(services, progB, handlesB);
+      const fiber = vm.spawnFiber(1, progB.entryFuncId, List.empty<Value>(), mkCtx());
+      fiber.callsiteVars = csvB;
+      fiber.instrBudget = 5000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      if (r.status === VmStatus.DONE) {
+        assert.equal((r.result as NumberValue).v, 100, "tile-b: 0 + 100 = 100 (independent from tile-a)");
+      }
+    }
+  });
+});

@@ -119,6 +119,19 @@ infrastructure inventory. Relevant highlights:
 - Enum member access (`EnumName.Member`) works via `resolveEnumPropertyAccess`
   which detects the LHS as a type reference rather than a runtime value -- the
   closest existing analog to `ClassName.staticField`.
+- Cross-file static access works end-to-end with no additional source changes.
+  `collectImports` already passes full `ClassDeclaration` AST nodes, and the
+  imported-class scan blocks in `lowerProgram` allocate callsite vars and
+  register static methods identically to local classes. TypeScript's checker
+  handles cross-file type resolution natively since all user files share one
+  `ts.Program`.
+- `buildAmbientDeclarations` in ambient.ts is irrelevant for user-defined
+  TypeScript classes -- it only generates declarations for Mindcraft-native
+  types from `ITypeRegistry`. User classes are module-qualified (name contains
+  `::`) and filtered out. No ambient changes are needed.
+- Per-tile isolation: each entry-point file compiles to its own
+  `UserAuthoredProgram` with independent callsite var allocations. Two tiles
+  importing the same class get independent copies of static field slots.
 
 ---
 
@@ -865,3 +878,44 @@ without modification.
   No silent no-ops exist.
 
 **Test results:** 669 tests, 0 failures.
+
+### S7 -- Cross-File Static Access and Ambient Declarations
+
+**Date:** 2026-04-09
+
+**Files changed:**
+
+- `multi-file.spec.ts` -- added seven tests in a new
+  `"multi-file: cross-file static members (S7)"` describe block: static field
+  read from imported class (returns 42); static method call on imported class
+  (increment x3, returns 3); static field assignment from importing file
+  (returns 99); compound assignment + prefix increment across files (returns 16);
+  type error caught for wrong static field type across files; class with both
+  static and instance members accessed cross-file (Tracker.total, returns 30);
+  two tiles importing same static class get independent callsite copies
+  (tile-a=30, tile-b=100).
+
+**Observations:**
+
+- No source changes were required. The S2-S6 infrastructure already handled
+  imported classes identically to local classes. The `lowerProgram` function's
+  imported-class scan block allocates callsite vars for static fields and
+  registers static methods in the function table using the same code paths as
+  local classes.
+- `buildAmbientDeclarations` in ambient.ts is irrelevant for user-defined
+  TypeScript classes. It only generates `.d.ts` content for Mindcraft-native
+  types from `ITypeRegistry`. User classes are module-qualified (name contains
+  `::`) and filtered out. Cross-file type resolution is handled natively by
+  TypeScript's checker since all user files share a single `ts.Program`.
+- The spec anticipated changes to ambient.ts, project.ts, and lowering.ts, but
+  exploration confirmed none were needed. This phase was purely verification
+  via new tests.
+- Per-tile isolation was verified: two entry-point tiles importing the same
+  static class each get independent callsite var allocations. Tile A accumulating
+  30 and tile B accumulating 100 run without cross-contamination.
+- S7 is the final phase of the static class members feature. The complete
+  feature set (S1-S7) covers: validator ban lift, static field storage/init,
+  static method registration/compilation, static field access, static method
+  calls, static field assignment/compound/increment, and cross-file access.
+
+**Test results:** 676 tests, 0 failures.
