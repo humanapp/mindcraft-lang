@@ -206,7 +206,8 @@ export default Sensor({
 });
 `;
     const sensorResult = compileUserTile(sensorSource, { services });
-    assert.deepStrictEqual(sensorResult.diagnostics, []);
+    const sensorErrors = sensorResult.diagnostics.filter((d) => d.severity === "error");
+    assert.deepStrictEqual(sensorErrors, []);
     assert.ok(sensorResult.program);
 
     const actuatorSource = `
@@ -222,7 +223,8 @@ export default Actuator({
 });
 `;
     const actuatorResult = compileUserTile(actuatorSource, { services });
-    assert.deepStrictEqual(actuatorResult.diagnostics, []);
+    const actuatorErrors = actuatorResult.diagnostics.filter((d) => d.severity === "error");
+    assert.deepStrictEqual(actuatorErrors, []);
     assert.ok(actuatorResult.program);
   });
 });

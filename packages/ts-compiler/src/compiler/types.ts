@@ -18,6 +18,10 @@ export interface UserAuthoredProgram extends UserActionArtifact {
   name: string;
   params: ExtractedParam[];
   debugMetadata?: DebugMetadata;
+  label?: string;
+  iconUrl?: string;
+  docsMarkdown?: string;
+  tags?: string[];
 }
 
 export interface LinkedUserProgram {
@@ -33,6 +37,13 @@ export interface CompileOptions {
   services: BrainServices;
 }
 
+export interface SourceSpan {
+  line: number;
+  column: number;
+  endLine: number;
+  endColumn: number;
+}
+
 export interface ExtractedDescriptor {
   kind: "sensor" | "actuator";
   name: string;
@@ -41,6 +52,12 @@ export interface ExtractedDescriptor {
   execIsAsync: boolean;
   onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction;
   onPageEnteredNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null;
+  label?: string;
+  icon?: string;
+  iconSpan?: SourceSpan;
+  docs?: string;
+  docsSpan?: SourceSpan;
+  tags?: string[];
 }
 
 export interface ExtractedParam {

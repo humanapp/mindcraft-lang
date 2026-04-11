@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { DescriptorDiagCode } from "./diag-codes.js";
-import type { CompileDiagnostic, ExtractedDescriptor, ExtractedParam } from "./types.js";
+import type { CompileDiagnostic, ExtractedDescriptor, ExtractedParam, SourceSpan } from "./types.js";
 
 export interface ExtractionResult {
   descriptor?: ExtractedDescriptor;
@@ -22,6 +22,17 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
       endLine: end.line + 1,
       endColumn: end.character + 1,
     });
+  }
+
+  function spanOf(node: ts.Node): SourceSpan {
+    const start = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+    const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());
+    return {
+      line: start.line + 1,
+      column: start.character + 1,
+      endLine: end.line + 1,
+      endColumn: end.character + 1,
+    };
   }
 
   let defaultExport: ts.ExportAssignment | undefined;
@@ -99,6 +110,12 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   let onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction | undefined;
   let execIsAsync = false;
   let onPageEnteredNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null = null;
+  let label: string | undefined;
+  let icon: string | undefined;
+  let iconSpan: SourceSpan | undefined;
+  let docs: string | undefined;
+  let docsSpan: SourceSpan | undefined;
+  let tags: string[] | undefined;
 
   for (const prop of arg.properties) {
     if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
@@ -149,6 +166,51 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
             );
           }
           break;
+
+        case "label":
+          if (ts.isStringLiteral(prop.initializer)) {
+            label = prop.initializer.text;
+          } else {
+            addDiag(DescriptorDiagCode.LabelMustBeStringLiteral, prop.initializer, "`label` must be a string literal.");
+          }
+          break;
+
+        case "icon":
+          if (ts.isStringLiteral(prop.initializer)) {
+            icon = prop.initializer.text;
+            iconSpan = spanOf(prop.initializer);
+          } else {
+            addDiag(DescriptorDiagCode.IconMustBeStringLiteral, prop.initializer, "`icon` must be a string literal.");
+          }
+          break;
+
+        case "docs":
+          if (ts.isStringLiteral(prop.initializer)) {
+            docs = prop.initializer.text;
+            docsSpan = spanOf(prop.initializer);
+          } else {
+            addDiag(DescriptorDiagCode.DocsMustBeStringLiteral, prop.initializer, "`docs` must be a string literal.");
+          }
+          break;
+
+        case "tags":
+          if (ts.isArrayLiteralExpression(prop.initializer)) {
+            tags = [];
+            for (const elem of prop.initializer.elements) {
+              if (ts.isStringLiteral(elem)) {
+                tags.push(elem.text);
+              } else {
+                addDiag(
+                  DescriptorDiagCode.TagElementMustBeStringLiteral,
+                  elem,
+                  "Each element of `tags` must be a string literal."
+                );
+              }
+            }
+          } else {
+            addDiag(DescriptorDiagCode.TagsMustBeArrayLiteral, prop.initializer, "`tags` must be an array literal.");
+          }
+          break;
       }
     } else if (ts.isMethodDeclaration(prop) && ts.isIdentifier(prop.name)) {
       if (prop.name.text === "onExecute") {
@@ -183,6 +245,12 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
       execIsAsync,
       onExecuteNode: onExecuteNode!,
       onPageEnteredNode,
+      label,
+      icon,
+      iconSpan,
+      docs,
+      docsSpan,
+      tags,
     },
     diagnostics: [],
   };

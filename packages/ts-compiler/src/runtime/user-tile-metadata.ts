@@ -1,4 +1,4 @@
-import { type ActionDescriptor, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/brain";
+import { type ActionDescriptor, type ITileMetadata, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import type { ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
 
@@ -58,10 +58,17 @@ export function buildUserTileMetadata(
     return undefined;
   }
 
+  const metadata: ITileMetadata = {
+    label: program.label ?? program.name,
+    iconUrl: program.iconUrl,
+    docsMarkdown: program.docsMarkdown,
+    tags: program.tags,
+  };
+
   const actionTile =
     program.kind === "sensor"
-      ? new BrainTileSensorDef(program.key, actionDescriptor)
-      : new BrainTileActuatorDef(program.key, actionDescriptor);
+      ? new BrainTileSensorDef(program.key, actionDescriptor, { metadata })
+      : new BrainTileActuatorDef(program.key, actionDescriptor, { metadata });
 
   return {
     actionDescriptor,

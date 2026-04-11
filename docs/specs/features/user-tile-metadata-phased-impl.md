@@ -20,11 +20,11 @@ Phases here are numbered M1-M10 to avoid collision with other series.
 
 Each phase follows this loop:
 
-1. Copilot implements the phase.
-2. Copilot stops and presents work for review.
+1. Agent implements the phase.
+2. Agent stops and presents work for review.
 3. The user reviews, requests changes or approves.
 4. Only after the user declares the phase complete does the post-mortem happen.
-5. Post-mortem writes the Phase Log entry -- with special importance placed on capturing discoveries, unexpected obstacles, compromises, and surfaced risks. Then update Current State, and any repo memory notes.
+5. Agent writes the post-mortem as a Phase Log entry -- with special importance placed on capturing discoveries, unexpected obstacles, compromises made, and surfaced risks. Then update Current State section, and write any repo memory notes to carry forward.
 
 Do NOT write Phase Log entries or amend this spec during implementation. The
 Phase Log is a post-mortem artifact.
@@ -33,9 +33,10 @@ Phase Log is a post-mortem artifact.
 
 ## Current State
 
-Phase M7 complete. `SensorConfig` and `ActuatorConfig` in the ambient
-`mindcraft.d.ts` now accept `label?`, `icon?`, `docs?`, and `tags?`.
-809 ts-compiler tests pass, typecheck and lint clean.
+Phase M8 complete. The ts-compiler extracts `label`, `icon`, `docs`, and
+`tags` from the config AST, resolves icon/docs paths against the workspace
+VFS, and passes metadata through to `BrainTileSensorDef`/`BrainTileActuatorDef`
+via `ITileMetadata`. 817 ts-compiler tests pass, typecheck and lint clean.
 
 ---
 
@@ -671,4 +672,60 @@ be added later if/when needed.
   zero diagnostics.
 
 809 tests pass.
+
+### M8 -- Compiler extraction of metadata fields
+
+**packages/ts-compiler/src/compiler/diag-codes.ts:**
+- Added `DescriptorDiagCode` entries 2020-2024: `LabelMustBeStringLiteral`,
+  `IconMustBeStringLiteral`, `DocsMustBeStringLiteral`,
+  `TagsMustBeArrayLiteral`, `TagElementMustBeStringLiteral`.
+- Added `CompileDiagCode.MetadataFileNotFound` (5006) for missing icon/docs
+  files in the workspace VFS.
+
+**packages/ts-compiler/src/compiler/types.ts:**
+- New `SourceSpan` interface (`line`, `column`, `endLine`, `endColumn`).
+- `ExtractedDescriptor` gained `label?`, `icon?`, `iconSpan?`, `docs?`,
+  `docsSpan?`, `tags?`.
+- `UserAuthoredProgram` gained `label?`, `iconUrl?`, `docsMarkdown?`,
+  `tags?`.
+
+**packages/ts-compiler/src/compiler/descriptor.ts:**
+- New `spanOf()` helper captures 1-based line/column spans from AST nodes.
+- Four new `case` branches in the property switch: `label` (string literal),
+  `icon` (string literal + span), `docs` (string literal + span), `tags`
+  (array of string literals). All produce typed diagnostics on bad input.
+- Returned descriptor includes all new fields.
+
+**packages/ts-compiler/src/compiler/project.ts:**
+- New `resolveRelativePath()` helper normalizes `../` and `./` in paths.
+- After descriptor extraction, resolves `icon` relative to source file,
+  checks `_files` for existence, stores `/vfs/<path>` as `iconUrl` or emits
+  `MetadataFileNotFound` warning with span info.
+- Resolves `docs` the same way, reads `.md` content from `_files` into
+  `docsMarkdown` or emits warning with span info.
+- `label` defaults to `name`; `tags` passed through.
+
+**packages/ts-compiler/src/runtime/user-tile-metadata.ts:**
+- `buildUserTileMetadata()` constructs an `ITileMetadata` object from the
+  program's `label`, `iconUrl`, `docsMarkdown`, `tags` and passes it as
+  `opts.metadata` to `BrainTileSensorDef`/`BrainTileActuatorDef` constructors.
+
+**packages/ts-compiler/src/compiler/metadata.spec.ts (new):**
+- 8 tests: full extraction, label defaulting, missing icon warning, missing
+  docs warning, subdirectory path resolution, label/tags/tag-element
+  validation diagnostics.
+
+**packages/ts-compiler/src/compiler/ambient.spec.ts:**
+- Updated M7 test to filter for errors only (warnings about missing files
+  are expected since single-file compile has no VFS siblings).
+
+Discoveries:
+- `MetadataFileNotFound` diagnostics initially lacked span info (reported as
+  1:1). Fixed by storing `iconSpan`/`docsSpan` on `ExtractedDescriptor` and
+  spreading them into the diagnostic.
+- TS type-checking runs before descriptor extraction, so tests for bad types
+  (e.g., `tags: "string"`) need `as any` casts to bypass TS and reach the
+  descriptor validator.
+
+817 tests pass (8 new).
 

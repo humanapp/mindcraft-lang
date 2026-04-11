@@ -108,6 +108,16 @@ export enum DescriptorDiagCode {
   ParamAnonymousMustBeBoolean = 2018,
   /** Param definition is missing the required type property */
   ParamDefinitionMissingType = 2019,
+  /** label property value is not a string literal */
+  LabelMustBeStringLiteral = 2020,
+  /** icon property value is not a string literal */
+  IconMustBeStringLiteral = 2021,
+  /** docs property value is not a string literal */
+  DocsMustBeStringLiteral = 2022,
+  /** tags property value is not an array literal */
+  TagsMustBeArrayLiteral = 2023,
+  /** tags array element is not a string literal */
+  TagElementMustBeStringLiteral = 2024,
 }
 
 /**
@@ -375,6 +385,8 @@ export enum CompileDiagCode {
   DuplicateImportedSymbol = 5004,
   /** User-authored enum declaration is invalid or unsupported */
   InvalidEnumDeclaration = 5005,
+  /** A metadata file (icon or docs) referenced by a tile config was not found */
+  MetadataFileNotFound = 5006,
 }
 
 /**

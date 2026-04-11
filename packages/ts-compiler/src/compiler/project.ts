@@ -100,6 +100,21 @@ function buildUserActionKey(kind: "sensor" | "actuator", name: string): string {
   return `user.${kind}.${name}`;
 }
 
+function resolveRelativePath(sourceFilePath: string, relativePath: string): string {
+  const dir = sourceFilePath.replace(/\/[^/]+$/, "");
+  const parts = `${dir}/${relativePath}`.split("/");
+  const resolved: string[] = [];
+  for (const part of parts) {
+    if (part === "" || part === ".") continue;
+    if (part === "..") {
+      resolved.pop();
+    } else {
+      resolved.push(part);
+    }
+  }
+  return `/${resolved.join("/")}`;
+}
+
 function isUserTsFile(path: string): boolean {
   return path.endsWith(".ts") && !path.endsWith(".d.ts");
 }
@@ -359,6 +374,43 @@ export class UserTileProject {
 
     const debugMetadata = assembleDebugMetadata(funcs, functionDebugInfo, compilerFiles);
 
+    const metaDiags: CompileDiagnostic[] = [];
+    let iconUrl: string | undefined;
+    let docsMarkdown: string | undefined;
+    const label = descriptor.label ?? descriptor.name;
+    const tags = descriptor.tags;
+
+    if (descriptor.icon) {
+      const resolvedIcon = resolveRelativePath(sourceFile.fileName, descriptor.icon);
+      const vfsIcon = toVfsPath(resolvedIcon);
+      if (this._files.has(vfsIcon)) {
+        iconUrl = `/vfs/${vfsIcon}`;
+      } else {
+        metaDiags.push({
+          code: CompileDiagCode.MetadataFileNotFound,
+          message: `Icon file not found: "${descriptor.icon}"`,
+          severity: "warning",
+          ...descriptor.iconSpan,
+        });
+      }
+    }
+
+    if (descriptor.docs) {
+      const resolvedDocs = resolveRelativePath(sourceFile.fileName, descriptor.docs);
+      const vfsDocs = toVfsPath(resolvedDocs);
+      const docsContent = this._files.get(vfsDocs);
+      if (docsContent !== undefined) {
+        docsMarkdown = docsContent;
+      } else {
+        metaDiags.push({
+          code: CompileDiagCode.MetadataFileNotFound,
+          message: `Docs file not found: "${descriptor.docs}"`,
+          severity: "warning",
+          ...descriptor.docsSpan,
+        });
+      }
+    }
+
     const program: UserAuthoredProgram = {
       version: 1,
       functions: List.from(emittedFunctions),
@@ -377,9 +429,13 @@ export class UserTileProject {
       revisionId: generateRevisionId(),
       params: qualifiedParams,
       debugMetadata,
+      label,
+      iconUrl,
+      docsMarkdown,
+      tags,
     };
 
-    return { diagnostics: [], program, descriptor, functionDebugInfo };
+    return { diagnostics: metaDiags, program, descriptor, functionDebugInfo };
   }
 }
 
