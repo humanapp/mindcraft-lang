@@ -339,6 +339,10 @@ const AMBIENT_MODULE_END = `
   export interface SensorConfig {
     name: string;
     output: MindcraftType;
+    label?: string;
+    icon?: string;
+    docs?: string;
+    tags?: string[];
     params?: Record<string, ParamDef>;
     onExecute(ctx: Context, params: Record<string, unknown>): unknown;
     onPageEntered?(ctx: Context): void;
@@ -346,6 +350,10 @@ const AMBIENT_MODULE_END = `
 
   export interface ActuatorConfig {
     name: string;
+    label?: string;
+    icon?: string;
+    docs?: string;
+    tags?: string[];
     params?: Record<string, ParamDef>;
     onExecute(ctx: Context, params: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;

@@ -33,12 +33,9 @@ Phase Log is a post-mortem artifact.
 
 ## Current State
 
-Phase M5 complete. VFS cache invalidation is wired end-to-end. The SW
-handles `vfs-invalidate` (single path) and `vfs-invalidate-all` (full
-clear) messages. The main-thread registration subscribes to
-`workspace.onLocalChange()` for local edits, and the sim wires
-`bridge.onRemoteChange(invalidateVfsCache)` for remote changes.
-All packages typecheck and lint clean.
+Phase M7 complete. `SensorConfig` and `ActuatorConfig` in the ambient
+`mindcraft.d.ts` now accept `label?`, `icon?`, `docs?`, and `tags?`.
+809 ts-compiler tests pass, typecheck and lint clean.
 
 ---
 
@@ -657,4 +654,21 @@ packages/ui (4), packages/docs (1), apps/sim (10), test fixtures (2).
 **apps/sim/src/services/vscode-bridge.ts:**
 - `wireBridgeState()` subscribes to `bridge.onRemoteChange(invalidateVfsCache)`
   so remote changes also invalidate the VFS cache.
+
+### M6 -- Service Worker directory listings
+
+Skipped. Directory listing is not needed for the initial feature set and can
+be added later if/when needed.
+
+### M7 -- Extend SensorConfig / ActuatorConfig ambient types
+
+**packages/ts-compiler/src/compiler/ambient.ts:**
+- Added `label?: string`, `icon?: string`, `docs?: string`, `tags?: string[]`
+  to both `SensorConfig` and `ActuatorConfig`.
+
+**packages/ts-compiler/src/compiler/ambient.spec.ts:**
+- New test compiles sensor and actuator with all four metadata fields, verifies
+  zero diagnostics.
+
+809 tests pass.
 

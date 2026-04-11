@@ -188,4 +188,41 @@ export default Sensor({
     const ambient = buildAmbientDeclarations(services.types);
     assert.ok(!ambient.includes(def.name), "auto-instantiated function types should not appear in ambient output");
   });
+
+  test("SensorConfig and ActuatorConfig accept metadata fields", () => {
+    const sensorSource = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "meta-sensor",
+  output: "number",
+  label: "Meta Sensor",
+  icon: "./meta-sensor.svg",
+  docs: "./meta-sensor.md",
+  tags: ["test", "meta"],
+  onExecute(ctx: Context): number {
+    return 1;
+  },
+});
+`;
+    const sensorResult = compileUserTile(sensorSource, { services });
+    assert.deepStrictEqual(sensorResult.diagnostics, []);
+    assert.ok(sensorResult.program);
+
+    const actuatorSource = `
+import { Actuator, type Context } from "mindcraft";
+
+export default Actuator({
+  name: "meta-actuator",
+  label: "Meta Actuator",
+  icon: "./meta-actuator.svg",
+  docs: "./meta-actuator.md",
+  tags: ["test"],
+  onExecute(ctx: Context): void {},
+});
+`;
+    const actuatorResult = compileUserTile(actuatorSource, { services });
+    assert.deepStrictEqual(actuatorResult.diagnostics, []);
+    assert.ok(actuatorResult.program);
+  });
 });
