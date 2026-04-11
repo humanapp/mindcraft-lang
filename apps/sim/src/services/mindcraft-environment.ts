@@ -4,9 +4,28 @@ import { createSimModule } from "@/brain";
 
 export type SimMindcraftEnvironment = MindcraftEnvironment & {
   userTileDocEntries: DocsTileEntry[];
+  userTileDocRevision: number;
 };
 
 let environment: SimMindcraftEnvironment | undefined;
+
+const docRevisionListeners = new Set<() => void>();
+
+export function subscribeToDocRevision(listener: () => void): () => void {
+  docRevisionListeners.add(listener);
+  return () => docRevisionListeners.delete(listener);
+}
+
+export function getDocRevisionSnapshot(): number {
+  return getMindcraftEnvironment().userTileDocRevision;
+}
+
+export function bumpDocRevision(): void {
+  getMindcraftEnvironment().userTileDocRevision++;
+  for (const listener of docRevisionListeners) {
+    listener();
+  }
+}
 
 export function initMindcraftEnvironment(): SimMindcraftEnvironment {
   if (!environment) {
@@ -14,7 +33,7 @@ export function initMindcraftEnvironment(): SimMindcraftEnvironment {
       createMindcraftEnvironment({
         modules: [coreModule(), createSimModule()],
       }),
-      { userTileDocEntries: [] as DocsTileEntry[] }
+      { userTileDocEntries: [] as DocsTileEntry[], userTileDocRevision: 0 }
     );
   }
 

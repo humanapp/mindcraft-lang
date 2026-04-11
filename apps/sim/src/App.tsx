@@ -3,7 +3,7 @@ import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
 import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@mindcraft-lang/ui";
 import { Menu, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain/editor/config";
@@ -13,7 +13,11 @@ import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
-import { getMindcraftEnvironment } from "./services/mindcraft-environment";
+import {
+  getDocRevisionSnapshot,
+  getMindcraftEnvironment,
+  subscribeToDocRevision,
+} from "./services/mindcraft-environment";
 import { loadDesiredCounts } from "./services/population-persistence";
 import { getUiPreferences, updateUiPreferences } from "./services/ui-preferences";
 
@@ -69,7 +73,11 @@ function App() {
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
-  const docsRegistry = useMemo(() => createDocsRegistry(), []);
+  const docRevision = useSyncExternalStore(subscribeToDocRevision, getDocRevisionSnapshot);
+  const docsRegistry = useMemo(() => {
+    void docRevision;
+    return createDocsRegistry();
+  }, [docRevision]);
   const docsTileCatalog = useMemo<ITileCatalog>(() => {
     const env = getMindcraftEnvironment();
     return {

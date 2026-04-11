@@ -21,7 +21,7 @@ import {
   isOptionalStringArray,
   isRecord,
 } from "@mindcraft-lang/ts-compiler";
-import { getMindcraftEnvironment } from "./mindcraft-environment";
+import { bumpDocRevision, getMindcraftEnvironment } from "./mindcraft-environment";
 
 const LS_METADATA_KEY = "sim:user-tile-metadata";
 const METADATA_CACHE_VERSION = 3 as const;
@@ -341,6 +341,7 @@ export function applyCompiledUserTiles(result: WorkspaceCompileResult): void {
 
   const update = getMindcraftEnvironment().replaceActionBundle(bundle);
   getMindcraftEnvironment().userTileDocEntries = buildDocEntries(metadata);
+  bumpDocRevision();
   if (metadata.length > 0 || update.changedActionKeys.length > 0) {
     logger.info(
       `[user-tile-registration] applied bundle: ${metadata.length} tile(s), ${update.changedActionKeys.length} changed action(s), ${update.invalidatedBrains.length} invalidated brain(s)`
