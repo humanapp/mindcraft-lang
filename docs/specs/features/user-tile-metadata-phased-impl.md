@@ -33,10 +33,13 @@ Phase Log is a post-mortem artifact.
 
 ## Current State
 
-Phase M8 complete. The ts-compiler extracts `label`, `icon`, `docs`, and
-`tags` from the config AST, resolves icon/docs paths against the workspace
-VFS, and passes metadata through to `BrainTileSensorDef`/`BrainTileActuatorDef`
-via `ITileMetadata`. 817 ts-compiler tests pass, typecheck and lint clean.
+Phase M9 complete. User tile doc entries flow from the compiler through to
+the `DocsRegistry`. The sim defines `SimMindcraftEnvironment` (extending
+`MindcraftEnvironment` via `Object.assign`) with a `userTileDocEntries`
+field, eliminating module-level state. `createDocsRegistry()` pulls entries
+from the environment at build time. Cache version bumped to 3 for the new
+metadata fields. 817 ts-compiler tests pass, typecheck and lint clean in
+both apps/sim and packages/ts-compiler.
 
 ---
 
@@ -728,4 +731,46 @@ Discoveries:
   descriptor validator.
 
 817 tests pass (8 new).
+
+### M9 -- Sim doc system integration
+
+**apps/sim/src/services/mindcraft-environment.ts:**
+- New `SimMindcraftEnvironment` type: `MindcraftEnvironment & { userTileDocEntries: DocsTileEntry[] }`.
+- `initMindcraftEnvironment()` uses `Object.assign` to extend the core
+  environment with `userTileDocEntries: []`.
+- `getMindcraftEnvironment()` returns `SimMindcraftEnvironment`.
+
+**apps/sim/src/services/user-tile-registration.ts:**
+- `UserTileMetadata` extended with `label?`, `iconUrl?`, `docsMarkdown?`,
+  `tags?`. Cache version bumped from 2 to 3.
+- `isUserTileMetadata()` validates new optional fields (added
+  `isOptionalStringArray` helper).
+- `metadataFromProgram()` extracts new fields from `UserAuthoredProgram`.
+- `buildHydratedSnapshot()` constructs `ITileMetadata` with `label`,
+  `iconUrl`, `docsMarkdown`, `tags` and passes to tile def constructors.
+- `buildDocEntries()` converts metadata to `DocsTileEntry[]` using
+  `mkSensorTileId`/`mkActuatorTileId`.
+- `getUserTileDocEntries()` reads from `getMindcraftEnvironment().userTileDocEntries`.
+- Both `hydrateUserTilesAtStartup()` and `applyCompiledUserTiles()` write
+  doc entries to the environment.
+
+**apps/sim/src/docs/docs-registry.ts:**
+- `createDocsRegistry()` calls `getUserTileDocEntries()` and registers
+  non-empty results via `registry.register({ tiles: [...] })`.
+
+Discoveries:
+- Initial implementation used a module-level `let _userTileDocEntries`
+  global. Review identified this as a singleton that wouldn't support
+  multi-environment apps. Replaced with a `WeakMap<MindcraftEnvironment, ...>`
+  keyed by environment instance.
+- Further review surfaced a cleaner alternative: the sim defines
+  `SimMindcraftEnvironment` extending `MindcraftEnvironment` via
+  `Object.assign`, adding `userTileDocEntries` directly to the environment.
+  This eliminates module-level state entirely.
+- The `Object.assign` pattern works today but is somewhat ad-hoc. A
+  longer-term solution would be a factory option in core --
+  `createMindcraftEnvironment({ extensions: { ... } })` -- that returns a
+  typed extended environment. This would formalize app-level state on the
+  environment without requiring type assertions or runtime patching. Worth
+  pursuing if more apps or more sim-specific state needs the same pattern.
 

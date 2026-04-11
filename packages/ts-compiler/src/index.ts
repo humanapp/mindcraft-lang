@@ -17,7 +17,7 @@ export {
   ValidatorDiagCode,
 } from "./compiler/diag-codes.js";
 export type { LinkedUserProgram, UserAuthoredProgram } from "./compiler/types.js";
-export { isCallSpec, isExtractedParam, isOptionalString, isRecord } from "./guards.js";
+export { isCallSpec, isExtractedParam, isOptionalString, isOptionalStringArray, isRecord } from "./guards.js";
 export type { LinkResult } from "./linker/linker.js";
 export { linkUserPrograms } from "./linker/linker.js";
 export type { BuildCompiledActionBundleOptions } from "./runtime/action-bundle.js";

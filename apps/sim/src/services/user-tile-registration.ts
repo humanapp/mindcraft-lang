@@ -4,17 +4,27 @@ import {
   BrainTileParameterDef,
   BrainTileSensorDef,
   type HydratedTileMetadataSnapshot,
+  type ITileMetadata,
   type ITypeRegistry,
   logger,
+  mkActuatorTileId,
   mkCallDef,
+  mkSensorTileId,
   type TileDefinitionInput,
 } from "@mindcraft-lang/core/app";
+import type { DocsTileEntry } from "@mindcraft-lang/docs";
 import type { ExtractedParam, UserAuthoredProgram, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
-import { isCallSpec, isExtractedParam, isOptionalString, isRecord } from "@mindcraft-lang/ts-compiler";
+import {
+  isCallSpec,
+  isExtractedParam,
+  isOptionalString,
+  isOptionalStringArray,
+  isRecord,
+} from "@mindcraft-lang/ts-compiler";
 import { getMindcraftEnvironment } from "./mindcraft-environment";
 
 const LS_METADATA_KEY = "sim:user-tile-metadata";
-const METADATA_CACHE_VERSION = 2 as const;
+const METADATA_CACHE_VERSION = 3 as const;
 
 interface UserTileMetadata {
   key: string;
@@ -24,6 +34,10 @@ interface UserTileMetadata {
   params: ExtractedParam[];
   outputType?: string;
   isAsync: boolean;
+  label?: string;
+  iconUrl?: string;
+  docsMarkdown?: string;
+  tags?: string[];
 }
 
 interface UserTileMetadataCache {
@@ -49,7 +63,11 @@ function isUserTileMetadata(value: unknown): value is UserTileMetadata {
     Array.isArray(value.params) &&
     value.params.every(isExtractedParam) &&
     isOptionalString(value.outputType) &&
-    typeof value.isAsync === "boolean"
+    typeof value.isAsync === "boolean" &&
+    isOptionalString(value.label) &&
+    isOptionalString(value.iconUrl) &&
+    isOptionalString(value.docsMarkdown) &&
+    isOptionalStringArray(value.tags)
   );
 }
 
@@ -62,6 +80,10 @@ function metadataFromProgram(program: UserAuthoredProgram): UserTileMetadata {
     params: program.params,
     outputType: program.outputType,
     isAsync: program.isAsync,
+    label: program.label,
+    iconUrl: program.iconUrl,
+    docsMarkdown: program.docsMarkdown,
+    tags: program.tags,
   };
 }
 
@@ -225,10 +247,17 @@ function buildHydratedSnapshot(revision: string, metadata: readonly UserTileMeta
         }
       }
 
+      const metadata: ITileMetadata = {
+        label: entry.label ?? entry.name,
+        iconUrl: entry.iconUrl,
+        docsMarkdown: entry.docsMarkdown,
+        tags: entry.tags,
+      };
+
       const actionTile =
         entry.kind === "sensor"
-          ? new BrainTileSensorDef(entry.key, descriptor)
-          : new BrainTileActuatorDef(entry.key, descriptor);
+          ? new BrainTileSensorDef(entry.key, descriptor, { metadata })
+          : new BrainTileActuatorDef(entry.key, descriptor, { metadata });
       tiles.set(actionTile.tileId, actionTile);
     }
 
@@ -250,6 +279,24 @@ function collectMetadataFromCompile(result: WorkspaceCompileResult): UserTileMet
 
   metadata.sort((left, right) => left.key.localeCompare(right.key));
   return metadata;
+}
+
+function buildDocEntries(metadata: readonly UserTileMetadata[]): DocsTileEntry[] {
+  const entries: DocsTileEntry[] = [];
+  for (const entry of metadata) {
+    const tileId = entry.kind === "sensor" ? mkSensorTileId(entry.key) : mkActuatorTileId(entry.key);
+    entries.push({
+      tileId,
+      tags: entry.tags ? [...entry.tags] : [],
+      category: entry.kind === "sensor" ? "Sensors" : "Actuators",
+      content: entry.docsMarkdown ?? "",
+    });
+  }
+  return entries;
+}
+
+export function getUserTileDocEntries(): readonly DocsTileEntry[] {
+  return getMindcraftEnvironment().userTileDocEntries;
 }
 
 export function hydrateUserTilesAtStartup(): void {
@@ -274,6 +321,7 @@ export function hydrateUserTilesAtStartup(): void {
   }
 
   getMindcraftEnvironment().hydrateTileMetadata(snapshot);
+  getMindcraftEnvironment().userTileDocEntries = buildDocEntries(loaded.metadata);
   logger.info(`[user-tile-registration] hydrated ${snapshot.tiles.length} tile(s) from metadata cache`);
 }
 
@@ -292,6 +340,7 @@ export function applyCompiledUserTiles(result: WorkspaceCompileResult): void {
   }
 
   const update = getMindcraftEnvironment().replaceActionBundle(bundle);
+  getMindcraftEnvironment().userTileDocEntries = buildDocEntries(metadata);
   if (metadata.length > 0 || update.changedActionKeys.length > 0) {
     logger.info(
       `[user-tile-registration] applied bundle: ${metadata.length} tile(s), ${update.changedActionKeys.length} changed action(s), ${update.invalidatedBrains.length} invalidated brain(s)`

@@ -4,6 +4,7 @@
 // ---------------------------------------------------------------------------
 
 import { buildDocsRegistry } from "@mindcraft-lang/docs";
+import { getUserTileDocEntries } from "@/services/user-tile-registration";
 import { appPatternDocs, appTileDocs } from "./manifest";
 
 // -- App English content via Vite eager glob --------------------------------
@@ -74,6 +75,11 @@ export function createDocsRegistry() {
       content,
     })),
   });
+
+  const userTileDocs = getUserTileDocEntries();
+  if (userTileDocs.length > 0) {
+    registry.register({ tiles: [...userTileDocs] });
+  }
 
   return registry;
 }

@@ -85,7 +85,9 @@ sw.addEventListener("fetch", (event) => {
       const cache = await sw.caches.open(VFS_CACHE);
 
       const cached = await cache.match(event.request!.url);
-      if (cached) return cached;
+      if (cached) {
+        return cached;
+      }
 
       const clients = await sw.clients.matchAll();
       const result = await readViaClient(clients, vfsPath);

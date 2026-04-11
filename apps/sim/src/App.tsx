@@ -1,4 +1,5 @@
 import type { BrainDef } from "@mindcraft-lang/core/app";
+import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
 import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@mindcraft-lang/ui";
 import { Menu, X } from "lucide-react";
@@ -69,7 +70,18 @@ function App() {
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
-  const docsTileCatalog = useMemo(() => getMindcraftEnvironment().brainServices.tiles, []);
+  const docsTileCatalog = useMemo<ITileCatalog>(() => {
+    const env = getMindcraftEnvironment();
+    return {
+      get: (tileId: string) => {
+        for (const catalog of env.tileCatalogs()) {
+          const def = catalog.get(tileId);
+          if (def) return def;
+        }
+        return undefined;
+      },
+    } as ITileCatalog;
+  }, []);
 
   useEffect(() => {
     scene?.setTimeSpeed(timeSpeed);

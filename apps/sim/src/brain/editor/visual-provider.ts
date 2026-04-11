@@ -38,6 +38,8 @@ function stripGenericCatalogLabel(tileDef: IBrainTileDef, visual: TileVisual | u
   return rest;
 }
 
+const warnedMissingIcons = new Set<string>();
+
 export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
   const intrinsicVisual = stripGenericCatalogLabel(tileDef, tileDef.metadata as TileVisual | undefined);
   const mappedVisual = tileVisuals.get(tileDef.tileId);
@@ -75,7 +77,10 @@ export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
   }
 
   if (!vis.iconUrl) {
-    console.warn(`No icon found for tile ${tileDef.tileId}`);
+    if (!warnedMissingIcons.has(tileDef.tileId)) {
+      warnedMissingIcons.add(tileDef.tileId);
+      console.warn(`No icon found for tile ${tileDef.tileId}`);
+    }
     vis.iconUrl = "/assets/brain/icons/question_mark.svg";
   }
 

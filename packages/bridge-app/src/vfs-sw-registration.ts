@@ -37,7 +37,9 @@ export function registerVfsServiceWorker(options: VfsSwRegistrationOptions): voi
     return;
   }
 
-  navigator.serviceWorker.register(options.swUrl, { type: "module" }).catch(() => {});
+  navigator.serviceWorker.register(options.swUrl, { type: "module", scope: "/" }).catch((err) => {
+    console.warn("[vfs-sw] registration failed:", err);
+  });
 
   navigator.serviceWorker.addEventListener("message", (event) => {
     const msg = event.data as Record<string, unknown> | null;

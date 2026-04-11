@@ -1,3 +1,4 @@
+import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsPage as SharedDocsPage } from "@mindcraft-lang/docs";
 import { Toaster } from "@mindcraft-lang/ui";
 import { useMemo } from "react";
@@ -7,7 +8,18 @@ import { getMindcraftEnvironment } from "./services/mindcraft-environment";
 
 export default function DocsPage() {
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
-  const docsTileCatalog = useMemo(() => getMindcraftEnvironment().brainServices.tiles, []);
+  const docsTileCatalog = useMemo<ITileCatalog>(() => {
+    const env = getMindcraftEnvironment();
+    return {
+      get: (tileId: string) => {
+        for (const catalog of env.tileCatalogs()) {
+          const def = catalog.get(tileId);
+          if (def) return def;
+        }
+        return undefined;
+      },
+    } as ITileCatalog;
+  }, []);
 
   return (
     <SharedDocsPage
