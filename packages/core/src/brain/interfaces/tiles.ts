@@ -218,6 +218,7 @@ export const APP_CAPABILITY_BIT_OFFSET = 32;
 
 export const CoreCapabilityBits = {
   PageSensor: 0,
+  UserTile: 1,
 } as const;
 
 // ----------------------------------------------------

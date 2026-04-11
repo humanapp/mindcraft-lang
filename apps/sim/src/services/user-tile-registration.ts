@@ -1,8 +1,10 @@
 import {
+  BitSet,
   type BrainActionCallSpec,
   BrainTileActuatorDef,
   BrainTileParameterDef,
   BrainTileSensorDef,
+  CoreCapabilityBits,
   type HydratedTileMetadataSnapshot,
   type ITileMetadata,
   type ITypeRegistry,
@@ -254,10 +256,12 @@ function buildHydratedSnapshot(revision: string, metadata: readonly UserTileMeta
         tags: entry.tags,
       };
 
+      const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);
+
       const actionTile =
         entry.kind === "sensor"
-          ? new BrainTileSensorDef(entry.key, descriptor, { metadata })
-          : new BrainTileActuatorDef(entry.key, descriptor, { metadata });
+          ? new BrainTileSensorDef(entry.key, descriptor, { metadata, capabilities: userTileCaps })
+          : new BrainTileActuatorDef(entry.key, descriptor, { metadata, capabilities: userTileCaps });
       tiles.set(actionTile.tileId, actionTile);
     }
 

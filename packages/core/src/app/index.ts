@@ -96,6 +96,7 @@ export type {
 } from "../brain/interfaces";
 export {
   APP_CAPABILITY_BIT_OFFSET,
+  CoreCapabilityBits,
   extractListValue,
   extractNumberValue,
   extractStringValue,
