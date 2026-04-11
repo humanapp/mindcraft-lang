@@ -9,15 +9,11 @@ import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain/editor/config";
 import { genVisualForTile } from "./brain/editor/visual-provider";
 import { Sidebar } from "./components/Sidebar";
+import { useSimEnvironment } from "./contexts/sim-environment";
 import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
-import {
-  getDocRevisionSnapshot,
-  getMindcraftEnvironment,
-  subscribeToDocRevision,
-} from "./services/mindcraft-environment";
 import { loadDesiredCounts } from "./services/population-persistence";
 import { getUiPreferences, updateUiPreferences } from "./services/ui-preferences";
 
@@ -50,20 +46,24 @@ function snapshotEqual(a: ScoreSnapshot, b: ScoreSnapshot): boolean {
 /** Wrapper that injects docs integration from the docs context into the brain editor config. */
 function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype | null; children: React.ReactNode }) {
   const { openDocsForTile, isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs } = useDocsSidebar();
+  const store = useSimEnvironment();
+  const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
   const config = useMemo(
     () =>
       buildBrainEditorConfig({
-        environment: getMindcraftEnvironment(),
+        environment: store.env,
         archetype: archetype ?? undefined,
+        vfsRevision,
         onTileHelp: openDocsForTile,
         docsIntegration: { isOpen: isDocsOpen, toggle: toggleDocs, close: closeDocs },
       }),
-    [archetype, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]
+    [store, archetype, vfsRevision, openDocsForTile, isDocsOpen, toggleDocs, closeDocs]
   );
   return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
 }
 
 function App() {
+  const store = useSimEnvironment();
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
   const [editingArchetype, setEditingArchetype] = useState<Archetype | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -73,23 +73,22 @@ function App() {
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
-  const docRevision = useSyncExternalStore(subscribeToDocRevision, getDocRevisionSnapshot);
+  const docRevision = useSyncExternalStore(store.subscribeToDocRevision, store.getDocRevisionSnapshot);
   const docsRegistry = useMemo(() => {
     void docRevision;
-    return createDocsRegistry();
-  }, [docRevision]);
+    return createDocsRegistry(store.userTileDocEntries);
+  }, [docRevision, store]);
   const docsTileCatalog = useMemo<ITileCatalog>(() => {
-    const env = getMindcraftEnvironment();
     return {
       get: (tileId: string) => {
-        for (const catalog of env.tileCatalogs()) {
+        for (const catalog of store.env.tileCatalogs()) {
           const def = catalog.get(tileId);
           if (def) return def;
         }
         return undefined;
       },
     } as ITileCatalog;
-  }, []);
+  }, [store]);
 
   useEffect(() => {
     scene?.setTimeSpeed(timeSpeed);
@@ -174,14 +173,14 @@ function App() {
     <DocsSidebarProvider
       registry={docsRegistry}
       tileCatalog={docsTileCatalog}
-      brainServices={getMindcraftEnvironment().brainServices}
+      brainServices={store.env.brainServices}
       resolveTileVisual={genVisualForTile}
     >
       <div className="h-screen flex bg-background overflow-hidden">
         <h1 className="sr-only">Mindcraft Simulation</h1>
         {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
         <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
-          <PhaserGame onSceneReady={handleSceneReady} />
+          <PhaserGame env={store.env} onSceneReady={handleSceneReady} />
           {/* Mobile sidebar toggle */}
           <button
             type="button"

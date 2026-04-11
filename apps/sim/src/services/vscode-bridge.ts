@@ -4,16 +4,16 @@ import { type AppProjectHandle, createAppProject } from "@mindcraft-lang/bridge-
 import { logger } from "@mindcraft-lang/core/app";
 import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
-import { getMindcraftEnvironment } from "./mindcraft-environment";
+import type { SimEnvironmentStore } from "./sim-environment-store";
 import { getUiPreferences } from "./ui-preferences";
 import { applyCompiledUserTiles } from "./user-tile-registration";
-import { initWorkspaceStore } from "./workspace-store";
 
 type ConnectionStatus = AppBridgeState;
 type StatusListener = (status: ConnectionStatus) => void;
 type JoinCodeListener = (joinCode: string | undefined) => void;
 
 let project: AppProjectHandle | undefined;
+let projectStore: SimEnvironmentStore | undefined;
 let currentStatus: ConnectionStatus = "disconnected";
 let currentJoinCode: string | undefined;
 
@@ -95,11 +95,10 @@ function recreateBridge(shouldStart: boolean): void {
   }
 }
 
-export function initProject(): void {
-  const workspace = initWorkspaceStore();
-
+export function initProject(store: SimEnvironmentStore): void {
+  projectStore = store;
   project = createAppProject({
-    environment: getMindcraftEnvironment(),
+    environment: store.env,
     app: {
       id: "sim",
       name: "Sim",
@@ -107,10 +106,10 @@ export function initProject(): void {
       projectName: "Sim",
     },
     bridgeUrl: getAppSettings().vscodeBridgeUrl,
-    workspace,
+    workspace: store.workspace,
     onDidCompile(result) {
       logWorkspaceCompile(result);
-      applyCompiledUserTiles(result);
+      applyCompiledUserTiles(store, result);
     },
   });
 
@@ -120,7 +119,10 @@ export function initProject(): void {
 
 export function connectBridge(): void {
   if (!project) {
-    initProject();
+    if (!projectStore) {
+      throw new Error("initProject() must be called before connectBridge()");
+    }
+    initProject(projectStore);
   }
 
   if (!project || project.bridge.snapshot().status !== "disconnected") {

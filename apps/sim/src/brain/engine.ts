@@ -1,4 +1,4 @@
-import type { BrainDef, Vector2 } from "@mindcraft-lang/core/app";
+import type { BrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
 import * as ECS from "miniplex";
 import type { Playground } from "@/game/scenes/Playground";
 import { flushPendingBrainRebuilds } from "../services/brain-runtime";
@@ -103,7 +103,8 @@ export class Engine {
 
   constructor(
     private scene: Playground,
-    readonly obstacles: ReadonlyArray<Obstacle> = []
+    readonly obstacles: ReadonlyArray<Obstacle> = [],
+    private readonly env: MindcraftEnvironment
   ) {
     this.world = new ECS.World<Actor>();
     this.actors = {
@@ -116,13 +117,13 @@ export class Engine {
     const loadBrain = (archetype: Archetype): BrainDef => {
       const cloneBrain = (brainDef: BrainDef): BrainDef => brainDef.clone();
 
-      const fromStorage = loadBrainFromLocalStorage(archetype);
+      const fromStorage = loadBrainFromLocalStorage(this.env, archetype);
       if (fromStorage) return fromStorage;
 
       const fromAsset = getDefaultBrain(archetype);
       if (fromAsset) return cloneBrain(fromAsset);
 
-      return createArchetypeFallbackBrain(archetype);
+      return createArchetypeFallbackBrain(this.env, archetype);
     };
 
     this.brains = {

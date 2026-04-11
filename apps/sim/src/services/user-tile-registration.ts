@@ -23,7 +23,7 @@ import {
   isOptionalStringArray,
   isRecord,
 } from "@mindcraft-lang/ts-compiler";
-import { bumpDocRevision, getMindcraftEnvironment } from "./mindcraft-environment";
+import type { SimEnvironmentStore } from "./sim-environment-store";
 
 const LS_METADATA_KEY = "sim:user-tile-metadata";
 const METADATA_CACHE_VERSION = 3 as const;
@@ -195,10 +195,12 @@ function getParameterId(tileName: string, param: ExtractedParam): string {
   return param.anonymous ? `anon.${param.type}` : `user.${tileName}.${param.name}`;
 }
 
-function buildHydratedSnapshot(revision: string, metadata: readonly UserTileMetadata[]): HydratedTileMetadataSnapshot {
-  const environment = getMindcraftEnvironment();
-
-  return environment.withServices((services) => {
+function buildHydratedSnapshot(
+  store: SimEnvironmentStore,
+  revision: string,
+  metadata: readonly UserTileMetadata[]
+): HydratedTileMetadataSnapshot {
+  return store.env.withServices((services) => {
     const { types } = services;
     const tiles = new Map<string, TileDefinitionInput>();
 
@@ -299,11 +301,11 @@ function buildDocEntries(metadata: readonly UserTileMetadata[]): DocsTileEntry[]
   return entries;
 }
 
-export function getUserTileDocEntries(): readonly DocsTileEntry[] {
-  return getMindcraftEnvironment().userTileDocEntries;
+export function getUserTileDocEntries(store: SimEnvironmentStore): readonly DocsTileEntry[] {
+  return store.userTileDocEntries;
 }
 
-export function hydrateUserTilesAtStartup(): void {
+export function hydrateUserTilesAtStartup(store: SimEnvironmentStore): void {
   const loaded = loadMetadataCache();
   if (!loaded) {
     return;
@@ -315,7 +317,7 @@ export function hydrateUserTilesAtStartup(): void {
     );
   }
 
-  const snapshot = buildHydratedSnapshot(loaded.revision, loaded.metadata);
+  const snapshot = buildHydratedSnapshot(store, loaded.revision, loaded.metadata);
   if (snapshot.tiles.length === 0) {
     return;
   }
@@ -324,12 +326,12 @@ export function hydrateUserTilesAtStartup(): void {
     persistMetadataCache(snapshot.revision, loaded.metadata);
   }
 
-  getMindcraftEnvironment().hydrateTileMetadata(snapshot);
-  getMindcraftEnvironment().userTileDocEntries = buildDocEntries(loaded.metadata);
+  store.env.hydrateTileMetadata(snapshot);
+  store.userTileDocEntries = buildDocEntries(loaded.metadata);
   logger.info(`[user-tile-registration] hydrated ${snapshot.tiles.length} tile(s) from metadata cache`);
 }
 
-export function applyCompiledUserTiles(result: WorkspaceCompileResult): void {
+export function applyCompiledUserTiles(store: SimEnvironmentStore, result: WorkspaceCompileResult): void {
   const bundle = result.bundle;
   if (!bundle) {
     return;
@@ -343,9 +345,9 @@ export function applyCompiledUserTiles(result: WorkspaceCompileResult): void {
     logger.warn("[user-tile-registration] failed to save metadata cache");
   }
 
-  const update = getMindcraftEnvironment().replaceActionBundle(bundle);
-  getMindcraftEnvironment().userTileDocEntries = buildDocEntries(metadata);
-  bumpDocRevision();
+  const update = store.env.replaceActionBundle(bundle);
+  store.userTileDocEntries = buildDocEntries(metadata);
+  store.bumpDocRevision();
   if (metadata.length > 0 || update.changedActionKeys.length > 0) {
     logger.info(
       `[user-tile-registration] applied bundle: ${metadata.length} tile(s), ${update.changedActionKeys.length} changed action(s), ${update.invalidatedBrains.length} invalidated brain(s)`

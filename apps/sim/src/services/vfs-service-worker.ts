@@ -1,7 +1,8 @@
 import { registerVfsServiceWorker } from "@mindcraft-lang/bridge-app";
-import { getWorkspaceStore } from "./workspace-store";
+import type { SimEnvironmentStore } from "./sim-environment-store";
 
-export function initVfsServiceWorker(): void {
+export function initVfsServiceWorker(store: SimEnvironmentStore): void {
   const swUrl = import.meta.env.DEV ? "/src/vfs-sw-entry.ts" : "/vfs-service-worker.js";
-  registerVfsServiceWorker({ swUrl, workspace: getWorkspaceStore() });
+  registerVfsServiceWorker({ swUrl, workspace: store.workspace });
+  store.workspace.onLocalChange(() => store.bumpVfsRevision());
 }

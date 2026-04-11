@@ -1,5 +1,4 @@
-import { BrainDef } from "@mindcraft-lang/core/app";
-import { getMindcraftEnvironment } from "@/services/mindcraft-environment";
+import { BrainDef, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import type { Archetype } from "./actor";
 import type { MoverConfig } from "./movement";
 
@@ -153,8 +152,6 @@ export const ARCHETYPES: Record<string, ArchetypeConfig> = {
   },
 };
 
-export function createArchetypeFallbackBrain(archetype: Archetype): BrainDef {
-  return getMindcraftEnvironment().withServices((services) =>
-    BrainDef.emptyBrainDef(services, ARCHETYPES[archetype].brainName)
-  );
+export function createArchetypeFallbackBrain(env: MindcraftEnvironment, archetype: Archetype): BrainDef {
+  return env.withServices((services) => BrainDef.emptyBrainDef(services, ARCHETYPES[archetype].brainName));
 }

@@ -79,12 +79,13 @@ sw.addEventListener("fetch", (event) => {
   }
 
   const vfsPath = decodeURIComponent(url.pathname.slice(VFS_PREFIX.length));
+  const bareUrl = `${url.origin}${url.pathname}`;
 
   event.respondWith!(
     (async () => {
       const cache = await sw.caches.open(VFS_CACHE);
 
-      const cached = await cache.match(event.request!.url);
+      const cached = await cache.match(bareUrl);
       if (cached) {
         return cached;
       }
@@ -101,7 +102,7 @@ sw.addEventListener("fetch", (event) => {
         headers: { "Content-Type": mimeForPath(vfsPath) },
       });
 
-      await cache.put(event.request!.url, response.clone());
+      await cache.put(bareUrl, response.clone());
       return response;
     })()
   );

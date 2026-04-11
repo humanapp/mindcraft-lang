@@ -94,6 +94,7 @@ const vector2LiteralType: CustomLiteralType = {
 interface BuildBrainEditorConfigOptions {
   environment: MindcraftEnvironment;
   archetype?: Archetype;
+  vfsRevision?: number;
   onTileHelp?: BrainEditorConfig["onTileHelp"];
   docsIntegration?: BrainEditorConfig["docsIntegration"];
 }
@@ -102,11 +103,22 @@ interface BuildBrainEditorConfigOptions {
  * Build the complete BrainEditorConfig for the sim app.
  */
 export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): BrainEditorConfig {
-  const { environment, archetype, onTileHelp, docsIntegration } = options;
+  const { environment, archetype, vfsRevision, onTileHelp, docsIntegration } = options;
+  const resolveTileVisual =
+    vfsRevision !== undefined && vfsRevision > 0
+      ? (tileDef: Parameters<typeof genVisualForTile>[0]) => {
+          const visual = genVisualForTile(tileDef);
+          if (visual.iconUrl?.startsWith("/vfs/")) {
+            return { ...visual, iconUrl: `${visual.iconUrl}?_t=${vfsRevision}` };
+          }
+          return visual;
+        }
+      : genVisualForTile;
+
   return {
     dataTypeIcons: dataTypeIconMap,
     dataTypeNames: dataTypeNameMap,
-    resolveTileVisual: genVisualForTile,
+    resolveTileVisual,
     customLiteralTypes: [vector2LiteralType],
     getDefaultBrain: archetype ? () => getDefaultBrain(archetype) : undefined,
     brainServices: environment.brainServices,

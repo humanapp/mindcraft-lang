@@ -3,8 +3,8 @@
 // and Vite-globbed content to the shared buildDocsRegistry() factory.
 // ---------------------------------------------------------------------------
 
+import type { DocsTileEntry } from "@mindcraft-lang/docs";
 import { buildDocsRegistry } from "@mindcraft-lang/docs";
-import { getUserTileDocEntries } from "@/services/user-tile-registration";
 import { appPatternDocs, appTileDocs } from "./manifest";
 
 // -- App English content via Vite eager glob --------------------------------
@@ -54,7 +54,7 @@ const APP_CONCEPT_TITLES: Record<string, string> = {
   about: "About this App",
 };
 
-export function createDocsRegistry() {
+export function createDocsRegistry(userTileDocEntries: readonly DocsTileEntry[]) {
   const registry = buildDocsRegistry({
     appTiles: {
       meta: appTileDocs,
@@ -76,7 +76,7 @@ export function createDocsRegistry() {
     })),
   });
 
-  const userTileDocs = getUserTileDocEntries();
+  const userTileDocs = userTileDocEntries;
   if (userTileDocs.length > 0) {
     registry.register({ tiles: [...userTileDocs] });
   }

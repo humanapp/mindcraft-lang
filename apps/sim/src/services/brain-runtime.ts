@@ -1,16 +1,24 @@
-import type { IBrainDef, MindcraftBrain } from "@mindcraft-lang/core/app";
-import { getMindcraftEnvironment } from "./mindcraft-environment";
+import type { IBrainDef, MindcraftBrain, MindcraftEnvironment } from "@mindcraft-lang/core/app";
 
+let env: MindcraftEnvironment | undefined;
 let pendingBrainRebuild = false;
 let runtimeInitialized = false;
 
-export function initBrainRuntime(): void {
+function getEnv(): MindcraftEnvironment {
+  if (!env) {
+    throw new Error("Brain runtime not initialized -- call initBrainRuntime() first");
+  }
+  return env;
+}
+
+export function initBrainRuntime(environment: MindcraftEnvironment): void {
   if (runtimeInitialized) {
     return;
   }
 
+  env = environment;
   runtimeInitialized = true;
-  getMindcraftEnvironment().onBrainsInvalidated((event) => {
+  environment.onBrainsInvalidated((event) => {
     if (event.invalidatedBrains.length > 0) {
       pendingBrainRebuild = true;
     }
@@ -18,7 +26,7 @@ export function initBrainRuntime(): void {
 }
 
 export function createSimBrain(brainDef: IBrainDef, contextData?: unknown): MindcraftBrain {
-  return getMindcraftEnvironment().createBrain(brainDef, {
+  return getEnv().createBrain(brainDef, {
     context: contextData,
   });
 }
@@ -29,5 +37,5 @@ export function flushPendingBrainRebuilds(): void {
   }
 
   pendingBrainRebuild = false;
-  getMindcraftEnvironment().rebuildInvalidatedBrains();
+  getEnv().rebuildInvalidatedBrains();
 }
