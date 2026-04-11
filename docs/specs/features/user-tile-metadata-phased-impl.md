@@ -34,7 +34,11 @@ Phase Log is a post-mortem artifact.
 
 ## Current State
 
-No work has been done yet.
+Phase M1 complete. Bridge protocol enforces per-file (512 KB) and per-snapshot
+(16 MB) content limits via Zod schema validators. `NotifyingFileSystem.write()`
+returns `WriteResult` (`{ etag: string; oversized?: boolean }`) so callers can
+detect and surface oversized files. Oversized files are stored locally but their
+bridge notification is suppressed.
 
 ---
 

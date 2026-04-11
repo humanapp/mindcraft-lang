@@ -36,7 +36,12 @@ export {
   sessionHelloPayloadSchema,
 } from "./messages/index.js";
 export type { FileSystemNotification, FilesystemSyncPayload } from "./notifications.js";
-export { fileSystemNotificationSchema, filesystemSyncPayloadSchema } from "./notifications.js";
+export {
+  fileSystemNotificationSchema,
+  filesystemSyncPayloadSchema,
+  MAX_FILE_CONTENT_BYTES,
+  MAX_SNAPSHOT_CONTENT_BYTES,
+} from "./notifications.js";
 
 export type { WsMessage } from "./schemas.js";
 export { wsMessageSchema } from "./schemas.js";

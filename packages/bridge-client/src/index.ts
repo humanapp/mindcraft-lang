@@ -6,6 +6,7 @@ export type {
   FileTreeEntry,
   IFileSystem,
   StatResult,
+  WriteResult,
 } from "./filesystem.js";
 export { FileSystem, NotifyingFileSystem } from "./filesystem.js";
 export type { ProjectOptions } from "./project/project.js";

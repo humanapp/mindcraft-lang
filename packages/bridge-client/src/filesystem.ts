@@ -1,12 +1,18 @@
 import type { FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
+import { MAX_FILE_CONTENT_BYTES } from "@mindcraft-lang/bridge-protocol";
 import { ErrorCode, ProtocolError } from "./error-codes.js";
 
 export type { FileSystemNotification };
 
+export interface WriteResult {
+  etag: string;
+  oversized?: boolean;
+}
+
 export interface IFileSystem {
   list(path?: string): FileTreeEntry[];
   read(path: string): string;
-  write(path: string, content: string, isReadonly?: boolean, etag?: string): string;
+  write(path: string, content: string, isReadonly?: boolean, etag?: string): WriteResult;
   writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void;
   delete(path: string): void;
   rename(oldPath: string, newPath: string): void;
@@ -31,7 +37,7 @@ export class NotifyingFileSystem implements IFileSystem {
     return this._fs.read(path);
   }
 
-  write(path: string, content: string, isReadonly?: boolean, expectedEtag?: string): string {
+  write(path: string, content: string, isReadonly?: boolean, expectedEtag?: string): WriteResult {
     // Capture the etag before writing so the notification carries the "old" etag.
     // Receivers use this to detect concurrent modifications (optimistic concurrency).
     let preWriteEtag: string | undefined;
@@ -43,13 +49,19 @@ export class NotifyingFileSystem implements IFileSystem {
     } catch {
       // File doesn't exist yet
     }
-    const newEtag = this._fs.write(path, content, isReadonly, expectedEtag);
+    const { etag: newEtag } = this._fs.write(path, content, isReadonly, expectedEtag);
+    if (content.length > MAX_FILE_CONTENT_BYTES) {
+      return { etag: newEtag, oversized: true };
+    }
     this._onChange({ action: "write", path, content, isReadonly, newEtag, expectedEtag: preWriteEtag });
-    return newEtag;
+    return { etag: newEtag };
   }
 
   writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void {
     this._fs.writeRestore(path, content, isReadonly, etag);
+    if (content.length > MAX_FILE_CONTENT_BYTES) {
+      return;
+    }
     this._onChange({ action: "write", path, content, isReadonly, newEtag: etag });
   }
 
@@ -168,8 +180,8 @@ export class FileSystem implements IFileSystem {
     return this._root.read(path);
   }
 
-  write(path: string, content: string, isReadonly?: boolean, expectedEtag?: string): string {
-    return this._root.write(path, content, isReadonly, expectedEtag);
+  write(path: string, content: string, isReadonly?: boolean, expectedEtag?: string): WriteResult {
+    return { etag: this._root.write(path, content, isReadonly, expectedEtag) };
   }
 
   writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void {
