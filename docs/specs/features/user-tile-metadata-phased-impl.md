@@ -33,12 +33,11 @@ Phase Log is a post-mortem artifact.
 
 ## Current State
 
-Phase M4 complete. The Service Worker now intercepts `/vfs/*` fetch requests
-and serves workspace file content. On cache miss, the SW uses a MessageChannel
-to request file content from the main thread, which reads from the workspace
-adapter's `exportSnapshot()`. Responses are cached in the Cache API (`"vfs"`
-bucket). MIME types are derived from file extension. The main-thread
-registration handler responds to `vfs-read` messages on the MessagePort.
+Phase M5 complete. VFS cache invalidation is wired end-to-end. The SW
+handles `vfs-invalidate` (single path) and `vfs-invalidate-all` (full
+clear) messages. The main-thread registration subscribes to
+`workspace.onLocalChange()` for local edits, and the sim wires
+`bridge.onRemoteChange(invalidateVfsCache)` for remote changes.
 All packages typecheck and lint clean.
 
 ---
@@ -637,4 +636,25 @@ packages/ui (4), packages/docs (1), apps/sim (10), test fixtures (2).
 **bridge-app/src/vfs-sw-registration.ts:**
 - Message listener handles `vfs-read`: reads path from workspace adapter's
   `exportSnapshot()`, replies on `MessagePort` with `{ found, content }`.
+
+### M5 -- Service Worker cache invalidation
+
+**bridge-app/src/vfs-service-worker.ts:**
+- SW `message` handler processes `vfs-invalidate` (deletes specific URL from
+  `"vfs"` cache) and `vfs-invalidate-all` (deletes entire cache bucket).
+- Added `delete()` to `VfsSwCache` and `caches` interfaces.
+
+**bridge-app/src/vfs-sw-registration.ts:**
+- `invalidateForChange()` maps change actions to SW messages: `write`/`delete`
+  -> `vfs-invalidate`, `rename` -> invalidate both paths, `import` ->
+  `vfs-invalidate-all`.
+- `registerVfsServiceWorker()` subscribes to `workspace.onLocalChange()`.
+- New exported `invalidateVfsCache(change)` for external callers.
+
+**bridge-app/src/index.ts:**
+- Exports `invalidateVfsCache`.
+
+**apps/sim/src/services/vscode-bridge.ts:**
+- `wireBridgeState()` subscribes to `bridge.onRemoteChange(invalidateVfsCache)`
+  so remote changes also invalidate the VFS cache.
 

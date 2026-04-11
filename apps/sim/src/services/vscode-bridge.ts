@@ -1,4 +1,5 @@
 import type { AppBridge, AppBridgeState } from "@mindcraft-lang/bridge-app";
+import { invalidateVfsCache } from "@mindcraft-lang/bridge-app";
 import { type AppProjectHandle, createAppProject } from "@mindcraft-lang/bridge-app/compilation";
 import { logger } from "@mindcraft-lang/core/app";
 import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
@@ -20,6 +21,7 @@ const listeners = new Set<StatusListener>();
 const joinCodeListeners = new Set<JoinCodeListener>();
 
 let bridgeStateUnsub: (() => void) | undefined;
+let remoteChangeUnsub: (() => void) | undefined;
 
 function notifyStatusListeners(status: ConnectionStatus): void {
   for (const listener of listeners) {
@@ -49,9 +51,11 @@ function applyBridgeSnapshot(activeBridge: AppBridge): void {
 
 function wireBridgeState(activeBridge: AppBridge): void {
   bridgeStateUnsub?.();
+  remoteChangeUnsub?.();
   bridgeStateUnsub = activeBridge.onStateChange(() => {
     applyBridgeSnapshot(activeBridge);
   });
+  remoteChangeUnsub = activeBridge.onRemoteChange(invalidateVfsCache);
   applyBridgeSnapshot(activeBridge);
 }
 

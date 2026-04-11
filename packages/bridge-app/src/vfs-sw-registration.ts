@@ -1,8 +1,35 @@
-import type { WorkspaceAdapter } from "./app-bridge.js";
+import type { WorkspaceAdapter, WorkspaceChange } from "./app-bridge.js";
 
 export interface VfsSwRegistrationOptions {
   swUrl: string;
   workspace: WorkspaceAdapter;
+}
+
+function sendToSw(message: unknown): void {
+  navigator.serviceWorker.controller?.postMessage(message);
+}
+
+export function invalidateVfsCache(change: WorkspaceChange): void {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return;
+  }
+  invalidateForChange(change);
+}
+
+function invalidateForChange(change: WorkspaceChange): void {
+  switch (change.action) {
+    case "write":
+    case "delete":
+      sendToSw({ type: "vfs-invalidate", path: change.path });
+      break;
+    case "rename":
+      sendToSw({ type: "vfs-invalidate", path: change.oldPath });
+      sendToSw({ type: "vfs-invalidate", path: change.newPath });
+      break;
+    case "import":
+      sendToSw({ type: "vfs-invalidate-all" });
+      break;
+  }
 }
 
 export function registerVfsServiceWorker(options: VfsSwRegistrationOptions): void {
@@ -37,4 +64,6 @@ export function registerVfsServiceWorker(options: VfsSwRegistrationOptions): voi
         break;
     }
   });
+
+  options.workspace.onLocalChange(invalidateForChange);
 }

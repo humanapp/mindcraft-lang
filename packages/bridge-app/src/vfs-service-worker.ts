@@ -2,7 +2,7 @@ interface VfsSwScope {
   skipWaiting(): Promise<void>;
   clients: { claim(): Promise<void>; matchAll(): Promise<VfsSwClient[]> };
   addEventListener(type: string, listener: (event: VfsSwEvent) => void): void;
-  caches: { open(name: string): Promise<VfsSwCache> };
+  caches: { open(name: string): Promise<VfsSwCache>; delete(name: string): Promise<boolean> };
   registration: { scope: string };
 }
 
@@ -13,6 +13,7 @@ interface VfsSwClient {
 interface VfsSwCache {
   match(request: Request | string): Promise<Response | undefined>;
   put(request: Request | string, response: Response): Promise<void>;
+  delete(request: Request | string): Promise<boolean>;
 }
 
 interface VfsSwEvent {
@@ -106,7 +107,22 @@ sw.addEventListener("fetch", (event) => {
 
 sw.addEventListener("message", (event) => {
   const data = event.data as Record<string, unknown> | undefined;
-  event.source?.postMessage({ type: "vfs-ack", received: data?.type });
+  if (!data) return;
+
+  switch (data.type) {
+    case "vfs-invalidate": {
+      const path = data.path as string;
+      const loc = self as unknown as { location: { origin: string } };
+      const url = `${loc.location.origin}${VFS_PREFIX}${path}`;
+      event.waitUntil!(sw.caches.open(VFS_CACHE).then((cache) => cache.delete(url)));
+      break;
+    }
+    case "vfs-invalidate-all":
+      event.waitUntil!(sw.caches.delete(VFS_CACHE));
+      break;
+  }
+
+  event.source?.postMessage({ type: "vfs-ack", received: data.type });
 });
 
 export {};
