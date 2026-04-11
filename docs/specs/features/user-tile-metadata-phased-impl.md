@@ -24,8 +24,7 @@ Each phase follows this loop:
 2. Copilot stops and presents work for review.
 3. The user reviews, requests changes or approves.
 4. Only after the user declares the phase complete does the post-mortem happen.
-5. Post-mortem writes the Phase Log entry, updates Current State, and any repo
-   memory notes.
+5. Post-mortem writes the Phase Log entry -- with special importance placed on capturing discoveries, unexpected obstacles, compromises, and surfaced risks. Then update Current State, and any repo memory notes.
 
 Do NOT write Phase Log entries or amend this spec during implementation. The
 Phase Log is a post-mortem artifact.
@@ -34,12 +33,13 @@ Phase Log is a post-mortem artifact.
 
 ## Current State
 
-Phase M2 complete. `ITileVisual` renamed to `ITileMetadata` across the entire
-codebase (packages/core, packages/ui, packages/docs, apps/sim). The `.visual`
-property on `IBrainTileDef` and `BrainTileDefCreateOptions` is now `.metadata`.
-`ITileMetadata` gains two new optional fields: `docsMarkdown?: string` and
-`tags?: readonly string[]`. All 557 core tests pass, all packages typecheck
-and lint clean.
+Phase M4 complete. The Service Worker now intercepts `/vfs/*` fetch requests
+and serves workspace file content. On cache miss, the SW uses a MessageChannel
+to request file content from the main thread, which reads from the workspace
+adapter's `exportSnapshot()`. Responses are cached in the Cache API (`"vfs"`
+bucket). MIME types are derived from file extension. The main-thread
+registration handler responds to `vfs-read` messages on the MessagePort.
+All packages typecheck and lint clean.
 
 ---
 
@@ -586,5 +586,55 @@ doc page.
 
 ## Phase Log
 
-(Written during post-mortem, not during implementation.)
+### M1 -- Bridge file size limits
+
+Added `MAX_FILE_CONTENT_BYTES` (512 KB) and `MAX_SNAPSHOT_CONTENT_BYTES`
+(16 MB) to bridge-protocol. Zod schemas gained `.max()` on content fields
+and `.refine()` on snapshot entries. `NotifyingFileSystem.write()` returns
+`WriteResult` (`{ etag, oversized? }`) and suppresses notifications for
+oversized files. 121 bridge-client tests pass.
+
+### M2 -- ITileVisual -> ITileMetadata rename
+
+Renamed `ITileVisual` to `ITileMetadata` with new fields `docsMarkdown?`
+and `tags?`. Renamed `.visual` to `.metadata` on `IBrainTileDef`,
+`BrainTileDefCreateOptions`, and all consumers across packages/core (8 files),
+packages/ui (4), packages/docs (1), apps/sim (10), test fixtures (2).
+557 core tests pass.
+
+### M3 -- Service Worker scaffold and registration
+
+**bridge-app:**
+- `src/vfs-service-worker.ts` -- SW with skipWaiting, clients.claim, no-op
+  fetch, message handler returning vfs-ack. Uses inline interfaces to avoid
+  webworker lib conflicts.
+- `src/vfs-sw-registration.ts` -- `registerVfsServiceWorker({ swUrl, workspace })`.
+  Registers SW with `type: "module"`, sets up message listener stub.
+- `src/index.ts` -- exports new function and type.
+- `package.json` -- added `./vfs-service-worker` subpath export.
+
+**apps/sim:**
+- `src/vfs-sw-entry.ts` -- thin entry importing bridge-app's SW module.
+- `src/services/vfs-service-worker.ts` -- `initVfsServiceWorker()` picks URL
+  by `import.meta.env.DEV`, calls registration with workspace adapter.
+- `src/bootstrap.ts` -- calls `initVfsServiceWorker()`.
+- `vite/config.prod.mjs` -- second Rollup input for SW; `entryFileNames`
+  routes it to `/vfs-service-worker.js` (no content hash).
+
+### M4 -- Service Worker `/vfs/` file serving
+
+**bridge-app/src/vfs-service-worker.ts:**
+- `fetch` handler intercepts `/vfs/*` URLs. Cache hit -> return cached.
+  Cache miss -> `MessageChannel` round-trip to main thread via
+  `client.postMessage({ type: "vfs-read", path }, [port])`. Builds
+  `Response` with correct Content-Type, caches it, returns it. 404 on
+  not-found or no client.
+- `mimeForPath()` maps extensions to MIME types: svg, png, jpg, jpeg, gif,
+  webp, md, ts, json, txt. Default: `application/octet-stream`.
+- Expanded inline interfaces for `caches`, `clients.matchAll()`,
+  `event.request`, `event.respondWith()`.
+
+**bridge-app/src/vfs-sw-registration.ts:**
+- Message listener handles `vfs-read`: reads path from workspace adapter's
+  `exportSnapshot()`, replies on `MessagePort` with `{ found, content }`.
 
