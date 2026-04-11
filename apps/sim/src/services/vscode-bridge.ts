@@ -1,5 +1,4 @@
 import type { AppBridge, AppBridgeState } from "@mindcraft-lang/bridge-app";
-import { invalidateVfsCache } from "@mindcraft-lang/bridge-app";
 import { type AppProjectHandle, createAppProject } from "@mindcraft-lang/bridge-app/compilation";
 import { logger } from "@mindcraft-lang/core/app";
 import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
@@ -49,13 +48,15 @@ function applyBridgeSnapshot(activeBridge: AppBridge): void {
   }
 }
 
-function wireBridgeState(activeBridge: AppBridge): void {
+function wireBridgeState(activeBridge: AppBridge, store: SimEnvironmentStore): void {
   bridgeStateUnsub?.();
   remoteChangeUnsub?.();
   bridgeStateUnsub = activeBridge.onStateChange(() => {
     applyBridgeSnapshot(activeBridge);
   });
-  remoteChangeUnsub = activeBridge.onRemoteChange(invalidateVfsCache);
+  remoteChangeUnsub = activeBridge.onRemoteChange(() => {
+    store.bumpVfsRevision();
+  });
   applyBridgeSnapshot(activeBridge);
 }
 
@@ -80,7 +81,7 @@ function logWorkspaceCompile(result: WorkspaceCompileResult): void {
 }
 
 function recreateBridge(shouldStart: boolean): void {
-  if (!project) {
+  if (!project || !projectStore) {
     return;
   }
 
@@ -88,7 +89,7 @@ function recreateBridge(shouldStart: boolean): void {
   bridgeStateUnsub = undefined;
 
   project.recreateBridge(getAppSettings().vscodeBridgeUrl);
-  wireBridgeState(project.bridge);
+  wireBridgeState(project.bridge, projectStore);
 
   if (shouldStart) {
     project.bridge.start();
@@ -114,7 +115,7 @@ export function initProject(store: SimEnvironmentStore): void {
   });
 
   project.initialize();
-  wireBridgeState(project.bridge);
+  wireBridgeState(project.bridge, store);
 }
 
 export function connectBridge(): void {

@@ -25,10 +25,6 @@ export class SimEnvironmentStore {
     return this._docRevision;
   }
 
-  get vfsRevision(): number {
-    return this._vfsRevision;
-  }
-
   bumpDocRevision(): void {
     this._docRevision++;
     for (const listener of this.docRevisionListeners) {

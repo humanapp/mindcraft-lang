@@ -727,11 +727,16 @@ export function DocsSidebar() {
   const isMobile = useIsMobile();
   const searchRef = useRef<HTMLInputElement>(null);
   const [widthPct, setWidthPct] = usePanelWidth();
+  const [hasBeenOpened, setHasBeenOpened] = useState(isOpen);
   // During drag we apply the width directly without React re-renders via a
   // CSS variable on the aside element, then commit to state on pointerup.
   const asideRef = useRef<HTMLElement>(null);
   // Track whether we are mid-drag so we can suppress the CSS transition.
   const isDragging = useRef(false);
+
+  useEffect(() => {
+    if (isOpen) setHasBeenOpened(true);
+  }, [isOpen]);
 
   // Move focus into the sidebar when it opens so the user can immediately
   // interact via keyboard. A short delay allows the slide-in transition to
@@ -854,9 +859,7 @@ export function DocsSidebar() {
         </div>
       </div>
       {/* Offset content to clear the handle */}
-      <div className="flex flex-col flex-1 min-h-0 pl-3">
-        <PanelContent searchRef={searchRef} />
-      </div>
+      <div className="flex flex-col flex-1 min-h-0 pl-3">{hasBeenOpened && <PanelContent searchRef={searchRef} />}</div>
     </aside>,
     document.body
   );

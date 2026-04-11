@@ -99,17 +99,14 @@ interface BuildBrainEditorConfigOptions {
   docsIntegration?: BrainEditorConfig["docsIntegration"];
 }
 
-/**
- * Build the complete BrainEditorConfig for the sim app.
- */
 export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): BrainEditorConfig {
   const { environment, archetype, vfsRevision, onTileHelp, docsIntegration } = options;
   const resolveTileVisual =
-    vfsRevision !== undefined && vfsRevision > 0
+    vfsRevision !== undefined
       ? (tileDef: Parameters<typeof genVisualForTile>[0]) => {
           const visual = genVisualForTile(tileDef);
           if (visual.iconUrl?.startsWith("/vfs/")) {
-            return { ...visual, iconUrl: `${visual.iconUrl}?_t=${vfsRevision}` };
+            return { ...visual, iconUrl: `${visual.iconUrl}?_v=${vfsRevision}` };
           }
           return visual;
         }

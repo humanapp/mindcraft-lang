@@ -2,18 +2,10 @@ interface VfsSwScope {
   skipWaiting(): Promise<void>;
   clients: { claim(): Promise<void>; matchAll(): Promise<VfsSwClient[]> };
   addEventListener(type: string, listener: (event: VfsSwEvent) => void): void;
-  caches: { open(name: string): Promise<VfsSwCache>; delete(name: string): Promise<boolean> };
-  registration: { scope: string };
 }
 
 interface VfsSwClient {
   postMessage(message: unknown, transfer: unknown[]): void;
-}
-
-interface VfsSwCache {
-  match(request: Request | string): Promise<Response | undefined>;
-  put(request: Request | string, response: Response): Promise<void>;
-  delete(request: Request | string): Promise<boolean>;
 }
 
 interface VfsSwEvent {
@@ -21,10 +13,8 @@ interface VfsSwEvent {
   respondWith?(response: Promise<Response> | Response): void;
   request?: { url: string };
   data?: unknown;
-  source?: { postMessage(message: unknown): void } | null;
 }
 
-const VFS_CACHE = "vfs";
 const VFS_PREFIX = "/vfs/";
 
 const MIME_TYPES: Record<string, string> = {
@@ -47,18 +37,37 @@ function mimeForPath(path: string): string {
 }
 
 function readViaClient(clients: VfsSwClient[], path: string): Promise<{ found: boolean; content?: string }> {
-  const client = clients[0];
-  if (!client) {
+  if (clients.length === 0) {
     return Promise.resolve({ found: false });
   }
 
   return new Promise((resolve) => {
-    const channel = new MessageChannel();
-    channel.port1.onmessage = (ev: MessageEvent) => {
-      const msg = ev.data as { found: boolean; content?: string } | undefined;
-      resolve(msg ?? { found: false });
+    let settled = false;
+    let remaining = clients.length;
+
+    const settle = (result: { found: boolean; content?: string }) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
     };
-    client.postMessage({ type: "vfs-read", path }, [channel.port2]);
+
+    setTimeout(() => settle({ found: false }), 2000);
+
+    for (const client of clients) {
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (ev: MessageEvent) => {
+        const msg = ev.data as { found: boolean; content?: string } | undefined;
+        if (msg?.found) {
+          settle(msg);
+        } else {
+          remaining--;
+          if (remaining <= 0) {
+            settle({ found: false });
+          }
+        }
+      };
+      client.postMessage({ type: "vfs-read", path }, [channel.port2]);
+    }
   });
 }
 
@@ -79,17 +88,9 @@ sw.addEventListener("fetch", (event) => {
   }
 
   const vfsPath = decodeURIComponent(url.pathname.slice(VFS_PREFIX.length));
-  const bareUrl = `${url.origin}${url.pathname}`;
 
   event.respondWith!(
     (async () => {
-      const cache = await sw.caches.open(VFS_CACHE);
-
-      const cached = await cache.match(bareUrl);
-      if (cached) {
-        return cached;
-      }
-
       const clients = await sw.clients.matchAll();
       const result = await readViaClient(clients, vfsPath);
 
@@ -97,35 +98,19 @@ sw.addEventListener("fetch", (event) => {
         return new Response("Not found", { status: 404, statusText: "Not Found" });
       }
 
-      const response = new Response(result.content, {
+      return new Response(result.content, {
         status: 200,
-        headers: { "Content-Type": mimeForPath(vfsPath) },
+        headers: { "Content-Type": mimeForPath(vfsPath), "Cache-Control": "no-store" },
       });
-
-      await cache.put(bareUrl, response.clone());
-      return response;
     })()
   );
 });
 
 sw.addEventListener("message", (event) => {
   const data = event.data as Record<string, unknown> | undefined;
-  if (!data) return;
-
-  switch (data.type) {
-    case "vfs-invalidate": {
-      const path = data.path as string;
-      const loc = self as unknown as { location: { origin: string } };
-      const url = `${loc.location.origin}${VFS_PREFIX}${path}`;
-      event.waitUntil!(sw.caches.open(VFS_CACHE).then((cache) => cache.delete(url)));
-      break;
-    }
-    case "vfs-invalidate-all":
-      event.waitUntil!(sw.caches.delete(VFS_CACHE));
-      break;
+  if (data?.type === "claim") {
+    event.waitUntil!(sw.clients.claim());
   }
-
-  event.source?.postMessage({ type: "vfs-ack", received: data.type });
 });
 
 export {};

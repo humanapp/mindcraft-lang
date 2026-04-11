@@ -74,6 +74,16 @@ function App() {
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
 
   const docRevision = useSyncExternalStore(store.subscribeToDocRevision, store.getDocRevisionSnapshot);
+  const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
+  const docsResolveTileVisual = useMemo(() => {
+    return (tileDef: Parameters<typeof genVisualForTile>[0]) => {
+      const visual = genVisualForTile(tileDef);
+      if (visual.iconUrl?.startsWith("/vfs/")) {
+        return { ...visual, iconUrl: `${visual.iconUrl}?_v=${vfsRevision}` };
+      }
+      return visual;
+    };
+  }, [vfsRevision]);
   const docsRegistry = useMemo(() => {
     void docRevision;
     return createDocsRegistry(store.userTileDocEntries);
@@ -174,7 +184,7 @@ function App() {
       registry={docsRegistry}
       tileCatalog={docsTileCatalog}
       brainServices={store.env.brainServices}
-      resolveTileVisual={genVisualForTile}
+      resolveTileVisual={docsResolveTileVisual}
     >
       <div className="h-screen flex bg-background overflow-hidden">
         <h1 className="sr-only">Mindcraft Simulation</h1>
