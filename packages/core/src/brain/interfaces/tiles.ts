@@ -42,9 +42,11 @@ export enum TilePlacement {
   Inline = 1 << 4,
 }
 
-export interface ITileVisual {
+export interface ITileMetadata {
   label: string;
   iconUrl?: string;
+  docsMarkdown?: string;
+  tags?: readonly string[];
 }
 
 export interface BrainTileDefCreateOptions {
@@ -54,7 +56,7 @@ export interface BrainTileDefCreateOptions {
   persist?: boolean;
   capabilities?: BitSet;
   requirements?: BitSet;
-  visual?: ITileVisual;
+  metadata?: ITileMetadata;
 }
 
 // ----------------------------------------------------
@@ -125,7 +127,7 @@ export function mkTileId(area: string, id: string): string {
 export interface IBrainTileDef {
   readonly kind: BrainTileKind;
   readonly tileId: TileId;
-  visual?: ITileVisual; // platform-specific visual representation, supplied at registration time via `tileVisualProvider`
+  metadata?: ITileMetadata;
   placement?: TilePlacement;
   deprecated?: boolean;
   hidden?: boolean;

@@ -55,7 +55,7 @@ export default {
   callDef,
   fn: { exec: execSay },
   isAsync: false,
-  visual: { label: "say", iconUrl: "/assets/brain/icons/say.svg" },
+  metadata: { label: "say", iconUrl: "/assets/brain/icons/say.svg" },
 } satisfies CreateHostActuatorOptions;
 
 export const parameters: ParameterTileInput[] = [

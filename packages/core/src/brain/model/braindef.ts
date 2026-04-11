@@ -386,8 +386,8 @@ export class BrainDef implements IBrainDef {
       const existing = this.catalog_.get(tileId) as BrainTilePageDef | undefined;
       if (existing && existing.kind === "page") {
         // Update label and unhide
-        if (existing.visual) {
-          existing.visual.label = page.name();
+        if (existing.metadata) {
+          existing.metadata.label = page.name();
         }
         existing.hidden = false;
       } else {

@@ -34,11 +34,12 @@ Phase Log is a post-mortem artifact.
 
 ## Current State
 
-Phase M1 complete. Bridge protocol enforces per-file (512 KB) and per-snapshot
-(16 MB) content limits via Zod schema validators. `NotifyingFileSystem.write()`
-returns `WriteResult` (`{ etag: string; oversized?: boolean }`) so callers can
-detect and surface oversized files. Oversized files are stored locally but their
-bridge notification is suppressed.
+Phase M2 complete. `ITileVisual` renamed to `ITileMetadata` across the entire
+codebase (packages/core, packages/ui, packages/docs, apps/sim). The `.visual`
+property on `IBrainTileDef` and `BrainTileDefCreateOptions` is now `.metadata`.
+`ITileMetadata` gains two new optional fields: `docsMarkdown?: string` and
+`tags?: readonly string[]`. All 557 core tests pass, all packages typecheck
+and lint clean.
 
 ---
 

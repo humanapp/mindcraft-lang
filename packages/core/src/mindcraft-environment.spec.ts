@@ -222,7 +222,7 @@ function createBundleSensor(
     },
     tile: new BrainTileSensorDef(sensorId, descriptor, {
       placement: TilePlacement.EitherSide | TilePlacement.Inline,
-      visual: visualLabel ? { label: visualLabel } : undefined,
+      metadata: visualLabel ? { label: visualLabel } : undefined,
     }),
   };
 }
@@ -443,7 +443,7 @@ describe("mindcraft environment", () => {
     assert.equal(resolveTileFromChain(bundleChain, overlayLayered.tileId), bundleLayered.tile);
   });
 
-  test("stores hydrated and bundled tiles without mutating tile visuals", () => {
+  test("stores hydrated and bundled tiles without mutating tile metadata", () => {
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const internals = getEnvironmentInternals(environment);
 
@@ -453,12 +453,12 @@ describe("mindcraft environment", () => {
       tiles: [hydrated.tile],
     });
 
-    assert.equal(internals.bundleCatalog.get(hydrated.tile.tileId)?.visual, undefined);
+    assert.equal(internals.bundleCatalog.get(hydrated.tile.tileId)?.metadata, undefined);
 
     const bundled = createBundleSensor("bundle.visual");
     environment.replaceActionBundle(createActionBundle("bundle.visual.rev1", [bundled]));
 
-    assert.equal(internals.bundleCatalog.get(bundled.tile.tileId)?.visual, undefined);
+    assert.equal(internals.bundleCatalog.get(bundled.tile.tileId)?.metadata, undefined);
   });
 
   test("selectively invalidates brains whose linked bundle action revisions change", () => {
@@ -637,8 +637,8 @@ describe("mindcraft environment", () => {
     const restoredTileB = restoredB.pages().get(0)!.children().get(0)!.when().tiles().get(0)!;
 
     assert.equal(restoredTileA.tileId, restoredTileB.tileId);
-    assert.equal(restoredTileA.visual?.label, "Alpha Label");
-    assert.equal(restoredTileB.visual?.label, "Beta Label");
-    assert.notEqual(restoredTileA.visual?.label, restoredTileB.visual?.label);
+    assert.equal(restoredTileA.metadata?.label, "Alpha Label");
+    assert.equal(restoredTileB.metadata?.label, "Beta Label");
+    assert.notEqual(restoredTileA.metadata?.label, restoredTileB.metadata?.label);
   });
 });

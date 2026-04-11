@@ -31,7 +31,7 @@ function defaultTileLabel(tileDef: IBrainTileDef): string {
 }
 
 export function resolveTileVisual(config: BrainEditorConfig, tileDef: IBrainTileDef): TileVisual {
-  const intrinsicVisual = tileDef.visual as TileVisual | undefined;
+  const intrinsicVisual = tileDef.metadata as TileVisual | undefined;
   const appVisual = config.resolveTileVisual?.(tileDef);
   const appLabel = appVisual?.label;
   const appResolvedLabel = appLabel && appLabel !== getCatalogFallbackLabel(tileDef) ? appLabel : undefined;

@@ -18,7 +18,7 @@ import type {
   IBrainDef,
   IBrainTileDef,
   ITileCatalog,
-  ITileVisual,
+  ITileMetadata,
   ListTypeDef,
   ListTypeShape,
   MapTypeDef,
@@ -95,7 +95,7 @@ export interface HostActuatorDefinition {
 type HostActionOptionsBase = {
   readonly key: string;
   readonly callDef: BrainActionCallDef;
-  readonly visual?: ITileVisual;
+  readonly metadata?: ITileMetadata;
   readonly capabilities?: BrainTileDefCreateOptions["capabilities"];
 };
 
@@ -128,7 +128,7 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
     descriptor,
     function: { name: options.key, isAsync, fn: options.fn, callDef: options.callDef },
     tile: new BrainTileSensorDef(options.key, descriptor, {
-      visual: options.visual,
+      metadata: options.metadata,
       capabilities: options.capabilities,
     }),
   };
@@ -146,7 +146,7 @@ export function createHostActuator(options: CreateHostActuatorOptions): HostActu
     descriptor,
     function: { name: options.key, isAsync, fn: options.fn, callDef: options.callDef },
     tile: new BrainTileActuatorDef(options.key, descriptor, {
-      visual: options.visual,
+      metadata: options.metadata,
       capabilities: options.capabilities,
     }),
   };
@@ -603,8 +603,8 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
 
   registerModifiers(defs: readonly ModifierTileInput[]): void {
     for (const def of defs) {
-      const visual: ITileVisual = { label: def.label, iconUrl: def.iconUrl };
-      this.brainServices.tiles.registerTileDef(new BrainTileModifierDef(def.id, { visual }));
+      const metadata: ITileMetadata = { label: def.label, iconUrl: def.iconUrl };
+      this.brainServices.tiles.registerTileDef(new BrainTileModifierDef(def.id, { metadata }));
     }
   }
 
@@ -612,7 +612,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
     for (const def of defs) {
       const opts: BrainTileDefCreateOptions = { hidden: def.hidden };
       if (def.label) {
-        opts.visual = { label: def.label, iconUrl: def.iconUrl };
+        opts.metadata = { label: def.label, iconUrl: def.iconUrl };
       }
       this.brainServices.tiles.registerTileDef(new BrainTileParameterDef(def.id, def.dataType, opts));
     }

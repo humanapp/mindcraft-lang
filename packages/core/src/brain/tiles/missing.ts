@@ -34,7 +34,7 @@ export class BrainTileMissingDef extends BrainTileDefBase {
     super(tileId, {
       placement: TilePlacement.EitherSide,
       persist: true,
-      visual: { label: `? ${label}` },
+      metadata: { label: `? ${label}` },
     });
     this.originalKind = originalKind;
     this.label = label;

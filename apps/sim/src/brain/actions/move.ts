@@ -245,7 +245,7 @@ export default {
   callDef,
   fn: { exec: execMove },
   isAsync: false,
-  visual: { label: "move", iconUrl: "/assets/brain/icons/move2.svg" },
+  metadata: { label: "move", iconUrl: "/assets/brain/icons/move2.svg" },
 } satisfies CreateHostActuatorOptions;
 
 export const modifiers: ModifierTileInput[] = [

@@ -64,8 +64,8 @@ export function copyTileToClipboard(tileDef: IBrainTileDef, brain: IBrainDef | u
     const catalogTileDef = brainCatalog.get(tileDef.tileId);
     if (catalogTileDef) {
       tempCatalog.add(catalogTileDef);
-      if (isPageTileId(tileDef.tileId) && catalogTileDef.visual?.label) {
-        pageName = catalogTileDef.visual.label;
+      if (isPageTileId(tileDef.tileId) && catalogTileDef.metadata?.label) {
+        pageName = catalogTileDef.metadata.label;
       }
     }
   }
@@ -140,7 +140,7 @@ function importPageTile(tileDef: IBrainTileDef, destBrain: IBrainDef, destCatalo
     }
   }
 
-  const sourceName = tileClipboardData!.pageName || tileDef.visual?.label || "";
+  const sourceName = tileClipboardData!.pageName || tileDef.metadata?.label || "";
   if (sourceName) {
     const destPageTile = destPageByName.get(sourceName);
     if (destPageTile) {
@@ -148,7 +148,7 @@ function importPageTile(tileDef: IBrainTileDef, destBrain: IBrainDef, destCatalo
     }
   }
 
-  const label = tileClipboardData!.pageName || tileDef.visual?.label || "page";
+  const label = tileClipboardData!.pageName || tileDef.metadata?.label || "page";
   const missingTile = new BrainTileMissingDef(tileDef.tileId, "page", label);
   destCatalog.registerTileDef(missingTile);
   return missingTile;

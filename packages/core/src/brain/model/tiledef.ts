@@ -5,7 +5,7 @@ import type {
   BrainTileKind,
   IBrainActionTileDef,
   IBrainTileDef,
-  ITileVisual,
+  ITileMetadata,
   TileId,
   TilePlacement,
 } from "../interfaces";
@@ -17,7 +17,7 @@ const emptyBitSet = new BitSet();
 export abstract class BrainTileDefBase implements IBrainTileDef {
   abstract readonly kind: BrainTileKind;
   readonly tileId: TileId;
-  visual?: ITileVisual; // platform-specific visual representation, can be supplied in constructor options or at registration time via `tileVisualProvider`
+  metadata?: ITileMetadata;
   placement?: TilePlacement;
   deprecated?: boolean;
   hidden?: boolean;
@@ -33,7 +33,7 @@ export abstract class BrainTileDefBase implements IBrainTileDef {
     this.persist = opts.persist;
     this.capabilities_ = opts.capabilities; // || lazy init in capabilities()
     this.requirements_ = opts.requirements; // || lazy init in requirements()
-    this.visual = opts.visual;
+    this.metadata = opts.metadata;
   }
 
   capabilities(): ReadonlyBitSet {

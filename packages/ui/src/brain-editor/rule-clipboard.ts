@@ -80,8 +80,8 @@ export function copyRuleToClipboard(rule: BrainRuleDef): void {
       const tileDef = brainCatalog.get(tileId);
       if (tileDef?.persist) {
         tempCatalog.add(tileDef);
-        if (isPageTileId(tileId) && tileDef.visual?.label) {
-          pageNames.set(tileId, tileDef.visual.label);
+        if (isPageTileId(tileId) && tileDef.metadata?.label) {
+          pageNames.set(tileId, tileDef.metadata.label);
         }
       }
     }
@@ -200,14 +200,14 @@ export function deserializeAllRulesFromClipboard(
         continue;
       }
 
-      const sourceName = currentClipboardData.pageNames.get(tileDef.tileId) || tileDef.visual?.label || "";
+      const sourceName = currentClipboardData.pageNames.get(tileDef.tileId) || tileDef.metadata?.label || "";
       const destPageTile = destPageByName.get(sourceName);
       if (destPageTile) {
         const placeholder = new BrainTileMissingDef(tileDef.tileId, "page", sourceName);
         destCatalog.registerTileDef(placeholder);
         pageRemapTable.set(tileDef.tileId, destPageTile);
       } else {
-        const label = currentClipboardData.pageNames.get(tileDef.tileId) || tileDef.visual?.label || "page";
+        const label = currentClipboardData.pageNames.get(tileDef.tileId) || tileDef.metadata?.label || "page";
         const missingTile = new BrainTileMissingDef(tileDef.tileId, "page", label);
         destCatalog.registerTileDef(missingTile);
       }

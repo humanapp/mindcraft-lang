@@ -94,7 +94,7 @@ export function DocsSidebarProvider({
   const tileCatalog = useMemo(() => externalTileCatalog, [externalTileCatalog]);
   const resolveTileVisual = useCallback(
     (tileDef: IBrainTileDef): TileVisual | undefined => {
-      const intrinsicVisual = tileDef.visual as TileVisual | undefined;
+      const intrinsicVisual = tileDef.metadata as TileVisual | undefined;
       const appVisual = resolveTileVisualProp?.(tileDef);
       const appLabel = appVisual?.label;
       const resolvedAppLabel = appLabel && appLabel !== getCatalogFallbackLabel(tileDef) ? appLabel : undefined;

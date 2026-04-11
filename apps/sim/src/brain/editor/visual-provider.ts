@@ -39,7 +39,7 @@ function stripGenericCatalogLabel(tileDef: IBrainTileDef, visual: TileVisual | u
 }
 
 export function genVisualForTile(tileDef: IBrainTileDef): TileVisual {
-  const intrinsicVisual = stripGenericCatalogLabel(tileDef, tileDef.visual as TileVisual | undefined);
+  const intrinsicVisual = stripGenericCatalogLabel(tileDef, tileDef.metadata as TileVisual | undefined);
   const mappedVisual = tileVisuals.get(tileDef.tileId);
   const vis: Partial<TileVisual> = {
     ...(intrinsicVisual ?? {}),

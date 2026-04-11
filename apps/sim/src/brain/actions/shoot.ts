@@ -126,7 +126,7 @@ export default {
   callDef,
   fn: { exec: execShoot },
   isAsync: false,
-  visual: { label: "shoot", iconUrl: "/assets/brain/icons/shoot.svg" },
+  metadata: { label: "shoot", iconUrl: "/assets/brain/icons/shoot.svg" },
 } satisfies CreateHostActuatorOptions;
 
 export const parameters: ParameterTileInput[] = [

@@ -50,7 +50,7 @@ export class BrainTilePageDef extends BrainTileDefBase {
     super(mkPageTileId(pageId), {
       placement: TilePlacement.EitherSide,
       persist: true,
-      visual: { label: pageName || pageId },
+      metadata: { label: pageName || pageId },
     });
     this.pageId = pageId;
     this.value = pageId;
@@ -64,7 +64,7 @@ export class BrainTilePageDef extends BrainTileDefBase {
       kind: "page",
       tileId: this.tileId,
       pageId: this.pageId,
-      label: this.visual?.label,
+      label: this.metadata?.label,
     };
   }
 

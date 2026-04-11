@@ -86,7 +86,7 @@ export default {
   callDef,
   fn: { exec: execEat },
   isAsync: false,
-  visual: { label: "eat", iconUrl: "/assets/brain/icons/eat.svg" },
+  metadata: { label: "eat", iconUrl: "/assets/brain/icons/eat.svg" },
 } satisfies CreateHostActuatorOptions;
 
 export const parameters: ParameterTileInput[] = [

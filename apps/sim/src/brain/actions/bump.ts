@@ -89,7 +89,7 @@ export default {
   },
   isAsync: false,
   outputType: CoreTypeIds.Boolean,
-  visual: { label: "bump", iconUrl: "/assets/brain/icons/bump.svg" },
+  metadata: { label: "bump", iconUrl: "/assets/brain/icons/bump.svg" },
   capabilities: TargetActorCapabilityBitSet,
 } satisfies CreateHostSensorOptions;
 

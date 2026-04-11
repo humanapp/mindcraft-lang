@@ -18,7 +18,7 @@ export function registerLiteralTiles(api: MindcraftModuleApi) {
       SimTypeIds.ActorRef,
       mkNativeStructValue(SimTypeIds.ActorRef, getSelf),
       {
-        visual: meVisual,
+        metadata: meVisual,
         persist: false,
         valueLabel: "me",
       },
@@ -30,7 +30,7 @@ export function registerLiteralTiles(api: MindcraftModuleApi) {
       SimTypeIds.ActorRef,
       mkNativeStructValue(SimTypeIds.ActorRef, getTargetActor),
       {
-        visual: itVisual,
+        metadata: itVisual,
         persist: false,
         valueLabel: "it",
         requirements: TargetActorCapabilityBitSet,

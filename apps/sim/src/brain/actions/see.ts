@@ -221,7 +221,7 @@ export default {
   },
   isAsync: false,
   outputType: CoreTypeIds.Boolean,
-  visual: { label: "see", iconUrl: "/assets/brain/icons/see.svg" },
+  metadata: { label: "see", iconUrl: "/assets/brain/icons/see.svg" },
   capabilities: TargetActorCapabilityBitSet,
 } satisfies CreateHostSensorOptions;
 

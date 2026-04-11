@@ -189,7 +189,7 @@ export default {
   callDef,
   fn: { exec: execTurn },
   isAsync: false,
-  visual: { label: "turn", iconUrl: "/assets/brain/icons/turn.svg" },
+  metadata: { label: "turn", iconUrl: "/assets/brain/icons/turn.svg" },
 } satisfies CreateHostActuatorOptions;
 
 export const modifiers: ModifierTileInput[] = [

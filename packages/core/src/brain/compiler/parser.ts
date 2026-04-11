@@ -785,7 +785,7 @@ class BrainParser {
           };
         }
         if (left.kind === "fieldAccess" && left.accessor.readOnly) {
-          const fieldLabel = left.accessor.visual?.label ?? left.accessor.fieldName;
+          const fieldLabel = left.accessor.metadata?.label ?? left.accessor.fieldName;
           this.diags.push({
             code: ParseDiagCode.ReadOnlyFieldAssignment,
             message: `Cannot assign to read-only field "${fieldLabel}"`,
