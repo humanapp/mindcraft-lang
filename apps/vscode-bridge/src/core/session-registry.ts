@@ -292,6 +292,40 @@ function bindPendingExtensions(app: AppSession): void {
       );
     }
   }
+
+  rebindExtensionsFromDisconnectedApp(app);
+}
+
+function rebindExtensionsFromDisconnectedApp(app: AppSession): void {
+  for (const ext of extensionSessions.values()) {
+    if (ext.appSessionId && ext.appSessionId !== app.id) {
+      const oldApp = disconnectedAppSessions.get(ext.appSessionId);
+      if (oldApp && oldApp.session.bindingId === app.bindingId) {
+        logger.info(
+          { extensionSessionId: ext.id, oldAppSessionId: ext.appSessionId, newAppSessionId: app.id },
+          "rebound extension from disconnected app to new app with same bindingId"
+        );
+        ext.appSessionId = app.id;
+        notifyExtensionsAppStatus(app.id, true, true);
+      }
+    }
+  }
+  for (const entry of disconnectedExtensionSessions.values()) {
+    if (entry.session.appSessionId && entry.session.appSessionId !== app.id) {
+      const oldApp = disconnectedAppSessions.get(entry.session.appSessionId);
+      if (oldApp && oldApp.session.bindingId === app.bindingId) {
+        logger.info(
+          {
+            extensionSessionId: entry.session.id,
+            oldAppSessionId: entry.session.appSessionId,
+            newAppSessionId: app.id,
+          },
+          "rebound disconnected extension from disconnected app to new app with same bindingId"
+        );
+        entry.session.appSessionId = app.id;
+      }
+    }
+  }
 }
 
 export function registerExtensionSession(ws: WSContext, joinCode?: string, bindingToken?: string): ExtensionSession {

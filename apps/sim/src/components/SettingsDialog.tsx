@@ -11,6 +11,7 @@ import {
 } from "@mindcraft-lang/ui";
 import { useEffect, useState } from "react";
 import { type AppSettings, getAppSettings, updateAppSettings } from "@/services/app-settings";
+import { clearBindingToken, hasBindingToken } from "@/services/vscode-bridge";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -19,10 +20,12 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const [draft, setDraft] = useState<AppSettings>(getAppSettings);
+  const [hasToken, setHasToken] = useState(false);
 
   useEffect(() => {
     if (open) {
       setDraft(getAppSettings());
+      setHasToken(hasBindingToken());
     }
   }, [open]);
 
@@ -61,6 +64,21 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               placeholder="localhost:6464"
             />
           </div>
+          {hasToken && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">Bridge Binding Token</span>
+              <Button
+                variant="cancel"
+                className="rounded-lg text-xs"
+                onClick={() => {
+                  clearBindingToken();
+                  setHasToken(false);
+                }}
+              >
+                Clear Token
+              </Button>
+            </div>
+          )}
         </div>
         <DialogFooter className="border-t border-slate-200 pt-3">
           <Button variant="cancel" className="rounded-lg" onClick={() => onOpenChange(false)}>

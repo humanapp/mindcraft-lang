@@ -31,6 +31,8 @@ export interface AppBridgeOptions {
   bridgeUrl: string;
   workspace: WorkspaceAdapter;
   features?: readonly AppBridgeFeature[];
+  bindingToken?: string;
+  onBindingTokenChange?: (token: string) => void;
 }
 
 export interface WorkspaceAdapter {
@@ -96,6 +98,7 @@ class AppBridgeController implements AppBridge {
       projectName: this._options.app.projectName,
       bridgeUrl: this._options.bridgeUrl,
       filesystem: this._options.workspace.exportSnapshot(),
+      bindingToken: this._options.bindingToken,
     });
 
     this._project = project;
@@ -105,6 +108,13 @@ class AppBridgeController implements AppBridge {
     this._projectUnsubs = [
       project.session.addEventListener("status", (status) => {
         this.setStatus(status);
+      }),
+      project.session.on("session:welcome", (msg) => {
+        const token = (msg.payload as { bindingToken?: string } | undefined)?.bindingToken;
+        if (token) {
+          this._options.bindingToken = token;
+          this._options.onBindingTokenChange?.(token);
+        }
       }),
       project.onJoinCodeChange((joinCode) => {
         this.setJoinCode(joinCode);

@@ -7,6 +7,8 @@ import type { SimEnvironmentStore } from "./sim-environment-store";
 import { getUiPreferences } from "./ui-preferences";
 import { applyCompiledUserTiles } from "./user-tile-registration";
 
+const BINDING_TOKEN_KEY = "bridge-binding-token";
+
 type ConnectionStatus = AppBridgeState;
 type StatusListener = (status: ConnectionStatus) => void;
 type JoinCodeListener = (joinCode: string | undefined) => void;
@@ -108,6 +110,10 @@ export function initProject(store: SimEnvironmentStore): void {
     },
     bridgeUrl: getAppSettings().vscodeBridgeUrl,
     workspace: store.workspace,
+    bindingToken: loadBindingToken(),
+    onBindingTokenChange(token) {
+      saveBindingToken(token);
+    },
     onDidCompile(result) {
       logWorkspaceCompile(result);
       applyCompiledUserTiles(store, result);
@@ -165,3 +171,35 @@ onAppSettingsChange((settings, prev) => {
     recreateBridge(shouldStart);
   }
 });
+
+function loadBindingToken(): string | undefined {
+  try {
+    return localStorage.getItem(BINDING_TOKEN_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function saveBindingToken(token: string): void {
+  try {
+    localStorage.setItem(BINDING_TOKEN_KEY, token);
+  } catch {
+    // storage full or unavailable
+  }
+}
+
+export function clearBindingToken(): void {
+  try {
+    localStorage.removeItem(BINDING_TOKEN_KEY);
+  } catch {
+    // storage unavailable
+  }
+}
+
+export function hasBindingToken(): boolean {
+  try {
+    return localStorage.getItem(BINDING_TOKEN_KEY) !== null;
+  } catch {
+    return false;
+  }
+}

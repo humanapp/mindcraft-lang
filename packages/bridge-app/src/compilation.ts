@@ -284,6 +284,8 @@ export interface CreateAppProjectOptions {
   };
   bridgeUrl: string;
   workspace: WorkspaceAdapter;
+  bindingToken?: string;
+  onBindingTokenChange?: (token: string) => void;
   onDidCompile?: (result: WorkspaceCompileResult) => void;
 }
 
@@ -303,8 +305,17 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
     compiler.onDidCompile(options.onDidCompile);
   }
 
+  let latestBindingToken = options.bindingToken;
+  const onBindingTokenChange = (token: string): void => {
+    latestBindingToken = token;
+    options.onBindingTokenChange?.(token);
+  };
+
   const augmented = augmentWorkspace(workspace, compiler);
-  let currentBridge = buildBridge({ ...options, workspace: augmented }, compiler);
+  let currentBridge = buildBridge(
+    { ...options, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
+    compiler
+  );
 
   return {
     compiler,
@@ -317,7 +328,10 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
     },
     recreateBridge(bridgeUrl: string) {
       currentBridge.stop();
-      currentBridge = buildBridge({ ...options, bridgeUrl, workspace: augmented }, compiler);
+      currentBridge = buildBridge(
+        { ...options, bridgeUrl, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
+        compiler
+      );
     },
   };
 }
@@ -342,7 +356,7 @@ function augmentWorkspace(workspace: WorkspaceAdapter, compiler: TsWorkspaceComp
 }
 
 function buildBridge(
-  options: Pick<CreateAppProjectOptions, "app" | "bridgeUrl" | "workspace">,
+  options: Pick<CreateAppProjectOptions, "app" | "bridgeUrl" | "workspace" | "bindingToken" | "onBindingTokenChange">,
   compiler: TsWorkspaceCompiler
 ): AppBridge {
   return createAppBridge({
@@ -350,5 +364,7 @@ function buildBridge(
     bridgeUrl: options.bridgeUrl,
     workspace: options.workspace,
     features: [createCompilationFeature({ compiler })],
+    bindingToken: options.bindingToken,
+    onBindingTokenChange: options.onBindingTokenChange,
   });
 }

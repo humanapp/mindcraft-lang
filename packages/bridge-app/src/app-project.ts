@@ -9,6 +9,7 @@ export interface AppProjectOptions {
   projectName: string;
   bridgeUrl: string;
   filesystem: ExportedFileSystem;
+  bindingToken?: string;
   compilationProvider?: CompilationProvider;
 }
 

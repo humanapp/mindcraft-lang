@@ -10,6 +10,7 @@ import { getAppSettings } from "@/services/app-settings";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
 import { getUiPreferences, updateUiPreferences } from "@/services/ui-preferences";
 import {
+  clearBindingToken,
   connectBridge,
   disconnectBridge,
   getBridgeJoinCode,
@@ -320,6 +321,7 @@ export function Sidebar({
                   updateUiPreferences({ bridgeEnabled: checked });
                   if (!checked) {
                     disconnectBridge();
+                    clearBindingToken();
                   }
                 }}
                 aria-label="Toggle VS Code bridge connection"
