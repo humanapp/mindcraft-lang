@@ -8,10 +8,11 @@ import {
   mkCallDef,
   type StructValue,
   type Value,
+  Vector2,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
 import { getSelf } from "@/brain/execution-context-types";
-import { extractVector2, SimTypeIds } from "@/brain/type-system";
+import { extractVector2, mkVector2Value, SimTypeIds } from "@/brain/type-system";
 
 export function registerSelfContext(api: MindcraftModuleApi) {
   const { types, functions } = api.brainServices;
@@ -19,6 +20,11 @@ export function registerSelfContext(api: MindcraftModuleApi) {
   types.addStructMethods(
     ContextTypeIds.SelfContext,
     List.from([
+      {
+        name: "getPosition",
+        params: List.empty(),
+        returnTypeId: SimTypeIds.Vector2,
+      },
       {
         name: "setPosition",
         params: List.from([{ name: "pos", typeId: SimTypeIds.Vector2 }]),
@@ -28,6 +34,19 @@ export function registerSelfContext(api: MindcraftModuleApi) {
   );
 
   const emptyCallDef = mkCallDef({ type: "bag", items: [] });
+
+  functions.register(
+    "SelfContext.getPosition",
+    false,
+    {
+      exec: (ctx: ExecutionContext): Value => {
+        const self = getSelf(ctx);
+        if (!self) return VOID_VALUE;
+        return mkVector2Value(new Vector2(self.sprite.x, self.sprite.y));
+      },
+    },
+    emptyCallDef
+  );
 
   functions.register(
     "SelfContext.setPosition",
