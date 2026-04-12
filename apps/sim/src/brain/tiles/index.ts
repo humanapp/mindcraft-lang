@@ -1,5 +1,6 @@
 import { CoreTypeIds, type MindcraftModuleApi } from "@mindcraft-lang/core/app";
 import { TileIds } from "@/brain/tileids";
+import { SimTypeIds } from "@/brain/type-system";
 import { registerLiteralTiles } from "./literals";
 
 export function registerTiles(api: MindcraftModuleApi) {
@@ -14,6 +15,7 @@ export function registerTiles(api: MindcraftModuleApi) {
       label: "delay ms",
       iconUrl: "/assets/brain/icons/delay.svg",
     },
+    { id: TileIds.Parameter.AnonymousVector2, dataType: SimTypeIds.Vector2, hidden: true },
   ]);
   registerLiteralTiles(api);
 }

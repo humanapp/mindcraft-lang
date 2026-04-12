@@ -26,6 +26,7 @@ export const TileIds = {
   } as const,
   Parameter: {
     AnonymousActorRef: "anon.ActorRef",
+    AnonymousVector2: "anon.Vector2",
     DelayMs: "parameter.delay.ms",
     Duration: "parameter.duration",
     Priority: "parameter.priority",
