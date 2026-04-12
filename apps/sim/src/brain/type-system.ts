@@ -2,9 +2,11 @@ import {
   CoreTypeIds,
   Dict,
   type ExecutionContext,
+  extractNumberValue,
   List,
   type MapValue,
   type MindcraftModuleApi,
+  mkCallDef,
   mkNumberValue,
   mkStructValue,
   mkTypeId,
@@ -14,6 +16,7 @@ import {
   TypeUtils,
   type Value,
   Vector2,
+  VOID_VALUE,
 } from "@mindcraft-lang/core/app";
 import type { Actor } from "./actor";
 
@@ -212,4 +215,247 @@ export function registerTypes(api: MindcraftModuleApi) {
       },
     },
   });
+
+  // -------------------------------------------------------
+  // Vector2 methods
+  // -------------------------------------------------------
+
+  const { types, functions } = api.brainServices;
+  const emptyCallDef = mkCallDef({ type: "bag", items: [] });
+
+  types.addStructMethods(
+    SimTypeIds.Vector2,
+    List.from([
+      {
+        name: "add",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "sub",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "mul",
+        params: List.from([{ name: "scalar", typeId: CoreTypeIds.Number }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "div",
+        params: List.from([{ name: "scalar", typeId: CoreTypeIds.Number }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "dot",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "cross",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "magnitude",
+        params: List.empty(),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "normalize",
+        params: List.empty(),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "distance",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "lerp",
+        params: List.from([
+          { name: "goal", typeId: SimTypeIds.Vector2 },
+          { name: "alpha", typeId: CoreTypeIds.Number },
+        ]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "angle",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "rotate",
+        params: List.from([{ name: "angle", typeId: CoreTypeIds.Number }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+    ])
+  );
+
+  functions.register(
+    "Vector2.add",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkVector2Value(self.add(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.sub",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkVector2Value(self.sub(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.mul",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const scalar = extractNumberValue(args.v.get(1));
+        if (!self || scalar === undefined) return VOID_VALUE;
+        return mkVector2Value(self.mul(scalar));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.div",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const scalar = extractNumberValue(args.v.get(1));
+        if (!self || scalar === undefined) return VOID_VALUE;
+        return mkVector2Value(self.div(scalar));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.dot",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkNumberValue(self.Dot(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.cross",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkNumberValue(self.Cross(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.magnitude",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        if (!self) return VOID_VALUE;
+        return mkNumberValue(self.Magnitude);
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.normalize",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        if (!self) return VOID_VALUE;
+        return mkVector2Value(self.Unit);
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.distance",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkNumberValue(self.sub(other).Magnitude);
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.lerp",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const goal = extractVector2(args.v.get(1) as StructValue);
+        const alpha = extractNumberValue(args.v.get(2));
+        if (!self || !goal || alpha === undefined) return VOID_VALUE;
+        return mkVector2Value(self.Lerp(goal, alpha));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.angle",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkNumberValue(self.Angle(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.rotate",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const angle = extractNumberValue(args.v.get(1));
+        if (!self || angle === undefined) return VOID_VALUE;
+        return mkVector2Value(self.rotate(angle));
+      },
+    },
+    emptyCallDef
+  );
 }

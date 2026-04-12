@@ -95,6 +95,11 @@ class Vector2Impl implements Vector2 {
       return new Vector2Impl(Math.floor(this.X / other.X), Math.floor(this.Y / other.Y));
     }
   }
+  rotate(angle: number): Vector2 {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return new Vector2Impl(this.X * cos - this.Y * sin, this.X * sin + this.Y * cos);
+  }
 }
 
 export { Vector2Impl as Vector2 };
