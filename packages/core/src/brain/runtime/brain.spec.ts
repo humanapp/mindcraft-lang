@@ -624,7 +624,7 @@ describe("Brain behavioral -- fiber respawn", () => {
 });
 
 describe("Brain behavioral -- action state", () => {
-  test("host-backed action state survives root-rule respawns and resets on page restart", () => {
+  test("host-backed action state survives root-rule respawns and page restart", () => {
     let activationCount = 0;
 
     const onPageEnteredFn = services.functions.get(CoreSensorId.OnPageEntered);
@@ -668,10 +668,10 @@ describe("Brain behavioral -- action state", () => {
     brain.requestPageRestart();
     brain.think(64);
 
-    assert.equal(activationCount, 2, "page restart should reset host-backed action state");
+    assert.equal(activationCount, 1, "page restart should NOT re-run activation hooks or reset state");
   });
 
-  test("bytecode-backed activation hook runs once per activation and resets action state", () => {
+  test("bytecode-backed activation hook runs once per activation, preserved on restart", () => {
     let activationCount = 0;
     const activationFnEntry = services.functions.register(
       "test-phase5-bytecode-activation-host",
@@ -761,8 +761,73 @@ describe("Brain behavioral -- action state", () => {
     brain.requestPageRestart();
     brain.think(48);
 
-    assert.equal(activationCount, 2, "page restart should re-run bytecode activation");
-    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 2);
+    assert.equal(activationCount, 1, "page restart should NOT re-run bytecode activation");
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1);
+  });
+
+  test("action state resets when switching to a different page and back", () => {
+    let activationCount = 0;
+
+    const onPageEnteredFn = services.functions.get(CoreSensorId.OnPageEntered);
+    assert.ok(onPageEnteredFn, "on-page-entered function should be registered");
+
+    const sensor = new BrainTileSensorDef(
+      CoreSensorId.OnPageEntered,
+      mkActionDescriptor("sensor", onPageEnteredFn!, CoreTypeIds.Boolean),
+      {
+        placement: TilePlacement.EitherSide | TilePlacement.Inline,
+      }
+    );
+
+    const actuatorDescriptor: ActionDescriptor = {
+      key: "test-cross-page-reset-counter",
+      kind: "actuator",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor: actuatorDescriptor,
+      execSync: () => {
+        activationCount += 1;
+        return VOID_VALUE;
+      },
+    });
+
+    const actuator = new BrainTileActuatorDef("test-cross-page-reset-counter", actuatorDescriptor);
+
+    const brainDef = new BrainDef(services);
+
+    // Page 0: WHEN on-page-entered DO actuator
+    const p0Result = brainDef.appendNewPage();
+    assert.ok(p0Result.success);
+    const rule0 = p0Result.value!.page.children().get(0)!;
+    rule0.when().appendTile(sensor as never);
+    rule0.do().appendTile(actuator as never);
+
+    // Page 1: empty (just needs to exist as a different page)
+    const p1Result = brainDef.appendNewPage();
+    assert.ok(p1Result.success);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+
+    brain.think(16);
+    assert.equal(activationCount, 1, "actuator fires once on initial page activation");
+
+    brain.think(32);
+    brain.think(48);
+    assert.equal(activationCount, 1, "actuator does not re-fire across respawns");
+
+    // Switch to page 1, tick
+    brain.requestPageChange(1);
+    brain.think(64);
+
+    // Switch back to page 0, tick -- state should be reset
+    brain.requestPageChange(0);
+    brain.think(80);
+    assert.equal(activationCount, 2, "returning to a page after leaving resets action state and re-fires activation");
   });
 });
 

@@ -353,13 +353,12 @@ export class Brain implements IBrain {
   think(currentTime: number) {
     if (!this.enabled || this.interrupted || !this.pages.size() || !this.isInitialized()) return;
 
-    // Handle page restart (same page, deactivate + reactivate)
+    // Handle page restart (same page). Fibers were already cancelled in
+    // requestPageRestart(); thinkPage() will detect them as CANCELLED and
+    // respawn fresh fibers. We intentionally skip deactivate/activate so
+    // callsite state, action instances, and page events are preserved.
     if (this.restartPageRequested) {
       this.restartPageRequested = false;
-      if (this.isValidPageIndex(this.currentPageIndex)) {
-        this.deactivateCurrentPage();
-        this.activatePage(this.currentPageIndex);
-      }
     }
 
     // Handle page changes
