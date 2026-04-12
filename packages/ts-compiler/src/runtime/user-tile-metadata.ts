@@ -1,5 +1,12 @@
-import { type ActionDescriptor, type ITileMetadata, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/brain";
+import {
+  type ActionDescriptor,
+  CoreCapabilityBits,
+  type ITileMetadata,
+  mkParameterTileId,
+  type TypeId,
+} from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+import { BitSet } from "@mindcraft-lang/core/util";
 import type { ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
 
 export type UserTileTypeResolver = (typeName: string) => TypeId | undefined;
@@ -65,10 +72,12 @@ export function buildUserTileMetadata(
     tags: program.tags,
   };
 
+  const userTileCaps = new BitSet().set(CoreCapabilityBits.UserTile);
+
   const actionTile =
     program.kind === "sensor"
-      ? new BrainTileSensorDef(program.key, actionDescriptor, { metadata })
-      : new BrainTileActuatorDef(program.key, actionDescriptor, { metadata });
+      ? new BrainTileSensorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps })
+      : new BrainTileActuatorDef(program.key, actionDescriptor, { metadata, capabilities: userTileCaps });
 
   return {
     actionDescriptor,

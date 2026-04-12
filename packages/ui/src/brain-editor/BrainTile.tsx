@@ -1,4 +1,4 @@
-import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { CoreCapabilityBits, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import { CircleAlert } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
@@ -33,6 +33,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     const isValueTile = tileDef.kind === "literal" || tileDef.kind === "variable" || tileDef.kind === "accessor";
     const isParamTile = tileDef.kind === "parameter";
     const isFactoryTile = tileDef.kind === "factory";
+    const isUserTile = tileDef.capabilities().get(CoreCapabilityBits.UserTile) !== 0;
     let tileTypeIcon: string | undefined;
     let tileTypeName: string | undefined;
 
@@ -144,6 +145,23 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
                 maskPosition: "center",
               }}
               className="absolute top-1 left-1 w-4 h-4 pointer-events-none"
+              aria-hidden="true"
+            />
+          )}
+          {isUserTile && (
+            <div
+              style={{
+                backgroundColor: darkerSaturatedColor,
+                WebkitMaskImage: "url(/assets/brain/icons/ts-logo-128.svg)",
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: "url(/assets/brain/icons/ts-logo-128.svg)",
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+              className="absolute top-1 right-1 w-4 h-4 pointer-events-none"
               aria-hidden="true"
             />
           )}
