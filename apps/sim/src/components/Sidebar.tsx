@@ -151,7 +151,11 @@ export function Sidebar({
         </Button>
       </div>
 
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onBridgeDisabled={() => setBridgeEnabled(false)}
+      />
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {/* Header */}

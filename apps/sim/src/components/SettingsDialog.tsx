@@ -11,14 +11,16 @@ import {
 } from "@mindcraft-lang/ui";
 import { useEffect, useState } from "react";
 import { type AppSettings, getAppSettings, updateAppSettings } from "@/services/app-settings";
-import { clearBindingToken, hasBindingToken } from "@/services/vscode-bridge";
+import { getUiPreferences, updateUiPreferences } from "@/services/ui-preferences";
+import { clearBindingToken, disconnectBridge, hasBindingToken } from "@/services/vscode-bridge";
 
 interface SettingsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onBridgeDisabled?: () => void;
 }
 
-export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
+export function SettingsDialog({ open, onOpenChange, onBridgeDisabled }: SettingsDialogProps) {
   const [draft, setDraft] = useState<AppSettings>(getAppSettings);
   const [hasToken, setHasToken] = useState(false);
 
@@ -30,7 +32,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   }, [open]);
 
   const save = () => {
+    const wasShowingBridge = getAppSettings().showBridgePanel;
     updateAppSettings(draft);
+    if (wasShowingBridge && !draft.showBridgePanel && getUiPreferences().bridgeEnabled) {
+      updateUiPreferences({ bridgeEnabled: false });
+      disconnectBridge();
+      clearBindingToken();
+      onBridgeDisabled?.();
+    }
     onOpenChange(false);
   };
 
@@ -64,21 +73,6 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
               placeholder="localhost:6464"
             />
           </div>
-          {hasToken && (
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-700">Bridge Binding Token</span>
-              <Button
-                variant="cancel"
-                className="rounded-lg text-xs"
-                onClick={() => {
-                  clearBindingToken();
-                  setHasToken(false);
-                }}
-              >
-                Clear Token
-              </Button>
-            </div>
-          )}
         </div>
         <DialogFooter className="border-t border-slate-200 pt-3">
           <Button variant="cancel" className="rounded-lg" onClick={() => onOpenChange(false)}>
