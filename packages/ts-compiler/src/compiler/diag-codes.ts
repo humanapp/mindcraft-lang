@@ -106,6 +106,8 @@ export enum DescriptorDiagCode {
   ParamDefaultMustBeLiteral = 2017,
   /** Param anonymous value is not a boolean literal */
   ParamAnonymousMustBeBoolean = 2018,
+  /** Param required value is not a boolean literal */
+  ParamRequiredMustBeBoolean = 2025,
   /** Param definition is missing the required type property */
   ParamDefinitionMissingType = 2019,
   /** label property value is not a string literal */

@@ -8,6 +8,8 @@ const SENSOR_TEMPLATE = `import { Sensor } from "mindcraft";
 export default Sensor({
   name: "my-sensor",
   output: "boolean",
+  // icon: "./my-sensor.svg",
+  // docs: "./my-sensor.md",
   onExecute(ctx, params) {
     return false;
   },
@@ -18,6 +20,8 @@ const ACTUATOR_TEMPLATE = `import { Actuator } from "mindcraft";
 
 export default Actuator({
   name: "my-actuator",
+  // icon: "./my-actuator.svg",
+  // docs: "./my-actuator.md",
   onExecute(ctx, params) {
   },
 });

@@ -334,6 +334,7 @@ const AMBIENT_MODULE_END = `
     type: MindcraftType;
     default?: unknown;
     anonymous?: boolean;
+    required?: boolean;
   }
 
   export interface SensorConfig {

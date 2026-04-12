@@ -300,6 +300,7 @@ function extractParams(
     let defaultValue: number | string | boolean | null | undefined;
     let hasDefault = false;
     let anonymous = false;
+    let explicitRequired: boolean | undefined;
 
     for (const paramProp of prop.initializer.properties) {
       if (!ts.isPropertyAssignment(paramProp)) continue;
@@ -337,6 +338,18 @@ function extractParams(
             "Param `anonymous` must be a boolean literal."
           );
         }
+      } else if (propName === "required") {
+        if (paramProp.initializer.kind === ts.SyntaxKind.TrueKeyword) {
+          explicitRequired = true;
+        } else if (paramProp.initializer.kind === ts.SyntaxKind.FalseKeyword) {
+          explicitRequired = false;
+        } else {
+          addDiag(
+            DescriptorDiagCode.ParamRequiredMustBeBoolean,
+            paramProp.initializer,
+            "Param `required` must be a boolean literal."
+          );
+        }
       }
     }
 
@@ -352,7 +365,7 @@ function extractParams(
     const param: ExtractedParam = {
       name: paramName,
       type,
-      required: !hasDefault,
+      required: explicitRequired ?? !hasDefault,
       anonymous,
     };
 
