@@ -74,12 +74,8 @@ export class BrainPageDef implements IBrainPageDef {
   clone(): BrainPageDef {
     const json = this.toJson();
     const newPage = new BrainPageDef();
-    const catalogs = new List<ITileCatalog>();
     const brain = this.brain_;
-    if (brain) {
-      catalogs.push(brain.catalog());
-      catalogs.push(brain.servicesTiles());
-    }
+    const catalogs = brain ? brain.deserializationCatalogs() : new List<ITileCatalog>();
     newPage.deserializeJson(json, catalogs);
     return newPage;
   }

@@ -518,9 +518,7 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   static fromJson(json: RuleJson, page: IBrainPageDef, brain: IBrainDef): BrainRuleDef {
-    const catalogs = new List<ITileCatalog>();
-    catalogs.push(brain.catalog());
-    catalogs.push(brain.servicesTiles());
+    const catalogs = brain.deserializationCatalogs();
     const rule = new BrainRuleDef();
     rule.setPage(page);
     rule.deserializeJson(json, catalogs);

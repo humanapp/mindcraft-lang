@@ -22,6 +22,7 @@ export interface IBrainDef {
   events(): EventEmitterConsumer<BrainDefEvents>;
   catalog(): ITileCatalog;
   servicesTiles(): ITileCatalog;
+  deserializationCatalogs(): List<ITileCatalog>;
   servicesConversions(): IConversionRegistry;
   typecheck(): void;
   compile(): IBrain;

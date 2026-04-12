@@ -48,7 +48,7 @@ const kVersion = 1;
 function buildDeserializationCatalogs(
   brainCatalog: ITileCatalog,
   servicesTiles: ITileCatalog,
-  extraCatalogs?: List<ITileCatalog>
+  extraCatalogs?: ReadonlyList<ITileCatalog>
 ): List<ITileCatalog> {
   const catalogs = new List<ITileCatalog>();
 
@@ -119,9 +119,18 @@ export class BrainDef implements IBrainDef {
   private readonly pageSubscriptions_ = new Dict<BrainPageDef, () => void>();
   private readonly catalog_ = new TileCatalog();
   private readonly services_: BrainServices;
+  private extraCatalogs_?: ReadonlyList<ITileCatalog>;
 
   constructor(services: BrainServices) {
     this.services_ = services;
+  }
+
+  setExtraCatalogs(catalogs: ReadonlyList<ITileCatalog> | undefined): void {
+    this.extraCatalogs_ = catalogs;
+  }
+
+  deserializationCatalogs(): List<ITileCatalog> {
+    return buildDeserializationCatalogs(this.catalog_, this.servicesTiles(), this.extraCatalogs_);
   }
 
   servicesTiles(): ITileCatalog {
@@ -271,9 +280,9 @@ export class BrainDef implements IBrainDef {
     this.syncPageTiles_();
   }
 
-  clone(): BrainDef {
+  clone(extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
     const json = this.toJson();
-    return BrainDef.fromJson(json, this.services_);
+    return BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
   }
 
   /**
@@ -284,8 +293,8 @@ export class BrainDef implements IBrainDef {
    * Emits a single "brain_changed" event with what="brain_replaced" rather
    * than per-page events, so callers can update UI state in one shot.
    */
-  replaceContentFrom(source: BrainDef): void {
-    this.replaceContentFromJson(source.toJson());
+  replaceContentFrom(source: BrainDef, extraCatalogs?: ReadonlyList<ITileCatalog>): void {
+    this.replaceContentFromJson(source.toJson(), extraCatalogs);
   }
 
   /**
@@ -293,7 +302,11 @@ export class BrainDef implements IBrainDef {
    * snapshot. Equivalent to replaceContentFrom but avoids an extra toJson()
    * call when the caller already holds a BrainJson (e.g. undo/redo commands).
    */
-  replaceContentFromJson(json: BrainJson): void {
+  replaceContentFromJson(json: BrainJson, extraCatalogs?: ReadonlyList<ITileCatalog>): void {
+    if (extraCatalogs) {
+      this.extraCatalogs_ = extraCatalogs;
+    }
+
     // Unsubscribe and detach all existing pages.
     const pageCount = this.pages_.size();
     for (let i = 0; i < pageCount; i++) {
@@ -309,9 +322,7 @@ export class BrainDef implements IBrainDef {
     this.setName(json.name);
     this.catalog_.deserializeJson(json.catalog, this.services_);
 
-    const catalogs = new List<ITileCatalog>();
-    catalogs.push(this.catalog_);
-    catalogs.push(this.servicesTiles());
+    const catalogs = buildDeserializationCatalogs(this.catalog_, this.servicesTiles(), this.extraCatalogs_);
 
     for (let i = 0; i < json.pages.size(); i++) {
       const pageJson = json.pages.get(i);
@@ -338,12 +349,13 @@ export class BrainDef implements IBrainDef {
     return { version: kVersion, name: this.name_, catalog: this.catalog_.toJson(), pages };
   }
 
-  static fromJson(json: BrainJson, services: BrainServices, extraCatalogs?: List<ITileCatalog>): BrainDef {
+  static fromJson(json: BrainJson, services: BrainServices, extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
     if (json.version !== kVersion) {
       throw new Error(`BrainDef.fromJson: unsupported version ${json.version}`);
     }
 
     const brain = new BrainDef(services);
+    brain.extraCatalogs_ = extraCatalogs;
     brain.setName(json.name);
 
     // Restore the local catalog first so tile references can be resolved
