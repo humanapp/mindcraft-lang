@@ -47,6 +47,13 @@ COPY --from=builder /workspace/packages/bridge-client/dist packages/bridge-clien
 COPY --from=builder /workspace/apps/vscode-bridge/package.json apps/vscode-bridge/package.json
 COPY --from=builder /workspace/apps/vscode-bridge/dist apps/vscode-bridge/dist
 
+# Install deps for each package so transitive dependencies are resolved
+WORKDIR /workspace/packages/bridge-protocol
+RUN npm install --omit=dev
+
+WORKDIR /workspace/packages/bridge-client
+RUN npm install --omit=dev
+
 WORKDIR /workspace/apps/vscode-bridge
 RUN npm install --omit=dev
 
