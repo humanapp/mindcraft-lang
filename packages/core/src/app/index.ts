@@ -91,6 +91,7 @@ export type {
   ListValue,
   MapValue,
   NumberValue,
+  StructFieldGetterFn,
   StructValue,
   Value,
 } from "../brain/interfaces";

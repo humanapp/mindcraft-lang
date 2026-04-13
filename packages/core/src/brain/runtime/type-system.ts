@@ -26,6 +26,7 @@ import {
   mkTypeId,
   NativeType,
   type NullableTypeDef,
+  type StructFieldGetterFn,
   type StructMethodDecl,
   type StructTypeDef,
   type StructTypeShape,
@@ -374,7 +375,11 @@ export class TypeRegistry implements ITypeRegistry {
     structDef.methods = existing.concat(methods);
   }
 
-  addStructFields(typeId: TypeId, fields: List<{ name: string; typeId: TypeId }>): void {
+  addStructFields(
+    typeId: TypeId,
+    fields: List<{ name: string; typeId: TypeId }>,
+    fieldGetter?: StructFieldGetterFn
+  ): void {
     const typeDef = this.get(typeId);
     if (!typeDef) {
       throw new Error(`Type ${typeId} not found`);
@@ -409,6 +414,13 @@ export class TypeRegistry implements ITypeRegistry {
 
     structDef.fields = structDef.fields.concat(fields);
     structDef.codec = new StructCodec(fieldCodecs);
+
+    if (fieldGetter) {
+      const existing = structDef.fieldGetter;
+      structDef.fieldGetter = existing
+        ? (source, fieldName, ctx) => fieldGetter(source, fieldName, ctx) ?? existing(source, fieldName, ctx)
+        : fieldGetter;
+    }
   }
 
   addAnyType(name: string): TypeId {

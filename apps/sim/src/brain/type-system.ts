@@ -1,4 +1,5 @@
 import {
+  ContextTypeIds,
   CoreTypeIds,
   Dict,
   type ExecutionContext,
@@ -7,6 +8,7 @@ import {
   type MapValue,
   type MindcraftModuleApi,
   mkCallDef,
+  mkNativeStructValue,
   mkNumberValue,
   mkStructValue,
   mkTypeId,
@@ -19,6 +21,7 @@ import {
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
 import type { Actor } from "./actor";
+import { getSelf } from "./execution-context-types";
 
 export const SimTypeNames = {
   ActorRef: "ActorRef",
@@ -457,5 +460,128 @@ export function registerTypes(api: MindcraftModuleApi) {
       },
     },
     emptyCallDef
+  );
+
+  // -------------------------------------------------------
+  // ActorRef methods
+  // -------------------------------------------------------
+
+  types.addStructMethods(
+    SimTypeIds.ActorRef,
+    List.from([
+      {
+        name: "getPosition",
+        params: List.empty(),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "setPosition",
+        params: List.from([{ name: "pos", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: CoreTypeIds.Void,
+      },
+      {
+        name: "getRotation",
+        params: List.empty(),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "setRotation",
+        params: List.from([{ name: "angle", typeId: CoreTypeIds.Number }]),
+        returnTypeId: CoreTypeIds.Void,
+      },
+      {
+        name: "getFacingVector",
+        params: List.empty(),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+    ])
+  );
+
+  functions.register(
+    "ActorRef.getPosition",
+    false,
+    {
+      exec: (ctx: ExecutionContext, args: MapValue): Value => {
+        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
+        if (!actor) return VOID_VALUE;
+        return mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "ActorRef.setPosition",
+    false,
+    {
+      exec: (ctx: ExecutionContext, args: MapValue): Value => {
+        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
+        if (!actor) return VOID_VALUE;
+        const posValue = args.v.get(1) as StructValue;
+        const vec = extractVector2(posValue);
+        if (!vec) return VOID_VALUE;
+        actor.sprite.setPosition(vec.X, vec.Y);
+        return VOID_VALUE;
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "ActorRef.getRotation",
+    false,
+    {
+      exec: (ctx: ExecutionContext, args: MapValue): Value => {
+        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
+        if (!actor) return VOID_VALUE;
+        return mkNumberValue(actor.sprite.rotation);
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "ActorRef.setRotation",
+    false,
+    {
+      exec: (ctx: ExecutionContext, args: MapValue): Value => {
+        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
+        if (!actor) return VOID_VALUE;
+        const angle = extractNumberValue(args.v.get(1));
+        if (angle === undefined) return VOID_VALUE;
+        actor.sprite.setRotation(angle);
+        return VOID_VALUE;
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "ActorRef.getFacingVector",
+    false,
+    {
+      exec: (ctx: ExecutionContext, args: MapValue): Value => {
+        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
+        if (!actor) return VOID_VALUE;
+        const r = actor.sprite.rotation;
+        return mkVector2Value(new Vector2(Math.cos(r), Math.sin(r)));
+      },
+    },
+    emptyCallDef
+  );
+
+  // -------------------------------------------------------
+  // Context.self field (ActorRef backed by executing actor)
+  // -------------------------------------------------------
+
+  types.addStructFields(
+    ContextTypeIds.Context,
+    List.from([{ name: "self", typeId: SimTypeIds.ActorRef }]),
+    (source: StructValue, fieldName: string, ctx: ExecutionContext) => {
+      if (fieldName !== "self") return undefined;
+      const actor = getSelf(ctx);
+      if (!actor) return undefined;
+      return mkNativeStructValue(SimTypeIds.ActorRef, actor);
+    }
   );
 }
