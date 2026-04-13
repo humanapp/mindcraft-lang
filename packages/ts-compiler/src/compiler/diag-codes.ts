@@ -351,6 +351,8 @@ export enum LoweringDiagCode {
   MapConstructorUnresolvableType = 3164,
   /** instanceof RHS must be a class name known at compile time */
   InstanceofRhsNotClass = 3170,
+  /** Assignment to a read-only struct field */
+  ReadOnlyFieldAssignment = 3171,
 }
 
 /**

@@ -3667,7 +3667,91 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
           return;
         }
       }
+
+      const field = lhsStruct.fields.find((f) => f.name === fName);
+      if (field?.readOnly) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.ReadOnlyFieldAssignment, `Cannot assign to read-only field '${fName}'`, expr.left)
+        );
+        return;
+      }
+      if (field) {
+        if (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+          lowerExpression(expr.left.expression, ctx);
+          ctx.ir.push({ kind: "PushConst", value: mkStringValue(fName) });
+          lowerExpression(expr.right, ctx);
+          ctx.ir.push({ kind: "SetField" });
+          return;
+        }
+
+        const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
+        if (!opId) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.UnsupportedCompoundAssignOperator,
+              "Unsupported compound assignment operator",
+              expr.operatorToken
+            )
+          );
+          return;
+        }
+
+        const lhsType = ctx.checker.getTypeAtLocation(expr.left);
+        const rhsType = ctx.checker.getTypeAtLocation(expr.right);
+        const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
+        const rhsTypeId = tsTypeToTypeId(rhsType, ctx.checker, ctx.services);
+        if (!lhsTypeId || !rhsTypeId) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.CannotDetermineTypesForCompoundAssign,
+              "Cannot determine types for compound assignment",
+              expr
+            )
+          );
+          return;
+        }
+
+        const opFnName = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
+        if (!opFnName) {
+          ctx.diagnostics.push(
+            makeDiag(
+              LoweringDiagCode.NoOperatorOverload,
+              `No operator overload for ${opId}(${lhsTypeId}, ${rhsTypeId})`,
+              expr
+            )
+          );
+          return;
+        }
+
+        const tempObj = ctx.scopeStack.allocLocal();
+        lowerExpression(expr.left.expression, ctx);
+        ctx.ir.push({ kind: "StoreLocal", index: tempObj });
+        ctx.ir.push({ kind: "LoadLocal", index: tempObj });
+        ctx.ir.push({ kind: "PushConst", value: mkStringValue(fName) });
+        ctx.ir.push({ kind: "LoadLocal", index: tempObj });
+        ctx.ir.push({ kind: "GetField", fieldName: fName });
+        lowerExpression(expr.right, ctx);
+        ctx.ir.push({ kind: "HostCallArgs", fnName: opFnName, argc: 2 });
+        ctx.ir.push({ kind: "SetField" });
+        return;
+      }
+
+      ctx.diagnostics.push(
+        makeDiag(
+          LoweringDiagCode.PropertyNotOnStruct,
+          `Property '${fName}' is not an assignable field on '${lhsStruct.name}'`,
+          expr.left
+        )
+      );
+      return;
     }
+  }
+
+  if (ts.isPropertyAccessExpression(expr.left)) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.AssignmentTargetNotVariable, "Assignment target must be a variable", expr.left)
+    );
+    return;
   }
 
   if (!ts.isIdentifier(expr.left)) {

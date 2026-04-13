@@ -33,6 +33,7 @@ export type IrNode =
   | IrAwait
   | IrGetField
   | IrGetFieldDynamic
+  | IrSetField
   | IrMapGet
   | IrMapNew
   | IrMapSet
@@ -261,4 +262,8 @@ export interface IrGetField extends IrNodeBase {
 
 export interface IrGetFieldDynamic extends IrNodeBase {
   kind: "GetFieldDynamic";
+}
+
+export interface IrSetField extends IrNodeBase {
+  kind: "SetField";
 }
