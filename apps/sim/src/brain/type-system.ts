@@ -106,6 +106,8 @@ function actorRefFieldGetter(source: StructValue, fieldName: string, ctx: Execut
       return mkNumberValue(actor.actorId);
     case "position":
       return mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y));
+    case "rotation":
+      return mkNumberValue(actor.sprite.rotation);
     case "energy pct":
       return mkNumberValue(actor.energy / actor.maxEnergy);
     default:
@@ -121,6 +123,12 @@ function actorRefFieldSetter(source: StructValue, fieldName: string, value: Valu
       const vec = extractVector2(value as StructValue);
       if (!vec) return false;
       actor.sprite.setPosition(vec.X, vec.Y);
+      return true;
+    }
+    case "rotation": {
+      const angle = extractNumberValue(value);
+      if (angle === undefined) return false;
+      actor.sprite.setRotation(angle);
       return true;
     }
     default:
@@ -167,6 +175,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     fields: List.from([
       { name: "id", typeId: CoreTypeIds.Number },
       { name: "position", typeId: SimTypeIds.Vector2 },
+      { name: "rotation", typeId: CoreTypeIds.Number },
       { name: "energy pct", typeId: CoreTypeIds.Number },
     ]),
     fieldGetter: actorRefFieldGetter,
@@ -470,50 +479,11 @@ export function registerTypes(api: MindcraftModuleApi) {
     SimTypeIds.ActorRef,
     List.from([
       {
-        name: "getRotation",
-        params: List.empty(),
-        returnTypeId: CoreTypeIds.Number,
-      },
-      {
-        name: "setRotation",
-        params: List.from([{ name: "angle", typeId: CoreTypeIds.Number }]),
-        returnTypeId: CoreTypeIds.Void,
-      },
-      {
         name: "getFacingVector",
         params: List.empty(),
         returnTypeId: SimTypeIds.Vector2,
       },
     ])
-  );
-
-  functions.register(
-    "ActorRef.getRotation",
-    false,
-    {
-      exec: (ctx: ExecutionContext, args: MapValue): Value => {
-        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
-        if (!actor) return VOID_VALUE;
-        return mkNumberValue(actor.sprite.rotation);
-      },
-    },
-    emptyCallDef
-  );
-
-  functions.register(
-    "ActorRef.setRotation",
-    false,
-    {
-      exec: (ctx: ExecutionContext, args: MapValue): Value => {
-        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
-        if (!actor) return VOID_VALUE;
-        const angle = extractNumberValue(args.v.get(1));
-        if (angle === undefined) return VOID_VALUE;
-        actor.sprite.setRotation(angle);
-        return VOID_VALUE;
-      },
-    },
-    emptyCallDef
   );
 
   functions.register(
