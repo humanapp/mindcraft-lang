@@ -186,7 +186,9 @@ export default Sensor({
     const environment = createMindcraftEnvironment({ modules: [coreModule()] });
     const json = brainDef.toJson();
 
-    assert.throws(() => environment.deserializeBrainJson(json), /user\.sensor\.probe/);
+    const preHydrate = environment.deserializeBrainJson(json);
+    assert.equal(preHydrate.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.kind, "missing");
+    assert.equal(preHydrate.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId, sensorTile!.tileId);
 
     const hydrationSnapshot: HydratedTileMetadataSnapshot = {
       revision: bundle.revision,
