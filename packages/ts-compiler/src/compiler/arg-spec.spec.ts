@@ -857,6 +857,44 @@ describe("buildCallDef grammar shapes", () => {
     assert.equal(cg0, cg1);
   });
 
+  test("optional(choice(anon_A, anon_B)) has correct argSlots with choiceGroup", () => {
+    const callDef = buildCallDef("teleport", [
+      {
+        kind: "optional",
+        item: {
+          kind: "choice",
+          items: [
+            { kind: "param", name: "destPos", type: "Vector2", anonymous: true },
+            { kind: "param", name: "destActor", type: "ActorRef", anonymous: true },
+          ],
+        },
+      },
+    ]);
+    const bag = callDef.callSpec as BrainActionCallBagSpec;
+    assert.equal(bag.items.length, 1);
+    const optSpec = bag.items[0] as BrainActionCallOptionalSpec;
+    assert.equal(optSpec.type, "optional");
+    const choiceSpec = optSpec.item as BrainActionCallChoiceSpec;
+    assert.equal(choiceSpec.type, "choice");
+    assert.equal(choiceSpec.options.length, 2);
+    const opt0 = choiceSpec.options[0] as BrainActionCallArgSpec;
+    const opt1 = choiceSpec.options[1] as BrainActionCallArgSpec;
+    assert.equal(opt0.tileId, "tile.parameter->anon.Vector2");
+    assert.equal(opt0.anonymous, true);
+    assert.equal(opt1.tileId, "tile.parameter->anon.ActorRef");
+    assert.equal(opt1.anonymous, true);
+
+    assert.equal(callDef.argSlots.size(), 2);
+    assert.equal(callDef.argSlots.get(0)!.slotId, 0);
+    assert.equal(callDef.argSlots.get(0)!.argSpec.tileId, "tile.parameter->anon.Vector2");
+    assert.equal(callDef.argSlots.get(1)!.slotId, 1);
+    assert.equal(callDef.argSlots.get(1)!.argSpec.tileId, "tile.parameter->anon.ActorRef");
+    const cg0 = callDef.argSlots.get(0)!.choiceGroup;
+    const cg1 = callDef.argSlots.get(1)!.choiceGroup;
+    assert.ok(cg0 !== undefined, "anonymous choice items should have choiceGroup");
+    assert.equal(cg0, cg1);
+  });
+
   test("seq containing repeated modifier and param", () => {
     const callDef = buildCallDef("attack", [
       {
@@ -1377,5 +1415,53 @@ export default Sensor({
     const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(42) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 142);
+  });
+
+  test("optional(choice(A, B)) -- only slot 1 filled returns correct value", () => {
+    const source = `
+import { Sensor, optional, choice, param, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "opt-choice-slot1",
+  args: [
+    optional(choice(
+      param("alpha", { type: "number" }),
+      param("beta", { type: "number" }),
+    )),
+  ],
+  onExecute(ctx: Context, args: { alpha: number; beta: number }): number {
+    return args.beta;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    const value = execSensor(result.program!, mkArgsMap({ 1: mkNumberValue(42) }));
+    assert.equal(value!.t, NativeType.Number);
+    assert.equal((value as NumberValue).v, 42);
+  });
+
+  test("optional(choice(A, B)) -- only slot 0 filled returns correct value", () => {
+    const source = `
+import { Sensor, optional, choice, param, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "opt-choice-slot0",
+  args: [
+    optional(choice(
+      param("alpha", { type: "number" }),
+      param("beta", { type: "number" }),
+    )),
+  ],
+  onExecute(ctx: Context, args: { alpha: number; beta: number }): number {
+    return args.alpha;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(99) }));
+    assert.equal(value!.t, NativeType.Number);
+    assert.equal((value as NumberValue).v, 99);
   });
 });

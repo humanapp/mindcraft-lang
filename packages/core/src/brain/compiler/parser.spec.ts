@@ -897,3 +897,83 @@ describe("Bag repeat interleaving", () => {
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
   });
 });
+
+describe("anonymous choice type discrimination", () => {
+  let services: BrainServices;
+
+  before(() => {
+    services = __test__createBrainServices();
+  });
+
+  test("variable matches correct anonymous type in choice(anon.A, anon.B)", () => {
+    const kActId = "type-disc-act";
+    const kTypeAlpha = mkTypeId(NativeType.Struct, "Alpha");
+    const kTypeBeta = mkTypeId(NativeType.Struct, "Beta");
+
+    const callDef = mkCallDef(
+      bag(optional(choice(param("anon.Alpha", { anonymous: true }), param("anon.Beta", { anonymous: true }))))
+    );
+    const fnEntry = services.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
+
+    services.tiles.registerTileDef(new BrainTileParameterDef("anon.Alpha", kTypeAlpha, { hidden: true }));
+    services.tiles.registerTileDef(new BrainTileParameterDef("anon.Beta", kTypeBeta, { hidden: true }));
+
+    const betaVar = new BrainTileVariableDef(mkVariableTileId("betaVar"), "betaVar", kTypeBeta, "unique-beta-1");
+
+    const tiles = List.from<IBrainTileDef>([actuator, betaVar]);
+    const emptyTiles = List.empty<IBrainTileDef>();
+    const result = parseRule(emptyTiles, tiles, List.from([services.tiles]), services.conversions);
+
+    assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
+
+    const doExprs = result.doParseResult.exprs;
+    assert.equal(doExprs.size(), 1, "should have one do expression");
+    const doExpr = doExprs.get(0);
+    assert.ok(doExpr, "should have a do expression");
+    assert.equal(doExpr.kind, "actuator");
+    if (doExpr.kind === "actuator") {
+      assert.equal(doExpr.anons.size(), 1, "should have one anonymous arg");
+      const slotId = doExpr.anons.get(0)!.slotId;
+      assert.equal(slotId, 1, "variable with Beta type should match anon.Beta at slot 1, not anon.Alpha at slot 0");
+    }
+  });
+
+  test("literal matches correct anonymous type in choice(anon.A, anon.B)", () => {
+    const kActId = "type-disc-lit";
+    const kTypeAlpha = services.types.addStructType("AlphaLit", { fields: List.empty() });
+    const kTypeBeta = services.types.addStructType("BetaLit", { fields: List.empty() });
+
+    const callDef = mkCallDef(
+      bag(optional(choice(param("anon.AlphaLit", { anonymous: true }), param("anon.BetaLit", { anonymous: true }))))
+    );
+    const fnEntry = services.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
+
+    services.tiles.registerTileDef(new BrainTileParameterDef("anon.AlphaLit", kTypeAlpha, { hidden: true }));
+    services.tiles.registerTileDef(new BrainTileParameterDef("anon.BetaLit", kTypeBeta, { hidden: true }));
+
+    const betaLiteral = new BrainTileLiteralDef(kTypeBeta, {}, { valueLabel: "beta-val" }, services);
+
+    const tiles = List.from<IBrainTileDef>([actuator, betaLiteral]);
+    const emptyTiles = List.empty<IBrainTileDef>();
+    const result = parseRule(emptyTiles, tiles, List.from([services.tiles]), services.conversions);
+
+    assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
+
+    const doExprs = result.doParseResult.exprs;
+    assert.equal(doExprs.size(), 1, "should have one do expression");
+    const doExpr = doExprs.get(0);
+    assert.ok(doExpr, "should have a do expression");
+    assert.equal(doExpr.kind, "actuator");
+    if (doExpr.kind === "actuator") {
+      assert.equal(doExpr.anons.size(), 1, "should have one anonymous arg");
+      const slotId = doExpr.anons.get(0)!.slotId;
+      assert.equal(
+        slotId,
+        1,
+        "literal with BetaLit type should match anon.BetaLit at slot 1, not anon.AlphaLit at slot 0"
+      );
+    }
+  });
+});

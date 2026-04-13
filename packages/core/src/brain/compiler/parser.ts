@@ -8,6 +8,7 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
+import { StringUtils as SU } from "../../platform/string";
 import { UniqueSet } from "../../platform/uniqueset";
 import {
   type BrainActionCallArgSpec,
@@ -17,6 +18,7 @@ import {
   CoreOpId,
   type IBrainActionTileDef,
   type IBrainTileDef,
+  parseTileId,
   TilePlacement,
 } from "../interfaces";
 import {
@@ -45,6 +47,8 @@ type ParseOpts = {
   minOperatorPrecedence: number;
   /** If true, stop when encountering primary expression starts (modifiers, parameters, etc.) */
   primaryAdjacencyTerminates: boolean;
+  /** When true, anonymous params check expression type for compatibility. Set by parseChoiceSpec. */
+  choiceTypeFilter?: boolean;
 };
 
 /**
@@ -467,6 +471,9 @@ class BrainParser {
         minOperatorPrecedence: 0,
         primaryAdjacencyTerminates: opts.primaryAdjacencyTerminates,
       });
+      if (opts.choiceTypeFilter && !this.isAnonTypeCompatible(spec, anonExpr)) {
+        return false;
+      }
       const slotId = ctx.argSpecToSlotId.get(spec)!;
       ctx.anons.push({ slotId, expr: anonExpr });
       return true;
@@ -546,9 +553,10 @@ class BrainParser {
     ctx: ActionCallContext,
     outerCtx?: ActionCallContext
   ): boolean {
+    const choiceOpts: ParseOpts = opts.choiceTypeFilter ? opts : { ...opts, choiceTypeFilter: true };
     // Try each option until one succeeds
     for (const option of spec.options) {
-      if (this.tryParseWithBacktrack(option, opts, ctx, outerCtx)) {
+      if (this.tryParseWithBacktrack(option, choiceOpts, ctx, outerCtx)) {
         return true;
       }
     }
@@ -1016,6 +1024,40 @@ class BrainParser {
    * When parsing anonymous arguments for an action, we stop if we see another primary,
    * assuming it's the start of the next statement.
    */
+  /**
+   * Check if an anonymous expression's type is compatible with the expected
+   * anonymous param type. Used inside choice specs to discriminate between
+   * anonymous options of different types.
+   *
+   * Returns true when the types are compatible or when the expression type
+   * cannot be determined (graceful fallback).
+   */
+  private isAnonTypeCompatible(spec: BrainActionCallArgSpec, expr: Expr): boolean {
+    const parsed = parseTileId(spec.tileId);
+    if (!parsed) return true;
+    const kAnonPrefix = "anon.";
+    if (!SU.startsWith(parsed.id, kAnonPrefix)) return true;
+    const expectedName = SU.substring(parsed.id, SU.length(kAnonPrefix));
+
+    let actualTypeId: string | undefined;
+    if (expr.kind === "variable") {
+      actualTypeId = expr.tileDef.varType;
+    } else if (expr.kind === "literal") {
+      actualTypeId = expr.tileDef.valueType;
+    } else if (expr.kind === "sensor") {
+      actualTypeId = expr.tileDef.action?.outputType;
+    }
+    if (!actualTypeId) return true;
+
+    const ltIdx = SU.indexOf(actualTypeId, "<");
+    if (ltIdx < 0) return true;
+    const gtIdx = SU.indexOf(actualTypeId, ">", ltIdx + 1);
+    if (gtIdx < 0) return true;
+    const actualName = SU.substring(actualTypeId, ltIdx + 1, gtIdx);
+
+    return expectedName === actualName;
+  }
+
   private isPrimaryStart(tok: IBrainTileDef | undefined): boolean {
     if (!tok) {
       return false;
