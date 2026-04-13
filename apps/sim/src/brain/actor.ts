@@ -1,6 +1,6 @@
 import type { MindcraftBrain, Vector2 } from "@mindcraft-lang/core/app";
 import { type IBrainDef, mkSensorTileId } from "@mindcraft-lang/core/app";
-import { createSimBrain } from "@/services/brain-runtime";
+import { createEmptySimBrain, createSimBrain } from "@/services/brain-runtime";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
 import { Mover, type MoverConfig, type Steering, steerAvoidObstacles } from "./movement";
@@ -141,7 +141,7 @@ export class Actor {
     this.actorId = 0; // to be assigned later
     this.archetype = archetype;
     this.brainDef = brainDef;
-    this.brain = createSimBrain(this.brainDef, this);
+    this.brain = this.tryCreateBrain();
     this.mover = new Mover(moverCfg);
     this.sprite = null!; // to be assigned later
     this.bornAt = this.engine.clock.now;
@@ -165,11 +165,20 @@ export class Actor {
     this.brain.startup();
   }
 
+  private tryCreateBrain(): MindcraftBrain {
+    try {
+      return createSimBrain(this.brainDef, this);
+    } catch (err) {
+      console.warn(`[Actor] Failed to create brain for ${this.archetype}:`, err);
+      return createEmptySimBrain(`${this.archetype} Brain`, this);
+    }
+  }
+
   replaceBrain(brainDef: IBrainDef = this.brainDef) {
     this.brainDef = brainDef;
     this.brain.events().removeAllListeners();
     this.brain.dispose();
-    this.brain = createSimBrain(this.brainDef, this);
+    this.brain = this.tryCreateBrain();
     this.brain.events().on("page_activated", this.pageActivated);
     this.brain.events().on("page_deactivated", this.pageDeactivated);
     this.brain.startup();

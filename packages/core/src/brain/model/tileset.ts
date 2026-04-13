@@ -1,6 +1,7 @@
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { logger } from "../../platform/logger";
+import { StringUtils as SU } from "../../platform/string";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import type { TypecheckResult } from "../compiler";
 import { printExpr } from "../compiler/expr-printer";
@@ -11,12 +12,24 @@ import {
   type IBrainTileDef,
   type IBrainTileSet,
   type ITileCatalog,
+  parseTileId,
   RuleSide,
 } from "../interfaces";
+import { BrainTileMissingDef } from "../tiles/missing";
 
 // Maximum allowed number of tiles in a tileset.
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
 export const kMaxTileSetSize = 20; // never reduce this value!
+
+function createMissingTileFallback(tileId: string): BrainTileMissingDef {
+  logger.warn(`BrainTileSet.deserializeJson: tileId '${tileId}' not found -- inserting missing-tile placeholder`);
+  const parsed = parseTileId(tileId);
+  const kind = parsed ? parsed.area : "undefined";
+  const id = parsed ? parsed.id : tileId;
+  const dotIdx = SU.lastIndexOf(id, ".");
+  const label = dotIdx >= 0 ? SU.substring(id, dotIdx + 1) : id;
+  return new BrainTileMissingDef(tileId, kind, label);
+}
 
 export class BrainTileSet implements IBrainTileSet {
   private readonly tiles_ = new List<IBrainTileDef>();
@@ -185,7 +198,7 @@ export class BrainTileSet implements IBrainTileSet {
         if (tileDef) break;
       }
       if (!tileDef) {
-        throw new Error(`BrainTileSet.deserializeJson: tileId '${tileId}' not found in provided catalogs`);
+        tileDef = createMissingTileFallback(tileId);
       }
       this.tiles_.push(tileDef);
     }

@@ -1,4 +1,4 @@
-import type { IBrainDef, MindcraftBrain, MindcraftEnvironment } from "@mindcraft-lang/core/app";
+import { BrainDef, type IBrainDef, type MindcraftBrain, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
 
 let env: MindcraftEnvironment | undefined;
 let pendingBrainRebuild = false;
@@ -29,6 +29,12 @@ export function createSimBrain(brainDef: IBrainDef, contextData?: unknown): Mind
   return getEnv().createBrain(brainDef, {
     context: contextData,
   });
+}
+
+export function createEmptySimBrain(name: string, contextData?: unknown): MindcraftBrain {
+  const e = getEnv();
+  const emptyDef = e.withServices((services) => BrainDef.emptyBrainDef(services, name));
+  return e.createBrain(emptyDef, { context: contextData });
 }
 
 export function flushPendingBrainRebuilds(): void {

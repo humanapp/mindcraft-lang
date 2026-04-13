@@ -301,7 +301,12 @@ describe("mindcraft environment", () => {
     const serialized = brainDef.toJson();
     const restored = envA.deserializeBrainJson(serialized);
     assert.equal(restored.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId, capture.sensorTile!.tileId);
-    assert.throws(() => envB.deserializeBrainJson(serialized), /alpha.sensor/);
+    const restoredB = envB.deserializeBrainJson(serialized);
+    assert.equal(restoredB.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.kind, "missing");
+    assert.equal(
+      restoredB.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId,
+      capture.sensorTile!.tileId
+    );
 
     const alphaBrain = envA.createBrain(brainDef);
     assert.equal(alphaBrain.status, "active");
@@ -366,7 +371,9 @@ describe("mindcraft environment", () => {
     const bundled = createBundleSensor("bundle.persisted");
     const brainDef = createSensorBrainDef(getEnvironmentServices(environment), "Hydrated Brain", bundled.tile);
 
-    assert.throws(() => environment.deserializeBrainJson(brainDef.toJson()), /bundle\.persisted/);
+    const preHydrate = environment.deserializeBrainJson(brainDef.toJson());
+    assert.equal(preHydrate.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.kind, "missing");
+    assert.equal(preHydrate.pages().get(0)!.children().get(0)!.when().tiles().get(0)!.tileId, bundled.tile.tileId);
 
     environment.hydrateTileMetadata({
       revision: "hydrated.bundle.persisted",
