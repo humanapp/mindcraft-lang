@@ -110,6 +110,8 @@ function actorRefFieldGetter(source: StructValue, fieldName: string, ctx: Execut
       return mkNumberValue(actor.sprite.rotation);
     case "energy pct":
       return mkNumberValue(actor.energy / actor.maxEnergy);
+    case "forward":
+      return mkVector2Value(new Vector2(Math.cos(actor.sprite.rotation), Math.sin(actor.sprite.rotation)));
     default:
       return undefined;
   }
@@ -173,15 +175,16 @@ export function registerTypes(api: MindcraftModuleApi) {
     typeId: SimTypeIds.ActorRef,
     name: SimTypeNames.ActorRef,
     fields: List.from([
-      { name: "id", typeId: CoreTypeIds.Number },
+      { name: "id", typeId: CoreTypeIds.Number, readOnly: true },
       { name: "position", typeId: SimTypeIds.Vector2 },
       { name: "rotation", typeId: CoreTypeIds.Number },
-      { name: "energy pct", typeId: CoreTypeIds.Number },
+      { name: "energy pct", typeId: CoreTypeIds.Number, readOnly: true },
+      { name: "forward", typeId: SimTypeIds.Vector2, readOnly: true },
     ]),
     fieldGetter: actorRefFieldGetter,
     fieldSetter: actorRefFieldSetter,
     snapshotNative: actorRefSnapshotNative,
-    accessors: { readOnly: ["id", "energy pct"] },
+    accessors: ["id", "energy pct", "position"],
     variableFactory: true,
   });
 
@@ -466,35 +469,6 @@ export function registerTypes(api: MindcraftModuleApi) {
         const angle = extractNumberValue(args.v.get(1));
         if (!self || angle === undefined) return VOID_VALUE;
         return mkVector2Value(self.rotate(angle));
-      },
-    },
-    emptyCallDef
-  );
-
-  // -------------------------------------------------------
-  // ActorRef methods
-  // -------------------------------------------------------
-
-  types.addStructMethods(
-    SimTypeIds.ActorRef,
-    List.from([
-      {
-        name: "getFacingVector",
-        params: List.empty(),
-        returnTypeId: SimTypeIds.Vector2,
-      },
-    ])
-  );
-
-  functions.register(
-    "ActorRef.getFacingVector",
-    false,
-    {
-      exec: (ctx: ExecutionContext, args: MapValue): Value => {
-        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
-        if (!actor) return VOID_VALUE;
-        const r = actor.sprite.rotation;
-        return mkVector2Value(new Vector2(Math.cos(r), Math.sin(r)));
       },
     },
     emptyCallDef

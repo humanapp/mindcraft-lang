@@ -51,6 +51,7 @@ import { registerVariableFactoryTileDef } from "./brain/tiles/variables";
 import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
 import { List } from "./platform/list";
+import { TypeUtils } from "./platform/types";
 
 export type TileDefinitionInput = IBrainTileDef;
 export type ConversionDefinition = Omit<Conversion, "id">;
@@ -58,7 +59,7 @@ export type ConversionDefinition = Omit<Conversion, "id">;
 type TypeDefInput = Omit<TypeDef, "codec">;
 
 interface StructDefineOptions {
-  accessors?: boolean | { readOnly?: string[] };
+  accessors?: boolean | string[];
   variableFactory?: boolean;
 }
 
@@ -357,23 +358,9 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     }
     case NativeType.Struct: {
       const structDef = definition as StructTypeDef & StructDefineOptions;
-      const readOnlyFieldNames =
-        structDef.accessors === true ? undefined : structDef.accessors ? structDef.accessors.readOnly : undefined;
-      let fields = structDef.fields;
-      if (readOnlyFieldNames) {
-        const tagged: { name: string; typeId: TypeId; readOnly?: boolean }[] = [];
-        structDef.fields.forEach((f) => {
-          tagged.push({
-            name: f.name,
-            typeId: f.typeId,
-            readOnly: readOnlyFieldNames.indexOf(f.name) !== -1 ? true : undefined,
-          });
-        });
-        fields = List.from(tagged);
-      }
       registeredTypeId = assertRegisteredTypeId(
         services.types.addStructType(structDef.name, {
-          fields,
+          fields: structDef.fields,
           nominal: structDef.nominal,
           fieldGetter: structDef.fieldGetter,
           fieldSetter: structDef.fieldSetter,
@@ -384,15 +371,15 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         structDef.name
       );
       if (structDef.accessors) {
-        const readOnlyFields = structDef.accessors === true ? undefined : structDef.accessors.readOnly;
+        const subset = TypeUtils.isArray(structDef.accessors) ? structDef.accessors : undefined;
         for (let i = 0; i < structDef.fields.size(); i++) {
           const field = structDef.fields.get(i);
-          const readOnly = readOnlyFields ? readOnlyFields.indexOf(field.name) !== -1 : false;
+          if (subset && subset.indexOf(field.name) === -1) continue;
           registerAccessorTileDef(
             registeredTypeId,
             field.name,
             field.typeId,
-            readOnly ? { readOnly } : undefined,
+            field.readOnly ? { readOnly: field.readOnly } : undefined,
             services
           );
         }
