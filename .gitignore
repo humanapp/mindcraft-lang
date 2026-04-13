@@ -52,9 +52,8 @@ temp/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
-
-# Optional — uncomment if you want to commit launch configs:
-# !.vscode/launch.json
+!.vscode/launch.json
+!.vscode/tasks.json
 
 # ------------------------------------------------------------------
 # Coverage reports
@@ -68,6 +67,7 @@ lcov.info
 .env
 .env.*
 *.local
+!.env.example
 
 # ------------------------------------------------------------------
 # Lock / cache files
@@ -95,3 +95,4 @@ lcov.info
 # it a place to put them that won't cause problems.)
 # ------------------------------------------------------------------
 generated-docs/
+.vscode-test-web

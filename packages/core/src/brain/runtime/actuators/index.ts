@@ -1,12 +1,15 @@
 import { CoreActuatorId } from "../../interfaces";
-import { getBrainServices } from "../../services";
+import type { BrainServices } from "../../services";
 import fnRestartPage from "./restart-page";
 import fnSwitchPage from "./switch-page";
 import fnYield from "./yield";
 
-export function registerCoreActuators() {
-  const fns = getBrainServices().functions;
-  fns.register(CoreActuatorId.SwitchPage, false, fnSwitchPage.fn, fnSwitchPage.callDef);
-  fns.register(CoreActuatorId.RestartPage, false, fnRestartPage.fn, fnRestartPage.callDef);
-  fns.register(CoreActuatorId.Yield, false, fnYield.fn, fnYield.callDef);
+export function registerCoreActuators(services: BrainServices) {
+  services.actions.register(fnSwitchPage.binding);
+  services.actions.register(fnRestartPage.binding);
+  services.actions.register(fnYield.binding);
+
+  services.functions.register(CoreActuatorId.SwitchPage, false, fnSwitchPage.fn, fnSwitchPage.callDef);
+  services.functions.register(CoreActuatorId.RestartPage, false, fnRestartPage.fn, fnRestartPage.callDef);
+  services.functions.register(CoreActuatorId.Yield, false, fnYield.fn, fnYield.callDef);
 }

@@ -1,30 +1,36 @@
-import { Dict, List, TypeUtils, Vector2 } from "@mindcraft-lang/core";
 import {
-  CoreOpId,
+  ContextTypeIds,
   CoreTypeIds,
+  Dict,
   type ExecutionContext,
-  getBrainServices,
+  extractNumberValue,
+  List,
   type MapValue,
+  type MindcraftModuleApi,
   mkCallDef,
+  mkNativeStructValue,
   mkNumberValue,
   mkStructValue,
   mkTypeId,
   NativeType,
-  NIL_VALUE,
   type NumberValue,
   type StructValue,
+  TypeUtils,
   type Value,
-} from "@mindcraft-lang/core/brain";
+  Vector2,
+  VOID_VALUE,
+} from "@mindcraft-lang/core/app";
 import type { Actor } from "./actor";
+import { getSelf } from "./execution-context-types";
 
-export const MyTypeNames = {
-  ActorRef: "actorRef",
-  Vector2: "vector2",
+export const SimTypeNames = {
+  ActorRef: "ActorRef",
+  Vector2: "Vector2",
 };
 
-export const MyTypeIds = {
-  ActorRef: mkTypeId(NativeType.Struct, MyTypeNames.ActorRef),
-  Vector2: mkTypeId(NativeType.Struct, MyTypeNames.Vector2),
+export const SimTypeIds = {
+  ActorRef: mkTypeId(NativeType.Struct, SimTypeNames.ActorRef),
+  Vector2: mkTypeId(NativeType.Struct, SimTypeNames.Vector2),
 };
 
 // -------------------------------------------------------
@@ -33,7 +39,7 @@ export const MyTypeIds = {
 
 export function mkVector2Value(v: Vector2) {
   return mkStructValue(
-    MyTypeIds.Vector2,
+    SimTypeIds.Vector2,
     new Dict([
       ["x", mkNumberValue(v.X)],
       ["y", mkNumberValue(v.Y)],
@@ -42,7 +48,7 @@ export function mkVector2Value(v: Vector2) {
 }
 
 export function extractVector2(value: StructValue): Vector2 | undefined {
-  if (value.t !== NativeType.Struct || value.typeId !== MyTypeIds.Vector2) {
+  if (value.t !== NativeType.Struct || value.typeId !== SimTypeIds.Vector2) {
     return undefined;
   }
   const xField = value.v?.get("x") as NumberValue | undefined;
@@ -100,10 +106,35 @@ function actorRefFieldGetter(source: StructValue, fieldName: string, ctx: Execut
       return mkNumberValue(actor.actorId);
     case "position":
       return mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y));
+    case "rotation":
+      return mkNumberValue(actor.sprite.rotation);
     case "energy pct":
       return mkNumberValue(actor.energy / actor.maxEnergy);
+    case "forward":
+      return mkVector2Value(new Vector2(Math.cos(actor.sprite.rotation), Math.sin(actor.sprite.rotation)));
     default:
       return undefined;
+  }
+}
+
+function actorRefFieldSetter(source: StructValue, fieldName: string, value: Value, ctx: ExecutionContext): boolean {
+  const actor = resolveActor(source, ctx);
+  if (!actor) return false;
+  switch (fieldName) {
+    case "position": {
+      const vec = extractVector2(value as StructValue);
+      if (!vec) return false;
+      actor.sprite.setPosition(vec.X, vec.Y);
+      return true;
+    }
+    case "rotation": {
+      const angle = extractNumberValue(value);
+      if (angle === undefined) return false;
+      actor.sprite.setRotation(angle);
+      return true;
+    }
+    default:
+      return false;
   }
 }
 
@@ -115,7 +146,7 @@ function actorRefFieldGetter(source: StructValue, fieldName: string, ctx: Execut
  * Example: `mkActorRefResolver(getSelf)` for the [me] tile.
  */
 export function mkActorRefResolver(resolver: (ctx: ExecutionContext) => Actor | undefined): StructValue {
-  return mkStructValue(MyTypeIds.ActorRef, new Dict(), resolver);
+  return mkStructValue(SimTypeIds.ActorRef, new Dict(), resolver);
 }
 
 /**
@@ -123,65 +154,42 @@ export function mkActorRefResolver(resolver: (ctx: ExecutionContext) => Actor | 
  * Use this for literal actor tiles where the user picked a specific actor.
  */
 export function mkActorRefDirect(actor: Actor): StructValue {
-  return mkStructValue(MyTypeIds.ActorRef, new Dict(), actor);
+  return mkStructValue(SimTypeIds.ActorRef, new Dict(), actor);
 }
 
-export function registerTypes() {
-  const { types } = getBrainServices();
-
-  // Define vector2 struct type
-  const vector2TypeId = types.addStructType(MyTypeNames.Vector2, {
+export function registerTypes(api: MindcraftModuleApi) {
+  api.defineType({
+    coreType: NativeType.Struct,
+    typeId: SimTypeIds.Vector2,
+    name: SimTypeNames.Vector2,
     fields: List.from([
       { name: "x", typeId: CoreTypeIds.Number },
       { name: "y", typeId: CoreTypeIds.Number },
     ]),
+    accessors: true,
+    variableFactory: true,
   });
-  if (vector2TypeId !== MyTypeIds.Vector2) {
-    throw new Error(`Type ID mismatch for vector2: expected ${MyTypeIds.Vector2}, got ${vector2TypeId}`);
-  }
 
-  // Define actorRef "native" struct type with custom field getter to access actor properties
-  const actorRefTypeId = types.addStructType(MyTypeNames.ActorRef, {
+  api.defineType({
+    coreType: NativeType.Struct,
+    typeId: SimTypeIds.ActorRef,
+    name: SimTypeNames.ActorRef,
     fields: List.from([
-      { name: "id", typeId: CoreTypeIds.Number },
-      { name: "position", typeId: MyTypeIds.Vector2 },
-      { name: "energy pct", typeId: CoreTypeIds.Number },
+      { name: "id", typeId: CoreTypeIds.Number, readOnly: true },
+      { name: "position", typeId: SimTypeIds.Vector2 },
+      { name: "rotation", typeId: CoreTypeIds.Number },
+      { name: "energy pct", typeId: CoreTypeIds.Number, readOnly: true },
+      { name: "forward", typeId: SimTypeIds.Vector2, readOnly: true },
     ]),
     fieldGetter: actorRefFieldGetter,
+    fieldSetter: actorRefFieldSetter,
     snapshotNative: actorRefSnapshotNative,
+    accessors: ["id", "energy pct", "position"],
+    variableFactory: true,
   });
-  if (actorRefTypeId !== MyTypeIds.ActorRef) {
-    throw new Error(`Type ID mismatch for actorRef: expected ${MyTypeIds.ActorRef}, got ${actorRefTypeId}`);
-  }
 
-  // Register assignment overloads for struct types (no-op at runtime; compiler special-cases assignment)
-  const { operatorOverloads } = getBrainServices();
-  operatorOverloads.binary(
-    CoreOpId.Assign,
-    MyTypeIds.Vector2,
-    MyTypeIds.Vector2,
-    MyTypeIds.Vector2,
-    { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
-    false
-  );
-  operatorOverloads.binary(
-    CoreOpId.Assign,
-    MyTypeIds.ActorRef,
-    MyTypeIds.ActorRef,
-    MyTypeIds.ActorRef,
-    { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
-    false
-  );
-
-  const { conversions } = getBrainServices();
-  const anonCallDef = mkCallDef({
-    type: "arg",
-    tileId: "",
-    anonymous: true,
-  });
-  // Register conversions from actorRef to number (actor ID) and vector2 (actor position)
-  conversions.register({
-    fromType: MyTypeIds.ActorRef,
+  api.registerConversion({
+    fromType: SimTypeIds.ActorRef,
     toType: CoreTypeIds.Number,
     cost: 2,
     fn: {
@@ -191,11 +199,10 @@ export function registerTypes() {
         return mkNumberValue(actor ? actor.actorId : 0);
       },
     },
-    callDef: anonCallDef,
   });
-  conversions.register({
-    fromType: MyTypeIds.ActorRef,
-    toType: MyTypeIds.Vector2,
+  api.registerConversion({
+    fromType: SimTypeIds.ActorRef,
+    toType: SimTypeIds.Vector2,
     cost: 2,
     fn: {
       exec: (ctx: ExecutionContext, args: MapValue) => {
@@ -204,15 +211,12 @@ export function registerTypes() {
         if (actor) {
           return mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y));
         }
-        // If no actor, return a default position (e.g., origin)
         return mkVector2Value(new Vector2(0, 0));
       },
     },
-
-    callDef: anonCallDef,
   });
-  conversions.register({
-    fromType: MyTypeIds.Vector2,
+  api.registerConversion({
+    fromType: SimTypeIds.Vector2,
     toType: CoreTypeIds.String,
     cost: 3,
     fn: {
@@ -225,6 +229,263 @@ export function registerTypes() {
         };
       },
     },
-    callDef: anonCallDef,
   });
+
+  // -------------------------------------------------------
+  // Vector2 methods
+  // -------------------------------------------------------
+
+  const { types, functions } = api.brainServices;
+  const emptyCallDef = mkCallDef({ type: "bag", items: [] });
+
+  types.addStructMethods(
+    SimTypeIds.Vector2,
+    List.from([
+      {
+        name: "add",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "sub",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "mul",
+        params: List.from([{ name: "scalar", typeId: CoreTypeIds.Number }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "div",
+        params: List.from([{ name: "scalar", typeId: CoreTypeIds.Number }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "dot",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "cross",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "magnitude",
+        params: List.empty(),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "normalize",
+        params: List.empty(),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "distance",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "lerp",
+        params: List.from([
+          { name: "goal", typeId: SimTypeIds.Vector2 },
+          { name: "alpha", typeId: CoreTypeIds.Number },
+        ]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+      {
+        name: "angle",
+        params: List.from([{ name: "other", typeId: SimTypeIds.Vector2 }]),
+        returnTypeId: CoreTypeIds.Number,
+      },
+      {
+        name: "rotate",
+        params: List.from([{ name: "angle", typeId: CoreTypeIds.Number }]),
+        returnTypeId: SimTypeIds.Vector2,
+      },
+    ])
+  );
+
+  functions.register(
+    "Vector2.add",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkVector2Value(self.add(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.sub",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkVector2Value(self.sub(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.mul",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const scalar = extractNumberValue(args.v.get(1));
+        if (!self || scalar === undefined) return VOID_VALUE;
+        return mkVector2Value(self.mul(scalar));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.div",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const scalar = extractNumberValue(args.v.get(1));
+        if (!self || scalar === undefined) return VOID_VALUE;
+        return mkVector2Value(self.div(scalar));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.dot",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkNumberValue(self.Dot(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.cross",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkNumberValue(self.Cross(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.magnitude",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        if (!self) return VOID_VALUE;
+        return mkNumberValue(self.Magnitude);
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.normalize",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        if (!self) return VOID_VALUE;
+        return mkVector2Value(self.Unit);
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.distance",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkNumberValue(self.sub(other).Magnitude);
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.lerp",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const goal = extractVector2(args.v.get(1) as StructValue);
+        const alpha = extractNumberValue(args.v.get(2));
+        if (!self || !goal || alpha === undefined) return VOID_VALUE;
+        return mkVector2Value(self.Lerp(goal, alpha));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.angle",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const other = extractVector2(args.v.get(1) as StructValue);
+        if (!self || !other) return VOID_VALUE;
+        return mkNumberValue(self.Angle(other));
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "Vector2.rotate",
+    false,
+    {
+      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
+        const self = extractVector2(args.v.get(0) as StructValue);
+        const angle = extractNumberValue(args.v.get(1));
+        if (!self || angle === undefined) return VOID_VALUE;
+        return mkVector2Value(self.rotate(angle));
+      },
+    },
+    emptyCallDef
+  );
+
+  // -------------------------------------------------------
+  // Context.self field (ActorRef backed by executing actor)
+  // -------------------------------------------------------
+
+  types.addStructFields(
+    ContextTypeIds.Context,
+    List.from([{ name: "self", typeId: SimTypeIds.ActorRef }]),
+    (source: StructValue, fieldName: string, ctx: ExecutionContext) => {
+      if (fieldName !== "self") return undefined;
+      const actor = getSelf(ctx);
+      if (!actor) return undefined;
+      return mkNativeStructValue(SimTypeIds.ActorRef, actor);
+    }
+  );
 }

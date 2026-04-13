@@ -1,9 +1,11 @@
 import {
+  type ActionDescriptor,
   CoreActuatorId,
   CoreParameterId,
   choice,
   type ExecutionContext,
   getSlotId,
+  type HostActionBinding,
   isNumberValue,
   isStringValue,
   type MapValue,
@@ -18,6 +20,13 @@ const AnonNumber = param(CoreParameterId.AnonymousNumber, { anonymous: true });
 const AnonString = param(CoreParameterId.AnonymousString, { anonymous: true });
 
 const callDef = mkCallDef(choice(AnonNumber, AnonString));
+
+const descriptor: ActionDescriptor = {
+  key: CoreActuatorId.SwitchPage,
+  kind: "actuator",
+  callDef,
+  isAsync: false,
+};
 
 const kAnonymousNumberSlotId = getSlotId(callDef, AnonNumber);
 const kAnonymousStringSlotId = getSlotId(callDef, AnonString);
@@ -52,10 +61,18 @@ function fnSwitchPage(ctx: ExecutionContext, args: MapValue): Value {
   return VOID_VALUE;
 }
 
+const binding: HostActionBinding = {
+  binding: "host",
+  descriptor,
+  execSync: fnSwitchPage,
+};
+
 export default {
   fnId: CoreActuatorId.SwitchPage,
   tileId: mkActuatorTileId(CoreActuatorId.SwitchPage),
   isAsync: false,
+  descriptor,
+  binding,
   fn: {
     exec: fnSwitchPage,
   },

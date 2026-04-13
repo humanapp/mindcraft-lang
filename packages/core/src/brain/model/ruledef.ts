@@ -1,10 +1,8 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
-import { type IReadStream, type IWriteStream, MemoryStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
 import { task, type thread } from "../../platform/task";
-import { fourCC } from "../../primitives";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import { parseRule } from "../compiler";
 import {
@@ -13,10 +11,10 @@ import {
   type IBrainPageDef,
   type IBrainRuleDef,
   type IBrainTileSet,
+  type IConversionRegistry,
   type ITileCatalog,
   RuleSide,
 } from "../interfaces";
-import { getBrainServices } from "../services";
 import { BrainTileSet } from "./tileset";
 
 export interface RuleJson {
@@ -37,22 +35,6 @@ export const kMaxBrainRuleCommentLength = 500; // never reduce this value!
 
 // JSON serialization version.
 const kVersion = 1;
-
-// Binary serialization version (separate from JSON so binary can bump independently).
-// v1: initial format
-// v2: added optional comment field
-const kBinaryVersion = 2;
-
-// Serialization tags
-const STags = {
-  RUL1: fourCC("RUL1"), // Brain rule chunk
-  RUL2: fourCC("RUL2"), // Brain rule chunk -- this level only
-  RUL3: fourCC("RUL3"), // Brain rule chunk -- without children
-  WHCT: fourCC("WHCT"), // When tile count
-  DOCT: fourCC("DOCT"), // Do tile count
-  CRCT: fourCC("CRCT"), // Child rule count
-  CMNT: fourCC("CMNT"), // Rule comment
-};
 
 export class BrainRuleDef implements IBrainRuleDef {
   private page_?: IBrainPageDef;
@@ -155,10 +137,11 @@ export class BrainRuleDef implements IBrainRuleDef {
 
   private gatherCatalogs(): List<ITileCatalog> {
     const catalogs = List.empty<ITileCatalog>();
-    // push global catalog
-    catalogs.push(getBrainServices().tiles);
-    // push brain catalog
-    const brainCatalog = this.page()?.brain()?.catalog();
+    const brain = this.page()?.brain();
+    if (brain) {
+      catalogs.push(brain.servicesTiles());
+    }
+    const brainCatalog = brain?.catalog();
     if (brainCatalog) {
       catalogs.push(brainCatalog);
     }
@@ -176,13 +159,14 @@ export class BrainRuleDef implements IBrainRuleDef {
       const catalogs = this.gatherCatalogs();
       const whenTiles = this.when_.tiles();
       const doTiles = this.do_.tiles();
+      const brain = this.page()?.brain();
+      const conversions = brain?.servicesConversions();
 
-      // Compile both sides together
-      const typecheckResult = parseRule(whenTiles, doTiles, catalogs);
-
-      // Update both tilesets with the result
-      this.when_.setTypecheckResult(typecheckResult);
-      this.do_.setTypecheckResult(typecheckResult);
+      if (conversions) {
+        const typecheckResult = parseRule(whenTiles, doTiles, catalogs, conversions);
+        this.when_.setTypecheckResult(typecheckResult);
+        this.do_.setTypecheckResult(typecheckResult);
+      }
     }
 
     // Compile children
@@ -503,80 +487,17 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   clone(): BrainRuleDef {
-    const stream = new MemoryStream();
-    this.serialize(stream);
-    stream.resetRead(); // Reset stream read position to beginning
-    const newRule = new BrainRuleDef();
-    // pass in brain's local catalog for deserialization of full-save tiles (like literals and variables)
-    newRule.deserialize(stream, this.brain()?.catalog() ? List.from([this.brain()!.catalog()]) : undefined);
-    // Note: new rule is unpaged (page_ is undefined) and has fresh subscriptions
-    return newRule;
-  }
-
-  serialize(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.RUL1, kBinaryVersion);
-    this.serializeThisLevelOnly(stream);
-    // write child rules
-    stream.writeTaggedU32(STags.CRCT, this.children_.size());
-    this.children_.forEach((child) => {
-      child.serialize(stream);
-    });
-  }
-
-  serializeThisLevelOnly(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.RUL2, kBinaryVersion);
-    this.when_.serialize(stream);
-    this.do_.serialize(stream);
-    stream.writeTaggedString(STags.CMNT, this.comment_ ?? "");
-  }
-
-  serializeWithoutChildren(stream: IWriteStream): void {
-    stream.writeTaggedU8(STags.RUL3, kBinaryVersion);
-    this.serializeThisLevelOnly(stream);
-    stream.writeTaggedU32(STags.CRCT, 0); // zero child rules
-  }
-
-  deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void {
-    const version = stream.readTaggedU8(STags.RUL1);
-    if (version < 1 || version > kBinaryVersion) {
-      throw new Error(`Unsupported BrainRuleDef version: ${version}`);
-    }
-    this.deserializeThisLevelOnly(stream, catalogs);
-
-    // read child rules
-    const childCount = stream.readTaggedU32(STags.CRCT);
-    for (let i = 0; i < childCount; i++) {
-      const child = new BrainRuleDef();
-      child.setPage(this.page());
-      child.deserialize(stream, catalogs);
-      this.children_.push(child);
-      child.ancestor_ = this;
-      this.subscribeToChildRule_(child);
-    }
-  }
-
-  deserializeThisLevelOnly(stream: IReadStream, catalogs_?: List<ITileCatalog>): void {
-    const version = stream.readTaggedU8(STags.RUL2);
-    if (version < 1 || version > kBinaryVersion) {
-      throw new Error(`Unsupported BrainRuleDef (this level only) version: ${version}`);
-    }
-    const catalogs = new List<ITileCatalog>();
-    if (catalogs_) {
-      catalogs.push(...catalogs_.toArray());
-    }
+    const json = this.toJson();
     const brain = this.brain();
-    if (brain?.catalog()) {
-      catalogs.push(brain.catalog());
+    const page = this.page();
+    if (!brain || !page) {
+      const newRule = new BrainRuleDef();
+      return newRule;
     }
-    catalogs.push(getBrainServices().tiles); // global catalog
-    this.when_.deserialize(stream, catalogs);
-    this.do_.deserialize(stream, catalogs);
-    if (version >= 2) {
-      this.comment_ = stream.readTaggedString(STags.CMNT) || undefined;
-    }
+    return BrainRuleDef.fromJson(json, page, brain);
   }
 
-  // -- JSON serialization (parallel to binary above) -------------------------
+  // -- JSON serialization ----------------------------------------------------
 
   toJson(): RuleJson {
     const childRules = new List<RuleJson>();
@@ -597,9 +518,7 @@ export class BrainRuleDef implements IBrainRuleDef {
   }
 
   static fromJson(json: RuleJson, page: IBrainPageDef, brain: IBrainDef): BrainRuleDef {
-    const catalogs = new List<ITileCatalog>();
-    catalogs.push(brain.catalog());
-    catalogs.push(getBrainServices().tiles);
+    const catalogs = brain.deserializationCatalogs();
     const rule = new BrainRuleDef();
     rule.setPage(page);
     rule.deserializeJson(json, catalogs);

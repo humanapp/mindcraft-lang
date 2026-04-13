@@ -1,9 +1,12 @@
+import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { AUTO, Game, Scale } from "phaser";
 import { Boot } from "./scenes/Boot";
 import { Playground, SCENE_READY_KEY } from "./scenes/Playground";
 import { Preloader } from "./scenes/Preloader";
 
 export { SCENE_READY_KEY };
+
+export const ENV_REGISTRY_KEY = "__mindcraftEnv";
 
 //  Find out more information about the Game Config at:
 //  https://docs.phaser.io/api-documentation/typedef/types-core#gameconfig
@@ -27,8 +30,9 @@ const config: Phaser.Types.Core.GameConfig = {
   scene: [Boot, Preloader, Playground],
 };
 
-const StartGame = (parent: string, onSceneReady?: (scene: Phaser.Scene) => void) => {
+const StartGame = (parent: string, env: MindcraftEnvironment, onSceneReady?: (scene: Phaser.Scene) => void) => {
   const game = new Game({ ...config, parent });
+  game.registry.set(ENV_REGISTRY_KEY, env);
   if (onSceneReady) {
     game.registry.set(SCENE_READY_KEY, onSceneReady);
   }

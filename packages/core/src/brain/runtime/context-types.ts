@@ -13,24 +13,24 @@ import {
   type StructValue,
   type Value,
 } from "../interfaces";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 export const ContextTypeNames = {
   Context: "Context",
-  SelfContext: "SelfContext",
+  BrainContext: "BrainContext",
   EngineContext: "EngineContext",
 };
 
 export const ContextTypeIds = {
   Context: mkTypeId(NativeType.Struct, ContextTypeNames.Context),
-  SelfContext: mkTypeId(NativeType.Struct, ContextTypeNames.SelfContext),
+  BrainContext: mkTypeId(NativeType.Struct, ContextTypeNames.BrainContext),
   EngineContext: mkTypeId(NativeType.Struct, ContextTypeNames.EngineContext),
 };
 
-export function registerContextTypes() {
-  const { types, functions } = getBrainServices();
+export function registerContextTypes(services: BrainServices) {
+  const { types, functions } = services;
 
-  const selfContextTypeId = types.addStructType(ContextTypeNames.SelfContext, {
+  const brainContextTypeId = types.addStructType(ContextTypeNames.BrainContext, {
     fields: List.empty(),
     fieldGetter: () => undefined,
     methods: List.from([
@@ -60,7 +60,7 @@ export function registerContextTypes() {
       { name: "time", typeId: CoreTypeIds.Number },
       { name: "dt", typeId: CoreTypeIds.Number },
       { name: "tick", typeId: CoreTypeIds.Number },
-      { name: "self", typeId: selfContextTypeId },
+      { name: "brain", typeId: brainContextTypeId },
       { name: "engine", typeId: engineContextTypeId },
     ]),
     fieldGetter: (source: StructValue, fieldName: string) => {
@@ -72,8 +72,8 @@ export function registerContextTypes() {
           return mkNumberValue(execCtx.dt);
         case "tick":
           return mkNumberValue(execCtx.currentTick);
-        case "self":
-          return mkNativeStructValue(selfContextTypeId, execCtx);
+        case "brain":
+          return mkNativeStructValue(brainContextTypeId, execCtx);
         case "engine":
           return mkNativeStructValue(engineContextTypeId, execCtx);
         default:
@@ -84,8 +84,10 @@ export function registerContextTypes() {
 
   const emptyCallDef = mkCallDef({ type: "bag", items: [] });
 
+  // Struct method calling convention: the emitter pushes the struct value itself as
+  // arg index 0 (the receiver). User-visible arguments start at index 1.
   functions.register(
-    "SelfContext.getVariable",
+    "BrainContext.getVariable",
     false,
     {
       exec: (ctx: ExecutionContext, args: MapValue) => {
@@ -97,7 +99,7 @@ export function registerContextTypes() {
   );
 
   functions.register(
-    "SelfContext.setVariable",
+    "BrainContext.setVariable",
     false,
     {
       exec: (ctx: ExecutionContext, args: MapValue) => {

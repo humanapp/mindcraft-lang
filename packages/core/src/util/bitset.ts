@@ -29,9 +29,12 @@ export interface ReadonlyBitSet {
 
 export class BitSet implements ReadonlyBitSet {
   static readonly WORD_LENGTH: number = 32;
+  // log2(32) = 5; used to convert bit index -> word index via right shift
   static readonly WORD_LOG: number = 5;
 
   data: List<number>;
+  // The "infinity fill" bit: when the set represents an infinite bit string,
+  // this value (0 or ~0) fills all words beyond the stored data length.
   _: number = 0;
 
   constructor(param?: string | BitSet | number) {
@@ -40,12 +43,17 @@ export class BitSet implements ReadonlyBitSet {
     this.data = List.from((this as unknown as BitSetData).data.toArray());
   }
 
+  // Hamming weight / population count: counts the number of set bits in a 32-bit word.
+  // Uses the classic parallel-addition bit-twiddling algorithm.
+  // See: https://en.wikipedia.org/wiki/Hamming_weight
   static popCount(v: number): number {
     v -= (v >>> 1) & 0x55555555;
     v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
     return (((v + (v >>> 4)) & 0xf0f0f0f) * 0x1010101) >>> 24;
   }
 
+  // Long division on a big-number represented as a List of 32-bit words (MSB first).
+  // Returns the remainder; mutates `arr` in place to hold the quotient.
   static divide(arr: List<number>, B: number): number {
     let r = 0;
     const len = arr.size();
@@ -73,6 +81,8 @@ export class BitSet implements ReadonlyBitSet {
 
     // Check if it's a number using type guard
     const numVal = val as number;
+    // NaN is the only value not equal to itself; this serves as a cross-platform
+    // NaN guard. (numVal | 0) === numVal then checks that the value is a 32-bit integer.
     if (numVal === numVal && (numVal | 0) === numVal) {
       P.data = List.from([numVal | 0]);
       P._ = 0;
@@ -346,6 +356,9 @@ export class BitSet implements ReadonlyBitSet {
     for (let j = 0; j < len; j++) {
       let v = this.data.get(j);
       if (v !== 0) {
+        // (v ^ (v-1)) sets all bits from bit 0 up through the lowest set bit.
+        // >>> 1 shifts that mask right by one, so popCount gives the count of
+        // trailing zeros.
         v = (v ^ (v - 1)) >>> 1;
         return j * BitSet.WORD_LENGTH + BitSet.popCount(v);
       }

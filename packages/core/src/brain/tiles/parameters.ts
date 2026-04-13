@@ -7,7 +7,7 @@ import {
   type TypeId,
 } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 export class BrainTileParameterDef extends BrainTileDefBase {
   readonly kind = "parameter";
@@ -22,13 +22,18 @@ export class BrainTileParameterDef extends BrainTileDefBase {
   }
 }
 
-function registerParameterTileDef(parameterId: string, dataType: TypeId, opts: BrainTileDefCreateOptions = {}) {
+function registerParameterTileDef(
+  parameterId: string,
+  dataType: TypeId,
+  opts: BrainTileDefCreateOptions = {},
+  services: BrainServices
+) {
   const tileDef = new BrainTileParameterDef(parameterId, dataType, opts);
-  getBrainServices().tiles.registerTileDef(tileDef);
+  services.tiles.registerTileDef(tileDef);
 }
 
-export function registerCoreParameterTileDefs() {
-  const tiles = getBrainServices().tiles;
+export function registerCoreParameterTileDefs(services: BrainServices) {
+  const tiles = services.tiles;
   const register = (parameterId: string, dataType: TypeId, opts: BrainTileDefCreateOptions = {}) => {
     const tileDef = new BrainTileParameterDef(parameterId, dataType, opts);
     tiles.registerTileDef(tileDef);

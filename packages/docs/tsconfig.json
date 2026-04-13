@@ -19,7 +19,6 @@
     "strictPropertyInitialization": false,
 
     /* Path mapping */
-    "baseUrl": ".",
     "paths": {
       "@mindcraft-lang/ui": ["../ui/src/index.ts"],
       "@mindcraft-lang/ui/*": ["../ui/src/*"]

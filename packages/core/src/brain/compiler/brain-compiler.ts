@@ -4,13 +4,14 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { UniqueSet } from "../../platform/uniqueset";
 import {
-  type BrainProgram,
+  type ActionCallSiteEntry,
+  type ActionRef,
   BYTECODE_VERSION,
   type FunctionBytecode,
-  type HostCallSiteEntry,
   type IBrainDef,
   type IBrainPageDef,
   type IBrainRuleDef,
+  type IConversionRegistry,
   type Instr,
   type ITileCatalog,
   NIL_VALUE,
@@ -18,6 +19,7 @@ import {
   type PageMetadata,
   type TileId,
   TRUE_VALUE,
+  type UnlinkedBrainProgram,
   Value,
 } from "../interfaces";
 import { ConstantPool } from "./constant-pool";
@@ -29,9 +31,8 @@ import { type CompilationDiag, ExprCompiler } from "./rule-compiler";
 import type { ActuatorExpr, Expr, SensorExpr, TypeEnv, TypeInfo } from "./types";
 import { acceptExprVisitor } from "./types";
 
-/**
- * Replace all "/" characters with "_" (for function naming)
- */
+// Manual character-by-character iteration instead of String.replace() for
+// Roblox-TS compatibility -- Roblox-TS doesn't support regex or string.replace.
 function replaceAllSlashes(str: string): string {
   let result = "";
   const len = SU.length(str);
@@ -149,22 +150,30 @@ export class BrainCompiler {
   private pages: List<PageMetadata>;
   private nextFuncId: number;
   private catalogs: ReadonlyList<ITileCatalog>;
+  private conversions: IConversionRegistry;
   /** Global variable name pool for LOAD_VAR/STORE_VAR instructions */
   private variableNames: List<string>;
   /** Maps variable names to their index in variableNames */
   private variableIndices: Dict<string, number>;
+  /** Program-local action refs shared across all compiled rules */
+  private actionRefs: List<ActionRef>;
+  /** Maps action keys to their program-local slot */
+  private actionIndices: Dict<string, number>;
   /** Counter for unique call-site IDs (shared across all rules for uniqueness) */
   private nextCallSiteIdCounter: { value: number };
 
-  constructor(catalogs: ReadonlyList<ITileCatalog>) {
+  constructor(catalogs: ReadonlyList<ITileCatalog>, conversions: IConversionRegistry) {
     this.constantPool = new ConstantPool();
     this.functions = List.empty();
     this.ruleIndex = Dict.empty();
     this.pages = List.empty();
     this.nextFuncId = 0;
     this.catalogs = catalogs;
+    this.conversions = conversions;
     this.variableNames = List.empty();
     this.variableIndices = Dict.empty();
+    this.actionRefs = List.empty();
+    this.actionIndices = Dict.empty();
     this.nextCallSiteIdCounter = { value: 1 };
   }
 
@@ -174,7 +183,7 @@ export class BrainCompiler {
    * @param brainDef - The brain definition to compile
    * @returns A complete BrainProgram ready for execution
    */
-  compile(brainDef: IBrainDef): BrainProgram {
+  compile(brainDef: IBrainDef): UnlinkedBrainProgram {
     // Reset state for fresh compilation
     this.constantPool = new ConstantPool();
     this.functions = List.empty();
@@ -183,6 +192,8 @@ export class BrainCompiler {
     this.nextFuncId = 0;
     this.variableNames = List.empty();
     this.variableIndices = Dict.empty();
+    this.actionRefs = List.empty();
+    this.actionIndices = Dict.empty();
     this.nextCallSiteIdCounter = { value: 0 };
 
     // First pass: assign function IDs to all rules (depth-first)
@@ -205,6 +216,7 @@ export class BrainCompiler {
       variableNames: this.variableNames,
       entryPoint: 0, // First page's first rule
       ruleIndex: this.ruleIndex,
+      actionRefs: this.actionRefs,
       pages: this.pages,
     };
   }
@@ -228,7 +240,7 @@ export class BrainCompiler {
       pageName: pageDef.name(),
       pageId: pageDef.pageId(),
       rootRuleFuncIds,
-      hostCallSites: List.empty(),
+      actionCallSites: List.empty(),
       sensors: new UniqueSet(),
       actuators: new UniqueSet(),
     });
@@ -259,7 +271,7 @@ export class BrainCompiler {
   }
 
   /**
-   * Second pass: Compile all rules in a page, then collect host function IDs.
+   * Second pass: Compile all rules in a page, then collect action callsites.
    */
   private compilePage(pageDef: IBrainPageDef, pageIdx: number): void {
     const rules = pageDef.children();
@@ -270,21 +282,20 @@ export class BrainCompiler {
       this.compileRule(ruleDef, `${pageIdx}/${ruleIdx}`, pageMetadata);
     }
 
-    // Collect all host call sites from all compiled rules in this page
+    // Collect all action callsites from all compiled rules in this page
     const visitedFuncs = new UniqueSet<number>();
-    this.collectHostCallSites(pageMetadata.rootRuleFuncIds, visitedFuncs, pageMetadata.hostCallSites);
+    this.collectActionCallSites(pageMetadata.rootRuleFuncIds, visitedFuncs, pageMetadata.actionCallSites);
   }
 
   /**
-   * Recursively collect all HOST_CALL / HOST_CALL_ASYNC call sites from a set
+   * Recursively collect all ACTION_CALL / ACTION_CALL_ASYNC call sites from a set
    * of rule functions and their children (via CALL instructions). Each call
-   * site is recorded with its fnId and callSiteId so that onPageEntered can be
-   * invoked with the correct currentCallSiteId.
+   * site is recorded with its actionSlot and callSiteId.
    */
-  private collectHostCallSites(
+  private collectActionCallSites(
     funcIds: List<number>,
     visitedFuncs: UniqueSet<number>,
-    out: List<HostCallSiteEntry>
+    out: List<ActionCallSiteEntry>
   ): void {
     for (let i = 0; i < funcIds.size(); i++) {
       const funcId = funcIds.get(i)!;
@@ -297,8 +308,8 @@ export class BrainCompiler {
       const childFuncIds = List.empty<number>();
       for (let pc = 0; pc < fn.code.size(); pc++) {
         const ins = fn.code.get(pc)!;
-        if (ins.op === Op.HOST_CALL || ins.op === Op.HOST_CALL_ASYNC) {
-          out.push({ fnId: ins.a ?? 0, callSiteId: ins.c ?? 0 });
+        if (ins.op === Op.ACTION_CALL || ins.op === Op.ACTION_CALL_ASYNC) {
+          out.push({ actionSlot: ins.a ?? 0, callSiteId: ins.c ?? 0 });
         } else if (ins.op === Op.CALL) {
           childFuncIds.push(ins.a ?? 0);
         }
@@ -306,7 +317,7 @@ export class BrainCompiler {
 
       // Recurse into child rules
       if (childFuncIds.size() > 0) {
-        this.collectHostCallSites(childFuncIds, visitedFuncs, out);
+        this.collectActionCallSites(childFuncIds, visitedFuncs, out);
       }
     }
   }
@@ -379,10 +390,10 @@ export class BrainCompiler {
     }
 
     for (let i = 0; i < whenParseResult.exprs.size(); i++) {
-      computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv);
+      computeInferredTypes(whenParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions);
     }
     for (let i = 0; i < doParseResult.exprs.size(); i++) {
-      computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv);
+      computeInferredTypes(doParseResult.exprs.get(i), this.catalogs, typeEnv, this.conversions);
     }
 
     // Create emitter for this rule's function
@@ -445,6 +456,8 @@ export class BrainCompiler {
     const context = {
       variableIndices: this.variableIndices,
       variableNames: this.variableNames,
+      actionIndices: this.actionIndices,
+      actionRefs: this.actionRefs,
       typeEnv,
       constantPool: this.constantPool,
       nextCallSiteId: this.nextCallSiteIdCounter,
@@ -480,7 +493,11 @@ export class BrainCompiler {
  * @param catalogs - Tile catalogs for type resolution
  * @returns A complete BrainProgram
  */
-export function compileBrain(brainDef: IBrainDef, catalogs: ReadonlyList<ITileCatalog>): BrainProgram {
-  const compiler = new BrainCompiler(catalogs);
+export function compileBrain(
+  brainDef: IBrainDef,
+  catalogs: ReadonlyList<ITileCatalog>,
+  conversions: IConversionRegistry
+): UnlinkedBrainProgram {
+  const compiler = new BrainCompiler(catalogs, conversions);
   return compiler.compile(brainDef);
 }

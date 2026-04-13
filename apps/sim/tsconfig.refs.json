@@ -1,0 +1,9 @@
+{
+  "files": [],
+  "references": [
+    { "path": "../../packages/ts-compiler/tsconfig.json" },
+    { "path": "../../packages/bridge-protocol/tsconfig.json" },
+    { "path": "../../packages/bridge-client/tsconfig.json" },
+    { "path": "../../packages/bridge-app/tsconfig.json" }
+  ]
+}

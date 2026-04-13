@@ -1,7 +1,6 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import { UniqueSet } from "../../platform/uniqueset";
@@ -9,6 +8,8 @@ import {
   CoreOpId,
   CoreTypeIds,
   CoreTypeNames,
+  type EnumPrimitiveValue,
+  type EnumSymbolDef,
   type EnumTypeDef,
   type EnumTypeShape,
   type EnumValue,
@@ -25,6 +26,7 @@ import {
   mkTypeId,
   NativeType,
   type NullableTypeDef,
+  type StructFieldGetterFn,
   type StructMethodDecl,
   type StructTypeDef,
   type StructTypeShape,
@@ -34,13 +36,19 @@ import {
   type TypeId,
   type UnionTypeDef,
 } from "../interfaces";
-import { getBrainServices, hasBrainServices } from "../services";
+import type { BrainServices } from "../services";
+import { registerEnumConversions } from "./conversions";
 
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
   private nameToId = new Dict<string, TypeId>();
   private constructors = new Dict<string, TypeConstructor>();
   private compatCache = new Dict<string, boolean>();
+  private services_?: BrainServices;
+
+  setServices(services: BrainServices): void {
+    this.services_ = services;
+  }
 
   private add(def: TypeDef) {
     if (this.defs.has(def.typeId)) {
@@ -60,6 +68,14 @@ export class TypeRegistry implements ITypeRegistry {
     if (this.defs.has(typeId)) {
       throw new Error(`Type with id ${typeId} is already registered`);
     }
+  }
+
+  getEnumSymbol(typeId: TypeId, key: string): EnumSymbolDef | undefined {
+    const def = this.defs.get(typeId);
+    if (!def || def.coreType !== NativeType.Enum) {
+      return undefined;
+    }
+    return (def as EnumTypeDef).symbols.find((symbol) => symbol.key === key);
   }
 
   addVoidType(name: string): TypeId {
@@ -131,34 +147,38 @@ export class TypeRegistry implements ITypeRegistry {
     this.validateTypeName(name);
     const typeId = mkTypeId(NativeType.Enum, name);
     this.validateTypeNotRegistered(typeId);
-    // Verify no duplicate keys
-    const keySet = new UniqueSet<string>();
-    shape.symbols.forEach((sym) => {
-      if (keySet.has(sym.key)) {
-        throw new Error(`Enum type ${typeId} has duplicate key: ${sym.key}`);
-      }
-      keySet.add(sym.key);
-    });
-    // Verify defaultKey exists
-    if (!keySet.has(shape.defaultKey)) {
-      throw new Error(`Enum type ${typeId} has invalid defaultKey: ${shape.defaultKey}`);
-    }
+    const symbols = normalizeEnumSymbols(typeId, shape.symbols);
+    const defaultKey = resolveEnumDefaultKey(typeId, symbols, shape.defaultKey);
     // Register
     const enumTypeDef: EnumTypeDef = {
       coreType: NativeType.Enum,
       typeId,
-      codec: new EnumCodec(shape),
+      codec: new EnumCodec(symbols),
       name,
-      ...shape,
+      symbols,
+      defaultKey,
     };
     this.add(enumTypeDef);
+    this.registerEnumConversions(typeId);
     this.registerEnumOperators(typeId);
     return typeId;
   }
 
+  private registerEnumConversions(typeId: TypeId): void {
+    if (!this.services_) return;
+    registerEnumConversions(typeId, this.services_);
+  }
+
   private registerEnumOperators(typeId: TypeId): void {
-    if (!hasBrainServices()) return;
-    const overloads = getBrainServices().operatorOverloads;
+    if (!this.services_) return;
+    const def = this.get(typeId);
+    if (!def || def.coreType !== NativeType.Enum) {
+      return;
+    }
+    if ((def as EnumTypeDef).symbols.size() === 0) {
+      return;
+    }
+    const overloads = this.services_.operatorOverloads;
     overloads.binary(
       CoreOpId.EqualTo,
       typeId,
@@ -168,7 +188,15 @@ export class TypeRegistry implements ITypeRegistry {
         exec: (_ctx: ExecutionContext, args: MapValue) => {
           const a = args.v.get(0) as EnumValue;
           const b = args.v.get(1) as EnumValue;
-          return mkBooleanValue(a.v === b.v);
+          if (a.typeId !== typeId || b.typeId !== typeId) {
+            return mkBooleanValue(false);
+          }
+          const lhs = this.getEnumSymbol(typeId, a.v);
+          const rhs = this.getEnumSymbol(typeId, b.v);
+          if (!lhs || !rhs) {
+            return mkBooleanValue(false);
+          }
+          return mkBooleanValue(lhs.value === rhs.value);
         },
       },
       false
@@ -182,11 +210,27 @@ export class TypeRegistry implements ITypeRegistry {
         exec: (_ctx: ExecutionContext, args: MapValue) => {
           const a = args.v.get(0) as EnumValue;
           const b = args.v.get(1) as EnumValue;
-          return mkBooleanValue(a.v !== b.v);
+          if (a.typeId !== typeId || b.typeId !== typeId) {
+            return mkBooleanValue(false);
+          }
+          const lhs = this.getEnumSymbol(typeId, a.v);
+          const rhs = this.getEnumSymbol(typeId, b.v);
+          if (!lhs || !rhs) {
+            return mkBooleanValue(false);
+          }
+          return mkBooleanValue(lhs.value !== rhs.value);
         },
       },
       false
     );
+  }
+
+  private unregisterEnumArtifacts(typeId: TypeId): void {
+    if (!this.services_) return;
+    this.services_.conversions.remove(typeId, CoreTypeIds.String);
+    this.services_.conversions.remove(typeId, CoreTypeIds.Number);
+    this.services_.operatorOverloads.remove(CoreOpId.EqualTo, [typeId, typeId]);
+    this.services_.operatorOverloads.remove(CoreOpId.NotEqualTo, [typeId, typeId]);
   }
 
   addListType(name: string, shape: ListTypeShape): TypeId {
@@ -217,9 +261,12 @@ export class TypeRegistry implements ITypeRegistry {
     this.validateTypeName(name);
     const typeId = mkTypeId(NativeType.Map, name);
     this.validateTypeNotRegistered(typeId);
-    const { valueTypeId } = shape;
+    const { keyTypeId, valueTypeId } = shape;
+    const keyTypeDef = this.get(keyTypeId);
+    if (!keyTypeDef) {
+      throw new Error(`${keyTypeId} is not a registered type`);
+    }
     const valueTypeDef = this.get(valueTypeId);
-    // Ensure value type exists
     if (!valueTypeDef) {
       throw new Error(`${valueTypeId} is not a registered type`);
     }
@@ -267,6 +314,54 @@ export class TypeRegistry implements ITypeRegistry {
     return typeId;
   }
 
+  reserveStructType(name: string): TypeId {
+    this.validateTypeName(name);
+    const typeId = mkTypeId(NativeType.Struct, name);
+    this.validateTypeNotRegistered(typeId);
+    const placeholder: StructTypeDef = {
+      coreType: NativeType.Struct,
+      typeId,
+      codec: new StructCodec(new Dict<string, TypeCodec>()),
+      name,
+      fields: List.empty<{ name: string; typeId: TypeId }>(),
+    };
+    this.add(placeholder);
+    return typeId;
+  }
+
+  finalizeStructType(typeId: TypeId, shape: StructTypeShape): void {
+    const existing = this.get(typeId);
+    if (!existing) {
+      throw new Error(`Cannot finalize unknown type: ${typeId}`);
+    }
+    if (existing.coreType !== NativeType.Struct) {
+      throw new Error(`Cannot finalize non-struct type: ${typeId}`);
+    }
+    const fieldNames = new UniqueSet<string>();
+    shape.fields.forEach((field) => {
+      if (fieldNames.has(field.name)) {
+        throw new Error(`Struct type ${typeId} has duplicate field name: ${field.name}`);
+      }
+      fieldNames.add(field.name);
+    });
+    const fieldCodecs = new Dict<string, TypeCodec>();
+    shape.fields.forEach((field) => {
+      const fieldTypeDef = this.get(field.typeId);
+      if (!fieldTypeDef) {
+        throw new Error(`Struct type ${typeId} has field ${field.name} with unknown type: ${field.typeId}`);
+      }
+      fieldCodecs.set(field.name, fieldTypeDef.codec);
+    });
+    const structDef = existing as StructTypeDef;
+    structDef.fields = shape.fields;
+    structDef.codec = new StructCodec(fieldCodecs);
+    if (shape.nominal !== undefined) structDef.nominal = shape.nominal;
+    if (shape.fieldGetter) structDef.fieldGetter = shape.fieldGetter;
+    if (shape.fieldSetter) structDef.fieldSetter = shape.fieldSetter;
+    if (shape.snapshotNative) structDef.snapshotNative = shape.snapshotNative;
+    if (shape.methods) structDef.methods = shape.methods;
+  }
+
   addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void {
     const typeDef = this.get(typeId);
     if (!typeDef) {
@@ -278,6 +373,54 @@ export class TypeRegistry implements ITypeRegistry {
     const structDef = typeDef as StructTypeDef;
     const existing = structDef.methods ?? List.empty<StructMethodDecl>();
     structDef.methods = existing.concat(methods);
+  }
+
+  addStructFields(
+    typeId: TypeId,
+    fields: List<{ name: string; typeId: TypeId; readOnly?: boolean }>,
+    fieldGetter?: StructFieldGetterFn
+  ): void {
+    const typeDef = this.get(typeId);
+    if (!typeDef) {
+      throw new Error(`Type ${typeId} not found`);
+    }
+    if (typeDef.coreType !== NativeType.Struct) {
+      throw new Error(`Type ${typeId} is not a struct type`);
+    }
+    const structDef = typeDef as StructTypeDef;
+
+    const existingNames = new UniqueSet<string>();
+    structDef.fields.forEach((f) => {
+      existingNames.add(f.name);
+    });
+
+    const fieldCodecs = new Dict<string, TypeCodec>();
+    structDef.fields.forEach((f) => {
+      const ft = this.get(f.typeId);
+      if (ft) fieldCodecs.set(f.name, ft.codec);
+    });
+
+    fields.forEach((field) => {
+      if (existingNames.has(field.name)) {
+        throw new Error(`Struct type ${typeId} already has field: ${field.name}`);
+      }
+      const fieldTypeDef = this.get(field.typeId);
+      if (!fieldTypeDef) {
+        throw new Error(`Struct type ${typeId} field ${field.name} has unknown type: ${field.typeId}`);
+      }
+      existingNames.add(field.name);
+      fieldCodecs.set(field.name, fieldTypeDef.codec);
+    });
+
+    structDef.fields = structDef.fields.concat(fields);
+    structDef.codec = new StructCodec(fieldCodecs);
+
+    if (fieldGetter) {
+      const existing = structDef.fieldGetter;
+      structDef.fieldGetter = existing
+        ? (source, fieldName, ctx) => fieldGetter(source, fieldName, ctx) ?? existing(source, fieldName, ctx)
+        : fieldGetter;
+    }
   }
 
   addAnyType(name: string): TypeId {
@@ -326,6 +469,7 @@ export class TypeRegistry implements ITypeRegistry {
       name: nullableName,
       nullable: true,
       baseTypeId,
+      autoInstantiated: baseDef.autoInstantiated,
     };
     this.add(nullableDef);
     return typeId;
@@ -428,6 +572,8 @@ export class TypeRegistry implements ITypeRegistry {
         hasNil = true;
       }
     });
+    // A two-member union where one member is Nil is canonicalized as a nullable
+    // type (T?) rather than a full Union.
     if (sorted.size() === 2 && hasNil) {
       const first = sorted.get(0)!;
       const second = sorted.get(1)!;
@@ -482,6 +628,28 @@ export class TypeRegistry implements ITypeRegistry {
     return this.defs.entries().toArray();
   }
 
+  removeUserTypes(): void {
+    const toRemove = new List<TypeId>();
+    this.defs.forEach((def) => {
+      if (def.coreType !== NativeType.Struct && def.coreType !== NativeType.Enum) return;
+      if (SU.indexOf(def.name, "::") < 0) return;
+      toRemove.push(def.typeId);
+    });
+    toRemove.forEach((typeId) => {
+      const def = this.defs.get(typeId);
+      if (def?.coreType === NativeType.Enum) {
+        this.unregisterEnumArtifacts(typeId);
+      }
+      if (def) {
+        this.nameToId.delete(def.name);
+      }
+      this.defs.delete(typeId);
+    });
+    if (toRemove.size() > 0) {
+      this.compatCache = new Dict<string, boolean>();
+    }
+  }
+
   isStructurallyCompatible(sourceTypeId: TypeId, targetTypeId: TypeId): boolean {
     if (sourceTypeId === targetTypeId) return true;
 
@@ -505,6 +673,8 @@ export class TypeRegistry implements ITypeRegistry {
 
     if (sourceStruct.nominal || targetStruct.nominal) return false;
 
+    // Target-subset rule: every field the target declares must exist in the source
+    // with a compatible type. The source may have additional fields; that is allowed.
     let compatible = true;
     targetStruct.fields.forEach((targetField) => {
       if (!compatible) return;
@@ -531,8 +701,8 @@ export class TypeRegistry implements ITypeRegistry {
 // ----------------------------------------------------
 // Register core types
 
-export function registerCoreTypes() {
-  const typeRegistry = getBrainServices().types;
+export function registerCoreTypes(services: BrainServices) {
+  const typeRegistry = services.types;
   typeRegistry.addVoidType(CoreTypeNames.Void);
   typeRegistry.addNilType(CoreTypeNames.Nil);
   typeRegistry.addBooleanType(CoreTypeNames.Boolean);
@@ -549,103 +719,36 @@ export function registerCoreTypes() {
 // Codecs
 
 class VoidCodec implements TypeCodec {
-  encode(w: IWriteStream, value: undefined): void {
-    // No-op
-  }
-  decode(r: IReadStream): void {
-    return;
-  }
   stringify(value: undefined): string {
     return "void";
   }
 }
 
 class NilCodec implements TypeCodec {
-  encode(w: IWriteStream, value: undefined): void {
-    // No-op
-  }
-  decode(r: IReadStream): undefined {
-    return undefined;
-  }
   stringify(value: undefined): string {
     return "nil";
   }
 }
 
 class BooleanCodec implements TypeCodec {
-  encode(w: IWriteStream, value: boolean): void {
-    w.writeBool(value);
-  }
-  decode(r: IReadStream): boolean {
-    return r.readBool();
-  }
   stringify(value: boolean): string {
     return SU.toString(value);
   }
 }
 
 class NumberCodec implements TypeCodec {
-  encode(w: IWriteStream, value: number): void {
-    w.writeF64(value);
-  }
-  decode(r: IReadStream): number {
-    return r.readF64();
-  }
   stringify(value: number): string {
     return SU.toString(value);
   }
 }
 
 class StringCodec implements TypeCodec {
-  encode(w: IWriteStream, value: string): void {
-    w.writeString(value);
-  }
-  decode(r: IReadStream): string {
-    return r.readString();
-  }
   stringify(value: string): string {
     return value;
   }
 }
 
 class AnyCodec implements TypeCodec {
-  encode(w: IWriteStream, value: unknown): void {
-    if (value === undefined) {
-      w.writeU8(NativeType.Nil);
-      return;
-    }
-    if (TypeUtils.isBoolean(value)) {
-      w.writeU8(NativeType.Boolean);
-      w.writeBool(value);
-      return;
-    }
-    if (TypeUtils.isNumber(value)) {
-      w.writeU8(NativeType.Number);
-      w.writeF64(value);
-      return;
-    }
-    if (TypeUtils.isString(value)) {
-      w.writeU8(NativeType.String);
-      w.writeString(value);
-      return;
-    }
-    throw new Error("AnyCodec: unsupported value type");
-  }
-  decode(r: IReadStream): unknown {
-    const tag = r.readU8();
-    switch (tag) {
-      case NativeType.Nil:
-        return undefined;
-      case NativeType.Boolean:
-        return r.readBool();
-      case NativeType.Number:
-        return r.readF64();
-      case NativeType.String:
-        return r.readString();
-      default:
-        throw new Error(`AnyCodec: unsupported type tag ${SU.toString(tag)}`);
-    }
-  }
   stringify(value: unknown): string {
     if (value === undefined) {
       return "nil";
@@ -664,12 +767,6 @@ class AnyCodec implements TypeCodec {
 }
 
 class FunctionCodec implements TypeCodec {
-  encode(_w: IWriteStream, _value: unknown): void {
-    throw new Error("Function values cannot be serialized");
-  }
-  decode(_r: IReadStream): unknown {
-    throw new Error("Function values cannot be deserialized");
-  }
   stringify(value: unknown): string {
     if (value !== undefined) {
       const v = value as { funcId?: number };
@@ -682,45 +779,91 @@ class FunctionCodec implements TypeCodec {
 }
 
 class EnumCodec implements TypeCodec {
-  private shape: EnumTypeShape;
-  constructor(shape: EnumTypeShape) {
-    this.shape = shape;
-  }
-  encode(w: IWriteStream, value: string): void {
-    w.writeString(value);
-  }
-  decode(r: IReadStream): string {
-    const key = r.readString();
-    const symbol = this.shape.symbols.find((s) => s.key === key);
-    if (!symbol) {
-      throw new Error(`Unknown enum key: ${key}`);
-    }
-    return key;
-  }
+  constructor(private readonly symbols: List<EnumSymbolDef>) {}
   stringify(value: string): string {
+    const symbol = findEnumSymbol(this.symbols, value);
+    if (!symbol) {
+      return value;
+    }
+    return stringifyEnumPrimitiveValue(symbol.value);
+  }
+}
+
+function normalizeEnumSymbols(typeId: TypeId, rawSymbols: List<EnumSymbolDef>): List<EnumSymbolDef> {
+  const keySet = new UniqueSet<string>();
+  const symbols = new List<EnumSymbolDef>();
+  let expectedValueType: NativeType.String | NativeType.Number | undefined;
+
+  rawSymbols.forEach((rawSymbol) => {
+    if (keySet.has(rawSymbol.key)) {
+      throw new Error(`Enum type ${typeId} has duplicate key: ${rawSymbol.key}`);
+    }
+    keySet.add(rawSymbol.key);
+
+    const valueType = enumPrimitiveType(typeId, rawSymbol.key, rawSymbol.value);
+    if (expectedValueType === undefined) {
+      expectedValueType = valueType;
+    } else if (expectedValueType !== valueType) {
+      throw new Error(`Enum type ${typeId} mixes string and number values`);
+    }
+
+    symbols.push({
+      key: rawSymbol.key,
+      label: rawSymbol.label,
+      value: rawSymbol.value,
+      deprecated: rawSymbol.deprecated,
+    });
+  });
+
+  return symbols;
+}
+
+function resolveEnumDefaultKey(
+  typeId: TypeId,
+  symbols: List<EnumSymbolDef>,
+  defaultKey: string | undefined
+): string | undefined {
+  if (symbols.size() === 0) {
+    if (defaultKey !== undefined) {
+      throw new Error(`Enum type ${typeId} cannot specify defaultKey without symbols`);
+    }
+    return undefined;
+  }
+
+  if (defaultKey === undefined) {
+    throw new Error(`Enum type ${typeId} requires defaultKey`);
+  }
+
+  if (!symbols.find((symbol) => symbol.key === defaultKey)) {
+    throw new Error(`Enum type ${typeId} has invalid defaultKey: ${defaultKey}`);
+  }
+
+  return defaultKey;
+}
+
+function enumPrimitiveType(typeId: TypeId, key: string, value: unknown): NativeType.String | NativeType.Number {
+  if (TypeUtils.isString(value)) {
+    return NativeType.String;
+  }
+  if (TypeUtils.isNumber(value)) {
+    return NativeType.Number;
+  }
+  throw new Error(`Enum type ${typeId} has unsupported value for key ${key}`);
+}
+
+function findEnumSymbol(symbols: List<EnumSymbolDef>, key: string): EnumSymbolDef | undefined {
+  return symbols.find((symbol) => symbol.key === key);
+}
+
+function stringifyEnumPrimitiveValue(value: EnumPrimitiveValue): string {
+  if (TypeUtils.isString(value)) {
     return value;
   }
+  return SU.toString(value);
 }
 
 class ListCodec implements TypeCodec {
   constructor(private elementCodec: TypeCodec) {}
-  encode(w: IWriteStream, value: List<unknown>): void {
-    const elementCodec = this.elementCodec;
-    w.writeU32(value.size());
-    value.forEach((item) => {
-      elementCodec.encode(w, item);
-    });
-  }
-  decode(r: IReadStream): List<unknown> {
-    const elementCodec = this.elementCodec;
-    const size = r.readU32();
-    const list = new List<unknown>();
-    for (let i = 0; i < size; i++) {
-      const item = elementCodec.decode(r);
-      list.push(item);
-    }
-    return list;
-  }
   stringify(value: List<unknown>): string {
     const elementCodec = this.elementCodec;
     const items: string[] = [];
@@ -733,27 +876,6 @@ class ListCodec implements TypeCodec {
 
 class MapCodec implements TypeCodec {
   constructor(private valueCodec: TypeCodec) {}
-  encode(w: IWriteStream, value: Dict<string, unknown>): void {
-    const valueCodec = this.valueCodec;
-    const keys = value.keys().sort();
-    w.writeU32(keys.size());
-    keys.forEach((key) => {
-      w.writeString(key);
-      const v = value.get(key);
-      valueCodec.encode(w, v);
-    });
-  }
-  decode(r: IReadStream): Dict<string, unknown> {
-    const valueCodec = this.valueCodec;
-    const size = r.readU32();
-    const dict = new Dict<string, unknown>();
-    for (let i = 0; i < size; i++) {
-      const key = r.readString();
-      const v = valueCodec.decode(r);
-      dict.set(key, v);
-    }
-    return dict;
-  }
   stringify(value: Dict<string, unknown>): string {
     const valueCodec = this.valueCodec;
     const items: string[] = [];
@@ -768,32 +890,6 @@ class MapCodec implements TypeCodec {
 
 class StructCodec implements TypeCodec {
   constructor(private fieldCodecs: Dict<string, TypeCodec>) {}
-  encode(w: IWriteStream, value: Dict<string, unknown>): void {
-    const fieldCodecs = this.fieldCodecs;
-    const fieldNames = fieldCodecs.keys().sort();
-    w.writeU32(fieldNames.size());
-    fieldNames.forEach((fieldName) => {
-      w.writeString(fieldName);
-      const codec = fieldCodecs.get(fieldName)!;
-      const v = value.get(fieldName);
-      codec.encode(w, v);
-    });
-  }
-  decode(r: IReadStream): Dict<string, unknown> {
-    const fieldCodecs = this.fieldCodecs;
-    const size = r.readU32();
-    const dict = new Dict<string, unknown>();
-    for (let i = 0; i < size; i++) {
-      const fieldName = r.readString();
-      const codec = fieldCodecs.get(fieldName);
-      if (!codec) {
-        throw new Error(`Unknown field name ${fieldName} in struct decoding`);
-      }
-      const v = codec.decode(r);
-      dict.set(fieldName, v);
-    }
-    return dict;
-  }
   stringify(value: Dict<string, unknown>): string {
     const fieldCodecs = this.fieldCodecs;
     const items: string[] = [];
@@ -809,21 +905,6 @@ class StructCodec implements TypeCodec {
 
 class NullableCodec implements TypeCodec {
   constructor(private baseCodec: TypeCodec) {}
-  encode(w: IWriteStream, value: unknown): void {
-    if (value === undefined) {
-      w.writeU8(0);
-    } else {
-      w.writeU8(1);
-      this.baseCodec.encode(w, value);
-    }
-  }
-  decode(r: IReadStream): unknown {
-    const flag = r.readU8();
-    if (flag === 0) {
-      return undefined;
-    }
-    return this.baseCodec.decode(r);
-  }
   stringify(value: unknown): string {
     if (value === undefined) {
       return "nil";
@@ -877,23 +958,6 @@ class UnionCodec implements TypeCodec {
     return -1;
   }
 
-  encode(w: IWriteStream, value: unknown): void {
-    const idx = this.findMemberIndex(value);
-    if (idx < 0) {
-      throw new Error("UnionCodec: value does not match any union member");
-    }
-    w.writeU8(idx);
-    this.memberCodecs.get(idx)!.encode(w, value);
-  }
-
-  decode(r: IReadStream): unknown {
-    const idx = r.readU8();
-    if (idx >= this.memberCodecs.size()) {
-      throw new Error(`UnionCodec: invalid discriminant ${SU.toString(idx)}`);
-    }
-    return this.memberCodecs.get(idx)!.decode(r);
-  }
-
   stringify(value: unknown): string {
     const idx = this.findMemberIndex(value);
     if (idx < 0) {
@@ -929,10 +993,15 @@ class ListConstructor implements TypeConstructor {
 
 class MapConstructor implements TypeConstructor {
   name = "Map";
-  arity = 1;
+  arity = 2;
   coreType = NativeType.Map;
   construct(registry: ITypeRegistry, args: List<TypeId>): TypeDef {
-    const valueTypeId = args.get(0)!;
+    const keyTypeId = args.get(0)!;
+    const valueTypeId = args.get(1)!;
+    const keyDef = registry.get(keyTypeId);
+    if (!keyDef) {
+      throw new Error(`${keyTypeId} is not a registered type`);
+    }
     const valueDef = registry.get(valueTypeId);
     if (!valueDef) {
       throw new Error(`${valueTypeId} is not a registered type`);
@@ -942,6 +1011,7 @@ class MapConstructor implements TypeConstructor {
       typeId: "" as TypeId,
       codec: new MapCodec(valueDef.codec),
       name: "",
+      keyTypeId,
       valueTypeId,
     };
     return def;

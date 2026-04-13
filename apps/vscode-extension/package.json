@@ -1,0 +1,96 @@
+{
+	"name": "@mindcraft-lang/vscode-extension",
+	"displayName": "Mindcraft",
+	"description": "Program sensors and actuators for Mindcraft apps in TypeScript using VS Code",
+	"version": "0.1.0",
+	"private": true,
+	"publisher": "mindcraft-lang",
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.100.0"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"activationEvents": [
+		"onFileSystem:mindcraft",
+		"onStartupFinished"
+	],
+	"browser": "./dist/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "mindcraft.show",
+				"title": "Mindcraft: Show"
+			},
+			{
+				"command": "mindcraft.connect",
+				"title": "Mindcraft: Connect"
+			},
+			{
+				"command": "mindcraft.disconnect",
+				"title": "Mindcraft: Disconnect"
+			},
+			{
+				"command": "mindcraft.createSensor",
+				"title": "Mindcraft: Create New Sensor"
+			},
+			{
+				"command": "mindcraft.createActuator",
+				"title": "Mindcraft: Create New Actuator"
+			},
+			{
+				"command": "mindcraft.hide",
+				"title": "Mindcraft: Hide"
+			},
+			{
+				"command": "mindcraft.sync",
+				"title": "Mindcraft: Sync Files"
+			}
+		],
+		"views": {
+			"explorer": [
+				{
+					"id": "mindcraft.sessions",
+					"name": "Mindcraft",
+					"icon": "$(symbol-misc)",
+					"when": "mindcraft.enabled"
+				}
+			]
+		},
+		"configuration": {
+			"title": "Mindcraft",
+			"properties": {
+				"mindcraft.bridgeUrl": {
+					"type": "string",
+					"default": "vscode-bridge.mindcraft-lang.org",
+					"description": "URL for the Mindcraft bridge service"
+				}
+			}
+		}
+  },
+	"scripts": {
+		"dev": "node esbuild.mjs --watch",
+		"build": "node esbuild.mjs --production",
+		"clean": "rm -rf dist",
+		"lint:only": "biome lint ./src",
+		"check:only": "biome check ./src",
+		"format:only": "biome format ./src",
+		"lint": "biome lint ./src --write",
+		"check": "biome check ./src --write",
+		"typecheck": "tsc --noEmit",
+		"format": "biome format ./src --write",
+		"package": "vsce package"
+	},
+	"dependencies": {
+		"@mindcraft-lang/bridge-client": "file:../../packages/bridge-client",
+		"@mindcraft-lang/bridge-protocol": "file:../../packages/bridge-protocol"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.3.15",
+		"@types/vscode": "^1.100.0",
+		"@vscode/test-web": "^0.0.80",
+		"esbuild": "^0.25.0",
+		"typescript": "~5.9.3"
+	}
+}

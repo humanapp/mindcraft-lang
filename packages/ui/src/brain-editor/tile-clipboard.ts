@@ -1,5 +1,6 @@
 import { logger, type ReadonlyList } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   getPageIdFromTileId,
   type IBrainDef,
   type IBrainTileDef,
@@ -63,8 +64,8 @@ export function copyTileToClipboard(tileDef: IBrainTileDef, brain: IBrainDef | u
     const catalogTileDef = brainCatalog.get(tileDef.tileId);
     if (catalogTileDef) {
       tempCatalog.add(catalogTileDef);
-      if (isPageTileId(tileDef.tileId) && catalogTileDef.visual?.label) {
-        pageName = catalogTileDef.visual.label;
+      if (isPageTileId(tileDef.tileId) && catalogTileDef.metadata?.label) {
+        pageName = catalogTileDef.metadata.label;
       }
     }
   }
@@ -97,21 +98,25 @@ export function hasTileInClipboard(): boolean {
  *
  * Returns undefined if the clipboard is empty or the tile cannot be resolved.
  */
-export function importTileFromClipboard(destBrain: IBrainDef): IBrainTileDef | undefined {
+export function importTileFromClipboard(
+  destBrain: IBrainDef,
+  brainServices?: BrainServices
+): IBrainTileDef | undefined {
   if (!tileClipboardData) return undefined;
+  const currentClipboardData = tileClipboardData;
 
   const destCatalog = destBrain.catalog();
-  const tileId = tileClipboardData.tileId;
+  const tileId = currentClipboardData.tileId;
 
   const existing = destCatalog.get(tileId);
   if (existing) return existing;
 
   const tempCatalog = new TileCatalog();
-  tempCatalog.deserializeJson(tileClipboardData.catalogJson);
+  if (brainServices) tempCatalog.deserializeJson(currentClipboardData.catalogJson, brainServices);
 
   const tileDef = tempCatalog.get(tileId);
   if (!tileDef) {
-    return tileClipboardData.tileDef;
+    return currentClipboardData.tileDef;
   }
 
   if (isPageTileId(tileId)) {
@@ -135,7 +140,7 @@ function importPageTile(tileDef: IBrainTileDef, destBrain: IBrainDef, destCatalo
     }
   }
 
-  const sourceName = tileClipboardData!.pageName || tileDef.visual?.label || "";
+  const sourceName = tileClipboardData!.pageName || tileDef.metadata?.label || "";
   if (sourceName) {
     const destPageTile = destPageByName.get(sourceName);
     if (destPageTile) {
@@ -143,7 +148,7 @@ function importPageTile(tileDef: IBrainTileDef, destBrain: IBrainDef, destCatalo
     }
   }
 
-  const label = tileClipboardData!.pageName || tileDef.visual?.label || "page";
+  const label = tileClipboardData!.pageName || tileDef.metadata?.label || "page";
   const missingTile = new BrainTileMissingDef(tileDef.tileId, "page", label);
   destCatalog.registerTileDef(missingTile);
   return missingTile;

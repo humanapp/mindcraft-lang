@@ -4,7 +4,7 @@ import type { List } from "../../platform/list";
 import { Time } from "../../platform/time";
 import { UniqueSet } from "../../platform/uniqueset";
 import { EventEmitter } from "../../util/event-emitter";
-import type { ExecutionContext } from "./runtime";
+import type { ActionInstance, ExecutionContext } from "./runtime";
 import { NativeType, type TypeId } from "./type-system";
 
 ///////////////////////////
@@ -127,7 +127,10 @@ export type Value =
   | { t: "handle"; id: HandleId } // VM-internal type
   | { t: "err"; e: ErrorValue }; // VM-internal type
 
-// Pooled singleton values for common immutable values
+// Pooled singleton values for common immutable values.
+// Reuse these instead of allocating new objects to reduce GC pressure.
+// Boolean true/false, nil, void, and unknown are used frequently in the VM
+// and never mutated, so a single shared instance suffices.
 export const UNKNOWN_VALUE: UnknownValue = { t: NativeType.Unknown };
 export const VOID_VALUE: VoidValue = { t: NativeType.Void };
 export const NIL_VALUE: NilValue = { t: NativeType.Nil };
@@ -261,6 +264,10 @@ export enum Op {
   HOST_CALL_ARGS,
   HOST_CALL_ARGS_ASYNC,
 
+  // Action calls (pre-built MapValue on stack)
+  ACTION_CALL = 44,
+  ACTION_CALL_ASYNC,
+
   // Async operations and cooperative scheduling
   AWAIT = 50,
   YIELD,
@@ -299,6 +306,7 @@ export enum Op {
   STRUCT_NEW = 110,
   STRUCT_GET,
   STRUCT_SET,
+  STRUCT_COPY_EXCEPT,
 
   // Generic field access (works with Struct, extensible for custom types)
   GET_FIELD = 120,
@@ -308,15 +316,17 @@ export enum Op {
   LOAD_LOCAL = 130,
   STORE_LOCAL,
 
-  // Callsite-persistent variables (per-callsite state that survives across ticks)
+  // Legacy opcode name retained; resolves against the current action instance state slots.
   LOAD_CALLSITE_VAR = 140,
   STORE_CALLSITE_VAR,
 
   // Type introspection
   TYPE_CHECK = 150,
+  INSTANCE_OF,
 
   // Indirect function calls
   CALL_INDIRECT = 160,
+  CALL_INDIRECT_ARGS,
 
   // Closure operations
   MAKE_CLOSURE = 170,
@@ -441,12 +451,21 @@ export enum FiberState {
   CANCELLED = "CANCELLED",
 }
 
+export interface ActionFrameBinding {
+  actionKey: string;
+  callSiteId: number;
+  isAsync: boolean;
+  actionInstance: ActionInstance;
+}
+
 export interface Frame {
   funcId: number;
   pc: number;
   base: number;
   locals: List<Value>;
   captures?: List<Value>;
+  ruleFuncId?: number;
+  actionBinding?: ActionFrameBinding;
 }
 
 export interface Handler {
@@ -480,11 +499,11 @@ export interface Fiber {
    */
   executionContext: ExecutionContext;
   /**
-   * Per-callsite persistent variable storage for user-authored tiles.
-   * Set by the host exec wrapper before fiber execution.
-   * Accessed by LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR opcodes.
+   * Legacy direct state-slot seeding path for wrapper-oriented runtime/tests.
+   * Core action dispatch binds state through action frames instead.
    */
   callsiteVars?: List<Value>;
+  asyncResultHandleId?: HandleId;
 }
 
 ///////////////////////////
@@ -617,6 +636,7 @@ export interface Scheduler {
   onFiberCancelled?: (fiberId: number) => void;
   enqueueRunnable: (fiberId: number) => void;
   getFiber: (fiberId: number) => Fiber | undefined;
+  addFiber?: (fiber: Fiber) => void;
 }
 
 ///////////////////////////

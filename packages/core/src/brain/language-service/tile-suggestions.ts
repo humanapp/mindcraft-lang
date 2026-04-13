@@ -11,6 +11,7 @@ import {
   type IConversionRegistry,
   type IOperatorOverloads,
   type ITileCatalog,
+  type ITypeRegistry,
   mkControlFlowTileId,
   NativeType,
   type RuleSide,
@@ -20,7 +21,7 @@ import {
 } from "../interfaces";
 import type { BrainActionArgSlot, BrainActionCallSpec } from "../interfaces/functions";
 import type { StructTypeDef } from "../interfaces/type-system";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 import type { BrainTileAccessorDef } from "../tiles/accessors";
 import { BrainTileActuatorDef } from "../tiles/actuators";
 import type { BrainTileControlFlowDef } from "../tiles/controlflow";
@@ -219,7 +220,8 @@ function hasTypeConstraint(expectedType: TypeId | undefined): boolean {
 function classifyTypeCompatibility(
   outputType: TypeId | undefined,
   expectedType: TypeId | undefined,
-  conversions: IConversionRegistry
+  conversions: IConversionRegistry,
+  types: ITypeRegistry
 ): { compatibility: TileCompatibility; cost: number } | undefined {
   // If no constraint or unknown output type, compatibility is unchecked
   if (!hasTypeConstraint(expectedType) || !outputType || outputType === CoreTypeIds.Unknown) {
@@ -244,7 +246,7 @@ function classifyTypeCompatibility(
   // Struct field match -- if the tile produces a struct type and any of its
   // fields match the expected type, treat it as a conversion (the user will
   // need to add an accessor tile to reach the desired field value).
-  const fieldResult = structFieldTypeCompatibility(outputType, expectedType!, conversions);
+  const fieldResult = structFieldTypeCompatibility(outputType, expectedType!, conversions, types);
   if (fieldResult !== undefined) {
     return fieldResult;
   }
@@ -264,10 +266,10 @@ function classifyTypeCompatibility(
 function structFieldTypeCompatibility(
   structTypeId: TypeId,
   expectedType: TypeId,
-  conversions: IConversionRegistry
+  conversions: IConversionRegistry,
+  types: ITypeRegistry
 ): { compatibility: TileCompatibility; cost: number } | undefined {
-  const typeRegistry = getBrainServices().types;
-  const typeDef = typeRegistry.get(structTypeId);
+  const typeDef = types.get(structTypeId);
   if (!typeDef || typeDef.coreType !== NativeType.Struct) return undefined;
 
   const fields = (typeDef as StructTypeDef).fields;
@@ -599,10 +601,9 @@ function hasIncompleteAnonValues(actionExpr: ActuatorExpr | SensorExpr, excludeS
 function hasStructValuePendingAccessor(
   actionExpr: ActuatorExpr | SensorExpr,
   catalogs: ReadonlyList<ITileCatalog>,
+  types: ITypeRegistry,
   excludeSlotId?: number
 ): boolean {
-  const types = getBrainServices().types;
-
   // Check parameter slots
   for (let i = 0; i < actionExpr.parameters.size(); i++) {
     if (actionExpr.parameters.get(i).slotId === excludeSlotId) continue;
@@ -618,7 +619,7 @@ function hasStructValuePendingAccessor(
   }
 
   // Check anonymous slots
-  const callDef = actionExpr.tileDef.fnEntry.callDef;
+  const callDef = actionExpr.tileDef.action.callDef;
   for (let i = 0; i < actionExpr.anons.size(); i++) {
     if (actionExpr.anons.get(i).slotId === excludeSlotId) continue;
     const anonExpr = actionExpr.anons.get(i).expr;
@@ -661,14 +662,14 @@ function hasStructValuePendingAccessor(
  */
 function collectActionCallExpectedTypes(
   actionExpr: ActuatorExpr | SensorExpr,
-  catalogs: ReadonlyList<ITileCatalog>
+  catalogs: ReadonlyList<ITileCatalog>,
+  types: ITypeRegistry
 ): List<TypeId> {
-  const callDef = actionExpr.tileDef.fnEntry.callDef;
+  const callDef = actionExpr.tileDef.action.callDef;
   const filledSlotIds = collectFilledSlotIds(actionExpr);
   const availableSlots = List.empty<BrainActionArgSlot>();
   collectAvailableArgSlots(callDef.callSpec, callDef.argSlots, filledSlotIds, availableSlots, 1, callDef.callSpec);
 
-  const types = getBrainServices().types;
   const expectedTypes = List.empty<TypeId>();
 
   // Available anonymous slots
@@ -1332,8 +1333,12 @@ function findOwningSlotId(actionExpr: ActuatorExpr | SensorExpr, tileIndex: numb
  * @param catalogs - Tile catalogs to enumerate (e.g., core + game-specific)
  * @returns Grouped suggestions: exact matches and conversion-based matches
  */
-export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<ITileCatalog>): TileSuggestionResult {
-  const { conversions, operatorOverloads } = getBrainServices();
+export function suggestTiles(
+  context: InsertionContext,
+  catalogs: ReadonlyList<ITileCatalog>,
+  services: BrainServices
+): TileSuggestionResult {
+  const { conversions, operatorOverloads, types } = services;
   const result: TileSuggestionResult = {
     exact: List.empty(),
     withConversion: List.empty(),
@@ -1348,7 +1353,7 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
     // mode so the user sees infix operators and close paren suggestions.
     if (exprContainsTileIndex(expr, context.replaceTileIndex)) {
       const role = findReplacementRole(expr, context.replaceTileIndex, { kind: "expressionPosition" });
-      suggestForReplacementRole(role, context, catalogs, conversions, result, operatorOverloads);
+      suggestForReplacementRole(role, context, catalogs, conversions, types, operatorOverloads, result);
       return result;
     }
     // Tile is outside the AST (e.g., a paren) -- fall through to append mode.
@@ -1358,12 +1363,12 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
   switch (expr.kind) {
     case "empty":
     case "errorExpr":
-      suggestExpressionTiles(context, catalogs, conversions, result);
+      suggestExpressionTiles(context, catalogs, conversions, types, result);
       break;
 
     case "actuator":
     case "sensor": {
-      const callDef = expr.tileDef.fnEntry.callDef;
+      const callDef = expr.tileDef.action.callDef;
       const filledSlotIds = collectFilledSlotIds(expr);
       const availableArgSlots = List.empty<BrainActionArgSlot>();
       collectAvailableArgSlots(
@@ -1384,6 +1389,8 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
           context.ruleSide,
           catalogs,
           conversions,
+          types,
+          operatorOverloads,
           result,
           undefined,
           context.availableCapabilities,
@@ -1406,10 +1413,12 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
         suggestInfixOperators(context, catalogs, conversions, result, leftType, operatorOverloads, leftExpr);
         suggestCloseParenIfNeeded(context, catalogs, result);
         const trailingForAccessor = trailingPrimaryExpr(leftExpr);
-        const acceptedTypes = collectActionCallExpectedTypes(expr, catalogs);
+        const acceptedTypes = collectActionCallExpectedTypes(expr, catalogs, types);
         suggestAccessorTiles(
           context,
           catalogs,
+          types,
+          conversions,
           result,
           getExprOutputType(trailingForAccessor, operatorOverloads, conversions) ??
             getExprOutputType(trailingForAccessor),
@@ -1425,7 +1434,7 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
         // Handle similarly to the top-level sensor/actuator case: check for
         // unfilled call spec slots and offer call spec tiles when needed.
         const innerExpr = expr.operand as SensorExpr | ActuatorExpr;
-        const callDef = innerExpr.tileDef.fnEntry.callDef;
+        const callDef = innerExpr.tileDef.action.callDef;
         const filledSlotIds = collectFilledSlotIds(innerExpr);
         const availableArgSlots = List.empty<BrainActionArgSlot>();
         collectAvailableArgSlots(
@@ -1445,6 +1454,8 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
             context.ruleSide,
             catalogs,
             conversions,
+            types,
+            operatorOverloads,
             result,
             undefined,
             context.availableCapabilities,
@@ -1463,10 +1474,12 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
           suggestInfixOperators(context, catalogs, conversions, result, leftType, operatorOverloads, leftExpr);
           suggestCloseParenIfNeeded(context, catalogs, result);
           const trailingForAccessor = trailingPrimaryExpr(leftExpr);
-          const innerAcceptedTypes = collectActionCallExpectedTypes(innerExpr, catalogs);
+          const innerAcceptedTypes = collectActionCallExpectedTypes(innerExpr, catalogs, types);
           suggestAccessorTiles(
             context,
             catalogs,
+            types,
+            conversions,
             result,
             getExprOutputType(trailingForAccessor, operatorOverloads, conversions) ??
               getExprOutputType(trailingForAccessor),
@@ -1481,6 +1494,8 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
         suggestAccessorTiles(
           context,
           catalogs,
+          types,
+          conversions,
           result,
           getExprOutputType(trailingExpr, operatorOverloads, conversions) ?? getExprOutputType(trailingExpr),
           trailingPrimaryAcceptedTypes(expr, operatorOverloads, conversions)
@@ -1492,7 +1507,7 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
         const ctx: InsertionContext = expectedType
           ? { ruleSide: context.ruleSide, expectedType, unclosedParenDepth: context.unclosedParenDepth }
           : context;
-        suggestExpressionTiles(ctx, catalogs, conversions, result, true, true);
+        suggestExpressionTiles(ctx, catalogs, conversions, types, result, true, true);
       }
       break;
     }
@@ -1510,18 +1525,18 @@ export function suggestTiles(context: InsertionContext, catalogs: ReadonlyList<I
         suggestAccessorTiles(
           context,
           catalogs,
+          types,
+          conversions,
           result,
           getExprOutputType(trailingExpr, operatorOverloads, conversions) ?? getExprOutputType(trailingExpr),
           trailingPrimaryAcceptedTypes(expr, operatorOverloads, conversions)
         );
       } else {
-        // Incomplete expression (e.g., [1] [+] -- right operand missing, or [$v] [=] -- value needed)
-        // Determine expected type from the expression context when possible.
         const expectedType = incompleteExprExpectedType(expr, operatorOverloads, conversions);
         const ctx: InsertionContext = expectedType
           ? { ruleSide: context.ruleSide, expectedType, unclosedParenDepth: context.unclosedParenDepth }
           : context;
-        suggestExpressionTiles(ctx, catalogs, conversions, result, true);
+        suggestExpressionTiles(ctx, catalogs, conversions, types, result, true);
       }
       break;
 
@@ -1613,6 +1628,7 @@ function suggestExpressionTiles(
   context: InsertionContext,
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry,
+  types: ITypeRegistry,
   result: TileSuggestionResult,
   valueOnly = false,
   allowNonInlineSensors = false
@@ -1691,7 +1707,7 @@ function suggestExpressionTiles(
 
       // Determine type compatibility
       const outputType = getTileOutputType(tileDef);
-      const typeResult = classifyTypeCompatibility(outputType, context.expectedType, conversions);
+      const typeResult = classifyTypeCompatibility(outputType, context.expectedType, conversions, types);
 
       // Not compatible at all -- skip
       if (!typeResult) continue;
@@ -1814,17 +1830,18 @@ function suggestInfixOperators(
 function suggestAccessorTiles(
   context: InsertionContext,
   catalogs: ReadonlyList<ITileCatalog>,
+  types: ITypeRegistry,
+  serviceConversions: IConversionRegistry,
   result: TileSuggestionResult,
   leftExprType: TypeId | undefined,
   acceptedFieldTypes?: ReadonlyList<TypeId>
 ): void {
   if (leftExprType === undefined) return;
 
-  const typeRegistry = getBrainServices().types;
-  const typeDef = typeRegistry.get(leftExprType);
+  const typeDef = types.get(leftExprType);
   if (!typeDef || typeDef.coreType !== NativeType.Struct) return;
 
-  const conversions = acceptedFieldTypes ? getBrainServices().conversions : undefined;
+  const conversions = acceptedFieldTypes ? serviceConversions : undefined;
   const seen = new UniqueSet<string>();
 
   for (let ci = 0; ci < catalogs.size(); ci++) {
@@ -1847,7 +1864,12 @@ function suggestAccessorTiles(
       if (acceptedFieldTypes !== undefined && conversions) {
         let fieldAccepted = false;
         for (let ai = 0; ai < acceptedFieldTypes.size(); ai++) {
-          const compat = classifyTypeCompatibility(accessorDef.fieldTypeId, acceptedFieldTypes.get(ai), conversions);
+          const compat = classifyTypeCompatibility(
+            accessorDef.fieldTypeId,
+            acceptedFieldTypes.get(ai),
+            conversions,
+            types
+          );
           if (compat) {
             fieldAccepted = true;
             break;
@@ -1990,15 +2012,13 @@ function suggestForReplacementRole(
   context: InsertionContext,
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry,
-  result: TileSuggestionResult,
-  operatorOverloads?: IOperatorOverloads
+  types: ITypeRegistry,
+  operatorOverloads: IOperatorOverloads,
+  result: TileSuggestionResult
 ): void {
   switch (role.kind) {
     case "expressionPosition":
-      // When replacing the action tile itself (e.g., [say] in [say] [(]),
-      // paren depth from remaining tiles is irrelevant -- clear it so
-      // actuators and non-inline sensors are not suppressed.
-      suggestExpressionTiles({ ...context, unclosedParenDepth: undefined }, catalogs, conversions, result);
+      suggestExpressionTiles({ ...context, unclosedParenDepth: undefined }, catalogs, conversions, types, result);
       break;
 
     case "value": {
@@ -2008,11 +2028,7 @@ function suggestForReplacementRole(
         availableCapabilities: context.availableCapabilities,
         unclosedParenDepth: context.unclosedParenDepth,
       };
-      // Value positions are sub-expression slots (binary operand, assignment
-      // RHS, etc.) where only value-producing tiles are valid. Actuators
-      // return Void and non-inline sensors are parsed at the action-call
-      // level, so both are excluded via valueOnly.
-      suggestExpressionTiles(ctx, catalogs, conversions, result, true);
+      suggestExpressionTiles(ctx, catalogs, conversions, types, result, true);
       break;
     }
 
@@ -2036,6 +2052,8 @@ function suggestForReplacementRole(
         context.ruleSide,
         catalogs,
         conversions,
+        types,
+        operatorOverloads,
         result,
         role.excludeSlotId,
         context.availableCapabilities,
@@ -2044,7 +2062,7 @@ function suggestForReplacementRole(
       break;
 
     case "accessorPosition":
-      suggestAccessorTiles(context, catalogs, result, role.structTypeId);
+      suggestAccessorTiles(context, catalogs, types, conversions, result, role.structTypeId);
       break;
   }
 }
@@ -2064,12 +2082,14 @@ function suggestActionCallTiles(
   ruleSide: RuleSide,
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry,
+  types: ITypeRegistry,
+  operatorOverloads: IOperatorOverloads,
   result: TileSuggestionResult,
   excludeSlotId?: number,
   availableCapabilities?: ReadonlyBitSet,
   unclosedParenDepth?: number
 ): void {
-  const callDef = actionExpr.tileDef.fnEntry.callDef;
+  const callDef = actionExpr.tileDef.action.callDef;
   const filledSlotIds = collectFilledSlotIds(actionExpr, excludeSlotId);
 
   // Walk the call spec tree to find available arg slots
@@ -2086,7 +2106,7 @@ function suggestActionCallTiles(
     (unclosedParenDepth ?? 0) > 0 ||
     hasParametersNeedingValues(actionExpr, excludeSlotId) ||
     hasIncompleteAnonValues(actionExpr, excludeSlotId) ||
-    hasStructValuePendingAccessor(actionExpr, catalogs, excludeSlotId);
+    hasStructValuePendingAccessor(actionExpr, catalogs, types, excludeSlotId);
 
   // Collect expected types from available anonymous slots and suggest named tiles
   const valueExpectedTypes = List.empty<TypeId>();
@@ -2131,7 +2151,7 @@ function suggestActionCallTiles(
   // the error was caused by the unclosed paren consuming the slot's expression
   // (e.g., [say] [(] produces errorExpr in the AnonString slot).
   const includeAnonErrors = (unclosedParenDepth ?? 0) > 0;
-  const { operatorOverloads: opOverloads } = getBrainServices();
+  const opOverloads = operatorOverloads;
   for (let i = 0; i < actionExpr.anons.size(); i++) {
     const anonExpr = actionExpr.anons.get(i).expr;
     const isIncomplete = anonExpr.kind !== "empty" && anonExpr.kind !== "errorExpr" && !isCompleteValueExpr(anonExpr);
@@ -2173,6 +2193,7 @@ function suggestActionCallTiles(
       ruleSide,
       catalogs,
       conversions,
+      types,
       result,
       availableCapabilities
     );
@@ -2194,6 +2215,7 @@ function suggestExpressionsForAnonymousSlots(
   ruleSide: RuleSide,
   catalogs: ReadonlyList<ITileCatalog>,
   conversions: IConversionRegistry,
+  types: ITypeRegistry,
   result: TileSuggestionResult,
   availableCapabilities?: ReadonlyBitSet
 ): void {
@@ -2234,7 +2256,7 @@ function suggestExpressionsForAnonymousSlots(
       let bestCost = 0;
 
       for (let ei = 0; ei < expectedTypes.size(); ei++) {
-        const typeResult = classifyTypeCompatibility(outputType, expectedTypes.get(ei), conversions);
+        const typeResult = classifyTypeCompatibility(outputType, expectedTypes.get(ei), conversions, types);
         if (!typeResult) continue;
 
         if (typeResult.compatibility === TileCompatibility.Exact) {

@@ -149,6 +149,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.CALL_INDIRECT, a: argc });
   }
 
+  /** Call function indirectly, adapting argc to callee's numParams (truncate or pad with nil). */
+  callIndirectArgs(argc: number): void {
+    this.emit({ op: Op.CALL_INDIRECT_ARGS, a: argc });
+  }
+
   /** Create a closure: pops captureCount values from the stack, creates a FunctionValue with captures. */
   makeClosure(funcId: number, captureCount: number): void {
     this.emit({ op: Op.MAKE_CLOSURE, a: funcId, b: captureCount });
@@ -173,6 +178,14 @@ export class BytecodeEmitter implements IBytecodeEmitter {
 
   hostCallAsync(hostId: number, argc: number, callSiteId: number): void {
     this.emit({ op: Op.HOST_CALL_ASYNC, a: hostId, b: argc, c: callSiteId });
+  }
+
+  actionCall(actionSlot: number, callSiteId: number): void {
+    this.emit({ op: Op.ACTION_CALL, a: actionSlot, c: callSiteId });
+  }
+
+  actionCallAsync(actionSlot: number, callSiteId: number): void {
+    this.emit({ op: Op.ACTION_CALL_ASYNC, a: actionSlot, c: callSiteId });
   }
 
   hostCallArgs(hostId: number, argc: number, callSiteId: number): void {
@@ -352,6 +365,11 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.STRUCT_SET });
   }
 
+  /** Copy struct excluding N keys. Keys are on stack, then source struct. typeIdConstIdx is constant pool index for typeId. */
+  structCopyExcept(numExclude: number, typeIdConstIdx: number): void {
+    this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude, b: typeIdConstIdx });
+  }
+
   // ==========================================
   // Generic field access
   // ==========================================
@@ -396,6 +414,10 @@ export class BytecodeEmitter implements IBytecodeEmitter {
 
   typeCheck(nativeType: number): void {
     this.emit({ op: Op.TYPE_CHECK, a: nativeType });
+  }
+
+  instanceOf(typeIdConstIdx: number): void {
+    this.emit({ op: Op.INSTANCE_OF, a: typeIdConstIdx });
   }
 
   // ==========================================

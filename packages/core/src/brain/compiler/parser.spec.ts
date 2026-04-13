@@ -10,12 +10,13 @@ import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import {
   type BrainActionCallSpec,
+  type BrainServices,
   bag,
   CoreControlFlowId,
   CoreTypeIds,
   choice,
-  getBrainServices,
   type IBrainTileDef,
+  mkActionDescriptor,
   mkCallDef,
   mkModifierTileId,
   mkParameterTileId,
@@ -25,10 +26,10 @@ import {
   NativeType,
   optional,
   param,
-  registerCoreBrainComponents,
   repeated,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
 import {
   BrainTileAccessorDef,
@@ -44,6 +45,7 @@ import {
 
 // ---- Shared setup ----
 
+let services: BrainServices;
 let everySensor: BrainTileSensorDef;
 let modTimeMs: BrainTileModifierDef;
 let modTimeSecs: BrainTileModifierDef;
@@ -61,7 +63,7 @@ let openParen: BrainTileControlFlowDef;
 let closeParen: BrainTileControlFlowDef;
 
 before(() => {
-  registerCoreBrainComponents();
+  services = __test__createBrainServices();
 
   const kParameterId_AnonymousNumber = "anon.number";
   const kModifierId_TimeMs = "time.ms";
@@ -103,26 +105,26 @@ before(() => {
     ],
   };
 
-  const everyFnEntry = getBrainServices().functions.register(
+  const everyFnEntry = services.functions.register(
     kSensorId_Every,
     false,
     { exec: () => VOID_VALUE },
     mkCallDef(kEverySensorCallSpec)
   );
 
-  everySensor = new BrainTileSensorDef(kSensorId_Every, everyFnEntry, CoreTypeIds.Void);
+  everySensor = new BrainTileSensorDef(kSensorId_Every, mkActionDescriptor("sensor", everyFnEntry, CoreTypeIds.Void));
   modTimeMs = new BrainTileModifierDef(kModifierId_TimeMs);
   modTimeSecs = new BrainTileModifierDef(kModifierId_TimeSecs);
   paramDelayMs = new BrainTileParameterDef(kParameterId_DelayMs, CoreTypeIds.Number);
-  literal5 = new BrainTileLiteralDef(CoreTypeIds.Number, 5);
-  literal1000 = new BrainTileLiteralDef(CoreTypeIds.Number, 1000);
-  literal2 = new BrainTileLiteralDef(CoreTypeIds.Number, 2);
-  literal3 = new BrainTileLiteralDef(CoreTypeIds.Number, 3);
-  literal10 = new BrainTileLiteralDef(CoreTypeIds.Number, 10);
-  opAdd = new BrainTileOperatorDef("add");
-  opMultiply = new BrainTileOperatorDef("mul");
-  opSubtract = new BrainTileOperatorDef("sub");
-  opAssign = new BrainTileOperatorDef("assign");
+  literal5 = new BrainTileLiteralDef(CoreTypeIds.Number, 5, {}, services);
+  literal1000 = new BrainTileLiteralDef(CoreTypeIds.Number, 1000, {}, services);
+  literal2 = new BrainTileLiteralDef(CoreTypeIds.Number, 2, {}, services);
+  literal3 = new BrainTileLiteralDef(CoreTypeIds.Number, 3, {}, services);
+  literal10 = new BrainTileLiteralDef(CoreTypeIds.Number, 10, {}, services);
+  opAdd = new BrainTileOperatorDef("add", {}, services);
+  opMultiply = new BrainTileOperatorDef("mul", {}, services);
+  opSubtract = new BrainTileOperatorDef("sub", {}, services);
+  opAssign = new BrainTileOperatorDef("assign", {}, services);
   openParen = new BrainTileControlFlowDef(CoreControlFlowId.OpenParen);
   closeParen = new BrainTileControlFlowDef(CoreControlFlowId.CloseParen);
 });
@@ -139,7 +141,7 @@ function runParseTest(tc: TestCase): void {
   test(tc.name, () => {
     const tiles = List.from(tc.tiles);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([getBrainServices().tiles]));
+    const result = parseRule(tiles, emptyTiles, List.from([services.tiles]), services.conversions);
     const hasDiags = result.parseResult.diags.size() > 0;
 
     if (tc.shouldPass) {
@@ -469,14 +471,9 @@ describe("Conditional call specs", () => {
       ],
     };
 
-    const fnEntry = getBrainServices().functions.register(
-      kSensorId,
-      false,
-      { exec: () => VOID_VALUE },
-      mkCallDef(callSpec)
-    );
+    const fnEntry = services.functions.register(kSensorId, false, { exec: () => VOID_VALUE }, mkCallDef(callSpec));
 
-    const sensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    const sensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
     const modReq = new BrainTileModifierDef(kModRequired);
     const paramOpt = new BrainTileParameterDef(kParamOptional, CoreTypeIds.Number);
 
@@ -500,14 +497,9 @@ describe("Conditional call specs", () => {
       ],
     };
 
-    const fnEntry = getBrainServices().functions.register(
-      kSensorId,
-      false,
-      { exec: () => VOID_VALUE },
-      mkCallDef(callSpec)
-    );
+    const fnEntry = services.functions.register(kSensorId, false, { exec: () => VOID_VALUE }, mkCallDef(callSpec));
 
-    const sensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    const sensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
     const modReq = new BrainTileModifierDef(kModRequired);
     const paramOpt = new BrainTileParameterDef(kParamOptional, CoreTypeIds.Number);
 
@@ -535,14 +527,9 @@ describe("Conditional call specs", () => {
       ],
     };
 
-    const fnEntry = getBrainServices().functions.register(
-      kSensorId,
-      false,
-      { exec: () => VOID_VALUE },
-      mkCallDef(callSpec)
-    );
+    const fnEntry = services.functions.register(kSensorId, false, { exec: () => VOID_VALUE }, mkCallDef(callSpec));
 
-    const sensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    const sensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
     const paramOpt = new BrainTileParameterDef(kParamOptional, CoreTypeIds.Number);
 
     runParseTest({
@@ -561,14 +548,9 @@ describe("Conditional call specs", () => {
       items: [{ type: "arg", name: "requiredFirstMod", tileId: mkModifierTileId(kModRequired), required: true }],
     };
 
-    const fnEntry = getBrainServices().functions.register(
-      kSensorId,
-      false,
-      { exec: () => VOID_VALUE },
-      mkCallDef(callSpec)
-    );
+    const fnEntry = services.functions.register(kSensorId, false, { exec: () => VOID_VALUE }, mkCallDef(callSpec));
 
-    const sensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    const sensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
 
     runParseTest({ name: "missing required mod", tiles: [sensor], shouldPass: false });
   });
@@ -601,14 +583,9 @@ describe("Conditional with else branch", () => {
       ],
     };
 
-    const fnEntry = getBrainServices().functions.register(
-      kSensorId,
-      false,
-      { exec: () => VOID_VALUE },
-      mkCallDef(callSpec)
-    );
+    const fnEntry = services.functions.register(kSensorId, false, { exec: () => VOID_VALUE }, mkCallDef(callSpec));
 
-    condElseSensor = new BrainTileSensorDef(kSensorId, fnEntry, CoreTypeIds.Void);
+    condElseSensor = new BrainTileSensorDef(kSensorId, mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Void));
     modToggle = new BrainTileModifierDef(kModToggle);
     paramWhenPresent = new BrainTileParameterDef(kParamPresent, CoreTypeIds.Number);
     paramWhenAbsent = new BrainTileParameterDef(kParamAbsent, CoreTypeIds.Number);
@@ -791,7 +768,7 @@ describe("Field access AST shape", () => {
   test("[$pos] [x] produces fieldAccess node", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorX]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([getBrainServices().tiles]));
+    const result = parseRule(tiles, emptyTiles, List.from([services.tiles]), services.conversions);
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "fieldAccess");
@@ -804,7 +781,7 @@ describe("Field access AST shape", () => {
   test("[$pos] [x] + [5] produces binaryOp(fieldAccess, literal)", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorX, opAdd, literal5]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([getBrainServices().tiles]));
+    const result = parseRule(tiles, emptyTiles, List.from([services.tiles]), services.conversions);
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "binaryOp");
@@ -817,7 +794,7 @@ describe("Field access AST shape", () => {
   test("[$pos] [x] = [10] produces assignment(fieldAccess, literal)", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorX, opAssign, literal10]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([getBrainServices().tiles]));
+    const result = parseRule(tiles, emptyTiles, List.from([services.tiles]), services.conversions);
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "assignment");
@@ -830,7 +807,7 @@ describe("Field access AST shape", () => {
   test("[$pos] [mag] = [10] produces errorExpr (read-only)", () => {
     const tiles = List.from<IBrainTileDef>([varPosition, accessorMag, opAssign, literal10]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(tiles, emptyTiles, List.from([getBrainServices().tiles]));
+    const result = parseRule(tiles, emptyTiles, List.from([services.tiles]), services.conversions);
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "errorExpr");
@@ -855,14 +832,14 @@ describe("Bag repeat interleaving", () => {
         optional(param(kParamPriority))
       )
     );
-    const fnEntry = getBrainServices().functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
-    const actuator = new BrainTileActuatorDef(kActId, fnEntry);
+    const fnEntry = services.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
 
     const tiles = List.from<IBrainTileDef>([actuator, modSlowly, paramPriority, literal1000, modSlowly]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([getBrainServices().tiles]));
+    const result = parseRule(emptyTiles, tiles, List.from([services.tiles]), services.conversions);
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
@@ -884,14 +861,14 @@ describe("Bag repeat interleaving", () => {
         optional(param(kParamPriority))
       )
     );
-    const fnEntry = getBrainServices().functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
-    const actuator = new BrainTileActuatorDef(kActId, fnEntry);
+    const fnEntry = services.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
 
     const tiles = List.from<IBrainTileDef>([actuator, modSlowly, modSlowly, paramPriority, literal1000]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([getBrainServices().tiles]));
+    const result = parseRule(emptyTiles, tiles, List.from([services.tiles]), services.conversions);
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
   });
@@ -908,14 +885,14 @@ describe("Bag repeat interleaving", () => {
         optional(param(kParamPriority))
       )
     );
-    const fnEntry = getBrainServices().functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
-    const actuator = new BrainTileActuatorDef(kActId, fnEntry);
+    const fnEntry = services.functions.register(kActId, false, { exec: () => VOID_VALUE }, callDef);
+    const actuator = new BrainTileActuatorDef(kActId, mkActionDescriptor("actuator", fnEntry));
     const modSlowly = new BrainTileModifierDef(kModSlowly);
     const paramPriority = new BrainTileParameterDef(kParamPriority, CoreTypeIds.Number);
 
     const tiles = List.from<IBrainTileDef>([actuator, modSlowly, paramPriority, literal1000, modSlowly, modSlowly]);
     const emptyTiles = List.empty<IBrainTileDef>();
-    const result = parseRule(emptyTiles, tiles, List.from([getBrainServices().tiles]));
+    const result = parseRule(emptyTiles, tiles, List.from([services.tiles]), services.conversions);
 
     assert.equal(result.parseResult.diags.size(), 0, "should have no diagnostics");
   });

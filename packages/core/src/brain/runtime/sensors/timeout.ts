@@ -1,12 +1,15 @@
 import {
+  type ActionDescriptor,
   type BrainActionCallDef,
   bag,
   CoreParameterId,
   CoreSensorId,
+  CoreTypeIds,
   type ExecutionContext,
   FALSE_VALUE,
   getCallSiteState,
   getSlotId,
+  type HostActionBinding,
   isNumberValue,
   type MapValue,
   mkCallDef,
@@ -25,6 +28,14 @@ const AnonNumber = param(CoreParameterId.AnonymousNumber, {
 });
 
 const callDef: BrainActionCallDef = mkCallDef(bag(optional(AnonNumber)));
+
+const descriptor: ActionDescriptor = {
+  key: CoreSensorId.Timeout,
+  kind: "sensor",
+  callDef,
+  isAsync: false,
+  outputType: CoreTypeIds.Boolean,
+};
 
 const kAnonymousNumberSlotId = getSlotId(callDef, AnonNumber);
 
@@ -82,10 +93,19 @@ function execTimeout(ctx: ExecutionContext, args: MapValue): Value {
   return shouldFire ? TRUE_VALUE : FALSE_VALUE;
 }
 
+const binding: HostActionBinding = {
+  binding: "host",
+  descriptor,
+  onPageEntered,
+  execSync: execTimeout,
+};
+
 export default {
   fnId: CoreSensorId.Timeout,
   tileId: mkSensorTileId(CoreSensorId.Timeout),
   isAsync: false,
+  descriptor,
+  binding,
   fn: {
     onPageEntered,
     exec: execTimeout,

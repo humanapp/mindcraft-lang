@@ -1,3 +1,4 @@
+import type { BrainServices, ITileCatalog } from "@mindcraft-lang/core/brain";
 import { type BrainDef, type BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { deserializeAllRulesFromClipboard } from "../rule-clipboard";
 import type { BrainCommand } from "./BrainCommand";
@@ -221,13 +222,17 @@ export class OutdentRuleCommand implements BrainCommand {
 export class PasteRuleAboveCommand implements BrainCommand {
   private pastedRules: BrainRuleDef[] = [];
 
-  constructor(private targetRule: BrainRuleDef) {}
+  constructor(
+    private targetRule: BrainRuleDef,
+    private readonly tileCatalogs?: readonly ITileCatalog[],
+    private readonly brainServices?: BrainServices
+  ) {}
 
   execute(): void {
     const brain = this.targetRule.brain() as BrainDef | undefined;
     if (!brain) return;
 
-    const newRules = deserializeAllRulesFromClipboard(brain);
+    const newRules = deserializeAllRulesFromClipboard(brain, this.tileCatalogs, this.brainServices);
     if (newRules.length === 0) return;
 
     const state = getRuleState(this.targetRule);

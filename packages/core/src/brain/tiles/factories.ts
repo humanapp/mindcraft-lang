@@ -1,14 +1,11 @@
-import { Error } from "../../platform/error";
-import type { IReadStream } from "../../platform/stream";
 import {
   type BrainTileDefCreateOptions,
   type IBrainTileDef,
-  type ITileCatalog,
   type TileId,
   TilePlacement,
   type TypeId,
 } from "../interfaces";
-import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
+import { BrainTileDefBase } from "../model/tiledef";
 
 export class BrainTileFactoryDef extends BrainTileDefBase {
   readonly kind = "factory";
@@ -32,16 +29,4 @@ export class BrainTileFactoryDef extends BrainTileDefBase {
     this.manufacture = manufacture;
     this.producedDataType = producedDataType;
   }
-}
-
-export function BrainTileFactoryDef_deserialize(stream: IReadStream, catalog: ITileCatalog): BrainTileFactoryDef {
-  const { kind, tileId } = BrainTileDefBase_deserializeHeader(stream);
-  if (kind !== "factory") {
-    throw new Error(`BrainTileFactoryDef.deserialize: invalid kind ${kind}`);
-  }
-  const tileDef = catalog.get(tileId);
-  if (tileDef && tileDef.kind === "factory") {
-    return tileDef as BrainTileFactoryDef;
-  }
-  throw new Error(`BrainTileFactoryDef.deserialize: unknown tileId ${tileId}`);
 }

@@ -75,6 +75,34 @@ export namespace StringUtils {
     return str.trim();
   }
 
+  export function charAt(str: string, pos: number): string {
+    return str.charAt(pos);
+  }
+
+  export function indexOf(str: string, searchString: string, position?: number): number {
+    return str.indexOf(searchString, position);
+  }
+
+  export function lastIndexOf(str: string, searchString: string, position?: number): number {
+    return position !== undefined ? str.lastIndexOf(searchString, position) : str.lastIndexOf(searchString);
+  }
+
+  export function slice(str: string, start?: number, end?: number): string {
+    return str.slice(start, end);
+  }
+
+  export function toLowerCase(str: string): string {
+    return str.toLowerCase();
+  }
+
+  export function toUpperCase(str: string): string {
+    return str.toUpperCase();
+  }
+
+  export function split(str: string, separator: string, limit?: number): string[] {
+    return str.split(separator, limit);
+  }
+
   export function hash(str: string): number {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {

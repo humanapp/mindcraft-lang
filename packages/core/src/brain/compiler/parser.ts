@@ -111,11 +111,11 @@ class BrainParser {
     /**
      * Register NUD handlers for tokens that can start expressions.
      * Using arrow functions instead of method references for Roblox-TS compatibility
-     * (Roblox-TS doesn't support this binding with method references in Map constructors).
+     * (Roblox-TS doesn't support `this` binding with method references in Map constructors).
      *
-     * Note: non-inline sensors and actuators are NOT in this map because they're handled
-     * separately by parseActionCall, not as general expressions.
-     * Inline sensors (TilePlacement.Inline) ARE handled here as expression primaries.
+     * Non-inline sensors and actuators are NOT in this map. They have structured
+     * call grammars and are handled by parseActionCall(), not as general expressions.
+     * Only inline sensors (TilePlacement.Inline) appear here as expression primaries.
      */
     this.nudHandlers = new Dict<BrainTileKind, NudHandler>([
       ["literal", (tok, startPos, opts) => this.parseNudLiteral(tok, startPos, opts)],
@@ -253,12 +253,12 @@ class BrainParser {
     }
 
     const actionCall = actionTok as unknown as IBrainActionTileDef;
-    const callSpec = actionCall.fnEntry.callDef.callSpec;
+    const callSpec = actionCall.action.callDef.callSpec;
 
     // Build lookup map from argSpec to slotId for O(1) access during parsing
     const argSpecToSlotId = new Dict<BrainActionCallArgSpec, number>();
-    for (let i = 0; i < actionCall.fnEntry.callDef.argSlots.size(); i++) {
-      const slot = actionCall.fnEntry.callDef.argSlots.get(i);
+    for (let i = 0; i < actionCall.action.callDef.argSlots.size(); i++) {
+      const slot = actionCall.action.callDef.argSlots.get(i);
       argSpecToSlotId.set(slot.argSpec, slot.slotId);
     }
 
@@ -785,7 +785,7 @@ class BrainParser {
           };
         }
         if (left.kind === "fieldAccess" && left.accessor.readOnly) {
-          const fieldLabel = left.accessor.visual?.label ?? left.accessor.fieldName;
+          const fieldLabel = left.accessor.metadata?.label ?? left.accessor.fieldName;
           this.diags.push({
             code: ParseDiagCode.ReadOnlyFieldAssignment,
             message: `Cannot assign to read-only field "${fieldLabel}"`,

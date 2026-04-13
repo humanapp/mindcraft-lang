@@ -8,6 +8,12 @@ This document is for review before implementation begins. No code should be writ
 
 ---
 
+## Status
+
+**Rejected** in favor of `DO [switch page] [previous page]` construction.
+
+---
+
 ## Motivation
 
 The existing page control flow tiles are:

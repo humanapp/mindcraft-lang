@@ -1,7 +1,7 @@
 import {
   type IBrainTileDef,
   isCoreLiteralFactoryTileId,
-  isCoreVariableFactoryTileId,
+  isVariableFactoryTileId,
   type LiteralDisplayFormat,
   type RuleSide,
 } from "@mindcraft-lang/core/brain";
@@ -9,7 +9,7 @@ import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import type { BrainTileFactoryDef, BrainTileLiteralDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useBrainEditorConfig } from "../BrainEditorContext";
-import type { TileVisual } from "../types";
+import { resolveTileVisual } from "../tile-visual-utils";
 
 interface UseTileSelectionOptions {
   ruleDef: BrainRuleDef;
@@ -21,13 +21,16 @@ interface UseTileSelectionOptions {
  * Hook to handle tile selection flow, including variable creation for factory tiles.
  */
 export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelectionOptions) {
-  const { isAppVariableFactoryTileId } = useBrainEditorConfig();
+  const editorConfig = useBrainEditorConfig();
 
   const [showCreateVariableDialog, setShowCreateVariableDialog] = useState(false);
   const [showCreateLiteralDialog, setShowCreateLiteralDialog] = useState(false);
   const [pendingFactoryTile, setPendingFactoryTile] = useState<BrainTileFactoryDef | null>(null);
   const [pendingTileAction, setPendingTileAction] = useState<((tileDef: IBrainTileDef) => void) | null>(null);
 
+  // Store ruleDef in a ref so callbacks always access the latest value.
+  // Without this, callbacks capture a stale closure over the initial ruleDef
+  // and won't see subsequent prop updates.
   const ruleDefRef = useRef(ruleDef);
   useEffect(() => {
     ruleDefRef.current = ruleDef;
@@ -36,7 +39,7 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
   const handleTileSelected = useCallback(
     (tileDef: IBrainTileDef, action: (tileDef: IBrainTileDef) => void) => {
       if (tileDef.kind === "factory") {
-        if (isCoreVariableFactoryTileId(tileDef.tileId) || isAppVariableFactoryTileId(tileDef.tileId)) {
+        if (isVariableFactoryTileId(tileDef.tileId)) {
           const factoryTileDef = tileDef as BrainTileFactoryDef;
           setPendingFactoryTile(factoryTileDef);
           setPendingTileAction(() => action);
@@ -55,7 +58,7 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
       onComplete?.();
       return true;
     },
-    [onComplete, isAppVariableFactoryTileId]
+    [onComplete]
   );
 
   const handleVariableNameSubmit = useCallback(
@@ -145,11 +148,11 @@ export function useTileSelection({ ruleDef, side, onComplete }: UseTileSelection
   }, []);
 
   const variableDialogTitle = pendingFactoryTile
-    ? (pendingFactoryTile.visual as TileVisual | undefined)?.label || pendingFactoryTile.tileId
+    ? resolveTileVisual(editorConfig, pendingFactoryTile).label
     : "Create Variable";
 
   const literalDialogTitle = pendingFactoryTile
-    ? (pendingFactoryTile.visual as TileVisual | undefined)?.label || pendingFactoryTile.tileId
+    ? resolveTileVisual(editorConfig, pendingFactoryTile).label
     : "Create Literal";
 
   const literalType = pendingFactoryTile?.producedDataType || "";

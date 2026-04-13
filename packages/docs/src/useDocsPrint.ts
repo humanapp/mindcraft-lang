@@ -15,7 +15,10 @@ export function useDocsPrint() {
     printRootRef.current = printRoot;
     setPrintContent(content);
 
-    // Allow React to render the portal, then print
+    // Two nested requestAnimationFrame calls are needed for reliable print timing:
+    // 1st RAF: React renders the portal content into the now-visible root.
+    // 2nd RAF: the browser paints the rendered content, then we trigger print.
+    // A single RAF would race with React's render cycle.
     requestAnimationFrame(() => {
       const root = document.getElementById("docs-print-root");
       if (root) root.style.display = "block";

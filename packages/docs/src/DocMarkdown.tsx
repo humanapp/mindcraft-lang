@@ -1,10 +1,11 @@
-import { getBrainServices, type IBrainTileDef } from "@mindcraft-lang/core/brain";
+import type { IBrainTileDef } from "@mindcraft-lang/core/brain";
 import type { Element } from "hast";
+import type { ReactNode } from "react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { BrainCodeBlock } from "./BrainCodeBlock";
 import { InlineTileIcon } from "./DocsRule";
-import { useDocsSidebar } from "./DocsSidebarContext";
+import { useDocsResolveTileVisual, useDocsSidebar, useDocsTileCatalog } from "./DocsSidebarContext";
 
 // ---------------------------------------------------------------------------
 // Tag pill helpers
@@ -64,14 +65,16 @@ function InlineTagPill({ label, color }: TagSpec) {
 
 function InlineTileLink({ tileId, tileDef }: { tileId: string; tileDef: IBrainTileDef }) {
   const { registry, navigateToEntry } = useDocsSidebar();
+  const resolveTileVisual = useDocsResolveTileVisual();
   const hasDocPage = registry.tiles.has(tileId);
+  const label = resolveTileVisual(tileDef)?.label ?? tileId;
 
   return (
     <button
       type="button"
       onClick={() => navigateToEntry("tiles", tileId)}
       className="inline-flex shrink-0 cursor-pointer hover:brightness-125 transition-[filter]"
-      aria-label={`View docs for ${tileDef.visual?.label ?? tileId}`}
+      aria-label={`View docs for ${label}`}
     >
       <InlineTileIcon tileDef={tileDef} />
     </button>
@@ -92,35 +95,11 @@ const MD_COMPONENTS: Components = {
   },
 
   code({ className, children, node }) {
-    const lang = (className ?? "").replace("language-", "");
-
-    // Block brain fence -- extract meta string from HAST node (e.g., ```brain noframe)
-    if (lang === "brain") {
-      const meta = ((node as Element | undefined)?.data as { meta?: string } | undefined)?.meta ?? "";
-      return <BrainCodeBlock content={String(children).trimEnd()} meta={meta} />;
-    }
-
-    // Inline code: `tile:sensor.see` -> inline tile chip
-    if (!className) {
-      const text = String(children);
-      if (text.startsWith("tile:")) {
-        const tileId = text.slice(5);
-        const tileDef = getBrainServices().tiles.get(tileId);
-        if (tileDef) {
-          return <InlineTileLink tileId={tileId} tileDef={tileDef} />;
-        }
-        // Unknown tile -- render as plain code
-        return <code className="bg-slate-800 text-amber-400 px-1 rounded text-xs font-mono">{tileId}</code>;
-      }
-      if (text.startsWith("tag:")) {
-        const spec = parseTagSpec(text);
-        if (spec) {
-          return <InlineTagPill label={spec.label} color={spec.color} />;
-        }
-      }
-    }
-
-    return <code className="bg-slate-800 text-green-400 px-1 rounded text-xs font-mono">{children}</code>;
+    return (
+      <MarkdownCode className={className} node={node}>
+        {children}
+      </MarkdownCode>
+    );
   },
 
   // Headings
@@ -186,6 +165,36 @@ const MD_COMPONENTS: Components = {
     return <td className="text-slate-300 px-2 py-1.5 align-top">{t}</td>;
   },
 };
+
+function MarkdownCode({ className, children, node }: { className?: string; children?: ReactNode; node?: unknown }) {
+  const tileCatalog = useDocsTileCatalog();
+  const lang = (className ?? "").replace("language-", "");
+
+  if (lang === "brain") {
+    const meta = ((node as Element | undefined)?.data as { meta?: string } | undefined)?.meta ?? "";
+    return <BrainCodeBlock content={String(children).trimEnd()} meta={meta} />;
+  }
+
+  if (!className) {
+    const text = String(children);
+    if (text.startsWith("tile:")) {
+      const tileId = text.slice(5);
+      const tileDef = tileCatalog?.get(tileId);
+      if (tileDef) {
+        return <InlineTileLink tileId={tileId} tileDef={tileDef} />;
+      }
+      return <code className="bg-slate-800 text-amber-400 px-1 rounded text-xs font-mono">{tileId}</code>;
+    }
+    if (text.startsWith("tag:")) {
+      const spec = parseTagSpec(text);
+      if (spec) {
+        return <InlineTagPill label={spec.label} color={spec.color} />;
+      }
+    }
+  }
+
+  return <code className="bg-slate-800 text-green-400 px-1 rounded text-xs font-mono">{children}</code>;
+}
 
 // ---------------------------------------------------------------------------
 // DocMarkdown -- renders a markdown string with brain-fence and tile-ref support

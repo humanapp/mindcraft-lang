@@ -1,3 +1,5 @@
+import type { ReadonlyList } from "@mindcraft-lang/core";
+import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import type { BrainDef, BrainJson } from "@mindcraft-lang/core/brain/model";
 import type { BrainCommand } from "./BrainCommand";
 
@@ -11,17 +13,18 @@ export class ReplaceBrainCommand implements BrainCommand {
 
   constructor(
     private readonly brainDef: BrainDef,
-    private readonly afterJson: BrainJson
+    private readonly afterJson: BrainJson,
+    private readonly extraCatalogs?: ReadonlyList<ITileCatalog>
   ) {
     this.beforeJson = brainDef.toJson();
   }
 
   execute(): void {
-    this.brainDef.replaceContentFromJson(this.afterJson);
+    this.brainDef.replaceContentFromJson(this.afterJson, this.extraCatalogs);
   }
 
   undo(): void {
-    this.brainDef.replaceContentFromJson(this.beforeJson);
+    this.brainDef.replaceContentFromJson(this.beforeJson, this.extraCatalogs);
   }
 
   getDescription(): string {

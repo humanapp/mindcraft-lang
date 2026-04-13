@@ -14,6 +14,7 @@ export const CoreOpId = {
   Subtract: "sub",
   Multiply: "mul",
   Divide: "div",
+  Modulo: "mod",
   Negate: "neg",
   EqualTo: "eq",
   NotEqualTo: "ne",
@@ -21,6 +22,13 @@ export const CoreOpId = {
   LessThanOrEqualTo: "le",
   GreaterThan: "gt",
   GreaterThanOrEqualTo: "ge",
+  Power: "pow",
+  BitwiseAnd: "bitand",
+  BitwiseOr: "bitor",
+  BitwiseXor: "bitxor",
+  BitwiseNot: "bitnot",
+  LeftShift: "shl",
+  RightShift: "shr",
   Assign: "assign",
 } as const;
 
@@ -56,6 +64,7 @@ export interface IReadOnlyRegisteredOperator {
 
 export interface IRegisteredOperator extends IReadOnlyRegisteredOperator {
   add(overload: OpOverload): void;
+  remove(argTypes: TypeId[]): boolean;
 }
 
 export interface IOperatorTable {
@@ -67,5 +76,6 @@ export interface IOperatorOverloads {
   table(): IOperatorTable;
   binary(op: OpId, lhs: TypeId, rhs: TypeId, result: TypeId, fn: HostFn, isAsync: boolean): IRegisteredOperator;
   unary(op: OpId, arg: TypeId, result: TypeId, fn: HostFn, isAsync: boolean): IRegisteredOperator;
+  remove(op: OpId, argTypes: TypeId[]): boolean;
   resolve(id: OpId, argTypes: TypeId[]): { overload: OpOverload; parse: OpParse } | undefined;
 }

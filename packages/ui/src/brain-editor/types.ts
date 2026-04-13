@@ -1,8 +1,8 @@
-import type { ITileVisual } from "@mindcraft-lang/core/brain";
+import type { ITileMetadata } from "@mindcraft-lang/core/brain";
 
 export type TileColorDef = { when: string; do: string };
 
-export type TileVisual = ITileVisual & {
+export type TileVisual = ITileMetadata & {
   colorDef?: TileColorDef;
   iconUrl?: string;
 };

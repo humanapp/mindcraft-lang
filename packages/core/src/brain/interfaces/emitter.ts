@@ -128,6 +128,22 @@ export interface IBytecodeEmitter {
   hostCallAsync(hostId: number, argc: number, callSiteId: number): void;
 
   /**
+   * Call an action synchronously through a program-local action slot.
+   * Expects a single pre-built MapValue on the stack.
+   * @param actionSlot - The action slot index in BrainProgram.actionRefs
+   * @param callSiteId - Unique ID for this call site (for per-call-site state)
+   */
+  actionCall(actionSlot: number, callSiteId: number): void;
+
+  /**
+   * Call an action asynchronously through a program-local action slot.
+   * Expects a single pre-built MapValue on the stack.
+   * @param actionSlot - The action slot index in BrainProgram.actionRefs
+   * @param callSiteId - Unique ID for this call site (for per-call-site state)
+   */
+  actionCallAsync(actionSlot: number, callSiteId: number): void;
+
+  /**
    * Call a host function synchronously with raw values on the stack.
    * The VM pops `argc` values and auto-wraps them into a MapValue with 0-indexed keys.
    * More efficient than building a map in bytecode for fixed-arity calls (operators, conversions).

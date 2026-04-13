@@ -1,0 +1,36 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "vscode-extension: web",
+      "type": "node",
+      "request": "launch",
+      "program": "${workspaceFolder}/apps/vscode-extension/node_modules/@vscode/test-web/out/server/index.js",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}/apps/vscode-extension",
+        "--browser",
+        "none",
+        "--port",
+        "3100",
+        "--coi"
+      ],
+      "outFiles": ["${workspaceFolder}/apps/vscode-extension/dist/**/*.js"],
+      "preLaunchTask": "mindcraft-ext: dev",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "vscode-bridge: dev",
+      "runtimeExecutable": "${workspaceFolder}/apps/vscode-bridge/node_modules/.bin/tsx",
+      "runtimeArgs": ["--conditions=development"],
+      "args": ["src/index.ts"],
+      "cwd": "${workspaceFolder}/apps/vscode-bridge",
+      "envFile": "${workspaceFolder}/apps/vscode-bridge/.env",
+      "preLaunchTask": "vscode-bridge: build",
+      "console": "integratedTerminal",
+      "sourceMaps": true,
+      "resolveSourceMapLocations": ["${workspaceFolder}/**", "!**/node_modules/**"]
+    }
+  ]
+}

@@ -28,7 +28,7 @@ export class AddPageCommand implements BrainCommand {
 
   undo(): void {
     if (this.addedIndex !== undefined) {
-      this.brainDef.removePageAtIndex(this.addedIndex);
+      this.brainDef.removePageAtIndex(this.addedIndex!);
     }
   }
 
@@ -41,7 +41,7 @@ export class AddPageCommand implements BrainCommand {
  * Command to remove a page from the brain.
  */
 export class RemovePageCommand implements BrainCommand {
-  private removedPage?: BrainPageDef;
+  private removedPage: BrainPageDef | null = null;
   private pageToRemove: BrainPageDef | null = null;
 
   constructor(
@@ -60,8 +60,9 @@ export class RemovePageCommand implements BrainCommand {
 
   undo(): void {
     if (this.removedPage) {
-      this.brainDef.insertPageAtIndex(this.pageIndex, this.removedPage);
-      this.pageToRemove = this.removedPage;
+      const removedPage = this.removedPage;
+      this.brainDef.insertPageAtIndex(this.pageIndex, removedPage);
+      this.pageToRemove = removedPage;
     }
   }
 
@@ -76,8 +77,8 @@ export class RemovePageCommand implements BrainCommand {
  * and adding a new empty one as an atomic operation for proper undo/redo.
  */
 export class ReplaceLastPageCommand implements BrainCommand {
-  private removedPage?: BrainPageDef;
-  private addedPage?: BrainPageDef;
+  private removedPage: BrainPageDef | null = null;
+  private addedPage: BrainPageDef | null = null;
   private pageToRemove: BrainPageDef | null = null;
 
   constructor(
@@ -102,12 +103,14 @@ export class ReplaceLastPageCommand implements BrainCommand {
 
   undo(): void {
     if (this.addedPage && this.removedPage) {
-      const addedIndex = this.brainDef.pages().indexOf(this.addedPage);
+      const addedPage = this.addedPage;
+      const removedPage = this.removedPage;
+      const addedIndex = this.brainDef.pages().indexOf(addedPage);
       if (addedIndex >= 0) {
         this.brainDef.removePageAtIndex(addedIndex);
       }
-      this.brainDef.insertPageAtIndex(this.pageIndex, this.removedPage);
-      this.pageToRemove = this.removedPage;
+      this.brainDef.insertPageAtIndex(this.pageIndex, removedPage);
+      this.pageToRemove = removedPage;
     }
   }
 

@@ -1,8 +1,7 @@
 import { MathOps } from "../../platform/math";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
 import type { BitSet, ReadonlyBitSet } from "../../util/bitset";
-import type { BrainFunctionEntry } from "./functions";
+import type { ActionDescriptor } from "./functions";
 import type { TypeId } from "./type-system";
 
 // ----------------------------------------------------
@@ -43,9 +42,11 @@ export enum TilePlacement {
   Inline = 1 << 4,
 }
 
-export interface ITileVisual {
+export interface ITileMetadata {
   label: string;
   iconUrl?: string;
+  docsMarkdown?: string;
+  tags?: readonly string[];
 }
 
 export interface BrainTileDefCreateOptions {
@@ -55,7 +56,7 @@ export interface BrainTileDefCreateOptions {
   persist?: boolean;
   capabilities?: BitSet;
   requirements?: BitSet;
-  visual?: ITileVisual;
+  metadata?: ITileMetadata;
 }
 
 // ----------------------------------------------------
@@ -119,6 +120,24 @@ export function mkTileId(area: string, id: string): string {
   return `tile.${area}->${id}`;
 }
 
+export interface ParsedTileId {
+  readonly area: string;
+  readonly id: string;
+}
+
+export function parseTileId(tileId: string): ParsedTileId | undefined {
+  const kPrefix = "tile.";
+  const kSep = "->";
+  if (!SU.startsWith(tileId, kPrefix)) return undefined;
+  const rest = SU.substring(tileId, SU.length(kPrefix));
+  const sepIdx = SU.indexOf(rest, kSep);
+  if (sepIdx <= 0) return undefined;
+  return {
+    area: SU.substring(rest, 0, sepIdx),
+    id: SU.substring(rest, sepIdx + SU.length(kSep)),
+  };
+}
+
 // ----------------------------------------------------
 // Tile Definitions
 // ----------------------------------------------------
@@ -126,19 +145,17 @@ export function mkTileId(area: string, id: string): string {
 export interface IBrainTileDef {
   readonly kind: BrainTileKind;
   readonly tileId: TileId;
-  visual?: ITileVisual; // platform-specific visual representation, supplied at registration time via `tileVisualProvider`
+  metadata?: ITileMetadata;
   placement?: TilePlacement;
   deprecated?: boolean;
   hidden?: boolean;
   persist?: boolean;
   capabilities(): ReadonlyBitSet;
   requirements(): ReadonlyBitSet;
-  serializeHeader(stream: IWriteStream): void;
-  serialize(stream: IWriteStream): void;
 }
 
 export interface IBrainActionTileDef extends IBrainTileDef {
-  readonly fnEntry: BrainFunctionEntry;
+  readonly action: ActionDescriptor;
 }
 
 // ----------------------------------------------------
@@ -219,6 +236,7 @@ export const APP_CAPABILITY_BIT_OFFSET = 32;
 
 export const CoreCapabilityBits = {
   PageSensor: 0,
+  UserTile: 1,
 } as const;
 
 // ----------------------------------------------------
@@ -287,6 +305,10 @@ export const CoreVariableFactoryTileIds: string[] = [
 
 export function isCoreVariableFactoryTileId(tileId: string): boolean {
   return CoreVariableFactoryTileIds.includes(tileId);
+}
+
+export function isVariableFactoryTileId(tileId: string): boolean {
+  return SU.startsWith(tileId, "tile.var.factory->");
 }
 
 export const CoreLiteralFactoryTileIds: string[] = [

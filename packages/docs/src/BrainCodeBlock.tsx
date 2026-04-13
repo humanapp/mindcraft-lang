@@ -1,12 +1,12 @@
 import { List } from "@mindcraft-lang/core";
-import { getBrainServices, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { type BrainServices, type IBrainTileDef, type ITileCatalog, RuleSide } from "@mindcraft-lang/core/brain";
 import { type CatalogTileJson, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
 import { setClipboardFromJson } from "@mindcraft-lang/ui/brain-editor/rule-clipboard";
 import { ClipboardCopy } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 import { DocsRuleBlock, type DocsRuleData, DocsTileChip } from "./DocsRule";
-import { useDocsSidebar } from "./DocsSidebarContext";
+import { useDocsBrainServices, useDocsSidebar, useDocsTileCatalog } from "./DocsSidebarContext";
 
 // ---------------------------------------------------------------------------
 // Meta string parsing
@@ -91,25 +91,36 @@ function collectCatalogEntries(rules: PlainRule[], topLevel?: CatalogTileJson[])
  * Build a local TileCatalog from catalog JSON entries so that brain-local
  * tiles (variables, literals) can be resolved during rendering.
  */
-function buildLocalCatalog(entries: CatalogTileJson[]): TileCatalog | undefined {
+function buildLocalCatalog(
+  entries: CatalogTileJson[],
+  brainServices: BrainServices | undefined
+): TileCatalog | undefined {
   if (entries.length === 0) return undefined;
   const catalog = new TileCatalog();
-  catalog.deserializeJson(List.from(entries));
+  if (brainServices) catalog.deserializeJson(List.from(entries), brainServices);
   return catalog;
 }
 
-function resolveTiles(tileIds: string[], localCatalog?: TileCatalog): IBrainTileDef[] {
-  const globalCatalog = getBrainServices().tiles;
-  return tileIds.map((id) => localCatalog?.get(id) ?? globalCatalog.get(id)).filter(Boolean) as IBrainTileDef[];
+function resolveTiles(
+  tileIds: string[],
+  tileCatalog: ITileCatalog | undefined,
+  localCatalog?: TileCatalog
+): IBrainTileDef[] {
+  return tileIds.map((id) => localCatalog?.get(id) ?? tileCatalog?.get(id)).filter(Boolean) as IBrainTileDef[];
 }
 
-function convertRule(plain: PlainRule, localCatalog: TileCatalog | undefined, depth = 0): DocsRuleData {
+function convertRule(
+  plain: PlainRule,
+  tileCatalog: ITileCatalog | undefined,
+  localCatalog: TileCatalog | undefined,
+  depth = 0
+): DocsRuleData {
   return {
     comment: plain.comment,
-    whenTiles: resolveTiles(plain.when ?? [], localCatalog),
-    doTiles: resolveTiles(plain.do ?? [], localCatalog),
+    whenTiles: resolveTiles(plain.when ?? [], tileCatalog, localCatalog),
+    doTiles: resolveTiles(plain.do ?? [], tileCatalog, localCatalog),
     depth,
-    children: (plain.children ?? []).map((c) => convertRule(c, localCatalog, depth + 1)),
+    children: (plain.children ?? []).map((c) => convertRule(c, tileCatalog, localCatalog, depth + 1)),
   };
 }
 
@@ -168,19 +179,21 @@ interface BrainCodeBlockProps {
 
 export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
   const { close } = useDocsSidebar();
+  const tileCatalog = useDocsTileCatalog();
+  const brainServices = useDocsBrainServices();
   const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const fenceMeta = useMemo(() => parseMeta(meta), [meta]);
 
   const parsed = useMemo(() => {
     const block = parseBrainBlock(content);
     if (!block) return null;
-    const localCatalog = buildLocalCatalog(block.catalogEntries);
+    const localCatalog = buildLocalCatalog(block.catalogEntries, brainServices);
     if (block.kind === "tiles") {
       const side = block.side === "do" ? RuleSide.Do : block.side === "when" ? RuleSide.When : fenceMeta.side;
-      return { kind: "tiles" as const, tiles: resolveTiles(block.tileIds, localCatalog), side };
+      return { kind: "tiles" as const, tiles: resolveTiles(block.tileIds, tileCatalog, localCatalog), side };
     }
-    return { kind: "rules" as const, rules: block.rules.map((r) => convertRule(r, localCatalog)) };
-  }, [content, fenceMeta.side]);
+    return { kind: "rules" as const, rules: block.rules.map((r) => convertRule(r, tileCatalog, localCatalog)) };
+  }, [content, fenceMeta.side, tileCatalog, brainServices]);
 
   const handleInsert = () => {
     const block = parseBrainBlock(content);

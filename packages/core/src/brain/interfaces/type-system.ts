@@ -1,5 +1,4 @@
 import type { List } from "../../platform/list";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
 import type { StructFieldGetterFn, StructFieldSetterFn, StructSnapshotNativeFn } from "./vm";
 
 // ----------------------------------------------------
@@ -59,8 +58,6 @@ export function nativeTypeToString(coreType: NativeType): string {
 }
 
 export interface TypeCodec {
-  encode(w: IWriteStream, value: unknown): void;
-  decode(r: IReadStream): unknown;
   stringify(value: unknown): string;
 }
 
@@ -73,9 +70,18 @@ export interface TypeDef {
   autoInstantiated?: boolean;
 }
 
+export type EnumPrimitiveValue = string | number;
+
+export interface EnumSymbolDef {
+  key: string;
+  label: string;
+  value: EnumPrimitiveValue;
+  deprecated?: boolean;
+}
+
 export interface EnumTypeShape {
-  symbols: List<{ key: string; label: string; deprecated?: boolean }>;
-  defaultKey: string;
+  symbols: List<EnumSymbolDef>;
+  defaultKey?: string;
 }
 
 export type EnumTypeDef = TypeDef & EnumTypeShape;
@@ -87,6 +93,7 @@ export interface ListTypeShape {
 export type ListTypeDef = TypeDef & ListTypeShape;
 
 export interface MapTypeShape {
+  keyTypeId: TypeId;
   valueTypeId: TypeId;
 }
 
@@ -103,6 +110,7 @@ export interface StructTypeShape {
   fields: List<{
     name: string;
     typeId: TypeId;
+    readOnly?: boolean;
   }>;
   /** If true, the struct requires exact TypeId match (no structural subtyping). */
   nominal?: boolean;
@@ -117,6 +125,7 @@ export interface StructTypeShape {
    * Returns the resolved native value to store in the copy.
    */
   snapshotNative?: StructSnapshotNativeFn;
+  /** If provided, struct methods callable via HOST_CALL_ARGS on instances of this type. */
   methods?: List<StructMethodDecl>;
 }
 
@@ -150,6 +159,7 @@ export interface TypeConstructor {
 
 export interface ITypeRegistry {
   get(id: TypeId): TypeDef | undefined;
+  getEnumSymbol(typeId: TypeId, key: string): EnumSymbolDef | undefined;
   resolveByName(name: string): TypeId | undefined;
   entries(): Iterable<[TypeId, TypeDef]>;
   addVoidType(name: string): TypeId;
@@ -161,7 +171,14 @@ export interface ITypeRegistry {
   addListType(name: string, shape: ListTypeShape): TypeId;
   addMapType(name: string, shape: MapTypeShape): TypeId;
   addStructType(name: string, shape: StructTypeShape): TypeId;
+  reserveStructType(name: string): TypeId;
+  finalizeStructType(typeId: TypeId, shape: StructTypeShape): void;
   addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void;
+  addStructFields(
+    typeId: TypeId,
+    fields: List<{ name: string; typeId: TypeId; readOnly?: boolean }>,
+    fieldGetter?: StructFieldGetterFn
+  ): void;
   addAnyType(name: string): TypeId;
   addFunctionType(name: string): TypeId;
   addNullableType(baseTypeId: TypeId): TypeId;
@@ -170,4 +187,5 @@ export interface ITypeRegistry {
   getOrCreateUnionType(memberTypeIds: List<TypeId>): TypeId;
   getOrCreateFunctionType(shape: FunctionTypeShape): TypeId;
   isStructurallyCompatible(sourceTypeId: TypeId, targetTypeId: TypeId): boolean;
+  removeUserTypes(): void;
 }

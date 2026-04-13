@@ -44,7 +44,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
   const [showRenameVariableDialog, setShowRenameVariableDialog] = useState(false);
   const availableCapabilities = useRuleCapabilities(ruleDef);
-  const { onTileHelp } = useBrainEditorConfig();
+  const { onTileHelp, brainServices } = useBrainEditorConfig();
 
   const isNumericLiteral =
     tileDef.kind === "literal" && (tileDef as BrainTileLiteralDef).valueType === CoreTypeIds.Number;
@@ -79,7 +79,7 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
   };
 
   const handlePasteTileBefore = () => {
-    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex);
+    const command = new PasteTileBeforeCommand(ruleDef, side, tileIndex, brainServices);
     commandHistory.executeCommand(command);
   };
 
@@ -127,10 +127,15 @@ export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHist
 
   const handleEditFormatSubmit = (newFormat: LiteralDisplayFormat) => {
     const literalDef = tileDef as BrainTileLiteralDef;
-    let newTileDef: IBrainTileDef = new BrainTileLiteralDef(literalDef.valueType, literalDef.value, {
-      valueLabel: literalDef.valueLabel,
-      displayFormat: newFormat,
-    });
+    let newTileDef: IBrainTileDef = new BrainTileLiteralDef(
+      literalDef.valueType,
+      literalDef.value,
+      {
+        valueLabel: literalDef.valueLabel,
+        displayFormat: newFormat,
+      },
+      brainServices!
+    );
     const catalog = ruleDef.brain()?.catalog();
     if (catalog) {
       const existing = catalog.get(newTileDef.tileId);

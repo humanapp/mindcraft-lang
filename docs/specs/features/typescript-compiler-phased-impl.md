@@ -1,4 +1,4 @@
-# `@mindcraft-lang/typescript` -- Phased Implementation Plan (Phases 0-15, ARCHIVED)
+# `@mindcraft-lang/ts-compiler` -- Phased Implementation Plan (Phases 0-15, ARCHIVED)
 
 > **Archived.** Phases 0-15 are complete. For active implementation work on Phases 16-25,
 > use [typescript-compiler-phased-impl-p2.md](typescript-compiler-phased-impl-p2.md).
@@ -75,7 +75,7 @@ not survive. Keep this doc current.
   All compile-time phantom code (ctxSymbol tracking, isCtxExpression, isCtxSelfAccess,
   isCtxEngineAccess, lowerCtxMethodCall, variable declaration skip) has been removed.
   See [ctx-as-native-struct.md](ctx-as-native-struct.md).
-  `packages/typescript` has a working build, test suite, type-checking pipeline, AST
+  `packages/ts-compiler` has a working build, test suite, type-checking pipeline, AST
   validation, descriptor extraction, the callDef design, end-to-end bytecode
   compilation and execution, control flow (`if`/`else`, `while`, `for`,
   `break`/`continue`, block-scoped `let`/`const`, variable shadowing, assignments,
@@ -263,7 +263,7 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
 - `scripts/bundle-lib-dts.js` generates `src/compiler/lib-dts.generated.ts` at build
   time, bundling TypeScript's `lib.es5.d.ts` + decorator libs as string constants.
 - `package.json` has an `exports` map for proper bundler resolution.
-- `apps/sim` depends on `@mindcraft-lang/typescript` (local `file:` dep) and calls
+- `apps/sim` depends on `@mindcraft-lang/ts-compiler` (local `file:` dep) and calls
   `initCompiler()` in `bootstrap.ts` to preload the compiler in the background.
 - `@mindcraft-lang/core` already has all VM primitives needed: `LOAD_LOCAL`,
   `STORE_LOCAL`, `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR` opcodes are implemented in
@@ -297,26 +297,26 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
 
 ### Phase 0: Package skeleton and test wiring
 
-**Objective:** Make `packages/typescript` a real, buildable, testable package with
+**Objective:** Make `packages/ts-compiler` a real, buildable, testable package with
 `typescript` as a production dependency and a working test runner. Prove the
 `@mindcraft-lang/core` consumption seam compiles.
 
 **Packages/files touched:**
 
-- `packages/typescript/package.json` -- add `typescript` as a production dep, add
+- `packages/ts-compiler/package.json` -- add `typescript` as a production dep, add
   `test` / `pretest` scripts, add `tsx` devDependency
-- `packages/typescript/tsconfig.json` -- add path aliases resolving
+- `packages/ts-compiler/tsconfig.json` -- add path aliases resolving
   `@mindcraft-lang/core`
-- `packages/typescript/src/index.ts` -- keep existing types, add a re-export proving
+- `packages/ts-compiler/src/index.ts` -- keep existing types, add a re-export proving
   the core seam
-- `packages/typescript/src/compiler/compile.ts` -- stub orchestrator with the public
+- `packages/ts-compiler/src/compiler/compile.ts` -- stub orchestrator with the public
   API signature
-- `packages/typescript/src/compiler/compile.spec.ts` -- one test that imports the API
+- `packages/ts-compiler/src/compiler/compile.spec.ts` -- one test that imports the API
   and asserts it exists
 
 **Concrete deliverables:**
 
-1. `npm run build` succeeds in `packages/typescript`
+1. `npm run build` succeeds in `packages/ts-compiler`
 2. `npm test` runs and passes at least one test
 3. `typescript` (the TS compiler API) is a production dependency
 4. Core types (`Op`, `BytecodeEmitter`, `ConstantPool`, `Program`, `FunctionBytecode`)
@@ -324,7 +324,7 @@ linkInfo, vm, scheduler)` returning a `HostAsyncFn` with `exec` and `onPageEnter
 
 **Acceptance criteria:**
 
-- `npm run build && npm test` passes from `packages/typescript/`
+- `npm run build && npm test` passes from `packages/ts-compiler/`
 - `npm run check` (biome) passes
 - No dist/ output references `@mindcraft-lang/core` internals that aren't stable exports
 
@@ -346,14 +346,14 @@ checker, and return diagnostics. This is spec Stage 1 in isolation.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/virtual-host.ts` --
+- `packages/ts-compiler/src/compiler/virtual-host.ts` --
   `createVirtualCompilerHost(files, options)` implementation
-- `packages/typescript/src/compiler/ambient.ts` -- hardcoded `mindcraft.d.ts` content
+- `packages/ts-compiler/src/compiler/ambient.ts` -- hardcoded `mindcraft.d.ts` content
   (minimal: `Sensor`, `Actuator`, `Context` with `time`, `dt`,
   `self.getVariable`, `self.setVariable`)
-- `packages/typescript/src/compiler/compile.ts` -- wire up: source string in,
+- `packages/ts-compiler/src/compiler/compile.ts` -- wire up: source string in,
   `ts.createProgram`, return diagnostics
-- `packages/typescript/src/compiler/compile.spec.ts` -- tests:
+- `packages/ts-compiler/src/compiler/compile.spec.ts` -- tests:
   - Valid sensor source produces zero diagnostics
   - Source with type error produces diagnostics with correct positions
   - Source referencing undefined API method produces error
@@ -396,11 +396,11 @@ checker, and return diagnostics. This is spec Stage 1 in isolation.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/validator.ts` -- AST walker that rejects classes,
+- `packages/ts-compiler/src/compiler/validator.ts` -- AST walker that rejects classes,
   `eval`, `var`, dynamic imports, etc. Produces diagnostics.
-- `packages/typescript/src/compiler/descriptor.ts` -- Extract `kind`, `name`,
+- `packages/ts-compiler/src/compiler/descriptor.ts` -- Extract `kind`, `name`,
   `outputType`, `params`, `execFuncNode`, `onPageEnteredNode` from the default export
-- `packages/typescript/src/compiler/types.ts` -- `ExtractedDescriptor`,
+- `packages/ts-compiler/src/compiler/types.ts` -- `ExtractedDescriptor`,
   `ExtractedParam`, `CompileDiagnostic` types
 - Tests for both
 
@@ -450,22 +450,22 @@ No helpers, no callsite vars, no control flow.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/ir.ts` -- IR node types (start small: `PushConst`,
+- `packages/ts-compiler/src/compiler/ir.ts` -- IR node types (start small: `PushConst`,
   `LoadLocal`, `StoreLocal`, `Return`, `HostCallArgs`, arithmetic ops)
-- `packages/typescript/src/compiler/lowering.ts` -- TS AST -> IR for: variable
+- `packages/ts-compiler/src/compiler/lowering.ts` -- TS AST -> IR for: variable
   declarations, number/string/boolean literals, binary expressions, return statements,
   parameter access
-- `packages/typescript/src/compiler/emit.ts` -- IR -> `FunctionBytecode` using
+- `packages/ts-compiler/src/compiler/emit.ts` -- IR -> `FunctionBytecode` using
   `BytecodeEmitter` + `ConstantPool` from core
-- `packages/typescript/src/compiler/call-def-builder.ts` -- converts
+- `packages/ts-compiler/src/compiler/call-def-builder.ts` -- converts
   `ExtractedDescriptor` to `BrainActionCallDef`
-- `packages/typescript/src/compiler/compile.ts` -- wire lowering + emission into the
+- `packages/ts-compiler/src/compiler/compile.ts` -- wire lowering + emission into the
   pipeline, produce a `UserAuthoredProgram`
-- `packages/typescript/src/compiler/types.ts` -- add `anonymous: boolean` to
+- `packages/ts-compiler/src/compiler/types.ts` -- add `anonymous: boolean` to
   `ExtractedParam`
-- `packages/typescript/src/compiler/descriptor.ts` -- extract `anonymous` flag from
+- `packages/ts-compiler/src/compiler/descriptor.ts` -- extract `anonymous` flag from
   param definitions
-- `packages/typescript/src/compiler/ambient.ts` -- make `params` optional, add
+- `packages/ts-compiler/src/compiler/ambient.ts` -- make `params` optional, add
   `anonymous?: boolean` to `ParamDef`
 - Tests that compile a source string and execute the resulting bytecode in the VM
 
@@ -533,11 +533,11 @@ and `break`/`continue`.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- add visitors for `IfStatement`,
+- `packages/ts-compiler/src/compiler/lowering.ts` -- add visitors for `IfStatement`,
   `WhileStatement`, `ForStatement`, `Block`, `VariableDeclarationList`
-- `packages/typescript/src/compiler/ir.ts` -- add `Jump`, `JumpIfFalse`,
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `Jump`, `JumpIfFalse`,
   `JumpIfTrue`, `Label`
-- `packages/typescript/src/compiler/scope.ts` -- scope stack for local variable
+- `packages/ts-compiler/src/compiler/scope.ts` -- scope stack for local variable
   allocation with block scoping
 - Tests
 
@@ -578,13 +578,13 @@ callsite-persistent variables (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`).
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `FunctionDeclaration` at
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `FunctionDeclaration` at
   file level, function calls via `CALL` opcode
-- `packages/typescript/src/compiler/compile.ts` -- two-pass: first pass assigns
+- `packages/ts-compiler/src/compiler/compile.ts` -- two-pass: first pass assigns
   function IDs, second pass compiles (same pattern as `BrainCompiler`)
-- `packages/typescript/src/compiler/emit.ts` -- emit multiple `FunctionBytecode`
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit multiple `FunctionBytecode`
   entries into `Program.functions`
-- `packages/typescript/src/compiler/scope.ts` -- distinguish module-level scope
+- `packages/ts-compiler/src/compiler/scope.ts` -- distinguish module-level scope
   (callsite vars) from function-level scope (locals)
 - Module init function generation (compiler-generated function that evaluates
   top-level initializers)
@@ -648,10 +648,10 @@ function.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- compile `onPageEnteredNode` from
+- `packages/ts-compiler/src/compiler/lowering.ts` -- compile `onPageEnteredNode` from
   descriptor, generate `onPageEntered` wrapper function that calls module init then
   user `onPageEntered` (leverages existing `lowerProgram` multi-function infrastructure)
-- `packages/typescript/src/compiler/compile.ts` -- set
+- `packages/ts-compiler/src/compiler/compile.ts` -- set
   `lifecycleFuncIds.onPageEntered` on `UserAuthoredProgram`
 
 **Concrete deliverables:**
@@ -692,9 +692,9 @@ linked program executes correctly in the VM.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/linker/linker.ts` --
+- `packages/ts-compiler/src/linker/linker.ts` --
   `linkUserPrograms(brainProgram, userPrograms[])` function
-- `packages/typescript/src/linker/linker.spec.ts` -- tests
+- `packages/ts-compiler/src/linker/linker.spec.ts` -- tests
 
 **Concrete deliverables:**
 
@@ -733,13 +733,13 @@ end-to-end. Also build `onPageEntered` dispatch.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/runtime/authored-function.ts` --
+- `packages/ts-compiler/src/runtime/authored-function.ts` --
   `createUserTileExec(linkedProgram, linkInfo, vm, scheduler)` returning `HostFn`
   with `exec` and `onPageEntered` methods
-- `packages/typescript/src/runtime/registration-bridge.ts` --
+- `packages/ts-compiler/src/runtime/registration-bridge.ts` --
   `registerUserTile(linkInfo, services)` that performs the three-step registration
   flow: ensure param tile defs, register in `FunctionRegistry`, add to `TileCatalog`
-- `packages/typescript/src/runtime/authored-function.spec.ts` -- integration tests
+- `packages/ts-compiler/src/runtime/authored-function.spec.ts` -- integration tests
 
 **Prerequisites from earlier phases:**
 
@@ -823,7 +823,7 @@ to the lowering pass.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- add cases for `&&`, `||`, `!`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- add cases for `&&`, `||`, `!`
 
 **Prerequisites:** Null comparisons (`=== null`, `!== null`) and `!nil` are already
 handled by Phase 6.5 nil operator overloads. This phase adds only the general-purpose
@@ -864,7 +864,7 @@ logical operators.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- template literal lowering,
+- `packages/ts-compiler/src/compiler/lowering.ts` -- template literal lowering,
   string `+` operator resolution
 
 **Concrete deliverables:**
@@ -931,7 +931,7 @@ and the compiler's lowering logic (Phase 11b).
 - `packages/core/src/brain/interfaces/type-system.ts` -- add enumeration method
   (e.g., `entries(): Iterable<[TypeId, TypeDef]>`) to `ITypeRegistry`
   (`resolveByName(name)` already exists)
-- `packages/typescript/src/compiler/ambient.ts` -- `buildAmbientFromRegistry(registry)`
+- `packages/ts-compiler/src/compiler/ambient.ts` -- `buildAmbientFromRegistry(registry)`
   that generates interface declarations for all struct types, `MindcraftTypeMap`
   entries, and a `resolveTypeId` function from the registry (note:
   `ITypeRegistry.resolveByName()` already provides this -- the generator can
@@ -1000,14 +1000,14 @@ so the TS checker can resolve contextual types for object literals).
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/ir.ts` -- add `IrStructNew`, `IrStructSet` nodes
-- `packages/typescript/src/compiler/lowering.ts` -- handle
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrStructNew`, `IrStructSet` nodes
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle
   `ts.ObjectLiteralExpression`: emit `STRUCT_NEW(typeId)` then for each property
   `PUSH_CONST(fieldName)`, evaluate value, `STRUCT_SET`. Reject object literals
   whose contextual type resolves to a native-backed struct (the brand prevents this
   at the TS type level; the lowering should emit a diagnostic if it reaches this path
   anyway).
-- `packages/typescript/src/compiler/emit.ts` -- emit `STRUCT_NEW`, `STRUCT_SET` opcodes
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `STRUCT_NEW`, `STRUCT_SET` opcodes
 
 **Concrete deliverables:**
 
@@ -1042,9 +1042,9 @@ so the TS checker can resolve contextual types for object literals).
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.ArrayLiteralExpression`
-- `packages/typescript/src/compiler/ir.ts` -- add `IrListNew`, `IrListPush` nodes
-- `packages/typescript/src/compiler/emit.ts` -- emit `LIST_NEW`, `LIST_PUSH` opcodes
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `ts.ArrayLiteralExpression`
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrListNew`, `IrListPush` nodes
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `LIST_NEW`, `LIST_PUSH` opcodes
 
 **Concrete deliverables:**
 
@@ -1141,15 +1141,15 @@ generation, and compiler lowering.
   `registerCoreTypes()`
 - `packages/core/src/brain/interfaces/type-system.ts` -- add `addAnyType(name): TypeId`
   to `ITypeRegistry`
-- `packages/typescript/src/compiler/ambient.ts` -- handle `NativeType.Any` in
+- `packages/ts-compiler/src/compiler/ambient.ts` -- handle `NativeType.Any` in
   `typeDefToTs()` (emit the union `number | string | boolean | null`); generate
   `type AnyList = ReadonlyArray<number | string | boolean | null>` for the
   `AnyList` type def
-- `packages/typescript/src/compiler/lowering.ts` -- update `tsTypeToTypeId()` to
+- `packages/ts-compiler/src/compiler/lowering.ts` -- update `tsTypeToTypeId()` to
   return `CoreTypeIds.Any` when the TS type is a union of multiple non-null primitive
   types (e.g., `number | string`); update `resolveListTypeId()` fallback: when the
   element type is a multi-member union, resolve to the `AnyList` type
-- `packages/typescript/src/compiler/codegen.spec.ts` -- tests
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- tests
 
 **Concrete deliverables:**
 
@@ -1251,7 +1251,7 @@ generation, and compiler lowering.
   `number | string | boolean | null`, the checker will flag errors for operations
   not valid on all union members. This is correct behavior -- users must narrow
   first. No additional work needed here.
-- **Core build order.** `packages/core` must be built before `packages/typescript`.
+- **Core build order.** `packages/core` must be built before `packages/ts-compiler`.
   Since `registerCoreTypes()` is in core, the `AnyList` type will exist before
   the compiler runs. The compiler's test suite creates its own type registry, so
   tests need to register `Any` and `AnyList` manually in the test setup.
@@ -1278,15 +1278,15 @@ syntax (`{ key: value }`) but produce different opcodes.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- extend `lowerObjectLiteral` to
+- `packages/ts-compiler/src/compiler/lowering.ts` -- extend `lowerObjectLiteral` to
   detect map-typed contextual types and emit `IrMapNew` / `IrMapSet` instead of
   `IrStructNew` / `IrStructSet`; add `resolveMapTypeId()` helper following the same
   pattern as `resolveListTypeId()` -- alias-symbol-first lookup, then fall back to
   `registry.instantiate("Map", [valueTypeId])` using the generic `MapConstructor`
   from core type system revision (Phase 2)
-- `packages/typescript/src/compiler/ir.ts` -- add `IrMapNew` (with `typeId`),
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrMapNew` (with `typeId`),
   `IrMapSet` nodes
-- `packages/typescript/src/compiler/emit.ts` -- emit `MAP_NEW`, `MAP_SET` opcodes
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `MAP_NEW`, `MAP_SET` opcodes
 
 **Concrete deliverables:**
 
@@ -1352,14 +1352,14 @@ constant (`{ t: NativeType.Enum, typeId, v: "north" }`) rather than a plain
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- extend string literal handling
+- `packages/ts-compiler/src/compiler/lowering.ts` -- extend string literal handling
   to detect enum-typed contextual types and emit `PushConst(EnumValue)` instead of
   `PushConst(StringValue)`. `tsTypeToTypeId()` already resolves named types
   (including enums) via symbol name lookup on the registry, so enum type resolution
   is available. The remaining work is detecting the contextual type via
   `checker.getContextualType()` and checking whether the resolved TypeDef has
   `coreType: NativeType.Enum`.
-- `packages/typescript/src/compiler/ambient.ts` -- no changes needed (enum types
+- `packages/ts-compiler/src/compiler/ambient.ts` -- no changes needed (enum types
   are already generated as string unions with `MindcraftTypeMap` entries)
 
 **Concrete deliverables:**
@@ -1435,7 +1435,7 @@ definitions and the `"TypeName.methodName"` convention in the FunctionRegistry.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- extend `lowerPropertyAccess`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- extend `lowerPropertyAccess`
   beyond the current `params.xyz` and `.length` special cases; add
   `lowerStructMethodCall` for struct method dispatch (handles `ctx.self.*()`,
   `ctx.engine.*()`, and any struct with declared methods). The `.length` case
@@ -1445,11 +1445,11 @@ definitions and the `"TypeName.methodName"` convention in the FunctionRegistry.
   `lowerStructMethodCall()`
   (Updated 2026-03-24: method dispatch uses the general-purpose
   `lowerStructMethodCall()` mechanism, not a ctx-specific path.)
-- `packages/typescript/src/compiler/ir.ts` -- add `IrGetField` node (field name
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrGetField` node (field name
   operand). Note: `IrListLen`, `IrListGet`, `IrListSet` already exist from the
   core type system detour
-- `packages/typescript/src/compiler/emit.ts` -- emit `GET_FIELD` opcode
-- `packages/typescript/src/compiler/types.ts` -- no changes needed;
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `GET_FIELD` opcode
+- `packages/ts-compiler/src/compiler/types.ts` -- no changes needed;
   `resolveHostFn` was removed in Phase 10. Method-to-host-function resolution
   uses the `"TypeName.methodName"` convention in FunctionRegistry
 
@@ -1524,7 +1524,7 @@ types including list types via `resolveListTypeId()`. The remaining work is the
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.ForOfStatement`,
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `ts.ForOfStatement`,
   emit iterator pattern using the existing `IrListLen`, `IrListGet` IR nodes and
   `allocLocal()` for hidden temporaries. The desugaring below uses only
   infrastructure that is already built and verified.
@@ -1593,7 +1593,7 @@ DUP-before-conditional-jump pattern from Phase 9.)
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle
   `ts.ConditionalExpression` and nullish coalescing (`??`)
 
 **Prerequisites from earlier phases:** Nullable type support is fully implemented
@@ -1643,7 +1643,7 @@ type system Phase 1 is available for default value nil-checks.)
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.ObjectBindingPattern`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `ts.ObjectBindingPattern`
   and `ts.ArrayBindingPattern` in variable declarations. Array destructuring uses
   the existing `IrListGet` node. Object destructuring uses `IrGetField` from Phase 13.
 
@@ -1719,12 +1719,12 @@ instead of `HOST_CALL_ARGS`.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- extend host call lowering to
+- `packages/ts-compiler/src/compiler/lowering.ts` -- extend host call lowering to
   check if the target function is async and emit `IrHostCallArgsAsync`
-- `packages/typescript/src/compiler/ir.ts` -- add `IrHostCallArgsAsync` node
-- `packages/typescript/src/compiler/emit.ts` -- emit `HOST_CALL_ARGS_ASYNC` opcode
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrHostCallArgsAsync` node
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `HOST_CALL_ARGS_ASYNC` opcode
   via `emitter.hostCallArgsAsync()`
-- `packages/typescript/src/compiler/types.ts` -- no changes needed;
+- `packages/ts-compiler/src/compiler/types.ts` -- no changes needed;
   `resolveHostFn` was removed in Phase 10. Async detection should use
   `getBrainServices().functions.get()` metadata directly
 
@@ -1777,10 +1777,10 @@ async functions are not supported in v1. Only `await` on async host calls is pla
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `ts.AwaitExpression`:
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `ts.AwaitExpression`:
   lower the operand (which should be a `HOST_CALL_ARGS_ASYNC`), then emit `IrAwait`
-- `packages/typescript/src/compiler/ir.ts` -- add `IrAwait` node
-- `packages/typescript/src/compiler/emit.ts` -- emit `AWAIT` opcode via
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrAwait` node
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `AWAIT` opcode via
   `emitter.await()` (already available in core's `BytecodeEmitter`)
 
 **Prerequisites:** Phase 18 (async host call emission) must be complete so that the
@@ -1826,7 +1826,7 @@ frame/locals model, which is unaffected by the type system changes.)
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- handle `async` modifier on
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle `async` modifier on
   `onExecute` (the `descriptor.execIsAsync` flag is already extracted)
 - Integration tests exercising async execution
 
@@ -1895,7 +1895,7 @@ spawn -> suspend -> resume -> complete -> handle resolve.
 
 **Packages/files touched:**
 
-- Integration test file(s) in `packages/typescript/src/runtime/`
+- Integration test file(s) in `packages/ts-compiler/src/runtime/`
 - May require test utilities for mock async host functions
 
 **Concrete deliverables:**
@@ -1946,16 +1946,16 @@ generate synthetic names like `<closure#N>` which should be reflected in
 `DebugFunctionInfo.name` when populating metadata in Phase 25.)
 
 **Objective:** Define the `DebugMetadata` type hierarchy in
-`@mindcraft-lang/typescript` (mirroring the structures defined in the
+`@mindcraft-lang/ts-compiler` (mirroring the structures defined in the
 [debugger spec, section 6](vscode-authoring-debugging.md#6-debug-metadata)) and add
 the `debugMetadata` field to `UserAuthoredProgram`.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/types.ts` -- add `DebugMetadata`,
+- `packages/ts-compiler/src/compiler/types.ts` -- add `DebugMetadata`,
   `DebugFileInfo`, `DebugFunctionInfo`, `Span`, `ScopeInfo`, `LocalInfo`,
   `CallSiteInfo`, `SuspendSiteInfo` interfaces
-- `packages/typescript/src/compiler/types.ts` -- add optional `debugMetadata` field
+- `packages/ts-compiler/src/compiler/types.ts` -- add optional `debugMetadata` field
   to `UserAuthoredProgram`
 
 **Concrete deliverables:**
@@ -1989,11 +1989,11 @@ emission so every bytecode instruction maps back to a source location.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- annotate IR nodes with source
+- `packages/ts-compiler/src/compiler/lowering.ts` -- annotate IR nodes with source
   position info (TS AST node start/end positions)
-- `packages/typescript/src/compiler/ir.ts` -- add optional `sourceSpan` field to
+- `packages/ts-compiler/src/compiler/ir.ts` -- add optional `sourceSpan` field to
   IR node base
-- `packages/typescript/src/compiler/emit.ts` -- build `pcToSpanIndex` array and
+- `packages/ts-compiler/src/compiler/emit.ts` -- build `pcToSpanIndex` array and
   `spans` list as instructions are emitted; set `isStatementBoundary` per the rules
   in the spec (expression statements, conditions, variable declarations with init,
   return statements, break/continue, await/resume)
@@ -2039,9 +2039,9 @@ and variable lifetimes for debugger inspection.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- track scope enter/exit PCs,
+- `packages/ts-compiler/src/compiler/lowering.ts` -- track scope enter/exit PCs,
   record variable declaration PCs and lifetimes
-- `packages/typescript/src/compiler/scope.ts` -- extend `ScopeStack` to record
+- `packages/ts-compiler/src/compiler/scope.ts` -- extend `ScopeStack` to record
   scope metadata (kind, parent, start/end PC)
 
 **Concrete deliverables:**
@@ -2084,10 +2084,10 @@ metadata collected in Phases 11b-11c and attach it to `UserAuthoredProgram`.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/compile.ts` -- collect per-function debug info
+- `packages/ts-compiler/src/compiler/compile.ts` -- collect per-function debug info
   from lowering and emission, assemble `DebugMetadata`, set on
   `UserAuthoredProgram.debugMetadata`
-- `packages/typescript/src/compiler/emit.ts` -- return debug spans and metadata
+- `packages/ts-compiler/src/compiler/emit.ts` -- return debug spans and metadata
   alongside bytecode
 
 **Concrete deliverables:**
@@ -2221,7 +2221,7 @@ imports (`Op`, `BytecodeEmitter`, `ConstantPool`, type-only imports for `Program
 | Lazy-loading / chunking      | Lib `.d.ts` content loaded via dynamic `import()` in `initCompiler()`. Vite automatically splits the ~230KB into a separate chunk. `compileUserTile()` stays sync; requires `initCompiler()` to have been called first. |
 | `package.json` `exports` map | Added `"."` entry with `types` + `import` conditions for proper bundler resolution.                                                                                                                                     |
 | `src/index.ts` re-exports    | Now re-exports `compileUserTile`, `initCompiler`, `CompileDiagnostic`, `CompileResult` from the compiler module.                                                                                                        |
-| `apps/sim` integration       | Added `@mindcraft-lang/typescript` as `file:` dep. `bootstrap.ts` calls `initCompiler()` to preload in the background. Vite prod build confirms separate chunk (`lib-dts.generated-*.js`, 231KB).                       |
+| `apps/sim` integration       | Added `@mindcraft-lang/ts-compiler` as `file:` dep. `bootstrap.ts` calls `initCompiler()` to preload in the background. Vite prod build confirms separate chunk (`lib-dts.generated-*.js`, 231KB).                       |
 | Biome fix in generator       | `scripts/bundle-lib-dts.js` now escapes only `${` (not all `$`) in template literals, eliminating `noUselessEscapeInString` warnings.                                                                                   |
 
 **Extra files:**
@@ -2639,7 +2639,7 @@ overloads in core, and extends `tsTypeToTypeId` to handle `TypeFlags.Null`,
 
 **Test counts:**
 
-- `packages/typescript`: 76 total (8 Phase 6.5, 5 Phase 6, 11 Phase 5, 11 Phase 4
+- `packages/ts-compiler`: 76 total (8 Phase 6.5, 5 Phase 6, 11 Phase 5, 11 Phase 4
   control flow, 10 Phase 3 codegen/VM, 5 buildCallDef, 5 type-checking, 7 validation,
   11 extraction, 3 core imports).
 - `packages/core`: 429 total (11 nil overload tests added to `brain.spec.ts`).
@@ -2789,7 +2789,7 @@ type-checking, 7 validation, 11 extraction, 3 core imports).
    bridge needs param type strings (e.g., `"number"`) to resolve TypeIds for
    `BrainTileParameterDef` construction. Rather than parsing this from the
    `callDef.argSlots` tile IDs (fragile), the original `ExtractedParam[]` array
-   is stored on `UserAuthoredProgram`. This is a `packages/typescript` type change
+   is stored on `UserAuthoredProgram`. This is a `packages/ts-compiler` type change
    only -- no core modifications.
 
 5. **`RegistrationServices` removed (post-Phase 10 cleanup).** Originally the bridge
@@ -2822,7 +2822,7 @@ type-checking, 7 validation, 11 extraction, 3 core imports).
    sensor and actuator share the same user-given name. The spec table should be
    updated.
 
-**No changes to `packages/core`.** All new code is in `packages/typescript/src/runtime/`.
+**No changes to `packages/core`.** All new code is in `packages/ts-compiler/src/runtime/`.
 The exec wrapper and registration bridge use only public APIs from
 `@mindcraft-lang/core/brain`.
 
@@ -3010,22 +3010,22 @@ logical operator compilation details.
 
 **Files changed:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- `lowerTemplateLiteral()`,
+- `packages/ts-compiler/src/compiler/lowering.ts` -- `lowerTemplateLiteral()`,
   `emitToStringIfNeeded()`, module-level `resolveOperator()`, `NoSubstitutionTemplateLiteral`
   handling, `resolveOperator` removed from `LowerContext` and `lowerProgram` signature
-- `packages/typescript/src/compiler/emit.ts` -- `resolveHostFn` parameter removed from
+- `packages/ts-compiler/src/compiler/emit.ts` -- `resolveHostFn` parameter removed from
   `emitFunction`, uses `getBrainServices().functions.get()` directly
-- `packages/typescript/src/compiler/types.ts` -- `resolveHostFn` and `resolveOperator`
+- `packages/ts-compiler/src/compiler/types.ts` -- `resolveHostFn` and `resolveOperator`
   removed from `CompileOptions`
-- `packages/typescript/src/compiler/compile.ts` -- removed early-return guard, removed
+- `packages/ts-compiler/src/compiler/compile.ts` -- removed early-return guard, removed
   resolver args from `lowerProgram` and `emitFunction` calls
 - `packages/core/src/brain/runtime/conversion.ts` -- `conversionFnName(from, to)` added
-- `packages/typescript/src/compiler/codegen.spec.ts` -- 6 new tests (4 string, 2
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- 6 new tests (4 string, 2
   diagnostics), removed all `resolveHostFn`/`resolveOperator` from test options
-- `packages/typescript/src/linker/linker.spec.ts` -- removed resolver options
-- `packages/typescript/src/runtime/authored-function.spec.ts` -- simplified
+- `packages/ts-compiler/src/linker/linker.spec.ts` -- removed resolver options
+- `packages/ts-compiler/src/runtime/authored-function.spec.ts` -- simplified
   `compileAndLink` to `compileUserTile(source)`
-- `packages/typescript/src/compiler/compile.spec.ts` -- added
+- `packages/ts-compiler/src/compiler/compile.spec.ts` -- added
   `registerCoreBrainComponents` calls in `before` hooks
 
 **No spec amendments needed.** `user-authored-sensors-actuators.md` does not describe
@@ -3142,21 +3142,21 @@ type-checking, 7 validation, 11 extraction, 3 core imports).
   `ITypeRegistry` interface
 - `packages/core/src/brain/runtime/type-system.ts` -- implemented `entries()` as
   `this.defs.entries().toArray()`
-- `packages/typescript/src/compiler/ambient.ts` -- added `buildAmbientDeclarations()`,
+- `packages/ts-compiler/src/compiler/ambient.ts` -- added `buildAmbientDeclarations()`,
   `typeDefToTs()`, `typeIdToTs()`, `isNativeBacked()`, `generateStructInterface()`,
   `generateEnumType()`, `CORE_TYPE_NAMES` set, `needsQuoting()`. Removed
   `buildAmbientSource()` and `AMBIENT_MINDCRAFT_DTS`.
-- `packages/typescript/src/compiler/ambient.spec.ts` -- new file with 9 tests:
+- `packages/ts-compiler/src/compiler/ambient.spec.ts` -- new file with 9 tests:
   plain struct, branded struct, brand prevents assignment, param compile,
   cross-struct references, strongly-typed number, enum union, list alias,
   core type deduplication
-- `packages/typescript/src/compiler/compile.ts` -- import changed from
+- `packages/ts-compiler/src/compiler/compile.ts` -- import changed from
   `AMBIENT_MINDCRAFT_DTS`/`buildAmbientSource` to `buildAmbientDeclarations`;
   default ambient source now calls `buildAmbientDeclarations()`
-- `packages/typescript/src/compiler/codegen.spec.ts` -- updated 3 tests to use
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- updated 3 tests to use
   `buildAmbientDeclarations()` instead of `buildAmbientSource()`; "without ambient
   injection" test repurposed to verify registry-driven resolution works automatically
-- `packages/typescript/src/index.ts` -- export changed from `buildAmbientSource` to
+- `packages/ts-compiler/src/index.ts` -- export changed from `buildAmbientSource` to
   `buildAmbientDeclarations`
 
 **Test counts:** 112 total (9 ambient, 6 string/template, 6 Phase 9 registration, 5
@@ -3232,14 +3232,14 @@ authored-function, 3 registration-bridge, 7 linker, 8 null/nil, 5 onPageEntered/
   (a: 0, b: typeIdConstIdx)
 - `packages/core/src/brain/interfaces/emitter.ts` -- updated `structNew()` param name
   and docs
-- `packages/typescript/src/compiler/ir.ts` -- added `IrStructNew`, `IrStructSet` to
+- `packages/ts-compiler/src/compiler/ir.ts` -- added `IrStructNew`, `IrStructSet` to
   `IrNode` union; added interface definitions
-- `packages/typescript/src/compiler/lowering.ts` -- added `resolveStructType()`,
+- `packages/ts-compiler/src/compiler/lowering.ts` -- added `resolveStructType()`,
   `isNativeBackedStruct()`, `lowerObjectLiteral()`; added `ObjectLiteralExpression`
   case to `lowerExpression()`; added `NativeType` and `StructTypeDef` imports
-- `packages/typescript/src/compiler/emit.ts` -- added `StructNew` and `StructSet` cases
+- `packages/ts-compiler/src/compiler/emit.ts` -- added `StructNew` and `StructSet` cases
   to the emit switch; added `mkStringValue` import
-- `packages/typescript/src/compiler/codegen.spec.ts` -- added `struct literal compilation`
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- added `struct literal compilation`
   describe block with 5 tests; added `isStructValue` and `StructValue` imports
 
 **Test counts:** 117 total (previous 112 + 5 new struct literal tests).
@@ -3328,14 +3328,14 @@ authored-function, 3 registration-bridge, 7 linker, 8 null/nil, 5 onPageEntered/
   and docs to `typeIdConstIdx`
 - `packages/core/src/brain/runtime/vm.ts` -- `execListNew` now reads `ins.b` as
   constant pool index; call site passes `ins`
-- `packages/typescript/src/compiler/ir.ts` -- added `IrListNew`, `IrListPush` to
+- `packages/ts-compiler/src/compiler/ir.ts` -- added `IrListNew`, `IrListPush` to
   `IrNode` union; added interface definitions
-- `packages/typescript/src/compiler/lowering.ts` -- added `resolveListTypeId()`,
+- `packages/ts-compiler/src/compiler/lowering.ts` -- added `resolveListTypeId()`,
   `lowerArrayLiteral()`; added `ArrayLiteralExpression` case to `lowerExpression()`;
   added `ListTypeDef` import
-- `packages/typescript/src/compiler/emit.ts` -- added `ListNew` and `ListPush` cases
+- `packages/ts-compiler/src/compiler/emit.ts` -- added `ListNew` and `ListPush` cases
   to the emit switch
-- `packages/typescript/src/compiler/codegen.spec.ts` -- added `array/list literal
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- added `array/list literal
 compilation` describe block with 4 tests; added `isListValue` and `ListValue` imports
 
 **Test counts:** 121 total (previous 117 + 4 new array/list tests).
@@ -3455,7 +3455,7 @@ ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
 **Test counts:**
 
 - packages/core: 441 total (429 prev + 12 new), 0 failures
-- packages/typescript: 125 total (121 prev + 4 new), 1 pre-existing failure
+- packages/ts-compiler: 125 total (121 prev + 4 new), 1 pre-existing failure
 
 ### Phase 12b -- 2026-03-23
 
@@ -3515,7 +3515,7 @@ ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
 **Test counts:**
 
 - packages/core: 516 total, 0 failures
-- packages/typescript: 169 total (164 prev + 5 new), 0 failures
+- packages/ts-compiler: 169 total (164 prev + 5 new), 0 failures
 
 ### Phase 12c -- 2026-03-23
 
@@ -3578,7 +3578,7 @@ ReadonlyArray<Vector2>`), and it correctly returns the alias name. Checking
 **Test counts:**
 
 - packages/core: 516 total, 0 failures (unchanged)
-- packages/typescript: 176 total (169 prev + 7 new), 0 failures
+- packages/ts-compiler: 176 total (169 prev + 7 new), 0 failures
 
 ---
 
@@ -3696,7 +3696,7 @@ phantom code has been removed. See [ctx-as-native-struct.md](ctx-as-native-struc
 **Test counts:**
 
 - packages/core: 516 total, 0 failures (unchanged)
-- packages/typescript: 190 total (176 prev + 14 new), 0 failures
+- packages/ts-compiler: 190 total (176 prev + 14 new), 0 failures
 
 ### Phase 14 -- `for...of` loop (2026-03-24)
 
@@ -3753,7 +3753,7 @@ required in type 'Array<number>'`). The cleanest fix was removing the custom
 **Test counts:**
 
 - packages/core: 516 total, 0 failures (unchanged)
-- packages/typescript: 202 total (198 prev + 4 new), 0 failures
+- packages/ts-compiler: 202 total (198 prev + 4 new), 0 failures
 
 ### Array Method Lowering Detour (2026-03-24)
 
@@ -3816,7 +3816,7 @@ surfaces compile-time diagnostics for the rest.
 **Test counts:**
 
 - packages/core: 516 total, 0 failures (unchanged)
-- packages/typescript: 216 total (202 prev + 14 new), 0 failures
+- packages/ts-compiler: 216 total (202 prev + 14 new), 0 failures
 
 ### VM List Mutation Ops Detour (2026-03-24)
 
@@ -3874,7 +3874,7 @@ IR nodes, emission, and lowering. `sort` was implemented in a subsequent detour;
 **Test counts:**
 
 - packages/core: 522 total (516 prev + 6 new), 0 failures
-- packages/typescript: 221 total (216 prev + 5 new), 0 failures
+- packages/ts-compiler: 221 total (216 prev + 5 new), 0 failures
 
 ### Phase 15 -- Ternary operator + nullish coalescing (2026-03-24)
 
@@ -3932,4 +3932,4 @@ IR nodes, emission, and lowering. `sort` was implemented in a subsequent detour;
 **Test counts:**
 
 - packages/core: 522 total, 0 failures (unchanged)
-- packages/typescript: 236 total (221 prev + 8 new + 7 from sort detour), 0 failures
+- packages/ts-compiler: 236 total (221 prev + 8 new + 7 from sort detour), 0 failures

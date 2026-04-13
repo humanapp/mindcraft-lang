@@ -1,4 +1,4 @@
-import { type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
+import { CoreCapabilityBits, type IBrainTileDef, RuleSide } from "@mindcraft-lang/core/brain";
 import type { BrainTileFactoryDef, BrainTileParameterDef } from "@mindcraft-lang/core/brain/tiles";
 import { CircleAlert } from "lucide-react";
 import { type ButtonHTMLAttributes, forwardRef, useLayoutEffect, useState } from "react";
@@ -7,7 +7,7 @@ import { glassEffect } from "../lib/glass-effect";
 import { useBrainEditorConfig } from "./BrainEditorContext";
 import { TileValue } from "./TileValue";
 import type { TileBadge } from "./tile-badges";
-import type { TileVisual } from "./types";
+import { resolveTileVisual } from "./tile-visual-utils";
 
 interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {
   tileDef: IBrainTileDef;
@@ -17,14 +17,15 @@ interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "
 
 export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
   ({ tileDef, side, badge, className = "", ...props }, ref) => {
-    const { dataTypeIcons, dataTypeNames } = useBrainEditorConfig();
+    const editorConfig = useBrainEditorConfig();
+    const { dataTypeIcons, dataTypeNames } = editorConfig;
     const [isOverflowing, setIsOverflowing] = useState(false);
     const [isHovered, setIsHovered] = useState(false);
     const [labelBasedWidth, setLabelBasedWidth] = useState<number | undefined>(undefined);
 
-    const visual = tileDef.visual as TileVisual | undefined;
-    const label = visual?.label || tileDef.tileId;
-    const iconUrl = visual?.iconUrl || "/assets/brain/icons/question_mark.svg";
+    const visual = resolveTileVisual(editorConfig, tileDef);
+    const label = visual.label;
+    const iconUrl = visual.iconUrl || "/assets/brain/icons/question_mark.svg";
     const baseColor =
       (side === RuleSide.When ? visual?.colorDef?.when : side === RuleSide.Do ? visual?.colorDef?.do : undefined) ||
       "#475569";
@@ -32,6 +33,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
     const isValueTile = tileDef.kind === "literal" || tileDef.kind === "variable" || tileDef.kind === "accessor";
     const isParamTile = tileDef.kind === "parameter";
     const isFactoryTile = tileDef.kind === "factory";
+    const isUserTile = tileDef.capabilities().get(CoreCapabilityBits.UserTile) !== 0;
     let tileTypeIcon: string | undefined;
     let tileTypeName: string | undefined;
 
@@ -66,6 +68,7 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
       ...tileGlass.containerStyle,
     };
 
+    // Measure the rendered text width by creating a temporary hidden span in the DOM.
     useLayoutEffect(() => {
       const tempSpan = document.createElement("span");
       tempSpan.style.visibility = "hidden";
@@ -142,6 +145,23 @@ export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
                 maskPosition: "center",
               }}
               className="absolute top-1 left-1 w-4 h-4 pointer-events-none"
+              aria-hidden="true"
+            />
+          )}
+          {isUserTile && (
+            <div
+              style={{
+                backgroundColor: darkerSaturatedColor,
+                WebkitMaskImage: "url(/assets/brain/icons/ts-logo-128.svg)",
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskImage: "url(/assets/brain/icons/ts-logo-128.svg)",
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                maskPosition: "center",
+              }}
+              className="absolute top-1 right-1 w-4 h-4 pointer-events-none"
               aria-hidden="true"
             />
           )}

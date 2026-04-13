@@ -1,0 +1,10 @@
+{
+	"extends": "./tsconfig.base.json",
+	"compilerOptions": {
+		"outDir": "dist",
+		"rootDir": ".",
+		"types": ["node"]
+	},
+	"include": ["src/**/*.spec.ts"],
+	"references": [{ "path": "../../packages/bridge-client/tsconfig.json" }]
+}

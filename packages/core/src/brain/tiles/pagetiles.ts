@@ -1,8 +1,6 @@
 import { Error } from "../../platform/error";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
-import { fourCC } from "../../primitives";
 import { CoreTypeIds, type ITileCatalog, mkPageTileId, TilePlacement } from "../interfaces";
-import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
+import { BrainTileDefBase } from "../model/tiledef";
 
 export interface PageTileJson {
   version: number;
@@ -14,14 +12,10 @@ export interface PageTileJson {
   label?: string;
 }
 
-// Current serialization version -- shared by both binary and JSON codepaths.
+// Current serialization version.
 // v1: initial format (pageId only)
 // v2: added non-authoritative label
 const kVersion = 2;
-
-const STags = {
-  BPAG: fourCC("BPAG"), // Brain page tile chunk
-};
 
 /**
  * A tile definition representing a reference to a brain page.
@@ -56,13 +50,13 @@ export class BrainTilePageDef extends BrainTileDefBase {
     super(mkPageTileId(pageId), {
       placement: TilePlacement.EitherSide,
       persist: true,
-      visual: { label: pageName || pageId },
+      metadata: { label: pageName || pageId },
     });
     this.pageId = pageId;
     this.value = pageId;
   }
 
-  // -- JSON serialization (parallel to binary below) -------------------------
+  // -- JSON serialization ----------------------------------------------------
 
   toJson(): PageTileJson {
     return {
@@ -70,7 +64,7 @@ export class BrainTilePageDef extends BrainTileDefBase {
       kind: "page",
       tileId: this.tileId,
       pageId: this.pageId,
-      label: this.visual?.label,
+      label: this.metadata?.label,
     };
   }
 
@@ -83,37 +77,4 @@ export class BrainTilePageDef extends BrainTileDefBase {
     catalog.registerTileDef(tileDef);
     return tileDef;
   }
-
-  // -- Binary serialization ---------------------------------------------------
-
-  serialize(stream: IWriteStream): void {
-    super.serialize(stream);
-    stream.pushChunk(STags.BPAG, kVersion);
-    stream.writeString(this.pageId);
-    stream.writeString(this.visual?.label || this.pageId);
-    stream.popChunk();
-  }
-}
-
-export function BrainTilePageDef_deserialize(stream: IReadStream, catalog: ITileCatalog): BrainTilePageDef {
-  const { kind, tileId } = BrainTileDefBase_deserializeHeader(stream);
-  if (kind !== "page") {
-    throw new Error(`BrainTilePageDef.deserialize: invalid kind ${kind}`);
-  }
-  const version = stream.enterChunk(STags.BPAG);
-  if (version < 1 || version > kVersion) {
-    throw new Error(`BrainTilePageDef.deserialize: unsupported version ${version}`);
-  }
-  const pageId = stream.readString();
-  const label = version >= 2 ? stream.readString() : undefined;
-  stream.leaveChunk();
-
-  // Check if already in catalog (e.g., from a previous deserialization pass)
-  const existing = catalog.get(tileId) as BrainTilePageDef | undefined;
-  if (existing && existing.kind === "page") {
-    return existing;
-  }
-
-  const tileDef = new BrainTilePageDef(pageId, label);
-  return tileDef;
 }

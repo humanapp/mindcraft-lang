@@ -20,6 +20,7 @@ These instructions apply to all Copilot features, including inline tab completio
 - Do not add comments that just restate what the code does. Only include comments that
   explain non-obvious intent, invariants, or constraints.
 - Do not suggest comments in new code blocks that say things like "// no implementation yet, but could add things like `this` or `that`...". This is not helpful. It is better to leave it blank or with a minimal concrete code suggestion.
+- Do not use phrases like "TODO: implement this function" or "implementation goes here" in comments. If the user is asking for a function implementation, just provide the implementation without any placeholder comments, or leave it blank if you cannot infer the implementation. Do not add comments that explain what code should be written rather than writing the code itself.
 
 ## Import Style
 
@@ -27,6 +28,19 @@ These instructions apply to all Copilot features, including inline tab completio
   `.tsx` files. Always use a top-level `import type` statement instead.
   - Exception: `.d.ts` ambient declaration files and Roblox `.rbx.ts` platform shims where
     top-level imports would break the ambient module context.
+
+## Naming and Layout Conventions
+
+- Match the naming and placement conventions already established in the area you are editing
+  when creating new files, directories, test files, generated artifacts, or other repo
+  entries.
+- Before creating a new file, inspect nearby siblings and follow the dominant local pattern for
+  separators (`-` vs `.` vs `_`), casing, prefixes, suffixes, and test file naming.
+- Do not introduce a new naming pattern to an area of the repo unless the user explicitly asks
+  for it or an existing tool/framework requires it.
+- If you notice that a file or artifact you created does not match the repo's established naming
+  convention, correct it proactively instead of leaving it in place just because validation still
+  passes.
 
 ## Project-Specific Rules
 

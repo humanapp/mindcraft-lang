@@ -1,10 +1,8 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
-import { fourCC } from "../../primitives";
-import type { IBrainTileDef, ITileCatalog, ITileVisual } from "../interfaces";
-import { getBrainServices } from "../services";
+import type { IBrainTileDef, ITileCatalog } from "../interfaces";
+import type { BrainServices } from "../services";
 import { BrainTileLiteralDef, type LiteralTileJson } from "./literals";
 import { BrainTileMissingDef, type MissingTileJson } from "./missing";
 import { BrainTilePageDef, type PageTileJson } from "./pagetiles";
@@ -12,27 +10,8 @@ import { BrainTileVariableDef, type VariableTileJson } from "./variables";
 
 export type CatalogTileJson = LiteralTileJson | VariableTileJson | PageTileJson | MissingTileJson;
 
-// Current serialization version (binary only -- JSON catalog is unversioned).
-const kVersion = 1;
-
-// Serialization tags
-const STags = {
-  TCAT: fourCC("TCAT"), // Tile catalog
-  TCNT: fourCC("TCNT"), // Tile count
-};
-
-type FnVisualProvider = (tileDef: IBrainTileDef) => ITileVisual;
-
-let tileVisualProvider: FnVisualProvider = (tileDef: IBrainTileDef) => {
-  return { label: tileDef.tileId.split(".").pop() || tileDef.tileId };
-};
-
-export function setTileVisualProvider(provider: (tileDef: IBrainTileDef) => ITileVisual) {
-  tileVisualProvider = provider;
-}
-
-export function getTileVisualProvider(): FnVisualProvider {
-  return tileVisualProvider;
+export function getCatalogFallbackLabel(tileDef: IBrainTileDef): string {
+  return tileDef.tileId.split(".").pop() || tileDef.tileId;
 }
 
 export class TileCatalog implements ITileCatalog {
@@ -43,10 +22,9 @@ export class TileCatalog implements ITileCatalog {
   }
 
   add(tile: IBrainTileDef) {
-    if (this.tiles.has(tile.tileId)) {
-      throw new Error(`Tile with id ${tile.tileId} is already registered`);
+    if (!this.tiles.has(tile.tileId)) {
+      this.tiles.set(tile.tileId, tile);
     }
-    this.tiles.set(tile.tileId, tile);
   }
 
   get(tileId: string): IBrainTileDef | undefined {
@@ -76,7 +54,7 @@ export class TileCatalog implements ITileCatalog {
     return undefined;
   }
 
-  // -- JSON serialization (parallel to binary below) -------------------------
+  // -- JSON serialization ----------------------------------------------------
 
   toJson(): List<CatalogTileJson> {
     const result = new List<CatalogTileJson>();
@@ -103,15 +81,15 @@ export class TileCatalog implements ITileCatalog {
     return result;
   }
 
-  deserializeJson(json: ReadonlyList<CatalogTileJson>): void {
+  deserializeJson(json: ReadonlyList<CatalogTileJson>, services: BrainServices): void {
     for (let i = 0; i < json.size(); i++) {
       const entry = json.get(i);
       switch (entry.kind) {
         case "literal":
-          BrainTileLiteralDef.fromJson(entry, this);
+          BrainTileLiteralDef.fromJson(entry, this, services);
           break;
         case "variable":
-          BrainTileVariableDef.fromJson(entry, this);
+          BrainTileVariableDef.fromJson(entry, this, services);
           break;
         case "page":
           BrainTilePageDef.fromJson(entry, this);
@@ -125,38 +103,7 @@ export class TileCatalog implements ITileCatalog {
     }
   }
 
-  // -- Binary serialization ---------------------------------------------------
-
-  serialize(stream: IWriteStream) {
-    stream.pushChunk(STags.TCAT, kVersion);
-    const tileList = this.tiles.values().filter((tile) => !!tile.persist);
-    stream.writeTaggedU32(STags.TCNT, tileList.size());
-    for (let i = 0; i < tileList.size(); i++) {
-      const tile = tileList.get(i);
-      tile.serialize(stream);
-    }
-    stream.popChunk();
-  }
-
-  deserialize(stream: IReadStream) {
-    const version = stream.enterChunk(STags.TCAT);
-    if (version !== kVersion) {
-      throw new Error(`TileCatalog.deserialize: unsupported version ${version}`);
-    }
-    const tileCount = stream.readTaggedU32(STags.TCNT);
-    for (let i = 0; i < tileCount; i++) {
-      const tileDef = getBrainServices().tileBuilder.deserializeTileDef(stream, this);
-      if (!this.has(tileDef.tileId)) {
-        this.registerTileDef(tileDef);
-      }
-    }
-    stream.leaveChunk();
-  }
-
   registerTileDef(tile: IBrainTileDef) {
-    if (getTileVisualProvider) {
-      tile.visual = getTileVisualProvider()(tile);
-    }
     this.add(tile);
   }
 }

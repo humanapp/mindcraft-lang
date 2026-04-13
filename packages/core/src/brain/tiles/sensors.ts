@@ -1,22 +1,20 @@
 import { Error } from "../../platform/error";
 import { BitSet } from "../../util/bitset";
 import {
-  type BrainFunctionEntry,
+  type ActionDescriptor,
   type BrainTileDefCreateOptions,
   CoreCapabilityBits,
-  CoreSensorId,
-  CoreTypeIds,
   mkSensorTileId,
   TilePlacement,
   type TypeId,
 } from "../interfaces";
-import { BrainActionTileBase, BrainTileDefBase } from "../model/tiledef";
+import { BrainActionTileBase } from "../model/tiledef";
 import fnCurrentPage from "../runtime/sensors/current-page";
 import fnOnPageEntered from "../runtime/sensors/on-page-entered";
 import fnPreviousPage from "../runtime/sensors/previous-page";
 import fnRandom from "../runtime/sensors/random";
 import fnTimeout from "../runtime/sensors/timeout";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 
 /**
  * Defines a sensor tile for the brain system.
@@ -40,40 +38,41 @@ export class BrainTileSensorDef extends BrainActionTileBase {
    * Creates a new sensor tile definition.
    *
    * @param sensorId - Unique identifier for this sensor
-   * @param isAsync - Whether the sensor function returns a Promise
-   * @param fn - The host function that implements the sensor's logic
-   * @param outputType - The type identifier of the sensor's output value
-   * @param callSpec - Specification of the sensor's arguments and metadata
+   * @param action - Stable action metadata for this sensor
    * @param opts - Optional configuration for tile placement and display properties
    */
-  constructor(sensorId: string, fnEntry: BrainFunctionEntry, outputType: TypeId, opts: BrainTileDefCreateOptions = {}) {
+  constructor(sensorId: string, action: ActionDescriptor, opts: BrainTileDefCreateOptions = {}) {
+    if (action.kind !== "sensor") {
+      throw new Error(`BrainTileSensorDef: expected sensor action for ${sensorId}`);
+    }
+    if (action.outputType === undefined) {
+      throw new Error(`BrainTileSensorDef: missing output type for ${sensorId}`);
+    }
     // Default sensors to WhenSide placement if not specified
     if (opts.placement === undefined) opts.placement = TilePlacement.WhenSide;
-    super(mkSensorTileId(sensorId), fnEntry, opts);
+    super(mkSensorTileId(sensorId), action, opts);
     this.sensorId = sensorId;
-    this.outputType = outputType;
+    this.outputType = action.outputType;
   }
 }
 
-export function registerCoreSensorTileDefs() {
-  const tiles = getBrainServices().tiles;
-  const register = (sensorId: string, outputType: TypeId, opts: BrainTileDefCreateOptions = {}) => {
-    const fnEntry = getBrainServices().functions.get(sensorId);
-    if (!fnEntry) throw new Error(`registerCoreSensorTileDefs: missing function entry for ${sensorId}`);
-    const tileDef = new BrainTileSensorDef(sensorId, fnEntry, outputType, opts);
+export function registerCoreSensorTileDefs(services: BrainServices) {
+  const tiles = services.tiles;
+  const register = (sensorId: string, action: typeof fnRandom.descriptor, opts: BrainTileDefCreateOptions = {}) => {
+    const tileDef = new BrainTileSensorDef(sensorId, action, opts);
     tiles.registerTileDef(tileDef);
   };
-  register(fnRandom.fnId, CoreTypeIds.Number, {
+  register(fnRandom.fnId, fnRandom.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
   });
-  register(fnOnPageEntered.fnId, CoreTypeIds.Boolean);
-  register(fnTimeout.fnId, CoreTypeIds.Boolean);
+  register(fnOnPageEntered.fnId, fnOnPageEntered.descriptor);
+  register(fnTimeout.fnId, fnTimeout.descriptor);
   const pageSensorCaps = new BitSet().set(CoreCapabilityBits.PageSensor);
-  register(fnCurrentPage.fnId, CoreTypeIds.String, {
+  register(fnCurrentPage.fnId, fnCurrentPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
   });
-  register(fnPreviousPage.fnId, CoreTypeIds.String, {
+  register(fnPreviousPage.fnId, fnPreviousPage.descriptor, {
     placement: TilePlacement.EitherSide | TilePlacement.Inline,
     capabilities: pageSensorCaps,
   });

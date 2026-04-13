@@ -15,6 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTileEditor } from "./BrainTileEditor";
 import { BrainTilePickerDialog } from "./BrainTilePickerDialog";
 import { CreateLiteralDialog } from "./CreateLiteralDialog";
@@ -102,6 +103,7 @@ export function BrainRuleEditor({
   updateCounter,
   commandHistory,
 }: BrainRuleEditorProps) {
+  const { brainServices, tileCatalogs } = useBrainEditorConfig();
   const [canMoveUp, setCanMoveUp] = useState(ruleDef.canMoveUp());
   const [canMoveDown, setCanMoveDown] = useState(ruleDef.canMoveDown());
   const [canIndent, setCanIndent] = useState(ruleDef.canIndent());
@@ -237,7 +239,7 @@ export function BrainRuleEditor({
   };
 
   const handlePasteRuleAbove = () => {
-    const command = new PasteRuleAboveCommand(ruleDef);
+    const command = new PasteRuleAboveCommand(ruleDef, tileCatalogs, brainServices);
     commandHistory.executeCommand(command);
   };
 

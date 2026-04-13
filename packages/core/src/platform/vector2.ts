@@ -18,6 +18,7 @@ export declare interface Vector2 {
   mul(this: Vector2, other: Vector2 | number): Vector2;
   div(this: Vector2, other: Vector2 | number): Vector2;
   idiv(this: Vector2, other: Vector2 | number): Vector2;
+  rotate(this: Vector2, angle: number): Vector2;
 }
 
 export declare interface Vector2Constructor {

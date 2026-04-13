@@ -5,7 +5,7 @@
  * application-specific data injected into the ExecutionContext.
  */
 
-import { type ExecutionContext, isNumberValue } from "@mindcraft-lang/core/brain";
+import { type ExecutionContext, isNumberValue } from "@mindcraft-lang/core/app";
 import type { Actor } from "./actor";
 
 /**

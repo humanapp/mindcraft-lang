@@ -1,7 +1,5 @@
 import { Error } from "../../platform/error";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
-import { fourCC } from "../../primitives";
 import {
   type BrainTileDefCreateOptions,
   CoreTypeIds,
@@ -13,7 +11,7 @@ import {
   TilePlacement,
   type TypeId,
 } from "../interfaces";
-import { BrainTileDefBase, BrainTileDefBase_deserializeHeader } from "../model/tiledef";
+import { BrainTileDefBase } from "../model/tiledef";
 
 export interface VariableTileJson {
   version: number;
@@ -24,15 +22,11 @@ export interface VariableTileJson {
   uniqueId: string;
 }
 
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 import { BrainTileFactoryDef } from "./factories";
 
-// Current serialization version -- shared by both binary and JSON codepaths.
+// Current serialization version.
 const kVersion = 1;
-
-const STags = {
-  BVAR: fourCC("BVAR"), // Brain variable tile chunk
-};
 
 export class BrainTileVariableDef extends BrainTileDefBase {
   readonly kind = "variable";
@@ -55,7 +49,7 @@ export class BrainTileVariableDef extends BrainTileDefBase {
     this.uniqueId = uniqueId;
   }
 
-  // -- JSON serialization (parallel to binary below) -------------------------
+  // -- JSON serialization ----------------------------------------------------
 
   toJson(): VariableTileJson {
     return {
@@ -68,73 +62,38 @@ export class BrainTileVariableDef extends BrainTileDefBase {
     };
   }
 
-  static fromJson(json: VariableTileJson, catalog: ITileCatalog): BrainTileVariableDef {
+  static fromJson(json: VariableTileJson, catalog: ITileCatalog, _services?: BrainServices): BrainTileVariableDef {
     if (json.version !== kVersion) {
       throw new Error(`BrainTileVariableDef.fromJson: unsupported version ${json.version}`);
     }
     if (catalog.has(json.tileId)) return catalog.get(json.tileId) as BrainTileVariableDef;
-    const tileDef = getBrainServices().tileBuilder.createVariableTileDef(
-      json.tileId,
-      json.varName,
-      json.varType as TypeId,
-      json.uniqueId,
-      {}
-    );
+    const tileDef = new BrainTileVariableDef(json.tileId, json.varName, json.varType as TypeId, json.uniqueId, {});
     catalog.registerTileDef(tileDef);
     return tileDef as BrainTileVariableDef;
   }
-
-  // -- Binary serialization ---------------------------------------------------
-
-  serialize(stream: IWriteStream): void {
-    super.serialize(stream);
-    stream.pushChunk(STags.BVAR, kVersion);
-    stream.writeString(this.varName);
-    stream.writeString(this.varType);
-    stream.writeString(this.uniqueId);
-    stream.popChunk();
-  }
 }
 
-export function BrainTileVariableDef_deserialize(stream: IReadStream, catalog: ITileCatalog): BrainTileVariableDef {
-  const { kind, tileId } = BrainTileDefBase_deserializeHeader(stream);
-  if (kind !== "variable") {
-    throw new Error(`BrainTileVariableDef.deserialize: invalid kind ${kind}`);
-  }
-  const version = stream.enterChunk(STags.BVAR);
-  if (version !== kVersion) {
-    throw new Error(`BrainTileVariableDef.deserialize: unsupported version ${version}`);
-  }
-  const varName = stream.readString();
-  const varType = stream.readString();
-  const uniqueId = stream.readString();
-  stream.leaveChunk();
-  let tileDef = catalog.get(tileId) as BrainTileVariableDef | undefined;
-  if (tileDef && tileDef.kind === "variable") {
-    // validate var matches
-    if (tileDef.varName !== varName || tileDef.varType !== varType || tileDef.uniqueId !== uniqueId) {
-      throw new Error(`BrainTileVariableDef.deserialize: variable definition mismatch for tileId ${tileId}`);
-    }
-    return tileDef as BrainTileVariableDef;
-  }
-  tileDef = new BrainTileVariableDef(tileId, varName, varType, uniqueId);
-  catalog.registerTileDef(tileDef);
-  return tileDef;
-}
-
-export function registerVariableFactoryTileDef(
+export function createVariableFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
   opts: BrainTileDefCreateOptions = {}
-) {
-  const tileDef = new BrainTileFactoryDef(
+): BrainTileFactoryDef {
+  return new BrainTileFactoryDef(
     mkVariableFactoryTileId(factoryId),
     factoryId,
     manufactureVarTileDef,
     producedDataType,
     opts
   );
-  getBrainServices().tiles.registerTileDef(tileDef);
+}
+
+export function registerVariableFactoryTileDef(
+  factoryId: string,
+  producedDataType: TypeId,
+  opts: BrainTileDefCreateOptions = {},
+  services: BrainServices
+) {
+  services.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts));
 }
 
 function manufactureVarTileDef(
@@ -148,8 +107,8 @@ function manufactureVarTileDef(
   return tileDef;
 }
 
-export function registerCoreVariableFactoryTileDefs() {
-  registerVariableFactoryTileDef(CoreVariableFactoryId.Boolean, CoreTypeIds.Boolean);
-  registerVariableFactoryTileDef(CoreVariableFactoryId.Number, CoreTypeIds.Number);
-  registerVariableFactoryTileDef(CoreVariableFactoryId.String, CoreTypeIds.String);
+export function registerCoreVariableFactoryTileDefs(services: BrainServices) {
+  registerVariableFactoryTileDef(CoreVariableFactoryId.Boolean, CoreTypeIds.Boolean, {}, services);
+  registerVariableFactoryTileDef(CoreVariableFactoryId.Number, CoreTypeIds.Number, {}, services);
+  registerVariableFactoryTileDef(CoreVariableFactoryId.String, CoreTypeIds.String, {}, services);
 }

@@ -1,6 +1,11 @@
 import { List, type ReadonlyList } from "../../platform/list";
-import { type BrainActionArgSlot, CoreTypeNames, type IBrainTileDef, type ITileCatalog } from "../interfaces";
-import { getBrainServices } from "../services";
+import {
+  type BrainActionArgSlot,
+  CoreTypeNames,
+  type IBrainTileDef,
+  type IConversionRegistry,
+  type ITileCatalog,
+} from "../interfaces";
 import type { BrainTileParameterDef } from "../tiles";
 import { TypeDiagCode } from "./diag-codes";
 import type {
@@ -23,11 +28,15 @@ import { acceptExprVisitor, type TypeEnv, type TypeInfo, type TypeInfoDiag } fro
 
 class InferredTypeVisitor implements ExprVisitor<void> {
   diags = List.empty<TypeInfoDiag>();
+  private readonly conversions: IConversionRegistry;
 
   constructor(
     private readonly catalogs: ReadonlyList<ITileCatalog>,
-    private readonly env: TypeEnv
-  ) {}
+    private readonly env: TypeEnv,
+    conversions: IConversionRegistry
+  ) {
+    this.conversions = conversions;
+  }
 
   private ensureTypeInfo(nodeId: number): TypeInfo {
     let typeInfo = this.env.get(nodeId);
@@ -118,7 +127,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
     } else if (typeInfo.inferred !== slotTileType) {
       // Non-choice slot: try conversion before reporting mismatch
-      const convPath = getBrainServices().conversions.findBestPath(typeInfo.inferred, slotTileType, 1);
+      const convPath = this.conversions.findBestPath(typeInfo.inferred, slotTileType, 1);
       if (convPath && convPath.size() > 0) {
         const conversion = convPath.get(0);
         typeInfo.conversion = conversion;
@@ -157,7 +166,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
 
       // Try converting right operand to match left
-      const rightToLeftConv = getBrainServices().conversions.findBestPath(rightType, leftType, 1);
+      const rightToLeftConv = this.conversions.findBestPath(rightType, leftType, 1);
       if (rightToLeftConv?.size()) {
         const conversion = rightToLeftConv.get(0);
         typeInfo.overload = expr.operator.op.get([leftType, leftType]);
@@ -175,7 +184,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       }
 
       // Try converting left operand to match right
-      const leftToRightConv = getBrainServices().conversions.findBestPath(leftType, rightType, 1);
+      const leftToRightConv = this.conversions.findBestPath(leftType, rightType, 1);
       if (leftToRightConv?.size()) {
         const conversion = leftToRightConv.get(0);
         typeInfo.overload = expr.operator.op.get([rightType, rightType]);
@@ -223,7 +232,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
       for (const targetType of commonTypes) {
         if (targetType === operandType) continue; // Already tried
 
-        const conversionPath = getBrainServices().conversions.findBestPath(operandType, targetType, 1);
+        const conversionPath = this.conversions.findBestPath(operandType, targetType, 1);
         if (conversionPath?.size()) {
           const conversion = conversionPath.get(0);
           typeInfo.overload = expr.operator.op.get([targetType]);
@@ -310,8 +319,7 @@ class InferredTypeVisitor implements ExprVisitor<void> {
   visitActuator(expr: ActuatorExpr): void {
     const typeInfo = this.ensureTypeInfo(expr.nodeId);
     typeInfo.inferred = CoreTypeNames.Void;
-    const fnEntry = expr.tileDef.fnEntry;
-    const callDef = fnEntry.callDef;
+    const callDef = expr.tileDef.action.callDef;
     const argSlots = callDef.argSlots;
     expr.anons.forEach((e) => {
       acceptExprVisitor(e.expr, this);
@@ -332,9 +340,8 @@ class InferredTypeVisitor implements ExprVisitor<void> {
 
   visitSensor(expr: SensorExpr): void {
     const typeInfo = this.ensureTypeInfo(expr.nodeId);
-    typeInfo.inferred = expr.tileDef.outputType;
-    const fnEntry = expr.tileDef.fnEntry;
-    const callDef = fnEntry.callDef;
+    typeInfo.inferred = expr.tileDef.action.outputType ?? CoreTypeNames.Unknown;
+    const callDef = expr.tileDef.action.callDef;
     const argSlots = callDef.argSlots;
     expr.anons.forEach((e) => {
       acceptExprVisitor(e.expr, this);
@@ -389,9 +396,10 @@ class InferredTypeVisitor implements ExprVisitor<void> {
 export function computeInferredTypes(
   expr: Expr,
   catalogs: ReadonlyList<ITileCatalog>,
-  env: TypeEnv
+  env: TypeEnv,
+  conversions: IConversionRegistry
 ): List<TypeInfoDiag> {
-  const visitor = new InferredTypeVisitor(catalogs, env);
+  const visitor = new InferredTypeVisitor(catalogs, env, conversions);
   acceptExprVisitor(expr, visitor);
   return visitor.diags;
 }

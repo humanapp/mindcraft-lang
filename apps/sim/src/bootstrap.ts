@@ -1,10 +1,11 @@
-import { LogLevel, logger } from "@mindcraft-lang/core";
-import { registerCoreBrainComponents } from "@mindcraft-lang/core/brain";
-import { setTileVisualProvider } from "@mindcraft-lang/core/brain/tiles";
-import { initCompiler } from "@mindcraft-lang/typescript";
+import { LogLevel, logger } from "@mindcraft-lang/core/app";
 import { enableClipboardLogging } from "@mindcraft-lang/ui";
-import { registerBrainComponents } from "@/brain";
-import { genVisualForTile } from "./brain/tiles/visual-provider";
+import { initBrainRuntime } from "./services/brain-runtime";
+import { SimEnvironmentStore } from "./services/sim-environment-store";
+import { hydrateUserTilesAtStartup } from "./services/user-tile-registration";
+import { initVfsServiceWorker } from "./services/vfs-service-worker";
+import { initProject } from "./services/vscode-bridge";
+import { initWorkspaceStore } from "./services/workspace-store";
 
 enableClipboardLogging(true);
 
@@ -14,13 +15,16 @@ enableClipboardLogging(true);
 logger.level = LogLevel.DEBUG;
 
 // ----------------------------------------------------
-// Register brain components
+// Create the canonical environment store
 
-setTileVisualProvider(genVisualForTile);
-registerCoreBrainComponents();
-registerBrainComponents();
+const workspace = initWorkspaceStore();
+export const simStore = new SimEnvironmentStore(workspace);
+
+initBrainRuntime(simStore.env);
+hydrateUserTilesAtStartup(simStore);
+initVfsServiceWorker(simStore);
 
 // ----------------------------------------------------
-// Preload TypeScript compiler lib files in the background
+// Initialize project and compile user tiles
 
-initCompiler();
+initProject(simStore);

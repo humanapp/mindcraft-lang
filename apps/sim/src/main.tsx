@@ -5,7 +5,8 @@ import DocsPage from "./DocsPage.tsx";
 import "./globals.css";
 
 // Initialize services and core functionality
-import "./bootstrap";
+import { simStore } from "./bootstrap";
+import { SimEnvironmentProvider } from "./contexts/sim-environment";
 
 // React 19 dev mode calls performance.measure() on every render/commit and
 // never clears the entries, leaking PerformanceMeasure objects indefinitely.
@@ -19,5 +20,9 @@ const root = document.getElementById("root");
 if (!root) throw new Error("Failed to find the root element");
 
 ReactDOM.createRoot(root).render(
-  <React.StrictMode>{window.location.pathname.startsWith("/docs") ? <DocsPage /> : <App />}</React.StrictMode>
+  <React.StrictMode>
+    <SimEnvironmentProvider value={simStore}>
+      {window.location.pathname.startsWith("/docs") ? <DocsPage /> : <App />}
+    </SimEnvironmentProvider>
+  </React.StrictMode>
 );

@@ -16,6 +16,7 @@ export * from "./parameters";
 export * from "./sensors";
 export * from "./variables";
 
+import type { BrainServices } from "../services";
 import { registerCoreActuatorTileDefs } from "./actuators";
 import { registerCoreControlFlowTileDefs } from "./controlflow";
 import { registerCoreLiteralFactoryTileDefs } from "./literals";
@@ -24,12 +25,12 @@ import { registerCoreParameterTileDefs } from "./parameters";
 import { registerCoreSensorTileDefs } from "./sensors";
 import { registerCoreVariableFactoryTileDefs } from "./variables";
 
-export function registerCoreTileComponents() {
-  registerCoreOperatorTileDefs();
-  registerCoreControlFlowTileDefs();
-  registerCoreVariableFactoryTileDefs();
-  registerCoreLiteralFactoryTileDefs();
-  registerCoreParameterTileDefs();
-  registerCoreActuatorTileDefs();
-  registerCoreSensorTileDefs();
+export function registerCoreTileComponents(services: BrainServices) {
+  registerCoreOperatorTileDefs(services);
+  registerCoreControlFlowTileDefs(services);
+  registerCoreVariableFactoryTileDefs(services);
+  registerCoreLiteralFactoryTileDefs(services);
+  registerCoreParameterTileDefs(services);
+  registerCoreActuatorTileDefs(services);
+  registerCoreSensorTileDefs(services);
 }

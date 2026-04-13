@@ -22,7 +22,6 @@
     "noFallthroughCasesInSwitch": true,
 
     /* Path mapping */
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@mindcraft-lang/docs": ["../../packages/docs/src/index.ts"],
@@ -31,6 +30,5 @@
       "@mindcraft-lang/ui/*": ["../../packages/ui/src/*"]
     }
   },
-  "include": ["src"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["src"]
 }

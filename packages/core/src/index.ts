@@ -3,6 +3,36 @@ import { Vector2 } from "./platform/vector2";
 export const CORE_PLACEHOLDER = "testing symbol export";
 
 export * as brain from "./brain";
+export type {
+  ActionBundleUpdate,
+  BrainInvalidationEvent,
+  CompiledActionArtifact,
+  CompiledActionBundle,
+  ConversionDefinition,
+  CreateBrainOptions,
+  CreateHostActuatorOptions,
+  CreateHostSensorOptions,
+  HostActuatorDefinition,
+  HostFunctionDefinition,
+  HostSensorDefinition,
+  HydratedTileMetadataSnapshot,
+  MindcraftBrain,
+  MindcraftCatalog,
+  MindcraftEnvironment,
+  MindcraftModule,
+  MindcraftModuleApi,
+  MindcraftTypeDefinition,
+  OperatorDefinition,
+  OperatorOverloadDefinition,
+  TileDefinitionInput,
+} from "./mindcraft";
+export {
+  coreModule,
+  createHostActuator,
+  createHostSensor,
+  createMindcraftEnvironment,
+  withMindcraftEnvironmentServices,
+} from "./mindcraft";
 export { Dict } from "./platform/dict";
 export { Error } from "./platform/error";
 // Platform utilities
@@ -11,8 +41,6 @@ export type { LogEntry, Logger } from "./platform/logger";
 export { createLogger, LogLevel, logger } from "./platform/logger";
 export { MathOps } from "./platform/math";
 export * as stream from "./platform/stream";
-// Stream utilities (also available via stream namespace)
-export { byteArrayFromUint8Array, byteArrayToUint8Array } from "./platform/stream";
 export { StringUtils } from "./platform/string";
 export { task, thread } from "./platform/task";
 export { TypeUtils } from "./platform/types";

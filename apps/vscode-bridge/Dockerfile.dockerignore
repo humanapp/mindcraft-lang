@@ -1,0 +1,14 @@
+*
+
+!packages/bridge-protocol/package.json
+!packages/bridge-protocol/tsconfig.json
+!packages/bridge-protocol/src
+
+!packages/bridge-client/package.json
+!packages/bridge-client/tsconfig.json
+!packages/bridge-client/src
+
+!apps/vscode-bridge/package.json
+!apps/vscode-bridge/tsconfig.json
+!apps/vscode-bridge/tsconfig.base.json
+!apps/vscode-bridge/src

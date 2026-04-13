@@ -1,5 +1,4 @@
-import { BitSet } from "@mindcraft-lang/core";
-import { APP_CAPABILITY_BIT_OFFSET } from "@mindcraft-lang/core/brain";
+import { APP_CAPABILITY_BIT_OFFSET, BitSet } from "@mindcraft-lang/core/app";
 
 export const TileIds = {
   Modifier: {
@@ -26,7 +25,8 @@ export const TileIds = {
     Slowly: "modifier.slowly",
   } as const,
   Parameter: {
-    AnonymousActorRef: "anon.actorRef",
+    AnonymousActorRef: "anon.ActorRef",
+    AnonymousVector2: "anon.Vector2",
     DelayMs: "parameter.delay.ms",
     Duration: "parameter.duration",
     Priority: "parameter.priority",

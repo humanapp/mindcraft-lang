@@ -8,20 +8,62 @@ import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   CoreParameterId,
   CoreTypeIds,
-  getBrainServices,
+  type EnumSymbolDef,
+  type EnumValue,
+  type ExecutionContext,
+  mkActionDescriptor,
   mkCallDef,
+  NativeType,
+  type NumberValue,
   param,
-  registerCoreBrainComponents,
+  type StringValue,
+  ValueDict,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
 import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 
+let services: BrainServices;
+
 before(() => {
-  registerCoreBrainComponents();
+  services = __test__createBrainServices();
 });
+
+function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
+  const registry = services.types;
+  const existing = registry.resolveByName(name);
+  if (existing) {
+    return existing;
+  }
+  return registry.addEnumType(name, { symbols, defaultKey });
+}
+
+function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+  return {
+    brain: undefined as never,
+    getVariable: () => undefined,
+    setVariable: () => {},
+    clearVariable: () => {},
+    time: 0,
+    dt: 0,
+    currentTick: 0,
+    ...overrides,
+  };
+}
+
+function execEnumConversion(fromType: string, toType: string, input: EnumValue) {
+  const conversion = services.conversions.get(fromType, toType);
+  assert.ok(conversion, `Expected conversion ${fromType} -> ${toType}`);
+
+  const args = new ValueDict();
+  args.set(0, input);
+
+  return conversion.fn.exec(mkCtx(), { t: NativeType.Map, typeId: "", v: args });
+}
 
 function testConversion(
   label: string,
@@ -33,21 +75,16 @@ function testConversion(
 ): void {
   test(label, () => {
     const actuatorId = `test.conv.${Date.now()}.${Math.random()}`;
-    const fnEntry = getBrainServices().functions.register(
-      actuatorId,
-      false,
-      { exec: () => VOID_VALUE },
-      actuatorCallDef
-    );
+    const fnEntry = services.functions.register(actuatorId, false, { exec: () => VOID_VALUE }, actuatorCallDef);
 
-    const sayTile = new BrainTileActuatorDef(actuatorId, fnEntry, {});
-    const literal = new BrainTileLiteralDef(literalType, literalValue);
+    const sayTile = new BrainTileActuatorDef(actuatorId, mkActionDescriptor("actuator", fnEntry), {});
+    const literal = new BrainTileLiteralDef(literalType, literalValue, {}, services);
 
     const tiles = List.from([sayTile as unknown, literal as unknown]) as List<never>;
     const emptyTiles = List.empty<never>();
-    const catalogs = List.from([getBrainServices().tiles]);
+    const catalogs = List.from([services.tiles]);
 
-    const result = parseRule(tiles, emptyTiles, catalogs);
+    const result = parseRule(tiles, emptyTiles, catalogs, services.conversions);
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "actuator", "Expected actuator expression");
@@ -132,4 +169,89 @@ describe("Conversion: action call arguments", () => {
     true,
     CoreTypeIds.Number
   );
+});
+
+describe("Conversion: enum values", () => {
+  test("string enum registers a direct enum-to-string conversion", () => {
+    const typeId = ensureEnumType(
+      "ConversionSpecStringEnum",
+      List.from([
+        { key: "On", label: "On", value: "on" },
+        { key: "Off", label: "Off", value: "off" },
+      ]),
+      "On"
+    );
+
+    const path = services.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    assert.ok(path);
+    assert.equal(path.size(), 1);
+
+    const result = execEnumConversion(typeId, CoreTypeIds.String, {
+      t: NativeType.Enum,
+      typeId,
+      v: "On",
+    });
+
+    assert.equal(result.t, NativeType.String);
+    assert.equal((result as StringValue).v, "on");
+  });
+
+  test("numeric enum registers direct enum-to-number and enum-to-string conversions", () => {
+    const typeId = ensureEnumType(
+      "ConversionSpecNumericEnum",
+      List.from([
+        { key: "Up", label: "Up", value: 0 },
+        { key: "Down", label: "Down", value: 1 },
+      ]),
+      "Up"
+    );
+
+    const numberPath = services.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+    assert.ok(numberPath);
+    assert.equal(numberPath.size(), 1);
+
+    const stringPath = services.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    assert.ok(stringPath);
+    assert.equal(stringPath.size(), 1);
+
+    const numberResult = execEnumConversion(typeId, CoreTypeIds.Number, {
+      t: NativeType.Enum,
+      typeId,
+      v: "Up",
+    });
+    assert.equal(numberResult.t, NativeType.Number);
+    assert.equal((numberResult as NumberValue).v, 0);
+
+    const stringResult = execEnumConversion(typeId, CoreTypeIds.String, {
+      t: NativeType.Enum,
+      typeId,
+      v: "Down",
+    });
+    assert.equal(stringResult.t, NativeType.String);
+    assert.equal((stringResult as StringValue).v, "1");
+  });
+
+  test("string enum does not expose enum-to-number conversion", () => {
+    const typeId = ensureEnumType(
+      "ConversionSpecNoNumericEnum",
+      List.from([
+        { key: "North", label: "North", value: "north" },
+        { key: "South", label: "South", value: "south" },
+      ]),
+      "North"
+    );
+
+    const path = services.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+    assert.equal(path, undefined);
+  });
+
+  test("empty enums do not expose enum conversions", () => {
+    const typeId = ensureEnumType("ConversionSpecEmptyEnum", List.empty<EnumSymbolDef>());
+
+    const stringPath = services.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    const numberPath = services.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+
+    assert.equal(stringPath, undefined);
+    assert.equal(numberPath, undefined);
+  });
 });

@@ -116,13 +116,13 @@ export const appTileDocs: readonly AppTileDocMeta[] = [
 
   // -- Variables: app-type variable factories --------------------------------
   {
-    tileId: "tile.var.factory->struct:<vector2>",
+    tileId: "tile.var.factory->struct:<Vector2>",
     tags: ["variables", "vector2", "position", "factory"],
     category: "Variables",
     contentKey: "var-factory-vector2",
   },
   {
-    tileId: "tile.var.factory->struct:<actorRef>",
+    tileId: "tile.var.factory->struct:<ActorRef>",
     tags: ["variables", "actor", "reference", "factory"],
     category: "Variables",
     contentKey: "var-factory-actorRef",
@@ -130,13 +130,13 @@ export const appTileDocs: readonly AppTileDocMeta[] = [
 
   // -- Accessors: Vector2 fields ---------------------------------------------
   {
-    tileId: "tile.accessor->struct:<vector2>->x",
+    tileId: "tile.accessor->struct:<Vector2>->x",
     tags: ["accessor", "vector2", "x", "position"],
     category: "Accessors",
     contentKey: "accessor-vector2-x",
   },
   {
-    tileId: "tile.accessor->struct:<vector2>->y",
+    tileId: "tile.accessor->struct:<Vector2>->y",
     tags: ["accessor", "vector2", "y", "position"],
     category: "Accessors",
     contentKey: "accessor-vector2-y",
@@ -144,19 +144,19 @@ export const appTileDocs: readonly AppTileDocMeta[] = [
 
   // -- Accessors: ActorRef fields --------------------------------------------
   {
-    tileId: "tile.accessor->struct:<actorRef>->id",
+    tileId: "tile.accessor->struct:<ActorRef>->id",
     tags: ["accessor", "actor", "id", "identity"],
     category: "Accessors",
     contentKey: "accessor-actorRef-id",
   },
   {
-    tileId: "tile.accessor->struct:<actorRef>->position",
+    tileId: "tile.accessor->struct:<ActorRef>->position",
     tags: ["accessor", "actor", "position", "location"],
     category: "Accessors",
     contentKey: "accessor-actorRef-position",
   },
   {
-    tileId: "tile.accessor->struct:<actorRef>->energy pct",
+    tileId: "tile.accessor->struct:<ActorRef>->energy pct",
     tags: ["accessor", "actor", "energy", "health"],
     category: "Accessors",
     contentKey: "accessor-actorRef-energy-pct",
@@ -164,13 +164,13 @@ export const appTileDocs: readonly AppTileDocMeta[] = [
 
   // -- Literals: actor references --------------------------------------------
   {
-    tileId: "tile.literal->struct:<actorRef>->me",
+    tileId: "tile.literal->struct:<ActorRef>->me",
     tags: ["literal", "actor", "self", "reference"],
     category: "Literals",
     contentKey: "literal-me",
   },
   {
-    tileId: "tile.literal->struct:<actorRef>->it",
+    tileId: "tile.literal->struct:<ActorRef>->it",
     tags: ["literal", "actor", "target", "reference"],
     category: "Literals",
     contentKey: "literal-it",

@@ -1,6 +1,6 @@
 # lib.d.ts Evaluation for Mindcraft TypeScript Compiler
 
-The `packages/typescript` project currently bundles three TypeScript lib files into
+The `packages/ts-compiler` project currently bundles three TypeScript lib files into
 `lib-dts.generated.ts` for injection into the authoring environment:
 
 - `lib.es5.d.ts` (4585 lines)

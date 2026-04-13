@@ -2181,8 +2181,8 @@
         {
           "version": 1,
           "when": [
-            "tile.literal->struct:<actorRef>->me",
-            "tile.accessor->struct:<actorRef>->energy pct",
+            "tile.literal->struct:<ActorRef>->me",
+            "tile.accessor->struct:<ActorRef>->energy pct",
             "tile.op->lt",
             "tile.literal->number:<number>->0.75[percent]"
           ],

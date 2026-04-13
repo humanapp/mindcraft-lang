@@ -1,29 +1,29 @@
 import { Dict } from "../../platform/dict";
-import type { List } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import type { UniqueSet } from "../../platform/uniqueset";
 import type { EventEmitterConsumer } from "../../util";
+import type { ITileCatalog } from "./catalog";
+import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./functions";
 import type { TileId } from "./tiles";
-import type { FunctionBytecode, Value } from "./vm";
+import type { TypeId } from "./type-system";
+import type { HandleId, MapValue, Program, Value } from "./vm";
+import { NIL_VALUE } from "./vm";
+
+export interface ActionRef {
+  slot: number;
+  key: ActionKey;
+}
+
+export interface ActionCallSiteEntry {
+  actionSlot: number;
+  callSiteId: number;
+}
+
 /**
  * Extended Program interface for compiled brains. Adds rule-to-function mapping
  * and page metadata.
  */
-export interface BrainProgram {
-  /** Bytecode version for compatibility checking */
-  version: number;
-
-  /** All functions in the program (one per rule) */
-  functions: List<FunctionBytecode>;
-
-  /** Shared constant pool across all rules */
-  constants: List<Value>;
-
-  /** Named variable identifiers for cross-context variable access */
-  variableNames: List<string>;
-
-  /** Entry point function ID (main orchestrator, or first page's first rule) */
-  entryPoint: number;
-
+export interface UnlinkedBrainProgram extends Program {
   /**
    * Mapping from rule path to function ID.
    *
@@ -33,19 +33,76 @@ export interface BrainProgram {
   ruleIndex: Dict<string, number>;
 
   /**
+   * Program-local action slots referenced by ACTION_CALL instructions.
+   */
+  actionRefs: List<ActionRef>;
+
+  /**
    * Page metadata for page-switching logic. Each page entry contains the
    * function IDs of its root rules.
    */
   pages: List<PageMetadata>;
 }
 
-/**
- * A HOST_CALL / HOST_CALL_ASYNC call site recorded during compilation. Used to
- * notify host functions via onPageEntered when a page is activated.
- */
-export interface HostCallSiteEntry {
-  fnId: number;
-  callSiteId: number;
+export type BrainProgram = UnlinkedBrainProgram;
+
+export interface HostActionBinding {
+  binding: "host";
+  descriptor: ActionDescriptor;
+  onPageEntered?: (ctx: ExecutionContext) => void;
+  execSync?: (ctx: ExecutionContext, args: MapValue) => Value;
+  execAsync?: (ctx: ExecutionContext, args: MapValue, handleId: HandleId) => void;
+}
+
+export interface UserActionArtifact extends Program {
+  key: ActionKey;
+  kind: ActionKind;
+  callDef: BrainActionCallDef;
+  outputType?: TypeId;
+  isAsync: boolean;
+  numStateSlots: number;
+  entryFuncId: number;
+  activationFuncId?: number;
+  revisionId: string;
+}
+
+export interface BytecodeResolvedAction {
+  binding: "bytecode";
+  descriptor: ActionDescriptor;
+  artifact: UserActionArtifact;
+}
+
+export type ResolvedAction = HostActionBinding | BytecodeResolvedAction;
+
+export interface BytecodeExecutableAction {
+  binding: "bytecode";
+  descriptor: ActionDescriptor;
+  entryFuncId: number;
+  activationFuncId?: number;
+  numStateSlots: number;
+}
+
+export type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
+
+export interface ExecutableBrainProgram extends Program {
+  ruleIndex: Dict<string, number>;
+  pages: List<PageMetadata>;
+  actions: List<ExecutableAction>;
+}
+
+export interface BrainActionResolver {
+  resolveAction(descriptor: ActionDescriptor): ResolvedAction | undefined;
+}
+
+export interface IBrainActionRegistry extends BrainActionResolver {
+  register(action: ResolvedAction): ResolvedAction;
+  getByKey(key: ActionKey): ResolvedAction | undefined;
+  size(): number;
+}
+
+export interface BrainLinkEnvironment {
+  catalogs: ReadonlyList<ITileCatalog>;
+  actionResolver: BrainActionResolver;
 }
 
 export interface PageMetadata {
@@ -61,8 +118,8 @@ export interface PageMetadata {
   /** Function IDs of root-level rules in this page (in order) */
   rootRuleFuncIds: List<number>;
 
-  /** All HOST_CALL / HOST_CALL_ASYNC call sites in this page's rule tree */
-  hostCallSites: List<HostCallSiteEntry>;
+  /** All ACTION_CALL / ACTION_CALL_ASYNC call sites in this page's rule tree */
+  actionCallSites: List<ActionCallSiteEntry>;
 
   /** Unique sensor tile IDs referenced by rules in this page */
   sensors: UniqueSet<TileId>;
@@ -72,11 +129,20 @@ export interface PageMetadata {
 }
 
 /**
- * Per-call-site state storage for host functions.
- * Keyed by call-site ID (assigned at compile time).
- * Each host function can store arbitrary state that persists across ticks.
+ * Page-activation-scoped action-instance state.
+ *
+ * Bytecode-backed actions use `stateSlots` for LOAD_CALLSITE_VAR /
+ * STORE_CALLSITE_VAR. Host-backed actions store their opaque persistent payload
+ * in `hostState` via getCallSiteState()/setCallSiteState().
  */
-export type CallSiteStateMap = Dict<number, unknown>;
+export interface ActionInstance {
+  callSiteId: number;
+  stateSlots: List<Value>;
+  hostState?: unknown;
+}
+
+export type ActionInstanceMap = Dict<number, ActionInstance>;
+export type CallSiteStateMap = ActionInstanceMap;
 
 export type BrainEvents = {
   page_activated: { pageIndex: number };
@@ -101,7 +167,8 @@ export interface IBrain {
   startup(): void;
   shutdown(): void;
   think(currentTime: number): void;
-  getProgram(): BrainProgram | undefined;
+  getProgram(): ExecutableBrainProgram | undefined;
+  getCompiledProgram(): UnlinkedBrainProgram | undefined;
   rng(): number; // Returns a random number between 0 and 1.
   requestPageChange(pageIndex: number): void;
   requestPageChangeByPageId(pageId: string): void;
@@ -213,31 +280,36 @@ export interface ExecutionContext {
   data?: unknown;
 
   /**
-   * Per-call-site state storage for host functions.
-   * Each HOST_CALL instruction has a unique call-site ID assigned at compile time.
-   * Host functions can use this to persist state across ticks (e.g., cooldown timestamps).
-   *
-   * Initialized lazily on first use. Use getCallSiteState/setCallSiteState helpers.
+   * Page-activation-scoped action-instance storage keyed by action call-site ID.
+   * Runtime code binds the current action instance through `currentActionInstance`.
    */
   callSiteState?: CallSiteStateMap;
 
   /**
+   * The currently bound action instance for host-backed action execution or the
+   * current bytecode action frame chain.
+   */
+  currentActionInstance?: ActionInstance;
+
+  /**
    * Current call-site ID being executed.
-   * Set by the VM before invoking a host function via HOST_CALL/HOST_CALL_ASYNC.
+   * Set by the VM before invoking a host function via HOST_CALL/HOST_CALL_ASYNC
+   * or a host-backed action via ACTION_CALL/ACTION_CALL_ASYNC.
    * Host functions can use this with callSiteState to access per-call-site data.
    */
   currentCallSiteId?: number;
 
   /**
    * The BrainRule currently being executed. This provides access to rule-specific state
-   * and metadata. It is set by the VM before each HOST_CALL using the funcIdToRule mapping.
+   * and metadata. It is set by the VM before host-backed host or action calls using
+   * the funcIdToRule mapping.
    */
   rule?: IBrainRule;
 
   /**
    * Mapping from function ID to the IBrainRule that was compiled into that function.
    * Set by the Brain during initialization. Used by the VM to resolve ctx.rule
-   * before HOST_CALL instructions, based on the current frame's funcId.
+   * before host-backed host or action calls, based on the current frame's funcId.
    */
   funcIdToRule?: Dict<number, IBrainRule>;
 
@@ -257,12 +329,90 @@ export interface ExecutionContext {
   currentTick: number;
 }
 
+function createActionStateSlots(numStateSlots: number): List<Value> {
+  const stateSlots = List.empty<Value>();
+  for (let i = 0; i < numStateSlots; i++) {
+    stateSlots.push(NIL_VALUE);
+  }
+  return stateSlots;
+}
+
+function isActionInstance(value: unknown): value is ActionInstance {
+  if (!value) {
+    return false;
+  }
+
+  const maybeActionInstance = value as Partial<ActionInstance>;
+  return maybeActionInstance.callSiteId !== undefined && maybeActionInstance.stateSlots !== undefined;
+}
+
+export function getActionInstance(ctx: ExecutionContext, callSiteId: number): ActionInstance | undefined {
+  const rawValue = ctx.callSiteState?.get(callSiteId) as unknown;
+  if (rawValue === undefined) {
+    return undefined;
+  }
+
+  if (isActionInstance(rawValue)) {
+    return rawValue;
+  }
+
+  const actionInstance: ActionInstance = {
+    callSiteId,
+    stateSlots: List.empty<Value>(),
+    hostState: rawValue,
+  };
+  ctx.callSiteState!.set(callSiteId, actionInstance);
+  return actionInstance;
+}
+
+export function getOrCreateActionInstance(
+  ctx: ExecutionContext,
+  callSiteId: number,
+  numStateSlots: number
+): ActionInstance {
+  if (!ctx.callSiteState) {
+    ctx.callSiteState = new Dict<number, ActionInstance>();
+  }
+
+  const existing = getActionInstance(ctx, callSiteId);
+  if (existing) {
+    return existing;
+  }
+
+  const actionInstance: ActionInstance = {
+    callSiteId,
+    stateSlots: createActionStateSlots(numStateSlots),
+  };
+  ctx.callSiteState.set(callSiteId, actionInstance);
+  return actionInstance;
+}
+
+export function resetActionInstance(ctx: ExecutionContext, callSiteId: number, numStateSlots: number): ActionInstance {
+  if (!ctx.callSiteState) {
+    ctx.callSiteState = new Dict<number, ActionInstance>();
+  }
+
+  const existingHostState = getActionInstance(ctx, callSiteId)?.hostState;
+  const actionInstance: ActionInstance = {
+    callSiteId,
+    stateSlots: createActionStateSlots(numStateSlots),
+    ...(existingHostState !== undefined ? { hostState: existingHostState } : {}),
+  };
+  ctx.callSiteState.set(callSiteId, actionInstance);
+
+  if (ctx.currentCallSiteId === callSiteId) {
+    ctx.currentActionInstance = actionInstance;
+  }
+
+  return actionInstance;
+}
+
 // ============================================================================
 // Call-Site State Helper Functions
 // ============================================================================
 
 /**
- * Get the per-call-site state for the current HOST_CALL.
+ * Get the per-call-site state for the current host-backed call.
  * This allows host functions to persist state across ticks.
  *
  * @param ctx - The execution context
@@ -287,33 +437,33 @@ export interface ExecutionContext {
  * ```
  */
 export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
-  const callSiteId = ctx.currentCallSiteId;
-  if (callSiteId === undefined || !ctx.callSiteState) {
+  const actionInstance =
+    ctx.currentActionInstance ??
+    (ctx.currentCallSiteId !== undefined ? getActionInstance(ctx, ctx.currentCallSiteId) : undefined);
+  if (!actionInstance) {
     return undefined;
   }
-  if (!ctx.callSiteState.has(callSiteId)) {
-    return undefined;
-  }
-  return ctx.callSiteState.get(callSiteId) as T;
+  return actionInstance.hostState as T | undefined;
 }
 
 /**
- * Set the per-call-site state for the current HOST_CALL.
+ * Set the per-call-site state for the current host-backed call.
  * This allows host functions to persist state across ticks.
  *
  * @param ctx - The execution context
  * @param state - The state object to store
  */
 export function setCallSiteState<T>(ctx: ExecutionContext, state: T): void {
-  const callSiteId = ctx.currentCallSiteId;
-  if (callSiteId === undefined) {
-    return;
+  let actionInstance = ctx.currentActionInstance;
+  if (!actionInstance) {
+    const callSiteId = ctx.currentCallSiteId;
+    if (callSiteId === undefined) {
+      return;
+    }
+
+    actionInstance = getOrCreateActionInstance(ctx, callSiteId, 0);
+    ctx.currentActionInstance = actionInstance;
   }
 
-  // Lazy initialization of callSiteState map
-  if (!ctx.callSiteState) {
-    ctx.callSiteState = new Dict<number, unknown>();
-  }
-
-  ctx.callSiteState.set(callSiteId, state);
+  actionInstance.hostState = state;
 }

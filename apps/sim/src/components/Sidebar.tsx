@@ -1,11 +1,23 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
-import { Button, Slider } from "@mindcraft-lang/ui";
-import { BookOpen, Info } from "lucide-react";
-import { useRef, useState } from "react";
+import { Button, Slider, Switch } from "@mindcraft-lang/ui";
+import { BookOpen, Check, ChevronDown, ChevronRight, Copy, Info, Settings } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
+import { SettingsDialog } from "@/components/SettingsDialog";
+import { getAppSettings } from "@/services/app-settings";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
+import { getUiPreferences, updateUiPreferences } from "@/services/ui-preferences";
+import {
+  clearBindingToken,
+  connectBridge,
+  disconnectBridge,
+  getBridgeJoinCode,
+  getBridgeStatus,
+  onBridgeJoinCodeChange,
+  onBridgeStatusChange,
+} from "@/services/vscode-bridge";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",
@@ -38,6 +50,7 @@ export interface SidebarProps {
   onEditBrain: (archetype: Archetype) => void;
   onDesiredCountChange: (archetype: Archetype, count: number) => void;
   onToggleDebug: () => void;
+  debugEnabled: boolean;
   /** Whether the sidebar is open on mobile. Ignored on md+ screens. */
   isOpen?: boolean;
   /** Callback to close the sidebar on mobile. */
@@ -51,10 +64,27 @@ export function Sidebar({
   onEditBrain,
   onDesiredCountChange,
   onToggleDebug,
+  debugEnabled,
   isOpen,
   onClose,
 }: SidebarProps) {
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
+  const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>(
+    () => getUiPreferences().collapsedArchetypes
+  );
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [bridgeEnabled, setBridgeEnabled] = useState(() => getUiPreferences().bridgeEnabled);
+  const [bridgeStatus, setBridgeStatus] = useState(getBridgeStatus);
+  const [joinCode, setJoinCode] = useState(getBridgeJoinCode);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => onBridgeStatusChange(setBridgeStatus), []);
+  useEffect(() => onBridgeJoinCodeChange(setJoinCode), []);
+  useEffect(() => {
+    if (bridgeEnabled) {
+      connectBridge();
+    }
+  }, [bridgeEnabled]);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toggle: toggleDocs, isOpen: isDocsOpen, open: openDocs, navigateToEntry } = useDocsSidebar();
@@ -109,7 +139,23 @@ export function Sidebar({
         >
           <BookOpen className="h-4 w-4" aria-hidden="true" />
         </Button>
+        <Button
+          onClick={() => setSettingsOpen(true)}
+          variant="ghost"
+          size="sm"
+          className="h-7 w-7 p-0"
+          title="Settings"
+          aria-label="Open settings"
+        >
+          <Settings className="h-4 w-4" aria-hidden="true" />
+        </Button>
       </div>
+
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onBridgeDisabled={() => setBridgeEnabled(false)}
+      />
 
       <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {/* Header */}
@@ -149,6 +195,13 @@ export function Sidebar({
           const s = snapshot?.[arch];
           const avgLife = s && s.deaths > 0 ? s.totalLifespan / s.deaths : 0;
           const avgEnergy = s && s.aliveCount > 0 ? s.totalEnergy / s.aliveCount : 0;
+          const isCollapsed = collapsedArchetypes[arch] ?? false;
+          const toggleCollapsed = () =>
+            setCollapsedArchetypes((prev) => {
+              const next = { ...prev, [arch]: !prev[arch] };
+              updateUiPreferences({ collapsedArchetypes: next });
+              return next;
+            });
           return (
             // biome-ignore lint/a11y/useSemanticElements: fieldset would break layout; role="group" provides accessible grouping
             <div
@@ -159,6 +212,19 @@ export function Sidebar({
             >
               {/* Archetype header */}
               <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={toggleCollapsed}
+                  className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={isCollapsed ? `Expand ${ARCHETYPE_LABELS[arch]}` : `Collapse ${ARCHETYPE_LABELS[arch]}`}
+                  aria-expanded={!isCollapsed}
+                >
+                  {isCollapsed ? (
+                    <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
+                  )}
+                </button>
                 <img
                   src={`/assets/brain/icons/${arch}.svg`}
                   alt={`${ARCHETYPE_LABELS[arch]} icon`}
@@ -175,7 +241,7 @@ export function Sidebar({
               </div>
 
               {/* Stats */}
-              {s && (
+              {!isCollapsed && s && (
                 <div className="text-xs text-muted-foreground grid grid-cols-3 gap-1">
                   <div className="flex flex-col">
                     <abbr title="average lifespan" className="no-underline">
@@ -197,35 +263,39 @@ export function Sidebar({
               )}
 
               {/* Population slider */}
-              <div className="space-y-1">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-muted-foreground">Population</span>
-                  <span className="text-xs text-muted-foreground font-mono tabular-nums">{desiredCounts[arch]}</span>
+              {!isCollapsed && (
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs text-muted-foreground">Population</span>
+                    <span className="text-xs text-muted-foreground font-mono tabular-nums">{desiredCounts[arch]}</span>
+                  </div>
+                  <Slider
+                    value={[desiredCounts[arch]]}
+                    onValueChange={([value]) => updateDesiredCount(arch, value)}
+                    min={0}
+                    max={100}
+                    step={1}
+                    className="w-full"
+                    aria-label={`${ARCHETYPE_LABELS[arch]} population`}
+                  />
                 </div>
-                <Slider
-                  value={[desiredCounts[arch]]}
-                  onValueChange={([value]) => updateDesiredCount(arch, value)}
-                  min={0}
-                  max={100}
-                  step={1}
-                  className="w-full"
-                  aria-label={`${ARCHETYPE_LABELS[arch]} population`}
-                />
-              </div>
+              )}
 
               {/* Brain edit button */}
-              <Button
-                onClick={() => {
-                  onEditBrain(arch);
-                  onClose?.();
-                }}
-                variant="outline"
-                size="sm"
-                className="w-full h-7 text-xs border-slate-600"
-                aria-label={`Edit ${ARCHETYPE_LABELS[arch]} brain`}
-              >
-                Edit Brain
-              </Button>
+              {!isCollapsed && (
+                <Button
+                  onClick={() => {
+                    onEditBrain(arch);
+                    onClose?.();
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="w-full h-7 text-xs border-slate-600"
+                  aria-label={`Edit ${ARCHETYPE_LABELS[arch]} brain`}
+                >
+                  Edit Brain
+                </Button>
+              )}
             </div>
           );
         })}
@@ -240,16 +310,72 @@ export function Sidebar({
           </div>
         )}
 
+        {/* VS Code Bridge */}
+        {getAppSettings().showBridgePanel && (
+          <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
+            <div className="flex items-center justify-between">
+              <label htmlFor="bridge-toggle" className="text-sm font-medium">
+                VS Code Bridge
+              </label>
+              <Switch
+                id="bridge-toggle"
+                checked={bridgeEnabled}
+                onCheckedChange={(checked) => {
+                  setBridgeEnabled(checked);
+                  updateUiPreferences({ bridgeEnabled: checked });
+                  if (!checked) {
+                    disconnectBridge();
+                    clearBindingToken();
+                  }
+                }}
+                aria-label="Toggle VS Code bridge connection"
+              />
+            </div>
+            <span
+              className={`text-xs font-mono ${
+                bridgeStatus === "connected"
+                  ? "text-green-400"
+                  : bridgeStatus === "connecting" || bridgeStatus === "reconnecting"
+                    ? "text-yellow-400"
+                    : "text-muted-foreground"
+              }`}
+            >
+              {bridgeStatus}
+            </span>
+            {joinCode && (bridgeStatus === "connected" || bridgeStatus === "reconnecting") && (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-mono text-slate-300 truncate">{joinCode}</span>
+                <button
+                  type="button"
+                  className="shrink-0 p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
+                  aria-label="Copy join code"
+                  onClick={() => {
+                    navigator.clipboard.writeText(joinCode);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                  }}
+                >
+                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Debug toggle */}
-        <Button
-          onClick={onToggleDebug}
-          variant="outline"
-          size="sm"
-          className="w-full text-xs border-slate-600"
-          aria-label="Toggle debug overlay"
-        >
-          Toggle Debug
-        </Button>
+        <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
+          <div className="flex items-center justify-between">
+            <label htmlFor="debug-toggle" className="text-sm font-medium">
+              Debug Draw
+            </label>
+            <Switch
+              id="debug-toggle"
+              checked={debugEnabled}
+              onCheckedChange={onToggleDebug}
+              aria-label="Toggle debug overlay"
+            />
+          </div>
+        </div>
       </div>
 
       {/* GitHub link */}

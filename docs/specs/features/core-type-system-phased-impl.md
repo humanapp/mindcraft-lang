@@ -4,7 +4,7 @@ Companion to [core-type-system-evolution.md](core-type-system-evolution.md).
 See also [typescript-compiler-phased-impl.md](typescript-compiler-phased-impl.md) --
 Phase 12.1 (mixed-type lists via `Any` + `AnyList`) is the prerequisite for this work.
 Focused on `packages/core` type system infrastructure, with compiler integration in
-`packages/typescript` and `packages/core/src/brain/compiler/` as needed.
+`packages/ts-compiler` and `packages/core/src/brain/compiler/` as needed.
 
 ---
 
@@ -178,7 +178,7 @@ The TypeScript compiler should emit nullable `TypeId`s when a TS type is `T | nu
     5. Register and return.
   - Do not register any nullable types in `registerCoreTypes()` -- nullable types are
     created on demand by the compiler or app code.
-- `packages/typescript/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
   - Update `tsTypeToTypeId()`: currently strips `null`/`undefined` members and returns
     the non-null TypeId. Change to: if the TS type is `T | null` or `T | undefined`
     (exactly one non-null member), call `registry.addNullableType(baseTypeId)` and
@@ -187,7 +187,7 @@ The TypeScript compiler should emit nullable `TypeId`s when a TS type is `T | nu
   - Update `resolveListTypeId()`: if element type resolves to a nullable TypeId, look
     for a list type with that nullable element TypeId. If none exists, fall back to
     the generic constructor approach (Phase 2) or register on demand.
-- `packages/typescript/src/compiler/ambient.ts`
+- `packages/ts-compiler/src/compiler/ambient.ts`
   - Update `typeDefToTs()`: if `typeDef.nullable` is `true`, emit `BaseType | null`
     instead of just `BaseType`.
   - Update `MindcraftTypeMap` generation accordingly.
@@ -195,7 +195,7 @@ The TypeScript compiler should emit nullable `TypeId`s when a TS type is `T | nu
   - `packages/core/src/brain/runtime/type-system.spec.ts` (new or extend
     `vm.spec.ts`) -- test `NullableCodec` round-trip, test `addNullableType`
     registration, test idempotent re-registration.
-  - `packages/typescript/src/compiler/codegen.spec.ts` -- test that `T | null`
+  - `packages/ts-compiler/src/compiler/codegen.spec.ts` -- test that `T | null`
     parameter types compile correctly, test ambient generation includes `| null`.
 
 **Concrete deliverables:**
@@ -226,7 +226,7 @@ The TypeScript compiler should emit nullable `TypeId`s when a TS type is `T | nu
 - Test: `tsTypeToTypeId` returns `CoreTypeIds.Any` (not nullable) for
   `number | string | null` (multi-member non-null union).
 - Test: ambient output includes `| null` for nullable types.
-- `npm run check` passes in `packages/core` and `packages/typescript`.
+- `npm run check` passes in `packages/core` and `packages/ts-compiler`.
 - `npm run build:rbx` passes (Luau transpile compatibility).
 
 **Key risks:**
@@ -316,7 +316,7 @@ list types by element type.
     (e.g., `"list:<NumberList>"`). These are distinct TypeIds but the same shape.
     The TypeScript compiler should prefer `instantiate` for new code; existing
     explicit registrations remain valid.
-- `packages/typescript/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
   - Update `resolveListTypeId()`:
     1. Try alias-symbol lookup (unchanged -- named types like `NumberList`).
     2. If no alias, resolve element TypeId via `tsTypeToTypeId(elementType)`.
@@ -328,7 +328,7 @@ list types by element type.
        and `CoreTypeIds.Any` from Phase 12.1).
   - If map literal support exists (Phase 12b), update map type resolution similarly
     to use `registry.instantiate("Map", [valueTypeId])`.
-- `packages/typescript/src/compiler/ambient.ts`
+- `packages/ts-compiler/src/compiler/ambient.ts`
   - Update `typeDefToTs()` for auto-instantiated list/map types:
     - If the list type was instantiated (not explicitly named), emit
       `ReadonlyArray<ElementType>` inline rather than generating a named type alias.
@@ -343,7 +343,7 @@ list types by element type.
   - `packages/core/src/brain/runtime/type-system.spec.ts` (new or extend
     existing) -- test constructor registration, instantiation, memoization,
     backward compatibility with explicit `addListType`.
-  - `packages/typescript/src/compiler/codegen.spec.ts` -- test that
+  - `packages/ts-compiler/src/compiler/codegen.spec.ts` -- test that
     `Vector2[]` compiles without a pre-registered `Vector2List` type (auto-
     instantiation), test that `NumberList` alias still works.
 
@@ -379,7 +379,7 @@ list types by element type.
   pre-registered `Vector2List` needed).
 - Test: ambient generation for auto-instantiated types emits `ReadonlyArray<T>`
   inline rather than a named alias.
-- `npm run check` passes in `packages/core` and `packages/typescript`.
+- `npm run check` passes in `packages/core` and `packages/ts-compiler`.
 - `npm run build:rbx` passes.
 
 **Key risks:**
@@ -497,7 +497,7 @@ blunt `Any` fallback for multi-member unions: `number | string` becomes a precis
     9. Look up each member's def and codec.
     10. Create `UnionTypeDef` with `UnionCodec(memberCodecs, memberDefs)`.
     11. Register and return.
-- `packages/typescript/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
   - Update `tsTypeToTypeId()`: for multi-member non-null unions, instead of returning
     `CoreTypeIds.Any`, map each member via `tsTypeToTypeId`, then call
     `registry.getOrCreateUnionType(memberTypeIds)`. Return the union TypeId.
@@ -512,7 +512,7 @@ blunt `Any` fallback for multi-member unions: `number | string` becomes a precis
 [unionTypeId])` (from Phase 2) to create a `List<union>` type. This already
     works with the existing `instantiate` code path -- no special handling needed
     beyond ensuring `tsTypeToTypeId` returns the union TypeId.
-- `packages/typescript/src/compiler/ambient.ts`
+- `packages/ts-compiler/src/compiler/ambient.ts`
   - Update `typeDefToTs()` for `UnionTypeDef`: emit `MemberType1 | MemberType2 | ...`
     using recursive `typeDefToTs` for each member.
   - Update `MindcraftTypeMap` for union types: auto-instantiated union types (like
@@ -557,7 +557,7 @@ blunt `Any` fallback for multi-member unions: `number | string` becomes a precis
   via `expandTypeIdMembers` fallback.
 - Test: ambient output for a union type emits `number | string`.
 - Test: `[1, "hello"]` compiles to a list with a union element type, not `AnyList`.
-- `npm run check` passes in `packages/core` and `packages/typescript`.
+- `npm run check` passes in `packages/core` and `packages/ts-compiler`.
 - `npm run build:rbx` passes.
 
 **Key risks:**
@@ -612,9 +612,9 @@ runtime type narrowing for values retrieved from `AnyList` or union-typed contai
 - `packages/core/src/brain/compiler/emitter.ts`
   - Add `typeCheck(nativeType: NativeType)` method that emits
     `{ op: Op.TYPE_CHECK, a: nativeType }`.
-- `packages/typescript/src/compiler/ir.ts`
+- `packages/ts-compiler/src/compiler/ir.ts`
   - Add `IrTypeCheck` node: `{ kind: "TypeCheck"; nativeType: NativeType }`.
-- `packages/typescript/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
   - Detect `typeof x === "string"` patterns in binary expressions:
     - LHS is a `typeof` unary expression, RHS is a string literal.
     - Map the string literal to a `NativeType`: `"number"` -> `NativeType.Number`,
@@ -625,12 +625,12 @@ runtime type narrowing for values retrieved from `AnyList` or union-typed contai
     - The comparison operator (`===`, `!==`) wraps this: `===` keeps the boolean,
       `!==` follows with a `NOT`.
   - Also handle the reversed form: `"string" === typeof x`.
-- `packages/typescript/src/compiler/emit.ts`
+- `packages/ts-compiler/src/compiler/emit.ts`
   - Emit `IrTypeCheck` as `Op.TYPE_CHECK` with `a: nativeType`.
 - Test files:
   - `packages/core/src/brain/runtime/vm.spec.ts` -- test `TYPE_CHECK` opcode with
     each `NativeType`.
-  - `packages/typescript/src/compiler/codegen.spec.ts` -- test `typeof x === "number"`
+  - `packages/ts-compiler/src/compiler/codegen.spec.ts` -- test `typeof x === "number"`
     compiles and runs correctly, test `typeof x !== "string"`, test reversed form.
 
 **Concrete deliverables:**
@@ -662,7 +662,7 @@ runtime type narrowing for values retrieved from `AnyList` or union-typed contai
   ```
 - Test: `typeof x === "object"` maps to an appropriate `NativeType` (decide whether
   this maps to `Struct`, or is unsupported with a diagnostic).
-- `npm run check` passes in `packages/core` and `packages/typescript`.
+- `npm run check` passes in `packages/core` and `packages/ts-compiler`.
 - `npm run build:rbx` passes.
 
 **Key risks:**
@@ -752,29 +752,29 @@ named functions can be passed as references. Arrow functions and closures are Ph
     typed def.
   - Add `addFunctionType(name: string): TypeId` to `ITypeRegistry` and
     `TypeRegistry`.
-- `packages/typescript/src/compiler/ir.ts`
+- `packages/ts-compiler/src/compiler/ir.ts`
   - Add `IrPushFunctionRef` node: `{ kind: "PushFunctionRef"; funcName: string }`.
     The function name is resolved to a `funcId` during emit, after all functions are
     registered.
   - Add `IrCallIndirect` node: `{ kind: "CallIndirect"; argc: number }`.
-- `packages/typescript/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
   - Detect function references: when an identifier resolves to a function declaration
     (via the TS type checker) and is used as an expression (not a call), emit
     `IrPushFunctionRef(funcName)`.
   - When a call expression's callee is not a direct function name but is an expression
     (e.g., a variable holding a function reference), emit: lower the callee expression
     (pushes `FunctionValue`), lower arguments, emit `IrCallIndirect(argc)`.
-- `packages/typescript/src/compiler/emit.ts`
+- `packages/ts-compiler/src/compiler/emit.ts`
   - Emit `IrPushFunctionRef`: resolve `funcName` to `funcId` from the function table,
     emit `PUSH_CONST(FunctionValue(funcId))`.
   - Emit `IrCallIndirect`: emit `Op.CALL_INDIRECT` with `a: argc`.
-- `packages/typescript/src/compiler/ambient.ts`
+- `packages/ts-compiler/src/compiler/ambient.ts`
   - No changes needed for this phase. Function types in ambient declarations are a
     Phase 7 concern (type-level function signatures).
 - Test files:
   - `packages/core/src/brain/runtime/vm.spec.ts` -- test `CALL_INDIRECT` opcode:
     push function ref, push args, call indirect, verify correct function executed.
-  - `packages/typescript/src/compiler/codegen.spec.ts` -- test passing a named function
+  - `packages/ts-compiler/src/compiler/codegen.spec.ts` -- test passing a named function
     as argument, test calling via function reference.
 
 **Concrete deliverables:**
@@ -808,7 +808,7 @@ named functions can be passed as references. Arrow functions and closures are Ph
   const result = apply(double, 5); // result = 10
   ```
 - Test: `deepCopyValue` for `FunctionValue` returns the same value (identity).
-- `npm run check` passes in `packages/core` and `packages/typescript`.
+- `npm run check` passes in `packages/core` and `packages/ts-compiler`.
 - `npm run build:rbx` passes.
 
 **Key risks:**
@@ -878,7 +878,7 @@ from the enclosing scope.
   - Update `execCallIndirect` and frame setup: when calling a `FunctionValue` that
     has `captures`, attach the captures to the new `Frame`.
   - Add `captures?: List<Value>` to `Frame` interface.
-- `packages/typescript/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
   - Detect arrow functions and inner function expressions.
   - Analyze captured variables: walk the function body's free variables and determine
     which reference locals from the enclosing scope.
@@ -888,12 +888,12 @@ from the enclosing scope.
     emit `MAKE_CLOSURE(funcId, captureCount)`.
   - Inside the closure body, references to captured variables emit `LOAD_CAPTURE(slot)`
     instead of `LOAD_LOCAL`.
-- `packages/typescript/src/compiler/scope.ts`
+- `packages/ts-compiler/src/compiler/scope.ts`
   - Extend `ScopeStack` with capture tracking: when a variable is accessed inside an
     inner function scope, mark it as captured, assign a capture slot index.
-- `packages/typescript/src/compiler/ir.ts`
+- `packages/ts-compiler/src/compiler/ir.ts`
   - Add `IrMakeClosure`, `IrLoadCapture`, `IrStoreCapture` IR nodes.
-- `packages/typescript/src/compiler/emit.ts`
+- `packages/ts-compiler/src/compiler/emit.ts`
   - Emit the new IR nodes as their corresponding opcodes.
 
 **Concrete deliverables:**
@@ -994,11 +994,11 @@ use the generic `Function` type with no signature checking.
 - `packages/core/src/brain/runtime/type-system.ts`
   - Implement `getOrCreateFunctionType`: memoize by canonical key derived from
     param + return TypeIds.
-- `packages/typescript/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
   - When a function type is encountered (callback parameter, function return type),
     call `registry.getOrCreateFunctionType(shape)` to get the TypeId.
   - Use this TypeId for parameter type annotations in the descriptor.
-- `packages/typescript/src/compiler/ambient.ts`
+- `packages/ts-compiler/src/compiler/ambient.ts`
   - Emit function type signatures: `(x: number, y: string) => boolean` for
     `FunctionTypeDef`.
 
@@ -1055,10 +1055,10 @@ it (extra fields are harmless, `GET_FIELD` returns `NIL_VALUE` for missing field
     2. If either has `nominal: true`, return `false` (exact TypeId match required).
     3. Check that the source has all fields the target has, with compatible field types
        (recursive check for nested structs).
-- `packages/typescript/src/compiler/lowering.ts`
+- `packages/ts-compiler/src/compiler/lowering.ts`
   - Use `isStructurallyCompatible` when validating assignments and function call
     arguments where the source struct TypeId differs from the target.
-- `packages/typescript/src/compiler/ambient.ts`
+- `packages/ts-compiler/src/compiler/ambient.ts`
   - No structural changes needed. The TS ambient types are already structural by
     default (TS interfaces are structural). Non-structural (nominal) types use the
     `__brand` pattern already in place.
@@ -1352,7 +1352,7 @@ work.
 **Test counts:**
 
 - packages/core: 493 total (487 prev + 6 new), 0 failures
-- packages/typescript: 144 total (141 prev + 2 codegen + 1 linker), 0 failures
+- packages/ts-compiler: 144 total (141 prev + 2 codegen + 1 linker), 0 failures
 
 **Discoveries and deviations:**
 
@@ -1475,7 +1475,7 @@ work.
 **Test counts:**
 
 - packages/core: 498 total (493 prev + 5 new VM tests), 0 failures
-- packages/typescript: 149 total (144 prev + 5 new codegen tests), 0 failures
+- packages/ts-compiler: 149 total (144 prev + 5 new codegen tests), 0 failures
 
 **Discoveries:**
 
@@ -1650,7 +1650,7 @@ were required -- the implementation matched the spec and design doc closely.
 
 **Not changed (spec mentioned but unnecessary):**
 
-- `packages/typescript/src/compiler/ambient.ts` -- no changes needed. The
+- `packages/ts-compiler/src/compiler/ambient.ts` -- no changes needed. The
   spec correctly noted that TS interfaces are already structural by default,
   and nominal types already use the `__brand` pattern.
 - Function call argument validation -- the spec mentioned using structural
@@ -1679,7 +1679,7 @@ were required -- the implementation matched the spec and design doc closely.
 **Test counts:**
 
 - packages/core: 516 total (507 prev + 9 new), 0 failures
-- packages/typescript: 164 total (unchanged -- no new codegen tests), 0 failures
+- packages/ts-compiler: 164 total (unchanged -- no new codegen tests), 0 failures
 
 **Pre-existing issues (not caused by this phase):**
 

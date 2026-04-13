@@ -1,9 +1,7 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
-import { type IReadStream, type IWriteStream, MemoryStream } from "../../platform/stream";
 import { StringUtils as SU } from "../../platform/string";
-import { fourCC } from "../../primitives";
 import { EventEmitter, type EventEmitterConsumer } from "../../util/event-emitter";
 import { type OpResult, opFailure, opSuccess } from "../../util/op-result";
 import {
@@ -12,12 +10,13 @@ import {
   type IBrain,
   type IBrainDef,
   type IBrainPageDef,
+  type IConversionRegistry,
   type ITileCatalog,
   isPageTileId,
   mkPageTileId,
 } from "../interfaces";
 import { Brain } from "../runtime";
-import { getBrainServices } from "../services";
+import type { BrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";
 import { BrainPageDef, type PageJson } from "./pagedef";
@@ -43,15 +42,26 @@ export enum BrainDefWarningCode {
   PageIndexOutOfBounds = "PageIndexOutOfBounds",
 }
 
-// Current serialization version -- shared by both binary and JSON codepaths.
+// Current serialization version.
 const kVersion = 1;
 
-// Serialization tags
-const STags = {
-  BRAN: fourCC("BRAN"), // Brain chunk
-  NAME: fourCC("NAME"), // Brain name
-  PGCT: fourCC("PGCT"), // Page count
-};
+function buildDeserializationCatalogs(
+  brainCatalog: ITileCatalog,
+  servicesTiles: ITileCatalog,
+  extraCatalogs?: ReadonlyList<ITileCatalog>
+): List<ITileCatalog> {
+  const catalogs = new List<ITileCatalog>();
+
+  if (extraCatalogs) {
+    for (let i = 0; i < extraCatalogs.size(); i++) {
+      catalogs.push(extraCatalogs.get(i)!);
+    }
+  }
+
+  catalogs.push(brainCatalog);
+  catalogs.push(servicesTiles);
+  return catalogs;
+}
 
 // -- JSON plain-object conversion helpers ------------------------------------
 // JSON.stringify serializes List<T> as T[] (via List.toJSON). When the result
@@ -108,9 +118,31 @@ export class BrainDef implements IBrainDef {
   private readonly emitter_ = new EventEmitter<BrainDefEvents>();
   private readonly pageSubscriptions_ = new Dict<BrainPageDef, () => void>();
   private readonly catalog_ = new TileCatalog();
+  private readonly services_: BrainServices;
+  private extraCatalogs_?: ReadonlyList<ITileCatalog>;
 
-  static emptyBrainDef(name?: string): BrainDef {
-    const brainDef = new BrainDef();
+  constructor(services: BrainServices) {
+    this.services_ = services;
+  }
+
+  setExtraCatalogs(catalogs: ReadonlyList<ITileCatalog> | undefined): void {
+    this.extraCatalogs_ = catalogs;
+  }
+
+  deserializationCatalogs(): List<ITileCatalog> {
+    return buildDeserializationCatalogs(this.catalog_, this.servicesTiles(), this.extraCatalogs_);
+  }
+
+  servicesTiles(): ITileCatalog {
+    return this.services_.tiles;
+  }
+
+  servicesConversions(): IConversionRegistry {
+    return this.services_.conversions;
+  }
+
+  static emptyBrainDef(services: BrainServices, name?: string): BrainDef {
+    const brainDef = new BrainDef(services);
     if (name) {
       brainDef.setName(name);
     }
@@ -154,7 +186,7 @@ export class BrainDef implements IBrainDef {
   }
 
   compile(): IBrain {
-    return new Brain(this);
+    return new Brain(this, this.services_);
   }
 
   appendNewPage(): OpResult<{ page: BrainPageDef; index: number }> {
@@ -248,12 +280,9 @@ export class BrainDef implements IBrainDef {
     this.syncPageTiles_();
   }
 
-  clone(): BrainDef {
-    const stream = new MemoryStream();
-    this.serialize(stream);
-    const newBrain = new BrainDef();
-    newBrain.deserialize(stream);
-    return newBrain;
+  clone(extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
+    const json = this.toJson();
+    return BrainDef.fromJson(json, this.services_, extraCatalogs ?? this.extraCatalogs_);
   }
 
   /**
@@ -264,8 +293,8 @@ export class BrainDef implements IBrainDef {
    * Emits a single "brain_changed" event with what="brain_replaced" rather
    * than per-page events, so callers can update UI state in one shot.
    */
-  replaceContentFrom(source: BrainDef): void {
-    this.replaceContentFromJson(source.toJson());
+  replaceContentFrom(source: BrainDef, extraCatalogs?: ReadonlyList<ITileCatalog>): void {
+    this.replaceContentFromJson(source.toJson(), extraCatalogs);
   }
 
   /**
@@ -273,7 +302,11 @@ export class BrainDef implements IBrainDef {
    * snapshot. Equivalent to replaceContentFrom but avoids an extra toJson()
    * call when the caller already holds a BrainJson (e.g. undo/redo commands).
    */
-  replaceContentFromJson(json: BrainJson): void {
+  replaceContentFromJson(json: BrainJson, extraCatalogs?: ReadonlyList<ITileCatalog>): void {
+    if (extraCatalogs) {
+      this.extraCatalogs_ = extraCatalogs;
+    }
+
     // Unsubscribe and detach all existing pages.
     const pageCount = this.pages_.size();
     for (let i = 0; i < pageCount; i++) {
@@ -287,11 +320,9 @@ export class BrainDef implements IBrainDef {
     this.catalog_.clear();
 
     this.setName(json.name);
-    this.catalog_.deserializeJson(json.catalog);
+    this.catalog_.deserializeJson(json.catalog, this.services_);
 
-    const catalogs = new List<ITileCatalog>();
-    catalogs.push(this.catalog_);
-    catalogs.push(getBrainServices().tiles);
+    const catalogs = buildDeserializationCatalogs(this.catalog_, this.servicesTiles(), this.extraCatalogs_);
 
     for (let i = 0; i < json.pages.size(); i++) {
       const pageJson = json.pages.get(i);
@@ -318,21 +349,20 @@ export class BrainDef implements IBrainDef {
     return { version: kVersion, name: this.name_, catalog: this.catalog_.toJson(), pages };
   }
 
-  static fromJson(json: BrainJson): BrainDef {
+  static fromJson(json: BrainJson, services: BrainServices, extraCatalogs?: ReadonlyList<ITileCatalog>): BrainDef {
     if (json.version !== kVersion) {
       throw new Error(`BrainDef.fromJson: unsupported version ${json.version}`);
     }
 
-    const brain = new BrainDef();
+    const brain = new BrainDef(services);
+    brain.extraCatalogs_ = extraCatalogs;
     brain.setName(json.name);
 
     // Restore the local catalog first so tile references can be resolved
-    brain.catalog_.deserializeJson(json.catalog);
+    brain.catalog_.deserializeJson(json.catalog, brain.services_);
 
     // Build the catalog chain: local catalog + global catalog
-    const catalogs = new List<ITileCatalog>();
-    catalogs.push(brain.catalog_);
-    catalogs.push(getBrainServices().tiles);
+    const catalogs = buildDeserializationCatalogs(brain.catalog_, brain.servicesTiles(), extraCatalogs);
 
     // Restore pages
     for (let i = 0; i < json.pages.size(); i++) {
@@ -343,53 +373,6 @@ export class BrainDef implements IBrainDef {
     }
 
     return brain;
-  }
-
-  serialize(stream: IWriteStream): void {
-    stream.pushChunk(STags.BRAN, kVersion);
-    stream.writeTaggedString(STags.NAME, this.name_);
-    this.catalog_.serialize(stream);
-    stream.writeTaggedU32(STags.PGCT, this.pages_.size());
-    this.pages_.forEach((page) => {
-      page.serialize(stream);
-    });
-    stream.popChunk();
-  }
-
-  deserialize(stream: IReadStream): void {
-    if (this.pages_.size() > 0) {
-      throw new Error(`BrainDef.deserialize: BrainDef must be empty before deserializing`);
-    }
-    const version = stream.enterChunk(STags.BRAN);
-    if (version !== kVersion) {
-      throw new Error(`BrainDef.deserialize: unsupported version ${version}`);
-    }
-    try {
-      const name = stream.readTaggedString(STags.NAME);
-      this.setName(name);
-      this.catalog_.deserialize(stream);
-      const pageCount = stream.readTaggedU32(STags.PGCT);
-      for (let i = 0; i < pageCount; i++) {
-        const page = new BrainPageDef();
-        this.addPage(page); // add before deserializing to set up brain associateion, so rules can read local catalog
-        page.deserialize(stream);
-      }
-      // Reconcile page tiles after all pages are loaded (handles v1 saves that
-      // lack page tiles, and ensures visual labels match deserialized page names)
-      this.syncPageTiles_();
-    } catch (e) {
-      // Clean up partially deserialized pages
-      this.pages_.forEach((page) => {
-        this.unsubscribeFromPage_(page);
-        page.setBrain(undefined);
-      });
-      this.pages_.clear();
-      throw e;
-    } finally {
-      try {
-        stream.leaveChunk();
-      } catch {}
-    }
   }
 
   /**
@@ -415,8 +398,8 @@ export class BrainDef implements IBrainDef {
       const existing = this.catalog_.get(tileId) as BrainTilePageDef | undefined;
       if (existing && existing.kind === "page") {
         // Update label and unhide
-        if (existing.visual) {
-          existing.visual.label = page.name();
+        if (existing.metadata) {
+          existing.metadata.label = page.name();
         }
         existing.hidden = false;
       } else {

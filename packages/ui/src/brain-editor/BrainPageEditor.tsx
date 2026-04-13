@@ -1,6 +1,7 @@
 import { task, type thread } from "@mindcraft-lang/core";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { useEffect, useRef, useState } from "react";
+import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainRuleEditor } from "./BrainRuleEditor";
 import type { BrainCommandHistory } from "./commands";
 

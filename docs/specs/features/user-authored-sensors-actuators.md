@@ -3,6 +3,19 @@
 Design spec for compiling user-authored TypeScript into Mindcraft bytecode,
 enabling custom Sensors and Actuators that execute inside the Mindcraft VM.
 
+## Status
+
+As of 2026-04-03, the authoring surface, TypeScript front-end guidance, and
+debug-metadata discussion in this document remain useful. The wrapper-based
+runtime design that routed user tiles through `BrainFunctionEntry`,
+`FunctionRegistry`, `UserTileLinkInfo`, and `createUserTileExec()` is obsolete.
+
+Current execution semantics are defined by
+[brain-action-execution-architecture.md](brain-action-execution-architecture.md)
+and its phased implementation plan. User-authored tiles now compile to direct
+bytecode action artifacts that are linked into Brain-local executable action
+tables through the explicit compile -> link -> instantiate path.
+
 ---
 
 ## Table of Contents
@@ -64,10 +77,10 @@ object**, not as class subclasses. Reasons:
    with inheritance requires vtable dispatch, constructor chaining, prototype chains, and
    `this` binding -- all features the VM does not have and does not need.
 
-2. **VM alignment.** The existing runtime model treats sensors and actuators as
-   `BrainFunctionEntry` objects containing an `exec` function plus metadata. User-authored
-   code should produce the same shape: a callable entry point with a declared call
-   signature.
+2. **VM alignment.** The runtime treats sensors and actuators as action
+  descriptors plus executable bindings. User-authored code should therefore
+  compile to a direct action artifact with a callable entry point and declared
+  call signature, not to a special-purpose wrapper runtime.
 
 3. **Inspectability.** A function with explicitly typed parameters and a return type is
    trivially analyzable at compile time. A class hierarchy requires instantiation analysis,
@@ -84,26 +97,23 @@ import { Sensor, type Context } from "mindcraft";
 
 let lastSeen = 0;
 
-const callSpec = {
-  range: { type: "number", default: 5 },
-};
-
 export default Sensor({
   name: "nearby-enemy",
   output: "boolean",
-  params: callSpec,
-  exec(ctx: Context, params: { range: number }): boolean {
+  params: {
+    range: { type: "number", default: 5 },
+  },
+  onExecute(ctx: Context, params: { range: number }): boolean {
     const enemies = ctx.engine.queryNearby(ctx.self.position, params.range);
     if (enemies.length > 0) {
       lastSeen = ctx.time;
     }
     return enemies.length > 0;
   },
+  onPageEntered(ctx: Context): void {
+    lastSeen = 0;
+  },
 });
-
-export function onPageEntered(ctx: Context): void {
-  lastSeen = 0;
-}
 ```
 
 For actuators:
@@ -118,7 +128,7 @@ export default Actuator({
   params: {
     speed: { type: "number", default: 1 },
   },
-  async exec(ctx: Context, params: { speed: number }): Promise<void> {
+  async onExecute(ctx: Context, params: { speed: number }): Promise<void> {
     const threat = ctx.self.getVariable("threat");
     if (threat) {
       moveCount += 1;
@@ -133,21 +143,20 @@ export default Actuator({
 
 Key properties of this shape:
 
-- **Single default export.** One sensor or actuator per file (v1). The compiler knows
-  exactly what to compile.
+- **Single default export.** One sensor or actuator per file. The compiler knows
+  exactly what to compile. Multi-file support is available for importing helpers.
 - **Declarative metadata.** `name`, `output`, `params` are statically analyzable. The
   compiler reads them at compile time to generate `BrainActionCallDef` and tile
   registration data. Each named param becomes a `param()` arg spec scoped to the
   tile (`user.<tileName>.<paramName>`). Each anonymous param reuses a shared
   `anon.<type>` tile def, auto-registering one if it does not already exist.
-  (Updated 2026-03-20: callDef design settled. See Stage 3 and Section C.)
 - **`onExecute` is the entrypoint.** Compiles to the primary `FunctionBytecode`. Parameters
   are derived from the `params` descriptor.
-  (Updated 2026-03-20: renamed from `exec` to `onExecute` for consistency with `onPageEntered`.)
 - **`ctx` is the injected context.** Not a global. Not an import. It is a function
   parameter whose type is known at compile time. At runtime, ctx is a native-backed
-  `StructValue` wrapping the `ExecutionContext`, occupying local slot 0.
-  (Updated 2026-03-24: ctx is now a real runtime value, not a compile-time phantom.)
+  `StructValue` wrapping the `ExecutionContext`, occupying local slot 0. The VM
+  automatically creates this struct via `injectCtxTypeId` on the entry function's
+  `FunctionBytecode` -- the caller passes only the `MapValue` args.
 - **`async onExecute` compiles to HOST_CALL_ASYNC + AWAIT.** The compiler detects `async` on
   `onExecute` and emits async bytecode. Both sensors and actuators may be sync or async.
   The runtime uses one unified invocation model regardless (see section C).
@@ -156,23 +165,23 @@ Key properties of this shape:
 - **`onPageEntered` is part of the descriptor.** If present, it is a lifecycle method
   on the descriptor object, sharing the same lexical scope and callsite-persistent
   state as `onExecute` and helpers.
-  (Updated 2026-03-20: moved from a separate named export into the descriptor object
-  for cohesion and simpler extraction.)
-- **No class instantiation needed.** `Sensor()` and `Actuator()` are compile-time markers,
-  not runtime constructors. They do not exist at bytecode level.
+- **Classes are supported.** Users can define classes with constructors, methods, and
+  fields. Classes compile to struct-backed types with qualified method names. No
+  inheritance is supported.
+- **No class instantiation needed for the descriptor.** `Sensor()` and `Actuator()` are
+  compile-time markers, not runtime constructors. They do not exist at bytecode level.
 
 ### Why this shape scales
 
-When multi-file support arrives, a user file can import helper functions from other user
-files. The compiler resolves those imports at compile time and links the
-`FunctionBytecode` entries. No runtime module system is needed.
+Multi-file support is already implemented. A user file can import helper functions,
+variables, and classes from other user files. The compiler resolves those imports at
+compile time via the TypeScript checker and links the `FunctionBytecode` entries.
+No runtime module system is needed.
 
 When parameter types become richer (enums, structs, lists), the `params` descriptor
 extends naturally without changing the authoring pattern.
 
 #### Params descriptor shape
-
-(Added 2026-03-20)
 
 Each entry in the `params` object describes a single argument slot:
 
@@ -214,7 +223,7 @@ This produces:
 
 | Param    | callDef arg spec                              | Tile def                                                        |
 | -------- | --------------------------------------------- | --------------------------------------------------------------- |
-| `target` | `param("anon.actorRef", { anonymous: true })` | Reuses or auto-creates `BrainTileParameterDef("anon.actorRef")` |
+| `target` | `param("anon.ActorRef", { anonymous: true })` | Reuses or auto-creates `BrainTileParameterDef("anon.ActorRef")` |
 | `speed`  | `optional(param("user.chase.speed"))`         | New `BrainTileParameterDef("user.chase.speed", Number)`         |
 
 ---
@@ -323,9 +332,6 @@ compiler does not proceed to lowering if validation fails.
 Statically analyze the default export to extract sensor/actuator
 metadata and lifecycle functions:
 
-(Updated 2026-03-20: `exec` renamed to `onExecute`. `onPageEntered` moved inside the
-descriptor object -- no longer a separate named export. See Phase 2 log.)
-
 ```typescript
 interface ExtractedDescriptor {
   kind: "sensor" | "actuator";
@@ -350,7 +356,7 @@ The extraction walks the object literal passed to `Sensor()` or `Actuator()` and
 property values. Because the descriptor must be a literal object expression (not a
 variable reference), extraction is straightforward AST analysis.
 
-(Added 2026-03-20) After extraction, a callDef construction step converts
+After extraction, a callDef construction step converts
 `ExtractedParam[]` into a `BrainActionCallDef`. This is a mechanical mapping:
 
 - Each named param -> `param("user.<tileName>.<paramName>")`
@@ -377,7 +383,7 @@ This is the core of the compiler. It walks TypeScript AST nodes and produces a s
 
 #### IR design
 
-The IR should be a linear sequence of typed operations, not a tree. This keeps it close to
+The IR is a linear sequence of typed operations, not a tree. This keeps it close to
 final bytecode while allowing optimization passes. Each IR operation corresponds to one or
 a small fixed number of bytecode instructions.
 
@@ -389,47 +395,39 @@ IrOp =
   | Swap                               // swap top two stack values
   | LoadLocal(index: number)          // function-local variable
   | StoreLocal(index: number)
-  | LoadVar(varIndex: number)         // brain-level variable
-  | StoreVar(varIndex: number)
-  | Jump(label: Label)
-  | JumpIfFalse(label: Label)
-  | JumpIfTrue(label: Label)
-  | Label(label: Label)
+  | LoadCallsiteVar(index: number)    // callsite-persistent top-level variable
+  | StoreCallsiteVar(index: number)
+  | Return
   | Call(funcIndex: number, argc: number)
   | CallIndirect(argc: number)        // pop FunctionValue, call by funcId
-  | Return
-  | HostCall(fnId: number, argc: number, callSiteId: number)
-  | HostCallAsync(fnId: number, argc: number, callSiteId: number)
-  | Await
-  | Yield
-  | LoadCallsiteVar(index: number)  // callsite-persistent top-level variable
-  | StoreCallsiteVar(index: number)
-  | LoadCapture(index: number)      // load captured variable in closure
-  | MapNew(typeId: number)
-  | MapSet | MapGet | MapHas | MapDelete
-  | ListNew(typeId: number)
-  | ListPush | ListGet | ListSet | ListLen
-  | StructNew(typeId: number)
-  | StructGet(fieldName: string)
-  | StructSet(fieldName: string)
-  | StructAssignCheck               // runtime type check for struct assignment
-  | GetField(fieldName: string)
-  | SetField(fieldName: string)
+  | CallIndirectArgs(argc: number)    // same, but args passed as MapValue
   | PushFunctionRef(funcName: string) // push FunctionValue for named function
-  | MakeClosure(funcId: number, captureCount: number) // create closure
-  | TypeCheck                        // typeof lowering (Op.TYPE_CHECK)
+  | MakeClosure(funcName: string, captureCount: number) // create closure
+  | LoadCapture(index: number)        // load captured variable in closure
+  | HostCallArgs(fnName: string, argc: number)      // sync host call
+  | HostCallArgsAsync(fnName: string, argc: number) // async host call
+  | Await
+  | GetField(fieldName: string)       // generic field access (structs + native-backed)
+  | GetFieldDynamic                    // field name at runtime (top of stack)
+  | MapNew(typeId: string)
+  | MapGet | MapSet
+  | StructNew(typeId: string)
+  | StructSet
+  | StructCopyExcept(numExclude: number, typeId: string) // struct spread
+  | ListNew(typeId: string)
+  | ListPush | ListGet | ListSet | ListLen
+  | ListPop | ListShift | ListRemove | ListInsert | ListSwap
+  | TypeCheck(nativeType: number)      // typeof lowering (Op.TYPE_CHECK)
+  | Label(labelId: number)
+  | Jump(labelId: number)
+  | JumpIfFalse(labelId: number)
+  | JumpIfTrue(labelId: number)
 ```
 
-(Updated 2026-03-23: IR node list expanded to reflect core type system additions.
-`CallIndirect`, `LoadCapture`, `PushFunctionRef`, `MakeClosure`, `TypeCheck`,
-`StructAssignCheck`, and `Swap` were added across core type system Phases 3-8 and
-the list method detour. These nodes are already implemented in ir.ts and emit.ts.)
-
-(Updated 2026-03-21: `StructNew(typeId)` -- the `typeId` parameter is a constant pool
-index pointing to a string value (the typeId string, e.g., `"struct:<Vector2>"`), not
-a numeric type identifier. The VM reads `ins.a` as `numFields` (0 for the "create empty
-then set fields" pattern used by the compiler) and `ins.b` as the constant pool index
-for the typeId string.)
+The `StructNew(typeId)` parameter is a constant pool index pointing to a string value
+(the typeId string, e.g., `"struct:<Vector2>"`), not a numeric type identifier. The VM
+reads `ins.a` as `numFields` (0 for the "create empty then set fields" pattern used
+by the compiler) and `ins.b` as the constant pool index for the typeId string.
 
 #### Lowering rules
 
@@ -496,9 +494,9 @@ Jump(loop_start);
 Label(loop_end);
 ```
 
-(Updated 2026-03-20: `continue` in a for-loop targets the update expression
-(`continue_target`), not `loop_start`. This ensures the incrementor runs before
-the next condition check, matching JavaScript semantics. `break` targets `loop_end`.)
+`continue` in a for-loop targets the update expression (`continue_target`), not
+`loop_start`. This ensures the incrementor runs before the next condition check,
+matching JavaScript semantics. `break` targets `loop_end`.
 
 **Function calls (user-defined):**
 
@@ -516,9 +514,8 @@ the `CALL` instruction with the function index and argument count.
 
 **Context method calls (struct method dispatch):**
 
-(Updated 2026-03-24: revised to reflect the ctx-as-native-struct and struct method
-dispatch implementation. Context methods are now dispatched via the general-purpose
-`lowerStructMethodCall()` mechanism. The struct value is passed as the first argument.)
+Context methods are dispatched via the general-purpose `lowerStructMethodCall()`
+mechanism. The struct value is passed as the first argument.
 
 ```typescript
 // ctx.engine.queryNearby(pos, range)
@@ -580,8 +577,6 @@ StoreLocal(items_index);
 
 **Element access (index read/write):**
 
-(Added 2026-03-23: implemented in core type system detour.)
-
 ```typescript
 // const x = items[i];
 // ->
@@ -600,8 +595,6 @@ ListSet;
 ```
 
 **Arrow functions and closures:**
-
-(Added 2026-03-23: implemented in core type system Phases 5-6.)
 
 ```typescript
 // const double = (x: number): number => x * 2;
@@ -627,8 +620,6 @@ LoadCapture(0); // load the captured 'offset' value
 
 **typeof:**
 
-(Added 2026-03-23: implemented as Op.TYPE_CHECK in core type system Phase 4.)
-
 ```typescript
 // typeof x === "number"
 // ->
@@ -639,6 +630,48 @@ HostCallArgs(EqualTo, 2);
 ```
 
 **Async/await:** See section F.
+
+**Class declarations:**
+
+```typescript
+// class Vector2 { constructor(public x: number, public y: number) {} mag(): number { ... } }
+// const v = new Vector2(3, 4);
+// v.mag()
+// ->
+// Class compiles to:
+//   - A struct type registered with the type system (typeId = "struct:<module>::Vector2")
+//   - A constructor function (Vector2.constructor) that creates a StructNew and sets fields
+//   - Method functions (Vector2.mag) that take `this` as the struct receiver
+//
+// new Vector2(3, 4):
+PushConst(3)
+PushConst(4)
+Call(constructorFuncIndex, 2)   // returns a StructValue
+StoreLocal(v_index)
+
+// v.mag():
+LoadLocal(v_index)
+Call(magFuncIndex, 1)           // receiver passed as first arg
+```
+
+Classes compile to struct-backed types. The constructor function creates a new `StructValue`,
+sets fields from constructor parameters, and returns the struct. Methods are compiled as
+standalone functions with the receiver struct passed as the first argument. Method dispatch
+is resolved at compile time using qualified names (`ClassName.methodName` or
+`module::ClassName.methodName` for imported classes). No inheritance, no prototype chains,
+no vtables.
+
+**Destructuring:**
+
+```typescript
+// const { x, y } = pos;  ->  lower pos, then GetField("x"), StoreLocal; GetField("y"), StoreLocal
+// const [a, b] = items;  ->  lower items, then ListGet at index 0, 1, StoreLocal for each
+// const { x, ...rest } = obj;  ->  GetField for x, then StructCopyExcept(1, typeId) for rest
+// const [first, ...rest] = items;  ->  ListGet for first, then splice-based copy for rest
+```
+
+Destructuring is supported for both object and array patterns, including rest elements,
+default values, and nested patterns.
 
 ### Stage 5: IR Optimization (optional)
 
@@ -651,16 +684,17 @@ For v1, this can be a no-op pass. Future optimizations:
 
 ### Stage 6: Bytecode Emission
 
-Walk the IR and emit bytecode using `BytecodeEmitter`. The emitter already has methods
-for all existing opcodes (`pushConst`, `call`, `hostCall`, `loadVar`, `storeVar`, etc.).
-New opcodes (`LOAD_LOCAL`, `STORE_LOCAL`, `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR`)
-will need corresponding new emitter methods (`loadLocal`, `storeLocal`,
-`loadCallsiteVar`, `storeCallsiteVar`).
+Walk the IR and emit bytecode using `BytecodeEmitter`. The emitter has methods
+for all opcodes: `pushConst`, `call`, `callIndirect`, `callIndirectArgs`,
+`makeClosure`, `loadCapture`, `hostCallArgs`, `hostCallArgsAsync`, `loadLocal`,
+`storeLocal`, `loadCallsiteVar`, `storeCallsiteVar`, `typeCheck`, `getField`,
+`setField`, `listNew`, `listPush`, `listGet`, `listSet`, `listLen`, `listPop`,
+`listShift`, `listRemove`, `listInsert`, `listSwap`, `structNew`, `structSet`,
+`structCopyExcept`, `mapNew`, `mapGet`, `mapSet`, and more.
 
-(Updated 2026-03-23: Additional emitter methods now exist from core type system work:
-`callIndirect`, `makeClosure`, `loadCapture`, `typeCheck`, and emitter cases for
-`ListGet`, `ListSet`, `Swap`, `StructAssignCheck`. The `emitFunction` call now receives
-a `functionTable` parameter for resolving `PushFunctionRef` IR nodes to funcIds.)
+The `emitFunction` call receives a `functionTable` parameter for resolving
+`PushFunctionRef` and `MakeClosure` IR nodes (which use function names) to
+numeric funcIds.
 
 ```typescript
 for (const op of irOps) {
@@ -724,24 +758,21 @@ can load. The core fields (`version`, `functions`, `constants`, `variableNames`,
 `entryPoint`) match the existing `Program` interface in `interfaces/vm.ts`.
 
 ```typescript
-interface UserAuthoredProgram extends Program {
-  kind: "sensor" | "actuator";
+interface UserAuthoredProgram extends UserActionArtifact {
   name: string;
-  outputType?: TypeId; // sensors only; mapped from "boolean" -> CoreTypeIds.Boolean, etc.
-  callDef: BrainActionCallDef; // constructed from ExtractedParam[] via callDef builder
-  callsiteVarCount: number; // number of callsite-persistent top-level variables
-  hasOnPageEntered: boolean; // whether the source file exports onPageEntered
-  debugMetadata: DebugMetadata; // source mapping and scope metadata
-  programRevisionId: string; // unique per successful compilation
+  params: ExtractedParam[];
+  debugMetadata?: DebugMetadata;
 }
 ```
 
-(Updated 2026-03-21: The actual implementation stores lifecycle function IDs instead of
-booleans: `lifecycleFuncIds: { onPageEntered?: number }` holds the wrapper's function
-index. `numCallsiteVars` replaces `callsiteVarCount`. `entryFuncId` and `initFuncId`
-are also present. `params: ExtractedParam[]` is also stored so the registration bridge
-can resolve TypeIds for parameter tile defs without parsing callDef. See
-`packages/typescript/src/compiler/types.ts` for the current shape.)
+The current emitted artifact keeps debug metadata alongside the action-artifact
+shape described in
+[brain-action-execution-architecture.md](brain-action-execution-architecture.md).
+`entryFuncId` and `activationFuncId` remain artifact-local function indexes and
+are remapped during the core brain link step. `params` is still stored so the
+registration bridge can resolve parameter tile defs without reparsing the
+call spec. See `packages/ts-compiler/src/compiler/types.ts` for the current
+shape.
 
 #### Debug metadata emission
 
@@ -786,9 +817,10 @@ The compiler populates this metadata during lowering and bytecode emission:
 The metadata is stored alongside the `UserAuthoredProgram` in the world/project data and
 sent to the debug adapter on attach. It is refreshed on each successful recompilation.
 
-This program is stored alongside the brain definition. When the brain compiles, it
-integrates user-authored programs by registering them as `BrainFunctionEntry` objects
-whose `exec` function dispatches into the VM rather than calling native TypeScript.
+This program is published as a direct bytecode action artifact. Brain
+compilation references its `ActionDescriptor.key`, and the explicit brain link
+step resolves that key into an executable action entry before VM
+instantiation.
 
 ### Stage 8: Bytecode Verification
 
@@ -799,35 +831,39 @@ the new opcodes.)
 
 ### Where this code lives
 
-The compiler and runtime wrapper live in the `@mindcraft-lang/typescript` package, not in
-`packages/core`. Core must remain free of TypeScript compiler API dependencies to
-preserve roblox-ts compatibility. Core provides the VM, bytecode interfaces, and
-FunctionRegistry -- the TypeScript package consumes those to compile and link user code.
+The compiler and metadata publication bridge live in the
+`@mindcraft-lang/ts-compiler` package, not in `packages/core`. Core must remain
+free of TypeScript compiler API dependencies to preserve roblox-ts
+compatibility. Core provides the VM, bytecode interfaces, action-descriptor
+contracts, and the explicit brain link/runtime path; the TypeScript package
+consumes those to compile and publish user action artifacts.
 
 ```
-packages/typescript/src/
+packages/ts-compiler/src/
   compiler/
-    ts-compiler.ts          -- orchestrates the full pipeline
-    ts-validator.ts         -- Stage 2: AST subset validation
-    ts-descriptor.ts        -- Stage 3: descriptor + lifecycle extraction
-    ts-lowering.ts          -- Stage 4: TS AST -> IR
+    compile.ts              -- public entry point; re-exports UserTileProject
+    project.ts              -- UserTileProject class (multi-file orchestrator)
+    validator.ts            -- Stage 2: AST subset validation
+    descriptor.ts           -- Stage 3: descriptor + lifecycle extraction
+    lowering.ts             -- Stage 4: TS AST -> IR (5000+ lines)
     ir.ts                   -- IR types
-  linker/
-    linker.ts               -- merges UserAuthoredProgram into BrainProgram
+    emit.ts                 -- Stage 6: IR -> bytecode emission
+    scope.ts                -- lexical scope stack for local variable allocation
+    ambient.ts              -- generates ambient declarations from type registry
+    types.ts                -- shared compiler types (UserAuthoredProgram, etc.)
+    call-def-builder.ts     -- builds BrainActionCallDef from ExtractedParam[]
+    virtual-host.ts         -- in-memory ts.CompilerHost
+    diag-codes.ts           -- all diagnostic code enums
   runtime/
-    authored-function.ts    -- VM-callable wrapper for user bytecode
-  types/
-    mindcraft-ambient.d.ts  -- ambient type declarations for user code
+    registration-bridge.ts  -- publishes tile metadata + direct bytecode action artifacts
 ```
 
-(Updated 2026-03-23: The actual file layout after implementation differs from the plan
-above. Key differences: `ts-compiler.ts` -> `compile.ts`, `ts-validator.ts` ->
-`validate.ts`, `ts-descriptor.ts` -> `extract.ts`, `ts-lowering.ts` -> `lowering.ts`.
-Additional files exist: `emit.ts` (bytecode emission), `scope.ts` (scope stack and
-local allocation), `ambient.ts` (generates ambient declarations from type registry),
-`types.ts` (shared compiler types including `UserAuthoredProgram`). The ambient
-declarations are generated dynamically from the type registry rather than maintained
-as a static `.d.ts` file.)
+Final brain linking and executable-action materialization now happen in core's
+brain link step and the sim's resolver-backed runtime wiring, not in a
+TypeScript-side VM wrapper.
+
+The ambient declarations are generated dynamically from the type registry via
+`buildAmbientDeclarations()` rather than maintained as a static `.d.ts` file.
 
 ### Linking user-authored bytecode into the brain program
 
@@ -837,39 +873,24 @@ list with funcIds starting at 0. These two function ID spaces must be unified fo
 single-VM model to work. (HOST_CALL IDs are a separate namespace -- global
 FunctionRegistry -- and have no conflict.)
 
-The linking step is a pure data transformation that happens after `compileBrain()`
-produces the `BrainProgram` and before `new VM(program, handles)`:
+The linking step is now part of the brain-runtime compile -> link -> instantiate
+pipeline. After `compileBrain()` produces the unlinked brain program, the link
+step:
 
-1. `compileBrain()` produces a `BrainProgram` with N rule functions at funcIds `0..N-1`.
-2. For each user-authored tile referenced in the brain (discoverable from page metadata's
-   sensor/actuator tile sets), retrieve its `UserAuthoredProgram`.
-3. Append its `FunctionBytecode` entries to `BrainProgram.functions` -- the first entry
-   gets funcId `N`, the next `N+1`, etc.
-4. Merge its constants into `BrainProgram.constants`, recording old-to-new index mapping.
-5. Rewrite the copied user bytecode: remap `CALL` funcId operands (+offset),
-   `MAKE_CLOSURE` funcId operands (+offset), `PUSH_CONST` index operands (per constant
-   mapping), and `FunctionValue` constants in the constant pool (+funcId offset).
-6. Record the remapped entry point funcId for each user tile.
+1. resolves each referenced `ActionDescriptor.key` to either a host-backed or
+  bytecode-backed action artifact
+2. merges bytecode action functions and constants into the executable brain
+  program when needed
+3. remaps artifact-local `entryFuncId` and `activationFuncId` values into the
+  final executable program layout
+4. materializes executable action entries for `ACTION_CALL` /
+  `ACTION_CALL_ASYNC` dispatch
 
-(Updated 2026-03-23: step 5 now includes `MAKE_CLOSURE` funcId remapping and
-`FunctionValue` constant pool remapping, both added in core type system Phase 5-6.
-The linker already implements these via the `funcOffset` applied to both instruction
-operands and constant pool entries.)
+The resulting executable brain program is then instantiated by the VM. User
+actions are not invoked through a `HOST_CALL` wrapper path anymore.
 
-The HOST_CALL exec wrapper for user tiles is created by `createUserTileExec()`:
-
-(Updated 2026-03-24: revised to reflect the ctx-as-native-struct implementation.
-The exec wrapper creates a `StructValue` from the `ExecutionContext` and passes it
-as the first fiber argument. `createUserTileExec()` takes the resolved `linkedProgram`
-and `linkInfo` (with `linkedEntryFuncId`, `linkedInitFuncId`,
-`linkedOnPageEnteredFuncId` already remapped by the linker) and uses
-`vm.spawnFiber()` + `vm.runFiber()` for inline execution. On first allocation, only
-the module init function (`linkedInitFuncId`) runs -- not the full `onPageEntered`
-wrapper -- matching native built-in tile behavior. See
-`packages/typescript/src/runtime/authored-function.ts`.)
-
-The linker itself is ~50 lines: iterate user programs, compute offset, copy+remap
-bytecode instructions, merge constants. It lives in `@mindcraft-lang/typescript`, not
+The linker is ~100 lines: iterate user programs, compute offset, copy+remap
+bytecode instructions, merge constants. It lives in `@mindcraft-lang/ts-compiler`, not
 in core. Core provides no linking API -- the linker manipulates `List<>` contents on
 the `BrainProgram` before passing it to the VM constructor.
 
@@ -877,409 +898,36 @@ the `BrainProgram` before passing it to the VM constructor.
 
 ## C. Runtime Model
 
-### What a compiled user-authored tile becomes
-
-A compiled user-authored sensor or actuator becomes a `BrainFunctionEntry` registered in
-the `FunctionRegistry`, indistinguishable from a built-in tile at runtime. The difference
-is in the `exec` implementation.
-
-Built-in tiles have native TypeScript `exec` functions:
-
-```typescript
-{
-  exec: (ctx, args) => {
-    // native TypeScript logic
-    return someValue;
-  };
-}
-```
-
-User-authored tiles have a **VM-dispatch exec** that creates a `StructValue` wrapping
-the `ExecutionContext` and passes it as the first argument to the user's bytecode.
-The entry function ID used here is the **linked** ID (remapped after merging user
-bytecode into the brain program -- see "Linking user-authored bytecode into the brain
-program" below):
-
-(Updated 2026-03-24: revised to reflect the ctx-as-native-struct implementation.
-The ctx `StructValue` is created via `mkNativeStructValue(ContextTypeIds.Context, ctx)`
-and passed as the first fiber argument. See
-`packages/typescript/src/runtime/authored-function.ts` for the current implementation.)
-
-```typescript
-{
-  exec: (ctx, args, handleId) => {
-    let vars = getCallSiteState<List<Value>>(ctx);
-    if (!vars) {
-      vars = allocateCallsiteVars(userProgram.numCallsiteVars);
-      setCallSiteState(ctx, vars);
-      // run module init function to set initial values
-    }
-    const ctxStruct = mkNativeStructValue(ContextTypeIds.Context, ctx);
-    const fiberArgs = hasParams ? List.from<Value>([ctxStruct, mapArgsToSlots(args)]) : List.from<Value>([ctxStruct]);
-    const childCtx = { ...ctx };
-    const fiberId = vm.spawnFiber(linkedEntryFuncId, fiberArgs, childCtx);
-    const fiber = vm.getFiber(fiberId);
-    fiber.callsiteVars = vars;
-    vm.runFiber(fiberId);
-    handles.resolve(handleId, fiber.result ?? NIL_VALUE);
-  };
-}
-```
-
-Every invocation of a user-authored tile:
-
-1. Spawns a fiber from the user program's entry point function
-2. Pushes arguments onto the fiber's stack
-3. Returns a handle to the calling fiber
-4. The calling fiber suspends at AWAIT until the handle resolves
-5. When the spawned fiber completes, the handle resolves with its return value
-
-If the user's `exec` function contains no AWAIT instructions (i.e., it calls no async
-host functions), the spawned fiber runs to completion within the current tick and the
-handle resolves immediately. The calling fiber resumes in the same tick -- no scheduling
-delay occurs. This means a synchronous sensor executes with no observable overhead
-compared to a hypothetical inline path, while using the same code path as an async
-actuator that suspends across multiple ticks.
-
-For sync tiles, the spawned fiber runs to completion within the current tick via
-`vm.spawnFiber()` + `vm.runFiber()` and the handle resolves immediately. The calling
-fiber resumes in the same tick -- no scheduling delay occurs. Async tiles use a
-separate dispatch path (`execAsync`) that detects `VmStatus.WAITING` from `runFiber()`
-and subscribes to `vm.handles.events.on("completed")` to resume the fiber when the
-inner handle resolves. Multiple await points chain via recursive listener
-registration. See `authored-function.ts` for the implementation.
-(Updated 2026-03-24: async dispatch implemented in Phase 20.)
-
-### Entry functions, callsites, and fibers
-
-This section defines the relationship between a user's source file, its compiled entry
-function, callsites in the brain, and runtime fibers.
-
-**Source file to entry function.** Each user-authored source file (one per sensor or
-actuator) compiles to a single `UserAuthoredProgram`. The program's entry point is the
-`exec` function from the descriptor. The program may contain additional `FunctionBytecode`
-entries for helper functions and compiler-generated functions, but only one entry point.
-
-**Callsites.** A single authored tile may appear in multiple rules within a brain, or
-multiple times within the same rule. Each usage is a distinct **callsite** identified by
-a `callSiteId`. The brain compiler assigns callsite IDs when it compiles rules containing
-HOST_CALL_ASYNC instructions that reference user-authored tiles. Multiple callsites may
-reference the same `UserAuthoredProgram` (same bytecode, same entry function). Each
-callsite gets its own independent copy of callsite-persistent top-level state
-(`callsiteVars`).
-
-**Fibers.** Each brain rule executes as a fiber. When a rule's fiber reaches a
-HOST_CALL_ASYNC that dispatches to a user-authored tile (sensor or actuator), the `exec`
-wrapper spawns a new fiber via the scheduler. The calling rule fiber suspends at AWAIT
-until the spawned fiber completes and resolves the handle. If the user function completes
-without hitting any AWAIT instruction, the spawned fiber finishes within the current tick
-and the handle resolves immediately -- the calling fiber resumes in the same tick with no
-scheduling delay.
-
-In all cases, the entry function (`exec`) is invoked within a fiber via the `vmDispatch`
-function. The fiber is a standard VM fiber -- the same type used by tile-compiled rule
-fibers. The user-authored bytecode runs under the same scheduler, same budget limits,
-and same `FiberState` lifecycle as any built-in code.
-
-### WHEN clause evaluation semantics
-
-Condition evaluation in a WHEN clause is not required to resolve in the same tick. When a
-WHEN clause invokes a user-authored sensor, the sensor's fiber is spawned and the rule
-fiber suspends at AWAIT. The semantics are:
-
-- **Immediate resolution.** If the sensor's `exec` contains no AWAIT instructions, the
-  fiber completes within the current tick. The handle resolves with the sensor's return
-  value, and the rule fiber resumes in the same tick. This is the common case for sensors
-  that compute a boolean from current world state.
-
-- **Deferred resolution.** If the sensor's `exec` contains AWAIT instructions (e.g., it
-  queries an async host API), the fiber suspends and the condition remains **pending**
-  until the fiber completes in a later tick. The rule does not evaluate the DO clause
-  while the condition is pending.
-
-- **Truthy resolution.** When the condition fiber completes and the return value is
-  truthy, the rule proceeds to evaluate the DO clause.
-
-- **Falsy resolution.** When the condition fiber completes and the return value is falsy,
-  the rule does not execute the DO clause. The WHEN clause may be re-evaluated on the
-  next tick (per normal rule scheduling).
-
-This model means that a sensor does not need to answer "is this condition true right
-now?" synchronously. It is free to perform async work if needed. In practice, most
-sensors will complete immediately, but the runtime imposes no restriction.
-
-**Debugger mapping.** In the debugger, each fiber is a DAP thread (see
-[debugger spec, section 8](vscode-authoring-debugging.md#8-debug-target-and-thread-model)).
-When a user-authored function is executing inside a fiber, its stack frames appear in the
-fiber's call stack alongside any tile-compiled frames that invoked it via HOST_CALL.
-
-### Per-instance state
-
-This spec uses the term **callsite-persistent top-level state** for variables declared
-at the top level of a user's source file. These variables persist across fiber lifetimes
-(surviving between ticks) and are scoped per callsite (each usage of the tile in a brain
-rule gets independent state). The opcodes are `LOAD_CALLSITE_VAR` /
-`STORE_CALLSITE_VAR` and the runtime storage is the `callsiteVars` array on the `Fiber`.
-The debugger spec presents these as "Callsite State" in the DAP Scopes pane.
-
-User-authored code has two scopes of variable storage:
-
-- **Frame-local variables** (`LOAD_LOCAL` / `STORE_LOCAL`) live on the fiber's frame.
-  They survive across await points because the fiber preserves its full execution state,
-  but they are lost when the fiber completes or is cancelled.
-- **Callsite-persistent top-level variables** (`LOAD_CALLSITE_VAR` /
-  `STORE_CALLSITE_VAR`) persist across ticks and across fiber lifetimes. These are the
-  right place for state that must survive between invocations -- cooldown timers,
-  remembered targets, accumulated counts, etc.
-
-#### Per-callsite scoping
-
-Callsite-persistent top-level variables are **distinct per callsite**, not per module. If
-the same user-authored sensor is used as a tile in two different rules (or twice in the
-same rule), each usage gets its own independent copy of the variables. This matches
-how built-in sensors work: the `Timeout` sensor stores `{ fireTime, lastTick }` via
-`getCallSiteState()` / `setCallSiteState()`, and each callsite has independent state.
-
-Note the distinction between the three variable scopes:
-
-| Scope               | Opcodes                                    | Lifetime               | Sharing                           |
-| ------------------- | ------------------------------------------ | ---------------------- | --------------------------------- |
-| Frame-local         | `LOAD_LOCAL` / `STORE_LOCAL`               | Single fiber execution | None -- private to the call frame |
-| Callsite-persistent | `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` | Persists across ticks  | Independent per callsite          |
-| Brain               | `LOAD_VAR` / `STORE_VAR`                   | Persists across ticks  | Shared across all rules           |
-
-Brain variables (`LOAD_VAR` / `STORE_VAR`) are visible to all rules in the brain and
-correspond to variables the user creates in the tile editor. Callsite-persistent
-variables are invisible outside their callsite -- they are implementation-private state
-of a particular sensor/actuator invocation.
-
-Callsite-persistent top-level variables correspond to top-level `let` / `const`
-declarations in the user's source file. From the user's perspective they are ordinary
-module globals:
-
-```typescript
-import { Sensor, type Context } from "mindcraft";
-
-let lastFireTime = 0;
-let fireCount = 0;
-
-export default Sensor({
-  name: "cooldown-ready",
-  output: "boolean",
-  params: { cooldown: { type: "number", default: 2 } },
-  exec(ctx: Context, params: { cooldown: number }): boolean {
-    if (ctx.time - lastFireTime >= params.cooldown * 1000) {
-      lastFireTime = ctx.time;
-      fireCount += 1;
-      return true;
-    }
-    return false;
-  },
-});
-```
-
-If this sensor is placed in two different WHEN clauses, each callsite tracks its own
-`lastFireTime` and `fireCount` independently. The user does not need to think about
-this -- the scoping is automatic.
-
-#### VM support: LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR
-
-Two new opcodes:
-
-| Opcode               | Operands     | Behavior                                                   |
-| -------------------- | ------------ | ---------------------------------------------------------- |
-| `LOAD_CALLSITE_VAR`  | a = varIndex | Push `callsiteVars[varIndex]` onto stack                   |
-| `STORE_CALLSITE_VAR` | a = varIndex | Pop value from stack and store in `callsiteVars[varIndex]` |
-
-The `callsiteVars` storage is a `List<Value>` allocated **per callsite**. The size is
-known at compile time (the compiler counts the number of callsite-persistent top-level
-variables in the source file). Each callsite that uses the user-authored sensor/actuator
-gets its own independent `callsiteVars` array.
-
-The `callsiteVars` reference is stored on the `Fiber` (not on `ExecutionContext`,
-because `ExecutionContext` is shared across all fibers in a brain -- two concurrent
-user-authored fibers from different callsites need different var arrays). The backing
-`List<Value>` is persisted in call-site state so it survives fiber destruction.
-
-This piggybacks on the existing call-site state mechanism. Built-in sensors already
-store per-callsite state via `getCallSiteState()` / `setCallSiteState()` keyed by
-`callSiteId`. For user-authored code, the `callsiteVars` array is stored as the
-call-site state for that callsite:
-
-```
-HOST_CALL_ASYNC (user-authored tile, callSiteId = N)
-  -> look up callSiteState[N]
-  -> if absent, allocate List<Value> of length callsiteVarCount and run init function
-  -> store callsiteVars in callSiteState[N]
-  -> spawn fiber for user bytecode
-  -> attach callsiteVars to the spawned Fiber
-  -> LOAD_CALLSITE_VAR / STORE_CALLSITE_VAR index into fiber.callsiteVars
-```
-
-(Updated 2026-03-21: On first allocation, Phase 8 runs only the module init function
-(`linkedInitFuncId`) -- not the full `onPageEntered` wrapper. This matches native
-built-in tile behavior where `onPageEntered` is a page-entry lifecycle event, not a
-construction-time concern. The linker now remaps `initFuncId` into
-`linkedInitFuncId` on `UserTileLinkInfo`.)
-
-The `callsiteVars` reference is attached to the `Fiber` before executing the user's
-bytecode. When the fiber runs `LOAD_CALLSITE_VAR(i)`, the VM reads
-`fiber.callsiteVars[i]`. When it runs `STORE_CALLSITE_VAR(i)`, it writes
-`fiber.callsiteVars[i]`. Because the backing `List<Value>` is stored in call-site
-state (not on the fiber), it survives fiber destruction and persists across ticks.
-
-#### Callsite-persistent variable initialization
-
-Callsite-persistent variable initializers (e.g., `let lastFireTime = 0`) compile to a
-compiler-generated **module init function**. This function evaluates initializer
-expressions in source order and stores results via `STORE_CALLSITE_VAR`.
-
-The module init function runs:
-
-1. **On first allocation** -- when a callsite's `callsiteVars` array is created for the
-   first time (the callsite has never been invoked before).
-2. **On every page entry** -- via the generated `onPageEntered` wrapper (see
-   "Compiler-generated functions" below), resetting callsite-persistent state to
-   initial values. This matches how built-in sensors reset their call-site state in
-   `onPageEntered`.
-
-If the descriptor also includes an authored `onPageEntered` method, the generated
-wrapper calls the module init first (to reset state), then calls the user's
-`onPageEntered` body. The user function runs with freshly-reset `callsiteVars`. If no
-authored `onPageEntered` exists, the wrapper calls only the module init.
-(Updated 2026-03-21: `onPageEntered` is a method on the descriptor object, not a
-file-level named export. See the updated source shape at the top of this section.)
-
-This means top-level initializers always re-run on page entry. Authors who want to
-perform additional setup (clearing external state, logging, etc.) declare
-`onPageEntered` as a method on the descriptor object.
-
-#### Helper function state access
-
-Helper functions declared in the same file as the `exec` entry point share access to
-the callsite-persistent top-level state of their containing module. State access is
-resolved **lexically** -- a helper function that references a top-level variable compiles
-to the same `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` instructions as the `exec`
-function itself. No new state instances are created when a helper is called.
-
-The same rule applies to `onPageEntered` when declared as a method on the descriptor
-object: it is compiled as a regular user-authored function in the same file, and its
-references to top-level variables resolve against the same callsite-persistent state
-instance.
-(Updated 2026-03-21: `onPageEntered` is a descriptor method, not a named export.)
-
-```typescript
-let hitCount = 0; // callsite-persistent (STORE_CALLSITE_VAR index 0)
-
-function incrementHits(): void {
-  hitCount += 1; // LOAD_CALLSITE_VAR 0, add 1, STORE_CALLSITE_VAR 0
-}
-
-export default Sensor({
-  name: "hit-tracker",
-  output: "number",
-  onExecute(ctx: Context): number {
-    incrementHits(); // CALL -- shares the same callsiteVars array
-    return hitCount; // LOAD_CALLSITE_VAR 0
-  },
-  onPageEntered(ctx: Context): void {
-    // Module init already reset hitCount to 0 before this runs.
-    // Additional setup could go here.
-  },
-});
-```
-
-In the compiled bytecode, `incrementHits` and `onPageEntered` are separate
-`FunctionBytecode` entries invoked via CALL. They run in new frames on the same fiber,
-and the `callsiteVars` array is attached to the `Fiber`, not to the frame. All
-frames within the same fiber invocation read and write the same `callsiteVars`. This is
-the standard behavior for module-level variables in any language with module scope.
-
-The semantic rule: **`onExecute`, `onPageEntered`, and all helper functions in the same
-source file resolve top-level bindings against the same callsite-persistent state
-instance for that tile usage.** No function in the file gets a separate copy of
-`callsiteVars`.
-
-Helper functions do not get their own callsite-persistent state. Only top-level
-declarations in the source file produce `callsiteVars` slots.
-
-#### Future: variable storage annotations
-
-Out of scope for v1. Captured here to preserve the idea for future iteration.
-
-The v1 defaults (per-callsite scoping, reset on page re-entry) are intentional --
-they are simple, match CS intuition for module-level `let`, and align with how
-built-in sensors manage call-site state. However, future versions may allow authors
-to opt into non-default storage semantics for individual variables, such as:
-
-- **Shared across callsites** -- a single variable instance shared by all uses of the
-  sensor/actuator within the same brain, rather than independent per callsite.
-- **Persistent across page re-entry** -- the variable retains its value when a page
-  is re-entered instead of resetting to the initializer.
-
-Possible expression forms (none committed):
-
-- Decorators: `@shared let totalCount = 0;`, `@persistent let highScore = 0;`
-- JSDoc/comment tags: `/** @shared */ let totalCount = 0;`
-
-The design of this feature, including syntax, semantics, and interaction with the
-multi-file module system, is deferred to a future phase.
-
-- **Parameters** are received as function arguments, mapped from the `MapValue` that
-  the tile system constructs.
-
-### Lifecycle
-
-- **On page enter:** The generated `onPageEntered` wrapper runs the module init function
-  (resetting callsite-persistent state), then calls the user's authored `onPageEntered`
-  function if one exists. The wrapper is registered as the `BrainFunctionEntry`'s
-  `onPageEntered` hook and dispatches into compiled bytecode -- it is not an inline JS
-  callback.
-- **On page exit:** Fibers spawned by user code are cancelled when the page deactivates,
-  same as built-in fibers.
-- **Per tick:** Rules containing user sensors/actuators execute their fibers via the
-  normal scheduler. Budget limits apply equally to user code.
-
-### Compiler-generated functions
-
-The compiler produces `FunctionBytecode` entries beyond the user's explicitly declared
-functions. Each generated function has `isGenerated: true` in its `DebugFunctionInfo`.
-
-| Generated function      | Purpose                                                         | Has debug spans | Breakpoint target (v1) | Appears in stack traces                                   |
-| ----------------------- | --------------------------------------------------------------- | --------------- | ---------------------- | --------------------------------------------------------- |
-| Module init             | Evaluates top-level variable initializers                       | Yes             | No                     | Yes (with `isGenerated` flag, displayed as subtle/dimmed) |
-| `onPageEntered` wrapper | Calls module init, then authored `onPageEntered` (if it exists) | No              | No                     | Yes (with `isGenerated` flag)                             |
-
-**Module init function:** Compiled from top-level `let`/`const` initializer expressions.
-Runs on first callsite allocation and again on every page entry. Contains
-`STORE_CALLSITE_VAR` instructions for each declared top-level variable. The compiler
-emits debug spans for the initializer expressions so that stack traces through the init
-function show meaningful source locations. However, the init function is not a valid
-breakpoint target in v1 -- users cannot set breakpoints on top-level initializer lines.
-
-**`onPageEntered` wrapper:** Always generated, regardless of whether the user declares
-an authored `onPageEntered`. The wrapper is a small generated function that:
-
-1. Calls the module init function (resets all callsite-persistent variables to their
-   declared initial values).
-2. If the user's file exports `onPageEntered`, calls it. The user's function runs with
-   freshly-reset `callsiteVars`, so it can perform additional setup or override
-   specific variable values.
-
-The authored `onPageEntered` (if present) is a regular user-authored `FunctionBytecode`
-entry -- it is **not** generated. It is a valid breakpoint target and appears in stack
-traces with its authored name, not dimmed.
-
-Generated functions are always included in stack traces but marked with `isGenerated: true`
-in the debug metadata. The debugger presents them as subtle/dimmed frames (see
-[debugger spec, section 12](vscode-authoring-debugging.md#12-stack-scopes-and-variable-inspection)).
-Step-into on a CALL to a generated function behaves normally -- the debugger enters the
-function. Step-over skips past it.
+The active runtime model is the resolver-based action architecture described in
+[brain-action-execution-architecture.md](brain-action-execution-architecture.md)
+and implemented by the phased plan in
+[brain-action-execution-phased-impl.md](brain-action-execution-phased-impl.md).
+
+In the current design:
+
+1. A user-authored tile compiles to a direct bytecode action artifact with
+   artifact-local `entryFuncId`, optional `activationFuncId`, `numStateSlots`,
+   `isAsync`, and debug metadata.
+2. Publication registers tile metadata in `TileCatalog`, registers any needed
+   parameter tiles, and publishes a direct bytecode action artifact to the
+   action registry. No user tile is registered in `FunctionRegistry`, and no
+   VM-capturing host wrapper is created.
+3. Brain compilation interns `ActionDescriptor.key` values. The explicit brain
+   link step resolves those keys to host-backed or bytecode-backed actions and
+   materializes the executable action table before VM instantiation.
+4. `ACTION_CALL` executes sync bytecode-backed actions on the current fiber.
+   `ACTION_CALL_ASYNC` executes async bytecode-backed actions on child fibers.
+   Page activation, activation hooks, and persistent state bind through the
+   action-instance model rather than through wrapper-managed fiber globals.
+5. Live recompilation updates the user action artifact registry, keeps the last
+   successful artifact on compile failure, and recreates only the active Brain
+   instances whose linked action revisions are stale.
+
+Use the architecture spec for detailed runtime semantics. This document's
+remaining sections focus on authoring, compiler lowering, debug metadata, and
+the TypeScript surface area rather than the superseded wrapper runtime.
 
 ### Integration with tile system
-
-(Updated 2026-03-20: expanded with callDef construction, tileId naming, and anonymous
-param auto-registration.)
 
 User-authored sensors and actuators follow a **three-step registration flow**: ensure
 parameter tile defs exist, register the function entry, then register the tile def.
@@ -1297,16 +945,13 @@ app-defined tiles:
 | Actuator tileId        | `"tile.actuator->user.actuator.chase"`      |
 | Named param `speed`    | `"user.chase.speed"`                        |
 | Named param tileId     | `"tile.parameter->user.chase.speed"`        |
-| Anon param `target`    | `"anon.actorRef"` (shared, not tile-scoped) |
-| Anon param tileId      | `"tile.parameter->anon.actorRef"`           |
+| Anon param `target`    | `"anon.ActorRef"` (shared, not tile-scoped) |
+| Anon param tileId      | `"tile.parameter->anon.ActorRef"`           |
 
 Sensors use the `user.sensor.<name>` prefix (e.g., `user.sensor.chase`). Actuators
 use `user.actuator.<name>`. This avoids collisions if a sensor and actuator share
 the same user-given name. Named params remain scoped by the bare tile name
 (`user.<tileName>.<paramName>`) since params are unique within a tile.
-
-(Updated 2026-03-21: table updated to use `user.sensor.<name>` /
-`user.actuator.<name>` convention matching Phase 8 implementation.)
 
 The `user.` prefix is applied automatically by the registration bridge. The user
 never writes it.
@@ -1339,89 +984,48 @@ For each param declared in the descriptor:
   the app pre-registered anonymous tile defs for a given type. Novel anonymous param
   types work as long as the type can be resolved to a `TypeId`.
 
-#### Step 1 -- Register in `FunctionRegistry`
+#### Step 1 -- Publish metadata and the action artifact
 
-The compiled user program produces a `BrainFunctionEntry` whose `exec` function
-dispatches into the VM instead of running native TypeScript. This entry is registered
-via `getBrainServices().functions.register()` with the `BrainActionCallDef` from the
-compiled program:
+Successful compilation now publishes a `UserAuthoredProgram` as two linked
+pieces of data:
 
-```typescript
-const { functions, tiles } = getBrainServices();
-const userId = `user.${userProgram.name}`;
+1. tile metadata for `TileCatalog`
+2. a direct bytecode action artifact for the sim's action registry
 
-const fnEntry = functions.register(
-  userId,
-  true, // always async -- unified invocation model
-  {
-    onPageEntered: (ctx) => vmDispatchPageEnter(userProgram, ctx),
-    exec: (ctx, args, handleId) => vmDispatch(userProgram, ctx, args, handleId),
-  },
-  userProgram.callDef,
-);
-```
+`packages/ts-compiler/src/runtime/registration-bridge.ts` builds an
+`ActionDescriptor`, registers any needed parameter tiles, and publishes a
+`BytecodeResolvedAction` to the brain action registry. No user-authored tile is
+registered in `FunctionRegistry`, and no VM-capturing host wrapper is created.
 
-This is identical to how the sim app registers built-in sensors/actuators (e.g.,
-`fns.register(fnBump.tileId, fnBump.isAsync, fnBump.fn, fnBump.callDef)`). The only
-difference is that `exec` dispatches into user bytecode rather than calling native code.
-All user-authored tiles register as async (`isAsync: true`) and use a single `vmDispatch`
-function. If the user's code completes without hitting any AWAIT instruction, the handle
-resolves immediately within the same tick.
+#### Step 2 -- Resolve through the brain link step
 
-#### Step 2 -- Add to `TileCatalog`
-
-A `BrainTileSensorDef` or `BrainTileActuatorDef` is created from the
-`BrainFunctionEntry` and added to the catalog via `tiles.registerTileDef()`:
-
-```typescript
-if (userProgram.kind === "sensor") {
-  tiles.registerTileDef(
-    new BrainTileSensorDef(userId, fnEntry, userProgram.outputType, {
-      visual: userProgram.visual,
-    }),
-  );
-} else {
-  tiles.registerTileDef(
-    new BrainTileActuatorDef(userId, fnEntry, {
-      visual: userProgram.visual,
-    }),
-  );
-}
-```
-
-This mirrors how the sim app creates tile definitions (e.g.,
-`new BrainTileSensorDef(fnDef.tileId, fn, fnDef.returnType, { visual: fnDef.visual })`).
-
-After all three steps, the user-authored tile is indistinguishable from a built-in one
-in the catalog. The brain compiler discovers it the same way it discovers built-in tiles:
-by looking up tile defs from the catalogs passed to `compileBrain()`. The rule compiler
-emits `HOST_CALL` / `HOST_CALL_ASYNC` with the `fnEntry.id`, and the VM dispatches to
-the registered exec function -- which happens to run user bytecode.
-
-The user sees their custom sensor/actuator as a tile alongside built-in ones.
+The tile catalog exposes the `ActionDescriptor` to the parser, typechecker, and
+compiler. Brain compilation interns `ActionDescriptor.key`, the explicit brain
+link step resolves that key to either a host-backed or bytecode-backed action,
+and runtime dispatch executes through the executable action table described in
+[brain-action-execution-architecture.md](brain-action-execution-architecture.md).
 
 ### Revision and recompilation semantics
 
-Each successful compilation produces a new `UserAuthoredProgram` with a unique
-`programRevisionId`. The revision ID changes on every successful compile, regardless of
-whether the source changed semantically.
+Each successful compilation produces a new `UserAuthoredProgram` with a
+compiler-emitted `revisionId`, but the sim derives a deterministic content-based
+revision before deciding whether active brains need rebuild invalidation.
 
 **What happens after a successful compile:**
 
-1. The new `UserAuthoredProgram` (bytecode + debug metadata) replaces the previous
-   version in the world/project store.
-2. The registered `BrainFunctionEntry` is updated: its `exec` closure now dispatches
-   into the new bytecode.
-3. VMs that have **not yet loaded** the function entry will pick up the new bytecode
-   on the next HOST_CALL to that sensor/actuator.
-4. VMs that have already loaded the old bytecode into a running fiber continue executing
-   the old code until that fiber completes or is cancelled. There is no in-flight
-   bytecode replacement.
-5. Callsite-persistent state (`callsiteVars`) is **not** automatically cleared on
-   recompilation. If the new revision changes the number or meaning of callsite-persistent
-   variables, the init function runs on the next page entry to re-initialize them. Between recompile
-   and page re-entry, stale state may be read by the new bytecode -- this is acceptable
-   for v1 because the typical workflow is recompile-then-restart.
+1. The new `UserAuthoredProgram` (bytecode + debug metadata) replaces the
+   previous artifact for that `ActionKey`.
+2. The sim updates the tile catalog metadata and the startup metadata cache for
+   that tile.
+3. Any active Brain whose linked action revisions include the changed key at an
+   older revision is recreated from the same `BrainDef` and host object.
+4. Active brains whose executable programs do not depend on the changed action
+   are left running.
+5. Failed recompilation keeps the last successful artifact and currently running
+   brains in place.
+
+This is explicit executable-brain invalidation and rebuild, not in-place
+mutation of a global host-function entry.
 
 **Interaction with the debugger:**
 
@@ -1451,13 +1055,13 @@ always refers to the currently compiled bytecode and metadata.
 
 Available to all user code regardless of host:
 
-(Updated 2026-03-24: The ambient declarations below show the full design-intent
-interface. The current implementation generates these interfaces dynamically from
-the type registry via `buildAmbientDeclarations()`. As of now, SelfContext has
-`getVariable` and `setVariable` registered as struct methods; `switchPage`,
-`restartPage`, `currentPageId`, and `previousPageId` are planned but not yet
-registered. Context fields (`time`, `dt`, `tick`, `self`, `engine`) are registered
-as struct fields with a fieldGetter.)
+The ambient declarations below show the full design-intent interface. The
+implementation generates these interfaces dynamically from the type registry via
+`buildAmbientDeclarations()`. Currently, SelfContext has `getVariable` and
+`setVariable` registered as struct methods; `switchPage`, `restartPage`,
+`currentPageId`, and `previousPageId` are planned but not yet registered. Context
+fields (`time`, `dt`, `tick`, `self`, `engine`) are registered as struct fields
+with a fieldGetter.
 
 ```typescript
 // Generated dynamically by buildAmbientDeclarations() from the type registry
@@ -1499,11 +1103,10 @@ declare module "mindcraft" {
 
 ### Engine-specific context
 
-(Updated 2026-03-24: Host apps no longer provide a separate ambient declaration file.
-Instead, they register methods on EngineContext via `addStructMethods()` and register
+Host apps register methods on EngineContext via `addStructMethods()` and register
 corresponding host functions via `functions.register()`. The ambient declarations are
 generated dynamically from the type registry. The example below shows the design-intent
-API surface for the sim app, which would be generated from registered struct methods.)
+API surface for the sim app, which would be generated from registered struct methods.
 
 Each host app declares its engine-specific capabilities by registering struct methods
 and host functions. For example, the sim app would register:
@@ -1559,14 +1162,14 @@ declare module "mindcraft" {
 
 ### How this works at compile time
 
-(Updated 2026-03-24: Ambient declarations are now generated dynamically from the type
-registry, not maintained as static `.d.ts` files. `buildAmbientDeclarations()` in
-`packages/typescript/src/compiler/ambient.ts` iterates over all registered types --
+Ambient declarations are generated dynamically from the type registry, not maintained
+as static `.d.ts` files. `buildAmbientDeclarations()` in
+`packages/ts-compiler/src/compiler/ambient.ts` iterates over all registered types --
 including Context, SelfContext, EngineContext -- and generates TypeScript interfaces
 with fields and method signatures. Native-backed structs get branded readonly
 interfaces. Host apps register their EngineContext methods via `addStructMethods()`
 before calling `buildAmbientDeclarations()`, so the generated ambient automatically
-includes all engine-specific methods.)
+includes all engine-specific methods.
 
 The TypeScript program is created with the generated ambient declarations as a virtual
 file. The TypeScript checker validates user code against the combined API surface. If
@@ -1576,15 +1179,16 @@ additional `ambientSource` via `CompileOptions` for app-specific type augmentati
 
 ### How this works at runtime
 
-(Updated 2026-03-24: revised to reflect the ctx-as-native-struct implementation.
-Context, SelfContext, and EngineContext are native-backed structs registered in
-`packages/core/src/brain/runtime/context-types.ts`. The compile-time phantom approach
-described in earlier drafts has been removed.)
-
 Context, SelfContext, and EngineContext are **native-backed structs** registered in the
-core type system via `registerContextTypes()`. Each has a `fieldGetter` that extracts
-values from the underlying `ExecutionContext` at runtime. The ctx parameter is passed to
-`onExecute` as a real `StructValue` argument (local slot 0).
+core type system via `registerContextTypes()` in
+`packages/core/src/brain/runtime/context-types.ts`. Each has a `fieldGetter` that
+extracts values from the underlying `ExecutionContext` at runtime.
+
+The ctx parameter is injected into `onExecute` via the `injectCtxTypeId` field on the
+entry function's `FunctionBytecode`. When the VM spawns a fiber for a function with
+`injectCtxTypeId` set, it creates a `StructValue` via
+`mkNativeStructValue(fn.injectCtxTypeId, executionContext)` and prepends it to the
+fiber's arguments. The user's `onExecute` sees ctx as local slot 0.
 
 **Property access** on Context uses `GET_FIELD`, the same opcode used for any struct:
 
@@ -1684,7 +1288,7 @@ methods and fields. The fieldGetters and host function implementations unwrap th
 
 ## E. TypeScript Subset Proposal
 
-### Supported in v1
+### Supported
 
 | Feature                   | Notes                                                                 |
 | ------------------------- | --------------------------------------------------------------------- |
@@ -1702,6 +1306,7 @@ methods and fields. The fieldGetters and host function implementations unwrap th
 | `return`                  | With or without value                                                 |
 | Function declarations     | Named functions, arrow functions (including closures)                 |
 | Function calls            | Direct calls and indirect calls via function references               |
+| Closures                  | Capture-by-value via `MAKE_CLOSURE` / `LOAD_CAPTURE`                  |
 | Object literals           | `{ x: 1, y: 2 }` -- compile to StructValue                            |
 | Array literals            | `[1, 2, 3]` -- compile to ListValue                                   |
 | Property access           | `obj.field` -- compile to GET_FIELD                                   |
@@ -1714,32 +1319,39 @@ methods and fields. The fieldGetters and host function implementations unwrap th
 | Nullish coalescing        | `??`                                                                  |
 | Optional chaining         | `?.` (with static analysis)                                           |
 | Template literals         | `` `hello ${name}` `` -- desugars to string concatenation             |
-| Destructuring (simple)    | `const { x, y } = pos;` for objects; `const [a, b] = arr;` for arrays |
+| Destructuring             | Object and array patterns with rest elements and defaults             |
+| Struct spread             | `{ ...base, x: 1 }` via `STRUCT_COPY_EXCEPT`                         |
 | Spread in arrays          | `[...items, newItem]`                                                 |
 | `typeof`                  | Returns string, implemented via `TYPE_CHECK` opcode                   |
+| Classes (no inheritance)  | Constructor, methods, fields. Compiles to struct-backed types.        |
+| `new` expressions         | Class instantiation via constructor functions                         |
+| `this` keyword            | Inside class methods, resolves to the struct receiver                 |
+| Compound assignment       | `+=`, `-=`, `*=`, `/=`, `%=`, `&&=`, `\|\|=`, `??=`                  |
+| Prefix/postfix ops        | `++x`, `x++`, `--x`, `x--`                                           |
+| Multi-file imports        | `import { fn } from "./helpers"` resolved at compile time             |
+| Array methods             | `push`, `pop`, `shift`, `filter`, `map`, `forEach`, `find`, etc.     |
+| String methods            | Via host function dispatch                                            |
+| `Math` methods            | `abs`, `floor`, `ceil`, `round`, `sqrt`, `sin`, `cos`, `min`, `max`, `random`, etc. |
 
-### Excluded in v1 (feasible later)
+### Excluded (feasible later)
 
 | Feature              | Reason                                                                                |
 | -------------------- | ------------------------------------------------------------------------------------- |
-| Classes              | Significant VM extension (vtable, `this`, constructors). Target for Phase 2.          |
-| `enum`               | Syntax sugar. Can be added as constant objects in Phase 2.                            |
+| `enum`               | Syntax sugar. Can be added as constant objects.                                       |
 | Generics             | Type-level complexity. Low priority since types are erased.                           |
-| Generators / `yield` | Different from VM YIELD. Complex state machine. Phase 3+.                             |
-| `switch`             | Can be lowered to if/else chains. Phase 2 convenience.                                |
+| Generators / `yield` | Different from VM YIELD. Complex state machine.                                       |
+| `switch`             | Can be lowered to if/else chains.                                                     |
 | `for...in`           | Requires reflective property enumeration. Exclude permanently in favor of `for...of`. |
-| `finally`            | Requires additional VM support for guaranteed cleanup. Phase 2.                       |
+| `finally`            | Requires additional VM support for guaranteed cleanup.                                |
 | Regex                | No VM-level regex engine. Long-term host call.                                        |
-| Rest parameters      | `...args` -- requires variadic support. Phase 2.                                      |
-| Default parameters   | `function f(x = 5)` -- simple desugaring. Phase 2.                                    |
-| Optional parameters  | `function f(x?: number)` -- Phase 2. Default to nil.                                  |
-| `try` / `catch`      | Maps to existing TRY/THROW opcodes but adds complexity. Phase 2.                      |
-
-(Updated 2026-03-23: "Closures (capturing)" removed from this table. Closures with
-capture-by-value semantics are now fully implemented via `MAKE_CLOSURE` / `LOAD_CAPTURE`
-opcodes (core type system Phase 6). Arrow functions and function expressions that capture
-outer scope variables compile correctly. Capture is by value -- mutations to captured
-primitives inside the closure are not visible outside, and vice versa.)
+| Rest parameters      | `...args` -- requires variadic support.                                               |
+| Default parameters   | `function f(x = 5)` -- simple desugaring.                                             |
+| Optional parameters  | `function f(x?: number)` -- default to nil.                                           |
+| `try` / `catch`      | Maps to existing TRY/THROW opcodes but adds complexity.                               |
+| Class inheritance     | Requires vtable, prototype chains, constructor chaining.                              |
+| Static members        | Not supported in the current class implementation.                                    |
+| Private fields        | `#name` syntax not supported.                                                        |
+| Getters/setters       | Not supported in classes.                                                             |
 
 ### Excluded permanently
 
@@ -1763,11 +1375,12 @@ primitives inside the closure are not visible outside, and vice versa.)
 
 The core principle is: **support imperative programming with structured control flow and
 typed data.** This maps cleanly to the existing VM instruction set. Everything excluded
-either requires significant VM extensions (classes, generators), violates sandboxing
-(eval, globals), or adds complexity disproportionate to its value (decorators, symbols).
+either requires significant VM extensions (generators), violates sandboxing (eval,
+globals), or adds complexity disproportionate to its value (decorators, symbols).
 
-The v1 subset is sufficient to write meaningful sensors and actuators: query state, do
-arithmetic, make decisions, call host APIs, store results, and handle errors.
+The supported subset is sufficient to write meaningful sensors and actuators: query state,
+do arithmetic, make decisions, call host APIs, store results, define classes, import
+helpers from other files, and use closures for functional patterns.
 
 ---
 
@@ -1794,14 +1407,14 @@ state is an explicit data structure that persists across yields.
 
 ```typescript
 // User code:
-async function exec(ctx: Context, params: { target: Position }): Promise<void> {
+async function onExecute(ctx: Context, params: { target: Position }): Promise<void> {
   const pos = ctx.engine.getPosition();
   await ctx.engine.moveToward(params.target, 1.0);
   const newPos = ctx.engine.getPosition();
 }
 
 // Compiled bytecode (pseudocode):
-// func exec:
+// func onExecute:
 //   HOST_CALL getPosition        ; sync call, result on stack
 //   STORE_LOCAL pos_idx
 //   LOAD_LOCAL target_idx         ; from params
@@ -1840,7 +1453,7 @@ independently suspends and resumes. No state machine is needed because the fiber
 its position naturally:
 
 ```typescript
-async function exec(ctx: Context): Promise<void> {
+async function onExecute(ctx: Context): Promise<void> {
   await ctx.engine.moveToward(target1, 1.0); // AWAIT #1
   await ctx.engine.moveToward(target2, 1.0); // AWAIT #2
   await ctx.engine.moveToward(target3, 1.0); // AWAIT #3
@@ -1853,7 +1466,7 @@ times, continuing from exactly where it left off each time.
 ### Await inside loops
 
 ```typescript
-async function exec(ctx: Context): Promise<void> {
+async function onExecute(ctx: Context): Promise<void> {
   const waypoints = [pos1, pos2, pos3];
   for (const wp of waypoints) {
     await ctx.engine.moveToward(wp, 1.0);
@@ -1924,128 +1537,59 @@ simplification compared to typical TypeScript-to-bytecode compilers:
 
 ## G. Evolution Plan
 
-### Phase 1: Minimal viable custom sensors and actuators
+### Current state: what is implemented
 
-**Goal:** Users can write a single-file TypeScript sensor or actuator, compile it, and
-use it as a tile in their brain.
+The compiler and runtime support the following:
 
-**Scope:**
-
-- TypeScript v1 subset (section E)
-- Single file per sensor/actuator
-- `Sensor()` / `Actuator()` descriptor API
-- Compiler pipeline stages 1-8
-- `LOAD_LOCAL` / `STORE_LOCAL` VM opcodes for frame-local variables
-- `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` VM opcodes for callsite-persistent
-  top-level state
+- TypeScript subset (section E) including classes, closures, destructuring, multi-file
+  imports, array/string/Math methods, compound assignment, prefix/postfix operators
+- `Sensor()` / `Actuator()` descriptor API with `onExecute` and `onPageEntered`
+- Full compiler pipeline (stages 1-8) including multi-file `UserTileProject`
+- `LOAD_LOCAL` / `STORE_LOCAL`, `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`,
+  `MAKE_CLOSURE` / `LOAD_CAPTURE`, `TYPE_CHECK`, `CALL_INDIRECT` / `CALL_INDIRECT_ARGS`
+  VM opcodes
 - Common Mindcraft context (`ctx.time`, `ctx.dt`, `ctx.self.*`)
-- One host app's engine context (sim app as reference implementation)
+- Engine context (sim app reference implementation)
 - Sensors and actuators, sync or async (unified invocation model)
-- Bytecode verification on user programs
-- Instruction budget limits apply to user code (no special treatment)
+- Instruction budget limits
 - Inline error diagnostics from TypeScript checker and subset validator
 - User-authored tiles appear in tile catalog alongside built-in tiles
-- `onPageEntered` lifecycle function as named export in the same source file
+- `onPageEntered` lifecycle function
+- Classes (single, no inheritance) compiled to struct types + method functions
+- Multi-file authoring with `import` / `export` between user files
+- Virtual module resolution via `UserTileProject` and `createVirtualCompilerHost`
+- Cross-file symbol resolution and type checking
+- Linked bytecode (multiple files -> single `UserAuthoredProgram`)
+- Closures (capture-by-value) via `MAKE_CLOSURE` / `LOAD_CAPTURE`
+- Bytecode verification on user programs
 
-**Not in scope for Phase 1:**
+### Future work
 
-- Classes, generics, switch, finally, try/catch
-- Multi-file authoring
-- Importing between user files
-- Debugger / step-through
-- Hot reload of user code
-- Editor autocomplete beyond TypeScript-provided
-- Sharing user-authored tiles between brains
+The following are not yet implemented and represent potential future phases:
 
-**Deliverables:**
+**Language features:**
 
-1. `ts-compiler.ts` -- orchestrator
-2. `ts-validator.ts` -- subset enforcement
-3. `ts-descriptor.ts` -- metadata and lifecycle extraction
-4. `ts-lowering.ts` -- TS AST -> IR
-5. `ir.ts` -- IR types
-6. `authored-function.ts` -- VM-dispatch wrapper
-7. `mindcraft-ambient.d.ts` -- common API declarations
-8. VM extension: `LOAD_LOCAL` / `STORE_LOCAL` opcodes (`Frame.locals`),
-   `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` opcodes (callsite-persistent
-   `callsiteVars` storage on `Fiber`)
-9. Test suite covering all supported constructs
-10. Sim app integration: engine ambient declarations + host function mappings
-
-### Phase 2: Stronger type system and language ergonomics
-
-**Goal:** Richer language features that make authoring more productive.
-
-(Updated 2026-03-23: closures and source maps for debugging have been removed from this
-phase's scope. Closures (capture-by-value) were implemented in core type system Phase 6
-and are now available in Phase 1. Source span tracking and debug metadata are tracked in
-the typescript-compiler-phased-impl.md Phases 22-25.)
-
-**Scope:**
-
-- Classes (single, no inheritance) -- compile to struct types + function tables
-- `switch` statements -- lower to if/else chains
-- `enum` declarations -- lower to constant objects
+- `switch` statements (lower to if/else chains)
+- `enum` declarations (lower to constant objects)
 - Default and optional function parameters
 - Rest parameters
-- `try` / `catch` -- maps to existing TRY/THROW opcodes
-- `finally` blocks
-- Type narrowing in if/else branches (compiler uses TS checker info)
+- `try` / `catch` / `finally` (maps to existing TRY/THROW opcodes)
+- Type narrowing in if/else branches
+- Generics (currently erased by TS checker; no compiler support needed unless runtime
+  generics are desired)
+
+**Tooling and productivity:**
+
+- Debugger / step-through with source maps
+- Hot reload of user code
+- Editor autocomplete beyond TypeScript-provided
 - Better error messages with source location mapping
 
-**Not in scope for Phase 2:**
+**Ecosystem:**
 
-- Inheritance, abstract classes, interfaces as runtime constructs
-- Generics
-- Multi-file
-- Package system
-
-### Phase 3: Multi-file and modular authored code
-
-**Goal:** Users can split code across multiple files with explicit imports.
-
-**Scope:**
-
-- Multiple user files per sensor/actuator project
-- `import` / `export` between user files (resolved at compile time)
-- Virtual module resolution (no filesystem, no node_modules)
-- Cross-file symbol resolution via TypeScript compiler API (`ts.createProgram` with
-  multiple source files)
-- Cross-file type checking
-- Linked bytecode (multiple files compile to a single `UserAuthoredProgram` with merged
-  functions, constants, and variable maps)
-- Shared helper libraries (user-defined utility modules reusable across sensors/actuators)
-
-**Architecture for multi-file:**
-
-Use the TypeScript compiler API with virtual source files:
-
-```typescript
-const files = new Map<string, string>();
-files.set("helpers.ts", helperSource);
-files.set("sensor.ts", sensorSource);
-files.set("mindcraft.d.ts", ambientSource);
-
-const host = createVirtualCompilerHost(files, compilerOptions);
-const program = ts.createProgram(["sensor.ts"], compilerOptions, host);
-```
-
-The TypeScript checker resolves `import { helper } from "./helpers"` naturally.
-The Mindcraft compiler walks all referenced source files and compiles their functions
-into the same `UserAuthoredProgram`. Import/export resolution happens at compile time;
-there is no runtime module system.
-
-The Phase 1 single-file compiler already uses virtual source files (the user's source
-plus `mindcraft-ambient.d.ts`). Multi-file support extends this by adding more entries
-to the virtual file map. No architectural migration is needed.
-
-Callsite-persistent top-level variables (via `LOAD_CALLSITE_VAR` /
-`STORE_CALLSITE_VAR`) are scoped per callsite and per file. When multiple files are
-compiled into a single `UserAuthoredProgram`, each file's top-level variables get a
-contiguous segment within the `callsiteVars` array. The compiler assigns non-overlapping
-index ranges so that callsite-persistent variables from different files do not collide.
-At runtime, each callsite still gets its own independent `callsiteVars` array containing
-all segments.
+- Sharing user-authored tiles between brains
+- Shared helper libraries reusable across sensors/actuators
+- Package system for community-contributed tiles
 
 ---
 
@@ -2105,8 +1649,9 @@ the remaining budget as `ctx.budget` so users can be budget-aware.
 
 **"TypeScript but not really."**
 Users will try to write full TypeScript and hit subset boundaries. Error messages for
-unsupported features must be clear: "Classes are not supported in Mindcraft sensors.
-Use functions instead."
+unsupported features must be clear and specific about what is not supported (e.g.,
+"Inheritance is not supported in Mindcraft sensors", "switch statements are not
+supported").
 
 **Off-by-one in local variable indices.**
 The most common bug in bytecode compilers is incorrect variable slot allocation. Unit
@@ -2123,23 +1668,28 @@ runtime errors will occur. Ambient declarations must use precise types.
 **No classes (Phase 1).** Eliminates vtable dispatch, `this` binding, constructor
 chaining, and prototype resolution. Saves weeks of compiler/VM work.
 
-**Closures are capture-by-value only.** (Updated 2026-03-23: closures are now
-implemented via `MAKE_CLOSURE` / `LOAD_CAPTURE` opcodes from core type system Phase 6,
-but with capture-by-value semantics only. Captured variables are snapshot at closure
+This was true initially but classes are now supported (single, no inheritance). They
+compile to struct-backed types with qualified method names. The class constraint that
+remains is no inheritance, no getters/setters, no static members, no private fields.
+
+**Closures are capture-by-value only.** Captured variables are snapshot at closure
 creation time -- mutations inside the closure are not visible outside, and vice versa.
 This avoids the complexity of mutable upvalue cells, heap-allocated variable boxes, or
 closure-conversion passes that would be needed for capture-by-reference semantics.
 The constraint is acceptable because most closure use cases in user-authored code are
 callbacks to array methods like `.filter()`, `.map()`, `.forEach()` where captured
-values are read-only.)
+values are read-only. Closures are implemented via `MAKE_CLOSURE` / `LOAD_CAPTURE`
+opcodes.
 
 **No generics.** Types are erased after checking. The compiler does not need to
 monomorphize or specialize. Type parameters in ambient declarations work fine because
 the TypeScript checker handles them -- the Mindcraft compiler never sees them.
 
-**Single file (Phase 1).** Eliminates module resolution, import graph analysis, circular
-dependency detection, and cross-file linking. The entire compilation unit is one function
-plus its helpers.
+**Single file per tile (originally).** Originally eliminated module resolution, import
+graph analysis, circular dependency detection, and cross-file linking. Multi-file
+support is now implemented via `UserTileProject`, but the architecture remains simple:
+`collectImports()` gathers exported symbols from imported files and merges them into a
+single `UserAuthoredProgram`. There is no runtime module system.
 
 **No raw Promise construction.** Users cannot create Promises, only `await` host-provided
 async operations. This eliminates the need for Promise resolution semantics, `.then`

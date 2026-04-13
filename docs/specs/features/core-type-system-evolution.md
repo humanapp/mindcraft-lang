@@ -189,9 +189,9 @@ base `TypeId`. The convention approach is simpler and avoids a new `TypeDef` var
   `addNullableType(baseTypeId): TypeId` to `ITypeRegistry` for convenience
 - `packages/core/src/brain/runtime/type-system.ts` -- implement `NullableCodec` and
   registration
-- `packages/typescript/src/compiler/lowering.ts` -- `tsTypeToTypeId()` returns nullable
+- `packages/ts-compiler/src/compiler/lowering.ts` -- `tsTypeToTypeId()` returns nullable
   TypeId when the TS type is `T | null | undefined`
-- `packages/typescript/src/compiler/ambient.ts` -- emit `T | null` for nullable types
+- `packages/ts-compiler/src/compiler/ambient.ts` -- emit `T | null` for nullable types
 
 **Nuances:**
 
@@ -335,9 +335,9 @@ This eliminates the scan and handles arbitrary element types.
   interface; add `registerConstructor`, `instantiate` to `ITypeRegistry`
 - `packages/core/src/brain/runtime/type-system.ts` -- implement constructor
   registration, memoized instantiation, List/Map constructors
-- `packages/typescript/src/compiler/lowering.ts` -- update `resolveListTypeId` to
+- `packages/ts-compiler/src/compiler/lowering.ts` -- update `resolveListTypeId` to
   use `instantiate` instead of scanning
-- `packages/typescript/src/compiler/ambient.ts` -- handle auto-instantiated types
+- `packages/ts-compiler/src/compiler/ambient.ts` -- handle auto-instantiated types
   in ambient generation
 
 **Nuances:**
@@ -507,9 +507,9 @@ compile time." Union types mean "one of these specific types."
   union sources
 - `packages/core/src/brain/compiler/inferred-types.ts` -- extend type inference
   to handle union types in the brain compiler
-- `packages/typescript/src/compiler/lowering.ts` -- `tsTypeToTypeId` returns union
+- `packages/ts-compiler/src/compiler/lowering.ts` -- `tsTypeToTypeId` returns union
   TypeIds
-- `packages/typescript/src/compiler/ambient.ts` -- emit TS union syntax
+- `packages/ts-compiler/src/compiler/ambient.ts` -- emit TS union syntax
 
 **Nuances:**
 
@@ -644,9 +644,9 @@ Phase A:
 - `packages/core/src/brain/runtime/vm.ts` -- implement `execCallIndirect`; add
   `V.func()` factory
 - `packages/core/src/brain/compiler/emitter.ts` -- add `callIndirect` method
-- `packages/typescript/src/compiler/ir.ts` -- add `IrCallIndirect`
-- `packages/typescript/src/compiler/lowering.ts` -- handle function references
-- `packages/typescript/src/compiler/emit.ts` -- emit `CALL_INDIRECT`
+- `packages/ts-compiler/src/compiler/ir.ts` -- add `IrCallIndirect`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- handle function references
+- `packages/ts-compiler/src/compiler/emit.ts` -- emit `CALL_INDIRECT`
 
 Phase B:
 
@@ -862,7 +862,7 @@ pass (`InferredTypesVisitor`). Changes to the type registry affect it:
 Each change should include:
 
 - **Unit tests** in `packages/core` for the type registry, codec, and any VM changes
-- **Integration tests** in `packages/typescript` for end-to-end compilation and
+- **Integration tests** in `packages/ts-compiler` for end-to-end compilation and
   execution (source string -> compile -> link -> VM -> correct result)
 - **Luau build verification** (`npm run build:rbx` in `packages/core`)
 - **Biome check** (`npm run check` in both packages)

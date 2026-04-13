@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import {
+  type BrainServices,
   bag,
   CoreActuatorId,
   CoreControlFlowId,
@@ -20,12 +21,12 @@ import {
   choice,
   conditional,
   type ExecutionContext,
-  getBrainServices,
   type IBrainTileDef,
   type IConversionRegistry,
   type ITileCatalog,
   type MapValue,
   mkAccessorTileId,
+  mkActionDescriptor,
   mkActuatorTileId,
   mkCallDef,
   mkControlFlowTileId,
@@ -38,7 +39,6 @@ import {
   optional,
   param,
   RuleSide,
-  registerCoreBrainComponents,
   repeated,
   type SlotExpr,
   seq,
@@ -46,6 +46,7 @@ import {
   TRUE_VALUE,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type {
   ActuatorExpr,
   BinaryOpExpr,
@@ -81,11 +82,10 @@ import { BitSet } from "@mindcraft-lang/core/util";
 
 // ---- Initialize ----
 
-let services: ReturnType<typeof getBrainServices>;
+let services: BrainServices;
 
 before(() => {
-  registerCoreBrainComponents();
-  services = getBrainServices();
+  services = __test__createBrainServices();
 });
 
 // ---- Helpers ----
@@ -117,7 +117,7 @@ function resultContains(result: TileSuggestionResult, tileId: string): boolean {
 
 test("Test 1: Expression position, WHEN side, no type constraint", () => {
   const ctx: InsertionContext = { ruleSide: RuleSide.When };
-  const result = suggestTiles(ctx, catalogList());
+  const result = suggestTiles(ctx, catalogList(), services);
 
   const hasSensor = listFind(result.exact, (s) => s.tileDef.kind === "sensor") !== undefined;
   assert.ok(hasSensor, "Should include sensor tiles on WHEN side");
@@ -143,7 +143,7 @@ test("Test 2: Expression position, Either side, expected Number", () => {
     ruleSide: RuleSide.Either,
     expectedType: CoreTypeIds.Number,
   };
-  const result = suggestTiles(ctx, catalogList());
+  const result = suggestTiles(ctx, catalogList(), services);
 
   const hasFactory =
     listFind(
@@ -173,7 +173,7 @@ test("Test 2: Expression position, Either side, expected Number", () => {
 
 test("Test 3: Expression position, DO side, no type constraint", () => {
   const ctx: InsertionContext = { ruleSide: RuleSide.Do };
-  const result = suggestTiles(ctx, catalogList());
+  const result = suggestTiles(ctx, catalogList(), services);
 
   const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
   assert.ok(hasActuator, "Should include actuator tiles on DO side");
@@ -209,7 +209,7 @@ test("Test 4: Action call context for switch-page actuator", () => {
     };
 
     const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     const hasNumberMatch =
       listFind(result.exact, (s) => getTileOutputType(s.tileDef) === CoreTypeIds.Number) !== undefined;
@@ -231,7 +231,7 @@ test("Test 5: Expression position, WHEN side, expected Boolean", () => {
     ruleSide: RuleSide.When,
     expectedType: CoreTypeIds.Boolean,
   };
-  const result = suggestTiles(ctx, catalogList());
+  const result = suggestTiles(ctx, catalogList(), services);
 
   const hasTrueLit =
     listFind(
@@ -267,10 +267,10 @@ test("Test 6: getTileOutputType helper", () => {
 // ---- Test 7: Complete value expr -> infix operators only ----
 
 test("Test 7: Complete value expr (literal) -> infix operators only", () => {
-  const litTileDef = new BrainTileLiteralDef(CoreTypeIds.Number, 42);
+  const litTileDef = new BrainTileLiteralDef(CoreTypeIds.Number, 42, {}, services);
   const expr: LiteralExpr = { nodeId: 0, kind: "literal", tileDef: litTileDef, span: { from: 0, to: 0 } };
   const ctx: InsertionContext = { ruleSide: RuleSide.Either, expr };
-  const result = suggestTiles(ctx, catalogList());
+  const result = suggestTiles(ctx, catalogList(), services);
 
   const allOperators = listEvery(result.exact, (s) => s.tileDef.kind === "operator");
   assert.ok(allOperators, "Complete value expr should only suggest operator tiles");
@@ -294,7 +294,7 @@ test("Test 8: Complete actuator (all slots filled) -> nothing", () => {
   const switchPageTile = services.tiles.get(switchPageTileId) as BrainTileActuatorDef;
 
   if (switchPageTile) {
-    const callDef = switchPageTile.fnEntry.callDef;
+    const callDef = switchPageTile.action.callDef;
     const filledAnons = List.empty<SlotExpr>();
     const filledParams = List.empty<SlotExpr>();
     const filledMods = List.empty<SlotExpr>();
@@ -318,7 +318,7 @@ test("Test 8: Complete actuator (all slots filled) -> nothing", () => {
       span: { from: 0, to: 0 },
     };
     const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     assert.equal(result.exact.size(), 0, "Complete actuator should suggest nothing (exact)");
     assert.equal(result.withConversion.size(), 0, "Complete actuator should suggest nothing (conversion)");
@@ -354,7 +354,7 @@ test("Test 9: Actuator with parameter needing value (errorExpr) -> value tiles",
       span: { from: 0, to: 0 },
     };
     const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     const hasNumberMatch =
       listFind(result.exact, (s) => getTileOutputType(s.tileDef) === CoreTypeIds.Number) !== undefined;
@@ -391,7 +391,9 @@ test("Test 10: Integration -- parse [actuator, priority] -> suggest value tiles"
 
   const testCallDef = mkCallDef(bag(optional(param(testParamId))));
   const testFnEntry = services.functions.register("test-move-10", false, { exec: () => VOID_VALUE }, testCallDef);
-  const testActuatorDef = new BrainTileActuatorDef("test-move-10", testFnEntry, { visual: { label: "move" } });
+  const testActuatorDef = new BrainTileActuatorDef("test-move-10", mkActionDescriptor("actuator", testFnEntry), {
+    visual: { label: "move" },
+  });
   services.tiles.registerTileDef(testActuatorDef);
 
   const tileSequence = List.from([testActuatorDef as IBrainTileDef, testParamDef as IBrainTileDef]);
@@ -410,7 +412,7 @@ test("Test 10: Integration -- parse [actuator, priority] -> suggest value tiles"
     }
 
     const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     const hasNumberMatch =
       listFind(result.exact, (s) => getTileOutputType(s.tileDef) === CoreTypeIds.Number) !== undefined;
@@ -447,7 +449,7 @@ describe("Replace operand/operator in binary expression", () => {
     };
 
     const ctx: InsertionContext = { ruleSide: RuleSide.Either, expr: binaryExpr, replaceTileIndex: 0 };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     const hasLiteral = listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined;
     assert.ok(hasLiteral, "Replace left operand should include literal tiles");
@@ -460,7 +462,7 @@ describe("Replace operand/operator in binary expression", () => {
   });
 
   test("Test 12: Replace operator in [lit] [+] [lit] -> infix operators only", () => {
-    const litTileDef = new BrainTileLiteralDef(CoreTypeIds.Number, 42);
+    const litTileDef = new BrainTileLiteralDef(CoreTypeIds.Number, 42, {}, services);
     const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
     const leftLit: LiteralExpr = { nodeId: 1, kind: "literal", tileDef: litTileDef, span: { from: 0, to: 1 } };
@@ -475,7 +477,7 @@ describe("Replace operand/operator in binary expression", () => {
     };
 
     const ctx: InsertionContext = { ruleSide: RuleSide.Either, expr: binaryExpr, replaceTileIndex: 1 };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     const allOperators = listEvery(result.exact, (s) => s.tileDef.kind === "operator");
     assert.ok(allOperators, "Replace operator position should only suggest operators");
@@ -511,7 +513,7 @@ describe("Replace operand/operator in binary expression", () => {
     };
 
     const ctx: InsertionContext = { ruleSide: RuleSide.Either, expr: unaryExpr, replaceTileIndex: 0 };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     const allOperators = listEvery(result.exact, (s) => s.tileDef.kind === "operator");
     assert.ok(allOperators, "Replace prefix position should only suggest operators");
@@ -544,7 +546,7 @@ describe("Replace operand/operator in binary expression", () => {
     };
 
     const ctx: InsertionContext = { ruleSide: RuleSide.Either, expr: unaryExpr, replaceTileIndex: 1 };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     const hasLiteral = listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined;
     assert.ok(hasLiteral, "Replace operand should include literal tiles");
@@ -559,7 +561,9 @@ describe("Replace operand/operator in binary expression", () => {
     services.tiles.registerTileDef(testParamDef);
     const testCallDef = mkCallDef(bag(optional(param(testParamId))));
     const testFnEntry = services.functions.register("test-move-15", false, { exec: () => VOID_VALUE }, testCallDef);
-    const testActuatorDef = new BrainTileActuatorDef("test-move-15", testFnEntry, { visual: { label: "move" } });
+    const testActuatorDef = new BrainTileActuatorDef("test-move-15", mkActionDescriptor("actuator", testFnEntry), {
+      visual: { label: "move" },
+    });
     services.tiles.registerTileDef(testActuatorDef);
 
     const litTileDef = services.tiles
@@ -586,7 +590,7 @@ describe("Replace operand/operator in binary expression", () => {
     };
 
     const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr: actuatorExpr, replaceTileIndex: 2 };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     const hasNumberMatch =
       listFind(result.exact, (s) => getTileOutputType(s.tileDef) === CoreTypeIds.Number) !== undefined;
@@ -624,7 +628,7 @@ describe("Replace operand/operator in binary expression", () => {
       };
 
       const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr: actuatorExpr, replaceTileIndex: 0 };
-      const result = suggestTiles(ctx, catalogList());
+      const result = suggestTiles(ctx, catalogList(), services);
 
       const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
       assert.ok(hasActuator, "Replace action tile should include other actuators");
@@ -660,7 +664,7 @@ describe("Replace operand/operator in binary expression", () => {
       };
 
       const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr: actuatorExpr, replaceTileIndex: 1 };
-      const result = suggestTiles(ctx, catalogList());
+      const result = suggestTiles(ctx, catalogList(), services);
 
       const hasOperator = listFind(result.exact, (s) => s.tileDef.kind === "operator") !== undefined;
       assert.ok(!hasOperator, "Replace param tile in action call should NOT include operators");
@@ -681,10 +685,12 @@ describe("Parameter value expression chains", () => {
     services.tiles.registerTileDef(testParamDef);
     const callDef = mkCallDef(bag(optional(param(id))));
     const fnEntry = services.functions.register("test-move-18", false, { exec: () => VOID_VALUE }, callDef);
-    testActuatorDef = new BrainTileActuatorDef("test-move-18", fnEntry, { visual: { label: "move" } });
+    testActuatorDef = new BrainTileActuatorDef("test-move-18", mkActionDescriptor("actuator", fnEntry), {
+      visual: { label: "move" },
+    });
     services.tiles.registerTileDef(testActuatorDef);
 
-    numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "1", { visual: { label: "1" } });
+    numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "1", { visual: { label: "1" } }, services);
     services.tiles.registerTileDef(numLitDef);
   });
 
@@ -695,7 +701,7 @@ describe("Parameter value expression chains", () => {
     assert.equal(expr.kind, "actuator");
     if (expr.kind === "actuator") {
       const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-      const result = suggestTiles(ctx, catalogList());
+      const result = suggestTiles(ctx, catalogList(), services);
 
       const hasOperator = listFind(result.exact, (s) => s.tileDef.kind === "operator") !== undefined;
       assert.ok(hasOperator, "[move] [priority] [1] should offer infix operators");
@@ -713,7 +719,7 @@ describe("Parameter value expression chains", () => {
     assert.equal(expr.kind, "actuator");
     if (expr.kind === "actuator") {
       const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-      const result = suggestTiles(ctx, catalogList());
+      const result = suggestTiles(ctx, catalogList(), services);
 
       const hasNumberValue =
         listFind(result.exact, (s) => getTileOutputType(s.tileDef) === CoreTypeIds.Number) !== undefined;
@@ -743,7 +749,7 @@ describe("Parameter value expression chains", () => {
     assert.equal(expr.kind, "actuator");
     if (expr.kind === "actuator") {
       const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-      const result = suggestTiles(ctx, catalogList());
+      const result = suggestTiles(ctx, catalogList(), services);
 
       const hasOperator = listFind(result.exact, (s) => s.tileDef.kind === "operator") !== undefined;
       assert.ok(hasOperator, "[move] [priority] [1] [+] [1] should offer infix operators");
@@ -771,7 +777,7 @@ describe("Parameter value expression chains", () => {
     }
 
     const ctx: InsertionContext = { ruleSide: RuleSide.Either, expr };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     const hasValueTile =
       listFind(
@@ -802,7 +808,7 @@ describe("Parameter value expression chains", () => {
     assert.equal(expr.kind, "actuator");
     if (expr.kind === "actuator") {
       const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-      const result = suggestTiles(ctx, catalogList());
+      const result = suggestTiles(ctx, catalogList(), services);
 
       const hasNumberValue =
         listFind(result.exact, (s) => getTileOutputType(s.tileDef) === CoreTypeIds.Number) !== undefined;
@@ -838,7 +844,7 @@ describe("Parameter value expression chains", () => {
       }
 
       const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-      const result = suggestTiles(ctx, catalogList());
+      const result = suggestTiles(ctx, catalogList(), services);
 
       const hasInfixOp =
         listFind(
@@ -859,7 +865,7 @@ describe("Parameter value expression chains", () => {
     assert.equal(expr.kind, "actuator");
     if (expr.kind === "actuator") {
       const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-      const result = suggestTiles(ctx, catalogList());
+      const result = suggestTiles(ctx, catalogList(), services);
 
       const openParenId = mkControlFlowTileId(CoreControlFlowId.OpenParen);
       const hasOpenParen = listFind(result.exact, (s) => s.tileDef.tileId === openParenId) !== undefined;
@@ -946,7 +952,9 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
       )
     );
     const richFnEntry = services.functions.register("test-rich", false, { exec: () => VOID_VALUE }, richCallDef);
-    richActuatorDef = new BrainTileActuatorDef("test-rich", richFnEntry, { visual: { label: "rich" } });
+    richActuatorDef = new BrainTileActuatorDef("test-rich", mkActionDescriptor("actuator", richFnEntry), {
+      visual: { label: "rich" },
+    });
     services.tiles.registerTileDef(richActuatorDef);
 
     slotFast = getSlotIdForTile(mkModifierTileId("test.fast"));
@@ -955,7 +963,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
   test("Test 24: Choice -- no selection -> all options available", () => {
     const expr = buildRichExpr([], []);
     const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     assert.ok(resultContains(result, modADef.tileId), "modA should be available");
     assert.ok(resultContains(result, modBDef.tileId), "modB should be available");
@@ -968,7 +976,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
     const slotA = getSlotIdForTile(mkModifierTileId("test.modA"));
     const expr = buildRichExpr([{ slotId: slotA, tileDef: modADef }], []);
     const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     assert.ok(!resultContains(result, modADef.tileId), "modA should NOT be available (already placed)");
     assert.ok(!resultContains(result, modBDef.tileId), "modB should NOT be available (excluded by choice)");
@@ -980,7 +988,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
   test("Test 26: Choice+Repeat -- modFast x1 -> modSlow excluded, modFast available", () => {
     const expr = buildRichExpr([{ slotId: slotFast, tileDef: modFastDef }], []);
     const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     assert.ok(resultContains(result, modFastDef.tileId), "modFast should still be available (max 2, placed 1)");
     assert.ok(!resultContains(result, modSlowDef.tileId), "modSlow should NOT be available (excluded by choice)");
@@ -1007,7 +1015,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
       span: { from: 0, to: 2 },
     };
     const ctx: InsertionContext = { ruleSide: RuleSide.Do, expr };
-    const result = suggestTiles(ctx, catalogList());
+    const result = suggestTiles(ctx, catalogList(), services);
 
     assert.ok(!resultContains(result, modFastDef.tileId), "modFast should NOT be available (max 2, placed 2)");
     assert.ok(!resultContains(result, modSlowDef.tileId), "modSlow should NOT be available (excluded by choice)");
@@ -1018,7 +1026,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
 
     // Not placed
     const expr1 = buildRichExpr([], []);
-    const result1 = suggestTiles({ ruleSide: RuleSide.Do, expr: expr1 }, catalogList());
+    const result1 = suggestTiles({ ruleSide: RuleSide.Do, expr: expr1 }, catalogList(), services);
     assert.ok(resultContains(result1, priorityTileId), "optional priority param should be available when not placed");
 
     // Placed
@@ -1038,7 +1046,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
         },
       ]
     );
-    const result2 = suggestTiles({ ruleSide: RuleSide.Do, expr: expr2 }, catalogList());
+    const result2 = suggestTiles({ ruleSide: RuleSide.Do, expr: expr2 }, catalogList(), services);
     assert.ok(!resultContains(result2, priorityTileId), "optional priority param should NOT be available when placed");
   });
 
@@ -1061,7 +1069,9 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
       )
     );
     const condFnEntry = services.functions.register("test-cond", false, { exec: () => VOID_VALUE }, condCallDef);
-    const condActuatorDef = new BrainTileActuatorDef("test-cond", condFnEntry, { visual: { label: "cond" } });
+    const condActuatorDef = new BrainTileActuatorDef("test-cond", mkActionDescriptor("actuator", condFnEntry), {
+      visual: { label: "cond" },
+    });
     services.tiles.registerTileDef(condActuatorDef);
 
     // No value -> condition not met
@@ -1075,7 +1085,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
         modifiers: List.empty<SlotExpr>(),
         span: { from: 0, to: 0 },
       };
-      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
       assert.ok(!resultContains(result, modXDef.tileId), "modX should NOT be available when condition not met");
       assert.ok(!resultContains(result, modYDef.tileId), "modY should NOT be available when condition not met");
     }
@@ -1102,7 +1112,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
         modifiers: List.empty<SlotExpr>(),
         span: { from: 0, to: 1 },
       };
-      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
       assert.ok(resultContains(result, modXDef.tileId), "modX should be available when condition met");
       assert.ok(resultContains(result, modYDef.tileId), "modY should be available when condition met");
     }
@@ -1138,7 +1148,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
         modifiers: modSlots,
         span: { from: 0, to: 2 },
       };
-      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
       assert.ok(!resultContains(result, modXDef.tileId), "modX should NOT be available (already placed)");
       assert.ok(!resultContains(result, modYDef.tileId), "modY should NOT be available (excluded by choice)");
     }
@@ -1156,9 +1166,13 @@ describe("Non-inline sensor operator suggestions", () => {
 
     const sensorCallDef = mkCallDef(choice(mod("test.modP"), mod("test.modQ")));
     const sensorFnEntry = services.functions.register("test-sense", false, { exec: () => VOID_VALUE }, sensorCallDef);
-    const testSensorDef = new BrainTileSensorDef("test-sense", sensorFnEntry, CoreTypeIds.Number, {
-      visual: { label: "sense" },
-    });
+    const testSensorDef = new BrainTileSensorDef(
+      "test-sense",
+      mkActionDescriptor("sensor", sensorFnEntry, CoreTypeIds.Number),
+      {
+        visual: { label: "sense" },
+      }
+    );
     services.tiles.registerTileDef(testSensorDef);
 
     const modPSlotId = sensorCallDef.argSlots
@@ -1179,7 +1193,7 @@ describe("Non-inline sensor operator suggestions", () => {
       modifiers: modSlots,
       span: { from: 0, to: 1 },
     };
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
     const hasInfixOp = listFind(result.exact, (s) => s.tileDef.kind === "operator") !== undefined;
     assert.ok(!hasInfixOp, "Non-inline sensor with satisfied choice should NOT offer infix operators");
@@ -1202,7 +1216,7 @@ describe("Non-inline sensor operator suggestions", () => {
         modifiers: List.empty<SlotExpr>(),
         span: { from: 0, to: 0 },
       };
-      const result = suggestTiles({ ruleSide: RuleSide.When, expr: sensorExpr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.When, expr: sensorExpr }, catalogList(), services);
       const hasInfixOp = listFind(result.exact, (s) => s.tileDef.kind === "operator") !== undefined;
       assert.ok(hasInfixOp, "Inline sensor (no args) should offer infix operators");
     }
@@ -1225,9 +1239,13 @@ describe("Non-inline sensor operator suggestions", () => {
       )
     );
     const senseFnEntry = services.functions.register("test-sense2", false, { exec: () => VOID_VALUE }, senseCallDef);
-    const senseDef = new BrainTileSensorDef("test-sense2", senseFnEntry, CoreTypeIds.Boolean, {
-      visual: { label: "sense2" },
-    });
+    const senseDef = new BrainTileSensorDef(
+      "test-sense2",
+      mkActionDescriptor("sensor", senseFnEntry, CoreTypeIds.Boolean),
+      {
+        visual: { label: "sense2" },
+      }
+    );
     services.tiles.registerTileDef(senseDef);
 
     const modRSlotId = senseCallDef.argSlots
@@ -1264,7 +1282,7 @@ describe("Non-inline sensor operator suggestions", () => {
       modifiers: mods,
       span: { from: 0, to: 5 },
     };
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr: senseExpr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr: senseExpr }, catalogList(), services);
 
     assert.ok(
       !listFind(result.exact, (s) => s.tileDef.kind === "operator"),
@@ -1291,7 +1309,7 @@ describe("Operator overload filtering", () => {
       ) as BrainTileLiteralDef;
 
     const expr: LiteralExpr = { nodeId: 0, kind: "literal", tileDef: numLitDef, span: { from: 0, to: 0 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList(), services);
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Add)) !== undefined,
@@ -1337,7 +1355,7 @@ describe("Operator overload filtering", () => {
       ) as BrainTileLiteralDef;
 
     const expr: LiteralExpr = { nodeId: 0, kind: "literal", tileDef: boolLitDef, span: { from: 0, to: 0 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList(), services);
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.And)) !== undefined,
@@ -1386,7 +1404,11 @@ describe("Operator overload filtering", () => {
       span: { from: 0, to: 2 },
     };
 
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr: binaryExpr, replaceTileIndex: 1 }, catalogList());
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Either, expr: binaryExpr, replaceTileIndex: 1 },
+      catalogList(),
+      services
+    );
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Multiply)) !== undefined,
@@ -1410,10 +1432,12 @@ describe("Incomplete expression type constraints", () => {
     const anonStringSpec = param(CoreParameterId.AnonymousString, { name: "anonStr", required: true, anonymous: true });
     const sayCallDef = mkCallDef(bag(anonStringSpec));
     const sayFnEntry = services.functions.register("test-say", false, { exec: () => VOID_VALUE }, sayCallDef);
-    const sayDef = new BrainTileActuatorDef("test-say", sayFnEntry, { visual: { label: "say" } });
+    const sayDef = new BrainTileActuatorDef("test-say", mkActionDescriptor("actuator", sayFnEntry), {
+      visual: { label: "say" },
+    });
     services.tiles.registerTileDef(sayDef);
 
-    const strLitDef = new BrainTileLiteralDef(CoreTypeIds.String, "hi", { visual: { label: "hi" } });
+    const strLitDef = new BrainTileLiteralDef(CoreTypeIds.String, "hi", { visual: { label: "hi" } }, services);
     services.tiles.registerTileDef(strLitDef);
     const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
@@ -1422,7 +1446,7 @@ describe("Incomplete expression type constraints", () => {
 
     assert.equal(expr.kind, "actuator");
     if (expr.kind === "actuator") {
-      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
 
       const hasStringLit = listFind(
         result.exact,
@@ -1455,7 +1479,7 @@ describe("Incomplete expression type constraints", () => {
 
     // Variable LHS
     const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: numVarDef, span: { from: 0, to: 0 } };
-    const varResult = suggestTiles({ ruleSide: RuleSide.Do, expr: varExpr }, catalogList());
+    const varResult = suggestTiles({ ruleSide: RuleSide.Do, expr: varExpr }, catalogList(), services);
     assert.ok(
       listFind(varResult.exact, (s) => s.tileDef.tileId === assignTileId) !== undefined,
       "assign should be in exact for variable LHS"
@@ -1469,7 +1493,7 @@ describe("Incomplete expression type constraints", () => {
         (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
       ) as BrainTileLiteralDef;
     const litExpr: LiteralExpr = { nodeId: 1, kind: "literal", tileDef: numLitDef, span: { from: 0, to: 0 } };
-    const litResult = suggestTiles({ ruleSide: RuleSide.Do, expr: litExpr }, catalogList());
+    const litResult = suggestTiles({ ruleSide: RuleSide.Do, expr: litExpr }, catalogList(), services);
     assert.ok(
       listFind(litResult.exact, (s) => s.tileDef.tileId === assignTileId) === undefined,
       "assign should NOT be in exact for literal LHS"
@@ -1490,7 +1514,7 @@ describe("Incomplete expression type constraints", () => {
         modifiers: List.empty<SlotExpr>(),
         span: { from: 0, to: 0 },
       };
-      const sensorResult = suggestTiles({ ruleSide: RuleSide.When, expr: sensorExpr }, catalogList());
+      const sensorResult = suggestTiles({ ruleSide: RuleSide.When, expr: sensorExpr }, catalogList(), services);
       assert.ok(
         listFind(sensorResult.exact, (s) => s.tileDef.tileId === assignTileId) === undefined,
         "assign should NOT be in exact for sensor LHS"
@@ -1507,7 +1531,7 @@ describe("Incomplete expression type constraints", () => {
       right: { nodeId: 5, kind: "literal", tileDef: numLitDef, span: { from: 2, to: 2 } },
       span: { from: 0, to: 2 },
     };
-    const binResult = suggestTiles({ ruleSide: RuleSide.Do, expr: binaryExpr }, catalogList());
+    const binResult = suggestTiles({ ruleSide: RuleSide.Do, expr: binaryExpr }, catalogList(), services);
     assert.ok(
       listFind(binResult.exact, (s) => s.tileDef.tileId === assignTileId) === undefined,
       "assign should NOT be in exact for binaryOp LHS"
@@ -1518,7 +1542,9 @@ describe("Incomplete expression type constraints", () => {
     const anonNumSpec = param(CoreParameterId.AnonymousNumber, { name: "anonNum", required: true, anonymous: true });
     const numActCallDef = mkCallDef(bag(anonNumSpec));
     const numActFnEntry = services.functions.register("test-numact", false, { exec: () => VOID_VALUE }, numActCallDef);
-    const numActDef = new BrainTileActuatorDef("test-numact", numActFnEntry, { visual: { label: "numact" } });
+    const numActDef = new BrainTileActuatorDef("test-numact", mkActionDescriptor("actuator", numActFnEntry), {
+      visual: { label: "numact" },
+    });
     services.tiles.registerTileDef(numActDef);
 
     const numLitDef = services.tiles.get(
@@ -1534,7 +1560,7 @@ describe("Incomplete expression type constraints", () => {
     const numExpr = parseTilesForSuggestions(numTiles);
     assert.equal(numExpr.kind, "actuator");
     if (numExpr.kind === "actuator") {
-      const result = suggestTiles({ ruleSide: RuleSide.Do, expr: numExpr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Do, expr: numExpr }, catalogList(), services);
       const negateInExact = listFind(result.exact, (s) => s.tileDef.tileId === negateTileId);
       assert.ok(negateInExact !== undefined, "negate should be suggested when Number is expected");
     }
@@ -1583,7 +1609,7 @@ describe("Accessor / struct field suggestions", () => {
 
   test("Test 38: Struct variable -> accessor tiles suggested", () => {
     const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: posVarDef, span: { from: 0, to: 1 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList(), services);
 
     assert.ok(resultContains(result, accessorXDef.tileId), "accessor 'x' should be suggested");
     assert.ok(resultContains(result, accessorYDef.tileId), "accessor 'y' should be suggested");
@@ -1602,14 +1628,14 @@ describe("Accessor / struct field suggestions", () => {
 
     if (numVarDef2) {
       const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: numVarDef2, span: { from: 0, to: 1 } };
-      const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList(), services);
       const hasAccessor = listFind(result.exact, (s) => s.tileDef.kind === "accessor") !== undefined;
       assert.ok(!hasAccessor, "Accessor tiles should NOT be suggested after Number variable");
     }
   });
 
   test("Test 40: Empty expression -> accessor tiles NOT suggested", () => {
-    const result = suggestTiles({ ruleSide: RuleSide.Either }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Either }, catalogList(), services);
     const hasAccessor = listFind(result.exact, (s) => s.tileDef.kind === "accessor") !== undefined;
     assert.ok(!hasAccessor, "Accessor tiles should NOT be suggested in empty expression position");
   });
@@ -1622,7 +1648,7 @@ describe("Accessor / struct field suggestions", () => {
       accessor: accessorXDef,
       span: { from: 0, to: 2 },
     };
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: fieldAccessExpr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: fieldAccessExpr }, catalogList(), services);
 
     const assignTileId = mkOperatorTileId(CoreOpId.Assign);
     assert.ok(
@@ -1644,11 +1670,11 @@ describe("Accessor / struct field suggestions", () => {
       assert.equal(expr.object.kind, "variable");
       assert.equal(expr.accessor.fieldName, "x");
 
-      const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList(), services);
       const hasInfixOp = listFind(result.exact, (s) => s.tileDef.kind === "operator") !== undefined;
       assert.ok(hasInfixOp, "[$pos] [x] should offer infix operators");
 
-      const doResult = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+      const doResult = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
       assert.ok(
         listFind(doResult.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Assign)) !== undefined,
         "[$pos] [x] on DO side should offer assign"
@@ -1666,7 +1692,7 @@ describe("Accessor / struct field suggestions", () => {
       assert.equal(expr.target.kind, "fieldAccess");
       assert.equal(expr.value.kind, "errorExpr");
 
-      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
 
       const hasValueTile =
         listFind(
@@ -1698,7 +1724,7 @@ describe("Accessor / struct field suggestions", () => {
 
     assert.equal(expr.kind, "assignment");
     if (expr.kind === "assignment") {
-      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
 
       const hasInfixOp = listFind(result.exact, (s) => s.tileDef.kind === "operator") !== undefined;
       assert.ok(hasInfixOp, "[$pos] [x] [=] [1] should offer infix operators");
@@ -1719,7 +1745,8 @@ describe("Accessor / struct field suggestions", () => {
 
     const result = suggestTiles(
       { ruleSide: RuleSide.Either, expr: fieldAccessExpr, replaceTileIndex: 1 },
-      catalogList()
+      catalogList(),
+      services
     );
 
     assert.ok(resultContains(result, accessorXDef.tileId), "Replace accessor should suggest Position.x");
@@ -1755,7 +1782,7 @@ describe("Accessor / struct field suggestions", () => {
     // Position variable -> Position accessors only
     {
       const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: posVarDef, span: { from: 0, to: 1 } };
-      const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList(), services);
       assert.ok(resultContains(result, accessorXDef.tileId), "Position var should suggest Position.x");
       assert.ok(resultContains(result, accessorYDef.tileId), "Position var should suggest Position.y");
       assert.ok(!resultContains(result, accessorDxDef.tileId), "Position var should NOT suggest Velocity.dx");
@@ -1765,7 +1792,7 @@ describe("Accessor / struct field suggestions", () => {
     // Velocity variable -> Velocity accessors only
     {
       const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: velVarDef, span: { from: 0, to: 1 } };
-      const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList(), services);
       assert.ok(!resultContains(result, accessorXDef.tileId), "Velocity var should NOT suggest Position.x");
       assert.ok(resultContains(result, accessorDxDef.tileId), "Velocity var should suggest Velocity.dx");
       assert.ok(resultContains(result, accessorDyDef.tileId), "Velocity var should suggest Velocity.dy");
@@ -1785,7 +1812,7 @@ describe("Accessor / struct field suggestions", () => {
     const expr = parseTilesForSuggestions(tiles);
 
     assert.equal(expr.kind, "assignment");
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
 
     // All Position accessors produce Number, which is not Position -- all filtered out
     const hasAccessor = listFind(result.exact, (s) => s.tileDef.kind === "accessor") !== undefined;
@@ -1803,7 +1830,7 @@ describe("Accessor / struct field suggestions", () => {
     const expr = parseTilesForSuggestions(tiles);
 
     assert.equal(expr.kind, "assignment");
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
 
     // Position.x and Position.y produce Number -> should be suggested
     assert.ok(resultContains(result, accessorXDef.tileId), "x accessor should be suggested (Number matches target)");
@@ -1814,7 +1841,7 @@ describe("Accessor / struct field suggestions", () => {
     // A standalone struct variable with no enclosing assignment or operator
     // should still suggest all accessors for that struct type.
     const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: posVarDef, span: { from: 0, to: 1 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr: varExpr }, catalogList(), services);
 
     assert.ok(resultContains(result, accessorXDef.tileId), "standalone [$pos] should suggest Position.x");
     assert.ok(resultContains(result, accessorYDef.tileId), "standalone [$pos] should suggest Position.y");
@@ -1826,10 +1853,15 @@ describe("Accessor / struct field suggestions", () => {
 
 describe("Sub-expression filtering", () => {
   test("Test 47: ['hello'] [!=] _ -> type-constrained String, no non-inline sensors", () => {
-    const strLitDef = new BrainTileLiteralDef(CoreTypeIds.String, "hello", {
-      persist: false,
-      visual: { label: "hello" },
-    });
+    const strLitDef = new BrainTileLiteralDef(
+      CoreTypeIds.String,
+      "hello",
+      {
+        persist: false,
+        visual: { label: "hello" },
+      },
+      services
+    );
     services.tiles.registerTileDef(strLitDef);
     const neOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.NotEqualTo)) as BrainTileOperatorDef;
 
@@ -1837,7 +1869,7 @@ describe("Sub-expression filtering", () => {
     const expr = parseTilesForSuggestions(tiles);
 
     assert.equal(expr.kind, "binaryOp");
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
     const hasStringValue =
       listFind(result.exact, (s) => getTileOutputType(s.tileDef) === CoreTypeIds.String) !== undefined;
@@ -1862,7 +1894,7 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 48: Top-level empty expr still includes non-inline sensors", () => {
-    const result = suggestTiles({ ruleSide: RuleSide.When }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When }, catalogList(), services);
     const hasNonInlineSensor =
       listFind(
         result.exact,
@@ -1883,7 +1915,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([numLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList(), services);
 
     const hasPrefixOp =
       listFind(
@@ -1912,7 +1944,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([numLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Either, expr }, catalogList(), services);
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Negate)) !== undefined,
@@ -1946,7 +1978,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([notOpDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
     const sensorTileId = mkSensorTileId(CoreSensorId.OnPageEntered);
     assert.ok(
@@ -1971,7 +2003,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.And)) !== undefined,
@@ -1999,7 +2031,7 @@ describe("Sub-expression filtering", () => {
 
     const callDef54 = mkCallDef(bag(choice(mod("test.near54"), mod("test.far54"))));
     const fnEntry54 = services.functions.register("test-see54", false, { exec: () => TRUE_VALUE }, callDef54);
-    const seeDef = new BrainTileSensorDef("test-see54", fnEntry54, CoreTypeIds.Boolean, {
+    const seeDef = new BrainTileSensorDef("test-see54", mkActionDescriptor("sensor", fnEntry54, CoreTypeIds.Boolean), {
       placement: TilePlacement.WhenSide,
       visual: { label: "see" },
     });
@@ -2010,7 +2042,7 @@ describe("Sub-expression filtering", () => {
     const expr = parseTilesForSuggestions(tiles);
 
     assert.equal(expr.kind, "unaryOp");
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === modNearDef.tileId) !== undefined,
@@ -2030,7 +2062,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([notOpDef, seeDef, modNearDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
     const modFarDef = services.tiles.get(mkModifierTileId("test.far54")) as BrainTileModifierDef;
     assert.ok(
@@ -2053,7 +2085,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 1 }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 1 }, catalogList(), services);
 
     assert.ok(listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined, "Should include literals");
     assert.ok(listFind(result.exact, (s) => s.tileDef.kind === "sensor") !== undefined, "Should include sensors");
@@ -2067,7 +2099,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([notOpDef, seeDef, modNearDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 2 }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 2 }, catalogList(), services);
 
     const modFarDef = services.tiles.get(mkModifierTileId("test.far54")) as BrainTileModifierDef;
     assert.ok(listFind(result.exact, (s) => s.tileDef.tileId === modFarDef.tileId) !== undefined, "Should offer [far]");
@@ -2089,7 +2121,7 @@ describe("Sub-expression filtering", () => {
     const tiles = List.from<IBrainTileDef>([numLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
     const sensorTileId = mkSensorTileId(CoreSensorId.OnPageEntered);
     const hasNonInlineSensor =
@@ -2113,19 +2145,24 @@ describe("Capability requirements filtering", () => {
         persist: false,
         valueLabel: "guarded-99",
         requirements: reqBitSet,
-      }
+      },
+      services
     );
     services.tiles.registerTileDef(reqLitDef);
 
     // Undefined capabilities -> included (no filtering)
-    const result1 = suggestTiles({ ruleSide: RuleSide.When }, catalogList());
+    const result1 = suggestTiles({ ruleSide: RuleSide.When }, catalogList(), services);
     assert.ok(
       listFind(result1.exact, (s) => s.tileDef.tileId === reqLitDef.tileId) !== undefined,
       "Should be included when no filtering"
     );
 
     // Empty capabilities -> excluded
-    const result2 = suggestTiles({ ruleSide: RuleSide.When, availableCapabilities: new BitSet() }, catalogList());
+    const result2 = suggestTiles(
+      { ruleSide: RuleSide.When, availableCapabilities: new BitSet() },
+      catalogList(),
+      services
+    );
     assert.ok(
       listFind(result2.exact, (s) => s.tileDef.tileId === reqLitDef.tileId) === undefined,
       "Should be excluded when empty capabilities"
@@ -2133,7 +2170,11 @@ describe("Capability requirements filtering", () => {
 
     // Matching capabilities -> included
     const capBitSet = new BitSet().set(requireBit);
-    const result3 = suggestTiles({ ruleSide: RuleSide.When, availableCapabilities: capBitSet }, catalogList());
+    const result3 = suggestTiles(
+      { ruleSide: RuleSide.When, availableCapabilities: capBitSet },
+      catalogList(),
+      services
+    );
     assert.ok(
       listFind(result3.exact, (s) => s.tileDef.tileId === reqLitDef.tileId) !== undefined,
       "Should be included when matching"
@@ -2141,7 +2182,11 @@ describe("Capability requirements filtering", () => {
 
     // Non-matching capabilities -> excluded
     const wrongCapBitSet = new BitSet().set(requireBit + 1);
-    const result4 = suggestTiles({ ruleSide: RuleSide.When, availableCapabilities: wrongCapBitSet }, catalogList());
+    const result4 = suggestTiles(
+      { ruleSide: RuleSide.When, availableCapabilities: wrongCapBitSet },
+      catalogList(),
+      services
+    );
     assert.ok(
       listFind(result4.exact, (s) => s.tileDef.tileId === reqLitDef.tileId) === undefined,
       "Should be excluded when wrong bits"
@@ -2160,14 +2205,16 @@ describe("Capability requirements filtering", () => {
         persist: false,
         valueLabel: "multi-req",
         requirements: reqMulti,
-      }
+      },
+      services
     );
     services.tiles.registerTileDef(multiLitDef);
 
     // Partial
     const result1 = suggestTiles(
       { ruleSide: RuleSide.When, availableCapabilities: new BitSet().set(2) },
-      catalogList()
+      catalogList(),
+      services
     );
     assert.ok(
       listFind(result1.exact, (s) => s.tileDef.tileId === multiLitDef.tileId) === undefined,
@@ -2177,7 +2224,8 @@ describe("Capability requirements filtering", () => {
     // Full
     const result2 = suggestTiles(
       { ruleSide: RuleSide.When, availableCapabilities: new BitSet().set(2).set(4) },
-      catalogList()
+      catalogList(),
+      services
     );
     assert.ok(
       listFind(result2.exact, (s) => s.tileDef.tileId === multiLitDef.tileId) !== undefined,
@@ -2187,7 +2235,8 @@ describe("Capability requirements filtering", () => {
     // Superset
     const result3 = suggestTiles(
       { ruleSide: RuleSide.When, availableCapabilities: new BitSet().set(2).set(3).set(4) },
-      catalogList()
+      catalogList(),
+      services
     );
     assert.ok(
       listFind(result3.exact, (s) => s.tileDef.tileId === multiLitDef.tileId) !== undefined,
@@ -2240,7 +2289,7 @@ describe("Struct-specific operator and accessor behavior", () => {
 
   test("Test 62: Struct variable with operatorOverloads -> assign + accessors", () => {
     const varExpr: VariableExpr = { nodeId: 0, kind: "variable", tileDef: posVarDef, span: { from: 0, to: 0 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: varExpr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: varExpr }, catalogList(), services);
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Assign)) !== undefined,
@@ -2262,7 +2311,7 @@ describe("Struct-specific operator and accessor behavior", () => {
       accessor: accessorMagDef,
       span: { from: 0, to: 2 },
     };
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: fieldAccessExpr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: fieldAccessExpr }, catalogList(), services);
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Assign)) === undefined,
@@ -2282,7 +2331,7 @@ describe("Struct-specific operator and accessor behavior", () => {
     if (expr.kind === "fieldAccess") {
       assert.ok(expr.accessor.readOnly === true, "Accessor should be read-only");
 
-      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList());
+      const result = suggestTiles({ ruleSide: RuleSide.Do, expr }, catalogList(), services);
       assert.ok(
         listFind(result.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Assign)) === undefined,
         "assign should NOT be suggested after read-only [mag]"
@@ -2291,7 +2340,7 @@ describe("Struct-specific operator and accessor behavior", () => {
       // Non-readOnly accessor on same struct should still allow assign
       const tiles2 = List.from<IBrainTileDef>([posVarDef, accessorXDef]);
       const expr2 = parseTilesForSuggestions(tiles2);
-      const result2 = suggestTiles({ ruleSide: RuleSide.Do, expr: expr2 }, catalogList());
+      const result2 = suggestTiles({ ruleSide: RuleSide.Do, expr: expr2 }, catalogList(), services);
       assert.ok(
         listFind(result2.exact, (s) => s.tileDef.tileId === mkOperatorTileId(CoreOpId.Assign)) !== undefined,
         "assign should be suggested after non-readOnly [x]"
@@ -2351,7 +2400,11 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 1);
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth }, catalogList());
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth },
+      catalogList(),
+      services
+    );
 
     const closeParenId = mkControlFlowTileId(CoreControlFlowId.CloseParen);
     assert.ok(
@@ -2375,7 +2428,11 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 1);
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth }, catalogList());
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth },
+      catalogList(),
+      services
+    );
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined,
@@ -2403,7 +2460,11 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
       ) as BrainTileLiteralDef;
 
     const litExpr: LiteralExpr = { nodeId: 0, kind: "literal", tileDef: numLitDef, span: { from: 0, to: 1 } };
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr: litExpr, unclosedParenDepth: 0 }, catalogList());
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Do, expr: litExpr, unclosedParenDepth: 0 },
+      catalogList(),
+      services
+    );
 
     const closeParenId = mkControlFlowTileId(CoreControlFlowId.CloseParen);
     assert.ok(
@@ -2427,7 +2488,11 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 1);
-    const result = suggestTiles({ ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth }, catalogList());
+    const result = suggestTiles(
+      { ruleSide: RuleSide.Either, expr, unclosedParenDepth: depth },
+      catalogList(),
+      services
+    );
 
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.kind === "literal") !== undefined,
@@ -2478,7 +2543,8 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
         replaceTileIndex: 2,
         unclosedParenDepth: depth,
       },
-      catalogList()
+      catalogList(),
+      services
     );
 
     assert.ok(
@@ -2518,7 +2584,8 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
         replaceTileIndex: 2,
         unclosedParenDepth: depth,
       },
-      catalogList()
+      catalogList(),
+      services
     );
 
     assert.ok(
@@ -2553,16 +2620,21 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     const durationParam = param(durationId);
     const callDef = mkCallDef(bag(optional(anonStr), optional(durationParam)));
     const fnEntry = services.functions.register("test-say-78", false, { exec: () => VOID_VALUE }, callDef);
-    sayActuatorDef = new BrainTileActuatorDef("test-say-78", fnEntry, {
+    sayActuatorDef = new BrainTileActuatorDef("test-say-78", mkActionDescriptor("actuator", fnEntry), {
       visual: { label: "say" },
       placement: TilePlacement.DoSide,
     });
     services.tiles.registerTileDef(sayActuatorDef);
 
-    numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "5", { visual: { label: "5" } });
+    numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "5", { visual: { label: "5" } }, services);
     services.tiles.registerTileDef(numLitDef);
 
-    strLitDef = new BrainTileLiteralDef(CoreTypeIds.String, "test78greet", { visual: { label: "test78greet" } });
+    strLitDef = new BrainTileLiteralDef(
+      CoreTypeIds.String,
+      "test78greet",
+      { visual: { label: "test78greet" } },
+      services
+    );
     services.tiles.registerTileDef(strLitDef);
 
     addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
@@ -2576,7 +2648,7 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 1);
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList(), services);
 
     const hasDuration = listFind(result.exact, (s) => s.tileDef.tileId === durationParamDef.tileId) !== undefined;
     assert.ok(!hasDuration, "[say] [(] should NOT offer [duration] (paren not closed)");
@@ -2598,7 +2670,7 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 1);
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList(), services);
 
     const hasDuration = listFind(result.exact, (s) => s.tileDef.tileId === durationParamDef.tileId) !== undefined;
     assert.ok(!hasDuration, "[say] [(] [5] should NOT offer [duration] (paren not closed)");
@@ -2622,7 +2694,7 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 0);
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList(), services);
 
     const hasDuration = listFind(result.exact, (s) => s.tileDef.tileId === durationParamDef.tileId) !== undefined;
     assert.ok(hasDuration, "[say] [(] [5] [)] should offer [duration] (parens balanced)");
@@ -2636,7 +2708,8 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     assert.equal(depth, 0);
     const result = suggestTiles(
       { ruleSide: RuleSide.Do, expr, replaceTileIndex: 1, unclosedParenDepth: depth },
-      catalogList()
+      catalogList(),
+      services
     );
 
     const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
@@ -2663,7 +2736,8 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
 
     const result = suggestTiles(
       { ruleSide: RuleSide.Do, expr, replaceTileIndex: 1, unclosedParenDepth: depth },
-      catalogList()
+      catalogList(),
+      services
     );
 
     const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
@@ -2684,7 +2758,7 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     const depth = countUnclosedParens(tiles);
 
     assert.equal(depth, 1);
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList(), services);
 
     // Number literal should be an exact match (the + operator with Number LHS expects Number RHS),
     // not just a conversion match via the outer AnonString slot's String type.
@@ -2708,7 +2782,8 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
 
     const result = suggestTiles(
       { ruleSide: RuleSide.Do, expr, replaceTileIndex: 0, unclosedParenDepth: depth },
-      catalogList()
+      catalogList(),
+      services
     );
 
     const hasActuator = listFind(result.exact, (s) => s.tileDef.kind === "actuator") !== undefined;
@@ -2722,7 +2797,8 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
 
     const result = suggestTiles(
       { ruleSide: RuleSide.Do, expr, replaceTileIndex: 1, unclosedParenDepth: depth },
-      catalogList()
+      catalogList(),
+      services
     );
 
     // When replacing [(] at index 1, the incomplete anon value [1] [+] belongs
@@ -2740,7 +2816,8 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     assert.equal(depth, 1);
     const result = suggestTiles(
       { ruleSide: RuleSide.Do, expr, replaceTileIndex: 2, unclosedParenDepth: depth },
-      catalogList()
+      catalogList(),
+      services
     );
 
     // Inside an unclosed paren, actuators are not valid -- only value-producing
@@ -2761,7 +2838,8 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     assert.equal(depth, 0);
     const result = suggestTiles(
       { ruleSide: RuleSide.Do, expr, replaceTileIndex: 1, unclosedParenDepth: depth },
-      catalogList()
+      catalogList(),
+      services
     );
 
     // Even without parens, replacing a value operand inside a binary expression
@@ -2785,7 +2863,7 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
 
     assert.equal(depth, 0);
     assert.equal(expr.kind, "empty", "No tiles before insertion point -> EmptyExpr");
-    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.Do, expr, unclosedParenDepth: depth }, catalogList(), services);
 
     // Negate (prefix operator) should be available at expression start
     const hasNegate =
@@ -2817,7 +2895,7 @@ describe("Replace repeated modifier and anonymous slot value", () => {
     modFastDef = services.tiles.get(mkModifierTileId("test.fast")) as BrainTileModifierDef;
     modSlowDef = services.tiles.get(mkModifierTileId("test.slow")) as BrainTileModifierDef;
     richActuatorDef = services.tiles.get(mkActuatorTileId("test-rich")) as BrainTileActuatorDef;
-    richCallDef = richActuatorDef.fnEntry.callDef;
+    richCallDef = richActuatorDef.action.callDef;
     slotFast = richCallDef.argSlots.toArray().find((s) => s.argSpec.tileId === mkModifierTileId("test.fast"))!.slotId;
   });
 
@@ -2841,7 +2919,11 @@ describe("Replace repeated modifier and anonymous slot value", () => {
       span: { from: 0, to: 3 },
     };
 
-    const result74 = suggestTiles({ ruleSide: RuleSide.Do, expr: expr74, replaceTileIndex: 2 }, catalogList());
+    const result74 = suggestTiles(
+      { ruleSide: RuleSide.Do, expr: expr74, replaceTileIndex: 2 },
+      catalogList(),
+      services
+    );
     assert.ok(
       resultContains(result74, modFastDef.tileId),
       "modFast should be available when replacing one of two (max 2)"
@@ -2859,7 +2941,9 @@ describe("Replace repeated modifier and anonymous slot value", () => {
 
     const callDef75 = mkCallDef(bag(param(anonNumParamId, { anonymous: true })));
     const fnEntry75 = services.functions.register("test-anon75", false, { exec: () => VOID_VALUE }, callDef75);
-    const actuatorDef75 = new BrainTileActuatorDef("test-anon75", fnEntry75, { visual: { label: "anon75" } });
+    const actuatorDef75 = new BrainTileActuatorDef("test-anon75", mkActionDescriptor("actuator", fnEntry75), {
+      visual: { label: "anon75" },
+    });
     services.tiles.registerTileDef(actuatorDef75);
 
     const litDef = services.tiles
@@ -2883,7 +2967,11 @@ describe("Replace repeated modifier and anonymous slot value", () => {
       span: { from: 0, to: 2 },
     };
 
-    const result75 = suggestTiles({ ruleSide: RuleSide.Do, expr: expr75, replaceTileIndex: 1 }, catalogList());
+    const result75 = suggestTiles(
+      { ruleSide: RuleSide.Do, expr: expr75, replaceTileIndex: 1 },
+      catalogList(),
+      services
+    );
 
     assert.ok(
       listFind(result75.exact, (s) => getTileOutputType(s.tileDef) === CoreTypeIds.Number) !== undefined,
@@ -2910,7 +2998,7 @@ describe("Replace repeated modifier and anonymous slot value", () => {
 
     // Find the AnonNumber slot (first choice option) -- this is what the parser
     // would greedily assign a page tile to.
-    const callDef = switchPageTile.fnEntry.callDef;
+    const callDef = switchPageTile.action.callDef;
     const anonNumberSlot = callDef.argSlots.toArray().find((s) => s.argSpec.anonymous);
     assert.ok(anonNumberSlot, "switch-page should have an anonymous slot");
 
@@ -2937,7 +3025,11 @@ describe("Replace repeated modifier and anonymous slot value", () => {
       span: { from: 0, to: 2 },
     };
 
-    const result76 = suggestTiles({ ruleSide: RuleSide.Do, expr: expr76, replaceTileIndex: 1 }, catalogList());
+    const result76 = suggestTiles(
+      { ruleSide: RuleSide.Do, expr: expr76, replaceTileIndex: 1 },
+      catalogList(),
+      services
+    );
 
     // Page tiles produce String, which should be an exact match for AnonString
     const pageInExact = listFind(result76.exact, (s) => s.tileDef.tileId === pageDef.tileId);
@@ -2990,9 +3082,13 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
       )
     );
     const seeFnEntry = services.functions.register("test-see77", false, { exec: () => TRUE_VALUE }, seeCallDef);
-    const seeDef77 = new BrainTileSensorDef("test-see77", seeFnEntry, CoreTypeIds.Boolean, {
-      visual: { label: "see" },
-    });
+    const seeDef77 = new BrainTileSensorDef(
+      "test-see77",
+      mkActionDescriptor("sensor", seeFnEntry, CoreTypeIds.Boolean),
+      {
+        visual: { label: "see" },
+      }
+    );
     services.tiles.registerTileDef(seeDef77);
 
     // Build sensor expr with no modifiers placed
@@ -3006,7 +3102,7 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
       span: { from: 0, to: 0 },
     };
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr: seeExpr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr: seeExpr }, catalogList(), services);
 
     assert.ok(resultContains(result, modCarnDef.tileId), "carnivore should be available");
     assert.ok(resultContains(result, modHerbDef.tileId), "herbivore should be available");
@@ -3021,7 +3117,7 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
     const modNearDef = services.tiles.get(mkModifierTileId("test.near77")) as BrainTileModifierDef;
     const modFarDef = services.tiles.get(mkModifierTileId("test.far77")) as BrainTileModifierDef;
 
-    const carnSlotId = seeDef.fnEntry.callDef.argSlots
+    const carnSlotId = seeDef.action.callDef.argSlots
       .toArray()
       .find((s) => s.argSpec.tileId === mkModifierTileId("test.carn77"))!.slotId;
 
@@ -3041,7 +3137,7 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
       span: { from: 0, to: 2 },
     };
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr: seeExpr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr: seeExpr }, catalogList(), services);
 
     assert.ok(resultContains(result, modNearDef.tileId), "nearby should be available after carnivore placed");
     assert.ok(resultContains(result, modFarDef.tileId), "far away should be available after carnivore placed");
@@ -3075,7 +3171,7 @@ describe("Right-spine operator rebinding", () => {
       span: { from: 0, to: 3 },
     };
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr: binaryExpr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr: binaryExpr }, catalogList(), services);
 
     // Boolean-compatible operators should be suggested (overall expr type is Boolean)
     assert.ok(resultContains(result, mkOperatorTileId(CoreOpId.And)), "and should be suggested (Boolean LHS)");
@@ -3118,7 +3214,7 @@ describe("Right-spine operator rebinding", () => {
     const tiles = List.from<IBrainTileDef>([numVarDef, gtOpDef, numVarDef]);
     const expr = parseTilesForSuggestions(tiles);
 
-    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList());
+    const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
     assert.ok(
       resultContains(result, mkOperatorTileId(CoreOpId.Multiply)),

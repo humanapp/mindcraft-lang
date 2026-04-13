@@ -1,3 +1,5 @@
+/// <reference types="@rbxts/types" />
+
 /**
  * Platform-agnostic math operations - Roblox implementation
  */
@@ -49,6 +51,23 @@ export const MathOps = {
     return count;
   },
   abs: (n: number) => math.abs(n),
+  acos: (n: number) => math.acos(n),
+  asin: (n: number) => math.asin(n),
+  atan: (n: number) => math.atan(n),
+  atan2: (y: number, x: number) => math.atan2(y, x),
+  cos: (n: number) => math.cos(n),
+  exp: (n: number) => math.exp(n),
+  log: (n: number) => math.log(n),
+  pow: (base: number, exp: number) => math.pow(base, exp),
+  bitAnd: (a: number, b: number) => bit32.band(a, b),
+  bitOr: (a: number, b: number) => bit32.bor(a, b),
+  bitXor: (a: number, b: number) => bit32.bxor(a, b),
+  bitNot: (a: number) => bit32.bnot(a),
+  leftShift: (a: number, b: number) => bit32.lshift(a, b),
+  rightShift: (a: number, b: number) => bit32.arshift(a, b),
+  sin: (n: number) => math.sin(n),
+  sqrt: (n: number) => math.sqrt(n),
+  tan: (n: number) => math.tan(n),
   parseFloat: (value: string) => {
     const num = tonumber(value);
     return num !== undefined ? num : 0 / 0; // NaN

@@ -9,11 +9,12 @@ export type Conversion = {
   toType: TypeId;
   cost: number;
   fn: HostSyncFn;
-  callDef: BrainActionCallDef;
+  callDef?: BrainActionCallDef;
 };
 
 export interface IConversionRegistry {
   register(conv: Omit<Conversion, "id">): Conversion;
+  remove(fromType: TypeId, toType: TypeId): boolean;
   get(fromType: TypeId, toType: TypeId): Conversion | undefined;
   findBestPath(fromType: TypeId, toType: TypeId, maxDepth?: number): List<Conversion> | undefined;
 }

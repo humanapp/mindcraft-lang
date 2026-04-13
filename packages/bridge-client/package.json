@@ -1,0 +1,79 @@
+{
+  "name": "@mindcraft-lang/bridge-client",
+  "version": "0.1.11",
+  "description": "Client SDK for the Mindcraft Lang VSCode bridge",
+  "license": "MIT",
+  "type": "module",
+  "author": "humanapp",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/humanapp/mindcraft-lang.git",
+    "directory": "packages/bridge-client"
+  },
+  "bugs": {
+    "url": "https://github.com/humanapp/mindcraft-lang/issues"
+  },
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/bridge-client#readme",
+  "keywords": [
+    "mindcraft",
+    "visual-programming",
+    "tile-based",
+    "typescript",
+    "vscode",
+    "language",
+    "education",
+    "stem",
+    "coding",
+    "game-development",
+    "creative-coding",
+    "kodu",
+    "project-spark"
+  ],
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/index.js",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "build:prod": "tsc --build",
+    "clean": "tsc --build --clean",
+    "watch": "tsc --build --watch",
+    "lint:only": "biome lint ./src",
+    "check:only": "biome check ./src",
+    "format:only": "biome format ./src",
+    "lint": "biome lint ./src --write",
+    "check": "biome check ./src --write",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
+    "format": "biome format ./src --write",
+    "pretest": "npm run build",
+    "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
+    "release:patch": "node ../../scripts/release.js patch",
+    "release:minor": "node ../../scripts/release.js minor",
+    "release:major": "node ../../scripts/release.js major"
+  },
+  "dependencies": {
+    "@mindcraft-lang/bridge-protocol": "file:../bridge-protocol",
+    "@mindcraft-lang/core": "file:../core",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.3.15",
+    "tsx": "^4.21.0",
+    "typescript": "~5.9.3"
+  }
+}

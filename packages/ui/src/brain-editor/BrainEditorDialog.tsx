@@ -1,4 +1,4 @@
-import { stream } from "@mindcraft-lang/core";
+import { List } from "@mindcraft-lang/core";
 import { BrainDef, type BrainPageDef, brainJsonFromPlain } from "@mindcraft-lang/core/brain/model";
 import {
   BookOpen,
@@ -59,28 +59,27 @@ export interface BrainEditorDialogProps {
 }
 
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
-  const { getDefaultBrain, docsIntegration } = useBrainEditorConfig();
+  const { getDefaultBrain, docsIntegration, brainServices, tileCatalogs } = useBrainEditorConfig();
   const isDocsOpen = docsIntegration?.isOpen ?? false;
   const toggleDocs = docsIntegration?.toggle;
   const closeDocs = docsIntegration?.close;
 
-  // Clone the brainDef to work on a copy
-  const [brainDef, setBrainDef] = useState<BrainDef | undefined>(() => {
-    if (srcBrainDef) {
-      const newBrainDef = srcBrainDef.clone();
-      // Ensure at least one page exists
-      if (newBrainDef.pages().size() === 0) {
-        newBrainDef.appendNewPage();
+  const createEditableBrain = useCallback(
+    (sourceBrainDef?: BrainDef): BrainDef => {
+      const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
+      const nextBrainDef = sourceBrainDef
+        ? sourceBrainDef.clone(extraCatalogs)
+        : BrainDef.emptyBrainDef(brainServices!);
+      if (nextBrainDef.pages().size() === 0) {
+        nextBrainDef.appendNewPage();
       }
-      return newBrainDef;
-    }
-    const newBrainDef = BrainDef.emptyBrainDef();
-    // Ensure at least one page exists
-    if (newBrainDef.pages().size() === 0) {
-      newBrainDef.appendNewPage();
-    }
-    return newBrainDef;
-  });
+      return nextBrainDef;
+    },
+    [brainServices, tileCatalogs]
+  );
+
+  // Clone the brainDef to work on a copy
+  const [brainDef, setBrainDef] = useState<BrainDef | undefined>(() => createEditableBrain(srcBrainDef));
   const [currentPageNumber, setCurrentPageNumber] = useState(brainDef ? 1 : 0);
   const [totalPageCount, setTotalPageCount] = useState(brainDef?.pages()?.size() ?? 0);
   const [pageChangeCounter, setPageChangeCounter] = useState(0);
@@ -112,11 +111,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   // Clone brainDef when it changes or dialog opens
   useEffect(() => {
     if (isOpen && srcBrainDef) {
-      const newBrainDef = srcBrainDef.clone();
-      // Ensure at least one page exists
-      if (newBrainDef.pages().size() === 0) {
-        newBrainDef.appendNewPage();
-      }
+      const newBrainDef = createEditableBrain(srcBrainDef);
       setBrainDef(newBrainDef);
       setCurrentPageNumber(1);
       setTotalPageCount(newBrainDef.pages().size());
@@ -126,7 +121,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setBrainDef(undefined);
       commandHistory.clear();
     }
-  }, [isOpen, srcBrainDef, commandHistory]);
+  }, [isOpen, srcBrainDef, commandHistory, createEditableBrain]);
 
   useEffect(() => {
     return onBrainClipboardChanged(() => setHasBrainClipboard(hasBrainInClipboard()));
@@ -143,9 +138,10 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     if (!brainDef) return;
     const json = getBrainFromClipboard();
     if (!json) return;
-    const command = new ReplaceBrainCommand(brainDef, json);
+    const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
+    const command = new ReplaceBrainCommand(brainDef, json, extraCatalogs);
     commandHistory.executeCommand(command);
-  }, [brainDef, commandHistory]);
+  }, [brainDef, commandHistory, tileCatalogs]);
 
   useEffect(() => {
     if (brainDef) {
@@ -183,11 +179,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
   }, [brainDef, currentPageNumber]);
 
   const handleSubmit = useCallback(() => {
-    if (brainDef) {
-      brainDef.purgeUnusedTiles();
-    }
-    onSubmit(brainDef || BrainDef.emptyBrainDef()!);
-  }, [brainDef, onSubmit]);
+    const nextBrainDef = brainDef
+      ? (() => {
+          brainDef.purgeUnusedTiles();
+          return brainDef;
+        })()
+      : createEditableBrain();
+    onSubmit(nextBrainDef);
+  }, [brainDef, onSubmit, createEditableBrain]);
 
   const handleInsertPageAfterCurrentClick = () => {
     if (brainDef && totalPageCount > 0) {
@@ -197,7 +196,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setCurrentPageNumber(currentIndex + 2); // Move to the newly added page
     } else if (brainDef && totalPageCount === 0) {
       // If no pages exist, just append a new page
-      const command = new AddPageCommand(brainDef);
+      const command = new AddPageCommand(brainDef, undefined);
       commandHistory.executeCommand(command);
       setCurrentPageNumber(1);
     }
@@ -211,7 +210,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
       setCurrentPageNumber(currentIndex + 1); // Move to the newly added page
     } else if (brainDef && totalPageCount === 0) {
       // If no pages exist, just append a new page
-      const command = new AddPageCommand(brainDef);
+      const command = new AddPageCommand(brainDef, undefined);
       commandHistory.executeCommand(command);
       setCurrentPageNumber(1);
     }
@@ -305,24 +304,12 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
 
       const file = await handle.getFile();
       const arrayBuffer = await file.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
+      const text = new TextDecoder().decode(new Uint8Array(arrayBuffer));
 
       let loadedBrain: BrainDef;
+      const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
+      loadedBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown), brainServices!, extraCatalogs);
 
-      // Detect format by checking if file starts with '{' (0x7B = JSON)
-      if (uint8Array[0] === 0x7b) {
-        // JSON format
-        const text = new TextDecoder().decode(uint8Array);
-        loadedBrain = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown));
-      } else {
-        // Binary format
-        const byteArray = stream.byteArrayFromUint8Array(uint8Array);
-        const memStream = new stream.MemoryStream(byteArray);
-        loadedBrain = new BrainDef();
-        loadedBrain.deserialize(memStream);
-      }
-
-      // Ensure at least one page exists
       if (loadedBrain.pages().size() === 0) {
         loadedBrain.appendNewPage();
       }
@@ -339,13 +326,14 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
         console.error("Failed to load brain:", err);
       }
     }
-  }, [commandHistory]);
+  }, [commandHistory, brainServices, tileCatalogs]);
 
   const handleLoadDefault = useCallback(() => {
     const defaultBrain = getDefaultBrain?.();
     if (!defaultBrain) return;
 
-    const cloned = defaultBrain.clone();
+    const extraCatalogs = tileCatalogs ? List.from(tileCatalogs) : undefined;
+    const cloned = defaultBrain.clone(extraCatalogs);
     if (cloned.pages().size() === 0) {
       cloned.appendNewPage();
     }
@@ -355,7 +343,7 @@ export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit 
     setCurrentPageNumber(1);
     setTotalPageCount(cloned.pages().size());
     commandHistory.clear();
-  }, [getDefaultBrain, commandHistory]);
+  }, [getDefaultBrain, commandHistory, tileCatalogs]);
 
   const handleBrainNameClick = () => {
     if (brainDef) {

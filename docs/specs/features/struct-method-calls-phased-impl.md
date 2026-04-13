@@ -123,11 +123,11 @@ struct value as the first argument.
 
 **Packages/files touched:**
 
-- `packages/typescript/src/compiler/lowering.ts` -- add `lowerStructMethodCall()`
+- `packages/ts-compiler/src/compiler/lowering.ts` -- add `lowerStructMethodCall()`
   dispatch function, wire it into `lowerCallExpression`
-- `packages/typescript/src/compiler/ambient.ts` -- extend `generateStructInterface()`
+- `packages/ts-compiler/src/compiler/ambient.ts` -- extend `generateStructInterface()`
   to emit method signatures from `StructMethodDecl` metadata
-- `packages/typescript/src/compiler/codegen.spec.ts` -- new tests for struct method
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- new tests for struct method
   calls
 
 **Design -- Compiler lowering:**
@@ -209,8 +209,8 @@ handle async emission; this phase focuses on sync method dispatch only.
   returns correct result
 - Test: ambient declarations include method signatures for structs with methods
 - Test: async method declaration generates `Promise<T>` return type in ambient
-- `npm run typecheck` and `npm run check` pass in `packages/typescript`
-- `npm test` passes in `packages/typescript` (existing + new tests)
+- `npm run typecheck` and `npm run check` pass in `packages/ts-compiler`
+- `npm test` passes in `packages/ts-compiler` (existing + new tests)
 
 **Key risks:**
 
@@ -257,19 +257,19 @@ ctx compile-time phantom special-casing from the compiler. Remove the hardcoded
   SelfContext, EngineContext struct types with fieldGetters and method declarations.
   Exact location depends on where core type registration happens (likely alongside
   `registerCoreTypes()`)
-- `packages/typescript/src/runtime/authored-function.ts` -- update `createUserTileExec`
+- `packages/ts-compiler/src/runtime/authored-function.ts` -- update `createUserTileExec`
   to create a Context `StructValue` and prepend it to the fiber args
-- `packages/typescript/src/compiler/lowering.ts` -- remove all ctx special-casing:
+- `packages/ts-compiler/src/compiler/lowering.ts` -- remove all ctx special-casing:
   `ctxSymbol` from `LowerContext`, `isCtxExpression()`, `isCtxSelfAccess()`,
   `isCtxEngineAccess()`, `lowerCtxMethodCall()`, and the ctx-alias skip in
   `lowerVariableDeclarationList()`. Update `onExecute` / `onPageEntered` function
   lowering to allocate `ctx` as local 0 (a real parameter)
-- `packages/typescript/src/compiler/ambient.ts` -- remove the hardcoded `Context`
+- `packages/ts-compiler/src/compiler/ambient.ts` -- remove the hardcoded `Context`
   interface from `AMBIENT_MODULE_END`. Context/SelfContext/EngineContext are now
   generated from the type registry like all other struct types. Update
   `SensorConfig` and `ActuatorConfig` interfaces to reference the generated
   `Context` type. Update `onPageEntered` signature
-- `packages/typescript/src/compiler/codegen.spec.ts` -- update existing Phase 13
+- `packages/ts-compiler/src/compiler/codegen.spec.ts` -- update existing Phase 13
   tests (ctx tests now follow the struct method pattern), register Context types
   in test harness, update host function names to match `"TypeName.methodName"`
   convention
@@ -466,8 +466,8 @@ structs.
 - Regression: `params.speed` still resolves to `LoadLocal` (not GetField)
 - Regression: `items.length` still resolves to `IrListLen`
 - Regression: struct property access (`pos.x`) still works via GetField
-- `npm run typecheck` and `npm run check` pass in `packages/typescript`
-- `npm test` passes in both `packages/core` and `packages/typescript`
+- `npm run typecheck` and `npm run check` pass in `packages/ts-compiler`
+- `npm test` passes in both `packages/core` and `packages/ts-compiler`
 - `npm run build` succeeds in `packages/core` (all three targets)
 
 **Key risks:**

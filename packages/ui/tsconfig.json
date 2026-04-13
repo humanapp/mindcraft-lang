@@ -19,7 +19,6 @@
     "strictPropertyInitialization": false,
 
     /* Path mapping */
-    "baseUrl": ".",
     "paths": {
       "@ui/*": ["./src/*"]
     }

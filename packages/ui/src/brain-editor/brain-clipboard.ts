@@ -37,7 +37,9 @@ export function onBrainClipboardChanged(listener: () => void): () => void {
  * self-contained and independent of the original brain instance.
  */
 export function copyBrainToClipboard(brain: BrainDef): void {
-  clipboardData = { brainJson: brain.toJson() };
+  clipboardData = {
+    brainJson: brain.toJson(),
+  };
   if (isClipboardLoggingEnabled()) {
     logger.info("[clipboard] brain copied", JSON.stringify(clipboardData.brainJson, null, 2));
   }

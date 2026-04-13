@@ -2,7 +2,6 @@ import { List, type ReadonlyBitSet, type ReadonlyList } from "@mindcraft-lang/co
 import {
   CoreActuatorId,
   CoreCapabilityBits,
-  getBrainServices,
   type IBrainTileDef,
   type ITileCatalog,
   mkActuatorTileId,
@@ -21,7 +20,9 @@ import {
 import React from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
+import { useBrainEditorConfig } from "./BrainEditorContext";
 import { BrainTile } from "./BrainTile";
+import { resolveTileVisual } from "./tile-visual-utils";
 
 type TileGroup =
   | "actuator"
@@ -91,22 +92,25 @@ export function BrainTilePickerDialog({
   onTileSelected,
   onCancel,
 }: BrainTilePickerDialogProps) {
-  const services = getBrainServices();
+  const editorConfig = useBrainEditorConfig();
+  const { brainServices, tileCatalogs } = editorConfig;
   const [filter, setFilter] = React.useState("");
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     if (isOpen) {
       setFilter("");
+      // Defer focus to the next animation frame so the dialog's DOM is fully
+      // rendered.
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen]);
 
   const catalogs = React.useMemo(() => {
-    const list = List.from<ITileCatalog>([services.tiles]);
+    const list = tileCatalogs ? List.from<ITileCatalog>(tileCatalogs) : List.empty<ITileCatalog>();
     if (localCatalog) list.push(localCatalog);
     return list.asReadonly();
-  }, [services.tiles, localCatalog]);
+  }, [localCatalog, tileCatalogs]);
 
   const { exactByKind, conversionByKind, hasConversions } = React.useMemo(() => {
     const expr = exprProp ?? (existingTiles ? parseTilesForSuggestions(existingTiles) : undefined);
@@ -119,7 +123,9 @@ export function BrainTilePickerDialog({
       availableCapabilities,
       unclosedParenDepth,
     };
-    const result = suggestTiles(context, catalogs);
+    const result = brainServices
+      ? suggestTiles(context, catalogs, brainServices)
+      : { exact: List.empty<TileSuggestion>(), withConversion: List.empty<TileSuggestion>() };
 
     const tileToGroup = (tileDef: IBrainTileDef): TileGroup => {
       if (
@@ -194,7 +200,7 @@ export function BrainTilePickerDialog({
       const s = result.exact.get(i);
       const group = tileToGroup(s.tileDef);
       if (!exactGroups.has(group)) exactGroups.set(group, []);
-      exactGroups.get(group)!.push(s);
+      exactGroups.get(group)?.push(s);
     }
 
     const convGroups = new Map<TileGroup, TileSuggestion[]>();
@@ -202,7 +208,7 @@ export function BrainTilePickerDialog({
       const s = result.withConversion.get(i);
       const group = tileToGroup(s.tileDef);
       if (!convGroups.has(group)) convGroups.set(group, []);
-      convGroups.get(group)!.push(s);
+      convGroups.get(group)?.push(s);
     }
 
     for (const tiles of convGroups.values()) {
@@ -217,14 +223,14 @@ export function BrainTilePickerDialog({
       conversionByKind: sortEntries(Array.from(convGroups.entries())),
       hasConversions: result.withConversion.size() > 0,
     };
-  }, [side, expectedType, exprProp, replaceTileIndex, availableCapabilities, existingTiles, catalogs]);
+  }, [side, expectedType, exprProp, replaceTileIndex, availableCapabilities, existingTiles, catalogs, brainServices]);
 
   const filterGroups = (groups: [TileGroup, TileSuggestion[]][]): [TileGroup, TileSuggestion[]][] => {
     if (filter.length === 0) return groups;
     const filtered: [TileGroup, TileSuggestion[]][] = [];
     for (const [group, tiles] of groups) {
       const matching = tiles.filter((s) => {
-        const label = s.tileDef.visual?.label || s.tileDef.tileId;
+        const label = resolveTileVisual(editorConfig, s.tileDef).label;
         return fuzzyMatch(filter, label);
       });
       if (matching.length > 0) filtered.push([group, matching]);

@@ -1,7 +1,7 @@
 {
   "name": "@mindcraft-lang/docs",
   "description": "Shared documentation sidebar and rendering components for Mindcraft apps",
-  "version": "0.1.6",
+  "version": "0.1.17",
   "type": "module",
   "author": "humanapp",
   "license": "MIT",
@@ -42,9 +42,9 @@
     "check": "biome check ./src --write",
     "typecheck": "tsc --noEmit",
     "format": "biome format ./src --write",
-    "release:patch": "npm run check:only && node ../../scripts/release.js patch",
-    "release:minor": "npm run check:only && node ../../scripts/release.js minor",
-    "release:major": "npm run check:only && node ../../scripts/release.js major"
+    "release:patch": "node ../../scripts/release.js patch",
+    "release:minor": "node ../../scripts/release.js minor",
+    "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
     "@mindcraft-lang/core": "file:../core",
@@ -62,6 +62,6 @@
     "@biomejs/biome": "2.3.15",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
-    "typescript": "~5.7.2"
+    "typescript": "~5.9.3"
   }
 }

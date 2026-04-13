@@ -1,5 +1,4 @@
-import { stream } from "@mindcraft-lang/core";
-import { BrainDef, brainJsonFromPlain } from "@mindcraft-lang/core/brain/model";
+import { BrainDef, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import type { Archetype } from "@/brain/actor";
 
 const STORAGE_KEY_PREFIX = "brain-archetype-";
@@ -8,31 +7,26 @@ const STORAGE_KEY_PREFIX = "brain-archetype-";
 
 const defaultBrainCache = new Map<Archetype, BrainDef>();
 
+function normalizeBrainDef(brainDef: unknown): BrainDef {
+  if (!(brainDef instanceof BrainDef)) {
+    throw new Error("Expected BrainDef from mindcraft environment");
+  }
+
+  if (brainDef.pages().size() === 0) {
+    brainDef.appendNewPage();
+  }
+
+  return brainDef;
+}
+
 /**
- * Deserialize a BrainDef from an ArrayBuffer (the raw bytes of a .brain file).
+ * Deserialize a BrainDef from an ArrayBuffer (the raw bytes of a .brain JSON file).
  * Returns undefined if deserialization fails.
  */
-export function deserializeBrainFromArrayBuffer(buffer: ArrayBuffer): BrainDef | undefined {
+export function deserializeBrainFromArrayBuffer(env: MindcraftEnvironment, buffer: ArrayBuffer): BrainDef | undefined {
   try {
-    const uint8Array = new Uint8Array(buffer);
-    let brainDef: BrainDef;
-
-    // Detect format by checking if file starts with '{' (0x7B = JSON)
-    if (uint8Array[0] === 0x7b) {
-      const text = new TextDecoder().decode(uint8Array);
-      brainDef = BrainDef.fromJson(brainJsonFromPlain(JSON.parse(text) as unknown));
-    } else {
-      const byteArray = stream.byteArrayFromUint8Array(uint8Array);
-      const memStream = new stream.MemoryStream(byteArray);
-      brainDef = new BrainDef();
-      brainDef.deserialize(memStream);
-    }
-
-    if (brainDef.pages().size() === 0) {
-      brainDef.appendNewPage();
-    }
-
-    brainDef.compile();
+    const text = new TextDecoder().decode(new Uint8Array(buffer));
+    const brainDef = normalizeBrainDef(env.deserializeBrainJsonFromPlain(JSON.parse(text) as unknown));
     return brainDef;
   } catch (err) {
     console.error("Failed to deserialize brain from ArrayBuffer:", err);
@@ -59,24 +53,15 @@ export function getDefaultBrain(archetype: Archetype): BrainDef | undefined {
 
 /**
  * Save a brain definition to localStorage for a specific archetype.
- * Serializes the brain to binary format and stores as base64.
+ * Serializes the brain to JSON format and stores as a string.
  */
 export function saveBrainToLocalStorage(archetype: Archetype, brainDef: BrainDef): void {
   try {
-    // Serialize the brain to binary
-    const memStream = new stream.MemoryStream();
-    brainDef.serialize(memStream);
-    const byteArray = memStream.toBytes();
+    const json = brainDef.toJson();
+    const text = JSON.stringify(json);
 
-    // Convert to Uint8Array
-    const bytes = stream.byteArrayToUint8Array(byteArray);
-
-    // Convert to base64 for storage
-    const base64 = uint8ArrayToBase64(bytes);
-
-    // Store in localStorage with archetype-specific key
     const key = `${STORAGE_KEY_PREFIX}${archetype}`;
-    localStorage.setItem(key, base64);
+    localStorage.setItem(key, text);
 
     console.log(`Brain saved to localStorage for archetype: ${archetype}`);
   } catch (err) {
@@ -88,32 +73,16 @@ export function saveBrainToLocalStorage(archetype: Archetype, brainDef: BrainDef
  * Load a brain definition from localStorage for a specific archetype.
  * Returns undefined if no saved brain exists or if deserialization fails.
  */
-export function loadBrainFromLocalStorage(archetype: Archetype): BrainDef | undefined {
+export function loadBrainFromLocalStorage(env: MindcraftEnvironment, archetype: Archetype): BrainDef | undefined {
   try {
     const key = `${STORAGE_KEY_PREFIX}${archetype}`;
-    const base64 = localStorage.getItem(key);
+    const stored = localStorage.getItem(key);
 
-    if (!base64) {
+    if (!stored) {
       return undefined;
     }
 
-    // Convert base64 back to Uint8Array
-    const bytes = base64ToUint8Array(base64);
-
-    // Convert to IByteArray
-    const byteArray = stream.byteArrayFromUint8Array(bytes);
-
-    // Deserialize the brain from binary
-    const memStream = new stream.MemoryStream(byteArray);
-    const brainDef = new BrainDef();
-    brainDef.deserialize(memStream);
-
-    // Ensure at least one page exists
-    if (brainDef.pages().size() === 0) {
-      brainDef.appendNewPage();
-    }
-
-    brainDef.compile();
+    const brainDef = normalizeBrainDef(env.deserializeBrainJsonFromPlain(JSON.parse(stored) as unknown));
 
     console.log(`Brain loaded from localStorage for archetype: ${archetype}`);
     return brainDef;
@@ -143,24 +112,4 @@ export function clearAllBrainsFromLocalStorage(): void {
     }
   });
   console.log("All brains cleared from localStorage");
-}
-
-// Helper functions for base64 conversion
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const len = binary.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
 }

@@ -1,8 +1,8 @@
 import type { List, ReadonlyList } from "../../platform/list";
-import type { IReadStream, IWriteStream } from "../../platform/stream";
 import type { EventEmitterConsumer } from "../../util/event-emitter";
 import type { OpResult } from "../../util/op-result";
 import type { ITileCatalog } from "./catalog";
+import type { IConversionRegistry } from "./conversions";
 import type { IBrain } from "./runtime";
 import type { IBrainTileDef, RuleSide } from "./tiles";
 
@@ -21,6 +21,9 @@ export interface IBrainDef {
   pages(): ReadonlyList<IBrainPageDef>;
   events(): EventEmitterConsumer<BrainDefEvents>;
   catalog(): ITileCatalog;
+  servicesTiles(): ITileCatalog;
+  deserializationCatalogs(): List<ITileCatalog>;
+  servicesConversions(): IConversionRegistry;
   typecheck(): void;
   compile(): IBrain;
   appendNewPage(): OpResult<{ page: IBrainPageDef; index: number }>;
@@ -46,8 +49,6 @@ export interface IBrainPageDef {
   events(): EventEmitterConsumer<BrainPageDefEvents>;
   clone(): IBrainPageDef;
   typecheck(): void;
-  serialize(stream: IWriteStream): void;
-  deserialize(stream: IReadStream): void;
   appendNewRule(): IBrainRuleDef | undefined;
   addRuleAtIndex(index: number, rule: IBrainRuleDef): void;
   removeRuleAtIndex(index: number): IBrainRuleDef | undefined;
@@ -87,8 +88,6 @@ export interface IBrainRuleDef {
   outdent(): void;
   isEmpty(inclChildren: boolean): boolean;
   clone(): IBrainRuleDef;
-  serialize(stream: IWriteStream): void;
-  deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void;
 }
 
 export type BrainTileSetEvents = {
@@ -109,6 +108,4 @@ export interface IBrainTileSet {
   removeTileAtIndex(index: number): void;
   containsTileId(tileId: string): boolean;
   isEmpty(): boolean;
-  serialize(stream: IWriteStream): void;
-  deserialize(stream: IReadStream, catalogs?: List<ITileCatalog>): void;
 }

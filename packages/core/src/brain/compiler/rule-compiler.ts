@@ -4,7 +4,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { logger } from "../../platform/logger";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
-import type { Instr, Value } from "../interfaces";
+import type { ActionRef, Instr, Value } from "../interfaces";
 import { type BrainActionArgSlot, CoreOpId, NativeType, NIL_VALUE, TRUE_VALUE } from "../interfaces";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
 import type { ConstantPool } from "./constant-pool";
@@ -39,11 +39,15 @@ interface CompilationContext {
   variableIndices: Dict<string, number>;
   /** List of variable names, in order of first occurrence */
   variableNames: List<string>;
+  /** Maps action keys to their program-local action slot */
+  actionIndices: Dict<string, number>;
+  /** Program-local action refs, populated on first use */
+  actionRefs: List<ActionRef>;
   /** Type information for each node */
   typeEnv: TypeEnv;
   /** Constant pool for managing literal values */
   constantPool: ConstantPool;
-  /** Counter for assigning unique call-site IDs to HOST_CALL instructions */
+  /** Counter for assigning unique call-site IDs to host and action call instructions */
   nextCallSiteId: { value: number };
   /** Diagnostics collected during compilation */
   diags: List<CompilationDiag>;
@@ -76,11 +80,23 @@ export class ExprCompiler implements ExprVisitor<void> {
   ) {}
 
   /**
-   * Get the next unique call-site ID for a HOST_CALL instruction.
+   * Get the next unique call-site ID for a host-backed call.
    * This ID is used by host functions to persist per-call-site state.
    */
   private nextCallSiteId(): number {
     return this.context.nextCallSiteId.value++;
+  }
+
+  private getOrCreateActionSlot(actionKey: string): number {
+    const existingSlot = this.context.actionIndices.get(actionKey);
+    if (existingSlot !== undefined) {
+      return existingSlot;
+    }
+
+    const actionSlot = this.context.actionRefs.size();
+    this.context.actionIndices.set(actionKey, actionSlot);
+    this.context.actionRefs.push({ slot: actionSlot, key: actionKey });
+    return actionSlot;
   }
 
   // ==========================================
@@ -381,23 +397,20 @@ export class ExprCompiler implements ExprVisitor<void> {
   // ==========================================
 
   visitActuator(expr: ActuatorExpr): void {
-    const actuatorId = expr.tileDef.actuatorId;
-    const actuatorFn = expr.tileDef.fnEntry;
-    const argSlots = actuatorFn.callDef.argSlots;
+    const action = expr.tileDef.action;
+    const actionSlot = this.getOrCreateActionSlot(action.key);
+    const argSlots = action.callDef.argSlots;
 
     // Emit arguments as a single Map value
     // Map contains: { "slotId": value } for args, { "slotId": true } for modifiers
-    const argCount = this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
+    this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
+    const callSiteId = this.nextCallSiteId();
 
-    // Use the host function ID from the tile definition's function entry The
-    // FunctionRegistry assigns this ID when the function is registered Host
-    // function receives: fn(args: List<Value>) where args[0] is the Map
-    if (actuatorFn.isAsync) {
-      this.emitter.hostCallAsync(actuatorFn.id, argCount, this.nextCallSiteId());
-      // Await the actuator call to ensure it completes before DO finishes This allows async actuators to work correctly in multi-step action sequences
+    if (action.isAsync) {
+      this.emitter.actionCallAsync(actionSlot, callSiteId);
       this.emitter.await();
     } else {
-      this.emitter.hostCall(actuatorFn.id, argCount, this.nextCallSiteId());
+      this.emitter.actionCall(actionSlot, callSiteId);
     }
 
     // Actuator return value is now on the stack, but it is ignored, currently.
@@ -408,23 +421,20 @@ export class ExprCompiler implements ExprVisitor<void> {
   // ==========================================
 
   visitSensor(expr: SensorExpr): void {
-    const sensorId = expr.tileDef.sensorId;
-    const sensorFn = expr.tileDef.fnEntry;
-    const argSlots = sensorFn.callDef.argSlots;
+    const action = expr.tileDef.action;
+    const actionSlot = this.getOrCreateActionSlot(action.key);
+    const argSlots = action.callDef.argSlots;
 
     // Emit arguments as a single Map value
     // Map contains: { "slotId": value } for args, { "slotId": true } for modifiers
-    const argCount = this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
+    this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
+    const callSiteId = this.nextCallSiteId();
 
-    // Use the host function ID from the tile definition's function entry The
-    // FunctionRegistry assigns this ID when the function is registered Host
-    // function receives: fn(args: List<Value>) where args[0] is the Map
-    if (sensorFn.isAsync) {
-      this.emitter.hostCallAsync(sensorFn.id, argCount, this.nextCallSiteId());
-      // Await the sensor call to ensure it completes before DO finishes This allows async sensors to work correctly in multi-step action sequences
+    if (action.isAsync) {
+      this.emitter.actionCallAsync(actionSlot, callSiteId);
       this.emitter.await();
     } else {
-      this.emitter.hostCall(sensorFn.id, argCount, this.nextCallSiteId());
+      this.emitter.actionCall(actionSlot, callSiteId);
     }
 
     // Result is now on the stack
@@ -568,6 +578,8 @@ export function compileRule(
   const context: CompilationContext = {
     variableIndices: Dict.empty(),
     variableNames: List.empty(),
+    actionIndices: Dict.empty(),
+    actionRefs: List.empty(),
     typeEnv,
     constantPool,
     nextCallSiteId: { value: 0 },
