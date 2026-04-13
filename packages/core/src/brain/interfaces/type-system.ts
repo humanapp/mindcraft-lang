@@ -110,6 +110,7 @@ export interface StructTypeShape {
   fields: List<{
     name: string;
     typeId: TypeId;
+    readOnly?: boolean;
   }>;
   /** If true, the struct requires exact TypeId match (no structural subtyping). */
   nominal?: boolean;
@@ -124,6 +125,7 @@ export interface StructTypeShape {
    * Returns the resolved native value to store in the copy.
    */
   snapshotNative?: StructSnapshotNativeFn;
+  /** If provided, struct methods callable via HOST_CALL_ARGS on instances of this type. */
   methods?: List<StructMethodDecl>;
 }
 
@@ -174,7 +176,7 @@ export interface ITypeRegistry {
   addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void;
   addStructFields(
     typeId: TypeId,
-    fields: List<{ name: string; typeId: TypeId }>,
+    fields: List<{ name: string; typeId: TypeId; readOnly?: boolean }>,
     fieldGetter?: StructFieldGetterFn
   ): void;
   addAnyType(name: string): TypeId;

@@ -442,6 +442,7 @@ function needsQuoting(name: string): boolean {
 
 function generateStructInterface(def: StructTypeDef, registry: ITypeRegistry): string {
   const nativeBacked = isNativeBacked(def);
+  const hasPerFieldReadOnly = def.fields.some((f) => f.readOnly === true);
   let result = `  export interface ${def.name} {\n`;
   if (nativeBacked) {
     result += "    readonly __brand: unique symbol;\n";
@@ -449,7 +450,8 @@ function generateStructInterface(def: StructTypeDef, registry: ITypeRegistry): s
   def.fields.forEach((field) => {
     const tsType = typeIdToTs(field.typeId, registry);
     const fieldName = needsQuoting(field.name) ? `"${field.name}"` : field.name;
-    if (nativeBacked) {
+    const isReadOnly = hasPerFieldReadOnly ? field.readOnly === true : nativeBacked;
+    if (isReadOnly) {
       result += `    readonly ${fieldName}: ${tsType};\n`;
     } else {
       result += `    ${fieldName}: ${tsType};\n`;

@@ -357,9 +357,23 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     }
     case NativeType.Struct: {
       const structDef = definition as StructTypeDef & StructDefineOptions;
+      const readOnlyFieldNames =
+        structDef.accessors === true ? undefined : structDef.accessors ? structDef.accessors.readOnly : undefined;
+      let fields = structDef.fields;
+      if (readOnlyFieldNames) {
+        const tagged: { name: string; typeId: TypeId; readOnly?: boolean }[] = [];
+        structDef.fields.forEach((f) => {
+          tagged.push({
+            name: f.name,
+            typeId: f.typeId,
+            readOnly: readOnlyFieldNames.indexOf(f.name) !== -1 ? true : undefined,
+          });
+        });
+        fields = List.from(tagged);
+      }
       registeredTypeId = assertRegisteredTypeId(
         services.types.addStructType(structDef.name, {
-          fields: structDef.fields,
+          fields,
           nominal: structDef.nominal,
           fieldGetter: structDef.fieldGetter,
           fieldSetter: structDef.fieldSetter,

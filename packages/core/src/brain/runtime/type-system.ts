@@ -377,7 +377,7 @@ export class TypeRegistry implements ITypeRegistry {
 
   addStructFields(
     typeId: TypeId,
-    fields: List<{ name: string; typeId: TypeId }>,
+    fields: List<{ name: string; typeId: TypeId; readOnly?: boolean }>,
     fieldGetter?: StructFieldGetterFn
   ): void {
     const typeDef = this.get(typeId);

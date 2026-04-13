@@ -470,16 +470,6 @@ export function registerTypes(api: MindcraftModuleApi) {
     SimTypeIds.ActorRef,
     List.from([
       {
-        name: "getPosition",
-        params: List.empty(),
-        returnTypeId: SimTypeIds.Vector2,
-      },
-      {
-        name: "setPosition",
-        params: List.from([{ name: "pos", typeId: SimTypeIds.Vector2 }]),
-        returnTypeId: CoreTypeIds.Void,
-      },
-      {
         name: "getRotation",
         params: List.empty(),
         returnTypeId: CoreTypeIds.Number,
@@ -495,36 +485,6 @@ export function registerTypes(api: MindcraftModuleApi) {
         returnTypeId: SimTypeIds.Vector2,
       },
     ])
-  );
-
-  functions.register(
-    "ActorRef.getPosition",
-    false,
-    {
-      exec: (ctx: ExecutionContext, args: MapValue): Value => {
-        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
-        if (!actor) return VOID_VALUE;
-        return mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y));
-      },
-    },
-    emptyCallDef
-  );
-
-  functions.register(
-    "ActorRef.setPosition",
-    false,
-    {
-      exec: (ctx: ExecutionContext, args: MapValue): Value => {
-        const actor = resolveActor(args.v.get(0) as StructValue, ctx);
-        if (!actor) return VOID_VALUE;
-        const posValue = args.v.get(1) as StructValue;
-        const vec = extractVector2(posValue);
-        if (!vec) return VOID_VALUE;
-        actor.sprite.setPosition(vec.X, vec.Y);
-        return VOID_VALUE;
-      },
-    },
-    emptyCallDef
   );
 
   functions.register(
