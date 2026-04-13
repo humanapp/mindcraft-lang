@@ -50,7 +50,7 @@ function doStuff(ctx: Context): void {
 import { type Context } from "mindcraft";
 
 function doStuff(ctx: Context): void {
-  ctx.self.setVariable(123, "value");
+  ctx.brain.setVariable(123, "value");
 }
 `;
     const result = compileUserTile(source, { services });

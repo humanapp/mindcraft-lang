@@ -18,14 +18,14 @@ import {
 import { getSelf, getTargetActor } from "@/brain/execution-context-types";
 import { extractVector2, mkVector2Value, SimTypeIds } from "@/brain/type-system";
 
-export function registerSelfContext(api: MindcraftModuleApi) {
+export function registerBrainContext(api: MindcraftModuleApi) {
   const { types, functions } = api.brainServices;
 
   const nullableActorRefTypeId = types.addNullableType(SimTypeIds.ActorRef);
   const nullableVector2TypeId = types.addNullableType(SimTypeIds.Vector2);
 
   types.addStructMethods(
-    ContextTypeIds.SelfContext,
+    ContextTypeIds.BrainContext,
     List.from([
       {
         name: "getPosition",
@@ -68,7 +68,7 @@ export function registerSelfContext(api: MindcraftModuleApi) {
   const emptyCallDef = mkCallDef({ type: "bag", items: [] });
 
   functions.register(
-    "SelfContext.getPosition",
+    "BrainContext.getPosition",
     false,
     {
       exec: (ctx: ExecutionContext): Value => {
@@ -81,7 +81,7 @@ export function registerSelfContext(api: MindcraftModuleApi) {
   );
 
   functions.register(
-    "SelfContext.setPosition",
+    "BrainContext.setPosition",
     false,
     {
       exec: (ctx: ExecutionContext, args: MapValue): Value => {
@@ -98,7 +98,7 @@ export function registerSelfContext(api: MindcraftModuleApi) {
   );
 
   functions.register(
-    "SelfContext.getRotation",
+    "BrainContext.getRotation",
     false,
     {
       exec: (ctx: ExecutionContext): Value => {
@@ -111,7 +111,7 @@ export function registerSelfContext(api: MindcraftModuleApi) {
   );
 
   functions.register(
-    "SelfContext.setRotation",
+    "BrainContext.setRotation",
     false,
     {
       exec: (ctx: ExecutionContext, args: MapValue): Value => {
@@ -127,7 +127,7 @@ export function registerSelfContext(api: MindcraftModuleApi) {
   );
 
   functions.register(
-    "SelfContext.getFacingVector",
+    "BrainContext.getFacingVector",
     false,
     {
       exec: (ctx: ExecutionContext): Value => {
@@ -141,7 +141,7 @@ export function registerSelfContext(api: MindcraftModuleApi) {
   );
 
   functions.register(
-    "SelfContext.getTargetActor",
+    "BrainContext.getTargetActor",
     false,
     {
       exec: (ctx: ExecutionContext): Value => {
@@ -154,7 +154,7 @@ export function registerSelfContext(api: MindcraftModuleApi) {
   );
 
   functions.register(
-    "SelfContext.getTargetPosition",
+    "BrainContext.getTargetPosition",
     false,
     {
       exec: (ctx: ExecutionContext): Value => {

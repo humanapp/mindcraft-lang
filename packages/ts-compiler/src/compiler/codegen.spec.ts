@@ -6373,7 +6373,7 @@ export default Sensor({
     }
   });
 
-  test("ctx.self.getVariable compiles to struct method call", () => {
+  test("ctx.brain.getVariable compiles to struct method call", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -6382,7 +6382,7 @@ export default Sensor({
   name: "get-var",
   output: "number",
   onExecute(ctx: Context): number {
-    const val = ctx.self.getVariable("myVar");
+    const val = ctx.brain.getVariable("myVar");
     return 0;
   },
 });
@@ -6407,7 +6407,7 @@ export default Sensor({
     assert.equal(runResult.status, VmStatus.DONE);
   });
 
-  test("ctx.self.setVariable compiles to struct method call", () => {
+  test("ctx.brain.setVariable compiles to struct method call", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -6416,7 +6416,7 @@ export default Sensor({
   name: "set-var",
   output: "number",
   onExecute(ctx: Context): number {
-    ctx.self.setVariable("myVar", 42);
+    ctx.brain.setVariable("myVar", 42);
     return 0;
   },
 });
@@ -6625,17 +6625,17 @@ export default Sensor({
     }
   });
 
-  test("ctx alias resolves ctx.self.getVariable correctly", () => {
+  test("ctx alias resolves ctx.brain.getVariable correctly", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
-  name: "ctx-alias-self",
+  name: "ctx-alias-brain",
   output: "number",
   onExecute(ctx: Context): number {
     const c = ctx;
-    const val = c.self.getVariable("myVar");
+    const val = c.brain.getVariable("myVar");
     return 0;
   },
 });
