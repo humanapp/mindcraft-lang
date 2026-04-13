@@ -374,6 +374,43 @@ export class TypeRegistry implements ITypeRegistry {
     structDef.methods = existing.concat(methods);
   }
 
+  addStructFields(typeId: TypeId, fields: List<{ name: string; typeId: TypeId }>): void {
+    const typeDef = this.get(typeId);
+    if (!typeDef) {
+      throw new Error(`Type ${typeId} not found`);
+    }
+    if (typeDef.coreType !== NativeType.Struct) {
+      throw new Error(`Type ${typeId} is not a struct type`);
+    }
+    const structDef = typeDef as StructTypeDef;
+
+    const existingNames = new UniqueSet<string>();
+    structDef.fields.forEach((f) => {
+      existingNames.add(f.name);
+    });
+
+    const fieldCodecs = new Dict<string, TypeCodec>();
+    structDef.fields.forEach((f) => {
+      const ft = this.get(f.typeId);
+      if (ft) fieldCodecs.set(f.name, ft.codec);
+    });
+
+    fields.forEach((field) => {
+      if (existingNames.has(field.name)) {
+        throw new Error(`Struct type ${typeId} already has field: ${field.name}`);
+      }
+      const fieldTypeDef = this.get(field.typeId);
+      if (!fieldTypeDef) {
+        throw new Error(`Struct type ${typeId} field ${field.name} has unknown type: ${field.typeId}`);
+      }
+      existingNames.add(field.name);
+      fieldCodecs.set(field.name, fieldTypeDef.codec);
+    });
+
+    structDef.fields = structDef.fields.concat(fields);
+    structDef.codec = new StructCodec(fieldCodecs);
+  }
+
   addAnyType(name: string): TypeId {
     this.validateTypeName(name);
     const typeId = mkTypeId(NativeType.Any, name);

@@ -172,6 +172,7 @@ export interface ITypeRegistry {
   reserveStructType(name: string): TypeId;
   finalizeStructType(typeId: TypeId, shape: StructTypeShape): void;
   addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void;
+  addStructFields(typeId: TypeId, fields: List<{ name: string; typeId: TypeId }>): void;
   addAnyType(name: string): TypeId;
   addFunctionType(name: string): TypeId;
   addNullableType(baseTypeId: TypeId): TypeId;
