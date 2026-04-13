@@ -11,6 +11,7 @@ import {
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { UserTileProject } from "../compiler/compile.js";
+import type { ExtractedParam } from "../compiler/types.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";
 
 function resolveCoreTypeId(typeName: string): string | undefined {
@@ -49,7 +50,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "scan",
-  output: "number",
   onExecute(ctx: Context): number {
     return 1;
   },
@@ -59,14 +59,14 @@ export default Sensor({
         [
           "move.ts",
           `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
   name: "move",
-  params: {
-    target: { type: "number", anonymous: true },
-  },
-  onExecute(ctx: Context, params: { target: number }): void {
+  args: [
+    param("target", { type: "number", anonymous: true }),
+  ],
+  onExecute(ctx: Context, args: { target: number }): void {
   },
 });
 `,
@@ -74,15 +74,15 @@ export default Actuator({
         [
           "turn.ts",
           `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
   name: "turn",
-  params: {
-    angle: { type: "number", anonymous: true },
-    label: { type: "string" },
-  },
-  onExecute(ctx: Context, params: { angle: number; label: string }): void {
+  args: [
+    param("angle", { type: "number", anonymous: true }),
+    param("label", { type: "string" }),
+  ],
+  onExecute(ctx: Context, args: { angle: number; label: string }): void {
   },
 });
 `,
@@ -111,7 +111,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "broken",
-  output: "number",
   onExecute(ctx: Context): number {
     const value: string = 1;
     return value;
@@ -131,14 +130,14 @@ export default Sensor({
         [
           "move.ts",
           `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
   name: "move",
-  params: {
-    target: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { target: number }): void {
+  args: [
+    param("target", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { target: number }): void {
   },
 });
 `,
@@ -149,7 +148,7 @@ export default Actuator({
     const entry = result.results.get("move.ts");
     assert.ok(entry?.program);
 
-    entry.program.params[0]!.type = "vector2";
+    (entry.program.args[0] as ExtractedParam).type = "vector2";
 
     assert.equal(buildCompiledActionBundle(result, { resolveTypeId: resolveCoreTypeId, services }), undefined);
   });
@@ -164,7 +163,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "probe",
-  output: "number",
   onExecute(ctx: Context): number {
     return 2;
   },

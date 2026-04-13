@@ -1,6 +1,6 @@
 import ts from "typescript";
 import { DescriptorDiagCode } from "./diag-codes.js";
-import type { CompileDiagnostic, ExtractedDescriptor, ExtractedParam, SourceSpan } from "./types.js";
+import type { CompileDiagnostic, ExtractedArgSpec, ExtractedDescriptor, ExtractedParam, SourceSpan } from "./types.js";
 
 export interface ExtractionResult {
   descriptor?: ExtractedDescriptor;
@@ -105,8 +105,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   }
 
   let name: string | undefined;
-  let outputType: string | undefined;
-  let params: ExtractedParam[] = [];
+  let args: ExtractedArgSpec[] = [];
   let onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction | undefined;
   let execIsAsync = false;
   let onPageEnteredNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null = null;
@@ -128,22 +127,8 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
           }
           break;
 
-        case "output":
-          if (kind !== "sensor") {
-            addDiag(DescriptorDiagCode.OutputOnlyValidForSensors, prop, "`output` is only valid for sensors.");
-          } else if (ts.isStringLiteral(prop.initializer)) {
-            outputType = prop.initializer.text;
-          } else {
-            addDiag(
-              DescriptorDiagCode.OutputMustBeStringLiteral,
-              prop.initializer,
-              "`output` must be a string literal."
-            );
-          }
-          break;
-
-        case "params":
-          params = extractParams(prop.initializer, addDiag);
+        case "args":
+          args = extractArgs(prop.initializer, addDiag);
           break;
 
         case "onExecute":
@@ -225,11 +210,13 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   if (name === undefined) {
     addDiag(DescriptorDiagCode.NamePropertyRequired, arg, "`name` property is required.");
   }
-  if (kind === "sensor" && outputType === undefined) {
-    addDiag(DescriptorDiagCode.OutputPropertyRequired, arg, "`output` property is required for sensors.");
-  }
   if (onExecuteNode === undefined) {
     addDiag(DescriptorDiagCode.OnExecuteRequired, arg, "`onExecute` method is required.");
+  }
+
+  let returnType: string | undefined;
+  if (kind === "sensor" && onExecuteNode) {
+    returnType = extractReturnType(onExecuteNode, execIsAsync, addDiag);
   }
 
   if (diagnostics.length > 0) {
@@ -240,8 +227,8 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
     descriptor: {
       kind,
       name: name!,
-      outputType: kind === "sensor" ? outputType : undefined,
-      params,
+      returnType: kind === "sensor" ? returnType : undefined,
+      args,
       execIsAsync,
       onExecuteNode: onExecuteNode!,
       onPageEnteredNode,
@@ -256,127 +243,426 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   };
 }
 
-function extractParams(
+function extractArgs(
   node: ts.Expression,
   addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
-): ExtractedParam[] {
-  if (!ts.isObjectLiteralExpression(node)) {
-    addDiag(DescriptorDiagCode.ParamsMustBeObjectLiteral, node, "`params` must be an object literal.");
+): ExtractedArgSpec[] {
+  if (!ts.isArrayLiteralExpression(node)) {
+    addDiag(DescriptorDiagCode.ArgsMustBeArrayLiteral, node, "`args` must be an array literal.");
     return [];
   }
 
-  const params: ExtractedParam[] = [];
+  const result: ExtractedArgSpec[] = [];
+  for (const elem of node.elements) {
+    const spec = extractArgSpec(elem, addDiag);
+    if (spec) result.push(spec);
+  }
+  return result;
+}
 
-  for (const prop of node.properties) {
-    if (!ts.isPropertyAssignment(prop)) {
+function extractArgSpec(
+  node: ts.Expression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedArgSpec | undefined {
+  if (!ts.isCallExpression(node)) {
+    addDiag(
+      DescriptorDiagCode.ArgSpecMustBeCallExpression,
+      node,
+      "Each arg spec must be a call expression (e.g., `param(...)`, `modifier(...)`, `choice(...)`)."
+    );
+    return undefined;
+  }
+
+  if (!ts.isIdentifier(node.expression)) {
+    addDiag(DescriptorDiagCode.UnrecognizedArgSpecCall, node.expression, "Unrecognized arg spec call.");
+    return undefined;
+  }
+
+  const callee = node.expression.text;
+  switch (callee) {
+    case "modifier":
+      return extractModifierSpec(node, addDiag);
+    case "param":
+      return extractParamSpec(node, addDiag);
+    case "choice":
+      return extractChoiceSpec(node, addDiag);
+    case "optional":
+      return extractOptionalSpec(node, addDiag);
+    case "repeated":
+      return extractRepeatedSpec(node, addDiag);
+    case "conditional":
+      return extractConditionalSpec(node, addDiag);
+    case "seq":
+      return extractSeqSpec(node, addDiag);
+    default:
       addDiag(
-        DescriptorDiagCode.ParamEntryMustUsePropertySyntax,
-        prop,
-        "Param entries must use property assignment syntax."
+        DescriptorDiagCode.UnrecognizedArgSpecCall,
+        node.expression,
+        `Unrecognized arg spec function: \`${callee}\`.`
       );
-      continue;
-    }
+      return undefined;
+  }
+}
 
-    const paramName = getPropertyName(prop);
-    if (paramName === undefined) {
+function extractModifierSpec(
+  node: ts.CallExpression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedArgSpec | undefined {
+  const args = node.arguments;
+  if (args.length < 2 || !ts.isStringLiteral(args[0])) {
+    addDiag(
+      DescriptorDiagCode.ModifierIdMustBeStringLiteral,
+      args[0] ?? node,
+      "`modifier()` first argument must be a string literal id."
+    );
+    return undefined;
+  }
+
+  const id = args[0].text;
+
+  if (!ts.isObjectLiteralExpression(args[1])) {
+    addDiag(
+      DescriptorDiagCode.ModifierOptsMustBeObjectLiteral,
+      args[1],
+      "`modifier()` second argument must be an object literal."
+    );
+    return undefined;
+  }
+
+  let label: string | undefined;
+  let icon: string | undefined;
+
+  for (const prop of args[1].properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const propName = getPropertyName(prop);
+    if (propName === "label") {
+      if (ts.isStringLiteral(prop.initializer)) {
+        label = prop.initializer.text;
+      } else {
+        addDiag(
+          DescriptorDiagCode.ModifierLabelMustBeStringLiteral,
+          prop.initializer,
+          "`modifier()` label must be a string literal."
+        );
+      }
+    } else if (propName === "icon") {
+      if (ts.isStringLiteral(prop.initializer)) {
+        icon = prop.initializer.text;
+      } else {
+        addDiag(
+          DescriptorDiagCode.ModifierIconMustBeStringLiteral,
+          prop.initializer,
+          "`modifier()` icon must be a string literal."
+        );
+      }
+    }
+  }
+
+  if (label === undefined) {
+    addDiag(DescriptorDiagCode.ModifierLabelRequired, args[1], "`modifier()` requires a `label` property.");
+    return undefined;
+  }
+
+  return { kind: "modifier", id, label, icon };
+}
+
+function extractParamSpec(
+  node: ts.CallExpression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedParam | undefined {
+  const args = node.arguments;
+  if (args.length < 2 || !ts.isStringLiteral(args[0])) {
+    addDiag(
+      DescriptorDiagCode.ParamNameMustBeStringLiteral,
+      args[0] ?? node,
+      "`param()` first argument must be a string literal name."
+    );
+    return undefined;
+  }
+
+  const paramName = args[0].text;
+
+  if (!ts.isObjectLiteralExpression(args[1])) {
+    addDiag(
+      DescriptorDiagCode.ParamOptsMustBeObjectLiteral,
+      args[1],
+      "`param()` second argument must be an object literal."
+    );
+    return undefined;
+  }
+
+  let type: string | undefined;
+  let defaultValue: number | string | boolean | null | undefined;
+  let hasDefault = false;
+  let anonymous = false;
+
+  for (const prop of args[1].properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const propName = getPropertyName(prop);
+
+    if (propName === "type") {
+      if (ts.isStringLiteral(prop.initializer)) {
+        type = prop.initializer.text;
+      } else {
+        addDiag(
+          DescriptorDiagCode.ParamTypeMustBeStringLiteral,
+          prop.initializer,
+          "Param `type` must be a string literal."
+        );
+      }
+    } else if (propName === "default") {
+      hasDefault = true;
+      defaultValue = extractLiteralValue(prop.initializer);
+      if (defaultValue === undefined && !isNullishLiteral(prop.initializer)) {
+        addDiag(
+          DescriptorDiagCode.ParamDefaultMustBeLiteral,
+          prop.initializer,
+          "Param `default` must be a literal value."
+        );
+      }
+    } else if (propName === "anonymous") {
+      if (prop.initializer.kind === ts.SyntaxKind.TrueKeyword) {
+        anonymous = true;
+      } else if (prop.initializer.kind === ts.SyntaxKind.FalseKeyword) {
+        anonymous = false;
+      } else {
+        addDiag(
+          DescriptorDiagCode.ParamAnonymousMustBeBoolean,
+          prop.initializer,
+          "Param `anonymous` must be a boolean literal."
+        );
+      }
+    }
+  }
+
+  if (type === undefined) {
+    addDiag(DescriptorDiagCode.ParamDefinitionMissingType, args[1], "Param definition must have a `type` property.");
+    return undefined;
+  }
+
+  const result: ExtractedParam = { kind: "param", name: paramName, type, anonymous };
+  if (hasDefault) {
+    result.defaultValue = defaultValue;
+  }
+  return result;
+}
+
+function extractChoiceSpec(
+  node: ts.CallExpression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedArgSpec | undefined {
+  const args = node.arguments;
+  if (args.length === 0) {
+    addDiag(DescriptorDiagCode.ChoiceRequiresArguments, node, "`choice()` requires at least one argument.");
+    return undefined;
+  }
+
+  let name: string | undefined;
+  let startIdx = 0;
+
+  if (ts.isStringLiteral(args[0])) {
+    name = args[0].text;
+    startIdx = 1;
+  }
+
+  const items: ExtractedArgSpec[] = [];
+  for (let i = startIdx; i < args.length; i++) {
+    const spec = extractArgSpec(args[i], addDiag);
+    if (spec) items.push(spec);
+  }
+
+  if (items.length === 0) {
+    addDiag(DescriptorDiagCode.ChoiceRequiresArguments, node, "`choice()` requires at least one spec argument.");
+    return undefined;
+  }
+
+  return { kind: "choice", name, items };
+}
+
+function extractOptionalSpec(
+  node: ts.CallExpression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedArgSpec | undefined {
+  if (node.arguments.length !== 1) {
+    addDiag(DescriptorDiagCode.OptionalRequiresOneArgument, node, "`optional()` requires exactly one argument.");
+    return undefined;
+  }
+
+  const item = extractArgSpec(node.arguments[0], addDiag);
+  if (!item) return undefined;
+  return { kind: "optional", item };
+}
+
+function extractRepeatedSpec(
+  node: ts.CallExpression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedArgSpec | undefined {
+  if (node.arguments.length < 1) {
+    addDiag(DescriptorDiagCode.RepeatedRequiresModifier, node, "`repeated()` requires at least one argument.");
+    return undefined;
+  }
+
+  const item = extractArgSpec(node.arguments[0], addDiag);
+  if (!item) return undefined;
+
+  let min: number | undefined;
+  let max: number | undefined;
+
+  if (node.arguments.length >= 2) {
+    if (!ts.isObjectLiteralExpression(node.arguments[1])) {
       addDiag(
-        DescriptorDiagCode.ParamNameMustBeIdentifier,
-        prop.name,
-        "Param name must be an identifier or string literal."
+        DescriptorDiagCode.RepeatedOptsMustBeObjectLiteral,
+        node.arguments[1],
+        "`repeated()` second argument must be an object literal."
       );
-      continue;
+      return undefined;
     }
-
-    if (!ts.isObjectLiteralExpression(prop.initializer)) {
-      addDiag(
-        DescriptorDiagCode.ParamDefinitionMustBeObjectLiteral,
-        prop.initializer,
-        "Param definition must be an object literal with `type` and optional `default`."
-      );
-      continue;
-    }
-
-    let type: string | undefined;
-    let defaultValue: number | string | boolean | null | undefined;
-    let hasDefault = false;
-    let anonymous = false;
-    let explicitRequired: boolean | undefined;
-
-    for (const paramProp of prop.initializer.properties) {
-      if (!ts.isPropertyAssignment(paramProp)) continue;
-      const propName = getPropertyName(paramProp);
-
-      if (propName === "type") {
-        if (ts.isStringLiteral(paramProp.initializer)) {
-          type = paramProp.initializer.text;
+    for (const prop of node.arguments[1].properties) {
+      if (!ts.isPropertyAssignment(prop)) continue;
+      const propName = getPropertyName(prop);
+      if (propName === "min") {
+        if (ts.isNumericLiteral(prop.initializer)) {
+          min = Number.parseFloat(prop.initializer.text);
         } else {
           addDiag(
-            DescriptorDiagCode.ParamTypeMustBeStringLiteral,
-            paramProp.initializer,
-            "Param `type` must be a string literal."
+            DescriptorDiagCode.RepeatedBoundMustBeNumericLiteral,
+            prop.initializer,
+            "`repeated()` `min` must be a numeric literal."
           );
         }
-      } else if (propName === "default") {
-        hasDefault = true;
-        defaultValue = extractLiteralValue(paramProp.initializer);
-        if (defaultValue === undefined && !isNullishLiteral(paramProp.initializer)) {
-          addDiag(
-            DescriptorDiagCode.ParamDefaultMustBeLiteral,
-            paramProp.initializer,
-            "Param `default` must be a literal value."
-          );
-        }
-      } else if (propName === "anonymous") {
-        if (paramProp.initializer.kind === ts.SyntaxKind.TrueKeyword) {
-          anonymous = true;
-        } else if (paramProp.initializer.kind === ts.SyntaxKind.FalseKeyword) {
-          anonymous = false;
+      } else if (propName === "max") {
+        if (ts.isNumericLiteral(prop.initializer)) {
+          max = Number.parseFloat(prop.initializer.text);
         } else {
           addDiag(
-            DescriptorDiagCode.ParamAnonymousMustBeBoolean,
-            paramProp.initializer,
-            "Param `anonymous` must be a boolean literal."
-          );
-        }
-      } else if (propName === "required") {
-        if (paramProp.initializer.kind === ts.SyntaxKind.TrueKeyword) {
-          explicitRequired = true;
-        } else if (paramProp.initializer.kind === ts.SyntaxKind.FalseKeyword) {
-          explicitRequired = false;
-        } else {
-          addDiag(
-            DescriptorDiagCode.ParamRequiredMustBeBoolean,
-            paramProp.initializer,
-            "Param `required` must be a boolean literal."
+            DescriptorDiagCode.RepeatedBoundMustBeNumericLiteral,
+            prop.initializer,
+            "`repeated()` `max` must be a numeric literal."
           );
         }
       }
     }
-
-    if (type === undefined) {
-      addDiag(
-        DescriptorDiagCode.ParamDefinitionMissingType,
-        prop.initializer,
-        "Param definition must have a `type` property."
-      );
-      continue;
-    }
-
-    const param: ExtractedParam = {
-      name: paramName,
-      type,
-      required: explicitRequired ?? !hasDefault,
-      anonymous,
-    };
-
-    if (hasDefault) {
-      param.defaultValue = defaultValue;
-    }
-
-    params.push(param);
   }
 
-  return params;
+  return { kind: "repeated", item, min, max };
+}
+
+function extractConditionalSpec(
+  node: ts.CallExpression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedArgSpec | undefined {
+  if (node.arguments.length < 2) {
+    addDiag(
+      DescriptorDiagCode.ConditionalRequiresAtLeastTwoArguments,
+      node,
+      "`conditional()` requires at least two arguments: condition and thenItem."
+    );
+    return undefined;
+  }
+
+  if (!ts.isStringLiteral(node.arguments[0])) {
+    addDiag(
+      DescriptorDiagCode.ConditionalConditionMustBeStringLiteral,
+      node.arguments[0],
+      "`conditional()` first argument must be a string literal condition name."
+    );
+    return undefined;
+  }
+  const condition = node.arguments[0].text;
+
+  const thenItem = extractArgSpec(node.arguments[1], addDiag);
+  if (!thenItem) return undefined;
+
+  let elseItem: ExtractedArgSpec | undefined;
+  if (node.arguments.length >= 3) {
+    elseItem = extractArgSpec(node.arguments[2], addDiag) ?? undefined;
+  }
+
+  return { kind: "conditional", condition, thenItem, elseItem };
+}
+
+function extractSeqSpec(
+  node: ts.CallExpression,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): ExtractedArgSpec | undefined {
+  if (node.arguments.length === 0) {
+    addDiag(DescriptorDiagCode.SeqRequiresArguments, node, "`seq()` requires at least one argument.");
+    return undefined;
+  }
+
+  const items: ExtractedArgSpec[] = [];
+  for (const a of node.arguments) {
+    const spec = extractArgSpec(a, addDiag);
+    if (spec) items.push(spec);
+  }
+  return { kind: "seq", items };
+}
+
+function extractReturnType(
+  funcNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction,
+  isAsync: boolean,
+  addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
+): string | undefined {
+  const typeNode = funcNode.type;
+  if (!typeNode) {
+    addDiag(
+      DescriptorDiagCode.SensorReturnTypeRequired,
+      funcNode,
+      "Sensor `onExecute` must have an explicit return type annotation."
+    );
+    return undefined;
+  }
+
+  let effectiveType = typeNode;
+
+  if (isAsync && ts.isTypeReferenceNode(typeNode)) {
+    const typeName = typeNode.typeName;
+    if (ts.isIdentifier(typeName) && typeName.text === "Promise" && typeNode.typeArguments?.length === 1) {
+      effectiveType = typeNode.typeArguments[0];
+    }
+  }
+
+  const returnTypeName = extractTypeNodeText(effectiveType);
+  if (!returnTypeName) {
+    addDiag(
+      DescriptorDiagCode.SensorReturnTypeRequired,
+      typeNode,
+      "Sensor `onExecute` return type must be a type name."
+    );
+    return undefined;
+  }
+
+  if (returnTypeName === "void") {
+    addDiag(DescriptorDiagCode.SensorReturnTypeMustNotBeVoid, typeNode, "Sensor `onExecute` must not return void.");
+    return undefined;
+  }
+
+  return returnTypeName;
+}
+
+function extractTypeNodeText(typeNode: ts.TypeNode): string | undefined {
+  if (ts.isTypeReferenceNode(typeNode) && ts.isIdentifier(typeNode.typeName)) {
+    return typeNode.typeName.text;
+  }
+  if (typeNode.kind === ts.SyntaxKind.NumberKeyword) return "number";
+  if (typeNode.kind === ts.SyntaxKind.StringKeyword) return "string";
+  if (typeNode.kind === ts.SyntaxKind.BooleanKeyword) return "boolean";
+  if (typeNode.kind === ts.SyntaxKind.VoidKeyword) return "void";
+
+  if (ts.isUnionTypeNode(typeNode)) {
+    const nonNullTypes = typeNode.types.filter(
+      (t) => t.kind !== ts.SyntaxKind.NullKeyword && t.kind !== ts.SyntaxKind.UndefinedKeyword
+    );
+    const hasNull = typeNode.types.some(
+      (t) => t.kind === ts.SyntaxKind.NullKeyword || t.kind === ts.SyntaxKind.UndefinedKeyword
+    );
+    if (nonNullTypes.length === 1 && hasNull) {
+      const baseName = extractTypeNodeText(nonNullTypes[0]);
+      if (baseName) return `${baseName}?`;
+    }
+  }
+
+  return undefined;
 }
 
 function getPropertyName(prop: ts.PropertyAssignment): string | undefined {

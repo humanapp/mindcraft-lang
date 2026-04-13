@@ -2,6 +2,7 @@ import { CompileDiagCode, DescriptorDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
 import type { CompileOptions } from "./types.js";
 
+export { collectParams } from "./arg-spec-utils.js";
 export type { CompileResult, FunctionDebugInfo, ProjectCompileResult } from "./project.js";
 export { isCompilerControlledPath, UserTileProject } from "./project.js";
 export type {
@@ -13,8 +14,15 @@ export type {
   DebugMetadata,
   DebugSpan,
   DiagnosticSeverity,
+  ExtractedArgSpec,
+  ExtractedChoice,
+  ExtractedConditional,
   ExtractedDescriptor,
+  ExtractedModifier,
+  ExtractedOptional,
   ExtractedParam,
+  ExtractedRepeated,
+  ExtractedSeq,
   LocalInfo,
   ScopeInfo,
   SuspendSiteInfo,

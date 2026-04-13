@@ -57,7 +57,6 @@ interface TreeNode {
 
 export default Sensor({
   name: "selfref-tree",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -94,7 +93,6 @@ interface TreeNode {
 
 export default Sensor({
   name: "selfref-exec",
-  output: "number",
   onExecute(ctx: Context): number {
     const leaf: TreeNode = { value: 10 };
     const root: TreeNode = { value: 1, left: leaf };
@@ -139,7 +137,6 @@ interface NodeB {
 
 export default Sensor({
   name: "mutual-rec",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -189,7 +186,6 @@ interface NodeB {
 
 export default Sensor({
   name: "mutual-exec",
-  output: "number",
   onExecute(ctx: Context): number {
     const a: NodeA = { value: 42 };
     const b: NodeB = { label: "hello", back: a };
@@ -229,7 +225,6 @@ type LinkedNode = {
 
 export default Sensor({
   name: "selfref-talias",
-  output: "number",
   onExecute(ctx: Context): number {
     const n1: LinkedNode = { value: 10 };
     const n2: LinkedNode = { value: 20, next: n1 };
@@ -274,7 +269,6 @@ type Child = {
 
 export default Sensor({
   name: "cross-kind-rec",
-  output: "number",
   onExecute(ctx: Context): number {
     const p: Parent = { name: "Alice" };
     const c: Child = { age: 5, parent: p };

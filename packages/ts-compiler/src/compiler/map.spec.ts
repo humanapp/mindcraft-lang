@@ -110,7 +110,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "make-map",
-  output: "number",
   onExecute(ctx: Context): number {
     const m = new Map<string, number>([["foo", 1], ["bar", 2]]);
     return m.get("foo")! + m.get("bar")!;
@@ -143,7 +142,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "for-of-map",
-  output: "number",
   onExecute(ctx: Context): number {
     const m = new Map<string, number>([["foo", 1], ["bar", 2], ["baz", 3]]);
     let sum = 0;
@@ -178,7 +176,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "for-in-struct",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vector2 = { x: 4, y: 7 };
     let sum = 0;
@@ -214,7 +211,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "empty-map",
-  output: "number",
   onExecute(ctx: Context): number {
     const m = new Map<string, number>();
     return m.size;
@@ -247,7 +243,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "map-set-get",
-  output: "string",
   onExecute(ctx: Context): string {
     const m = new Map<string, string>();
     m.set("greeting", "hello");
@@ -282,7 +277,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "struct-regression",
-  output: "Vector2",
   onExecute(ctx: Context): Vector2 {
     const v: Vector2 = { x: 5, y: 10 };
     return v;

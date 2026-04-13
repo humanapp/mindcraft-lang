@@ -53,7 +53,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "map-test",
-  output: "number",
   onExecute(ctx: Context): number {
     ${body}
   },
@@ -67,7 +66,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "map-test",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     ${body}
   },
@@ -81,7 +79,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "map-test",
-  output: "string",
   onExecute(ctx: Context): string {
     ${body}
   },

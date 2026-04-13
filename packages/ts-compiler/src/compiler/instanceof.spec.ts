@@ -83,7 +83,6 @@ class Bar {
 
 export default Sensor({
   name: "instanceof-test",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     ${body}
   },
@@ -107,7 +106,6 @@ class Bar {
 
 export default Sensor({
   name: "instanceof-test",
-  output: "number",
   onExecute(ctx: Context): number {
     ${body}
   },
@@ -162,7 +160,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "instanceof-diag-test",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const x = 5;
     return (x as any) instanceof String;

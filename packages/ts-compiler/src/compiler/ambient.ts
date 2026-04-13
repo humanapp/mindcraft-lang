@@ -330,22 +330,32 @@ declare module "mindcraft" {
 const AMBIENT_MODULE_END = `
   type MindcraftType = keyof MindcraftTypeMap | (string & {});
 
-  export interface ParamDef {
-    type: MindcraftType;
-    default?: unknown;
-    anonymous?: boolean;
-    required?: boolean;
-  }
+  interface ModifierSpec { readonly __brand: "modifier" }
+  interface ParamSpec { readonly __brand: "param" }
+  interface ChoiceSpec { readonly __brand: "choice" }
+  interface OptionalSpec { readonly __brand: "optional" }
+  interface RepeatedSpec { readonly __brand: "repeated" }
+  interface ConditionalSpec { readonly __brand: "conditional" }
+  interface SeqSpec { readonly __brand: "seq" }
+  type ArgSpec = ModifierSpec | ParamSpec | ChoiceSpec | OptionalSpec | RepeatedSpec | ConditionalSpec | SeqSpec;
+
+  export function modifier(id: string, opts: { label: string; icon?: string }): ModifierSpec;
+  export function param(name: string, opts: { type: MindcraftType; default?: unknown; anonymous?: boolean }): ParamSpec;
+  export function choice(name: string, ...items: ArgSpec[]): ChoiceSpec;
+  export function choice(...items: ArgSpec[]): ChoiceSpec;
+  export function optional(item: ArgSpec): OptionalSpec;
+  export function repeated(item: ModifierSpec, opts?: { min?: number; max?: number }): RepeatedSpec;
+  export function conditional(condition: string, thenItem: ArgSpec, elseItem?: ArgSpec): ConditionalSpec;
+  export function seq(...items: ArgSpec[]): SeqSpec;
 
   export interface SensorConfig {
     name: string;
-    output: MindcraftType;
     label?: string;
     icon?: string;
     docs?: string;
     tags?: string[];
-    params?: Record<string, ParamDef>;
-    onExecute(ctx: Context, params: Record<string, unknown>): unknown;
+    args?: ArgSpec[];
+    onExecute(ctx: Context, args: Record<string, unknown>): unknown;
     onPageEntered?(ctx: Context): void;
   }
 
@@ -355,8 +365,8 @@ const AMBIENT_MODULE_END = `
     icon?: string;
     docs?: string;
     tags?: string[];
-    params?: Record<string, ParamDef>;
-    onExecute(ctx: Context, params: Record<string, unknown>): void | Promise<void>;
+    args?: ArgSpec[];
+    onExecute(ctx: Context, args: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;
   }
 

@@ -92,7 +92,7 @@ describe("function references and CALL_INDIRECT", () => {
 
   test("passing a named function as argument and calling via indirect call", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 function double(n: number): number {
   return n * 2;
@@ -104,12 +104,11 @@ function apply(fn: (n: number) => number, x: number): number {
 
 export default Sensor({
   name: "test-fn-ref",
-  output: "number",
-  params: {
-    val: { type: "number", default: 5 },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    return apply(double, params.val);
+  args: [
+    optional(param("val", { type: "number", default: 5 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    return apply(double, args.val);
   },
 });
 `;
@@ -137,7 +136,7 @@ export default Sensor({
 
   test("function reference stored in local variable and called indirectly", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 function triple(n: number): number {
   return n * 3;
@@ -145,13 +144,12 @@ function triple(n: number): number {
 
 export default Sensor({
   name: "test-fn-local",
-  output: "number",
-  params: {
-    val: { type: "number", default: 4 },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
+  args: [
+    optional(param("val", { type: "number", default: 4 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
     const fn = triple;
-    return fn(params.val);
+    return fn(args.val);
   },
 });
 `;
@@ -187,7 +185,7 @@ describe("closures", () => {
 
   test("simple closure: makeAdder pattern", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 function makeAdder(n: number): (x: number) => number {
   return (x: number): number => x + n;
@@ -195,13 +193,12 @@ function makeAdder(n: number): (x: number) => number {
 
 export default Sensor({
   name: "test-closure-adder",
-  output: "number",
-  params: {
-    val: { type: "number", default: 3 },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
+  args: [
+    optional(param("val", { type: "number", default: 3 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
     const add5 = makeAdder(5);
-    return add5(params.val);
+    return add5(args.val);
   },
 });
 `;
@@ -229,7 +226,7 @@ export default Sensor({
 
   test("closure over multiple variables", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 function makeLinear(a: number, b: number): (x: number) => number {
   return (x: number): number => a * x + b;
@@ -237,13 +234,12 @@ function makeLinear(a: number, b: number): (x: number) => number {
 
 export default Sensor({
   name: "test-closure-multi",
-  output: "number",
-  params: {
-    val: { type: "number", default: 4 },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
+  args: [
+    optional(param("val", { type: "number", default: 4 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
     const linear = makeLinear(3, 7);
-    return linear(params.val);
+    return linear(args.val);
   },
 });
 `;
@@ -271,7 +267,7 @@ export default Sensor({
 
   test("arrow function with no captures compiles as plain function ref", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 function apply(fn: (n: number) => number, x: number): number {
   return fn(x);
@@ -279,12 +275,11 @@ function apply(fn: (n: number) => number, x: number): number {
 
 export default Sensor({
   name: "test-no-capture",
-  output: "number",
-  params: {
-    val: { type: "number", default: 7 },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    return apply((x: number): number => x * 2, params.val);
+  args: [
+    optional(param("val", { type: "number", default: 7 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    return apply((x: number): number => x * 2, args.val);
   },
 });
 `;
@@ -312,16 +307,15 @@ export default Sensor({
 
   test("closure captures local variable from enclosing scope", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-capture-local",
-  output: "number",
-  params: {
-    val: { type: "number", default: 10 },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    const threshold = params.val;
+  args: [
+    optional(param("val", { type: "number", default: 10 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    const threshold = args.val;
     const fn = (x: number): number => x + threshold;
     return fn(5);
   },
@@ -351,7 +345,7 @@ export default Sensor({
 
   test("concise arrow function body (expression, not block)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 function apply(fn: (n: number) => number, x: number): number {
   return fn(x);
@@ -359,13 +353,12 @@ function apply(fn: (n: number) => number, x: number): number {
 
 export default Sensor({
   name: "test-concise-arrow",
-  output: "number",
-  params: {
-    val: { type: "number", default: 6 },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
+  args: [
+    optional(param("val", { type: "number", default: 6 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
     const offset = 100;
-    return apply((x: number): number => x + offset, params.val);
+    return apply((x: number): number => x + offset, args.val);
   },
 });
 `;
@@ -399,7 +392,7 @@ describe("function type signatures", () => {
 
   test("callback parameter gets typed FunctionTypeDef TypeId", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 function apply(fn: (n: number) => number, x: number): number {
   return fn(x);
@@ -411,12 +404,11 @@ function double(n: number): number {
 
 export default Sensor({
   name: "test-fn-sig",
-  output: "number",
-  params: {
-    val: { type: "number", default: 5 },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    return apply(double, params.val);
+  args: [
+    optional(param("val", { type: "number", default: 5 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    return apply(double, args.val);
   },
 });
 `;
@@ -457,7 +449,7 @@ export default Sensor({
 
   test("closure with typed callback compiles and runs correctly", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 function makeTransformer(factor: number): (x: number) => number {
   return (x: number): number => x * factor;
@@ -465,13 +457,12 @@ function makeTransformer(factor: number): (x: number) => number {
 
 export default Sensor({
   name: "test-closure-sig",
-  output: "number",
-  params: {
-    val: { type: "number", default: 3 },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
+  args: [
+    optional(param("val", { type: "number", default: 3 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
     const t = makeTransformer(10);
-    return t(params.val);
+    return t(args.val);
   },
 });
 `;

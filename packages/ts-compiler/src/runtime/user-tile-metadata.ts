@@ -7,6 +7,7 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
 import { BitSet } from "@mindcraft-lang/core/util";
+import { collectParams } from "../compiler/arg-spec-utils.js";
 import type { ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
 
 export type UserTileTypeResolver = (typeName: string) => TypeId | undefined;
@@ -37,7 +38,7 @@ function buildParameterTiles(
 ): readonly BrainTileParameterDef[] | undefined {
   const parameterTiles = new Map<string, BrainTileParameterDef>();
 
-  for (const param of program.params) {
+  for (const param of collectParams(program.args)) {
     const parameterId = getParameterId(program.name, param);
     const tileId = mkParameterTileId(parameterId);
     if (parameterTiles.has(tileId)) {

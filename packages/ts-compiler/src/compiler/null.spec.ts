@@ -96,7 +96,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "null-var",
-  output: "number",
   onExecute(ctx: Context): number {
     let x: number | null = null;
     if (x === null) {
@@ -133,7 +132,6 @@ function maybeNull(): number | null {
 
 export default Sensor({
   name: "null-return",
-  output: "number",
   onExecute(ctx: Context): number {
     const val = maybeNull();
     if (val === null) {
@@ -168,7 +166,6 @@ let cached: number | null = null;
 
 export default Sensor({
   name: "null-callsite",
-  output: "number",
   onExecute(ctx: Context): number {
     if (cached === null) {
       cached = 7;
@@ -203,14 +200,15 @@ export default Sensor({
 
   test("number !== null returns true", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "not-null",
-  output: "boolean",
-  params: { x: { type: "number" } },
-  onExecute(ctx: Context, params: { x: number }): boolean {
-    const val: number | null = params.x;
+  args: [
+    param("x", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { x: number }): boolean {
+    const val: number | null = args.x;
     return val !== null;
   },
 });
@@ -239,7 +237,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nil-eq",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const a: number | null = null;
     const b: number | null = null;
@@ -270,7 +267,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "undef-var",
-  output: "number",
   onExecute(ctx: Context): number {
     let x: number | undefined = undefined;
     if (x === undefined) {
@@ -303,7 +299,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "undef-null-eq",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const a: number | undefined = undefined;
     const b: number | null = null;
@@ -330,14 +325,15 @@ export default Sensor({
 
   test("number !== undefined returns true", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "not-undef",
-  output: "boolean",
-  params: { x: { type: "number" } },
-  onExecute(ctx: Context, params: { x: number }): boolean {
-    const val: number | undefined = params.x;
+  args: [
+    param("x", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { x: number }): boolean {
+    const val: number | undefined = args.x;
     return val !== undefined;
   },
 });
@@ -366,7 +362,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "and-test",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return true && false;
   },
@@ -403,7 +398,6 @@ function sideEffect(): boolean {
 
 export default Sensor({
   name: "and-short",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const result = false && sideEffect();
     return called;
@@ -439,7 +433,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "or-test",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return false || true;
   },
@@ -476,7 +469,6 @@ function sideEffect(): boolean {
 
 export default Sensor({
   name: "or-short",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const result = true || sideEffect();
     return called;
@@ -512,7 +504,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "not-test",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return !true;
   },
@@ -540,7 +531,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "not-test2",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return !false;
   },
@@ -569,7 +559,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "and-val",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0 && 42;
   },
@@ -599,7 +588,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "str-concat",
-  output: "string",
   onExecute(ctx: Context): string {
     return "a" + "b";
   },
@@ -629,7 +617,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "template-num",
-  output: "string",
   onExecute(ctx: Context): string {
     const n: number = 42;
     return \`count: \${n}\`;
@@ -660,7 +647,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "template-multi",
-  output: "string",
   onExecute(ctx: Context): string {
     const a: string = "hello";
     const b: string = "world";
@@ -692,7 +678,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "empty-template",
-  output: "string",
   onExecute(ctx: Context): string {
     return \`\`;
   },
@@ -722,7 +707,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "template-any",
-  output: "string",
   onExecute(ctx: Context): string {
     const x: any = 42;
     return \`val: \${x}\`;
@@ -743,7 +727,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "template-null",
-  output: "string",
   onExecute(ctx: Context): string {
     return \`val: \${null}\`;
   },
@@ -765,15 +748,14 @@ describe("nullable types", () => {
 
   test("tsTypeToTypeId returns nullable TypeId for number | null parameter", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nullable-num",
-  output: "number",
-  params: {
-    value: { type: "number?", default: null },
-  },
-  onExecute(ctx: Context, params: { value: number | null }): number {
+  args: [
+    optional(param("value", { type: "number?", default: null })),
+  ],
+  onExecute(ctx: Context, args: { value: number | null }): number {
     return 0;
   },
 });
@@ -838,7 +820,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "vec-list",
-  output: "number",
   onExecute(ctx: Context): number {
     const vecs: ReadonlyArray<Vector2> = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
     return vecs.length;

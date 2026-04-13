@@ -15,10 +15,15 @@ import {
   type TileDefinitionInput,
 } from "@mindcraft-lang/core/app";
 import type { DocsTileEntry } from "@mindcraft-lang/docs";
-import type { ExtractedParam, UserAuthoredProgram, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+import type {
+  ExtractedArgSpec,
+  ExtractedParam,
+  UserAuthoredProgram,
+  WorkspaceCompileResult,
+} from "@mindcraft-lang/ts-compiler";
 import {
+  collectParams,
   isCallSpec,
-  isExtractedParam,
   isOptionalString,
   isOptionalStringArray,
   isRecord,
@@ -33,7 +38,7 @@ interface UserTileMetadata {
   kind: "sensor" | "actuator";
   name: string;
   callSpec: BrainActionCallSpec;
-  params: ExtractedParam[];
+  args: ExtractedArgSpec[];
   outputType?: string;
   isAsync: boolean;
   label?: string;
@@ -62,8 +67,7 @@ function isUserTileMetadata(value: unknown): value is UserTileMetadata {
     (value.kind === "sensor" || value.kind === "actuator") &&
     typeof value.name === "string" &&
     isCallSpec(value.callSpec) &&
-    Array.isArray(value.params) &&
-    value.params.every(isExtractedParam) &&
+    Array.isArray(value.args) &&
     isOptionalString(value.outputType) &&
     typeof value.isAsync === "boolean" &&
     isOptionalString(value.label) &&
@@ -79,7 +83,7 @@ function metadataFromProgram(program: UserAuthoredProgram): UserTileMetadata {
     kind: program.kind,
     name: program.name,
     callSpec: program.callDef.callSpec as BrainActionCallSpec,
-    params: program.params,
+    args: program.args,
     outputType: program.outputType,
     isAsync: program.isAsync,
     label: program.label,
@@ -208,7 +212,7 @@ function buildHydratedSnapshot(
       const parameterTiles: TileDefinitionInput[] = [];
       let canRegister = true;
 
-      for (const param of entry.params) {
+      for (const param of collectParams(entry.args)) {
         const typeId = resolveTypeId(types, param.type);
         if (!typeId) {
           logger.warn(`[user-tile-registration] unknown parameter type "${param.type}" for "${entry.key}"`);

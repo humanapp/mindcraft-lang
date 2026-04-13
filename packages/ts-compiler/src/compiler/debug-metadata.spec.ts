@@ -59,7 +59,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 1;
   },
@@ -87,7 +86,6 @@ function helper(): number { return 42; }
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return helper();
   },
@@ -117,7 +115,6 @@ let counter = 0;
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     counter++;
     return counter;
@@ -145,7 +142,6 @@ function helper(): number { return 42; }
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return helper();
   },
@@ -182,7 +178,6 @@ class Point {
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const p = new Point(1, 2);
     return p.distance();
@@ -221,7 +216,6 @@ import { add } from "../helpers/math";
 
 export default Sensor({
   name: "calc",
-  output: "number",
   onExecute(ctx: Context): number {
     return add(1, 2);
   },
@@ -255,7 +249,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 1;
   },
@@ -307,7 +300,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr = [3, 1, 2];
     const mapped = arr.map((x: number) => x * 2);
@@ -341,7 +333,6 @@ let counter = 0;
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const fn = (x: number) => x + 1;
     return helper() + fn(counter);
@@ -363,7 +354,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 1;
   },
@@ -383,7 +373,6 @@ function helper(): number { return 42; }
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return helper();
   },
@@ -411,7 +400,6 @@ function helper(): number { return 42; }
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return helper();
   },

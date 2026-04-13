@@ -43,7 +43,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "exp-test",
-  output: "number",
   onExecute(ctx: Context): number {
     ${body}
   },

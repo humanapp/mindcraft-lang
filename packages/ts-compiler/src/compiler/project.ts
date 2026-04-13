@@ -25,6 +25,7 @@ import type {
   DebugFunctionInfo,
   DebugMetadata,
   DebugSpan,
+  ExtractedArgSpec,
   ExtractedDescriptor,
   ExtractedParam,
   LocalInfo,
@@ -346,19 +347,19 @@ export class UserTileProject {
       });
     }
 
-    const qualifiedParams = qualifyDescriptorParams(descriptor.params, sourceFile, services.types);
-    const qualifiedOutputType = descriptor.outputType
-      ? qualifyDescriptorType(descriptor.outputType, sourceFile, services.types)
+    const qualifiedArgs = qualifyArgSpecTypes(descriptor.args, sourceFile, services.types);
+    const qualifiedReturnType = descriptor.returnType
+      ? qualifyDescriptorType(descriptor.returnType, sourceFile, services.types)
       : undefined;
 
-    const callDef = buildCallDef(descriptor.name, qualifiedParams);
-    const outputType = qualifiedOutputType ? services.types.resolveByName(qualifiedOutputType) : undefined;
-    if (qualifiedOutputType && !outputType) {
+    const callDef = buildCallDef(descriptor.name, qualifiedArgs);
+    const outputType = qualifiedReturnType ? services.types.resolveByName(qualifiedReturnType) : undefined;
+    if (qualifiedReturnType && !outputType) {
       return {
         diagnostics: [
           {
             code: CompileDiagCode.UnknownOutputType,
-            message: `Unknown output type: "${descriptor.outputType}"`,
+            message: `Unknown output type: "${descriptor.returnType}"`,
             severity: "error",
           },
         ],
@@ -427,7 +428,7 @@ export class UserTileProject {
       entryFuncId: programResult.entryFuncId,
       activationFuncId: programResult.activationFuncId,
       revisionId: generateRevisionId(),
-      params: qualifiedParams,
+      args: qualifiedArgs,
       debugMetadata,
       label,
       iconUrl,
@@ -446,16 +447,38 @@ function qualifyDescriptorType(typeName: string, sourceFile: ts.SourceFile, type
   return typeName;
 }
 
-function qualifyDescriptorParams(
-  params: ExtractedParam[],
+function qualifyArgSpecTypes(
+  args: ExtractedArgSpec[],
   sourceFile: ts.SourceFile,
   types: ITypeRegistry
-): ExtractedParam[] {
-  return params.map((p) => {
-    const qualifiedType = qualifyDescriptorType(p.type, sourceFile, types);
-    if (qualifiedType === p.type) return p;
-    return { ...p, type: qualifiedType };
-  });
+): ExtractedArgSpec[] {
+  return args.map((spec) => qualifyArgSpec(spec, sourceFile, types));
+}
+
+function qualifyArgSpec(spec: ExtractedArgSpec, sourceFile: ts.SourceFile, types: ITypeRegistry): ExtractedArgSpec {
+  switch (spec.kind) {
+    case "param": {
+      const qualifiedType = qualifyDescriptorType(spec.type, sourceFile, types);
+      if (qualifiedType === spec.type) return spec;
+      return { ...spec, type: qualifiedType };
+    }
+    case "modifier":
+      return spec;
+    case "choice":
+      return { ...spec, items: spec.items.map((item) => qualifyArgSpec(item, sourceFile, types)) };
+    case "optional":
+      return { ...spec, item: qualifyArgSpec(spec.item, sourceFile, types) };
+    case "repeated":
+      return { ...spec, item: qualifyArgSpec(spec.item, sourceFile, types) };
+    case "conditional":
+      return {
+        ...spec,
+        thenItem: qualifyArgSpec(spec.thenItem, sourceFile, types),
+        elseItem: spec.elseItem ? qualifyArgSpec(spec.elseItem, sourceFile, types) : undefined,
+      };
+    case "seq":
+      return { ...spec, items: spec.items.map((item) => qualifyArgSpec(item, sourceFile, types)) };
+  }
 }
 
 function assembleDebugMetadata(

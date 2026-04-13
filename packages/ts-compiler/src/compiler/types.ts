@@ -16,7 +16,7 @@ export interface CompileDiagnostic {
 
 export interface UserAuthoredProgram extends UserActionArtifact {
   name: string;
-  params: ExtractedParam[];
+  args: ExtractedArgSpec[];
   debugMetadata?: DebugMetadata;
   label?: string;
   iconUrl?: string;
@@ -47,8 +47,8 @@ export interface SourceSpan {
 export interface ExtractedDescriptor {
   kind: "sensor" | "actuator";
   name: string;
-  outputType: string | undefined;
-  params: ExtractedParam[];
+  returnType: string | undefined;
+  args: ExtractedArgSpec[];
   execIsAsync: boolean;
   onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction;
   onPageEnteredNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null;
@@ -60,12 +60,58 @@ export interface ExtractedDescriptor {
   tags?: string[];
 }
 
+export interface ExtractedModifier {
+  kind: "modifier";
+  id: string;
+  label: string;
+  icon?: string;
+}
+
 export interface ExtractedParam {
+  kind: "param";
   name: string;
   type: string;
   defaultValue?: number | string | boolean | null;
-  required: boolean;
   anonymous: boolean;
+}
+
+export type ExtractedArgSpec =
+  | ExtractedModifier
+  | ExtractedParam
+  | ExtractedChoice
+  | ExtractedOptional
+  | ExtractedRepeated
+  | ExtractedConditional
+  | ExtractedSeq;
+
+export interface ExtractedChoice {
+  kind: "choice";
+  name?: string;
+  items: ExtractedArgSpec[];
+}
+
+export interface ExtractedOptional {
+  kind: "optional";
+  item: ExtractedArgSpec;
+}
+
+export interface ExtractedRepeated {
+  kind: "repeated";
+  item: ExtractedArgSpec;
+  min?: number;
+  max?: number;
+}
+
+export interface ExtractedConditional {
+  kind: "conditional";
+  condition: string;
+  thenItem: ExtractedArgSpec;
+  elseItem?: ExtractedArgSpec;
+}
+
+export interface ExtractedSeq {
+  kind: "seq";
+  items: ExtractedArgSpec[];
 }
 
 export interface DebugMetadata {

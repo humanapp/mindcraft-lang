@@ -18,7 +18,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const x = 1;
     const y = 2;
@@ -54,7 +53,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const x = 42;
     return x;
@@ -77,7 +75,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 42;
   },
@@ -99,7 +96,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const x = 5;
     if (x > 3) {
@@ -128,7 +124,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     let x = 0;
     while (x < 5) {
@@ -157,7 +152,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     let x = 0;
     while (x < 10) {
@@ -190,7 +184,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const x = 1 + 2;
     return x;
@@ -213,7 +206,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 42;
   },
@@ -242,7 +234,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const a = 1;
     const b = 2;
@@ -270,7 +261,6 @@ let counter = 0;
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     counter = counter + 1;
     return counter;
@@ -294,7 +284,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     let sum = 0;
     for (let i = 0; i < 5; i++) {
@@ -327,7 +316,6 @@ function helper(x: number): number {
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return helper(21);
   },

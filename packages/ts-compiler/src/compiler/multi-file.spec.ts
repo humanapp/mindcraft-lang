@@ -22,7 +22,7 @@ import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
-import type { UserAuthoredProgram } from "./types.js";
+import type { ExtractedOptional, ExtractedParam, UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
@@ -84,7 +84,6 @@ import { THRESHOLD } from "../helpers/config";
 
 export default Sensor({
   name: "check",
-  output: "number",
   onExecute(ctx: Context): number {
     return THRESHOLD;
   },
@@ -135,7 +134,6 @@ import { increment } from "../helpers/counter";
 
 export default Sensor({
   name: "counter",
-  output: "number",
   onExecute(ctx: Context): number {
     return increment();
   },
@@ -199,7 +197,6 @@ import { addThree } from "../helpers/b";
 
 export default Sensor({
   name: "diamond",
-  output: "number",
   onExecute(ctx: Context): number {
     addFive();
     return addThree();
@@ -249,7 +246,6 @@ import { midValue } from "../helpers/mid";
 
 export default Sensor({
   name: "init-order",
-  output: "number",
   onExecute(ctx: Context): number {
     return midValue;
   },
@@ -290,15 +286,16 @@ export function double(x: number): number {
 }
 `,
       "sensors/use-math.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 import { double } from "../helpers/math";
 
 export default Sensor({
   name: "use-math",
-  output: "number",
-  params: { n: { type: "number" } },
-  onExecute(ctx: Context, params: { n: number }): number {
-    return double(params.n);
+  args: [
+    param("n", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { n: number }): number {
+    return double(args.n);
   },
 });
 `,
@@ -328,7 +325,6 @@ import { bump } from "../helpers/state";
 
 export default Sensor({
   name: "sensor-a",
-  output: "number",
   onExecute(ctx: Context): number {
     return bump();
   },
@@ -340,7 +336,6 @@ import { bump } from "../helpers/state";
 
 export default Sensor({
   name: "sensor-b",
-  output: "number",
   onExecute(ctx: Context): number {
     return bump();
   },
@@ -416,7 +411,6 @@ import { add } from "../lib/greet";
 
 export default Sensor({
   name: "sum",
-  output: "number",
   onExecute(ctx: Context): number {
     return add(3, 7);
   },
@@ -458,7 +452,6 @@ import { triple as mul3 } from "../lib/math";
 
 export default Sensor({
   name: "alias-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return mul3(4);
   },
@@ -498,7 +491,6 @@ import { noop } from "../lib/utils";
 
 export default Sensor({
   name: "entry",
-  output: "number",
   onExecute(ctx: Context): number {
     noop();
     return 1;
@@ -526,7 +518,6 @@ import { bad } from "../lib/broken";
 
 export default Sensor({
   name: "use-broken",
-  output: "number",
   onExecute(ctx: Context): number {
     return bad();
   },
@@ -559,7 +550,6 @@ import { squarePlusOne } from "../lib/mid";
 
 export default Sensor({
   name: "chain",
-  output: "number",
   onExecute(ctx: Context): number {
     return squarePlusOne(5);
   },
@@ -608,7 +598,6 @@ import { Direction } from "../helpers/direction";
 
 export default Sensor({
   name: "use-direction",
-  output: "string",
   onExecute(ctx: Context): string {
     return Direction.Up;
   },
@@ -648,7 +637,6 @@ import { Direction as Dir } from "../helpers/direction";
 
 export default Sensor({
   name: "use-direction-alias",
-  output: "string",
   onExecute(ctx: Context): string {
     return Dir.Down;
   },
@@ -697,7 +685,6 @@ import { Mode } from "../helpers/mode";
 
 export default Sensor({
   name: "use-mode",
-  output: "number",
   onExecute(ctx: Context): number {
     const value: number = Mode.Fast;
     return value;
@@ -729,7 +716,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "use-mode",
-  output: "number",
   onExecute(ctx: Context): number {
     return 1;
   },
@@ -766,7 +752,6 @@ import { Mode } from "../helpers/mode";
 
 export default Sensor({
   name: "refresh-mode",
-  output: "number",
   onExecute(ctx: Context): number {
     const value: number = Mode.Fast;
     return value;
@@ -802,7 +787,6 @@ import { Mode } from "../helpers/mode";
 
 export default Sensor({
   name: "refresh-mode",
-  output: "string",
   onExecute(ctx: Context): string {
     return Mode.Fast;
   },
@@ -839,7 +823,6 @@ class Foo {
 
 export default Sensor({
   name: "a-sensor",
-  output: "number",
   onExecute(ctx: Context): number {
     const f = new Foo(10);
     return f.x;
@@ -856,7 +839,6 @@ class Foo {
 
 export default Sensor({
   name: "b-sensor",
-  output: "string",
   onExecute(ctx: Context): string {
     const f = new Foo("hello");
     return f.name;
@@ -905,7 +887,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "host-check",
-  output: "number",
   onExecute(ctx: Context): number {
     return 1;
   },
@@ -934,7 +915,6 @@ class Point {
 
 export default Sensor({
   name: "single-class",
-  output: "number",
   onExecute(ctx: Context): number {
     const p = new Point(3, 4);
     return p.x + p.y;
@@ -975,7 +955,6 @@ class Result {
 
 export default Sensor({
   name: "detect",
-  output: "Result",
   onExecute(ctx: Context): Result {
     return new Result(1);
   },
@@ -998,7 +977,7 @@ export default Sensor({
   test("param type resolves to qualified class name", () => {
     const result = compileProject({
       "actuators/move.ts": `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "mindcraft";
 
 class Vec2 {
   x: number;
@@ -1008,11 +987,11 @@ class Vec2 {
 
 export default Actuator({
   name: "move",
-  params: {
-    target: { type: "Vec2" },
-  },
-  onExecute(ctx: Context, params: { target: Vec2 }): void {
-    const v = params.target;
+  args: [
+    param("target", { type: "Vec2" }),
+  ],
+  onExecute(ctx: Context, args: { target: Vec2 }): void {
+    const v = args.target;
   },
 });
 `,
@@ -1024,22 +1003,25 @@ export default Actuator({
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
     assert.ok(entry.program);
 
-    assert.equal(entry.program!.params[0].type, "/actuators/move.ts::Vec2", "param type should carry qualified name");
+    assert.equal(
+      (entry.program!.args[0] as ExtractedParam).type,
+      "/actuators/move.ts::Vec2",
+      "param type should carry qualified name"
+    );
   });
 
   test("host type param stays bare", () => {
     const result = compileProject({
       "sensors/simple.ts": `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "simple",
-  output: "number",
-  params: {
-    range: { type: "number", default: 5 },
-  },
-  onExecute(ctx: Context, params: { range: number }): number {
-    return params.range;
+  args: [
+    optional(param("range", { type: "number", default: 5 })),
+  ],
+  onExecute(ctx: Context, args: { range: number }): number {
+    return args.range;
   },
 });
 `,
@@ -1051,7 +1033,11 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
     assert.ok(entry.program);
 
-    assert.equal(entry.program!.params[0].type, "number", "host type should stay bare");
+    assert.equal(
+      ((entry.program!.args[0] as ExtractedOptional).item as ExtractedParam).type,
+      "number",
+      "host type should stay bare"
+    );
     assert.ok(entry.program!.outputType, "output type should resolve");
   });
 });
@@ -1078,7 +1064,6 @@ import { publicB } from "../helpers/b";
 
 export default Sensor({
   name: "entry",
-  output: "number",
   onExecute(ctx: Context): number {
     return publicA() + publicB();
   },
@@ -1110,7 +1095,6 @@ import { VALUE_B } from "../helpers/b";
 
 export default Sensor({
   name: "entry",
-  output: "number",
   onExecute(ctx: Context): number {
     return VALUE_A + VALUE_B;
   },
@@ -1146,7 +1130,6 @@ import {} from "../helpers/b";
 
 export default Sensor({
   name: "entry",
-  output: "number",
   onExecute(ctx: Context): number {
     return compute();
   },
@@ -1178,7 +1161,6 @@ import {} from "../helpers/b";
 
 export default Sensor({
   name: "entry",
-  output: "number",
   onExecute(ctx: Context): number {
     return VALUE;
   },
@@ -1209,7 +1191,6 @@ function compute(): number { return 42; }
 
 export default Sensor({
   name: "entry",
-  output: "number",
   onExecute(ctx: Context): number {
     return compute() + helperOnly();
   },
@@ -1248,7 +1229,6 @@ import { Point } from "../helpers/point";
 
 export default Sensor({
   name: "use-point",
-  output: "number",
   onExecute(ctx: Context): number {
     const p = new Point(3, 4);
     return p.x + p.y;
@@ -1295,7 +1275,6 @@ import { Counter } from "../helpers/counter";
 
 export default Sensor({
   name: "use-counter",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Counter(10);
     c.increment();
@@ -1346,7 +1325,6 @@ import { Vec2, lengthSquared } from "../helpers/vec";
 
 export default Sensor({
   name: "use-vec",
-  output: "number",
   onExecute(ctx: Context): number {
     const v = new Vec2(3, 4);
     return lengthSquared(v);
@@ -1387,7 +1365,6 @@ import { Config } from "../helpers/config";
 
 export default Sensor({
   name: "use-config",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Config();
     return c.threshold;
@@ -1432,7 +1409,6 @@ import { Point } from "../helpers/point";
 
 export default Sensor({
   name: "destruct",
-  output: "number",
   onExecute(ctx: Context): number {
     const p = new Point(5, 12);
     const { x, y } = p;
@@ -1478,7 +1454,6 @@ import { Point } from "../helpers/point";
 
 export default Sensor({
   name: "array-class",
-  output: "number",
   onExecute(ctx: Context): number {
     const points: Point[] = [new Point(1, 2), new Point(3, 4)];
     return points[0].x + points[1].y;
@@ -1522,7 +1497,6 @@ import { create } from "../helpers/internal";
 
 export default Sensor({
   name: "entry",
-  output: "number",
   onExecute(ctx: Context): number {
     return create();
   },
@@ -1556,7 +1530,6 @@ import {} from "../helpers/b";
 
 export default Sensor({
   name: "entry",
-  output: "number",
   onExecute(ctx: Context): number {
     const w = new Widget();
     return w.x;
@@ -1595,7 +1568,6 @@ import { Point } from "./point";
 
 export default Sensor({
   name: "root-import",
-  output: "number",
   onExecute(ctx: Context): number {
     const p = new Point(10, 20);
     return p.sum();
@@ -1641,7 +1613,6 @@ import { Counter } from "../helpers/counter";
 
 export default Sensor({
   name: "read-static",
-  output: "number",
   onExecute(ctx: Context): number {
     return Counter.count;
   },
@@ -1687,7 +1658,6 @@ import { Counter } from "../helpers/counter";
 
 export default Sensor({
   name: "call-static",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.increment();
     Counter.increment();
@@ -1733,7 +1703,6 @@ import { Counter } from "../helpers/counter";
 
 export default Sensor({
   name: "assign-static",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.count = 99;
     return Counter.count;
@@ -1777,7 +1746,6 @@ import { Counter } from "../helpers/counter";
 
 export default Sensor({
   name: "compound-static",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.count += 5;
     ++Counter.count;
@@ -1822,7 +1790,6 @@ import { Counter } from "../helpers/counter";
 
 export default Sensor({
   name: "type-error",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.count = "hello";
     return Counter.count;
@@ -1852,7 +1819,6 @@ import { Tracker } from "../helpers/tracker";
 
 export default Sensor({
   name: "use-tracker",
-  output: "number",
   onExecute(ctx: Context): number {
     const a = new Tracker(10);
     const b = new Tracker(20);
@@ -1900,7 +1866,6 @@ import { State } from "../helpers/state";
 
 export default Sensor({
   name: "tile-a",
-  output: "number",
   onExecute(ctx: Context): number {
     State.add(10);
     State.add(20);
@@ -1914,7 +1879,6 @@ import { State } from "../helpers/state";
 
 export default Sensor({
   name: "tile-b",
-  output: "number",
   onExecute(ctx: Context): number {
     State.add(100);
     return State.value;

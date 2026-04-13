@@ -110,7 +110,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "obj-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const pos: Vector2 = { x: 1, y: 2 };
     const { x, y } = pos;
@@ -143,7 +142,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "arr-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [10, 20];
     const [a, b] = arr;
@@ -185,7 +183,6 @@ import { Sensor, type Context, type Vector2, type Entity } from "mindcraft";
 
 export default Sensor({
   name: "nested-obj-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const entity: Entity = { pos: { x: 10, y: 20 } };
     const { pos: { x, y } } = entity;
@@ -228,7 +225,6 @@ import { Sensor, type Context, type Coord } from "mindcraft";
 
 export default Sensor({
   name: "nested-arr-in-obj",
-  output: "number",
   onExecute(ctx: Context): number {
     const entity: Coord = { pos: [3, 4] };
     const { pos: [x, y] } = entity;
@@ -271,7 +267,6 @@ import { Sensor, type Context, type PairHolder } from "mindcraft";
 
 export default Sensor({
   name: "mixed-nesting",
-  output: "number",
   onExecute(ctx: Context): number {
     const data: PairHolder = { items: [100, 200] };
     const { items: [first, second] } = data;
@@ -314,7 +309,6 @@ import { Sensor, type Context, type Vector2, type Entity, type Wrapper } from "m
 
 export default Sensor({
   name: "deep-nesting",
-  output: "number",
   onExecute(ctx: Context): number {
     const w: Wrapper = { entity: { pos: { x: 5, y: 6 } } };
     const { entity: { pos: { x, y } } } = w;
@@ -347,7 +341,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "rest-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [1, 2, 3, 4];
     const [first, ...rest] = arr;
@@ -380,7 +373,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "rest-tail",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [10, 20, 30, 40, 50];
     const [a, b, ...tail] = arr;
@@ -413,7 +405,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "rest-all",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [5, 10, 15];
     const [...all] = arr;
@@ -446,7 +437,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "obj-rest",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj: Vector2 = { x: 10, y: 20 };
     const { x, ...rest } = obj;
@@ -479,7 +469,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "obj-rest-remaining",
-  output: "Vector2",
   onExecute(ctx: Context): Vector2 {
     const obj: Vector2 = { x: 3, y: 7 };
     const { x, ...rest } = obj;
@@ -525,7 +514,6 @@ import { Sensor, type Context, type Vector2, type Entity } from "mindcraft";
 
 export default Sensor({
   name: "nested-rest-inner",
-  output: "number",
   onExecute(ctx: Context): number {
     const entity: Entity = { pos: { x: 5, y: 15 } };
     const { pos: { x, ...posRest } } = entity;
@@ -573,7 +561,6 @@ import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
 
 export default Sensor({
   name: "rest-outer-3-fields",
-  output: "Player",
   onExecute(ctx: Context): Player {
     const player: Player = { name: "alice", pos: { x: 1, y: 2 }, health: 100 };
     const { name, ...rest } = player;
@@ -626,7 +613,6 @@ import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
 
 export default Sensor({
   name: "nested-plus-outer-rest",
-  output: "number",
   onExecute(ctx: Context): number {
     const player: Player = { name: "bob", pos: { x: 42, y: 99 }, health: 75 };
     const { pos: { x }, ...rest } = player;
@@ -659,7 +645,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "rest-prop-access",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj: Vector2 = { x: 10, y: 20 };
     const { x, ...rest } = obj;
@@ -707,7 +692,6 @@ import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
 
 export default Sensor({
   name: "rest-prop-access-3-field",
-  output: "number",
   onExecute(ctx: Context): number {
     const player: Player = { name: "alice", pos: { x: 1, y: 2 }, health: 100 };
     const { name, ...rest } = player;
@@ -740,7 +724,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "computed-key-literal",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj: Vector2 = { x: 42, y: 99 };
     const { ["x"]: val } = obj;
@@ -773,7 +756,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "computed-key-variable",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj: Vector2 = { x: 10, y: 55 };
     const key = "y";
@@ -807,7 +789,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "computed-key-rest",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj: Vector2 = { x: 1, y: 2 };
     const { ["x"]: val, ...rest } = obj;
@@ -840,7 +821,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "default-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj: Vector2 = { x: 3, y: 10 };
     const { x = 5, y = 0 } = obj;
@@ -873,7 +853,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "rename-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const pos: Vector2 = { x: 42, y: 7 };
     const { x: posX, y: posY } = pos;
@@ -906,7 +885,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "omitted-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [10, 20, 30];
     const [, b, c] = arr;
@@ -944,7 +922,6 @@ function sum({ x, y }: Vector2): number {
 
 export default Sensor({
   name: "param-obj-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const pos: Vector2 = { x: 10, y: 20 };
     return sum(pos);
@@ -981,7 +958,6 @@ function sum([a, b]: number[]): number {
 
 export default Sensor({
   name: "param-arr-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: number[] = [3, 7];
     return sum(nums);
@@ -1018,7 +994,6 @@ function apply(fn: (p: Vector2) => number, p: Vector2): number {
 
 export default Sensor({
   name: "closure-param-destructure",
-  output: "number",
   onExecute(ctx: Context): number {
     const pos: Vector2 = { x: 5, y: 15 };
     return apply(({ x, y }: Vector2): number => x + y, pos);
@@ -1055,7 +1030,6 @@ function apply(fn: (p: Vector2) => number, p: Vector2): number {
 
 export default Sensor({
   name: "closure-destructure-capture",
-  output: "number",
   onExecute(ctx: Context): number {
     const offset = 100;
     const pos: Vector2 = { x: 3, y: 7 };
@@ -1089,7 +1063,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "onexec-destructure",
-  output: "number",
   onExecute({ time }: Context): number {
     return time;
   },

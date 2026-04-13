@@ -92,16 +92,15 @@ describe("lowering + emission", () => {
 
   test("sync sensor with comparison compiles and executes correctly (true case)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "is-close",
-  output: "boolean",
-  params: {
-    distance: { type: "number", default: 5 },
-  },
-  onExecute(ctx: Context, params: { distance: number }): boolean {
-    return params.distance < 10;
+  args: [
+    optional(param("distance", { type: "number", default: 5 })),
+  ],
+  onExecute(ctx: Context, args: { distance: number }): boolean {
+    return args.distance < 10;
   },
 });
 `;
@@ -129,16 +128,15 @@ export default Sensor({
 
   test("sync sensor with comparison compiles and executes correctly (false case)", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "is-close",
-  output: "boolean",
-  params: {
-    distance: { type: "number", default: 5 },
-  },
-  onExecute(ctx: Context, params: { distance: number }): boolean {
-    return params.distance < 10;
+  args: [
+    optional(param("distance", { type: "number", default: 5 })),
+  ],
+  onExecute(ctx: Context, args: { distance: number }): boolean {
+    return args.distance < 10;
   },
 });
 `;
@@ -170,7 +168,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "constant",
-  output: "number",
   onExecute(ctx: Context): number {
     return 42;
   },
@@ -203,7 +200,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "always-true",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return true;
   },
@@ -232,7 +228,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "greeting",
-  output: "string",
   onExecute(ctx: Context): string {
     return "hello";
   },
@@ -257,16 +252,15 @@ export default Sensor({
 
   test("sensor with arithmetic expression", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "compute",
-  output: "number",
-  params: {
-    x: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { x: number }): number {
-    return params.x + 10;
+  args: [
+    param("x", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { x: number }): number {
+    return args.x + 10;
   },
 });
 `;
@@ -291,16 +285,15 @@ export default Sensor({
 
   test("program metadata is correct", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "is-close",
-  output: "boolean",
-  params: {
-    distance: { type: "number", default: 5 },
-  },
-  onExecute(ctx: Context, params: { distance: number }): boolean {
-    return params.distance < 10;
+  args: [
+    optional(param("distance", { type: "number", default: 5 })),
+  ],
+  onExecute(ctx: Context, args: { distance: number }): boolean {
+    return args.distance < 10;
   },
 });
 `;
@@ -320,25 +313,19 @@ export default Sensor({
   });
 
   test("invalid output type produces diagnostic for unregistered type", () => {
-    const appAmbient = buildAmbientDeclarations(services.types).replace(
-      "string: string;",
-      "string: string;\n    unknownType: unknown;"
-    );
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
+type BadType = number | string;
+
 export default Sensor({
   name: "bad-type",
-  output: "unknownType",
-  onExecute(ctx: Context): unknown {
+  onExecute(ctx: Context): BadType {
     return 1;
   },
 });
 `;
-    const result = compileUserTile(source, {
-      ambientSource: appAmbient,
-      services,
-    });
+    const result = compileUserTile(source, { services });
     assert.equal(result.diagnostics.length, 1);
     assert.equal(result.diagnostics[0].code, CompileDiagCode.UnknownOutputType);
   });
@@ -353,13 +340,12 @@ export default Sensor({
     }
     const appAmbient = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context, type ActorRef } from "mindcraft";
 
 export default Sensor({
   name: "nearest",
-  output: "ActorRef",
-  onExecute(ctx: Context): unknown {
-    return 0;
+  onExecute(ctx: Context): ActorRef {
+    return { id: 0 };
   },
 });
 `;
@@ -374,13 +360,12 @@ export default Sensor({
 
   test("app-defined output type resolves without explicit ambientSource", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context, type ActorRef } from "mindcraft";
 
 export default Sensor({
   name: "nearest",
-  output: "ActorRef",
-  onExecute(ctx: Context): unknown {
-    return null;
+  onExecute(ctx: Context): ActorRef {
+    return { id: 0 };
   },
 });
 `;
@@ -403,7 +388,7 @@ describe("buildCallDef", () => {
   });
 
   test("one required param produces correct callDef", () => {
-    const callDef = buildCallDef("my-sensor", [{ name: "range", type: "number", required: true, anonymous: false }]);
+    const callDef = buildCallDef("my-sensor", [{ kind: "param", name: "range", type: "number", anonymous: false }]);
     assert.equal(callDef.callSpec.type, "bag");
     assert.equal(callDef.argSlots.size(), 1);
     const slot = callDef.argSlots.get(0)!;
@@ -413,7 +398,7 @@ describe("buildCallDef", () => {
 
   test("one optional param is wrapped in optional", () => {
     const callDef = buildCallDef("my-sensor", [
-      { name: "range", type: "number", defaultValue: 5, required: false, anonymous: false },
+      { kind: "optional", item: { kind: "param", name: "range", type: "number", defaultValue: 5, anonymous: false } },
     ]);
     assert.equal(callDef.callSpec.type, "bag");
     assert.equal(callDef.argSlots.size(), 1);
@@ -423,7 +408,7 @@ describe("buildCallDef", () => {
   });
 
   test("anonymous param uses anon tile id", () => {
-    const callDef = buildCallDef("chase", [{ name: "target", type: "ActorRef", required: true, anonymous: true }]);
+    const callDef = buildCallDef("chase", [{ kind: "param", name: "target", type: "ActorRef", anonymous: true }]);
     assert.equal(callDef.argSlots.size(), 1);
     const slot = callDef.argSlots.get(0)!;
     assert.equal(slot.argSpec.tileId, "tile.parameter->anon.ActorRef");
@@ -432,8 +417,8 @@ describe("buildCallDef", () => {
 
   test("mixed required, optional, and anonymous params", () => {
     const callDef = buildCallDef("chase", [
-      { name: "target", type: "ActorRef", required: true, anonymous: true },
-      { name: "speed", type: "number", defaultValue: 1, required: false, anonymous: false },
+      { kind: "param", name: "target", type: "ActorRef", anonymous: true },
+      { kind: "optional", item: { kind: "param", name: "speed", type: "number", defaultValue: 1, anonymous: false } },
     ]);
     assert.equal(callDef.argSlots.size(), 2);
 

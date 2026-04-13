@@ -17,7 +17,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const x = 1;
     {
@@ -65,7 +64,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     let result = 0;
     {
@@ -107,7 +105,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 1;
   },
@@ -134,7 +131,6 @@ let counter = 0;
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     counter = counter + 1;
     return counter;
@@ -159,7 +155,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const x = 10;
     const fn = (y: number): number => x + y;
@@ -185,7 +180,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const items = [10, 20, 30];
     let sum = 0;
@@ -224,7 +218,6 @@ function add(a: number, b: number): number {
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     return add(1, 2);
   },
@@ -253,7 +246,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     let sum = 0;
     for (let i = 0; i < 5; i++) {
@@ -285,7 +277,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const items: number[] = [10, 20, 30];
     let sum = 0;
@@ -318,7 +309,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     const x: number = 1;
     switch (x) {
@@ -359,7 +349,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     {
       const a = 1;
@@ -384,16 +373,16 @@ export default Sensor({
 
   test("onExecute with params tracks all parameter locals", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, optional, param, type Context } from "mindcraft";
 
 export default Actuator({
   name: "test",
-  params: {
-    speed: { type: "number", default: 5 },
-    label: { type: "string", default: "fast" },
-  },
-  onExecute(ctx: Context, params: { speed: number; label: string }): void {
-    const doubled = params.speed * 2;
+  args: [
+    optional(param("speed", { type: "number", default: 5 })),
+    optional(param("label", { type: "string", default: "fast" })),
+  ],
+  onExecute(ctx: Context, args: { speed: number; label: string }): void {
+    const doubled = args.speed * 2;
   },
 });
 `;

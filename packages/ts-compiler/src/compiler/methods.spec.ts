@@ -56,7 +56,6 @@ interface Greeter {
 
 export default Sensor({
   name: "method-sig-reg",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -93,7 +92,6 @@ interface Calculator {
 
 export default Sensor({
   name: "method-sig-mixed",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -130,7 +128,6 @@ interface Doubler {
 
 export default Sensor({
   name: "method-arrow",
-  output: "number",
   onExecute(ctx: Context): number {
     const d: Doubler = { compute: (n: number): number => n * 2 };
     return d.compute(7);
@@ -166,7 +163,6 @@ interface Adder {
 
 export default Sensor({
   name: "method-shorthand",
-  output: "number",
   onExecute(ctx: Context): number {
     const a: Adder = {
       add(a: number, b: number): number {
@@ -207,7 +203,6 @@ interface Counter {
 
 export default Sensor({
   name: "method-capture",
-  output: "number",
   onExecute(ctx: Context): number {
     const base = 10;
     const c: Counter = {
@@ -248,7 +243,6 @@ type Multiplier = {
 
 export default Sensor({
   name: "type-alias-method",
-  output: "number",
   onExecute(ctx: Context): number {
     const m: Multiplier = {
       factor: 3,

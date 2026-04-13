@@ -16,6 +16,7 @@ import {
   type Value,
 } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
+import { collectParams } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
@@ -1317,7 +1318,8 @@ function lowerOnExecuteBody(
   classInfos: ClassInfo[]
 ): FunctionEntry {
   const ir: IrNode[] = [];
-  const hasParams = descriptor.params.length > 0;
+  const flatParams = collectParams(descriptor.args);
+  const hasParams = flatParams.length > 0;
   const funcNode = descriptor.onExecuteNode;
 
   const paramLocals = new Map<string, number>();
@@ -1352,8 +1354,8 @@ function lowerOnExecuteBody(
       paramsSymbol = checker.getSymbolAtLocation(paramsParam.name);
     }
 
-    for (let i = 0; i < descriptor.params.length; i++) {
-      const param = descriptor.params[i];
+    for (let i = 0; i < flatParams.length; i++) {
+      const param = flatParams[i];
       const localIdx = nextLocal++;
       paramLocals.set(param.name, localIdx);
 
@@ -1371,8 +1373,8 @@ function lowerOnExecuteBody(
     scopeStack.addParameterMetadata(ctxParam.name.text, 0, funcScopeId);
   }
   if (hasParams) {
-    for (let i = 0; i < descriptor.params.length; i++) {
-      const param = descriptor.params[i];
+    for (let i = 0; i < flatParams.length; i++) {
+      const param = flatParams[i];
       const idx = paramLocals.get(param.name);
       if (idx !== undefined) {
         scopeStack.addParameterMetadata(param.name, idx, funcScopeId);

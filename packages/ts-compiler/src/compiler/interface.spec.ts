@@ -62,7 +62,6 @@ interface Point {
 
 export default Sensor({
   name: "iface-basic",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -99,7 +98,6 @@ interface Config {
 
 export default Sensor({
   name: "iface-optional",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -139,7 +137,6 @@ interface Point {
 
 export default Sensor({
   name: "iface-obj-lit",
-  output: "number",
   onExecute(ctx: Context): number {
     const p: Point = { x: 3, y: 4 };
     return p.x + p.y;
@@ -183,7 +180,6 @@ interface Entity {
 
 export default Sensor({
   name: "iface-nested",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vec2 = { x: 1, y: 2 };
     const e: Entity = { pos: v, name: "test" };
@@ -222,7 +218,6 @@ interface Container<T> {
 
 export default Sensor({
   name: "iface-generic",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -252,7 +247,6 @@ interface AmbientPoint {
 
 export default Sensor({
   name: "iface-ambient-collision",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -274,7 +268,6 @@ interface StringMap {
 
 export default Sensor({
   name: "iface-index-sig",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -296,7 +289,6 @@ interface Callable {
 
 export default Sensor({
   name: "iface-call-sig",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -320,7 +312,6 @@ interface Settings {
 
 export default Sensor({
   name: "iface-multi-type",
-  output: "number",
   onExecute(ctx: Context): number {
     const s: Settings = { enabled: true, label: "test", count: 42 };
     return s.count;

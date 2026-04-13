@@ -3,11 +3,18 @@ export type {
   CompileDiagnostic,
   CompileOptions,
   CompileResult,
+  ExtractedArgSpec,
+  ExtractedChoice,
+  ExtractedConditional,
   ExtractedDescriptor,
+  ExtractedModifier,
+  ExtractedOptional,
   ExtractedParam,
+  ExtractedRepeated,
+  ExtractedSeq,
   ProjectCompileResult,
 } from "./compiler/compile.js";
-export { compileUserTile, isCompilerControlledPath, UserTileProject } from "./compiler/compile.js";
+export { collectParams, compileUserTile, isCompilerControlledPath, UserTileProject } from "./compiler/compile.js";
 export type { TsDiagCode } from "./compiler/diag-codes.js";
 export {
   CompileDiagCode,

@@ -34,9 +34,9 @@ function isDefaultValue(value: unknown): value is ExtractedParam["defaultValue"]
 export function isExtractedParam(value: unknown): value is ExtractedParam {
   return (
     isRecord(value) &&
+    value.kind === "param" &&
     typeof value.name === "string" &&
     typeof value.type === "string" &&
-    typeof value.required === "boolean" &&
     typeof value.anonymous === "boolean" &&
     isDefaultValue(value.defaultValue)
   );

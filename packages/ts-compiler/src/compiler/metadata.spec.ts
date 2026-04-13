@@ -20,7 +20,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-sensor",
-  output: "boolean",
   label: "Test Sensor",
   icon: "./my-icon.svg",
   docs: "./my-docs.md",
@@ -36,7 +35,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "bare-sensor",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return true;
   },
@@ -118,7 +116,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "sub-sensor",
-  output: "boolean",
   icon: "./assets/icon.png",
   onExecute(ctx: Context): boolean {
     return true;
@@ -141,7 +138,6 @@ import { Sensor, type Context } from "mindcraft";
 const myLabel = "dynamic";
 export default Sensor({
   name: "bad-label",
-  output: "boolean",
   label: myLabel,
   onExecute(ctx: Context): boolean {
     return true;
@@ -160,7 +156,6 @@ export default Sensor({
 import { Sensor, type Context } from "mindcraft";
 export default Sensor({
   name: "bad-tags",
-  output: "boolean",
   tags: "not-an-array" as any,
   onExecute(ctx: Context): boolean {
     return true;
@@ -180,7 +175,6 @@ import { Sensor, type Context } from "mindcraft";
 const x = "dynamic";
 export default Sensor({
   name: "bad-tag-elem",
-  output: "boolean",
   tags: ["ok", x],
   onExecute(ctx: Context): boolean {
     return true;

@@ -126,7 +126,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "make-vec",
-  output: "Vector2",
   onExecute(ctx: Context): Vector2 {
     const pos: Vector2 = { x: 10, y: 20 };
     return pos;
@@ -164,7 +163,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "make-vec-direct",
-  output: "Vector2",
   onExecute(ctx: Context): Vector2 {
     return { x: 3, y: 7 };
   },
@@ -200,7 +198,6 @@ import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "make-entity",
-  output: "Entity",
   onExecute(ctx: Context): Entity {
     const e: Entity = { name: "hero", position: { x: 5, y: 15 } };
     return e;
@@ -240,7 +237,6 @@ import { Sensor, type Context, type NativeObj } from "mindcraft";
 
 export default Sensor({
   name: "bad-native",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj: NativeObj = { id: 1 };
     return 0;
@@ -258,7 +254,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "untyped-obj",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj = { a: 1 };
     return 0;
@@ -336,7 +331,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "get-x",
-  output: "number",
   onExecute(ctx: Context): number {
     const pos: Vector2 = { x: 42, y: 7 };
     return pos.x;
@@ -370,7 +364,6 @@ import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "get-entity-x",
-  output: "number",
   onExecute(ctx: Context): number {
     const e: Entity = { name: "hero", position: { x: 99, y: 50 } };
     return e.position.x;
@@ -404,7 +397,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "get-time",
-  output: "number",
   onExecute(ctx: Context): number {
     return ctx.time;
   },
@@ -437,7 +429,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "get-dt",
-  output: "number",
   onExecute(ctx: Context): number {
     return ctx.dt;
   },
@@ -470,7 +461,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "get-var",
-  output: "number",
   onExecute(ctx: Context): number {
     const val = ctx.brain.getVariable("myVar");
     return 0;
@@ -504,7 +494,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "set-var",
-  output: "number",
   onExecute(ctx: Context): number {
     ctx.brain.setVariable("myVar", 42);
     return 0;
@@ -523,7 +512,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "query",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const pos: Vector2 = { x: 0, y: 0 };
     const result = ctx.engine.queryNearby(pos, 5);
@@ -543,7 +531,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "bad-method",
-  output: "number",
   onExecute(ctx: Context): number {
     ctx.engine.nonExistent();
     return 0;
@@ -557,16 +544,15 @@ export default Sensor({
   test("params.speed still resolves to LoadLocal (regression)", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "speed-check",
-  output: "number",
-  params: {
-    speed: { type: "number", default: 10 },
-  },
-  onExecute(ctx: Context, params: { speed: number }): number {
-    return params.speed;
+  args: [
+    optional(param("speed", { type: "number", default: 10 })),
+  ],
+  onExecute(ctx: Context, args: { speed: number }): number {
+    return args.speed;
   },
 });
 `;
@@ -598,7 +584,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "list-len",
-  output: "number",
   onExecute(ctx: Context): number {
     const items: Array<number> = [1, 2, 3];
     return items.length;
@@ -641,16 +626,15 @@ export default Sensor({
 
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type NativeActor } from "mindcraft";
+import { Sensor, param, type Context, type NativeActor } from "mindcraft";
 
 export default Sensor({
   name: "actor-health",
-  output: "number",
-  params: {
-    actor: { type: "NativeActor" },
-  },
-  onExecute(ctx: Context, params: { actor: NativeActor }): number {
-    return params.actor.health;
+  args: [
+    param("actor", { type: "NativeActor" }),
+  ],
+  onExecute(ctx: Context, args: { actor: NativeActor }): number {
+    return args.actor.health;
   },
 });
 `;
@@ -666,7 +650,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "bad-field",
-  output: "number",
   onExecute(ctx: Context): number {
     const pos: Vector2 = { x: 1, y: 2 };
     return pos.z;
@@ -688,7 +671,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "ctx-alias",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = ctx;
     return c.time;
@@ -722,7 +704,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "ctx-alias-brain",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = ctx;
     const val = c.brain.getVariable("myVar");
@@ -841,16 +822,15 @@ describe("struct method calls", () => {
   test("struct method with one arg compiles to HostCallArgs with argc 2", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "widget-get",
-  output: "number",
-  params: {
-    w: { type: "Widget" },
-  },
-  onExecute(ctx: Context, params: { w: Widget }): number {
-    return params.w.getValue("score");
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  onExecute(ctx: Context, args: { w: Widget }): number {
+    return args.w.getValue("score");
   },
 });
 `;
@@ -862,16 +842,15 @@ export default Sensor({
   test("struct method with no args compiles to HostCallArgs with argc 1", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "widget-reset",
-  output: "number",
-  params: {
-    w: { type: "Widget" },
-  },
-  onExecute(ctx: Context, params: { w: Widget }): number {
-    params.w.reset();
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  onExecute(ctx: Context, args: { w: Widget }): number {
+    args.w.reset();
     return 0;
   },
 });
@@ -884,16 +863,15 @@ export default Sensor({
   test("struct method with multiple args compiles with correct argc", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "widget-add",
-  output: "number",
-  params: {
-    w: { type: "Widget" },
-  },
-  onExecute(ctx: Context, params: { w: Widget }): number {
-    return params.w.add(3, 4);
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  onExecute(ctx: Context, args: { w: Widget }): number {
+    return args.w.add(3, 4);
   },
 });
 `;
@@ -905,16 +883,15 @@ export default Sensor({
   test("unknown method name on struct produces compile diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "widget-bad",
-  output: "number",
-  params: {
-    w: { type: "Widget" },
-  },
-  onExecute(ctx: Context, params: { w: Widget }): number {
-    return params.w.nonExistent();
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  onExecute(ctx: Context, args: { w: Widget }): number {
+    return args.w.nonExistent();
   },
 });
 `;
@@ -929,16 +906,15 @@ export default Sensor({
   test("end-to-end: struct method call executes and returns correct value", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "widget-e2e",
-  output: "number",
-  params: {
-    w: { type: "Widget" },
-  },
-  onExecute(ctx: Context, params: { w: Widget }): number {
-    return params.w.getValue("score");
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  onExecute(ctx: Context, args: { w: Widget }): number {
+    return args.w.getValue("score");
   },
 });
 `;
@@ -969,16 +945,15 @@ export default Sensor({
   test("end-to-end: struct method with multiple args returns correct value", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "widget-add-e2e",
-  output: "number",
-  params: {
-    w: { type: "Widget" },
-  },
-  onExecute(ctx: Context, params: { w: Widget }): number {
-    return params.w.add(10, 25);
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  onExecute(ctx: Context, args: { w: Widget }): number {
+    return args.w.add(10, 25);
   },
 });
 `;
@@ -1024,16 +999,15 @@ export default Sensor({
   test("calling async host function emits HOST_CALL_ARGS_ASYNC", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "widget-fetch",
-  output: "number",
-  params: {
-    w: { type: "Widget" },
-  },
-  onExecute(ctx: Context, params: { w: Widget }): number {
-    params.w.fetchData("http://example.com");
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  onExecute(ctx: Context, args: { w: Widget }): number {
+    args.w.fetchData("http://example.com");
     return 0;
   },
 });
@@ -1053,16 +1027,15 @@ export default Sensor({
   test("calling sync host function emits HOST_CALL_ARGS (not HOST_CALL_ARGS_ASYNC)", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "widget-get-sync",
-  output: "number",
-  params: {
-    w: { type: "Widget" },
-  },
-  onExecute(ctx: Context, params: { w: Widget }): number {
-    return params.w.getValue("score");
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  onExecute(ctx: Context, args: { w: Widget }): number {
+    return args.w.getValue("score");
   },
 });
 `;
@@ -1085,7 +1058,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-pop",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [10, 20, 30];
     const last = nums.pop();
@@ -1117,7 +1089,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-pop-empty",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [];
     nums.pop();
@@ -1150,7 +1121,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-shift",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [10, 20, 30];
     const first = nums.shift();
@@ -1182,7 +1152,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-unshift",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [2, 3];
     nums.unshift(1);
@@ -1219,7 +1188,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-splice",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [10, 20, 30, 40, 50];
     const removed = nums.splice(1, 2);
@@ -1255,7 +1223,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-sort-asc",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [3, 1, 2];
     return nums.sort((a: number, b: number): number => a - b);
@@ -1291,7 +1258,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-sort-desc",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [3, 1, 2];
     return nums.sort((a: number, b: number): number => b - a);
@@ -1327,7 +1293,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-sort-sorted",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [1, 2, 3];
     return nums.sort((a: number, b: number): number => a - b);
@@ -1363,7 +1328,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-sort-single",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [42];
     return nums.sort((a: number, b: number): number => a - b);
@@ -1397,7 +1361,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-sort-empty",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [];
     return nums.sort((a: number, b: number): number => a - b);
@@ -1430,7 +1393,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-sort-no-cmp",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [3, 1, 2];
     return nums.sort();
@@ -1449,7 +1411,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-sort-mutates",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [3, 1, 2];
     nums.sort((a: number, b: number): number => a - b);
@@ -1485,7 +1446,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "ternary-true",
-  output: "number",
   onExecute(ctx: Context): number {
     return true ? 1 : 2;
   },
@@ -1515,7 +1475,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "ternary-false",
-  output: "number",
   onExecute(ctx: Context): number {
     return false ? 1 : 2;
   },
@@ -1541,16 +1500,15 @@ export default Sensor({
 
   test("ternary with variable condition", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "ternary-var",
-  output: "number",
-  params: {
-    flag: { type: "boolean" },
-  },
-  onExecute(ctx: Context, params: { flag: boolean }): number {
-    return params.flag ? 10 : 20;
+  args: [
+    param("flag", { type: "boolean" }),
+  ],
+  onExecute(ctx: Context, args: { flag: boolean }): number {
+    return args.flag ? 10 : 20;
   },
 });
 `;
@@ -1590,7 +1548,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "ternary-nested",
-  output: "number",
   onExecute(ctx: Context): number {
     const a = true;
     const b = false;
@@ -1622,7 +1579,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nullish-null",
-  output: "number",
   onExecute(ctx: Context): number {
     const x: number | null = null;
     return x ?? 42;
@@ -1653,7 +1609,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nullish-nonnull",
-  output: "number",
   onExecute(ctx: Context): number {
     const x: number | null = 5;
     return x ?? 42;
@@ -1684,7 +1639,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nullish-undef",
-  output: "number",
   onExecute(ctx: Context): number {
     const x: number | undefined = undefined;
     return x ?? 42;
@@ -1715,7 +1669,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nullish-zero",
-  output: "number",
   onExecute(ctx: Context): number {
     const x: number | null = 0;
     return x ?? 42;

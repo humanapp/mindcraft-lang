@@ -42,7 +42,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "bitwise-test",
-  output: "number",
   onExecute(ctx: Context): number {
     ${body}
   },

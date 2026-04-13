@@ -80,7 +80,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "set-field",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vector2 = { x: 1, y: 2 };
     v.x = 10;
@@ -111,7 +110,6 @@ import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "set-nested",
-  output: "number",
   onExecute(ctx: Context): number {
     const e: Entity = { position: { x: 0, y: 0 }, health: 50 };
     e.health = 99;
@@ -142,7 +140,6 @@ import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "set-struct-field",
-  output: "Vector2",
   onExecute(ctx: Context): Vector2 {
     const e: Entity = { position: { x: 1, y: 2 }, health: 10 };
     e.position = { x: 30, y: 40 };
@@ -209,17 +206,16 @@ describe("struct field assignment with fieldSetter", () => {
     setterCalls = [];
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type NativeWidget } from "mindcraft";
+import { Sensor, param, type Context, type NativeWidget } from "mindcraft";
 
 export default Sensor({
   name: "native-set",
-  output: "number",
-  params: {
-    w: { type: "NativeWidget" },
-  },
-  onExecute(ctx: Context, params: { w: NativeWidget }): number {
-    params.w.value = 42;
-    return params.w.value;
+  args: [
+    param("w", { type: "NativeWidget" }),
+  ],
+  onExecute(ctx: Context, args: { w: NativeWidget }): number {
+    args.w.value = 42;
+    return args.w.value;
   },
 });
 `;
@@ -270,16 +266,15 @@ describe("struct field assignment diagnostics", () => {
   test("assigning to a readOnly field produces a diagnostic", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Sensor_ReadOnly } from "mindcraft";
+import { Sensor, param, type Context, type Sensor_ReadOnly } from "mindcraft";
 
 export default Sensor({
   name: "ro-assign",
-  output: "number",
-  params: {
-    s: { type: "Sensor_ReadOnly" },
-  },
-  onExecute(ctx: Context, params: { s: Sensor_ReadOnly }): number {
-    params.s.value = 5;
+  args: [
+    param("s", { type: "Sensor_ReadOnly" }),
+  ],
+  onExecute(ctx: Context, args: { s: Sensor_ReadOnly }): number {
+    args.s.value = 5;
     return 0;
   },
 });
@@ -297,17 +292,16 @@ export default Sensor({
   test("assigning to a writable field on a struct with readOnly fields compiles without error", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Sensor_ReadOnly } from "mindcraft";
+import { Sensor, param, type Context, type Sensor_ReadOnly } from "mindcraft";
 
 export default Sensor({
   name: "mutable-assign",
-  output: "number",
-  params: {
-    s: { type: "Sensor_ReadOnly" },
-  },
-  onExecute(ctx: Context, params: { s: Sensor_ReadOnly }): number {
-    params.s.mutable = 7;
-    return params.s.mutable;
+  args: [
+    param("s", { type: "Sensor_ReadOnly" }),
+  ],
+  onExecute(ctx: Context, args: { s: Sensor_ReadOnly }): number {
+    args.s.mutable = 7;
+    return args.s.mutable;
   },
 });
 `;
@@ -342,7 +336,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "compound-field",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vector2 = { x: 10, y: 20 };
     v.x += 5;
@@ -373,7 +366,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "compound-sub",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vector2 = { x: 10, y: 20 };
     v.y -= 8;
@@ -404,7 +396,6 @@ import { Sensor, type Context, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "compound-mul",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vector2 = { x: 3, y: 4 };
     v.x *= 7;
@@ -491,21 +482,20 @@ describe("struct field assignment integration", () => {
 
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Unit, type Vector2 } from "mindcraft";
+import { Sensor, param, type Context, type Unit, type Vector2 } from "mindcraft";
 
 export default Sensor({
   name: "integration",
-  output: "Vector2",
-  params: {
-    unit: { type: "Unit" },
-    damage: { type: "number" },
-    steps: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { unit: Unit; damage: number; steps: number }): Vector2 {
-    const u = params.unit;
+  args: [
+    param("unit", { type: "Unit" }),
+    param("damage", { type: "number" }),
+    param("steps", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { unit: Unit; damage: number; steps: number }): Vector2 {
+    const u = args.unit;
 
     // apply damage reduced by armor: hp -= max(damage - armor, 1)
-    let effectiveDamage = params.damage - u.armor;
+    let effectiveDamage = args.damage - u.armor;
     if (effectiveDamage < 1) {
       effectiveDamage = 1;
     }
@@ -513,7 +503,7 @@ export default Sensor({
 
     // move diagonally for 'steps' iterations
     let i = 0;
-    while (i < params.steps) {
+    while (i < args.steps) {
       u.x += 3;
       u.y += 2;
       i += 1;

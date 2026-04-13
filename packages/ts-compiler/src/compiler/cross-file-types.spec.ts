@@ -81,7 +81,6 @@ import { Point } from "../helpers/types";
 
 export default Sensor({
   name: "iface-basic",
-  output: "number",
   onExecute(ctx: Context): number {
     const p: Point = { x: 10, y: 20 };
     return p.x + p.y;
@@ -113,7 +112,6 @@ import { Vec2 } from "../helpers/types";
 
 export default Sensor({
   name: "vec-a",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vec2 = { x: 1, y: 2 };
     return v.x;
@@ -126,7 +124,6 @@ import { Vec2 } from "../helpers/types";
 
 export default Sensor({
   name: "vec-b",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vec2 = { x: 3, y: 4 };
     return v.y;
@@ -166,7 +163,6 @@ import { Config } from "../helpers/types";
 
 export default Sensor({
   name: "config-check",
-  output: "number",
   onExecute(ctx: Context): number {
     const c: Config = { speed: 42, label: "fast" };
     return c.speed;
@@ -208,7 +204,6 @@ import { Outer, Inner } from "../helpers/types";
 
 export default Sensor({
   name: "nested-check",
-  output: "number",
   onExecute(ctx: Context): number {
     const i: Inner = { value: 99 };
     const o: Outer = { inner: i, label: "test" };
@@ -247,7 +242,6 @@ import { Handler } from "../helpers/types";
 
 export default Sensor({
   name: "handler-check",
-  output: "number",
   onExecute(ctx: Context): number {
     const h: Handler = {
       name: "doubler",

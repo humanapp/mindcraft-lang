@@ -64,7 +64,6 @@ import { Sensor, type Context, type ActorRef } from "mindcraft";
 
 export default Sensor({
   name: "test-brand",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const a: ActorRef = { id: 1, "energy pct": 0.5 };
     return true;
@@ -78,16 +77,15 @@ export default Sensor({
   test("native-backed struct param compiles to LOAD_LOCAL/STORE_LOCAL", () => {
     const ambient = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type ActorRef } from "mindcraft";
+import { Sensor, param, type ActorRef, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-param-assign",
-  output: "number",
-  params: {
-    target: { type: "ActorRef" },
-  },
-  onExecute(ctx: Context, params: { target: ActorRef }): number {
-    let t: ActorRef = params.target;
+  args: [
+    param("target", { type: "ActorRef" }),
+  ],
+  onExecute(ctx: Context, args: { target: ActorRef }): number {
+    let t: ActorRef = args.target;
     return 1;
   },
 });
@@ -195,7 +193,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "meta-sensor",
-  output: "number",
   label: "Meta Sensor",
   icon: "./meta-sensor.svg",
   docs: "./meta-sensor.md",

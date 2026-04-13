@@ -120,6 +120,47 @@ export enum DescriptorDiagCode {
   TagsMustBeArrayLiteral = 2023,
   /** tags array element is not a string literal */
   TagElementMustBeStringLiteral = 2024,
+
+  /** args value is not an array literal */
+  ArgsMustBeArrayLiteral = 2030,
+  /** Unrecognized arg spec call expression */
+  UnrecognizedArgSpecCall = 2031,
+  /** modifier() first argument must be a string literal */
+  ModifierIdMustBeStringLiteral = 2032,
+  /** modifier() second argument must be an object literal */
+  ModifierOptsMustBeObjectLiteral = 2033,
+  /** modifier() label property must be a string literal */
+  ModifierLabelMustBeStringLiteral = 2034,
+  /** modifier() missing required label property */
+  ModifierLabelRequired = 2035,
+  /** param() first argument must be a string literal */
+  ParamNameMustBeStringLiteral = 2036,
+  /** param() second argument must be an object literal */
+  ParamOptsMustBeObjectLiteral = 2037,
+  /** choice() requires at least one argument */
+  ChoiceRequiresArguments = 2038,
+  /** optional() requires exactly one argument */
+  OptionalRequiresOneArgument = 2039,
+  /** repeated() first argument must be a modifier spec */
+  RepeatedRequiresModifier = 2040,
+  /** conditional() requires at least condition and thenItem */
+  ConditionalRequiresAtLeastTwoArguments = 2041,
+  /** conditional() condition must be a string literal */
+  ConditionalConditionMustBeStringLiteral = 2043,
+  /** Sensor onExecute must have a return type annotation */
+  SensorReturnTypeRequired = 2044,
+  /** Sensor onExecute must not return void */
+  SensorReturnTypeMustNotBeVoid = 2045,
+  /** modifier() icon property must be a string literal */
+  ModifierIconMustBeStringLiteral = 2046,
+  /** Arg spec must be a call expression */
+  ArgSpecMustBeCallExpression = 2047,
+  /** repeated() second argument must be an object literal */
+  RepeatedOptsMustBeObjectLiteral = 2048,
+  /** repeated() min/max must be numeric literals */
+  RepeatedBoundMustBeNumericLiteral = 2049,
+  /** seq() requires at least one argument */
+  SeqRequiresArguments = 2050,
 }
 
 /**

@@ -109,7 +109,6 @@ class Point {
 
 export default Sensor({
   name: "class-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -136,7 +135,6 @@ class Vec2 {
 
 export default Sensor({
   name: "struct-reg",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -181,7 +179,6 @@ class Counter {
 
 export default Sensor({
   name: "method-reg",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -223,7 +220,6 @@ class Pair {
 
 export default Sensor({
   name: "fn-table",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -259,7 +255,6 @@ class Child extends Base {
 
 export default Sensor({
   name: "extends-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -286,7 +281,6 @@ class Foo {
 
 export default Sensor({
   name: "static-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -313,7 +307,6 @@ class Mixed {
 
 export default Sensor({
   name: "static-field-filter",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -351,7 +344,6 @@ class Counter {
 
 export default Sensor({
   name: "static-method-filter",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -388,7 +380,6 @@ class Counter {
 
 export default Sensor({
   name: "static-init",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -425,7 +416,6 @@ class Tracker {
 
 export default Sensor({
   name: "static-defaults",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -462,7 +452,6 @@ class Foo {
 
 export default Sensor({
   name: "static-ir-check",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -492,7 +481,6 @@ class Holder {
 
 export default Sensor({
   name: "unresolvable-static",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -517,7 +505,6 @@ class Utils {
 
 export default Sensor({
   name: "static-method-reg",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -552,7 +539,6 @@ class MathHelper {
 
 export default Sensor({
   name: "static-argc",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -588,7 +574,6 @@ class Broken {
 
 export default Sensor({
   name: "static-this",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -614,7 +599,6 @@ class Counter {
 
 export default Sensor({
   name: "static-field-access",
-  output: "number",
   onExecute(ctx: Context): number {
     return Counter.count;
   },
@@ -640,7 +624,6 @@ class Counter {
 
 export default Sensor({
   name: "static-field-ctor",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Counter();
     return c.value;
@@ -665,7 +648,6 @@ class Foo {
 
 export default Sensor({
   name: "bare-class",
-  output: "number",
   onExecute(ctx: Context): number {
     const f = Foo;
     return 0;
@@ -692,7 +674,6 @@ class Utils {
 
 export default Sensor({
   name: "static-method-ref",
-  output: "number",
   onExecute(ctx: Context): number {
     const fn = Utils.double;
     return 0;
@@ -717,7 +698,6 @@ class MathUtils {
 
 export default Sensor({
   name: "static-method-call",
-  output: "number",
   onExecute(ctx: Context): number {
     return MathUtils.double(5);
   },
@@ -754,7 +734,6 @@ class Calc {
 
 export default Sensor({
   name: "static-method-multi-arg",
-  output: "number",
   onExecute(ctx: Context): number {
     return Calc.add(3, 4);
   },
@@ -778,7 +757,6 @@ class Foo {
 
 export default Sensor({
   name: "static-method-missing",
-  output: "number",
   onExecute(ctx: Context): number {
     return Foo.fake();
   },
@@ -802,7 +780,6 @@ class Counter {
 
 export default Sensor({
   name: "static-method-reads-field",
-  output: "number",
   onExecute(ctx: Context): number {
     return Counter.getCount();
   },
@@ -825,7 +802,6 @@ class Foo {
 
 export default Sensor({
   name: "private-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -849,7 +825,6 @@ class Foo {
 
 export default Sensor({
   name: "computed-name-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -877,7 +852,6 @@ class Tag {
 
 export default Sensor({
   name: "no-ctor",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -911,7 +885,6 @@ class Foo {
 
 export default Sensor({
   name: "getter-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -953,7 +926,6 @@ class Box {
 
 export default Sensor({
   name: "instance-getter-callsite",
-  output: "number",
   onExecute(ctx: Context): number {
     const b = new Box(42);
     return b.width;
@@ -992,7 +964,6 @@ class Rect {
 
 export default Sensor({
   name: "this-getter-in-method",
-  output: "number",
   onExecute(ctx: Context): number {
     const r = new Rect(3, 7);
     return r.area();
@@ -1029,7 +1000,6 @@ class Config {
 
 export default Sensor({
   name: "static-getter-callsite",
-  output: "number",
   onExecute(ctx: Context): number {
     return Config.limit;
   },
@@ -1068,7 +1038,6 @@ class Circle {
 
 export default Sensor({
   name: "computed-getter",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Circle(5);
     return c.diameter;
@@ -1105,7 +1074,6 @@ class Box {
 
 export default Sensor({
   name: "instance-setter-callsite",
-  output: "number",
   onExecute(ctx: Context): number {
     const b = new Box(10);
     b.width = 42;
@@ -1145,7 +1113,6 @@ class Counter {
 
 export default Sensor({
   name: "this-setter-in-method",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Counter();
     c.increment();
@@ -1186,7 +1153,6 @@ class Config {
 
 export default Sensor({
   name: "static-setter-callsite",
-  output: "number",
   onExecute(ctx: Context): number {
     Config.limit = 77;
     return Config.limit;
@@ -1227,7 +1193,6 @@ class Box {
 
 export default Sensor({
   name: "setter-expr-position",
-  output: "number",
   onExecute(ctx: Context): number {
     const b = new Box();
     const y = (b.width = 99);
@@ -1271,7 +1236,6 @@ class Clamped {
 
 export default Sensor({
   name: "setter-clamp",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Clamped();
     c.val = 200;
@@ -1309,7 +1273,6 @@ class Score {
 
 export default Sensor({
   name: "compound-getter-setter",
-  output: "number",
   onExecute(ctx: Context): number {
     const s = new Score(10);
     s.points += 5;
@@ -1348,7 +1311,6 @@ class Wallet {
 
 export default Sensor({
   name: "this-compound-getter-setter",
-  output: "number",
   onExecute(ctx: Context): number {
     const w = new Wallet(100);
     w.spend(30);
@@ -1387,7 +1349,6 @@ class Counter {
 
 export default Sensor({
   name: "inc-dec-getter-setter",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Counter();
     const a = c.count++;
@@ -1427,7 +1388,6 @@ class Stats {
 
 export default Sensor({
   name: "static-compound-getter-setter",
-  output: "number",
   onExecute(ctx: Context): number {
     Stats.total = 10;
     Stats.total += 5;
@@ -1471,7 +1431,6 @@ class Stats {
 
 export default Sensor({
   name: "static-incdec-getter-setter",
-  output: "number",
   onExecute(ctx: Context): number {
     Stats.total = 5;
     const a = Stats.total++;
@@ -1513,7 +1472,6 @@ class ReadOnly {
 
 export default Sensor({
   name: "getter-only-compound",
-  output: "number",
   onExecute(ctx: Context): number {
     const r = new ReadOnly();
     r.val += 10;
@@ -1541,7 +1499,6 @@ class Point {
 
 export default Sensor({
   name: "new-point",
-  output: "number",
   onExecute(ctx: Context): number {
     const p = new Point(3, 4);
     return p.x + p.y;
@@ -1581,7 +1538,6 @@ class Config {
 
 export default Sensor({
   name: "prop-init",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Config();
     return c.threshold;
@@ -1622,7 +1578,6 @@ class Counter {
 
 export default Sensor({
   name: "init-order",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Counter(5);
     return c.value;
@@ -1656,7 +1611,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "bad-new",
-  output: "number",
   onExecute(ctx: Context): number {
     const p = new UnknownClass();
     return 0;
@@ -1678,7 +1632,6 @@ function helper(): number {
 
 export default Sensor({
   name: "bad-this",
-  output: "number",
   onExecute(ctx: Context): number {
     return helper();
   },
@@ -1704,7 +1657,6 @@ class Pair {
 
 export default Sensor({
   name: "ctor-struct",
-  output: "number",
   onExecute(ctx: Context): number {
     const p = new Pair(10, 20);
     return p.a;
@@ -1742,7 +1694,6 @@ class Defaults {
 
 export default Sensor({
   name: "no-ctor-init",
-  output: "number",
   onExecute(ctx: Context): number {
     const d = new Defaults();
     return d.count;
@@ -1786,7 +1737,6 @@ class Box {
 
 export default Sensor({
   name: "method-read",
-  output: "number",
   onExecute(ctx: Context): number {
     const b = new Box(42);
     return b.getValue();
@@ -1831,7 +1781,6 @@ class Settable {
 
 export default Sensor({
   name: "method-write",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Settable(10);
     const c2 = c.assign(99);
@@ -1876,7 +1825,6 @@ class Adder {
 
 export default Sensor({
   name: "method-call",
-  output: "number",
   onExecute(ctx: Context): number {
     const a = new Adder(100);
     return a.add(23);
@@ -1923,7 +1871,6 @@ class Calc {
 
 export default Sensor({
   name: "this-method-call",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new Calc(5);
     return c.quadruple();
@@ -1969,7 +1916,6 @@ class Rect {
 
 export default Sensor({
   name: "method-compute",
-  output: "number",
   onExecute(ctx: Context): number {
     const r = new Rect(6, 7);
     return r.area();
@@ -2013,7 +1959,6 @@ class Tracker {
 
 export default Sensor({
   name: "method-void",
-  output: "number",
   onExecute(ctx: Context): number {
     const t = new Tracker();
     t.bump();
@@ -2066,7 +2011,6 @@ class TwoD {
 
 export default Sensor({
   name: "multi-method",
-  output: "number",
   onExecute(ctx: Context): number {
     const c = new TwoD(11, 22);
     return c.sum();
@@ -2111,7 +2055,6 @@ class Accumulator {
 
 export default Sensor({
   name: "compound-assign",
-  output: "number",
   onExecute(ctx: Context): number {
     const a = new Accumulator(10);
     const a2 = a.add(5);
@@ -2149,7 +2092,6 @@ class ShapeEvol {
 
 export default Sensor({
   name: "shape-evol",
-  output: "number",
   onExecute(ctx: Context): number {
     const s = new ShapeEvol();
     return s.x;
@@ -2176,7 +2118,6 @@ class ShapeEvol {
 
 export default Sensor({
   name: "shape-evol",
-  output: "number",
   onExecute(ctx: Context): number {
     const s = new ShapeEvol();
     return s.x + s.y;
@@ -2207,7 +2148,6 @@ class Counter {
 
 export default Sensor({
   name: "static-assign",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.count = 42;
     return Counter.count;
@@ -2232,7 +2172,6 @@ class Counter {
 
 export default Sensor({
   name: "static-compound-assign",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.count += 10;
     return Counter.count;
@@ -2257,7 +2196,6 @@ class Counter {
 
 export default Sensor({
   name: "static-prefix-inc",
-  output: "number",
   onExecute(ctx: Context): number {
     ++Counter.count;
     return Counter.count;
@@ -2282,7 +2220,6 @@ class Counter {
 
 export default Sensor({
   name: "static-postfix-inc",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.count++;
     return Counter.count;
@@ -2307,7 +2244,6 @@ class Utils {
 
 export default Sensor({
   name: "static-method-assign",
-  output: "number",
   onExecute(ctx: Context): number {
     Utils.double = 5 as any;
     return 0;
@@ -2334,7 +2270,6 @@ class Utils {
 
 export default Sensor({
   name: "static-method-prefix-inc",
-  output: "number",
   onExecute(ctx: Context): number {
     ++Utils.double;
     return 0;
@@ -2361,7 +2296,6 @@ class Counter {
 
 export default Sensor({
   name: "static-assign-runtime",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.count = 7;
     Counter.count += 3;
@@ -2402,7 +2336,6 @@ class Counter {
 
 export default Sensor({
   name: "static-incr-runtime",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.count = 5;
     const a = ++Counter.count;
@@ -2452,7 +2385,6 @@ class Counter {
 
 export default Sensor({
   name: "this-static",
-  output: "number",
   onExecute(ctx: Context): number {
     Counter.increment();
     Counter.increment();
@@ -2497,7 +2429,6 @@ class Acc {
 
 export default Sensor({
   name: "this-compound",
-  output: "number",
   onExecute(ctx: Context): number {
     return Acc.addAndInc();
   },
@@ -2541,7 +2472,6 @@ class Utils {
 
 export default Sensor({
   name: "this-chain",
-  output: "number",
   onExecute(ctx: Context): number {
     return Utils.doublePlusFive();
   },
@@ -2582,7 +2512,6 @@ class Foo {
 
 export default Sensor({
   name: "bare-this",
-  output: "number",
   onExecute(ctx: Context): number {
     return Foo.getSelf();
   },
@@ -2606,7 +2535,6 @@ class Seq {
 
 export default Sensor({
   name: "this-postfix",
-  output: "number",
   onExecute(ctx: Context): number {
     const a = Seq.next();
     const b = Seq.next();

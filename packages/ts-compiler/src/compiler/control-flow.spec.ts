@@ -92,16 +92,15 @@ describe("control flow + local variables", () => {
 
   test("if/else returns correct value for true branch", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-if",
-  output: "boolean",
-  params: {
-    x: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { x: number }): boolean {
-    if (params.x > 5) {
+  args: [
+    param("x", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { x: number }): boolean {
+    if (args.x > 5) {
       return true;
     } else {
       return false;
@@ -130,16 +129,15 @@ export default Sensor({
 
   test("if/else returns correct value for false branch", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-if",
-  output: "boolean",
-  params: {
-    x: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { x: number }): boolean {
-    if (params.x > 5) {
+  args: [
+    param("x", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { x: number }): boolean {
+    if (args.x > 5) {
       return true;
     } else {
       return false;
@@ -172,7 +170,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-if-no-else",
-  output: "number",
   onExecute(ctx: Context): number {
     let x = 10;
     if (x > 5) {
@@ -202,18 +199,17 @@ export default Sensor({
 
   test("while loop counting to N", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-while",
-  output: "number",
-  params: {
-    n: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { n: number }): number {
+  args: [
+    param("n", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { n: number }): number {
     let count = 0;
     let i = 0;
-    while (i < params.n) {
+    while (i < args.n) {
       count = count + 1;
       i = i + 1;
     }
@@ -246,7 +242,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-do-while",
-  output: "number",
   onExecute(ctx: Context): number {
     let count = 0;
     do {
@@ -276,21 +271,20 @@ export default Sensor({
 
   test("do...while loop with multiple iterations", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-do-while-multi",
-  output: "number",
-  params: {
-    n: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { n: number }): number {
+  args: [
+    param("n", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { n: number }): number {
     let sum = 0;
     let i = 0;
     do {
       sum = sum + i;
       i = i + 1;
-    } while (i < params.n);
+    } while (i < args.n);
     return sum;
   },
 });
@@ -321,7 +315,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-do-while-break",
-  output: "number",
   onExecute(ctx: Context): number {
     let i = 0;
     do {
@@ -358,7 +351,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-do-while-continue",
-  output: "number",
   onExecute(ctx: Context): number {
     let sum = 0;
     let i = 0;
@@ -394,17 +386,16 @@ export default Sensor({
 
   test("for loop runs correct number of iterations", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-for",
-  output: "number",
-  params: {
-    n: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { n: number }): number {
+  args: [
+    param("n", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { n: number }): number {
     let sum = 0;
-    for (let i = 0; i < params.n; i = i + 1) {
+    for (let i = 0; i < args.n; i = i + 1) {
       sum = sum + i;
     }
     return sum;
@@ -437,7 +428,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-for-pp",
-  output: "number",
   onExecute(ctx: Context): number {
     let sum = 0;
     for (let i = 0; i < 3; i++) {
@@ -472,7 +462,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-shadow",
-  output: "number",
   onExecute(ctx: Context): number {
     let x = 1;
     {
@@ -506,7 +495,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-break",
-  output: "number",
   onExecute(ctx: Context): number {
     let i = 0;
     while (true) {
@@ -543,7 +531,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-continue",
-  output: "number",
   onExecute(ctx: Context): number {
     let sum = 0;
     for (let i = 0; i < 10; i = i + 1) {
@@ -581,7 +568,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-switch-match",
-  output: "number",
   onExecute(ctx: Context): number {
     const x: number = 2;
     switch (x) {
@@ -619,7 +605,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-switch-case-after-default",
-  output: "number",
   onExecute(ctx: Context): number {
     const x: number = 3;
     switch (x) {
@@ -657,7 +642,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-switch-default-fallthrough",
-  output: "number",
   onExecute(ctx: Context): number {
     let sum = 0;
     const x: number = 9;
@@ -698,7 +682,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-switch-break",
-  output: "number",
   onExecute(ctx: Context): number {
     let total = 0;
     for (let i = 0; i < 3; i = i + 1) {
@@ -740,7 +723,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-switch-continue",
-  output: "number",
   onExecute(ctx: Context): number {
     let sum = 0;
     for (let i = 0; i < 5; i = i + 1) {
@@ -779,7 +761,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-nested",
-  output: "number",
   onExecute(ctx: Context): number {
     let result = 0;
     {
@@ -813,18 +794,17 @@ export default Sensor({
 
   test("else-if chains execute correctly", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-elseif",
-  output: "number",
-  params: {
-    x: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { x: number }): number {
-    if (params.x > 10) {
+  args: [
+    param("x", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { x: number }): number {
+    if (args.x > 10) {
       return 3;
-    } else if (params.x > 5) {
+    } else if (args.x > 5) {
       return 2;
     } else {
       return 1;
@@ -884,7 +864,7 @@ describe("helper functions + callsite-persistent state", () => {
 
   test("helper function called from onExecute returns correct value", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 function clamp(v: number, lo: number, hi: number): number {
   if (v < lo) return lo;
@@ -894,12 +874,11 @@ function clamp(v: number, lo: number, hi: number): number {
 
 export default Sensor({
   name: "clamped",
-  output: "number",
-  params: {
-    x: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { x: number }): number {
-    return clamp(params.x, 0, 100);
+  args: [
+    param("x", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { x: number }): number {
+    return clamp(args.x, 0, 100);
   },
 });
 `;
@@ -964,7 +943,7 @@ export default Sensor({
 
   test("helper function with arithmetic", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 function double(n: number): number {
   return n + n;
@@ -972,12 +951,11 @@ function double(n: number): number {
 
 export default Sensor({
   name: "doubled",
-  output: "number",
-  params: {
-    val: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    return double(params.val);
+  args: [
+    param("val", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    return double(args.val);
   },
 });
 `;
@@ -1000,7 +978,7 @@ export default Sensor({
 
   test("multiple helper functions can call each other", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 function addOne(n: number): number {
   return n + 1;
@@ -1012,12 +990,11 @@ function addTwo(n: number): number {
 
 export default Sensor({
   name: "add-two",
-  output: "number",
-  params: {
-    val: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    return addTwo(params.val);
+  args: [
+    param("val", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    return addTwo(args.val);
   },
 });
 `;
@@ -1046,7 +1023,6 @@ let count = 0;
 
 export default Sensor({
   name: "counter",
-  output: "number",
   onExecute(ctx: Context): number {
     count += 1;
     return count;
@@ -1102,7 +1078,6 @@ let b = 20;
 
 export default Sensor({
   name: "multi-var",
-  output: "number",
   onExecute(ctx: Context): number {
     return a + b;
   },
@@ -1143,7 +1118,6 @@ let count = 0;
 
 export default Sensor({
   name: "resettable",
-  output: "number",
   onExecute(ctx: Context): number {
     count += 1;
     return count;
@@ -1194,7 +1168,7 @@ export default Sensor({
 
   test("helper function can access top-level callsite var", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 let total = 0;
 
@@ -1205,12 +1179,11 @@ function addToTotal(n: number): number {
 
 export default Sensor({
   name: "accum",
-  output: "number",
-  params: {
-    val: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    return addToTotal(params.val);
+  args: [
+    param("val", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    return addToTotal(args.val);
   },
 });
 `;
@@ -1255,7 +1228,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "simple",
-  output: "number",
   onExecute(ctx: Context): number {
     return 42;
   },
@@ -1278,7 +1250,6 @@ function helper2(): number { return 2; }
 
 export default Sensor({
   name: "multi-fn",
-  output: "number",
   onExecute(ctx: Context): number {
     return helper1() + helper2();
   },
@@ -1305,7 +1276,7 @@ export default Sensor({
 
   test("helper with loop and local variables", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 function sum(n: number): number {
   let total = 0;
@@ -1317,12 +1288,11 @@ function sum(n: number): number {
 
 export default Sensor({
   name: "sum-sensor",
-  output: "number",
-  params: {
-    n: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { n: number }): number {
-    return sum(params.n);
+  args: [
+    param("n", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { n: number }): number {
+    return sum(args.n);
   },
 });
 `;
@@ -1350,18 +1320,17 @@ export default Sensor({
 
   test("top-level const with initializer works", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 const THRESHOLD = 10;
 
 export default Sensor({
   name: "threshold",
-  output: "boolean",
-  params: {
-    val: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { val: number }): boolean {
-    return params.val > THRESHOLD;
+  args: [
+    param("val", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { val: number }): boolean {
+    return args.val > THRESHOLD;
   },
 });
 `;
@@ -1417,7 +1386,6 @@ let count = 0;
 
 export default Sensor({
   name: "resettable-counter",
-  output: "number",
   onExecute(ctx: Context): number {
     count += 1;
     return count;
@@ -1472,7 +1440,6 @@ let count = 0;
 
 export default Sensor({
   name: "no-ope",
-  output: "number",
   onExecute(ctx: Context): number {
     count += 1;
     return count;
@@ -1524,7 +1491,6 @@ let startValue = 0;
 
 export default Sensor({
   name: "override-init",
-  output: "number",
   onExecute(ctx: Context): number {
     startValue += 1;
     return startValue;
@@ -1564,7 +1530,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "minimal",
-  output: "number",
   onExecute(ctx: Context): number {
     return 42;
   },
@@ -1588,7 +1553,6 @@ let b = 0;
 
 export default Sensor({
   name: "multi-reset",
-  output: "number",
   onExecute(ctx: Context): number {
     a += 1;
     b += 10;

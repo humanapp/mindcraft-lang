@@ -114,7 +114,6 @@ function joinParts(left: string, right: string): string {
 
 export default Sensor({
   name: "direct-string-add",
-  output: "string",
   onExecute(ctx: Context): string {
     return joinParts("1", "2");
   },
@@ -149,7 +148,6 @@ function addFlag(count: number, flag: boolean): number {
 
 export default Sensor({
   name: "right-conversion",
-  output: "number",
   onExecute(ctx: Context): number {
     return addFlag(5, true);
   },
@@ -183,7 +181,6 @@ function stringify(values: number[]): string {
 
 export default Sensor({
   name: "missing-overload",
-  output: "string",
   onExecute(ctx: Context): string {
     return stringify([1, 2]);
   },
@@ -208,7 +205,6 @@ function compare(left: string, right: boolean): boolean {
 
 export default Sensor({
   name: "ambiguous-binary-conversion",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return compare("1", false);
   },
@@ -233,7 +229,6 @@ function label(direction: Direction): string {
 
 export default Sensor({
   name: "enum-string-concat",
-  output: "string",
   onExecute(ctx: Context): string {
     return label("south");
   },
@@ -293,7 +288,6 @@ import { Sensor, type Context, type Signal } from "mindcraft";
 
 export default Sensor({
   name: "enum-return-string",
-  output: "string",
   onExecute(ctx: Context): string {
     const signal: Signal = "go";
     return signal;
@@ -329,7 +323,6 @@ function label(text: string): string {
 
 export default Sensor({
   name: "enum-arg-string",
-  output: "string",
   onExecute(ctx: Context): string {
     const signal: Signal = "go";
     return label(signal);
@@ -361,7 +354,6 @@ import { Sensor, type Context, type Throttle } from "mindcraft";
 
 export default Sensor({
   name: "numeric-enum-targets",
-  output: "number",
   onExecute(ctx: Context): number {
     const throttle: Throttle = "fast";
     // @ts-ignore testing runtime implicit numeric enum conversion
@@ -401,7 +393,6 @@ function expectText(text: string): string {
 
 export default Sensor({
   name: "missing-target-conversion",
-  output: "string",
   onExecute(ctx: Context): string {
     // @ts-ignore testing runtime missing target-type conversion
     return expectText([1, 2]);

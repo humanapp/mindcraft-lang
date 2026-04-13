@@ -4,18 +4,18 @@ import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
+import type { ExtractedOptional, ExtractedParam } from "./types.js";
 
 const VALID_SENSOR_SOURCE = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context, param, optional } from "mindcraft";
 
 export default Sensor({
   name: "is-close",
-  output: "boolean",
-  params: {
-    distance: { type: "number", default: 5 },
-  },
-  onExecute(ctx: Context, params: { distance: number }): boolean {
-    return params.distance < 10;
+  args: [
+    optional(param("distance", { type: "number", default: 5 })),
+  ],
+  onExecute(ctx: Context, args: { distance: number }): boolean {
+    return args.distance < 10;
   },
 });
 `;
@@ -97,8 +97,6 @@ const Foo = class {
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
@@ -115,8 +113,6 @@ var x = 1;
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
@@ -135,8 +131,6 @@ function visit(obj: { a: number }): void {
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean {
     return true;
   },
@@ -153,8 +147,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean {
     eval("1+1");
     return true;
@@ -172,8 +164,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean {
     const key = "x";
     const obj = { [key]: 1 };
@@ -197,8 +187,6 @@ enum Direction {
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean {
     return Direction.Up === Direction.Up;
   },
@@ -219,8 +207,6 @@ enum Mixed {
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean {
     return true;
   },
@@ -241,8 +227,6 @@ enum Direction {
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean {
     const ref = Direction;
     return ref !== undefined;
@@ -265,7 +249,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "number",
   onExecute(ctx: Context): number {
     switch (1) {
       case 1:
@@ -288,8 +271,6 @@ function foo(x: Object): void {}
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
@@ -307,8 +288,6 @@ let x: ${typeName};
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
@@ -328,8 +307,6 @@ const IArguments = 42;
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
@@ -345,13 +322,15 @@ describe("descriptor extraction", () => {
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.kind, "sensor");
     assert.equal(result.descriptor.name, "is-close");
-    assert.equal(result.descriptor.outputType, "boolean");
-    assert.equal(result.descriptor.params.length, 1);
-    assert.equal(result.descriptor.params[0].name, "distance");
-    assert.equal(result.descriptor.params[0].type, "number");
-    assert.equal(result.descriptor.params[0].defaultValue, 5);
-    assert.equal(result.descriptor.params[0].required, false);
-    assert.equal(result.descriptor.params[0].anonymous, false);
+    assert.equal(result.descriptor.returnType, "boolean");
+    assert.equal(result.descriptor.args.length, 1);
+    assert.equal(result.descriptor.args[0].kind, "optional");
+    const arg0 = (result.descriptor.args[0] as ExtractedOptional).item as ExtractedParam;
+    assert.equal(arg0.kind, "param");
+    assert.equal(arg0.name, "distance");
+    assert.equal(arg0.type, "number");
+    assert.equal(arg0.defaultValue, 5);
+    assert.equal(arg0.anonymous, false);
     assert.equal(result.descriptor.execIsAsync, false);
     assert.ok(result.descriptor.onExecuteNode);
     assert.equal(result.descriptor.onPageEnteredNode, null);
@@ -359,14 +338,14 @@ describe("descriptor extraction", () => {
 
   test("actuator with async exec extracts async flag", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context, param, optional } from "mindcraft";
 
 export default Actuator({
   name: "flee",
-  params: {
-    speed: { type: "number", default: 1 },
-  },
-  async onExecute(ctx: Context, params: { speed: number }): Promise<void> {
+  args: [
+    optional(param("speed", { type: "number", default: 1 })),
+  ],
+  async onExecute(ctx: Context, args: { speed: number }): Promise<void> {
   },
 });
 `;
@@ -376,7 +355,7 @@ export default Actuator({
     assert.equal(result.descriptor.kind, "actuator");
     assert.equal(result.descriptor.name, "flee");
     assert.equal(result.descriptor.execIsAsync, true);
-    assert.equal(result.descriptor.outputType, undefined);
+    assert.equal(result.descriptor.returnType, undefined);
   });
 
   test("onPageEntered inside descriptor is detected", () => {
@@ -385,8 +364,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean { return true; },
   onPageEntered(ctx: Context): void {},
 });
@@ -399,17 +376,16 @@ export default Sensor({
 
   test("multiple params are extracted correctly", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, type Context, param, optional } from "mindcraft";
 
 export default Sensor({
   name: "multi-param",
-  output: "number",
-  params: {
-    range: { type: "number", default: 10 },
-    label: { type: "string" },
-    active: { type: "boolean", default: true },
-  },
-  onExecute(ctx: Context, params: { range: number; label: string; active: boolean }): number {
+  args: [
+    optional(param("range", { type: "number", default: 10 })),
+    param("label", { type: "string" }),
+    optional(param("active", { type: "boolean", default: true })),
+  ],
+  onExecute(ctx: Context, args: { range: number; label: string; active: boolean }): number {
     return 0;
   },
 });
@@ -417,24 +393,29 @@ export default Sensor({
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
-    assert.equal(result.descriptor.params.length, 3);
+    assert.equal(result.descriptor.args.length, 3);
 
-    assert.equal(result.descriptor.params[0].name, "range");
-    assert.equal(result.descriptor.params[0].type, "number");
-    assert.equal(result.descriptor.params[0].defaultValue, 10);
-    assert.equal(result.descriptor.params[0].required, false);
-    assert.equal(result.descriptor.params[0].anonymous, false);
+    assert.equal(result.descriptor.args[0].kind, "optional");
+    const mp0 = (result.descriptor.args[0] as ExtractedOptional).item as ExtractedParam;
+    assert.equal(mp0.kind, "param");
+    assert.equal(mp0.name, "range");
+    assert.equal(mp0.type, "number");
+    assert.equal(mp0.defaultValue, 10);
+    assert.equal(mp0.anonymous, false);
 
-    assert.equal(result.descriptor.params[1].name, "label");
-    assert.equal(result.descriptor.params[1].type, "string");
-    assert.equal(result.descriptor.params[1].required, true);
-    assert.equal(result.descriptor.params[1].anonymous, false);
+    assert.equal(result.descriptor.args[1].kind, "param");
+    const mp1 = result.descriptor.args[1] as ExtractedParam;
+    assert.equal(mp1.name, "label");
+    assert.equal(mp1.type, "string");
+    assert.equal(mp1.anonymous, false);
 
-    assert.equal(result.descriptor.params[2].name, "active");
-    assert.equal(result.descriptor.params[2].type, "boolean");
-    assert.equal(result.descriptor.params[2].defaultValue, true);
-    assert.equal(result.descriptor.params[2].required, false);
-    assert.equal(result.descriptor.params[2].anonymous, false);
+    assert.equal(result.descriptor.args[2].kind, "optional");
+    const mp2 = (result.descriptor.args[2] as ExtractedOptional).item as ExtractedParam;
+    assert.equal(mp2.kind, "param");
+    assert.equal(mp2.name, "active");
+    assert.equal(mp2.type, "boolean");
+    assert.equal(mp2.defaultValue, true);
+    assert.equal(mp2.anonymous, false);
   });
 
   test("missing name produces diagnostic", () => {
@@ -442,8 +423,6 @@ export default Sensor({
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
@@ -452,19 +431,18 @@ export default Sensor({
     assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
   });
 
-  test("sensor missing output produces diagnostic", () => {
+  test("sensor missing return type annotation produces diagnostic", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  params: {},
-  onExecute(ctx: Context): boolean { return true; },
+  onExecute(ctx: Context) { return true; },
 });
 `;
     const result = compileUserTile(source, { services });
     assert.ok(result.diagnostics.length > 0);
-    assert.ok(result.diagnostics.some((d) => d.code === CompileDiagCode.TypeScriptError));
+    assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.SensorReturnTypeRequired));
   });
 
   test("missing onExecute produces diagnostic", () => {
@@ -473,8 +451,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
 });
 `;
     const result = compileUserTile(source, { services });
@@ -488,8 +464,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test",
-  output: "boolean",
-  params: {},
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
@@ -499,13 +473,12 @@ export default Sensor({
     assert.equal(result.descriptor.onPageEnteredNode, null);
   });
 
-  test("actuator with no params extracts empty params list", () => {
+  test("actuator with no args extracts empty args list", () => {
     const source = `
 import { Actuator, type Context } from "mindcraft";
 
 export default Actuator({
   name: "simple",
-  params: {},
   onExecute(ctx: Context): void {},
 });
 `;
@@ -513,52 +486,54 @@ export default Actuator({
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
     assert.equal(result.descriptor.kind, "actuator");
-    assert.equal(result.descriptor.params.length, 0);
+    assert.equal(result.descriptor.args.length, 0);
   });
 
   test("anonymous param extracts anonymous flag", () => {
     const source = `
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, type Context, param, optional } from "mindcraft";
 
 export default Actuator({
   name: "chase",
-  params: {
-    target: { type: "number", anonymous: true },
-    speed: { type: "number", default: 1 },
-  },
-  onExecute(ctx: Context, params: { target: number; speed: number }): void {},
+  args: [
+    param("target", { type: "number", anonymous: true }),
+    optional(param("speed", { type: "number", default: 1 })),
+  ],
+  onExecute(ctx: Context, args: { target: number; speed: number }): void {},
 });
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
-    assert.equal(result.descriptor.params.length, 2);
+    assert.equal(result.descriptor.args.length, 2);
 
-    assert.equal(result.descriptor.params[0].name, "target");
-    assert.equal(result.descriptor.params[0].type, "number");
-    assert.equal(result.descriptor.params[0].anonymous, true);
-    assert.equal(result.descriptor.params[0].required, true);
+    assert.equal(result.descriptor.args[0].kind, "param");
+    const ap0 = result.descriptor.args[0] as ExtractedParam;
+    assert.equal(ap0.name, "target");
+    assert.equal(ap0.type, "number");
+    assert.equal(ap0.anonymous, true);
 
-    assert.equal(result.descriptor.params[1].name, "speed");
-    assert.equal(result.descriptor.params[1].type, "number");
-    assert.equal(result.descriptor.params[1].anonymous, false);
-    assert.equal(result.descriptor.params[1].required, false);
-    assert.equal(result.descriptor.params[1].defaultValue, 1);
+    assert.equal(result.descriptor.args[1].kind, "optional");
+    const ap1 = (result.descriptor.args[1] as ExtractedOptional).item as ExtractedParam;
+    assert.equal(ap1.kind, "param");
+    assert.equal(ap1.name, "speed");
+    assert.equal(ap1.type, "number");
+    assert.equal(ap1.anonymous, false);
+    assert.equal(ap1.defaultValue, 1);
   });
 
-  test("omitted params produces empty params list", () => {
+  test("omitted args produces empty args list", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "no-params",
-  output: "boolean",
   onExecute(ctx: Context): boolean { return true; },
 });
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
     assert.ok(result.descriptor);
-    assert.equal(result.descriptor.params.length, 0);
+    assert.equal(result.descriptor.args.length, 0);
   });
 });

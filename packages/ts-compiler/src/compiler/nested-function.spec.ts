@@ -43,7 +43,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nested-fn-test",
-  output: "number",
   onExecute(ctx: Context): number {
     ${body}
   },
@@ -57,7 +56,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nested-fn-test",
-  output: "string",
   onExecute(ctx: Context): string {
     ${body}
   },
@@ -169,16 +167,15 @@ describe("nested function declarations", () => {
 
   test("nested function capturing outer parameter", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "nested-fn-capture-param",
-  output: "number",
-  params: {
-    base: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { base: number }): number {
-    const b = params.base;
+  args: [
+    param("base", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { base: number }): number {
+    const b = args.base;
     function addToBase(n: number): number {
       return b + n;
     }
@@ -297,7 +294,6 @@ function double(n: number): number {
 
 export default Sensor({
   name: "shadow-test",
-  output: "number",
   onExecute(ctx: Context): number {
     function double(n: number): number {
       return n * 3;
@@ -343,7 +339,6 @@ function helperB(n: number): number {
 
 export default Sensor({
   name: "no-stomp-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return helperA(3) + helperB(3);
   },

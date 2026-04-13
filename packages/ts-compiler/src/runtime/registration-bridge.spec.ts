@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 import { type BrainServices, mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileUserTile } from "../compiler/compile.js";
+import type { ExtractedParam } from "../compiler/types.js";
 import { registerUserTile } from "./registration-bridge.js";
 
 let services: BrainServices;
@@ -25,7 +26,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "phase6-reg-sensor",
-  output: "number",
   onExecute(ctx: Context): number {
     return 1;
   },
@@ -50,16 +50,16 @@ export default Sensor({
 
   test("registers actuator metadata plus named and anonymous parameter tiles", () => {
     const program = compileProgram(`
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
   name: "phase6-reg-actuator",
-  params: {
-    distance: { type: "number" },
-    label: { type: "string" },
-    target: { type: "number", anonymous: true },
-  },
-  onExecute(ctx: Context, params: { distance: number; label: string; target: number }): void {
+  args: [
+    param("distance", { type: "number" }),
+    param("label", { type: "string" }),
+    param("target", { type: "number", anonymous: true }),
+  ],
+  onExecute(ctx: Context, args: { distance: number; label: string; target: number }): void {
   },
 });
 `);
@@ -75,19 +75,19 @@ export default Actuator({
 
   test("throws a plain error when a parameter type cannot be resolved", () => {
     const program = compileProgram(`
-import { Actuator, type Context } from "mindcraft";
+import { Actuator, param, type Context } from "mindcraft";
 
 export default Actuator({
   name: "phase6-reg-unknown-param",
-  params: {
-    target: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { target: number }): void {
+  args: [
+    param("target", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { target: number }): void {
   },
 });
 `);
 
-    program.params[0]!.type = "vector2";
+    (program.args[0] as ExtractedParam).type = "vector2";
 
     assert.throws(
       () => registerUserTile(program, services),
@@ -103,7 +103,6 @@ let counter = 0;
 
 export default Sensor({
   name: "phase6-activation-sensor",
-  output: "number",
   onExecute(ctx: Context): number {
     counter += 1;
     return counter;

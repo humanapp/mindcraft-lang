@@ -155,16 +155,15 @@ describe("await expression", () => {
   test("single await: fiber suspends, resolves, and returns value", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "fetch-await",
-  output: "string",
-  params: {
-    w: { type: "Widget" },
-  },
-  async onExecute(ctx: Context, params: { w: Widget }): Promise<string> {
-    const result = await params.w.fetchData("test-url");
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  async onExecute(ctx: Context, args: { w: Widget }): Promise<string> {
+    const result = await args.w.fetchData("test-url");
     return result;
   },
 });
@@ -203,17 +202,16 @@ export default Sensor({
   test("two consecutive awaits: fiber suspends twice and produces correct result", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "double-await",
-  output: "string",
-  params: {
-    w: { type: "Widget" },
-  },
-  async onExecute(ctx: Context, params: { w: Widget }): Promise<string> {
-    const a = await params.w.fetchData("first");
-    const b = await params.w.fetchData("second");
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  async onExecute(ctx: Context, args: { w: Widget }): Promise<string> {
+    const a = await args.w.fetchData("first");
+    const b = await args.w.fetchData("second");
     return a + b;
   },
 });
@@ -260,17 +258,16 @@ export default Sensor({
   test("local variable survives across await point", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "local-across-await",
-  output: "string",
-  params: {
-    w: { type: "Widget" },
-  },
-  async onExecute(ctx: Context, params: { w: Widget }): Promise<string> {
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  async onExecute(ctx: Context, args: { w: Widget }): Promise<string> {
     const before = "prefix-";
-    const fetched = await params.w.fetchData("data");
+    const fetched = await args.w.fetchData("data");
     return before + fetched;
   },
 });
@@ -302,16 +299,15 @@ export default Sensor({
   test("await on sync function call produces compile error", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type Widget } from "mindcraft";
+import { Sensor, param, type Context, type Widget } from "mindcraft";
 
 export default Sensor({
   name: "bad-await",
-  output: "number",
-  params: {
-    w: { type: "Widget" },
-  },
-  async onExecute(ctx: Context, params: { w: Widget }): Promise<number> {
-    const val = await params.w.getValue("score");
+  args: [
+    param("w", { type: "Widget" }),
+  ],
+  async onExecute(ctx: Context, args: { w: Widget }): Promise<number> {
+    const val = await args.w.getValue("score");
     return val;
   },
 });

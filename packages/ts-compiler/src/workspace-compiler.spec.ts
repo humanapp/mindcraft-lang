@@ -57,7 +57,6 @@ import { Sensor, type Context, type Facing } from "mindcraft";
 
 export default Sensor({
   name: "look",
-  output: "Facing",
   onExecute(ctx: Context): Facing {
     return "north";
   },
@@ -112,7 +111,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "look",
-  output: "number",
   onExecute(ctx: Context): number {
     const identity = (value) => value;
     return identity(1);

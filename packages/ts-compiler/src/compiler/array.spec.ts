@@ -67,7 +67,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     ${body}
   },
@@ -81,7 +80,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "arr-test",
-  output: "string",
   onExecute(ctx: Context): string {
     ${body}
   },
@@ -95,7 +93,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "arr-test",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     ${body}
   },
@@ -109,7 +106,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "arr-test",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     ${body}
   },
@@ -778,7 +774,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [1, 2, 3];
     return (arr as any).unknownMethod();
@@ -987,7 +982,6 @@ function identity<T>(items: T[]): T[] {
 
 export default Sensor({
   name: "arr-test",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const arr: NumberList = [1, 2, 3];
     return identity(arr);
@@ -1008,7 +1002,6 @@ function first<T>(items: T[]): T {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [42, 99];
     return first(arr);
@@ -1029,7 +1022,6 @@ function count<T>(items: T[]): number {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [1, 2, 3, 4];
     return count(arr);
@@ -1054,7 +1046,6 @@ function countItems<T>(items: T[]): number {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [10, 20, 30];
     return countItems(arr);
@@ -1076,7 +1067,6 @@ function appendValue<T>(items: T[], value: T): T[] {
 
 export default Sensor({
   name: "arr-test",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const arr: NumberList = [1, 2];
     return appendValue(arr, 3);
@@ -1103,7 +1093,6 @@ function identity<T>(value: T): T {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return identity(42);
   },
@@ -1133,7 +1122,6 @@ function first<T>(items: T[]): T {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [99, 1, 2];
     return first(arr);
@@ -1166,7 +1154,6 @@ function swapFirst<T>(items: T[], replacement: T): T {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] = [10, 20, 30];
     return swapFirst(arr, 99);
@@ -1216,7 +1203,6 @@ function getX<T extends Vector2>(obj: T): number {
 
 export default Sensor({
   name: "struct-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vector2 = { x: 5, y: 10 };
     return getX(v);
@@ -1247,7 +1233,6 @@ function sum<T extends Vector2>(obj: T): number {
 
 export default Sensor({
   name: "struct-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vector2 = { x: 3, y: 7 };
     return sum(v);
@@ -1284,7 +1269,6 @@ function pickFirst<A, B>(a: A, b: B): A {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return pickFirst(7, "hello");
   },
@@ -1314,7 +1298,6 @@ function pickSecond<A, B>(a: A, b: B): B {
 
 export default Sensor({
   name: "arr-test",
-  output: "string",
   onExecute(ctx: Context): string {
     return pickSecond(42, "world");
   },
@@ -1354,7 +1337,6 @@ function doubleNum(n: number): number {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return apply(21, doubleNum);
   },
@@ -1384,7 +1366,6 @@ function transform<T>(value: T, fn: (x: T) => T): T {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return transform(10, (x) => x + 5);
   },
@@ -1420,7 +1401,6 @@ function identity<T>(value: T): T {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const a: number = identity(10);
     const b: string = identity("hello");
@@ -1454,7 +1434,6 @@ function wrap<T>(value: T): T[] {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = wrap(42);
     return nums[0];
@@ -1489,7 +1468,6 @@ function addOne(n: number): number {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return addOne(identity(identity(9)));
   },
@@ -1529,7 +1507,6 @@ function identity<T>(value: T): T {
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     const m = new Map<string, number>([["a", 10], ["b", 20]]);
     const copy = identity(m);
@@ -1561,7 +1538,6 @@ function passThrough<T>(value: T): T {
 
 export default Sensor({
   name: "arr-test",
-  output: "string",
   onExecute(ctx: Context): string {
     const m = new Map<string, string>([["greeting", "hello"]]);
     const same = passThrough(m);
@@ -1597,7 +1573,6 @@ ${helperFns}
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     ${callBody}
   },
@@ -1780,7 +1755,6 @@ ${helperFns}
 
 export default Sensor({
   name: "arr-test",
-  output: "number",
   onExecute(ctx: Context): number {
     ${callBody}
   },

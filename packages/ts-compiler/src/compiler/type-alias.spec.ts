@@ -58,7 +58,6 @@ type Point = {
 
 export default Sensor({
   name: "talias-basic",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -95,7 +94,6 @@ type Config = {
 
 export default Sensor({
   name: "talias-optional",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -135,7 +133,6 @@ type Point = {
 
 export default Sensor({
   name: "talias-obj-lit",
-  output: "number",
   onExecute(ctx: Context): number {
     const p: Point = { x: 5, y: 8 };
     return p.x + p.y;
@@ -179,7 +176,6 @@ type Entity = {
 
 export default Sensor({
   name: "talias-nested",
-  output: "number",
   onExecute(ctx: Context): number {
     const v: Vec2 = { x: 10, y: 20 };
     const e: Entity = { pos: v, name: "hello" };
@@ -218,7 +214,6 @@ type Container<T> = {
 
 export default Sensor({
   name: "talias-generic",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -248,7 +243,6 @@ type AmbientPoint = {
 
 export default Sensor({
   name: "talias-collision",
-  output: "number",
   onExecute(ctx: Context): number {
     return 0;
   },
@@ -270,7 +264,6 @@ type NumArray = number[];
 
 export default Sensor({
   name: "talias-non-object",
-  output: "number",
   onExecute(ctx: Context): number {
     return 42;
   },

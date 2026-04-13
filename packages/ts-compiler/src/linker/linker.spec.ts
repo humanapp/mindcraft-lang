@@ -126,7 +126,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "const-sensor",
-  output: "number",
   onExecute(ctx: Context): number {
     return 42;
   },
@@ -153,7 +152,7 @@ export default Sensor({
     const brainProg = mkBrainProgramWithStubFunction();
 
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 function double(x: number): number {
   return x + x;
@@ -161,12 +160,11 @@ function double(x: number): number {
 
 export default Sensor({
   name: "call-helper",
-  output: "number",
-  params: {
-    val: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    return double(params.val);
+  args: [
+    param("val", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    return double(args.val);
   },
 });
 `;
@@ -193,7 +191,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "return-42",
-  output: "number",
   onExecute(ctx: Context): number {
     return 42;
   },
@@ -224,7 +221,7 @@ export default Sensor({
 
   test("linked user program with helper function executes correctly", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 function triple(n: number): number {
   return n + n + n;
@@ -232,12 +229,11 @@ function triple(n: number): number {
 
 export default Sensor({
   name: "triple-sensor",
-  output: "number",
-  params: {
-    val: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    return triple(params.val);
+  args: [
+    param("val", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    return triple(args.val);
   },
 });
 `;
@@ -271,7 +267,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "sensor-a",
-  output: "number",
   onExecute(ctx: Context): number {
     return 10;
   },
@@ -282,7 +277,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "sensor-b",
-  output: "number",
   onExecute(ctx: Context): number {
     return 20;
   },
@@ -340,7 +334,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "with-page-enter",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return true;
   },
@@ -374,7 +367,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "preserve-test",
-  output: "number",
   onExecute(ctx: Context): number {
     return 1;
   },
@@ -404,7 +396,7 @@ export default Sensor({
 
   test("FunctionValue constants have funcId remapped after linking", () => {
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, param, type Context } from "mindcraft";
 
 function double(x: number): number {
   return x + x;
@@ -416,12 +408,11 @@ function apply(f: (n: number) => number, v: number): number {
 
 export default Sensor({
   name: "fn-ref-linker",
-  output: "number",
-  params: {
-    val: { type: "number" },
-  },
-  onExecute(ctx: Context, params: { val: number }): number {
-    return apply(double, params.val);
+  args: [
+    param("val", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    return apply(double, args.val);
   },
 });
 `;

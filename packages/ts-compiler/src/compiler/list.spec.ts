@@ -129,7 +129,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "make-list",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [1, 2, 3];
     return nums;
@@ -168,7 +167,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "empty-list",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [];
     return nums;
@@ -204,7 +202,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "return-list",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     return [10, 20];
   },
@@ -241,7 +238,6 @@ import { Sensor, type Context, type Vector2, type Vector2List } from "mindcraft"
 
 export default Sensor({
   name: "nested-list",
-  output: "Vector2List",
   onExecute(ctx: Context): Vector2List {
     const points: Vector2List = [{ x: 1, y: 2 }, { x: 3, y: 4 }];
     return points;
@@ -308,7 +304,6 @@ import { Sensor, type Context, type AnyList } from "mindcraft";
 
 export default Sensor({
   name: "mixed-list",
-  output: "AnyList",
   onExecute(ctx: Context): AnyList {
     const arr: AnyList = [1, "hello", true];
     return arr;
@@ -347,7 +342,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "num-list",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [1, 2, 3];
     return nums;
@@ -384,7 +378,6 @@ import { Sensor, type Context, type AnyList } from "mindcraft";
 
 export default Sensor({
   name: "empty-any",
-  output: "AnyList",
   onExecute(ctx: Context): AnyList {
     const arr: AnyList = [];
     return arr;
@@ -448,7 +441,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-elem-access",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [10, 20, 30];
     return nums[1];
@@ -475,17 +467,16 @@ export default Sensor({
   test("element access with variable index", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, optional, param, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-elem-var-idx",
-  output: "number",
-  params: {
-    idx: { type: "number", default: 2 },
-  },
-  onExecute(ctx: Context, params: { idx: number }): number {
+  args: [
+    optional(param("idx", { type: "number", default: 2 })),
+  ],
+  onExecute(ctx: Context, args: { idx: number }): number {
     const nums: NumberList = [100, 200, 300];
-    return nums[params.idx];
+    return nums[args.idx];
   },
 });
 `;
@@ -514,7 +505,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-elem-string-idx",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [10, 20, 30];
     return nums["1"];
@@ -545,7 +535,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-elem-length",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [10, 20, 30];
     return nums["length"];
@@ -576,7 +565,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-str-elem-string-idx",
-  output: "string",
   onExecute(ctx: Context): string {
     const word = "hello";
     return word["1"];
@@ -607,7 +595,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "test-str-elem-length",
-  output: "number",
   onExecute(ctx: Context): number {
     const word = "hello";
     return word["length"];
@@ -638,7 +625,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-elem-assign",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [1, 2, 3];
     nums[1] = 99;
@@ -675,7 +661,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-push",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [1, 2];
     nums.push(3);
@@ -710,7 +695,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-indexof",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [10, 20, 30];
     return nums.indexOf(20);
@@ -741,7 +725,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-indexof-miss",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [10, 20, 30];
     return nums.indexOf(99);
@@ -772,7 +755,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-filter",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [1, 2, 3, 4, 5];
     return nums.filter((x: number): boolean => x > 3);
@@ -803,16 +785,15 @@ export default Sensor({
   test(".filter() with closure capturing threshold variable", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, optional, param, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-filter-closure",
-  output: "NumberList",
-  params: {
-    threshold: { type: "number", default: 3 },
-  },
-  onExecute(ctx: Context, params: { threshold: number }): NumberList {
-    const threshold = params.threshold;
+  args: [
+    optional(param("threshold", { type: "number", default: 3 })),
+  ],
+  onExecute(ctx: Context, args: { threshold: number }): NumberList {
+    const threshold = args.threshold;
     const nums: NumberList = [1, 2, 3, 4, 5];
     return nums.filter((x: number): boolean => x > threshold);
   },
@@ -847,7 +828,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-map",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [1, 2, 3];
     return nums.map((x: number): number => x * 2);
@@ -879,16 +859,15 @@ export default Sensor({
   test(".map() with closure capturing multiplier", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context, type NumberList } from "mindcraft";
+import { Sensor, optional, param, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-map-closure",
-  output: "NumberList",
-  params: {
-    factor: { type: "number", default: 10 },
-  },
-  onExecute(ctx: Context, params: { factor: number }): NumberList {
-    const factor = params.factor;
+  args: [
+    optional(param("factor", { type: "number", default: 10 })),
+  ],
+  onExecute(ctx: Context, args: { factor: number }): NumberList {
+    const factor = args.factor;
     const nums: NumberList = [1, 2, 3];
     return nums.map((x: number): number => x * factor);
   },
@@ -924,7 +903,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-foreach",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [1, 2, 3, 4];
     const result: NumberList = [];
@@ -959,7 +937,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-for-of",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [1, 2, 3];
     let sum = 0;
@@ -994,7 +971,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-for-in-list",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [1, 2, 3];
     let sum = 0;
@@ -1029,7 +1005,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-for-of-break",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [10, 20, 30, 40, 50];
     let sum = 0;
@@ -1067,7 +1042,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-for-of-continue",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [1, 2, 3, 4, 5];
     let sum = 0;
@@ -1106,7 +1080,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-for-of-empty",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [];
     let sum = 99;
@@ -1141,7 +1114,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-includes-true",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const nums: NumberList = [10, 20, 30];
     return nums.includes(20);
@@ -1172,7 +1144,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-includes-false",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const nums: NumberList = [10, 20, 30];
     return nums.includes(99);
@@ -1203,7 +1174,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-some-true",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const nums: NumberList = [1, 2, 3, 4, 5];
     return nums.some((x: number): boolean => x > 3);
@@ -1234,7 +1204,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-some-false",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const nums: NumberList = [1, 2, 3];
     return nums.some((x: number): boolean => x > 10);
@@ -1265,7 +1234,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-every-true",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const nums: NumberList = [2, 4, 6];
     return nums.every((x: number): boolean => x > 1);
@@ -1296,7 +1264,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-every-false",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const nums: NumberList = [2, 4, 1, 6];
     return nums.every((x: number): boolean => x > 1);
@@ -1327,7 +1294,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-find-match",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [10, 20, 30];
     const found = nums.find((x: number): boolean => x > 15);
@@ -1362,7 +1328,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-find-nomatch",
-  output: "number",
   onExecute(ctx: Context): number {
     const nums: NumberList = [1, 2, 3];
     const found = nums.find((x: number): boolean => x > 10);
@@ -1397,7 +1362,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-concat",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const a: NumberList = [1, 2];
     const b: NumberList = [3, 4];
@@ -1435,7 +1399,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-reverse",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [1, 2, 3];
     return nums.reverse();
@@ -1471,7 +1434,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-slice",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [10, 20, 30, 40, 50];
     return nums.slice(1, 4);
@@ -1507,7 +1469,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-slice-copy",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [1, 2, 3];
     return nums.slice();
@@ -1543,7 +1504,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-join",
-  output: "string",
   onExecute(ctx: Context): string {
     const nums: NumberList = [1, 2, 3];
     return nums.join("-");
@@ -1574,7 +1534,6 @@ import { Sensor, type Context, type NumberList } from "mindcraft";
 
 export default Sensor({
   name: "test-sort",
-  output: "NumberList",
   onExecute(ctx: Context): NumberList {
     const nums: NumberList = [3, 1, 2];
     return nums.sort();

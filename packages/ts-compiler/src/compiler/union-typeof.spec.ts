@@ -107,7 +107,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "union-list",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: (number | string)[] = [1, "hello"];
     return arr.length;
@@ -149,7 +148,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "union-op",
-  output: "number",
   onExecute(ctx: Context): number {
     const x: number | null = 5;
     return x + 1;
@@ -186,14 +184,15 @@ describe("typeof lowering", () => {
   test("typeof x === 'number' compiles and returns true for number", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "typeof-number",
-  output: "boolean",
-  params: { val: { type: "number", default: 42 } },
-  onExecute(ctx: Context, params: { val: number }): boolean {
-    return typeof params.val === "number";
+  args: [
+    optional(param("val", { type: "number", default: 42 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): boolean {
+    return typeof args.val === "number";
   },
 });
 `;
@@ -220,14 +219,15 @@ export default Sensor({
   test("typeof x !== 'string' produces negated result", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "typeof-not-string",
-  output: "boolean",
-  params: { val: { type: "number", default: 42 } },
-  onExecute(ctx: Context, params: { val: number }): boolean {
-    return typeof params.val !== "string";
+  args: [
+    optional(param("val", { type: "number", default: 42 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): boolean {
+    return typeof args.val !== "string";
   },
 });
 `;
@@ -254,14 +254,15 @@ export default Sensor({
   test("reversed form: 'boolean' === typeof x", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "typeof-reversed",
-  output: "boolean",
-  params: { val: { type: "boolean", default: true } },
-  onExecute(ctx: Context, params: { val: boolean }): boolean {
-    return "boolean" === typeof params.val;
+  args: [
+    optional(param("val", { type: "boolean", default: true })),
+  ],
+  onExecute(ctx: Context, args: { val: boolean }): boolean {
+    return "boolean" === typeof args.val;
   },
 });
 `;
@@ -292,7 +293,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "typeof-undefined",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const x: number | null = null;
     return typeof x === "undefined";
@@ -325,7 +325,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "typeof-object",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const x = 5;
     return typeof x === "object";
@@ -343,15 +342,16 @@ export default Sensor({
   test("typeof in if-statement for runtime narrowing", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
-import { Sensor, type Context } from "mindcraft";
+import { Sensor, optional, param, type Context } from "mindcraft";
 
 export default Sensor({
   name: "typeof-narrowing",
-  output: "number",
-  params: { val: { type: "number", default: 10 } },
-  onExecute(ctx: Context, params: { val: number }): number {
-    if (typeof params.val === "number") {
-      return params.val + 1;
+  args: [
+    optional(param("val", { type: "number", default: 10 })),
+  ],
+  onExecute(ctx: Context, args: { val: number }): number {
+    if (typeof args.val === "number") {
+      return args.val + 1;
     }
     return 0;
   },

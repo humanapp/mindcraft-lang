@@ -110,7 +110,6 @@ import { Sensor, type Context, type Inner } from "mindcraft";
 
 export default Sensor({
   name: "opt-field-nonnull",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj: Inner | undefined = { value: 42, label: "hi" };
     return obj?.value ?? 0;
@@ -129,7 +128,6 @@ import { Sensor, type Context, type Inner } from "mindcraft";
 
 export default Sensor({
   name: "opt-field-null",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj = null as Inner | null;
     return obj?.value ?? -1;
@@ -148,7 +146,6 @@ import { Sensor, type Context, type Inner } from "mindcraft";
 
 export default Sensor({
   name: "opt-field-undef",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj = undefined as Inner | undefined;
     return obj?.value ?? -1;
@@ -167,7 +164,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "opt-elem-nonnull",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] | undefined = [10, 20, 30];
     return arr?.[1] ?? -1;
@@ -186,7 +182,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "opt-elem-null",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr = null as number[] | null;
     return arr?.[0] ?? -1;
@@ -205,7 +200,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "opt-strlen-nonnull",
-  output: "number",
   onExecute(ctx: Context): number {
     const s: string | undefined = "hello";
     return s?.length ?? -1;
@@ -224,7 +218,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "opt-strlen-null",
-  output: "number",
   onExecute(ctx: Context): number {
     const s = null as string | null;
     return s?.length ?? -1;
@@ -243,7 +236,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "opt-call-nonnull",
-  output: "number",
   onExecute(ctx: Context): number {
     const fn: (() => number) | undefined = () => 99;
     return fn?.() ?? -1;
@@ -262,7 +254,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "opt-call-null",
-  output: "number",
   onExecute(ctx: Context): number {
     const fn = null as ((() => number) | null);
     return fn?.() ?? -1;
@@ -281,7 +272,6 @@ import { Sensor, type Context, type Outer } from "mindcraft";
 
 export default Sensor({
   name: "opt-chain-null",
-  output: "number",
   onExecute(ctx: Context): number {
     const obj = null as Outer | null;
     return obj?.inner.value ?? -1;
@@ -300,7 +290,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "opt-arrlen-nonnull",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr: number[] | undefined = [1, 2, 3];
     return arr?.length ?? -1;
@@ -319,7 +308,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "opt-arrlen-null",
-  output: "number",
   onExecute(ctx: Context): number {
     const arr = null as number[] | null;
     return arr?.length ?? -1;

@@ -101,7 +101,6 @@ enum Direction {
 
 export default Sensor({
   name: "local-user-enum",
-  output: "Direction",
   onExecute(ctx: Context): Direction {
     return Direction.Up;
   },
@@ -146,7 +145,6 @@ function label(text: string): string {
 
 export default Sensor({
   name: "local-string-enum-conversion",
-  output: "string",
   onExecute(ctx: Context): string {
     const same = Direction.Up === Direction.Up;
     if (!same) {
@@ -186,7 +184,6 @@ enum Throttle {
 
 export default Sensor({
   name: "local-numeric-enum",
-  output: "number",
   onExecute(ctx: Context): number {
     const speed = Throttle.Fast;
     // @ts-ignore testing runtime implicit numeric enum conversion
@@ -223,7 +220,6 @@ enum Empty {}
 
 export default Sensor({
   name: "empty-enum-type",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     let value: Empty | null = null;
     return value === null;
@@ -274,7 +270,6 @@ import { Sensor, type Context, type Direction } from "mindcraft";
 
 export default Sensor({
   name: "enum-literal",
-  output: "Direction",
   onExecute(ctx: Context): Direction {
     const d: Direction = "north";
     return d;
@@ -315,7 +310,6 @@ function identity(d: Direction): Direction {
 
 export default Sensor({
   name: "enum-arg",
-  output: "Direction",
   onExecute(ctx: Context): Direction {
     return identity("south");
   },
@@ -351,7 +345,6 @@ import { Sensor, type Context, type Direction } from "mindcraft";
 
 export default Sensor({
   name: "enum-return",
-  output: "Direction",
   onExecute(ctx: Context): Direction {
     return "east";
   },
@@ -387,7 +380,6 @@ import { Sensor, type Context } from "mindcraft";
 
 export default Sensor({
   name: "plain-string",
-  output: "string",
   onExecute(ctx: Context): string {
     return "hello";
   },
@@ -421,7 +413,6 @@ import { Sensor, type Context, type Direction } from "mindcraft";
 
 export default Sensor({
   name: "enum-eq-true",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     const a: Direction = "north";
     const b: Direction = "north";
@@ -461,7 +452,6 @@ function checkEqual(a: Direction, b: Direction): boolean {
 
 export default Sensor({
   name: "enum-eq-false",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return checkEqual("north", "south");
   },
@@ -499,7 +489,6 @@ function checkNotEqual(a: Direction, b: Direction): boolean {
 
 export default Sensor({
   name: "enum-neq",
-  output: "boolean",
   onExecute(ctx: Context): boolean {
     return checkNotEqual("north", "east");
   },
