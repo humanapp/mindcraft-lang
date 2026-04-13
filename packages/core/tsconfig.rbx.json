@@ -7,7 +7,6 @@
     "module": "commonjs",
     "target": "ESNext",
     "moduleResolution": "Node",
-    "ignoreDeprecations": "6.0",
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
