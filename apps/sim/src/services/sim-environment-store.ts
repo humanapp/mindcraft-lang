@@ -1,6 +1,7 @@
-import type { WorkspaceAdapter } from "@mindcraft-lang/bridge-app";
+import { createLocalStorageWorkspace, type WorkspaceAdapter } from "@mindcraft-lang/bridge-app";
 import { coreModule, createMindcraftEnvironment, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import type { DocsTileEntry } from "@mindcraft-lang/docs";
+import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 
 export class SimEnvironmentStore {
@@ -16,11 +17,14 @@ export class SimEnvironmentStore {
 
   private _pendingBrainRebuild = false;
 
-  constructor(workspace: WorkspaceAdapter) {
+  constructor() {
+    this.workspace = createLocalStorageWorkspace({
+      storageKey: "sim:vscode-bridge:filesystem",
+      shouldExclude: isCompilerControlledPath,
+    });
     this.env = createMindcraftEnvironment({
       modules: [coreModule(), createSimModule()],
     });
-    this.workspace = workspace;
 
     this.env.onBrainsInvalidated((event) => {
       if (event.invalidatedBrains.length > 0) {

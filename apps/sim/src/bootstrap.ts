@@ -4,7 +4,6 @@ import { SimEnvironmentStore } from "./services/sim-environment-store";
 import { hydrateUserTilesAtStartup } from "./services/user-tile-registration";
 import { initVfsServiceWorker } from "./services/vfs-service-worker";
 import { initProject } from "./services/vscode-bridge";
-import { initWorkspaceStore } from "./services/workspace-store";
 
 enableClipboardLogging(true);
 
@@ -16,8 +15,7 @@ logger.level = LogLevel.DEBUG;
 // ----------------------------------------------------
 // Create the canonical environment store
 
-const workspace = initWorkspaceStore();
-export const simStore = new SimEnvironmentStore(workspace);
+export const simStore = new SimEnvironmentStore();
 
 hydrateUserTilesAtStartup(simStore);
 initVfsServiceWorker(simStore);
