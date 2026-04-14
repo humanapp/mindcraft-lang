@@ -11,8 +11,7 @@ import {
 } from "@mindcraft-lang/ui";
 import { useEffect, useState } from "react";
 import { useSimEnvironment } from "@/contexts/sim-environment";
-import { type AppSettings, getAppSettings, updateAppSettings } from "@/services/app-settings";
-import { getUiPreferences, updateUiPreferences } from "@/services/ui-preferences";
+import type { AppSettings } from "@/services/sim-environment-store";
 import { clearBindingToken, hasBindingToken } from "@/services/vscode-bridge";
 
 interface SettingsDialogProps {
@@ -23,21 +22,21 @@ interface SettingsDialogProps {
 
 export function SettingsDialog({ open, onOpenChange, onBridgeDisabled }: SettingsDialogProps) {
   const store = useSimEnvironment();
-  const [draft, setDraft] = useState<AppSettings>(getAppSettings);
+  const [draft, setDraft] = useState<AppSettings>(() => store.getAppSettings());
   const [hasToken, setHasToken] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setDraft(getAppSettings());
+      setDraft(store.getAppSettings());
       setHasToken(hasBindingToken());
     }
-  }, [open]);
+  }, [open, store]);
 
   const save = () => {
-    const wasShowingBridge = getAppSettings().showBridgePanel;
-    updateAppSettings(draft);
-    if (wasShowingBridge && !draft.showBridgePanel && getUiPreferences().bridgeEnabled) {
-      updateUiPreferences({ bridgeEnabled: false });
+    const wasShowingBridge = store.getAppSettings().showBridgePanel;
+    store.updateAppSettings(draft);
+    if (wasShowingBridge && !draft.showBridgePanel && store.getUiPreferences().bridgeEnabled) {
+      store.updateUiPreferences({ bridgeEnabled: false });
       store.disconnectBridge();
       clearBindingToken();
       onBridgeDisabled?.();

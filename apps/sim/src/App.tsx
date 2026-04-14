@@ -15,7 +15,6 @@ import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
 import { saveBrainToLocalStorage } from "./services/brain-persistence";
 import { loadDesiredCounts } from "./services/population-persistence";
-import { getUiPreferences, updateUiPreferences } from "./services/ui-preferences";
 
 /** Compare two snapshots by display-relevant fields to skip no-op re-renders. */
 function statsEqual(
@@ -67,8 +66,8 @@ function App() {
   const [isBrainEditorOpen, setIsBrainEditorOpen] = useState(false);
   const [editingArchetype, setEditingArchetype] = useState<Archetype | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [timeSpeed, setTimeSpeed] = useState(() => getUiPreferences().timeScale);
-  const [debugEnabled, setDebugEnabled] = useState(() => getUiPreferences().debugEnabled);
+  const [timeSpeed, setTimeSpeed] = useState(() => store.getUiPreferences().timeScale);
+  const [debugEnabled, setDebugEnabled] = useState(() => store.getUiPreferences().debugEnabled);
   const [scene, setScene] = useState<Playground | null>(null);
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
@@ -111,11 +110,11 @@ function App() {
     for (const [arch, count] of Object.entries(counts)) {
       scene.setDesiredCount(arch as Archetype, count);
     }
-    const prefs = getUiPreferences();
+    const prefs = store.getUiPreferences();
     if (prefs.debugEnabled) {
       scene.toggleDebugMode();
     }
-  }, [scene]);
+  }, [scene, store]);
 
   // Poll the engine for score data. The snapshot is a fresh object each call,
   // so compare rounded display values to avoid re-renders when nothing the
@@ -132,10 +131,13 @@ function App() {
     return () => clearInterval(id);
   }, [scene]);
 
-  const handleTimeSpeedChange = useCallback((speed: number) => {
-    setTimeSpeed(speed);
-    updateUiPreferences({ timeScale: speed });
-  }, []);
+  const handleTimeSpeedChange = useCallback(
+    (speed: number) => {
+      setTimeSpeed(speed);
+      store.updateUiPreferences({ timeScale: speed });
+    },
+    [store]
+  );
 
   const handleEditBrain = useCallback((archetype: Archetype) => {
     setEditingArchetype(archetype);
@@ -153,10 +155,10 @@ function App() {
     scene?.toggleDebugMode();
     setDebugEnabled((prev) => {
       const next = !prev;
-      updateUiPreferences({ debugEnabled: next });
+      store.updateUiPreferences({ debugEnabled: next });
       return next;
     });
-  }, [scene]);
+  }, [scene, store]);
 
   const getBrainDefForEditing = (): BrainDef | undefined => {
     if (editingArchetype) {

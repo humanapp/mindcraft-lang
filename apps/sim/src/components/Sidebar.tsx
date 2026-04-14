@@ -7,9 +7,7 @@ import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { useSimEnvironment } from "@/contexts/sim-environment";
-import { getAppSettings } from "@/services/app-settings";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
-import { getUiPreferences, updateUiPreferences } from "@/services/ui-preferences";
 import { clearBindingToken } from "@/services/vscode-bridge";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
@@ -64,10 +62,10 @@ export function Sidebar({
   const store = useSimEnvironment();
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
   const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>(
-    () => getUiPreferences().collapsedArchetypes
+    () => store.getUiPreferences().collapsedArchetypes
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [bridgeEnabled, setBridgeEnabled] = useState(() => getUiPreferences().bridgeEnabled);
+  const [bridgeEnabled, setBridgeEnabled] = useState(() => store.getUiPreferences().bridgeEnabled);
   const bridgeStatus = useSyncExternalStore(store.subscribeToBridgeStatus, store.getBridgeStatusSnapshot);
   const joinCode = useSyncExternalStore(store.subscribeToBridgeJoinCode, store.getBridgeJoinCodeSnapshot);
   const [copied, setCopied] = useState(false);
@@ -191,7 +189,7 @@ export function Sidebar({
           const toggleCollapsed = () =>
             setCollapsedArchetypes((prev) => {
               const next = { ...prev, [arch]: !prev[arch] };
-              updateUiPreferences({ collapsedArchetypes: next });
+              store.updateUiPreferences({ collapsedArchetypes: next });
               return next;
             });
           return (
@@ -303,7 +301,7 @@ export function Sidebar({
         )}
 
         {/* VS Code Bridge */}
-        {getAppSettings().showBridgePanel && (
+        {store.getAppSettings().showBridgePanel && (
           <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
             <div className="flex items-center justify-between">
               <label htmlFor="bridge-toggle" className="text-sm font-medium">
@@ -314,7 +312,7 @@ export function Sidebar({
                 checked={bridgeEnabled}
                 onCheckedChange={(checked) => {
                   setBridgeEnabled(checked);
-                  updateUiPreferences({ bridgeEnabled: checked });
+                  store.updateUiPreferences({ bridgeEnabled: checked });
                   if (!checked) {
                     store.disconnectBridge();
                     clearBindingToken();
