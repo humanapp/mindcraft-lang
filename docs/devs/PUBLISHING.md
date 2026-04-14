@@ -110,7 +110,16 @@ and deploys to EC2 via SSH.
 
 #### vscode-extension
 
-`vscode-extension` does not have release scripts yet (working on it!).
+`vscode-extension` uses `--skip-deps` because esbuild bundles all local dependencies into
+`dist/extension.js` -- upstream packages do not need to be published to npm:
+
+```sh
+cd apps/vscode-extension
+npm run release:patch
+```
+
+The tag triggers `deploy-vscode-extension`, which builds the extension and publishes it
+to the VS Code Marketplace via `vsce`.
 
 ### Prerequisites
 
