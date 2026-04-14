@@ -16,30 +16,25 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 
 - [Ecosystem Sim](https://sim.mindcraft-lang.org) -- carnivores, herbivores, and plants driven by user-editable Mindcraft brains
 
-## Repository Structure
-
-```
-packages/
-  core/       @mindcraft-lang/core -- language runtime (multi-target)
-  ui/         @mindcraft-lang/ui -- shared React UI components
-  docs/       @mindcraft-lang/docs -- shared documentation sidebar and rendering
-apps/
-  sim/        Ecosystem simulation demo
-```
-
 ## Packages
 
 | Package | Description |
 |---------|-------------|
-| [@mindcraft-lang/core](packages/core/) | Language runtime -- tiles, parser, compiler, VM (multi-target: Roblox, Node.js, ESM) |
+| [@mindcraft-lang/core](packages/core/) | Mindcraft Language runtime -- tiles, parser, compiler, VM (multi-target: Roblox, Node.js, ESM) |
 | [@mindcraft-lang/ui](packages/ui/) | Shared React UI -- shadcn/ui primitives + brain editor components |
 | [@mindcraft-lang/docs](packages/docs/) | Shared documentation subsystem -- renders as in-app sidebar or full-screen SPA |
+| [@mindcraft-lang/ts-compiler](packages/ts-compiler/) | TypeScript-to-Mindcraft bytecode compiler |
+| [@mindcraft-lang/bridge-protocol](packages/bridge-protocol/) | VS Code bridge network protocol types and schemas |
+| [@mindcraft-lang/bridge-client](packages/bridge-client/) | Client SDK for the VS Code bridge |
+| [@mindcraft-lang/bridge-app](packages/bridge-app/) | App-side client for the VS Code bridge |
 
 ## Apps
 
 | App | Description |
 |-----|-------------|
 | [Ecosystem Sim](apps/sim/) | Demo: carnivores, herbivores, and plants driven by user-editable Mindcraft brains |
+| [VS Code Extension](apps/vscode-extension/) | Author Mindcraft sensors and actuators in TypeScript using VS Code |
+| [VS Code Bridge](apps/vscode-bridge/) | Bridge server that relays between the VS Code extension and Mindcraft apps |
 
 ## Getting Started
 
