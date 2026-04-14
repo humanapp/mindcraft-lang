@@ -7710,6 +7710,13 @@ function resolveStructType(
     }
     return undefined;
   }
+  if (type.isIntersection() && checker) {
+    const typeId = tsTypeToTypeId(type, checker, services);
+    if (!typeId) return undefined;
+    const def = registry.get(typeId);
+    if (!def || def.coreType !== NativeType.Struct) return undefined;
+    return def as StructTypeDef;
+  }
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (!sym) return undefined;
   const resolvedName = resolveRegistryName(sym, services);
@@ -8389,6 +8396,23 @@ function tsTypeToTypeId(
       }
     }
   }
+  if (type.isIntersection() && checker) {
+    const hasPrimitive = type.types.some(
+      (t) =>
+        !!(
+          t.flags &
+          (ts.TypeFlags.NumberLike |
+            ts.TypeFlags.StringLike |
+            ts.TypeFlags.BooleanLike |
+            ts.TypeFlags.Void |
+            ts.TypeFlags.Null |
+            ts.TypeFlags.Undefined)
+        )
+    );
+    if (!hasPrimitive) {
+      return autoRegisterIntersectionType(type, checker, services);
+    }
+  }
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (sym) {
     const registry = services.types;
@@ -8437,6 +8461,59 @@ function tsTypeToTypeId(
   return undefined;
 }
 
+function autoRegisterIntersectionType(
+  type: ts.IntersectionType,
+  checker: ts.TypeChecker,
+  services: BrainServices
+): string | undefined {
+  const aliasSym = type.aliasSymbol;
+  if (aliasSym) {
+    const aliasName = resolveRegistryName(aliasSym, services);
+    const existing = services.types.resolveByName(aliasName);
+    if (existing) return existing;
+  }
+
+  const callSigs = type.getCallSignatures();
+  if (callSigs.length > 0) return undefined;
+  const constructSigs = type.getConstructSignatures();
+  if (constructSigs.length > 0) return undefined;
+  const props = type.getProperties();
+  if (props.length === 0) return undefined;
+
+  const fields = new List<{ name: string; typeId: TypeId }>();
+  for (const prop of props) {
+    const propType = checker.getTypeOfSymbol(prop);
+    if (propType.getCallSignatures().length > 0) return undefined;
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    if (!fieldTypeId) return undefined;
+    const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
+    if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
+      fieldTypeId = services.types.addNullableType(fieldTypeId);
+    }
+    fields.push({ name: prop.name, typeId: fieldTypeId });
+  }
+
+  let structName: string;
+  if (aliasSym) {
+    structName = resolveRegistryName(aliasSym, services);
+  } else {
+    const constituentNames: string[] = [];
+    for (const t of type.types) {
+      const id = tsTypeToTypeId(t, checker, services);
+      if (!id) return undefined;
+      constituentNames.push(id);
+    }
+    structName = constituentNames.join("&");
+    const existing = services.types.resolveByName(structName);
+    if (existing) return existing;
+  }
+
+  const registry = services.types;
+  const typeId = registry.reserveStructType(structName);
+  registry.finalizeStructType(typeId, { fields });
+  return typeId;
+}
+
 function autoRegisterObjectType(
   type: ts.Type,
   sym: ts.Symbol,
@@ -8451,7 +8528,21 @@ function autoRegisterObjectType(
   );
   if (!hasNamedDecl) return undefined;
 
-  if (type.isIntersection()) return undefined;
+  if (type.isIntersection()) {
+    const hasPrimitive = type.types.some(
+      (t) =>
+        !!(
+          t.flags &
+          (ts.TypeFlags.NumberLike |
+            ts.TypeFlags.StringLike |
+            ts.TypeFlags.BooleanLike |
+            ts.TypeFlags.Void |
+            ts.TypeFlags.Null |
+            ts.TypeFlags.Undefined)
+        )
+    );
+    if (hasPrimitive) return undefined;
+  }
 
   const callSigs = type.getCallSignatures();
   if (callSigs.length > 0) return undefined;
