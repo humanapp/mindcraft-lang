@@ -49,6 +49,8 @@ npm install @mindcraft-lang/core @mindcraft-lang/ui
 
 # Full stack (adds documentation sidebar and renderer)
 npm install @mindcraft-lang/core @mindcraft-lang/ui @mindcraft-lang/docs
+
+# For VS Code integration, see apps/sim for example implementation.
 ```
 
 For full setup instructions -- Vite config, TypeScript paths, Tailwind, and component usage -- see the [Integration Guide](INTEGRATION.md).
