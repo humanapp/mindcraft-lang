@@ -8006,6 +8006,38 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     return;
   }
 
+  if (contextualType.isUnion()) {
+    const nonNullish = contextualType.types.filter(
+      (t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined)
+    );
+    if (nonNullish.length > 1) {
+      let matchedStruct: StructTypeDef | undefined;
+      let matchedMapId: string | undefined;
+      let matchCount = 0;
+      for (const member of nonNullish) {
+        const sd = resolveStructType(member, ctx.services, ctx.checker);
+        if (sd && !isNativeBackedStruct(sd)) {
+          matchedStruct = sd;
+          matchCount++;
+        } else {
+          const mid = resolveMapTypeId(member, ctx);
+          if (mid) {
+            matchedMapId = mid;
+            matchCount++;
+          }
+        }
+      }
+      if (matchCount === 1 && matchedStruct) {
+        lowerObjectLiteralAsStruct(expr, matchedStruct, ctx);
+        return;
+      }
+      if (matchCount === 1 && matchedMapId) {
+        lowerObjectLiteralAsMap(expr, matchedMapId, ctx);
+        return;
+      }
+    }
+  }
+
   ctx.diagnostics.push(
     makeDiag(
       LoweringDiagCode.ObjectLiteralTypeUnresolvable,
