@@ -46,7 +46,7 @@ function runQuiet(cmd, cwd) {
 }
 
 function shortNameOf(pkg) {
-  return pkg.name.replace(SCOPE, "");
+  return pkg.name.startsWith(SCOPE) ? pkg.name.replace(SCOPE, "") : pkg.name;
 }
 
 // Collect the topological release order for a package directory.
@@ -58,7 +58,8 @@ function collectReleaseDeps(pkgDir, visited, order, isRoot) {
 
   const pkg = readPkgAt(realDir);
   if (!isRoot && pkg.private) return;
-  if (!pkg.name || !pkg.name.startsWith(SCOPE)) return;
+  if (!pkg.name) return;
+  if (!isRoot && !pkg.name.startsWith(SCOPE)) return;
 
   for (const [name, val] of Object.entries(pkg.dependencies || {})) {
     if (!val.startsWith("file:")) continue;
