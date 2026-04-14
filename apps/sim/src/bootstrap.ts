@@ -3,7 +3,6 @@ import { enableClipboardLogging } from "@mindcraft-lang/ui";
 import { SimEnvironmentStore } from "./services/sim-environment-store";
 import { hydrateUserTilesAtStartup } from "./services/user-tile-registration";
 import { initVfsServiceWorker } from "./services/vfs-service-worker";
-import { initProject } from "./services/vscode-bridge";
 
 enableClipboardLogging(true);
 
@@ -23,4 +22,4 @@ initVfsServiceWorker(simStore);
 // ----------------------------------------------------
 // Initialize project and compile user tiles
 
-initProject(simStore);
+simStore.initBridge();

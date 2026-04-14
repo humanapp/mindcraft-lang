@@ -1,23 +1,16 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
 import { Button, Slider, Switch } from "@mindcraft-lang/ui";
 import { BookOpen, Check, ChevronDown, ChevronRight, Copy, Info, Settings } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { useSimEnvironment } from "@/contexts/sim-environment";
 import { getAppSettings } from "@/services/app-settings";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
 import { getUiPreferences, updateUiPreferences } from "@/services/ui-preferences";
-import {
-  clearBindingToken,
-  connectBridge,
-  disconnectBridge,
-  getBridgeJoinCode,
-  getBridgeStatus,
-  onBridgeJoinCodeChange,
-  onBridgeStatusChange,
-} from "@/services/vscode-bridge";
+import { clearBindingToken } from "@/services/vscode-bridge";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",
@@ -68,23 +61,22 @@ export function Sidebar({
   isOpen,
   onClose,
 }: SidebarProps) {
+  const store = useSimEnvironment();
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
   const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>(
     () => getUiPreferences().collapsedArchetypes
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bridgeEnabled, setBridgeEnabled] = useState(() => getUiPreferences().bridgeEnabled);
-  const [bridgeStatus, setBridgeStatus] = useState(getBridgeStatus);
-  const [joinCode, setJoinCode] = useState(getBridgeJoinCode);
+  const bridgeStatus = useSyncExternalStore(store.subscribeToBridgeStatus, store.getBridgeStatusSnapshot);
+  const joinCode = useSyncExternalStore(store.subscribeToBridgeJoinCode, store.getBridgeJoinCodeSnapshot);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => onBridgeStatusChange(setBridgeStatus), []);
-  useEffect(() => onBridgeJoinCodeChange(setJoinCode), []);
   useEffect(() => {
     if (bridgeEnabled) {
-      connectBridge();
+      store.connectBridge();
     }
-  }, [bridgeEnabled]);
+  }, [bridgeEnabled, store]);
 
   const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toggle: toggleDocs, isOpen: isDocsOpen, open: openDocs, navigateToEntry } = useDocsSidebar();
@@ -324,7 +316,7 @@ export function Sidebar({
                   setBridgeEnabled(checked);
                   updateUiPreferences({ bridgeEnabled: checked });
                   if (!checked) {
-                    disconnectBridge();
+                    store.disconnectBridge();
                     clearBindingToken();
                   }
                 }}

@@ -10,9 +10,10 @@ import {
   Switch,
 } from "@mindcraft-lang/ui";
 import { useEffect, useState } from "react";
+import { useSimEnvironment } from "@/contexts/sim-environment";
 import { type AppSettings, getAppSettings, updateAppSettings } from "@/services/app-settings";
 import { getUiPreferences, updateUiPreferences } from "@/services/ui-preferences";
-import { clearBindingToken, disconnectBridge, hasBindingToken } from "@/services/vscode-bridge";
+import { clearBindingToken, hasBindingToken } from "@/services/vscode-bridge";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -21,6 +22,7 @@ interface SettingsDialogProps {
 }
 
 export function SettingsDialog({ open, onOpenChange, onBridgeDisabled }: SettingsDialogProps) {
+  const store = useSimEnvironment();
   const [draft, setDraft] = useState<AppSettings>(getAppSettings);
   const [hasToken, setHasToken] = useState(false);
 
@@ -36,7 +38,7 @@ export function SettingsDialog({ open, onOpenChange, onBridgeDisabled }: Setting
     updateAppSettings(draft);
     if (wasShowingBridge && !draft.showBridgePanel && getUiPreferences().bridgeEnabled) {
       updateUiPreferences({ bridgeEnabled: false });
-      disconnectBridge();
+      store.disconnectBridge();
       clearBindingToken();
       onBridgeDisabled?.();
     }
