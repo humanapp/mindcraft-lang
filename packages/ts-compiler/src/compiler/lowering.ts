@@ -8044,6 +8044,13 @@ function lowerObjectLiteralAsStruct(
       ctx.ir.push({ kind: "StructSet" });
       continue;
     }
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      const fieldName = prop.name.text;
+      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      lowerExpression(prop.name, ctx);
+      ctx.ir.push({ kind: "StructSet" });
+      continue;
+    }
     if (!ts.isPropertyAssignment(prop)) {
       ctx.diagnostics.push(
         makeDiag(
@@ -8079,6 +8086,13 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
   ctx.ir.push({ kind: "MapNew", typeId: mapTypeId });
 
   for (const prop of expr.properties) {
+    if (ts.isShorthandPropertyAssignment(prop)) {
+      const keyName = prop.name.text;
+      ctx.ir.push({ kind: "PushConst", value: mkStringValue(keyName) });
+      lowerExpression(prop.name, ctx);
+      ctx.ir.push({ kind: "MapSet" });
+      continue;
+    }
     if (!ts.isPropertyAssignment(prop)) {
       ctx.diagnostics.push(
         makeDiag(
