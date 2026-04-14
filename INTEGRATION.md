@@ -20,7 +20,7 @@ symbols from `@mindcraft-lang/core/app`.
 pre-built JavaScript. Your app compiles them at build time using Vite aliases and tsconfig
 path mappings that point into the installed `node_modules` source.
 
-Additional packages are available for TypeScript-authored tiles and VS Code integration.
+Additional packages are available for TypeScript-authored tiles and VS Code for Web integration.
 See [TypeScript Compiler + VS Code Bridge](#6-typescript-compiler--vs-code-bridge) below.
 
 ### Dependency Graph
@@ -396,7 +396,7 @@ export default function App() {
 ## 6. TypeScript Compiler + VS Code Bridge
 
 The packages below extend the core integration with TypeScript-authored tiles and live
-editing via the VS Code extension. These are optional -- the core + ui + docs integration
+editing via the VS Code for Web extension. These are optional -- the core + ui + docs integration
 above works without them.
 
 ### Additional Packages
@@ -457,8 +457,8 @@ npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler @mindcraft-lang/bri
 #### Architecture
 
 ```
-  VS Code Extension  <--WebSocket-->  Bridge Server  <--WebSocket-->  Your App
-  (TypeScript IDE)                    (vscode-bridge)                 (bridge-app)
+  VS Code for Web Extension  <--WebSocket-->  Bridge Server  <--WebSocket-->  Your App
+  (TypeScript IDE)                    (vscode-bridge)                     (bridge-app)
 ```
 
 The bridge server is a stateless WebSocket relay. It pushes file changes bidirectionally
@@ -525,10 +525,10 @@ The returned `AppProjectHandle` exposes:
 
 #### Binding Tokens
 
-The bridge uses a binding token to authorize the connection between your app and the
-VS Code extension. When the extension first binds, a token is generated and passed to
+The bridge uses a binding token make the connection between your app and the
+VS Code extension durable. When the app first connects to the bridge, a token is generated and passed to
 `onBindingTokenChange`. Persist this token (e.g. in `localStorage`) and pass it back as
-`bindingToken` on the next session so the connection resumes automatically.
+`bindingToken` on the next session so that the VS Code editor rebinds to the app automatically.
 
 #### Compilation Pipeline
 
