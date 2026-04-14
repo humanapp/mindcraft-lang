@@ -1,8 +1,14 @@
 import { createLocalStorageWorkspace, type WorkspaceAdapter } from "@mindcraft-lang/bridge-app";
-import { coreModule, createMindcraftEnvironment, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
+import {
+  type BrainDef,
+  coreModule,
+  createMindcraftEnvironment,
+  type MindcraftEnvironment,
+} from "@mindcraft-lang/core/app";
 import type { DocsTileEntry } from "@mindcraft-lang/docs";
 import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
+import type { Archetype } from "@/brain/actor";
 
 export class SimEnvironmentStore {
   readonly env: MindcraftEnvironment;
@@ -16,6 +22,7 @@ export class SimEnvironmentStore {
   private readonly vfsRevisionListeners = new Set<() => void>();
 
   private _pendingBrainRebuild = false;
+  private readonly _defaultBrainCache = new Map<Archetype, BrainDef>();
 
   constructor() {
     this.workspace = createLocalStorageWorkspace({
@@ -39,6 +46,14 @@ export class SimEnvironmentStore {
     }
     this._pendingBrainRebuild = false;
     this.env.rebuildInvalidatedBrains();
+  }
+
+  setDefaultBrain(archetype: Archetype, brainDef: BrainDef): void {
+    this._defaultBrainCache.set(archetype, brainDef);
+  }
+
+  getDefaultBrain(archetype: Archetype): BrainDef | undefined {
+    return this._defaultBrainCache.get(archetype);
   }
 
   get docRevision(): number {

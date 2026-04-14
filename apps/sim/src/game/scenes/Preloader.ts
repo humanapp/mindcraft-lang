@@ -1,7 +1,7 @@
 import { Scene } from "phaser";
 import type { Archetype } from "@/brain/actor";
 import { STORE_REGISTRY_KEY } from "@/game/main";
-import { deserializeBrainFromArrayBuffer, setDefaultBrain } from "@/services/brain-persistence";
+import { deserializeBrainFromArrayBuffer } from "@/services/brain-persistence";
 import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 
 const DEFAULT_BRAIN_ARCHETYPES: Archetype[] = ["carnivore", "herbivore", "plant"];
@@ -43,7 +43,7 @@ export class Preloader extends Scene {
       if (data) {
         const brainDef = deserializeBrainFromArrayBuffer(store.env, data);
         if (brainDef) {
-          setDefaultBrain(archetype, brainDef);
+          store.setDefaultBrain(archetype, brainDef);
           console.log(`Default brain loaded for ${archetype}`);
         }
       }

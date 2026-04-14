@@ -3,10 +3,6 @@ import type { Archetype } from "@/brain/actor";
 
 const STORAGE_KEY_PREFIX = "brain-archetype-";
 
-// -- Default brain cache (populated from .brain asset files during Preloader) --
-
-const defaultBrainCache = new Map<Archetype, BrainDef>();
-
 function normalizeBrainDef(brainDef: unknown): BrainDef {
   if (!(brainDef instanceof BrainDef)) {
     throw new Error("Expected BrainDef from mindcraft environment");
@@ -32,23 +28,6 @@ export function deserializeBrainFromArrayBuffer(env: MindcraftEnvironment, buffe
     console.error("Failed to deserialize brain from ArrayBuffer:", err);
     return undefined;
   }
-}
-
-/**
- * Store a pre-loaded default brain for an archetype.
- * Called during asset loading (Preloader scene) so the Engine can
- * synchronously fall back to these when localStorage has no entry.
- */
-export function setDefaultBrain(archetype: Archetype, brainDef: BrainDef): void {
-  defaultBrainCache.set(archetype, brainDef);
-}
-
-/**
- * Retrieve the pre-loaded default brain for an archetype, or undefined
- * if no default was loaded.
- */
-export function getDefaultBrain(archetype: Archetype): BrainDef | undefined {
-  return defaultBrainCache.get(archetype);
 }
 
 /**

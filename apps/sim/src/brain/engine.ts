@@ -16,7 +16,7 @@ const PUPIL_MAX_ANGLE = 0.75; // Max gaze rotation in radians (~43 deg) from res
 const GAZE_SMOOTHING = 0.08; // Lerp factor per frame (lower = smoother)
 
 import { heatColor } from "@/lib/color";
-import { getDefaultBrain, loadBrainFromLocalStorage } from "../services/brain-persistence";
+import { loadBrainFromLocalStorage } from "../services/brain-persistence";
 import { loadDesiredCounts } from "../services/population-persistence";
 import { drawMovementIntent } from "./movement";
 import { type ScoreSnapshot, ScoreTracker } from "./score";
@@ -125,7 +125,7 @@ export class Engine {
       const fromStorage = loadBrainFromLocalStorage(env, archetype);
       if (fromStorage) return fromStorage;
 
-      const fromAsset = getDefaultBrain(archetype);
+      const fromAsset = store.getDefaultBrain(archetype);
       if (fromAsset) return cloneBrain(fromAsset);
 
       return createArchetypeFallbackBrain(env, archetype);
@@ -140,7 +140,7 @@ export class Engine {
     // Log brain source for each archetype
     for (const archetype of ["carnivore", "herbivore", "plant"] as const) {
       const fromStorage = localStorage.getItem(`brain-archetype-${archetype}`);
-      const fromAsset = getDefaultBrain(archetype);
+      const fromAsset = store.getDefaultBrain(archetype);
       const source = fromStorage ? "localStorage" : fromAsset ? "default asset" : "empty";
       console.log(`Brain initialization - ${archetype}: ${source}`);
     }

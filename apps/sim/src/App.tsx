@@ -51,7 +51,7 @@ function DocsBrainEditorProvider({ archetype, children }: { archetype: Archetype
   const config = useMemo(
     () =>
       buildBrainEditorConfig({
-        environment: store.env,
+        store,
         archetype: archetype ?? undefined,
         vfsRevision,
         onTileHelp: openDocsForTile,

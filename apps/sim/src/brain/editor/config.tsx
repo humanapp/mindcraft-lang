@@ -4,7 +4,7 @@ import type { BrainEditorConfig, CustomLiteralType } from "@mindcraft-lang/ui";
 import type { ReactNode } from "react";
 import type { Archetype } from "@/brain/actor";
 import { SimTypeIds } from "@/brain/type-system";
-import { getDefaultBrain } from "@/services/brain-persistence";
+import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 import { dataTypeIconMap, dataTypeNameMap } from "./data-type-icons";
 import { genVisualForTile } from "./visual-provider";
 
@@ -92,7 +92,7 @@ const vector2LiteralType: CustomLiteralType = {
 };
 
 interface BuildBrainEditorConfigOptions {
-  environment: MindcraftEnvironment;
+  store: SimEnvironmentStore;
   archetype?: Archetype;
   vfsRevision?: number;
   onTileHelp?: BrainEditorConfig["onTileHelp"];
@@ -100,7 +100,8 @@ interface BuildBrainEditorConfigOptions {
 }
 
 export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): BrainEditorConfig {
-  const { environment, archetype, vfsRevision, onTileHelp, docsIntegration } = options;
+  const { store, archetype, vfsRevision, onTileHelp, docsIntegration } = options;
+  const environment = store.env;
   const resolveTileVisual =
     vfsRevision !== undefined
       ? (tileDef: Parameters<typeof genVisualForTile>[0]) => {
@@ -117,7 +118,7 @@ export function buildBrainEditorConfig(options: BuildBrainEditorConfigOptions): 
     dataTypeNames: dataTypeNameMap,
     resolveTileVisual,
     customLiteralTypes: [vector2LiteralType],
-    getDefaultBrain: archetype ? () => getDefaultBrain(archetype) : undefined,
+    getDefaultBrain: archetype ? () => store.getDefaultBrain(archetype) : undefined,
     brainServices: environment.brainServices,
     tileCatalogs: environment.tileCatalogs(),
     onTileHelp,
