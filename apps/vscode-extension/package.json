@@ -2,7 +2,7 @@
 	"name": "mindcraft-vscode-extension",
 	"displayName": "Mindcraft VS Code Web Extension",
 	"description": "Program sensors and actuators for Mindcraft apps in TypeScript using VS Code",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"private": true,
 	"publisher": "mindcraft-lang",
 	"license": "MIT",
