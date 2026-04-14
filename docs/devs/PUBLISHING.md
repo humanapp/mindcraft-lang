@@ -10,10 +10,18 @@ Packages have internal `file:` dependencies that form a directed graph:
 core              (no local deps)
 bridge-protocol   (no local deps)
 bridge-client  -> core, bridge-protocol
-bridge-app     -> bridge-client, bridge-protocol
-typescript     -> core
+bridge-app     -> bridge-client, bridge-protocol, core, ts-compiler
+ts-compiler    -> core
 ui             -> core
 docs           -> core, ui
+```
+
+Private apps (not published to npm):
+
+```
+sim               -> core, docs, ts-compiler, bridge-app, ui
+vscode-bridge     -> bridge-protocol
+vscode-extension  -> bridge-client, bridge-protocol
 ```
 
 The release script handles dependency ordering automatically -- see "Running a Release"
@@ -38,8 +46,8 @@ If any workflow fails, the script aborts immediately -- no downstream packages a
 Private packages (`"private": true`) in the dependency chain are skipped.
 
 Pushing a tag triggers the corresponding GitHub Actions workflow
-(`.github/workflows/publish-*.yml`), which runs lint/build/tests and then calls
-`npm publish`.
+(`.github/workflows/publish-*.yml` for npm packages, `deploy-*.yml` for private apps),
+which runs lint/build/tests and then publishes or deploys.
 
 ## Local `file:` Dependencies
 
@@ -70,11 +78,14 @@ This will release `core`, then `bridge-protocol`, then `bridge-client` -- each b
 `patch`, each waiting for CI before proceeding. For a leaf package like `core` with no
 local deps, only `core` itself is released.
 
-### Bundled Apps (sim)
+### Bundled Apps
 
-Bundled apps like `sim` are `"private": true` and deployed from their build output, not
-published to npm. Their `release:*` scripts pass `--skip-deps` so upstream packages are
-not published as a side effect:
+Bundled apps are `"private": true` and deployed from their build output, not published to
+npm. Their tags trigger deploy workflows instead of publish workflows.
+
+#### sim
+
+`sim` uses `--skip-deps` so upstream packages are not published as a side effect:
 
 ```sh
 cd apps/sim
@@ -83,6 +94,23 @@ npm run release:patch
 
 This bumps `sim`'s version, commits, tags (`sim-v<version>`), and pushes. The tag triggers
 the `deploy-sim` GitHub Actions workflow which builds and deploys to S3/CloudFront.
+
+#### vscode-bridge
+
+`vscode-bridge` does NOT use `--skip-deps`, so releasing it also releases its upstream
+dependencies first:
+
+```sh
+cd apps/vscode-bridge
+npm run release:patch
+```
+
+The tag triggers `deploy-vscode-bridge`, which builds a Docker image, pushes it to GHCR,
+and deploys to EC2 via SSH.
+
+#### vscode-extension
+
+`vscode-extension` does not have release scripts yet (working on it!).
 
 ### Prerequisites
 

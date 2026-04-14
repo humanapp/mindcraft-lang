@@ -20,7 +20,7 @@ symbols from `@mindcraft-lang/core/app`.
 pre-built JavaScript. Your app compiles them at build time using Vite aliases and tsconfig
 path mappings that point into the installed `node_modules` source.
 
-Additional packages are available for TypeScript-authored tiles and VS Code for Web integration.
+Additional packages are available for TypeScript-authored tiles and VS Code Web integration.
 See [TypeScript Compiler + VS Code Bridge](#6-typescript-compiler--vs-code-bridge) below.
 
 ### Dependency Graph
@@ -396,7 +396,7 @@ export default function App() {
 ## 6. TypeScript Compiler + VS Code Bridge
 
 The packages below extend the core integration with TypeScript-authored tiles and live
-editing via the VS Code for Web extension. These are optional -- the core + ui + docs integration
+editing via the VS Code Web extension. These are optional -- the core + ui + docs integration
 above works without them.
 
 ### Additional Packages
@@ -448,7 +448,7 @@ if (result.bundle) {
 ### VS Code Bridge
 
 The VS Code bridge allows users to author Mindcraft sensors and actuators in TypeScript
-using the VS Code for Web extension.
+using the VS Code Web extension.
 
 ```bash
 npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler @mindcraft-lang/bridge-app
@@ -457,7 +457,7 @@ npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler @mindcraft-lang/bri
 #### Architecture
 
 ```
-  VS Code for Web Extension  <--WebSocket-->  Bridge Server  <--WebSocket-->  Your App
+  VS Code Web Extension  <--WebSocket-->  Bridge Server  <--WebSocket-->  Your App
   (TypeScript IDE)                    (vscode-bridge)                     (bridge-app)
 ```
 
