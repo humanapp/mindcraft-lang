@@ -207,7 +207,7 @@ export default Sensor({
     }
   });
 
-  test("generic interface emits diagnostic", () => {
+  test("generic interface is silently skipped (no rejection diagnostic)", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -224,8 +224,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, { ambientSource, services });
-    const genericDiag = result.diagnostics.find((d) => d.code === LoweringDiagCode.GenericInterfaceNotSupported);
-    assert.ok(genericDiag, "should emit GenericInterfaceNotSupported diagnostic");
+    assert.deepStrictEqual(result.diagnostics, []);
   });
 
   test("interface colliding with ambient type emits diagnostic", () => {

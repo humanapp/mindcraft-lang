@@ -2381,7 +2381,7 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
     return;
   }
 
-  const structDef = resolveStructType(iteratedType, ctx.services);
+  const structDef = resolveStructType(iteratedType, ctx.services, ctx.checker);
   if (structDef) {
     lowerForInOverKeyList(
       stmt,
@@ -3195,7 +3195,7 @@ function lowerStructMethodCall(
   ctx: LowerContext
 ): boolean {
   const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
-  const structDef = resolveStructType(receiverType, ctx.services);
+  const structDef = resolveStructType(receiverType, ctx.services, ctx.checker);
   if (!structDef) return false;
 
   const methodName = propAccess.name.text;
@@ -3584,7 +3584,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
     }
 
     const lhsObjType = ctx.checker.getTypeAtLocation(expr.left.expression);
-    const lhsStruct = resolveStructType(lhsObjType, ctx.services);
+    const lhsStruct = resolveStructType(lhsObjType, ctx.services, ctx.checker);
     if (lhsStruct) {
       const fName = expr.left.name.text;
       const clsName = bareClassName(lhsStruct.name);
@@ -3855,7 +3855,7 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
   }
 
   const thisType = ctx.checker.getTypeAtLocation(propAccess.expression);
-  const structDef = resolveStructType(thisType, ctx.services);
+  const structDef = resolveStructType(thisType, ctx.services, ctx.checker);
   if (structDef) {
     const className = bareClassName(structDef.name);
     const ci = ctx.classInfos.find((c) => c.name === className);
@@ -4390,7 +4390,7 @@ function resolveInstanceGetterSetterPair(
 ): { getterFuncId: number; setterFuncId: number; isThis: boolean } | undefined {
   const fieldName = operand.name.text;
   const objType = ctx.checker.getTypeAtLocation(operand.expression);
-  const structDef = resolveStructType(objType, ctx.services);
+  const structDef = resolveStructType(objType, ctx.services, ctx.checker);
   if (!structDef) return undefined;
   const className = bareClassName(structDef.name);
   const ci = ctx.classInfos.find((c) => c.name === className);
@@ -4928,7 +4928,7 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
     if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
-  if (resolveStructType(objType, ctx.services)) {
+  if (resolveStructType(objType, ctx.services, ctx.checker)) {
     lowerExpression(expr.expression, ctx);
     const guard = isOptChain ? emitNilGuard(ctx) : undefined;
     lowerExpression(expr.argumentExpression, ctx);
@@ -7637,7 +7637,7 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     }
   }
 
-  const structDef = resolveStructType(objType, ctx.services);
+  const structDef = resolveStructType(objType, ctx.services, ctx.checker);
   if (structDef) {
     const fieldName = expr.name.text;
     const className = bareClassName(structDef.name);
@@ -7697,19 +7697,26 @@ function resolveRegistryName(sym: ts.Symbol, services: BrainServices, checker?: 
   return name;
 }
 
-function resolveStructType(type: ts.Type, services: BrainServices): StructTypeDef | undefined {
+function resolveStructType(
+  type: ts.Type,
+  services: BrainServices,
+  checker?: ts.TypeChecker
+): StructTypeDef | undefined {
   const registry = services.types;
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     if (nonNullish.length === 1) {
-      return resolveStructType(nonNullish[0], services);
+      return resolveStructType(nonNullish[0], services, checker);
     }
     return undefined;
   }
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (!sym) return undefined;
   const resolvedName = resolveRegistryName(sym, services);
-  const typeId = registry.resolveByName(resolvedName);
+  let typeId = registry.resolveByName(resolvedName);
+  if (!typeId && checker) {
+    typeId = tsTypeToTypeId(type, checker, services) ?? undefined;
+  }
   if (!typeId) return undefined;
   const def = registry.get(typeId);
   if (!def || def.coreType !== NativeType.Struct) return undefined;
@@ -7970,7 +7977,7 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     return;
   }
 
-  const structDef = resolveStructType(contextualType, ctx.services);
+  const structDef = resolveStructType(contextualType, ctx.services, ctx.checker);
   if (structDef) {
     if (isNativeBackedStruct(structDef)) {
       ctx.diagnostics.push(
@@ -8410,6 +8417,11 @@ function tsTypeToTypeId(
 
     const typeId = registry.resolveByName(resolveRegistryName(sym, services));
     if (typeId) return typeId;
+
+    if (checker) {
+      const autoId = autoRegisterObjectType(type, sym, checker, services);
+      if (autoId) return autoId;
+    }
   }
 
   if (checker) {
@@ -8423,6 +8435,66 @@ function tsTypeToTypeId(
   }
 
   return undefined;
+}
+
+function autoRegisterObjectType(
+  type: ts.Type,
+  sym: ts.Symbol,
+  checker: ts.TypeChecker,
+  services: BrainServices
+): string | undefined {
+  const resolvedSym = resolveAliasedSymbol(sym, checker) ?? sym;
+  const decls = resolvedSym.getDeclarations();
+  if (!decls || decls.length === 0) return undefined;
+  const hasNamedDecl = decls.some(
+    (d) => ts.isInterfaceDeclaration(d) || ts.isTypeAliasDeclaration(d) || ts.isClassDeclaration(d)
+  );
+  if (!hasNamedDecl) return undefined;
+
+  if (type.isIntersection()) return undefined;
+
+  const callSigs = type.getCallSignatures();
+  if (callSigs.length > 0) return undefined;
+  const constructSigs = type.getConstructSignatures();
+  if (constructSigs.length > 0) return undefined;
+  const props = type.getProperties();
+  if (props.length === 0) return undefined;
+
+  const fields = new List<{ name: string; typeId: TypeId }>();
+  for (const prop of props) {
+    const propType = checker.getTypeOfSymbol(prop);
+    if (propType.getCallSignatures().length > 0) return undefined;
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    if (!fieldTypeId) return undefined;
+    const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
+    if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
+      fieldTypeId = services.types.addNullableType(fieldTypeId);
+    }
+    fields.push({ name: prop.name, typeId: fieldTypeId });
+  }
+
+  const baseName = resolveRegistryName(sym, services);
+  const typeArgs =
+    type.aliasTypeArguments ??
+    (type as ts.TypeReference).typeArguments ??
+    checker.getTypeArguments(type as ts.TypeReference);
+  let structName = baseName;
+  if (typeArgs && typeArgs.length > 0) {
+    const argIds: string[] = [];
+    for (const ta of typeArgs) {
+      const argId = tsTypeToTypeId(ta, checker, services);
+      argIds.push(argId ?? "?");
+    }
+    structName = `${baseName}<${argIds.join(",")}>`;
+  }
+
+  const registry = services.types;
+  const existing = registry.resolveByName(structName);
+  if (existing) return existing;
+
+  const typeId = registry.reserveStructType(structName);
+  registry.finalizeStructType(typeId, { fields });
+  return typeId;
 }
 
 function hasStaticModifier(node: ts.ClassElement): boolean {
@@ -8596,13 +8668,6 @@ function reserveInterfaceStructType(
   if (existing) return undefined;
 
   if (ii.node.typeParameters && ii.node.typeParameters.length > 0) {
-    diagnostics.push(
-      makeDiag(
-        LoweringDiagCode.GenericInterfaceNotSupported,
-        `Generic interfaces are not supported: '${ii.name}'`,
-        ii.node
-      )
-    );
     return undefined;
   }
 
@@ -8647,13 +8712,6 @@ function reserveTypeAliasStructType(
   if (existing) return undefined;
 
   if (tai.node.typeParameters && tai.node.typeParameters.length > 0) {
-    diagnostics.push(
-      makeDiag(
-        LoweringDiagCode.GenericTypeAliasNotSupported,
-        `Generic type aliases are not supported: '${tai.name}'`,
-        tai.node
-      )
-    );
     return undefined;
   }
 

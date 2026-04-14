@@ -220,8 +220,7 @@ export default Sensor({
 });
 `;
     const result = compileUserTile(source, { ambientSource, services });
-    assert.ok(result.diagnostics.length > 0, "should have diagnostics");
-    assert.equal(result.diagnostics[0].code, LoweringDiagCode.GenericTypeAliasNotSupported);
+    assert.deepStrictEqual(result.diagnostics, []);
   });
 
   test("type alias colliding with ambient type emits diagnostic", () => {
