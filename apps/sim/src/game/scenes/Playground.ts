@@ -1,4 +1,4 @@
-import { type BrainDef, type MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
+import { type BrainDef, Vector2 } from "@mindcraft-lang/core/app";
 import { Scene } from "phaser";
 import type { Actor, Archetype } from "@/brain/actor";
 import { ARCHETYPES, type ArchetypePhysicsConfig } from "@/brain/archetypes";
@@ -6,7 +6,8 @@ import type { Blip } from "@/brain/blip";
 import { BLIP_RADIUS } from "@/brain/blip";
 import { Engine } from "@/brain/engine";
 import type { ScoreSnapshot } from "@/brain/score";
-import { ENV_REGISTRY_KEY } from "@/game/main";
+import { STORE_REGISTRY_KEY } from "@/game/main";
+import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 /**
  * Registry key where `StartGame` stores its scene-ready callback.
  * Playground reads this in `create()` to notify React without an EventBus.
@@ -105,7 +106,7 @@ export class Playground extends Scene {
       this.obstacles.push({ x, y, width, height });
     }
 
-    this.engine = new Engine(this, this.obstacles, this.game.registry.get(ENV_REGISTRY_KEY) as MindcraftEnvironment);
+    this.engine = new Engine(this, this.obstacles, this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore);
 
     // Set up Matter collision events -- handle both initial contact and
     // ongoing contact so bump sensors fire every frame while actors overlap

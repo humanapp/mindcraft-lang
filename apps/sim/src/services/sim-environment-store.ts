@@ -14,11 +14,27 @@ export class SimEnvironmentStore {
   private readonly docRevisionListeners = new Set<() => void>();
   private readonly vfsRevisionListeners = new Set<() => void>();
 
+  private _pendingBrainRebuild = false;
+
   constructor(workspace: WorkspaceAdapter) {
     this.env = createMindcraftEnvironment({
       modules: [coreModule(), createSimModule()],
     });
     this.workspace = workspace;
+
+    this.env.onBrainsInvalidated((event) => {
+      if (event.invalidatedBrains.length > 0) {
+        this._pendingBrainRebuild = true;
+      }
+    });
+  }
+
+  flushPendingBrainRebuilds(): void {
+    if (!this._pendingBrainRebuild) {
+      return;
+    }
+    this._pendingBrainRebuild = false;
+    this.env.rebuildInvalidatedBrains();
   }
 
   get docRevision(): number {

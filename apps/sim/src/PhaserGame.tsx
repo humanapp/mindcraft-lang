@@ -1,21 +1,21 @@
-import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { useLayoutEffect, useRef } from "react";
+import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 import StartGame from "./game/main";
 
 interface PhaserGameProps {
-  env: MindcraftEnvironment;
+  store: SimEnvironmentStore;
   onSceneReady?: (scene: Phaser.Scene) => void;
 }
 
-export function PhaserGame({ env, onSceneReady }: PhaserGameProps) {
+export function PhaserGame({ store, onSceneReady }: PhaserGameProps) {
   const game = useRef<Phaser.Game | null>(null);
   const callbackRef = useRef(onSceneReady);
   callbackRef.current = onSceneReady;
 
   useLayoutEffect(() => {
-    void env;
+    void store;
     if (game.current === null) {
-      game.current = StartGame("game-container", env, (scene) => {
+      game.current = StartGame("game-container", store, (scene) => {
         callbackRef.current?.(scene);
       });
     }
@@ -26,7 +26,7 @@ export function PhaserGame({ env, onSceneReady }: PhaserGameProps) {
         game.current = null;
       }
     };
-  }, [env]);
+  }, [store]);
 
   return <div id="game-container"></div>;
 }

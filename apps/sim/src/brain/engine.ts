@@ -1,7 +1,7 @@
 import type { BrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
 import * as ECS from "miniplex";
 import type { Playground } from "@/game/scenes/Playground";
-import { flushPendingBrainRebuilds } from "../services/brain-runtime";
+import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 import { Actor, type Archetype } from "./actor";
 import { ARCHETYPES, createArchetypeFallbackBrain } from "./archetypes";
 import { BLIP_DAMAGE, BLIP_RADIUS, BLIP_SPEED, type Blip, BlipPool } from "./blip";
@@ -37,6 +37,10 @@ export class Engine {
 
   get clock(): Phaser.Time.Clock {
     return this.scene.time;
+  }
+
+  get env(): MindcraftEnvironment {
+    return this.store.env;
   }
 
   get worldWidth(): number {
@@ -104,8 +108,9 @@ export class Engine {
   constructor(
     private scene: Playground,
     readonly obstacles: ReadonlyArray<Obstacle> = [],
-    private readonly env: MindcraftEnvironment
+    private readonly store: SimEnvironmentStore
   ) {
+    const env = store.env;
     this.world = new ECS.World<Actor>();
     this.actors = {
       carnivore: this.world.where((actor) => actor.archetype === "carnivore"),
@@ -117,13 +122,13 @@ export class Engine {
     const loadBrain = (archetype: Archetype): BrainDef => {
       const cloneBrain = (brainDef: BrainDef): BrainDef => brainDef.clone();
 
-      const fromStorage = loadBrainFromLocalStorage(this.env, archetype);
+      const fromStorage = loadBrainFromLocalStorage(env, archetype);
       if (fromStorage) return fromStorage;
 
       const fromAsset = getDefaultBrain(archetype);
       if (fromAsset) return cloneBrain(fromAsset);
 
-      return createArchetypeFallbackBrain(this.env, archetype);
+      return createArchetypeFallbackBrain(env, archetype);
     };
 
     this.brains = {
@@ -181,7 +186,7 @@ export class Engine {
   }
 
   tick(time: number, dt: number) {
-    flushPendingBrainRebuilds();
+    this.store.flushPendingBrainRebuilds();
 
     // Rebuild spatial grid once per tick -- O(N) and avoids incremental bookkeeping
     this.grid.rebuild(this.world.entities);

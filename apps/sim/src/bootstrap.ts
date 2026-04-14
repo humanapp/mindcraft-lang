@@ -1,6 +1,5 @@
 import { LogLevel, logger } from "@mindcraft-lang/core/app";
 import { enableClipboardLogging } from "@mindcraft-lang/ui";
-import { initBrainRuntime } from "./services/brain-runtime";
 import { SimEnvironmentStore } from "./services/sim-environment-store";
 import { hydrateUserTilesAtStartup } from "./services/user-tile-registration";
 import { initVfsServiceWorker } from "./services/vfs-service-worker";
@@ -20,7 +19,6 @@ logger.level = LogLevel.DEBUG;
 const workspace = initWorkspaceStore();
 export const simStore = new SimEnvironmentStore(workspace);
 
-initBrainRuntime(simStore.env);
 hydrateUserTilesAtStartup(simStore);
 initVfsServiceWorker(simStore);
 

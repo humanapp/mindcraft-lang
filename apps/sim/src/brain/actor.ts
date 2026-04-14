@@ -1,6 +1,4 @@
-import type { MindcraftBrain, Vector2 } from "@mindcraft-lang/core/app";
-import { type IBrainDef, mkSensorTileId } from "@mindcraft-lang/core/app";
-import { createEmptySimBrain, createSimBrain } from "@/services/brain-runtime";
+import { BrainDef, type IBrainDef, type MindcraftBrain, mkSensorTileId, type Vector2 } from "@mindcraft-lang/core/app";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
 import { Mover, type MoverConfig, type Steering, steerAvoidObstacles } from "./movement";
@@ -166,11 +164,13 @@ export class Actor {
   }
 
   private tryCreateBrain(): MindcraftBrain {
+    const env = this.engine.env;
     try {
-      return createSimBrain(this.brainDef, this);
+      return env.createBrain(this.brainDef, { context: this });
     } catch (err) {
       console.warn(`[Actor] Failed to create brain for ${this.archetype}:`, err);
-      return createEmptySimBrain(`${this.archetype} Brain`, this);
+      const emptyDef = env.withServices((services) => BrainDef.emptyBrainDef(services, `${this.archetype} Brain`));
+      return env.createBrain(emptyDef, { context: this });
     }
   }
 

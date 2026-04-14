@@ -1,8 +1,8 @@
-import type { MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import { Scene } from "phaser";
 import type { Archetype } from "@/brain/actor";
-import { ENV_REGISTRY_KEY } from "@/game/main";
+import { STORE_REGISTRY_KEY } from "@/game/main";
 import { deserializeBrainFromArrayBuffer, setDefaultBrain } from "@/services/brain-persistence";
+import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 
 const DEFAULT_BRAIN_ARCHETYPES: Archetype[] = ["carnivore", "herbivore", "plant"];
 
@@ -36,12 +36,12 @@ export class Preloader extends Scene {
   }
 
   create() {
-    const env = this.game.registry.get(ENV_REGISTRY_KEY) as MindcraftEnvironment;
+    const store = this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore;
     // Deserialize default brains from loaded binary assets and cache them
     for (const archetype of DEFAULT_BRAIN_ARCHETYPES) {
       const data = this.cache.binary.get(`default-brain-${archetype}`) as ArrayBuffer | undefined;
       if (data) {
-        const brainDef = deserializeBrainFromArrayBuffer(env, data);
+        const brainDef = deserializeBrainFromArrayBuffer(store.env, data);
         if (brainDef) {
           setDefaultBrain(archetype, brainDef);
           console.log(`Default brain loaded for ${archetype}`);

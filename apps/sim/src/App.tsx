@@ -190,7 +190,7 @@ function App() {
         <h1 className="sr-only">Mindcraft Simulation</h1>
         {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
         <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
-          <PhaserGame env={store.env} onSceneReady={handleSceneReady} />
+          <PhaserGame store={store} onSceneReady={handleSceneReady} />
           {/* Mobile sidebar toggle */}
           <button
             type="button"
