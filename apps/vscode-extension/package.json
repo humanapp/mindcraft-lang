@@ -2,21 +2,20 @@
 	"name": "mindcraft-vscode-extension",
 	"displayName": "Mindcraft VS Code Web Extension",
 	"description": "Program sensors and actuators for Mindcraft apps in TypeScript using VS Code",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"private": true,
 	"publisher": "mindcraft-lang",
 	"license": "MIT",
-  "author": "humanapp",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/humanapp/mindcraft-lang.git",
-    "directory": "apps/vscode-extension"
-  },
-  "bugs": {
-    "url": "https://github.com/humanapp/mindcraft-lang/issues"
-  },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/apps/vscode-extension#readme",
-
+	"author": "humanapp",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/humanapp/mindcraft-lang.git",
+		"directory": "apps/vscode-extension"
+	},
+	"bugs": {
+		"url": "https://github.com/humanapp/mindcraft-lang/issues"
+	},
+	"homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/apps/vscode-extension#readme",
 	"engines": {
 		"vscode": "^1.100.0"
 	},
@@ -79,7 +78,7 @@
 				}
 			}
 		}
-  },
+	},
 	"scripts": {
 		"dev": "node esbuild.mjs --watch",
 		"build": "node esbuild.mjs --production",
