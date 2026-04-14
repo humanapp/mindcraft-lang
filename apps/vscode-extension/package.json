@@ -90,8 +90,8 @@
 		"check": "biome check ./src --write",
 		"typecheck": "tsc --noEmit",
 		"format": "biome format ./src --write",
-		"package": "vsce package --no-dependencies",
-		"publish": "vsce publish --no-dependencies",
+		"package": "vsce package --no-dependencies --target web",
+		"publish": "vsce publish --no-dependencies --target web",
 		"release:patch": "node ../../scripts/release.js patch --skip-deps",
 		"release:minor": "node ../../scripts/release.js minor --skip-deps",
 		"release:major": "node ../../scripts/release.js major --skip-deps"

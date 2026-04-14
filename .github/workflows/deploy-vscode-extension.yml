@@ -77,7 +77,7 @@ jobs:
           fi
 
       - name: Publish to VS Code Marketplace
-        run: npx vsce publish --no-dependencies
+        run: npm run publish
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
