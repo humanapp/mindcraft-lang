@@ -15,7 +15,8 @@ import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { getAppSettings, onAppSettingsChange } from "./app-settings";
 import { getUiPreferences } from "./ui-preferences";
-import { applyCompiledUserTiles } from "./user-tile-registration";
+import { applyCompiledUserTiles, hydrateUserTilesAtStartup } from "./user-tile-registration";
+import { initVfsServiceWorker } from "./vfs-service-worker";
 import { clearBindingToken, loadBindingToken, saveBindingToken } from "./vscode-bridge";
 
 export class SimEnvironmentStore {
@@ -54,6 +55,12 @@ export class SimEnvironmentStore {
         this._pendingBrainRebuild = true;
       }
     });
+  }
+
+  initialize(): void {
+    hydrateUserTilesAtStartup(this);
+    initVfsServiceWorker(this);
+    this.initBridge();
   }
 
   flushPendingBrainRebuilds(): void {
