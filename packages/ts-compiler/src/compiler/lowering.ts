@@ -7973,7 +7973,8 @@ function isNativeBackedStruct(def: StructTypeDef): boolean {
 
 function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext): void {
   const contextualType = ctx.checker.getContextualType(expr);
-  if (!contextualType) {
+  const resolvedType = contextualType ?? ctx.checker.getTypeAtLocation(expr);
+  if (!resolvedType) {
     ctx.diagnostics.push(
       makeDiag(
         LoweringDiagCode.CannotDetermineTypeForObjectLiteral,
@@ -7984,7 +7985,7 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     return;
   }
 
-  const structDef = resolveStructType(contextualType, ctx.services, ctx.checker);
+  const structDef = resolveStructType(resolvedType, ctx.services, ctx.checker);
   if (structDef) {
     if (isNativeBackedStruct(structDef)) {
       ctx.diagnostics.push(
@@ -8000,14 +8001,14 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
     return;
   }
 
-  const mapTypeId = resolveMapTypeId(contextualType, ctx);
+  const mapTypeId = resolveMapTypeId(resolvedType, ctx);
   if (mapTypeId) {
     lowerObjectLiteralAsMap(expr, mapTypeId, ctx);
     return;
   }
 
-  if (contextualType.isUnion()) {
-    const nonNullish = contextualType.types.filter(
+  if (resolvedType.isUnion()) {
+    const nonNullish = resolvedType.types.filter(
       (t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined)
     );
     if (nonNullish.length > 1) {
@@ -8035,6 +8036,14 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext)
         lowerObjectLiteralAsMap(expr, matchedMapId, ctx);
         return;
       }
+    }
+  }
+
+  if (!contextualType) {
+    const anonDef = autoRegisterAnonymousStruct(resolvedType, ctx.checker, ctx.services);
+    if (anonDef) {
+      lowerObjectLiteralAsStruct(expr, anonDef, ctx);
+      return;
     }
   }
 
@@ -8604,6 +8613,49 @@ function autoRegisterIntersectionType(
   const typeId = registry.reserveStructType(structName);
   registry.finalizeStructType(typeId, { fields });
   return typeId;
+}
+
+function autoRegisterAnonymousStruct(
+  type: ts.Type,
+  checker: ts.TypeChecker,
+  services: BrainServices
+): StructTypeDef | undefined {
+  const callSigs = type.getCallSignatures();
+  if (callSigs.length > 0) return undefined;
+  const constructSigs = type.getConstructSignatures();
+  if (constructSigs.length > 0) return undefined;
+  const props = type.getProperties();
+  if (props.length === 0) return undefined;
+
+  const fields = new List<{ name: string; typeId: TypeId }>();
+  const nameParts: string[] = [];
+  for (const prop of props) {
+    const propType = checker.getTypeOfSymbol(prop);
+    if (propType.getCallSignatures().length > 0) return undefined;
+    let fieldTypeId = tsTypeToTypeId(propType, checker, services);
+    if (!fieldTypeId) return undefined;
+    const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
+    if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
+      fieldTypeId = services.types.addNullableType(fieldTypeId);
+    }
+    fields.push({ name: prop.name, typeId: fieldTypeId });
+    nameParts.push(`${prop.name}:${fieldTypeId}`);
+  }
+
+  const structName = `{${nameParts.join(",")}}`;
+  const registry = services.types;
+  const existing = registry.resolveByName(structName);
+  if (existing) {
+    const def = registry.get(existing);
+    if (def && def.coreType === NativeType.Struct) return def as StructTypeDef;
+    return undefined;
+  }
+
+  const typeId = registry.reserveStructType(structName);
+  registry.finalizeStructType(typeId, { fields });
+  const def = registry.get(typeId);
+  if (def && def.coreType === NativeType.Struct) return def as StructTypeDef;
+  return undefined;
 }
 
 function autoRegisterObjectType(

@@ -247,7 +247,7 @@ export default Sensor({
     assert.ok(result.diagnostics.length > 0, "expected diagnostics for native-backed struct");
   });
 
-  test("untyped object literal produces diagnostic", () => {
+  test("untyped object literal compiles as anonymous struct", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -256,12 +256,13 @@ export default Sensor({
   name: "untyped-obj",
   onExecute(ctx: Context): number {
     const obj = { a: 1 };
-    return 0;
+    return obj.a;
   },
 });
 `;
     const result = compileUserTile(source, { ambientSource, services });
-    assert.ok(result.diagnostics.length > 0, "expected diagnostic for untyped object literal");
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program, "expected program");
   });
 });
 
