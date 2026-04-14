@@ -1,8 +1,8 @@
 # Mindcraft Packages -- Integration Guide
 
-This guide explains how to integrate `@mindcraft-lang/core`, `@mindcraft-lang/ui`, and
-`@mindcraft-lang/docs` into your own Vite + React + Tailwind CSS application. All three
-packages are installed from npm -- you do not need to clone the mindcraft-lang monorepo.
+This guide explains how to integrate the Mindcraft packages into your own
+Vite + React + Tailwind CSS application. All packages are installed from npm -- you do not
+need to clone the mindcraft-lang monorepo.
 
 ## Package Overview
 
@@ -12,12 +12,16 @@ packages are installed from npm -- you do not need to clone the mindcraft-lang m
 | `@mindcraft-lang/ui`   | Shared React components: shadcn/ui primitives + brain editor           | Source-only     |
 | `@mindcraft-lang/docs` | Documentation sidebar, markdown renderer, standalone docs page         | Source-only     |
 
+`@mindcraft-lang/core` is a conventionally built package with pre-built ESM and CJS output.
+It works with standard Node module resolution -- no aliases needed. Import app-facing
+symbols from `@mindcraft-lang/core/app`.
+
 **Source-only** means `ui` and `docs` ship their TypeScript source on npm rather than
 pre-built JavaScript. Your app compiles them at build time using Vite aliases and tsconfig
 path mappings that point into the installed `node_modules` source.
 
-`@mindcraft-lang/core` is a conventionally built package with pre-built ESM and CJS output.
-It works with standard Node module resolution -- no aliases needed.
+Additional packages are available for TypeScript-authored tiles and VS Code integration.
+See [TypeScript Compiler + VS Code Bridge](#6-typescript-compiler--vs-code-bridge) below.
 
 ### Dependency Graph
 
@@ -37,170 +41,14 @@ It works with standard Node module resolution -- no aliases needed.
 
 ---
 
-## 1. Prerequisites
-
-- **Node.js** >= 18
-- **Vite** >= 6 with `@vitejs/plugin-react`
-- **React** >= 19
-- **Tailwind CSS** v4 (with `@tailwindcss/postcss`)
-
----
-
-## 2. Install Dependencies
-
-### npm install
-
-Install the packages you need:
+## 1. Getting Started with Core
 
 ```bash
-# Core only (language runtime, compiler, VM)
 npm install @mindcraft-lang/core
-
-# Core + UI (adds brain editor and shadcn/ui components)
-npm install @mindcraft-lang/core @mindcraft-lang/ui
-
-# Full stack (adds documentation sidebar and renderer)
-npm install @mindcraft-lang/core @mindcraft-lang/ui @mindcraft-lang/docs
 ```
 
-If you only need the core language runtime (no UI), you only need `@mindcraft-lang/core`.
-
-### Peer dependencies
-
-The `ui` and `docs` packages require React 19+:
-
-```bash
-npm install react react-dom
-```
-
----
-
-## 3. Vite Configuration
-
-The source-only packages (`ui` and `docs`) need Vite aliases to resolve their TypeScript
-source from `node_modules`. The core package needs to be excluded from Vite's dependency
-pre-bundling since it already ships as ESM.
-
-```js
-// vite.config.mjs
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
-import path from "path";
-import { uiPlugin } from "./node_modules/@mindcraft-lang/ui/src/vite-plugin.ts";
-
-export default defineConfig({
-  plugins: [
-    react(),
-    uiPlugin(),
-  ],
-  resolve: {
-    alias: {
-      // Source-only packages: resolve to their src/ directories in node_modules
-      "@mindcraft-lang/ui": path.resolve(__dirname, "node_modules/@mindcraft-lang/ui/src"),
-      "@mindcraft-lang/docs": path.resolve(__dirname, "node_modules/@mindcraft-lang/docs/src"),
-    },
-  },
-  optimizeDeps: {
-    exclude: ["@mindcraft-lang/core"],
-  },
-});
-```
-
-`uiPlugin()` handles the Latin Modern Math font bundled with `@mindcraft-lang/ui`: it
-rewrites the font URL in the compiled CSS, serves it during dev, and emits it to
-`dist/assets/fonts/` in production. Without it the font will fail to load silently.
-
-If you are only using `@mindcraft-lang/core`, you can skip the aliases and `uiPlugin`
-entirely and just keep the `optimizeDeps.exclude`.
-
----
-
-## 4. TypeScript Configuration
-
-Add path mappings so the TypeScript compiler can resolve the source-only packages. The core
-package uses standard Node module resolution and does not need path mappings.
-
-```json
-{
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "jsx": "react-jsx",
-    "strict": true,
-    "noEmit": true,
-    "paths": {
-      "@mindcraft-lang/ui": ["./node_modules/@mindcraft-lang/ui/src/index.ts"],
-      "@mindcraft-lang/ui/*": ["./node_modules/@mindcraft-lang/ui/src/*"],
-      "@mindcraft-lang/docs": ["./node_modules/@mindcraft-lang/docs/src/index.ts"],
-      "@mindcraft-lang/docs/*": ["./node_modules/@mindcraft-lang/docs/src/*"]
-    }
-  }
-}
-```
-
----
-
-## 5. Tailwind CSS Setup
-
-### globals.css
-
-Your app's global CSS file must import Tailwind, the shared UI stylesheet, and declare the
-`ui` and `docs` source directories as Tailwind content sources so their utility classes are
-included in the build.
-
-```css
-@import "tailwindcss";
-@import "@mindcraft-lang/ui/ui.css";
-@source "../node_modules/@mindcraft-lang/ui/src";
-@source "../node_modules/@mindcraft-lang/docs/src";
-```
-
-### Theme variables
-
-The `ui` package uses shadcn/ui design tokens. Define the theme CSS variables in your
-globals.css:
-
-```css
-@theme {
-  --color-background: oklch(100% 0 0);
-  --color-foreground: oklch(9% 0 0);
-  --color-card: oklch(100% 0 0);
-  --color-card-foreground: oklch(9% 0 0);
-  --color-popover: oklch(100% 0 0);
-  --color-popover-foreground: oklch(9% 0 0);
-  --color-primary: oklch(9% 0 0);
-  --color-primary-foreground: oklch(98% 0 0);
-  --color-secondary: oklch(96% 0 0);
-  --color-secondary-foreground: oklch(9% 0 0);
-  --color-muted: oklch(96% 0 0);
-  --color-muted-foreground: oklch(45% 0 0);
-  --color-accent: oklch(96% 0 0);
-  --color-accent-foreground: oklch(9% 0 0);
-  --color-destructive: oklch(60% 0.21 29);
-  --color-destructive-foreground: oklch(98% 0 0);
-  --color-border: oklch(90% 0 0);
-  --color-input: oklch(90% 0 0);
-  --color-ring: oklch(9% 0 0);
-  --radius: 0.5rem;
-  --font-mono:
-    "Roboto Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
-    Consolas, "DejaVu Sans Mono", monospace;
-}
-```
-
-You can provide a dark mode variant in a `@media (prefers-color-scheme: dark)` block. See
-the sim app's `globals.css` for a complete example.
-
----
-
-## 6. Integrating `@mindcraft-lang/core`
-
-The core package provides the brain model, tile catalog, compiler, runtime, and VM.
-
-### Tier 1: Core-only (runtime)
-
-Create a `MindcraftEnvironment`, install modules, and create brains:
+The core package provides the brain model, tile catalog, compiler, runtime, and VM. Create
+a `MindcraftEnvironment`, install modules, and create brains:
 
 ```typescript
 import {
@@ -208,18 +56,13 @@ import {
   coreModule,
   type MindcraftModule,
   type MindcraftModuleApi,
-} from "@mindcraft-lang/core";
+} from "@mindcraft-lang/core/app";
 
-// Define your app module with custom types, sensors, actuators, and tiles
 function createAppModule(): MindcraftModule {
   return {
     id: "my-app",
     install(api: MindcraftModuleApi) {
       // Register app-specific types, sensors, actuators, operators, and tiles
-      // api.defineType(...)
-      // api.registerHostSensor(...)
-      // api.registerHostActuator(...)
-      // api.registerTile(...)
     },
   };
 }
@@ -228,126 +71,60 @@ const environment = createMindcraftEnvironment({
   modules: [coreModule(), createAppModule()],
 });
 
-// Create and run a brain
 const brain = environment.createBrain(brainDef, { context: actor });
 brain.startup();
 brain.think(now);
 ```
 
-### Tier 2: Core + TypeScript-authored tiles
-
-Add `@mindcraft-lang/ts-compiler` to compile user-authored TypeScript actions:
-
-```typescript
-import { createMindcraftEnvironment, coreModule } from "@mindcraft-lang/core";
-import { createWorkspaceCompiler } from "@mindcraft-lang/ts-compiler";
-
-const environment = createMindcraftEnvironment({
-  modules: [coreModule(), createAppModule()],
-});
-
-// Create a workspace compiler bound to the environment
-const compiler = createWorkspaceCompiler({ environment });
-
-// Compile and install the action bundle
-const result = compiler.compile();
-if (result.bundle) {
-  const update = environment.replaceActionBundle(result.bundle);
-  if (update.invalidatedBrains.length > 0) {
-    // Schedule brain rebuilds at a safe frame boundary
-    environment.rebuildInvalidatedBrains();
-  }
-}
-```
-
-### Tier 3: Core + compiler + VS Code bridge
-
-Add `@mindcraft-lang/bridge-app` for VS Code extension connectivity:
-
-```typescript
-import { createAppBridge } from "@mindcraft-lang/bridge-app";
-import { createCompilationFeature } from "@mindcraft-lang/bridge-app/compilation";
-import { createWorkspaceCompiler } from "@mindcraft-lang/ts-compiler";
-
-const compiler = createWorkspaceCompiler({ environment });
-
-const bridge = createAppBridge({
-  app: {
-    id: "my-app",
-    name: "My App",
-    projectId: "project-1",
-    projectName: "Project",
-  },
-  bridgeUrl: "ws://localhost:6464",
-  workspace: {
-    exportSnapshot: () => workspaceStore.export(),
-    applyRemoteChange: (change) => workspaceStore.apply(change),
-    onLocalChange: (listener) => workspaceStore.onChange(listener),
-  },
-  features: [createCompilationFeature({ compiler })],
-});
-
-bridge.start();
-```
-
-### Available sub-path exports
-
-| Import path                                    | Contents                              |
-| ---------------------------------------------- | ------------------------------------- |
-| `@mindcraft-lang/core`                         | Top-level: environment, modules, platform utils |
-| `@mindcraft-lang/core/brain`                   | Brain services, tile catalog (internal) |
-| `@mindcraft-lang/core/brain/model`             | BrainDef, page/rule/tile interfaces   |
-| `@mindcraft-lang/core/brain/tiles`             | Built-in tile definitions             |
-| `@mindcraft-lang/core/brain/compiler`          | Compiler and parser                   |
-| `@mindcraft-lang/core/brain/runtime`           | Brain runner and VM                   |
-| `@mindcraft-lang/core/brain/language-service`  | Language service (tile suggestions)   |
-| `@mindcraft-lang/core/platform`                | Platform abstractions                 |
-| `@mindcraft-lang/core/docs`                    | Core doc manifests                    |
-| `@mindcraft-lang/core/docs/en`                 | Core English doc content              |
+All app-facing symbols are exported from `@mindcraft-lang/core/app` -- environment,
+modules, brain model, tile definitions, type system, runtime values, and platform utilities.
 
 ---
 
-## 7. Integrating `@mindcraft-lang/ui`
+## 2. Adding the Brain Editor
 
-The UI package provides shadcn/ui primitives, the full brain editor, and utility functions.
+```bash
+npm install @mindcraft-lang/ui
+```
 
-### Brain Editor Setup
+The UI package provides shadcn/ui primitives, the brain editor, and utility functions.
 
-The brain editor is the main component. It requires a `BrainEditorConfig` to decouple it
-from app-specific concerns.
+### BrainEditorConfig
 
-#### Step 1: Build a `BrainEditorConfig`
+The brain editor requires a `BrainEditorConfig` to decouple it from app-specific concerns:
 
 ```tsx
 import type { BrainEditorConfig } from "@mindcraft-lang/ui";
 
 const brainEditorConfig: BrainEditorConfig = {
-  // Required: map data type IDs to icon URLs
   dataTypeIcons: new Map([
     ["core:number", "/assets/icons/number.svg"],
     ["core:string", "/assets/icons/string.svg"],
     ["core:boolean", "/assets/icons/boolean.svg"],
   ]),
-
-  // Required: map data type IDs to display names
   dataTypeNames: new Map([
     ["core:number", "number"],
     ["core:string", "text"],
     ["core:boolean", "true/false"],
   ]),
-
-  // Required: identify app-specific variable factory tiles
   isAppVariableFactoryTileId: (id) => id.startsWith("tile.var.factory->struct:"),
-
-  // Required: custom literal types (empty array if none)
   customLiteralTypes: [],
-
-  // Optional: factory for creating new empty brains
-  getDefaultBrain: () => myDefaultBrain,
 };
 ```
 
-#### Step 2: Wrap your app with `BrainEditorProvider`
+| Field                        | Type                               | Required | Purpose                                       |
+| ---------------------------- | ---------------------------------- | -------- | --------------------------------------------- |
+| `dataTypeIcons`              | `ReadonlyMap<string, string>`      | Yes      | Type ID -> icon URL                           |
+| `dataTypeNames`              | `ReadonlyMap<string, string>`      | Yes      | Type ID -> display name                       |
+| `isAppVariableFactoryTileId` | `(id: string) => boolean`          | Yes      | Identifies app variable factory tiles         |
+| `customLiteralTypes`         | `ReadonlyArray<CustomLiteralType>` | Yes      | App-defined literal tile types (e.g. Vector2) |
+| `getDefaultBrain`            | `() => BrainDef \| undefined`      | No       | Factory for "Load Default Brain" action       |
+| `onTileHelp`                 | `(tileDef) => void`                | No       | Callback for tile right-click -> Help         |
+| `docsIntegration`            | `{ isOpen, toggle, close }`        | No       | Docs sidebar controls for the editor toolbar  |
+
+### Rendering the Editor
+
+Wrap your app with `BrainEditorProvider` and use `BrainEditorDialog` to open it:
 
 ```tsx
 import { BrainEditorProvider, BrainEditorDialog, Toaster } from "@mindcraft-lang/ui";
@@ -374,149 +151,36 @@ function App() {
 }
 ```
 
-### BrainEditorConfig Reference
+### UI Primitives and Utilities
 
-| Field                        | Type                               | Required | Purpose                                            |
-| ---------------------------- | ---------------------------------- | -------- | -------------------------------------------------- |
-| `dataTypeIcons`              | `ReadonlyMap<string, string>`      | Yes      | Type ID -> icon URL                                |
-| `dataTypeNames`              | `ReadonlyMap<string, string>`      | Yes      | Type ID -> display name                            |
-| `isAppVariableFactoryTileId` | `(id: string) => boolean`          | Yes      | Identifies app variable factory tiles              |
-| `customLiteralTypes`         | `ReadonlyArray<CustomLiteralType>` | Yes      | App-defined literal tile types (e.g. Vector2)      |
-| `getDefaultBrain`            | `() => BrainDef \| undefined`      | No       | Factory for "Load Default Brain" action            |
-| `onTileHelp`                 | `(tileDef) => void`                | No       | Callback for tile right-click -> Help              |
-| `docsIntegration`            | `{ isOpen, toggle, close }`        | No       | Docs sidebar controls for the editor toolbar       |
-
-### Using UI Primitives
-
-The package re-exports shadcn/ui primitives. Import them from the barrel:
+The package also re-exports shadcn/ui primitives and utility functions:
 
 ```tsx
 import { Button, Card, Dialog, Input, Slider } from "@mindcraft-lang/ui";
-```
-
-### Utility Functions
-
-```tsx
 import { cn, adjustColor, saturateColor } from "@mindcraft-lang/ui";
 ```
 
 ---
 
-## 8. Integrating `@mindcraft-lang/docs`
+## 3. Adding Documentation
 
-The docs package provides the documentation sidebar, markdown renderer, and a standalone
-docs page. It depends on both `@mindcraft-lang/core` and `@mindcraft-lang/ui`.
-
-### Step 1: Create a Docs Manifest
-
-Define metadata for your app-specific tile and pattern documentation. Each entry has a
-`contentKey` that maps to a markdown file.
-
-```typescript
-// src/docs/manifest.ts
-import type { AppTileDocMeta, AppPatternDocMeta } from "@mindcraft-lang/docs";
-
-export const appTileDocs: readonly AppTileDocMeta[] = [
-  {
-    tileId: "tile.sensor->sensor.see",
-    tags: ["vision", "detection"],
-    category: "Sensors",
-    contentKey: "see",
-  },
-  {
-    tileId: "tile.actuator->actuator.move",
-    tags: ["movement", "action"],
-    category: "Actuators",
-    contentKey: "move",
-  },
-];
-
-export const appPatternDocs: readonly AppPatternDocMeta[] = [
-  {
-    id: "hunt-and-eat",
-    title: "Hunt and Eat",
-    tags: ["hunting", "feeding"],
-    category: "Hunting",
-    contentKey: "hunt-and-eat",
-  },
-];
+```bash
+npm install @mindcraft-lang/docs
 ```
 
-### Step 2: Write Markdown Content
+The docs package provides a documentation sidebar, markdown renderer, and standalone docs
+page. It depends on both `@mindcraft-lang/core` and `@mindcraft-lang/ui`.
 
-Place markdown files alongside your manifest:
-
-```
-src/docs/content/en/
-  tiles/
-    see.md
-    move.md
-  patterns/
-    hunt-and-eat.md
-```
-
-### Step 3: Build the Docs Registry
-
-Use Vite's `import.meta.glob` to load markdown content at build time, then pass it to
-`buildDocsRegistry()`.
-
-```typescript
-// src/docs/docs-registry.ts
-import { buildDocsRegistry } from "@mindcraft-lang/docs";
-import { appPatternDocs, appTileDocs } from "./manifest";
-
-const appTileModules = import.meta.glob<string>("./content/en/tiles/*.md", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-
-const appPatternModules = import.meta.glob<string>("./content/en/patterns/*.md", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
-
-function contentKeyFromPath(p: string): string {
-  const filename = p.split("/").pop() ?? "";
-  return filename.replace(/\.md$/, "");
-}
-
-function buildContentMap(modules: Record<string, string>): Record<string, string> {
-  const map: Record<string, string> = {};
-  for (const [path, content] of Object.entries(modules)) {
-    map[contentKeyFromPath(path)] = content;
-  }
-  return map;
-}
-
-export function createDocsRegistry() {
-  return buildDocsRegistry({
-    appTiles: {
-      meta: appTileDocs,
-      content: buildContentMap(appTileModules),
-    },
-    appPatterns: {
-      meta: appPatternDocs,
-      content: buildContentMap(appPatternModules),
-    },
-  });
-}
-```
+### Minimal Setup
 
 If you have no app-specific documentation, call `buildDocsRegistry()` with no arguments to
-get a registry containing only the core tile and concept docs.
-
-### Step 4: Add the Docs Sidebar
-
-Wrap your app with `DocsSidebarProvider` and render `DocsSidebar`.
+get a registry containing only the built-in core docs:
 
 ```tsx
-import { DocsSidebar, DocsSidebarProvider } from "@mindcraft-lang/docs";
-import { createDocsRegistry } from "./docs/docs-registry";
+import { buildDocsRegistry, DocsSidebar, DocsSidebarProvider } from "@mindcraft-lang/docs";
 
 function App() {
-  const docsRegistry = useMemo(() => createDocsRegistry(), []);
+  const docsRegistry = useMemo(() => buildDocsRegistry(), []);
 
   return (
     <DocsSidebarProvider registry={docsRegistry}>
@@ -527,34 +191,57 @@ function App() {
 }
 ```
 
-### Step 5: Add a Standalone Docs Page (Optional)
+### App-Specific Documentation
+
+To add your own tile and pattern docs, create a manifest with metadata entries and markdown
+content, then pass them to `buildDocsRegistry()`:
+
+```typescript
+import { buildDocsRegistry } from "@mindcraft-lang/docs";
+import type { AppTileDocMeta, AppPatternDocMeta } from "@mindcraft-lang/docs";
+
+const appTileDocs: readonly AppTileDocMeta[] = [
+  { tileId: "tile.sensor->sensor.see", tags: ["vision"], category: "Sensors", contentKey: "see" },
+  { tileId: "tile.actuator->actuator.move", tags: ["movement"], category: "Actuators", contentKey: "move" },
+];
+
+// Load markdown content with Vite's import.meta.glob
+const tileContent = import.meta.glob<string>("./content/en/tiles/*.md", {
+  query: "?raw", import: "default", eager: true,
+});
+
+function buildContentMap(modules: Record<string, string>): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const [path, content] of Object.entries(modules)) {
+    map[path.split("/").pop()!.replace(/\.md$/, "")] = content;
+  }
+  return map;
+}
+
+export function createDocsRegistry() {
+  return buildDocsRegistry({
+    appTiles: { meta: appTileDocs, content: buildContentMap(tileContent) },
+  });
+}
+```
+
+### Standalone Docs Page
 
 For a full-page docs view at a `/docs` route:
 
 ```tsx
 import { DocsPage } from "@mindcraft-lang/docs";
-import { Toaster } from "@mindcraft-lang/ui";
-import { createDocsRegistry } from "./docs/docs-registry";
 
 export default function MyDocsPage() {
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
-
-  return (
-    <DocsPage registry={docsRegistry} backLabel="Home" backHref="/">
-      <Toaster />
-    </DocsPage>
-  );
+  return <DocsPage registry={docsRegistry} backLabel="Home" backHref="/" />;
 }
 ```
 
-The `DocsPage` component syncs with the browser URL using `pushState`. The URL format is
-`/docs/{tab}/{entryKey}`.
+### Connecting Docs to the Brain Editor
 
-### Step 6: Wire Docs into the Brain Editor (Optional)
-
-To connect the docs sidebar to the brain editor (enabling the Help context menu item on
-tiles and the docs toggle button in the editor toolbar), bridge the two contexts in a
-wrapper component:
+To enable the Help context menu on tiles and the docs toggle in the editor toolbar,
+bridge the two contexts:
 
 ```tsx
 import { useDocsSidebar } from "@mindcraft-lang/docs";
@@ -576,78 +263,106 @@ function DocsBrainEditorProvider({ children }: { children: React.ReactNode }) {
 }
 ```
 
-This wrapper must be rendered inside `DocsSidebarProvider` so `useDocsSidebar()` has access
-to the docs context.
-
-When `docsIntegration` is not provided, the brain editor hides the docs toggle button. When
-`onTileHelp` is not provided, the Help context menu item is hidden.
+This wrapper must be rendered inside `DocsSidebarProvider` so `useDocsSidebar()` has
+access to the docs context.
 
 ---
 
-## 9. Minimal Integration Checklist
+## 4. Build Configuration
 
-### Tier 1: Core only (runtime)
+### Prerequisites
 
-- [ ] `npm install @mindcraft-lang/core`
-- [ ] Add `optimizeDeps.exclude: ["@mindcraft-lang/core"]` to Vite config
-- [ ] Create a `MindcraftEnvironment` with `createMindcraftEnvironment({ modules: [coreModule()] })`
-- [ ] Define app-specific modules via `MindcraftModule` and install at creation time
-- [ ] Create brains with `environment.createBrain(brainDef)`
+- **Node.js** >= 18
+- **Vite** >= 6 with `@vitejs/plugin-react`
+- **React** >= 19
+- **Tailwind CSS** v4 (with `@tailwindcss/postcss`)
 
-### Tier 2: Core + TypeScript-authored tiles
+### Vite
 
-- [ ] `npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler`
-- [ ] Create a workspace compiler with `createWorkspaceCompiler({ environment })`
-- [ ] Compile and install bundles with `environment.replaceActionBundle(bundle)`
-- [ ] Handle brain invalidation with `environment.onBrainsInvalidated(...)`
-- [ ] Schedule rebuilds with `environment.rebuildInvalidatedBrains()`
+The source-only packages (`ui` and `docs`) need Vite aliases to resolve their TypeScript
+source from `node_modules`. The core package needs to be excluded from Vite's dependency
+pre-bundling since it already ships as ESM.
 
-### Tier 3: Core + compiler + VS Code bridge
+```js
+// vite.config.mjs
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "path";
+import { uiPlugin } from "./node_modules/@mindcraft-lang/ui/src/vite-plugin.ts";
 
-- [ ] `npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler @mindcraft-lang/bridge-app`
-- [ ] Create an app bridge with `createAppBridge({ workspace, features: [...] })`
-- [ ] Add compilation with `createCompilationFeature({ compiler })`
-- [ ] Manage workspace persistence through the app-owned `WorkspaceAdapter`
+export default defineConfig({
+  plugins: [
+    react(),
+    uiPlugin(),
+  ],
+  resolve: {
+    alias: {
+      "@mindcraft-lang/ui": path.resolve(__dirname, "node_modules/@mindcraft-lang/ui/src"),
+      "@mindcraft-lang/docs": path.resolve(__dirname, "node_modules/@mindcraft-lang/docs/src"),
+    },
+  },
+  optimizeDeps: {
+    exclude: ["@mindcraft-lang/core"],
+  },
+});
+```
 
-### UI and docs (any tier)
+`uiPlugin()` handles the Latin Modern Math font bundled with `@mindcraft-lang/ui`. Without
+it the font will fail to load silently.
 
-- [ ] `npm install @mindcraft-lang/ui` (for brain editor and shadcn/ui components)
-- [ ] `npm install @mindcraft-lang/docs` (for documentation sidebar and renderer)
+If you are only using `@mindcraft-lang/core`, you can skip the aliases and `uiPlugin`
+entirely and just keep the `optimizeDeps.exclude`.
+
+### TypeScript
+
+Add path mappings so TypeScript can resolve the source-only packages:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "paths": {
+      "@mindcraft-lang/ui": ["./node_modules/@mindcraft-lang/ui/src/index.ts"],
+      "@mindcraft-lang/ui/*": ["./node_modules/@mindcraft-lang/ui/src/*"],
+      "@mindcraft-lang/docs": ["./node_modules/@mindcraft-lang/docs/src/index.ts"],
+      "@mindcraft-lang/docs/*": ["./node_modules/@mindcraft-lang/docs/src/*"]
+    }
+  }
+}
+```
+
+### Tailwind CSS
+
+Your app's global CSS file must import Tailwind and the shared UI stylesheet, declare the
+source-only package directories as content sources, and define the shadcn/ui theme
+variables.
+
+```css
+@import "tailwindcss";
+@import "@mindcraft-lang/ui/ui.css";
+@source "../node_modules/@mindcraft-lang/ui/src";
+@source "../node_modules/@mindcraft-lang/docs/src";
+```
+
+The `ui` package uses shadcn/ui design tokens. See the sim app's `globals.css` for a
+complete example of the required `@theme` block and dark mode variant.
 
 ---
 
-## 10. Reference: Complete App.tsx Example
+## 5. Putting It All Together
+
+A complete app using all three packages wires the providers together like this:
 
 ```tsx
-import type { BrainDef } from "@mindcraft-lang/core/brain/model";
+import type { BrainDef } from "@mindcraft-lang/core/app";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
 import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@mindcraft-lang/ui";
-import { useMemo, useState } from "react";
-import { createDocsRegistry } from "./docs/docs-registry";
 
-// -- Build your BrainEditorConfig (app-specific) ----------------------------
-const baseBrainEditorConfig = {
-  dataTypeIcons: new Map(/* ... */),
-  dataTypeNames: new Map(/* ... */),
-  isAppVariableFactoryTileId: (id: string) => false,
-  customLiteralTypes: [],
-};
-
-// -- Wrapper: injects docs integration into the brain editor config ---------
-function DocsBrainEditorProvider({ children }: { children: React.ReactNode }) {
-  const { openDocsForTile, isOpen, toggle, close } = useDocsSidebar();
-  const config = useMemo(
-    () => ({
-      ...baseBrainEditorConfig,
-      onTileHelp: openDocsForTile,
-      docsIntegration: { isOpen, toggle, close },
-    }),
-    [openDocsForTile, isOpen, toggle, close]
-  );
-  return <BrainEditorProvider config={config}>{children}</BrainEditorProvider>;
-}
-
-// -- Main App ---------------------------------------------------------------
 export default function App() {
   const docsRegistry = useMemo(() => createDocsRegistry(), []);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -655,11 +370,10 @@ export default function App() {
 
   return (
     <DocsSidebarProvider registry={docsRegistry}>
-      <div className="h-screen flex bg-background">
-        {/* Your app content */}
-      </div>
-
       <DocsBrainEditorProvider>
+        <div className="h-screen flex bg-background">
+          {/* Your app content */}
+        </div>
         <BrainEditorDialog
           isOpen={isEditorOpen}
           onOpenChange={setIsEditorOpen}
@@ -670,7 +384,6 @@ export default function App() {
           }}
         />
       </DocsBrainEditorProvider>
-
       <DocsSidebar />
       <Toaster />
     </DocsSidebarProvider>
@@ -680,24 +393,191 @@ export default function App() {
 
 ---
 
-## 11. Upgrading Packages
+## 6. TypeScript Compiler + VS Code Bridge
 
-Since all three packages are installed from npm, upgrading is standard:
+The packages below extend the core integration with TypeScript-authored tiles and live
+editing via the VS Code extension. These are optional -- the core + ui + docs integration
+above works without them.
 
-```bash
-# Upgrade to the latest versions
-npm update @mindcraft-lang/core @mindcraft-lang/ui @mindcraft-lang/docs
+### Additional Packages
 
-# Or install specific versions
-npm install @mindcraft-lang/core@0.2.0 @mindcraft-lang/ui@0.2.0 @mindcraft-lang/docs@0.2.0
+| Package                           | Purpose                                                              | Build model |
+| --------------------------------- | -------------------------------------------------------------------- | ----------- |
+| `@mindcraft-lang/ts-compiler`     | TypeScript-to-Mindcraft bytecode compiler for sensors and actuators  | Built (ESM) |
+| `@mindcraft-lang/bridge-app`      | App-side client for the VS Code bridge                               | Built (ESM) |
+| `@mindcraft-lang/bridge-client`   | WebSocket client SDK for the bridge                                  | Built (ESM) |
+| `@mindcraft-lang/bridge-protocol` | Wire types and schemas shared between bridge components              | Built (ESM) |
+
+```
+@mindcraft-lang/bridge-app
+  |-- @mindcraft-lang/bridge-client
+  |-- @mindcraft-lang/bridge-protocol
+  |-- @mindcraft-lang/ts-compiler
+  |-- @mindcraft-lang/core
+
+@mindcraft-lang/ts-compiler
+  |-- @mindcraft-lang/core
 ```
 
-The source-only packages (`ui`, `docs`) ship TypeScript source, so after upgrading you may
-need to address any breaking API changes that surface as type errors in your build.
+### Standalone TypeScript Compiler
+
+If you want to compile TypeScript-authored tiles without the VS Code bridge, use
+`@mindcraft-lang/ts-compiler` directly:
+
+```bash
+npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler
+```
+
+```typescript
+import { createMindcraftEnvironment, coreModule } from "@mindcraft-lang/core/app";
+import { createWorkspaceCompiler } from "@mindcraft-lang/ts-compiler";
+
+const environment = createMindcraftEnvironment({
+  modules: [coreModule(), createAppModule()],
+});
+
+const compiler = createWorkspaceCompiler({ environment });
+compiler.replaceWorkspace(workspaceSnapshot);
+
+const result = compiler.compile();
+if (result.bundle) {
+  environment.replaceActionBundle(result.bundle);
+}
+```
+
+### VS Code Bridge
+
+The VS Code bridge allows users to author Mindcraft sensors and actuators in TypeScript
+using the VS Code for Web extension.
+
+```bash
+npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler @mindcraft-lang/bridge-app
+```
+
+#### Architecture
+
+```
+  VS Code Extension  <--WebSocket-->  Bridge Server  <--WebSocket-->  Your App
+  (TypeScript IDE)                    (vscode-bridge)                 (bridge-app)
+```
+
+The bridge server is a stateless WebSocket relay. It pushes file changes bidirectionally
+between VS Code and your app. Compilation happens in your app, and diagnostics are
+published back through the bridge to VS Code's Problems panel.
+
+#### Workspace
+
+A `WorkspaceAdapter` abstracts the virtual filesystem. The `bridge-app` package provides
+`createLocalStorageWorkspace` for browser apps:
+
+```typescript
+import { createLocalStorageWorkspace } from "@mindcraft-lang/bridge-app";
+import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
+
+const workspace = createLocalStorageWorkspace({
+  storageKey: "my-app:vscode-bridge:filesystem",
+  shouldExclude: isCompilerControlledPath,
+});
+```
+
+The `shouldExclude` filter prevents compiler-controlled files (`mindcraft.d.ts`,
+`tsconfig.json`) from being persisted -- these are generated by the compiler and injected
+automatically when the workspace snapshot is exported to the bridge.
+
+For non-browser apps, implement `WorkspaceAdapter` directly with `exportSnapshot()`,
+`applyRemoteChange()`, and `onLocalChange()`.
+
+#### App Project
+
+`createAppProject` is the recommended high-level API. It creates the workspace compiler,
+wires it to the bridge, and handles virtual filesystem transfer:
+
+```typescript
+import { createLocalStorageWorkspace } from "@mindcraft-lang/bridge-app";
+import { createAppProject } from "@mindcraft-lang/bridge-app/compilation";
+import type { WorkspaceCompileResult } from "@mindcraft-lang/bridge-app/compilation";
+
+const project = createAppProject({
+  environment,
+  app: { id: "my-app", name: "My App", projectId: "project-1", projectName: "My Project" },
+  bridgeUrl: "localhost:6464",
+  workspace,
+  bindingToken: loadSavedBindingToken(),
+  onBindingTokenChange: (token) => saveBindingToken(token),
+  onDidCompile: (result: WorkspaceCompileResult) => {
+    if (result.bundle) {
+      environment.replaceActionBundle(result.bundle);
+    }
+  },
+});
+
+project.initialize();
+```
+
+The returned `AppProjectHandle` exposes:
+
+| Member | Description |
+|--------|-------------|
+| `compiler` | The underlying `WorkspaceCompiler` instance |
+| `bridge` | The `AppBridge` connection (start/stop, state, events) |
+| `initialize()` | Loads the workspace snapshot into the compiler and runs the first compile |
+| `recreateBridge(url)` | Stops the current bridge and creates a new one with a different URL |
+
+#### Binding Tokens
+
+The bridge uses a binding token to authorize the connection between your app and the
+VS Code extension. When the extension first binds, a token is generated and passed to
+`onBindingTokenChange`. Persist this token (e.g. in `localStorage`) and pass it back as
+`bindingToken` on the next session so the connection resumes automatically.
+
+#### Compilation Pipeline
+
+When files change (locally or from VS Code), the compilation feature automatically:
+
+1. Updates the workspace compiler with the change
+2. Runs a full compilation pass
+3. Publishes diagnostics back through the bridge to VS Code
+4. Fires `onDidCompile` with the result
+
+Your `onDidCompile` handler applies the compiled bundle to the environment:
+
+```typescript
+onDidCompile: (result) => {
+  if (result.bundle) {
+    const update = environment.replaceActionBundle(result.bundle);
+    // update.changedActionKeys -- actions that were added/changed/removed
+    // update.invalidatedBrains -- brains that reference changed actions
+  }
+}
+```
+
+#### VFS Service Worker (Optional)
+
+For browser apps, `bridge-app` provides a service worker that intercepts fetch requests
+for virtual filesystem paths. This enables the brain editor and docs sidebar to display
+icons for user-authored sensors and actuators whose assets live in the virtual filesystem
+rather than on disk.
+
+```typescript
+import { registerVfsServiceWorker } from "@mindcraft-lang/bridge-app";
+
+registerVfsServiceWorker({
+  swUrl: "/vfs-sw.js",
+  workspace,
+  onReady: () => { /* service worker is active */ },
+});
+```
+
+Your service worker entry point re-exports the handler:
+
+```typescript
+// vfs-sw.ts (built as a separate entry point)
+import "@mindcraft-lang/bridge-app/vfs-service-worker";
+```
 
 ---
 
-## 12. Troubleshooting
+## 7. Troubleshooting
 
 **TypeScript cannot find module `@mindcraft-lang/ui`**
 -- Verify the `paths` entries in `tsconfig.json` point to the correct
@@ -717,12 +597,11 @@ the docs integration pattern, `DocsBrainEditorProvider` must be inside
 `DocsSidebarProvider`.
 
 **Vite cannot resolve imports inside `@mindcraft-lang/ui` or `@mindcraft-lang/docs`**
--- These source-only packages use relative imports internally (e.g., `../ui/button`). The
-Vite alias must point to the `src/` directory so relative imports resolve correctly. If you
-see errors about missing modules like `../lib/utils`, check that the alias path is correct.
+-- The Vite alias must point to the `src/` directory so relative imports resolve correctly.
+If you see errors about missing modules like `../lib/utils`, check that the alias path is
+correct.
 
-**Latin Modern Math font fails to load (OTS parsing error or 404 in the network tab)**
+**Latin Modern Math font fails to load (OTS parsing error or 404)**
 -- `uiPlugin()` from `@mindcraft-lang/ui/src/vite-plugin.ts` is missing from your Vite
-config. The font lives inside the `ui` package and cannot be resolved by Vite's normal
-asset pipeline when the package is consumed as a source-only dependency. The plugin handles
-URL rewriting, dev-server serving, and production asset emission.
+config. The plugin handles URL rewriting, dev-server serving, and production asset emission
+for the bundled font.
