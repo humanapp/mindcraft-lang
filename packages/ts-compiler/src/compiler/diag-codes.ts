@@ -266,6 +266,8 @@ export enum LoweringDiagCode {
   UnsupportedPropertyInMapLiteral = 3075,
   /** Map literal property name is not an identifier or string literal */
   UnsupportedPropertyNameInMapLiteral = 3076,
+  /** Spread source type cannot be resolved to a type with known properties */
+  SpreadSourceUnresolvable = 3077,
   /** Element access (bracket index) is only supported on list types */
   ElementAccessOnNonListType = 3080,
   /** Element access assignment is only supported on list types */

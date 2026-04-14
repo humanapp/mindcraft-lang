@@ -8051,6 +8051,26 @@ function lowerObjectLiteralAsStruct(
       ctx.ir.push({ kind: "StructSet" });
       continue;
     }
+    if (ts.isSpreadAssignment(prop)) {
+      const spreadType = ctx.checker.getTypeAtLocation(prop.expression);
+      const properties = spreadType.getProperties();
+      if (properties.length === 0) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.SpreadSourceUnresolvable, "Spread source type has no known properties", prop)
+        );
+        return;
+      }
+      lowerExpression(prop.expression, ctx);
+      const tempLocal = ctx.scopeStack.allocLocal();
+      ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+      for (const sym of properties) {
+        ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
+        ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
+        ctx.ir.push({ kind: "GetField", fieldName: sym.name });
+        ctx.ir.push({ kind: "StructSet" });
+      }
+      continue;
+    }
     if (!ts.isPropertyAssignment(prop)) {
       ctx.diagnostics.push(
         makeDiag(
@@ -8091,6 +8111,32 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
       ctx.ir.push({ kind: "PushConst", value: mkStringValue(keyName) });
       lowerExpression(prop.name, ctx);
       ctx.ir.push({ kind: "MapSet" });
+      continue;
+    }
+    if (ts.isSpreadAssignment(prop)) {
+      const spreadType = ctx.checker.getTypeAtLocation(prop.expression);
+      const properties = spreadType.getProperties();
+      if (properties.length === 0) {
+        ctx.diagnostics.push(
+          makeDiag(LoweringDiagCode.SpreadSourceUnresolvable, "Spread source type has no known properties", prop)
+        );
+        return;
+      }
+      lowerExpression(prop.expression, ctx);
+      const tempLocal = ctx.scopeStack.allocLocal();
+      ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+      const sourceIsStruct = !!resolveStructType(spreadType, ctx.services, ctx.checker);
+      for (const sym of properties) {
+        ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
+        ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
+        if (sourceIsStruct) {
+          ctx.ir.push({ kind: "GetField", fieldName: sym.name });
+        } else {
+          ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
+          ctx.ir.push({ kind: "MapGet" });
+        }
+        ctx.ir.push({ kind: "MapSet" });
+      }
       continue;
     }
     if (!ts.isPropertyAssignment(prop)) {
