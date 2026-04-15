@@ -1,6 +1,6 @@
 {
   "name": "@mindcraft-lang/bridge-client",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "Client SDK for the Mindcraft Lang VSCode bridge",
   "license": "MIT",
   "type": "module",
