@@ -38,7 +38,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    exclude: ["@mindcraft-lang/core", "@mindcraft-lang/bridge-app"],
+    exclude: ["@mindcraft-lang/core", "@mindcraft-lang/bridge-app", "zod"],
   },
   server: {
     fs: {
