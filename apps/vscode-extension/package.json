@@ -1,6 +1,6 @@
 {
   "name": "mindcraft-vscode-extension",
-  "displayName": "Mindcraft VS Code Web Extension",
+  "displayName": "Mindcraft",
   "description": "Program sensors and actuators for Mindcraft apps in TypeScript using VS Code",
   "keywords": [
     "visual-programming",
