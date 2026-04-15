@@ -1,6 +1,6 @@
 import type { Vector2Constructor, Vector2 as Vector2Interface } from "./vector2";
 
-declare const RbxVector2: Vector2Constructor;
+declare const Vector2: Vector2Constructor;
 
 let wrapUnit = true;
 
@@ -13,7 +13,7 @@ class Vector2Impl implements Vector2Interface {
   private readonly _native: Vector2Interface;
 
   constructor(x = 0, y = 0) {
-    this._native = new RbxVector2(x, y);
+    this._native = new Vector2(x, y);
     this.X = this._native.X;
     this.Y = this._native.Y;
     this.Magnitude = this._native.Magnitude;
