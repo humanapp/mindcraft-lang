@@ -33,7 +33,7 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 | App | Description |
 |-----|-------------|
 | [Ecosystem Sim](apps/sim/) | Demo: carnivores, herbivores, and plants driven by user-editable Mindcraft brains |
-| [VS Code Extension](apps/vscode-extension/) | Author Mindcraft sensors and actuators in TypeScript using VS Code Web ([Marketplace](https://marketplace.visualstudio.com/items?itemName=mindcraft-lang.mindcraft-vscode-extension)) |
+| [VS Code Extension](apps/vscode-extension/) | Author Mindcraft sensors and actuators in TypeScript using VS Code Web ([Marketplace](https://marketplace.visualstudio.com/items?itemName=mindcraft-lang.mindcraft-lang-vscode-extension)) |
 | [VS Code Bridge](apps/vscode-bridge/) | Bridge server that relays between the VS Code extension and Mindcraft apps |
 
 ## Getting Started

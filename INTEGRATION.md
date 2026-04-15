@@ -448,7 +448,7 @@ if (result.bundle) {
 ### VS Code Bridge
 
 The VS Code bridge allows users to author Mindcraft sensors and actuators in TypeScript
-using the [Mindcraft VS Code Web extension](https://marketplace.visualstudio.com/items?itemName=mindcraft-lang.mindcraft-vscode-extension).
+using the [Mindcraft VS Code Web extension](https://marketplace.visualstudio.com/items?itemName=mindcraft-lang.mindcraft-lang-vscode-extension).
 
 ```bash
 npm install @mindcraft-lang/core @mindcraft-lang/ts-compiler @mindcraft-lang/bridge-app
