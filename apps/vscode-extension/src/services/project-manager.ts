@@ -100,7 +100,6 @@ export class ProjectManager implements vscode.Disposable {
     }
 
     const bindingToken = savedToken ?? this._globalState?.get<string>(BINDING_TOKEN_KEY);
-    this._globalState?.update(BINDING_TOKEN_KEY, undefined);
 
     const project = new Project<ExtensionClientMessage, ExtensionServerMessage>({
       appName: "vscode",
@@ -126,7 +125,9 @@ export class ProjectManager implements vscode.Disposable {
             this._onDidChangeAppClientConnected.fire(false);
           }
         } else if (status === "disconnected") {
-          this.disconnect();
+          this.disconnectActive();
+          this.closeMindcraftTabs();
+          this.removeWorkspaceFolder();
         }
       })
     );
@@ -162,9 +163,6 @@ export class ProjectManager implements vscode.Disposable {
           if (this._pendingChanges.length > 0) {
             this.syncAndClearPending();
           }
-        }
-        if (!bound && this._project) {
-          this.disconnect();
         }
       })
     );

@@ -98,6 +98,13 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
     vscode.commands.registerCommand("mindcraft.hide", () => {
       setMindcraftEnabled(false);
       vscode.window.showInformationMessage("Mindcraft view hidden.");
+    }),
+
+    vscode.commands.registerCommand("mindcraft.openSettings", () => {
+      vscode.commands.executeCommand(
+        "workbench.action.openSettings",
+        "@ext:mindcraft-lang.mindcraft-lang-vscode-extension"
+      );
     })
   );
 }

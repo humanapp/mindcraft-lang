@@ -71,6 +71,10 @@
       {
         "command": "mindcraft.sync",
         "title": "Mindcraft: Sync Files"
+      },
+      {
+        "command": "mindcraft.openSettings",
+        "title": "Mindcraft: Open Settings"
       }
     ],
     "views": {

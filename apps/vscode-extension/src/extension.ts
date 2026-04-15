@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { registerCommands } from "./commands";
 import { MINDCRAFT_SCHEME } from "./services/mindcraft-fs-provider";
 import { ProjectManager } from "./services/project-manager";
+import { setMindcraftEnabled } from "./state/context";
 import { createStatusBarItem } from "./ui/statusBar";
 import { MindcraftSessionsProvider } from "./views/mindcraftSessionsProvider";
 
@@ -22,6 +23,15 @@ export function activate(context: vscode.ExtensionContext) {
 
   registerCommands(context, projectManager);
   createStatusBarItem(context, projectManager);
+
+  context.subscriptions.push(
+    projectManager.onDidChangeAppBound(async (bound) => {
+      if (bound && !treeView.visible) {
+        await setMindcraftEnabled(true);
+        vscode.commands.executeCommand("mindcraft.sessions.focus");
+      }
+    })
+  );
 
   projectManager.initialize(context.globalState);
 

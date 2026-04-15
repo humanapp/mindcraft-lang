@@ -32,3 +32,4 @@ _Example: Authoring a "teleport" actuator in TypeScript:_
 | `Mindcraft: Create New Sensor` | Scaffold a new sensor tile |
 | `Mindcraft: Create New Actuator` | Scaffold a new actuator tile |
 | `Mindcraft: Sync Files` | Re-sync workspace files with the connected app |
+| `Mindcraft: Open Settings` | Open VS Code Settings filtered to Mindcraft options |

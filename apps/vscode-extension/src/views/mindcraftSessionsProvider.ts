@@ -23,6 +23,12 @@ export class MindcraftSessionsProvider implements vscode.TreeDataProvider<Sessio
     if (!project) {
       return [
         new SessionItem("Connect to Mindcraft...", vscode.TreeItemCollapsibleState.None, "mindcraft.connect", "plug"),
+        new SessionItem(
+          "Open settings",
+          vscode.TreeItemCollapsibleState.None,
+          "mindcraft.openSettings",
+          "settings-gear"
+        ),
       ];
     }
 
@@ -36,6 +42,7 @@ export class MindcraftSessionsProvider implements vscode.TreeDataProvider<Sessio
       ),
       new SessionItem("Create new sensor", vscode.TreeItemCollapsibleState.None, "mindcraft.createSensor", "eye"),
       new SessionItem("Create new actuator", vscode.TreeItemCollapsibleState.None, "mindcraft.createActuator", "zap"),
+      new SessionItem("Open settings", vscode.TreeItemCollapsibleState.None, "mindcraft.openSettings", "settings-gear"),
     ];
   }
 }
