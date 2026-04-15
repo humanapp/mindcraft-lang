@@ -3,7 +3,7 @@
 A tile-based programming language for creative coding applications.
 
 <div align="center">
-  <img src="./assets/2026-03-12_19-30-06.png" alt="Brain Rule" width="80%">
+  <img src="./assets/rule.png" alt="Brain Rule" width="80%">
 </div>
 
 Mindcraft programs are built by arranging **tiles** -- typed, composable tokens -- into **rules**. Each rule has a WHEN side (condition) and a DO side (action). A collection of rules forms a **brain** that drives an autonomous actor. Host applications extend the language with custom types, sensors, and actuators.
