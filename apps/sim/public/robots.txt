@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sim.mindcraft-lang.org/sitemap.xml
