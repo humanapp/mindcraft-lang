@@ -40,7 +40,7 @@
   "pricing": "Free",
   "icon": "./assets/brain_256.png",
   "galleryBanner": {
-    "color": "#4D5A80",
+    "color": "#2E3D6A",
     "theme": "dark"
   },
   "browser": "./dist/extension.js",
