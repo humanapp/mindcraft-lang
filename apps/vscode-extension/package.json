@@ -37,6 +37,7 @@
     "onFileSystem:mindcraft",
     "onStartupFinished"
   ],
+  "pricing": "Free",
   "icon": "./assets/brain_256.png",
   "browser": "./dist/extension.js",
   "contributes": {
