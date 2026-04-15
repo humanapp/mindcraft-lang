@@ -3,7 +3,7 @@ name: Deploy vscode-extension
 on:
   push:
     tags:
-      - "mindcraft-vscode-extension-v*"
+      - "mindcraft-lang-vscode-extension-v*"
 
 permissions:
   contents: write
@@ -70,7 +70,7 @@ jobs:
 
       - name: Verify package version matches tag
         run: |
-          PACKAGE_VERSION="mindcraft-vscode-extension-v$(node -p "require('./package.json').version")"
+          PACKAGE_VERSION="mindcraft-lang-vscode-extension-v$(node -p "require('./package.json').version")"
           if [ "$PACKAGE_VERSION" != "${{ github.ref_name }}" ]; then
             echo "Tag ${{ github.ref_name }} does not match package.json version $PACKAGE_VERSION"
             exit 1
