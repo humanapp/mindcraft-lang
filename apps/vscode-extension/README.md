@@ -1,8 +1,6 @@
 > **Web only:** This extension runs exclusively in [VS Code for the Web](https://vscode.dev) and is not compatible with VS Code desktop.
 
-# Mindcraft
-
-A tile-based programming language for creative coding applications.
+**Mindcraft:** A tile-based programming language for creative coding applications.
 
 <div align="center">
   <img src="https://raw.githubusercontent.com/humanapp/mindcraft-lang/main/assets/rule.png" alt="Brain Rule" width="80%">
