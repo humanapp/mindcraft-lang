@@ -1,7 +1,7 @@
 **Mindcraft**: A tile-based programming language for creative coding applications.
 
 <div align="center">
-  <img src="../../assets/2026-03-12_19-30-06.png" alt="Brain Rule" width="80%">
+  <img src="./assets/rule.png" alt="Brain Rule" width="80%">
 </div>
 
 Mindcraft programs are built by arranging **tiles** -- typed, composable tokens -- into **rules**. A collection of rules forms **brains** that drive in-game actors. 
@@ -10,5 +10,5 @@ The **Mindcraft VS Code Web extension** lets you **define custom sensor and actu
 
 _Example: Authoring a "teleport" actuator in TypeScript:_
 <div align="center">
-  <img src="../../assets/vscode.png" alt="TypeScript Source Code" width="80%">
+  <img src="./assets/vscode.png" alt="TypeScript Source Code" width="80%">
 </div>
