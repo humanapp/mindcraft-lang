@@ -3,14 +3,12 @@
   "displayName": "Mindcraft VS Code Web Extension",
   "description": "Program sensors and actuators for Mindcraft apps in TypeScript using VS Code",
   "keywords": [
-    "mindcraft",
     "visual-programming",
-    "tiles",
+    "visual-coding",
     "creative-coding",
     "game-development",
     "stem",
-    "robotics",
-    "kodu"
+    "cs-education"
   ],
   "version": "0.1.6",
   "private": true,
