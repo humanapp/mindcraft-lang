@@ -1,5 +1,9 @@
 {
   "scripts": {
-    "install": "node scripts/install.js"
+    "install": "node scripts/install.js",
+    "release:all:patch": "node ../scripts/release-all.js patch",
+    "release:all:minor": "node ../scripts/release-all.js minor",
+    "release:all:major": "node ../scripts/release-all.js major"
   }
 }
+
