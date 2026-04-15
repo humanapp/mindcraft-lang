@@ -31,4 +31,4 @@ _Example: Authoring a "teleport" actuator in TypeScript:_
 | `Mindcraft: Disconnect` | Disconnect from the current session |
 | `Mindcraft: Create New Sensor` | Scaffold a new sensor tile |
 | `Mindcraft: Create New Actuator` | Scaffold a new actuator tile |
-| `Mindcraft: Sync Files` | Re-sync the filesystem with the connected app |
+| `Mindcraft: Sync Files` | Re-sync workspace files with the connected app |
