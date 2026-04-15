@@ -1,8 +1,15 @@
 {
   "version": "0.2.0",
-  "configurations": [
+  "compounds": [
     {
       "name": "vscode-extension: web",
+      "configurations": ["[ext] server", "[ext] Chrome"]
+    }
+  ],
+  "configurations": [
+    {
+      "name": "[ext] server",
+      "presentation": { "hidden": true },
       "type": "node",
       "request": "launch",
       "program": "${workspaceFolder}/apps/vscode-extension/node_modules/@vscode/test-web/out/server/index.js",
@@ -17,6 +24,15 @@
       "outFiles": ["${workspaceFolder}/apps/vscode-extension/dist/**/*.js"],
       "preLaunchTask": "mindcraft-ext: dev",
       "console": "integratedTerminal"
+    },
+    {
+      "name": "[ext] Chrome",
+      "presentation": { "hidden": true },
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:3100",
+      "webRoot": "${workspaceFolder}/apps/vscode-extension",
+      "sourceMaps": true
     },
     {
       "type": "node",

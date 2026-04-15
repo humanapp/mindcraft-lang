@@ -10,7 +10,6 @@ const config = {
   format: "cjs",
   minify: production,
   sourcemap: !production,
-  sourcesContent: false,
   platform: "browser",
   outfile: "dist/extension.js",
   external: ["vscode"],
