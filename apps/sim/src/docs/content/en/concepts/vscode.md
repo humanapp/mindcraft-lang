@@ -25,6 +25,7 @@ TypeScript files will now sync between the editor and the sim. Edits hot-reload 
 
 ## Tips
 
-- After the first pairing, the connection is durable and will reconnect automatically. If either side is manually disconnected, a new join code will be needed.
-- Scaffold a new tile with `Mindcraft: Create New Sensor` or `Mindcraft: Create New Actuator`.
+- The `Examples` folder in the Mindcraft Explorer panel contains ready-made tiles. Copy one to your workspace and it will appear in the Brain Editor immediately.
+- Use `Create New Sensor` or `Create New Actuator` to scaffold an empty tile.
+- Once paired, the connection persists and reconnects automatically. A new join code is only needed if either side is manually disconnected.
 
