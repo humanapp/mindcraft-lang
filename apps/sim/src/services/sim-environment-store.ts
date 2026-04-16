@@ -13,6 +13,7 @@ import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
+import { loadExamples } from "@/examples";
 import { applyCompiledUserTiles, hydrateUserTilesAtStartup } from "./user-tile-registration";
 import { initVfsServiceWorker } from "./vfs-service-worker";
 import { clearBindingToken, loadBindingToken, saveBindingToken } from "./vscode-bridge";
@@ -255,6 +256,7 @@ export class SimEnvironmentStore {
       },
     });
 
+    this._project.injectExamples(loadExamples());
     this._project.initialize();
     this.wireBridgeState(this._project.bridge);
 

@@ -30,5 +30,6 @@
       "@mindcraft-lang/ui/*": ["../../packages/ui/src/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/examples/*/**"]
 }

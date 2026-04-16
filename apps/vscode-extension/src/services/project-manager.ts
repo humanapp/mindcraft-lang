@@ -5,6 +5,7 @@ type ExtensionProject = Project<ExtensionClientMessage, ExtensionServerMessage>;
 
 import * as vscode from "vscode";
 import { DiagnosticsManager } from "./diagnostics-manager";
+import { MINDCRAFT_EXAMPLE_SCHEME, MindcraftExampleFileSystemProvider } from "./mindcraft-example-fs-provider";
 import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
 
 const BINDING_TOKEN_KEY = "mindcraft.bindingToken";
@@ -34,6 +35,7 @@ export class ProjectManager implements vscode.Disposable {
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
   private readonly _fsProvider = new MindcraftFileSystemProvider();
+  private readonly _exampleFsProvider = new MindcraftExampleFileSystemProvider();
   private readonly _diagnosticsManager = new DiagnosticsManager();
   private _globalState: vscode.Memento | undefined;
   private _workspaceFolderName = "Mindcraft";
@@ -55,6 +57,10 @@ export class ProjectManager implements vscode.Disposable {
 
   get fsProvider(): MindcraftFileSystemProvider {
     return this._fsProvider;
+  }
+
+  get exampleFsProvider(): MindcraftExampleFileSystemProvider {
+    return this._exampleFsProvider;
   }
 
   get diagnosticsManager(): DiagnosticsManager {
@@ -177,6 +183,7 @@ export class ProjectManager implements vscode.Disposable {
     project.fromRemoteFileChange = (ev) => this.handleFilesystemNotification(ev);
 
     this._fsProvider.setFileSystems(project.files.raw, project.files.toRemote);
+    this._exampleFsProvider.setFileSystem(project.files.raw);
 
     this._project = project;
     project.session.start();
@@ -281,6 +288,7 @@ export class ProjectManager implements vscode.Disposable {
     this._project.session.stop();
     this._project = undefined;
     this._fsProvider.setFileSystems(undefined, undefined);
+    this._exampleFsProvider.setFileSystem(undefined);
     this._diagnosticsManager.clear();
     this._onDidChangeProject.fire();
     this._onDidChangeStatus.fire("disconnected");
@@ -363,8 +371,12 @@ export class ProjectManager implements vscode.Disposable {
   private closeMindcraftTabs(): void {
     const tabs = vscode.window.tabGroups.all.flatMap((group) =>
       group.tabs.filter((tab) => {
-        if (tab.input instanceof vscode.TabInputText) return tab.input.uri.scheme === MINDCRAFT_SCHEME;
-        if (tab.input instanceof vscode.TabInputCustom) return tab.input.uri.scheme === MINDCRAFT_SCHEME;
+        if (tab.input instanceof vscode.TabInputText) {
+          return tab.input.uri.scheme === MINDCRAFT_SCHEME || tab.input.uri.scheme === MINDCRAFT_EXAMPLE_SCHEME;
+        }
+        if (tab.input instanceof vscode.TabInputCustom) {
+          return tab.input.uri.scheme === MINDCRAFT_SCHEME || tab.input.uri.scheme === MINDCRAFT_EXAMPLE_SCHEME;
+        }
         return false;
       })
     );
@@ -388,6 +400,7 @@ export class ProjectManager implements vscode.Disposable {
   dispose(): void {
     this.disconnectActive();
     this._fsProvider.dispose();
+    this._exampleFsProvider.dispose();
     this._diagnosticsManager.dispose();
     this._onDidChangeProject.dispose();
     this._onDidChangeStatus.dispose();

@@ -2,6 +2,7 @@ import { ErrorCode, type IFileSystem, ProtocolError } from "@mindcraft-lang/brid
 import * as vscode from "vscode";
 
 export const MINDCRAFT_SCHEME = "mindcraft";
+export const EXAMPLES_FOLDER = "__examples__";
 
 export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, vscode.FileDecorationProvider {
   private readonly _onDidChangeFile = new vscode.EventEmitter<vscode.FileChangeEvent[]>();
@@ -71,10 +72,10 @@ export class MindcraftFileSystemProvider implements vscode.FileSystemProvider, v
     const path = toFsPath(uri);
     try {
       const entries = fs.list(path || undefined);
-      return entries.map((entry) => [
-        entry.name,
-        entry.kind === "directory" ? vscode.FileType.Directory : vscode.FileType.File,
-      ]);
+      const isRoot = !path;
+      return entries
+        .filter((entry) => !isRoot || entry.name !== EXAMPLES_FOLDER)
+        .map((entry) => [entry.name, entry.kind === "directory" ? vscode.FileType.Directory : vscode.FileType.File]);
     } catch (e) {
       if (e instanceof ProtocolError) {
         throw vscode.FileSystemError.FileNotFound(uri);

@@ -1,5 +1,8 @@
 import * as vscode from "vscode";
 import { registerCommands } from "./commands";
+import { ExampleCodeLensProvider } from "./providers/example-codelens-provider";
+import { ExampleDecorationProvider } from "./providers/example-decoration-provider";
+import { MINDCRAFT_EXAMPLE_SCHEME } from "./services/mindcraft-example-fs-provider";
 import { MINDCRAFT_SCHEME } from "./services/mindcraft-fs-provider";
 import { ProjectManager } from "./services/project-manager";
 import { setMindcraftEnabled } from "./state/context";
@@ -9,11 +12,20 @@ import { MindcraftSessionsProvider } from "./views/mindcraftSessionsProvider";
 export function activate(context: vscode.ExtensionContext) {
   const projectManager = new ProjectManager();
 
+  const exampleDecorationProvider = new ExampleDecorationProvider();
+
   context.subscriptions.push(
     vscode.workspace.registerFileSystemProvider(MINDCRAFT_SCHEME, projectManager.fsProvider, {
       isCaseSensitive: true,
     }),
-    vscode.window.registerFileDecorationProvider(projectManager.fsProvider)
+    vscode.workspace.registerFileSystemProvider(MINDCRAFT_EXAMPLE_SCHEME, projectManager.exampleFsProvider, {
+      isCaseSensitive: true,
+      isReadonly: true,
+    }),
+    vscode.window.registerFileDecorationProvider(projectManager.fsProvider),
+    vscode.window.registerFileDecorationProvider(exampleDecorationProvider),
+    vscode.languages.registerCodeLensProvider({ scheme: MINDCRAFT_EXAMPLE_SCHEME }, new ExampleCodeLensProvider()),
+    exampleDecorationProvider
   );
 
   const sessionsProvider = new MindcraftSessionsProvider(projectManager);

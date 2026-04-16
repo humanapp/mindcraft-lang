@@ -129,6 +129,13 @@ export function isCompilerControlledPath(path: string): boolean {
   return normalized === "mindcraft.d.ts" || normalized === "tsconfig.json";
 }
 
+const EXAMPLES_PREFIX = "__examples__/";
+
+function isExamplePath(path: string): boolean {
+  const normalized = normalizeWorkspacePath(path);
+  return normalized.startsWith(EXAMPLES_PREFIX);
+}
+
 export class UserTileProject {
   private _files = new Map<string, string>();
   private readonly _ambientSource: string | undefined;
@@ -178,7 +185,7 @@ export class UserTileProject {
 
     const userRootFiles: string[] = [];
     for (const [vfsPath, content] of this._files) {
-      if (isCompilerControlledPath(vfsPath)) {
+      if (isCompilerControlledPath(vfsPath) || isExamplePath(vfsPath)) {
         continue;
       }
       const cp = toCompilerPath(vfsPath);

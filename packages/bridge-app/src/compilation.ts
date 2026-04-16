@@ -16,6 +16,7 @@ import type {
   WorkspaceSnapshot,
 } from "./app-bridge.js";
 import { createAppBridge } from "./app-bridge.js";
+import { EXAMPLES_FOLDER, type ExampleDefinition } from "./examples.js";
 
 export interface DiagnosticSnapshot {
   files: ReadonlyMap<string, readonly DiagnosticEntry[]>;
@@ -294,6 +295,7 @@ export interface AppProjectHandle {
   readonly bridge: AppBridge;
   initialize(): void;
   recreateBridge(bridgeUrl: string): void;
+  injectExamples(examples: ExampleDefinition[]): void;
 }
 
 export function createAppProject(options: CreateAppProjectOptions): AppProjectHandle {
@@ -311,7 +313,8 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
     options.onBindingTokenChange?.(token);
   };
 
-  const augmented = augmentWorkspace(workspace, compiler);
+  let injectedExamples: ExampleDefinition[] = [];
+  const augmented = augmentWorkspace(workspace, compiler, () => injectedExamples);
   let currentBridge = buildBridge(
     { ...options, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
     compiler
@@ -333,16 +336,34 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
         compiler
       );
     },
+    injectExamples(examples: ExampleDefinition[]) {
+      injectedExamples = examples;
+    },
   };
 }
 
-function augmentWorkspace(workspace: WorkspaceAdapter, compiler: TsWorkspaceCompiler): WorkspaceAdapter {
+function augmentWorkspace(
+  workspace: WorkspaceAdapter,
+  compiler: TsWorkspaceCompiler,
+  getExamples: () => ExampleDefinition[]
+): WorkspaceAdapter {
   return {
     exportSnapshot(): WorkspaceSnapshot {
       const snapshot = workspace.exportSnapshot();
       const controlledFiles = compiler.getCompilerControlledFiles();
       for (const [path, content] of controlledFiles) {
         snapshot.set(path, { kind: "file", content, etag: "compiler-controlled", isReadonly: true });
+      }
+      for (const example of getExamples()) {
+        snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}`, { kind: "directory" });
+        for (const file of example.files) {
+          snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}/${file.path}`, {
+            kind: "file",
+            content: file.content,
+            etag: "example",
+            isReadonly: true,
+          });
+        }
       }
       return snapshot;
     },

@@ -75,8 +75,22 @@
       {
         "command": "mindcraft.openSettings",
         "title": "Mindcraft: Open Settings"
+      },
+      {
+        "command": "mindcraft.copyExampleToWorkspace",
+        "title": "Mindcraft: Copy Example to Workspace",
+        "icon": "$(cloud-download)"
       }
     ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "mindcraft.copyExampleToWorkspace",
+          "when": "resourceScheme == mindcraft-example",
+          "group": "navigation"
+        }
+      ]
+    },
     "views": {
       "explorer": [
         {
