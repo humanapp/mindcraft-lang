@@ -6,7 +6,7 @@ import { isMindcraftEnabled, setMindcraftEnabled } from "../state/context";
 const SENSOR_TEMPLATE = `import { Sensor } from "mindcraft";
 
 export default Sensor({
-  name: "my-sensor",
+  name: "my sensor",
   output: "boolean",
   // icon: "./my-sensor.svg",
   // docs: "./my-sensor.md",
@@ -19,7 +19,7 @@ export default Sensor({
 const ACTUATOR_TEMPLATE = `import { Actuator } from "mindcraft";
 
 export default Actuator({
-  name: "my-actuator",
+  name: "my actuator",
   // icon: "./my-actuator.svg",
   // docs: "./my-actuator.md",
   onExecute(ctx, params) {

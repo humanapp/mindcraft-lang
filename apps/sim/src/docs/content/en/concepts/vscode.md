@@ -26,3 +26,5 @@ TypeScript files will now sync between the editor and the sim. Edits hot-reload 
 ## Tips
 
 - After the first pairing, the connection is durable and will reconnect automatically. If either side is manually disconnected, a new join code will be needed.
+- Scaffold a new tile with `Mindcraft: Create New Sensor` or `Mindcraft: Create New Actuator`.
+
