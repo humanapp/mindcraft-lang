@@ -164,6 +164,27 @@ const MD_COMPONENTS: Components = {
   td({ children: t }) {
     return <td className="text-slate-300 px-2 py-1.5 align-top">{t}</td>;
   },
+
+  a({ href, children }) {
+    const isExternal = typeof href === "string" && /^https?:\/\//.test(href);
+    if (isExternal) {
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-sky-400 underline hover:text-sky-300 transition-colors"
+        >
+          {children}
+        </a>
+      );
+    }
+    return (
+      <a href={href} className="text-slate-300 underline hover:text-slate-100 transition-colors">
+        {children}
+      </a>
+    );
+  },
 };
 
 function MarkdownCode({ className, children, node }: { className?: string; children?: ReactNode; node?: unknown }) {

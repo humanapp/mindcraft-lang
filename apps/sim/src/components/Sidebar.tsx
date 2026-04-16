@@ -1,6 +1,6 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
 import { Button, Slider, Switch } from "@mindcraft-lang/ui";
-import { BookOpen, Check, ChevronDown, ChevronRight, Copy, Info, Settings } from "lucide-react";
+import { BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Copy, FileText, Info, Settings } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
@@ -174,7 +174,7 @@ export function Sidebar({
             max={2}
             step={0.1}
             className="w-full"
-            aria-label="Time scale"
+            aria-labelledby="time-scale-label"
           />
         </div>
 
@@ -240,7 +240,9 @@ export function Sidebar({
                     <span className="font-mono tabular-nums text-foreground/70">{fmtNum(avgLife)}s</span>
                   </div>
                   <div className="flex flex-col">
-                    <span>best</span>
+                    <abbr title="best lifespan" className="no-underline">
+                      best
+                    </abbr>
                     <span className="font-mono tabular-nums text-foreground/70">{fmtNum(s.longestLife)}s</span>
                   </div>
                   <div className="flex flex-col">
@@ -295,8 +297,10 @@ export function Sidebar({
         {/* Footer stats */}
         {snapshot && (
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span className="font-mono tabular-nums">{fmtTime(snapshot.elapsed)}</span>
-            <span>{totalDeaths} deaths</span>
+            <span className="font-mono tabular-nums" title="Elapsed time">
+              {fmtTime(snapshot.elapsed)}
+            </span>
+            <span title="Total deaths">{totalDeaths} deaths</span>
           </div>
         )}
 
@@ -304,9 +308,20 @@ export function Sidebar({
         {store.getAppSettings().showBridgePanel && (
           <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
             <div className="flex items-center justify-between">
-              <label htmlFor="bridge-toggle" className="text-sm font-medium">
-                VS Code Bridge
-              </label>
+              <div className="flex items-center gap-0.5">
+                <span className="text-sm font-medium">VS Code Bridge</span>
+                <button
+                  type="button"
+                  className="shrink-0 flex items-center p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
+                  aria-label="VS Code Bridge Help"
+                  onClick={() => {
+                    openDocs();
+                    navigateToEntry("concepts", "vscode");
+                  }}
+                >
+                  <CircleHelp className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" />
+                </button>
+              </div>
               <Switch
                 id="bridge-toggle"
                 checked={bridgeEnabled}
@@ -321,7 +336,7 @@ export function Sidebar({
                 aria-label="Toggle VS Code bridge connection"
               />
             </div>
-            <span
+            <output
               className={`text-xs font-mono ${
                 bridgeStatus === "connected"
                   ? "text-green-400"
@@ -331,33 +346,47 @@ export function Sidebar({
               }`}
             >
               {bridgeStatus}
-            </span>
+            </output>
             {joinCode && (bridgeStatus === "connected" || bridgeStatus === "reconnecting") && (
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-mono text-slate-300 truncate">{joinCode}</span>
                 <button
                   type="button"
                   className="shrink-0 p-0.5 rounded hover:bg-gray-700 text-slate-400 hover:text-slate-200 transition-colors"
-                  aria-label="Copy join code"
+                  aria-label={copied ? "Copied to clipboard" : "Copy join code"}
                   onClick={() => {
                     navigator.clipboard.writeText(joinCode);
                     setCopied(true);
                     setTimeout(() => setCopied(false), 1500);
                   }}
                 >
-                  {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                  {copied ? (
+                    <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                  ) : (
+                    <Copy className="h-3.5 w-3.5" aria-hidden="true" />
+                  )}
                 </button>
               </div>
             )}
+            <div className="text-center w-full">
+              <button
+                type="button"
+                className="text-xs text-slate-300 underline-offset-2 hover:underline hover:text-slate-100 transition-colors text-left cursor-pointer"
+                onClick={() => {
+                  openDocs();
+                  navigateToEntry("concepts", "vscode");
+                }}
+              >
+                <span className="flex items-center gap-1">How to connect VS Code</span>
+              </button>
+            </div>
           </div>
         )}
 
         {/* Debug toggle */}
         <div className="space-y-2 rounded-lg bg-gray-900 p-2.5">
           <div className="flex items-center justify-between">
-            <label htmlFor="debug-toggle" className="text-sm font-medium">
-              Debug Draw
-            </label>
+            <span className="text-sm font-medium">Debug Draw</span>
             <Switch
               id="debug-toggle"
               checked={debugEnabled}

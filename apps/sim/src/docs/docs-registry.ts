@@ -51,8 +51,16 @@ function buildContentMap(modules: Record<string, string>): Record<string, string
 // ---------------------------------------------------------------------------
 
 const APP_CONCEPT_TITLES: Record<string, string> = {
+  vscode: "Connect VS Code",
   about: "About this App",
 };
+
+const APP_CONCEPT_TAGS: Record<string, string[]> = {
+  vscode: ["vscode", "bridge", "typescript"],
+  about: [],
+};
+
+const APP_CONCEPT_ORDER = ["vscode", "about"];
 
 export function createDocsRegistry(userTileDocEntries: readonly DocsTileEntry[]) {
   const registry = buildDocsRegistry({
@@ -67,12 +75,15 @@ export function createDocsRegistry(userTileDocEntries: readonly DocsTileEntry[])
   });
 
   const conceptContent = buildContentMap(appConceptModules);
+  const orderedConcepts = APP_CONCEPT_ORDER.filter((id) => id in conceptContent).concat(
+    Object.keys(conceptContent).filter((id) => !APP_CONCEPT_ORDER.includes(id))
+  );
   registry.register({
-    concepts: Object.entries(conceptContent).map(([id, content]) => ({
+    concepts: orderedConcepts.map((id) => ({
       id,
       title: APP_CONCEPT_TITLES[id] ?? id,
-      tags: [],
-      content,
+      tags: APP_CONCEPT_TAGS[id] ?? [],
+      content: conceptContent[id],
     })),
   });
 
