@@ -28,7 +28,7 @@ export interface AppSettings {
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   vscodeBridgeUrl: "vscode-bridge.mindcraft-lang.org",
-  showBridgePanel: false,
+  showBridgePanel: true,
 };
 
 type AppSettingsListener = (settings: AppSettings, prev: AppSettings) => void;
