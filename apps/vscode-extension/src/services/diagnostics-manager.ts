@@ -21,6 +21,7 @@ export class DiagnosticsManager implements vscode.Disposable {
 
   constructor() {
     this._collection = vscode.languages.createDiagnosticCollection("mindcraft");
+    this._collection.clear();
   }
 
   get compileCounts(): { errors: number; warnings: number } {
@@ -70,6 +71,23 @@ export class DiagnosticsManager implements vscode.Disposable {
 
     if (this._totalErrors !== prevTotalErrors || this._totalWarnings !== prevTotalWarnings) {
       this._onDidChangeCounts.fire({ errors: this._totalErrors, warnings: this._totalWarnings });
+    }
+  }
+
+  clearFile(file: string): void {
+    const uri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${file}` });
+    this._collection.delete(uri);
+    this._versions.delete(file);
+    const counts = this._fileCounts.get(file);
+    if (counts) {
+      this._fileCounts.delete(file);
+      const prevErrors = this._totalErrors;
+      const prevWarnings = this._totalWarnings;
+      this._totalErrors -= counts.errors;
+      this._totalWarnings -= counts.warnings;
+      if (this._totalErrors !== prevErrors || this._totalWarnings !== prevWarnings) {
+        this._onDidChangeCounts.fire({ errors: this._totalErrors, warnings: this._totalWarnings });
+      }
     }
   }
 

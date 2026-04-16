@@ -317,10 +317,12 @@ export class ProjectManager implements vscode.Disposable {
         break;
       case "delete":
         events.push({ type: vscode.FileChangeType.Deleted, uri: uri(ev.path) });
+        this._diagnosticsManager.clearFile(ev.path);
         break;
       case "rename":
         events.push({ type: vscode.FileChangeType.Deleted, uri: uri(ev.oldPath) });
         events.push({ type: vscode.FileChangeType.Created, uri: uri(ev.newPath) });
+        this._diagnosticsManager.clearFile(ev.oldPath);
         break;
       case "mkdir":
         events.push({ type: vscode.FileChangeType.Created, uri: uri(ev.path) });

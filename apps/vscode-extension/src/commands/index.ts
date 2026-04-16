@@ -8,10 +8,9 @@ const SENSOR_TEMPLATE = `import { Sensor } from "mindcraft";
 
 export default Sensor({
   name: "my sensor",
-  output: "boolean",
   // icon: "./my-sensor.svg",
   // docs: "./my-sensor.md",
-  onExecute(ctx, params) {
+  onExecute(ctx, params): boolean {
     return false;
   },
 });
@@ -125,29 +124,23 @@ async function createFileFromTemplate(
   }
 
   const rootUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: "/" });
-  let entries: [string, vscode.FileType][];
+  let existingEntries: [string, vscode.FileType][];
   try {
-    entries = await vscode.workspace.fs.readDirectory(rootUri);
+    existingEntries = await vscode.workspace.fs.readDirectory(rootUri);
   } catch {
-    entries = [];
+    existingEntries = [];
   }
 
-  const existingNames = new Set(entries.map(([name]) => name));
-  const fileName = findUniqueName(baseName, existingNames);
-  const fileUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${fileName}` });
+  const existingNames = new Set(existingEntries.map(([name]) => name));
+  const targetFolder = findUniqueFolderName(baseName, existingNames);
+  const fileName = `${baseName}.ts`;
 
-  await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(content));
+  const writeFs = projectManager.project.files.toRemote;
+  writeFs.mkdir(targetFolder);
+  writeFs.write(`${targetFolder}/${fileName}`, content);
+
+  const fileUri = vscode.Uri.from({ scheme: MINDCRAFT_SCHEME, path: `/${targetFolder}/${fileName}` });
   await vscode.commands.executeCommand("vscode.open", fileUri);
-}
-
-function findUniqueName(baseName: string, existing: Set<string>): string {
-  const candidate = `${baseName}.ts`;
-  if (!existing.has(candidate)) return candidate;
-
-  for (let i = 2; ; i++) {
-    const numbered = `${baseName} (${i}).ts`;
-    if (!existing.has(numbered)) return numbered;
-  }
 }
 
 async function resolveExampleFolder(

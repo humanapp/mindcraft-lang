@@ -50,21 +50,23 @@ export class MindcraftSessionsProvider implements vscode.TreeDataProvider<TreeIt
       ];
     }
 
-    const items: TreeItem[] = [
+    const items: TreeItem[] = [];
+
+    if (this.hasExamples()) {
+      items.push(new ExamplesFolderItem());
+    }
+
+    items.push(
+      new SessionItem("Create new sensor", vscode.TreeItemCollapsibleState.None, "mindcraft.createSensor", "eye"),
+      new SessionItem("Create new actuator", vscode.TreeItemCollapsibleState.None, "mindcraft.createActuator", "zap"),
       new SessionItem(
         "Disconnect",
         vscode.TreeItemCollapsibleState.None,
         "mindcraft.confirmDisconnect",
         "debug-disconnect"
       ),
-      new SessionItem("Create new sensor", vscode.TreeItemCollapsibleState.None, "mindcraft.createSensor", "eye"),
-      new SessionItem("Create new actuator", vscode.TreeItemCollapsibleState.None, "mindcraft.createActuator", "zap"),
-      new SessionItem("Open settings", vscode.TreeItemCollapsibleState.None, "mindcraft.openSettings", "settings-gear"),
-    ];
-
-    if (this.hasExamples()) {
-      items.push(new ExamplesFolderItem());
-    }
+      new SessionItem("Open settings", vscode.TreeItemCollapsibleState.None, "mindcraft.openSettings", "settings-gear")
+    );
 
     return items;
   }
