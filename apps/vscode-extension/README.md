@@ -19,9 +19,11 @@ _Example: Authoring a "teleport" actuator in TypeScript:_
 
 1. Open [vscode.dev](https://vscode.dev) in your browser and install the **Mindcraft** extension.
 2. Launch your Mindcraft app and enable the VS Code Bridge. Make note of the generated **join code**.
-3. Open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **Mindcraft: Connect**, entering your join code.
-4. Scaffold a new tile with **Mindcraft: Create New Sensor** or **Mindcraft: Create New Actuator**.
-5. Edit the generated TypeScript file -- your tile is instantly available in the brain editor.
+3. In VS Code, open the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`) and run **Mindcraft: Connect**, entering your join code.
+4. Scaffold a new tile with **Create New Sensor** or **Create New Actuator**, or browse the **Examples** folder in the Mindcraft Explorer panel and copy a ready-made tile into your workspace.
+5. Edit the generated TypeScript file -- save it and the tile is instantly available in the brain editor.
+
+Once your editor is paired to your app, the connection persists and reconnects automatically. A new join code is only needed if either side is manually disconnected.
 
 ## Commands
 
