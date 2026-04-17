@@ -288,11 +288,17 @@ function TileCard({ entry, onClick }: TileCardProps) {
   const resolveTileVisual = useDocsResolveTileVisual();
   const label = getTileLabel(tileCatalog, resolveTileVisual, entry.tileId);
   const iconUrl = getTileIconUrl(tileCatalog, resolveTileVisual, entry.tileId);
+  const href = `/docs/tiles/${encodeURIComponent(entry.tileId)}`;
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <a
+      href={href}
+      onClick={(e) => {
+        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-800/50 hover:bg-slate-700/60 border border-slate-700/50 hover:border-slate-600 transition-colors text-left"
     >
       {iconUrl ? (
@@ -304,7 +310,7 @@ function TileCard({ entry, onClick }: TileCardProps) {
         <div className="text-sm font-medium text-slate-200 truncate">{label}</div>
       </div>
       <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
-    </button>
+    </a>
   );
 }
 
@@ -314,10 +320,16 @@ interface PatternCardProps {
 }
 
 function PatternCard({ entry, onClick }: PatternCardProps) {
+  const href = `/docs/patterns/${encodeURIComponent(entry.id)}`;
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <a
+      href={href}
+      onClick={(e) => {
+        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-800/50 hover:bg-slate-700/60 border border-slate-700/50 hover:border-slate-600 transition-colors text-left"
     >
       <div className="flex-1 min-w-0">
@@ -325,7 +337,7 @@ function PatternCard({ entry, onClick }: PatternCardProps) {
         <div className="text-xs text-slate-500 truncate">{entry.tags.join(", ")}</div>
       </div>
       <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
-    </button>
+    </a>
   );
 }
 
@@ -335,10 +347,16 @@ interface ConceptCardProps {
 }
 
 function ConceptCard({ entry, onClick }: ConceptCardProps) {
+  const href = `/docs/concepts/${encodeURIComponent(entry.id)}`;
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <a
+      href={href}
+      onClick={(e) => {
+        if (!e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-slate-800/50 hover:bg-slate-700/60 border border-slate-700/50 hover:border-slate-600 transition-colors text-left"
     >
       <div className="flex-1 min-w-0">
@@ -346,7 +364,7 @@ function ConceptCard({ entry, onClick }: ConceptCardProps) {
         <div className="text-xs text-slate-500 truncate">{entry.tags.join(", ")}</div>
       </div>
       <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" aria-hidden="true" />
-    </button>
+    </a>
   );
 }
 

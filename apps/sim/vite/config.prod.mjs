@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import commonjs from '@rollup/plugin-commonjs';
 import path from 'path';
 import { uiPlugin } from '../../../packages/ui/src/vite-plugin.ts';
+import { sitemapPlugin } from './sitemap-plugin.mjs';
 
 const phasermsg = () => {
     return {
@@ -21,6 +22,7 @@ export default defineConfig({
     plugins: [
         react(),
         uiPlugin(),
+        sitemapPlugin(),
         phasermsg()
     ],
     resolve: {
