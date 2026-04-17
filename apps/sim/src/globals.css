@@ -75,8 +75,7 @@
   --color-chart-5: oklch(67% 0.19 27);
   --radius: 0.5rem;
   --font-mono:
-    "Roboto Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
-    Consolas, "DejaVu Sans Mono", monospace;
+    "Roboto Mono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 }
 
 @media (prefers-color-scheme: dark) {
