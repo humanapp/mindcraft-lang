@@ -1,4 +1,47 @@
-import type { ExtractedArgSpec, ExtractedParam } from "./types.js";
+import type { ExtractedArgSpec, ExtractedModifier, ExtractedParam } from "./types.js";
+
+export interface ArgSlot {
+  slotId: number;
+  spec: ExtractedParam | ExtractedModifier;
+  repeated?: boolean;
+}
+
+export function collectArgSlots(args: readonly ExtractedArgSpec[]): ArgSlot[] {
+  const result: ArgSlot[] = [];
+  const counter = { value: 0 };
+  for (const spec of args) collectArgSlotsFromSpec(spec, result, counter);
+  return result;
+}
+
+function collectArgSlotsFromSpec(
+  spec: ExtractedArgSpec,
+  out: ArgSlot[],
+  counter: { value: number },
+  repeated?: boolean
+): void {
+  switch (spec.kind) {
+    case "param":
+    case "modifier":
+      out.push({ slotId: counter.value++, spec, repeated });
+      break;
+    case "choice":
+      for (const item of spec.items) collectArgSlotsFromSpec(item, out, counter, repeated);
+      break;
+    case "optional":
+      collectArgSlotsFromSpec(spec.item, out, counter, repeated);
+      break;
+    case "repeated":
+      collectArgSlotsFromSpec(spec.item, out, counter, true);
+      break;
+    case "conditional":
+      collectArgSlotsFromSpec(spec.thenItem, out, counter, repeated);
+      if (spec.elseItem) collectArgSlotsFromSpec(spec.elseItem, out, counter, repeated);
+      break;
+    case "seq":
+      for (const item of spec.items) collectArgSlotsFromSpec(item, out, counter, repeated);
+      break;
+  }
+}
 
 export function collectParams(args: readonly ExtractedArgSpec[]): ExtractedParam[] {
   const result: ExtractedParam[] = [];

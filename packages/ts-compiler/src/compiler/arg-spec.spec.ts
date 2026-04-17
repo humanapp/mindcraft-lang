@@ -1395,7 +1395,7 @@ export default Sensor({
     assert.equal((slow as NumberValue).v, 10);
   });
 
-  test("repeated modifier does not affect param slot indices", () => {
+  test("repeated modifier occupies slot before param", () => {
     const source = `
 import { Sensor, repeated, modifier, param, type Context } from "mindcraft";
 
@@ -1405,16 +1405,67 @@ export default Sensor({
     repeated(modifier("flag", { label: "Flag" }), { min: 0, max: 3 }),
     param("count", { type: "number" }),
   ],
-  onExecute(ctx: Context, args: { count: number }): number {
+  onExecute(ctx: Context, args: { flag: number; count: number }): number {
     return args.count + 100;
   },
 });
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(42) }));
+    const value = execSensor(result.program!, mkArgsMap({ 1: mkNumberValue(42) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 142);
+  });
+
+  test("repeated modifier exposes count, zero when absent", () => {
+    const source = `
+import { Sensor, repeated, modifier, param, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "rep-mod-count",
+  args: [
+    repeated(modifier("boost", { label: "Boost" }), { min: 0, max: 5 }),
+    param("base", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { boost: number; base: number }): number {
+    return args.base + args.boost * 10;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+
+    const with3 = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(3), 1: mkNumberValue(5) }));
+    assert.equal((with3 as NumberValue).v, 35);
+
+    const with0 = execSensor(result.program!, mkArgsMap({ 1: mkNumberValue(5) }));
+    assert.equal((with0 as NumberValue).v, 5);
+  });
+
+  test("repeated modifier preserves min/max in descriptor", () => {
+    const source = `
+import { Sensor, repeated, modifier, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "rep-bounds",
+  args: [
+    repeated(modifier("ping", { label: "Ping" }), { min: 2, max: 4 }),
+  ],
+  onExecute(ctx: Context, args: { ping: number }): number {
+    return args.ping;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
+    const rep = result.descriptor.args[0];
+    assert.equal(rep.kind, "repeated");
+    if (rep.kind === "repeated") {
+      assert.equal(rep.min, 2);
+      assert.equal(rep.max, 4);
+      assert.equal(rep.item.kind, "modifier");
+    }
   });
 
   test("optional(choice(A, B)) -- only slot 1 filled returns correct value", () => {
@@ -1463,5 +1514,137 @@ export default Sensor({
     const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(99) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 99);
+  });
+
+  test("modifier present yields true in args", () => {
+    const source = `
+import { Sensor, modifier, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "mod-present",
+  args: [
+    modifier("turbo", { label: "Turbo" }),
+  ],
+  onExecute(ctx: Context, args: { turbo: boolean }): number {
+    if (args.turbo) return 1;
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(1) }));
+    assert.equal(value!.t, NativeType.Number);
+    assert.equal((value as NumberValue).v, 1);
+  });
+
+  test("modifier absent yields false in args", () => {
+    const source = `
+import { Sensor, modifier, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "mod-absent",
+  args: [
+    modifier("turbo", { label: "Turbo" }),
+  ],
+  onExecute(ctx: Context, args: { turbo: boolean }): number {
+    if (args.turbo) return 1;
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    const value = execSensor(result.program!, mkArgsMap({}));
+    assert.equal(value!.t, NativeType.Number);
+    assert.equal((value as NumberValue).v, 0);
+  });
+
+  test("modifier in choice with param uses correct slots", () => {
+    const source = `
+import { Sensor, choice, modifier, param, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "mod-choice",
+  args: [
+    choice(
+      modifier("quick", { label: "Quick" }),
+      param("amount", { type: "number" }),
+    ),
+  ],
+  onExecute(ctx: Context, args: { quick: boolean; amount: number }): number {
+    if (args.quick) return 99;
+    return args.amount;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+
+    const withMod = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(1) }));
+    assert.equal((withMod as NumberValue).v, 99);
+
+    const withParam = execSensor(result.program!, mkArgsMap({ 1: mkNumberValue(55) }));
+    assert.equal((withParam as NumberValue).v, 55);
+  });
+
+  test("existing modifier ref without opts compiles", () => {
+    const source = `
+import { Sensor, modifier, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "existing-ref",
+  args: [
+    modifier("modifier.distance.nearby"),
+  ],
+  onExecute(ctx: Context, args: { nearby: boolean }): number {
+    if (args.nearby) return 1;
+    return 0;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.descriptor);
+    const mod = result.descriptor.args[0] as ExtractedModifier;
+    assert.equal(mod.id, "modifier.distance.nearby");
+
+    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(1) }));
+    assert.equal((value as NumberValue).v, 1);
+  });
+
+  test("multiple modifiers before param use correct slot indices", () => {
+    const source = `
+import { Sensor, modifier, param, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "multi-mod",
+  args: [
+    modifier("alpha", { label: "Alpha" }),
+    modifier("beta", { label: "Beta" }),
+    param("val", { type: "number" }),
+  ],
+  onExecute(ctx: Context, args: { alpha: boolean; beta: boolean; val: number }): number {
+    let result = args.val;
+    if (args.alpha) result = result + 10;
+    if (args.beta) result = result + 20;
+    return result;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+
+    const neitherMod = execSensor(result.program!, mkArgsMap({ 2: mkNumberValue(5) }));
+    assert.equal((neitherMod as NumberValue).v, 5);
+
+    const bothMods = execSensor(
+      result.program!,
+      mkArgsMap({ 0: mkNumberValue(1), 1: mkNumberValue(1), 2: mkNumberValue(5) })
+    );
+    assert.equal((bothMods as NumberValue).v, 35);
+
+    const alphaOnly = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(1), 2: mkNumberValue(5) }));
+    assert.equal((alphaOnly as NumberValue).v, 15);
   });
 });

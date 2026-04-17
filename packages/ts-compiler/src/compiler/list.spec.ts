@@ -409,7 +409,7 @@ export default Sensor({
   test("buildAmbientDeclarations includes AnyList type alias", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     assert.ok(
-      ambientSource.includes("export type AnyList = Array<number | string | boolean | null>;"),
+      ambientSource.includes("export type AnyList = Array<MindcraftValue>;"),
       "AnyList type alias should be in ambient declarations"
     );
   });

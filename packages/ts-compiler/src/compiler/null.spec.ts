@@ -795,6 +795,144 @@ export default Sensor({
   });
 });
 
+describe("nullable struct nil comparison", () => {
+  before(() => {
+    services = __test__createBrainServices();
+    const types = services.types;
+    const numTypeId = mkTypeId(NativeType.Number, "number");
+    const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
+    if (!types.get(vec2TypeId)) {
+      types.addStructType("Vector2", {
+        fields: List.from([
+          { name: "x", typeId: numTypeId },
+          { name: "y", typeId: numTypeId },
+        ]),
+      });
+    }
+    types.addNullableType(vec2TypeId);
+  });
+
+  test("nullable struct === null compiles and returns true when nil", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "struct-nil-eq",
+  onExecute(ctx: Context): boolean {
+    const v: Vector2 | null = null;
+    return v === null;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as BooleanValue).v, true);
+    }
+  });
+
+  test("nullable struct !== null compiles and returns true when non-nil", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "struct-nil-neq",
+  onExecute(ctx: Context): boolean {
+    const v: Vector2 | null = { x: 1, y: 2 };
+    return v !== null;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as BooleanValue).v, true);
+    }
+  });
+
+  test("null === nullable struct compiles (nil on left side)", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "nil-lhs-eq",
+  onExecute(ctx: Context): boolean {
+    const v: Vector2 | null = null;
+    return null === v;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as BooleanValue).v, true);
+    }
+  });
+
+  test("nullable struct !== null returns false when nil", () => {
+    const ambientSource = buildAmbientDeclarations(services.types);
+    const source = `
+import { Sensor, type Context, type Vector2 } from "mindcraft";
+
+export default Sensor({
+  name: "struct-nil-neq-false",
+  onExecute(ctx: Context): boolean {
+    const v: Vector2 | null = null;
+    return v !== null;
+  },
+});
+`;
+    const result = compileUserTile(source, { ambientSource, services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    const handles = new HandleTable(100);
+    const vm = new runtime.VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const runResult = vm.runFiber(fiber, mkScheduler());
+    assert.equal(runResult.status, VmStatus.DONE);
+    if (runResult.status === VmStatus.DONE) {
+      assert.equal((runResult.result as BooleanValue).v, false);
+    }
+  });
+});
+
 describe("auto-instantiated list types", () => {
   before(async () => {
     services = __test__createBrainServices();

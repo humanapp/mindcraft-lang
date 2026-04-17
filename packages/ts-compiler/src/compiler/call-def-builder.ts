@@ -24,9 +24,13 @@ export function buildCallDef(tileName: string, args: readonly ExtractedArgSpec[]
 function lowerArgSpec(tileName: string, spec: ExtractedArgSpec): BrainActionCallSpec {
   switch (spec.kind) {
     case "modifier":
-      return mod(`user.${tileName}.${spec.id}`);
+      return mod(spec.id.startsWith("modifier.") ? spec.id : `user.${tileName}.${spec.id}`);
     case "param": {
-      const tileId = spec.anonymous ? `anon.${spec.type}` : `user.${tileName}.${spec.name}`;
+      const tileId = spec.anonymous
+        ? `anon.${spec.type}`
+        : spec.name.startsWith("parameter.")
+          ? spec.name
+          : `user.${tileName}.${spec.name}`;
       return param(tileId, { anonymous: spec.anonymous || undefined });
     }
     case "choice": {

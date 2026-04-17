@@ -15,6 +15,9 @@
       }
     }
   },
+  "files": {
+    "includes": ["**", "!src/examples/mindcraft.d.ts"]
+  },
   "overrides": [
     {
       "includes": ["src/examples/**"],
@@ -22,10 +25,12 @@
         "rules": {
           "suspicious": {
             "noExplicitAny": "off"
+          },
+          "style": {
+            "useNumberNamespace": "off"
           }
         }
       }
     }
   ]
 }
-

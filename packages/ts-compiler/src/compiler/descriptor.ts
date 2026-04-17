@@ -309,7 +309,7 @@ function extractModifierSpec(
   addDiag: (code: DescriptorDiagCode, node: ts.Node, message: string) => void
 ): ExtractedArgSpec | undefined {
   const args = node.arguments;
-  if (args.length < 2 || !ts.isStringLiteral(args[0])) {
+  if (args.length < 1 || !ts.isStringLiteral(args[0])) {
     addDiag(
       DescriptorDiagCode.ModifierIdMustBeStringLiteral,
       args[0] ?? node,
@@ -319,6 +319,20 @@ function extractModifierSpec(
   }
 
   const id = args[0].text;
+  const isExistingRef = id.startsWith("modifier.");
+
+  if (args.length < 2 && !isExistingRef) {
+    addDiag(
+      DescriptorDiagCode.ModifierOptsMustBeObjectLiteral,
+      node,
+      "`modifier()` requires a second argument with `{ label }` for custom modifiers."
+    );
+    return undefined;
+  }
+
+  if (isExistingRef && args.length < 2) {
+    return { kind: "modifier", id, label: "" };
+  }
 
   if (!ts.isObjectLiteralExpression(args[1])) {
     addDiag(

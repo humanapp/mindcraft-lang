@@ -11,5 +11,4 @@ Teleports the actor to a new location
 
 ---
 
-TODO fill out
 

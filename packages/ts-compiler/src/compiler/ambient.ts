@@ -328,6 +328,7 @@ declare module "mindcraft" {
 `;
 
 const AMBIENT_MODULE_END = `
+  type MindcraftValue = MindcraftTypeMap[keyof MindcraftTypeMap];
   type MindcraftType = keyof MindcraftTypeMap | (string & {});
 
   interface ModifierSpec { readonly __brand: "modifier" }
@@ -339,7 +340,7 @@ const AMBIENT_MODULE_END = `
   interface SeqSpec { readonly __brand: "seq" }
   type ArgSpec = ModifierSpec | ParamSpec | ChoiceSpec | OptionalSpec | RepeatedSpec | ConditionalSpec | SeqSpec;
 
-  export function modifier(id: string, opts: { label: string; icon?: string }): ModifierSpec;
+  export function modifier(id: string, opts?: { label: string; icon?: string }): ModifierSpec;
   export function param(name: string, opts: { type: MindcraftType; default?: unknown; anonymous?: boolean }): ParamSpec;
   export function choice(name: string, ...items: ArgSpec[]): ChoiceSpec;
   export function choice(...items: ArgSpec[]): ChoiceSpec;
@@ -408,7 +409,7 @@ function typeDefToTs(def: TypeDef, registry: ITypeRegistry): string {
     case NativeType.String:
       return "string";
     case NativeType.Any:
-      return "number | string | boolean | null";
+      return "MindcraftValue";
     case NativeType.Struct:
     case NativeType.Enum:
       return def.name;

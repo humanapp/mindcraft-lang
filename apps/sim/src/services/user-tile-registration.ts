@@ -356,5 +356,9 @@ export function applyCompiledUserTiles(store: SimEnvironmentStore, result: Works
     logger.info(
       `[user-tile-registration] applied bundle: ${metadata.length} tile(s), ${update.changedActionKeys.length} changed action(s), ${update.invalidatedBrains.length} invalidated brain(s)`
     );
+    for (const entry of metadata) {
+      const tileId = entry.kind === "sensor" ? mkSensorTileId(entry.key) : mkActuatorTileId(entry.key);
+      logger.info(`[user-tile-registration]   ${tileId}`);
+    }
   }
 }

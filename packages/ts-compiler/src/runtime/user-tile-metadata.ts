@@ -29,7 +29,9 @@ function buildActionDescriptor(program: UserAuthoredProgram): ActionDescriptor {
 }
 
 function getParameterId(tileName: string, param: ExtractedParam): string {
-  return param.anonymous ? `anon.${param.type}` : `user.${tileName}.${param.name}`;
+  if (param.anonymous) return `anon.${param.type}`;
+  if (param.name.startsWith("parameter.")) return param.name;
+  return `user.${tileName}.${param.name}`;
 }
 
 function buildParameterTiles(
@@ -40,6 +42,7 @@ function buildParameterTiles(
 
   for (const param of collectParams(program.args)) {
     const parameterId = getParameterId(program.name, param);
+    if (param.name.startsWith("parameter.")) continue;
     const tileId = mkParameterTileId(parameterId);
     if (parameterTiles.has(tileId)) {
       continue;

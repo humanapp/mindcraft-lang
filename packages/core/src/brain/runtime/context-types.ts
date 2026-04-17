@@ -19,12 +19,14 @@ export const ContextTypeNames = {
   Context: "Context",
   BrainContext: "BrainContext",
   EngineContext: "EngineContext",
+  RuleContext: "RuleContext",
 };
 
 export const ContextTypeIds = {
   Context: mkTypeId(NativeType.Struct, ContextTypeNames.Context),
   BrainContext: mkTypeId(NativeType.Struct, ContextTypeNames.BrainContext),
   EngineContext: mkTypeId(NativeType.Struct, ContextTypeNames.EngineContext),
+  RuleContext: mkTypeId(NativeType.Struct, ContextTypeNames.RuleContext),
 };
 
 export function registerContextTypes(services: BrainServices) {
@@ -55,6 +57,26 @@ export function registerContextTypes(services: BrainServices) {
     fieldGetter: () => undefined,
   });
 
+  const ruleContextTypeId = types.addStructType(ContextTypeNames.RuleContext, {
+    fields: List.empty(),
+    fieldGetter: () => undefined,
+    methods: List.from([
+      {
+        name: "getVariable",
+        params: List.from([{ name: "name", typeId: CoreTypeIds.String }]),
+        returnTypeId: CoreTypeIds.Any,
+      },
+      {
+        name: "setVariable",
+        params: List.from([
+          { name: "name", typeId: CoreTypeIds.String },
+          { name: "value", typeId: CoreTypeIds.Any },
+        ]),
+        returnTypeId: CoreTypeIds.Void,
+      },
+    ]),
+  });
+
   types.addStructType(ContextTypeNames.Context, {
     fields: List.from([
       { name: "time", typeId: CoreTypeIds.Number },
@@ -62,6 +84,7 @@ export function registerContextTypes(services: BrainServices) {
       { name: "tick", typeId: CoreTypeIds.Number },
       { name: "brain", typeId: brainContextTypeId },
       { name: "engine", typeId: engineContextTypeId },
+      { name: "rule", typeId: ruleContextTypeId },
     ]),
     fieldGetter: (source: StructValue, fieldName: string) => {
       const execCtx = source.native as ExecutionContext;
@@ -76,6 +99,8 @@ export function registerContextTypes(services: BrainServices) {
           return mkNativeStructValue(brainContextTypeId, execCtx);
         case "engine":
           return mkNativeStructValue(engineContextTypeId, execCtx);
+        case "rule":
+          return mkNativeStructValue(ruleContextTypeId, execCtx);
         default:
           return undefined;
       }
@@ -106,6 +131,32 @@ export function registerContextTypes(services: BrainServices) {
         const name = (args.v.get(1) as StringValue).v;
         const value = args.v.get(2) as Value;
         ctx.setVariable(name, value);
+        return NIL_VALUE;
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "RuleContext.getVariable",
+    false,
+    {
+      exec: (ctx: ExecutionContext, args: MapValue) => {
+        const name = (args.v.get(1) as StringValue).v;
+        return ctx.rule?.getVariable(name) ?? NIL_VALUE;
+      },
+    },
+    emptyCallDef
+  );
+
+  functions.register(
+    "RuleContext.setVariable",
+    false,
+    {
+      exec: (ctx: ExecutionContext, args: MapValue) => {
+        const name = (args.v.get(1) as StringValue).v;
+        const value = args.v.get(2) as Value;
+        ctx.rule?.setVariable(name, value);
         return NIL_VALUE;
       },
     },

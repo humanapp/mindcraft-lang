@@ -663,10 +663,19 @@ export class TypeRegistry implements ITypeRegistry {
   }
 
   private checkStructurallyCompatible(sourceTypeId: TypeId, targetTypeId: TypeId): boolean {
-    const sourceDef = this.get(sourceTypeId);
-    const targetDef = this.get(targetTypeId);
+    let sourceDef = this.get(sourceTypeId);
+    let targetDef = this.get(targetTypeId);
     if (!sourceDef || !targetDef) return false;
     if (sourceDef.coreType !== NativeType.Struct || targetDef.coreType !== NativeType.Struct) return false;
+
+    if (sourceDef.nullable) {
+      sourceDef = this.get((sourceDef as NullableTypeDef).baseTypeId);
+      if (!sourceDef) return false;
+    }
+    if (targetDef.nullable) {
+      targetDef = this.get((targetDef as NullableTypeDef).baseTypeId);
+      if (!targetDef) return false;
+    }
 
     const sourceStruct = sourceDef as StructTypeDef;
     const targetStruct = targetDef as StructTypeDef;

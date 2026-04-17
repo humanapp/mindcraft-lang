@@ -16,7 +16,7 @@ import {
   type Value,
 } from "@mindcraft-lang/core/brain";
 import ts from "typescript";
-import { collectParams } from "./arg-spec-utils.js";
+import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import { type LocalMetadata, type ScopeMetadata, ScopeStack } from "./scope.js";
@@ -1306,6 +1306,13 @@ function hasTopLevelInitializers(sourceFile: ts.SourceFile): boolean {
   return false;
 }
 
+function argSlotPropertyName(slot: ArgSlot): string {
+  if (slot.spec.kind === "param") return slot.spec.name;
+  const id = slot.spec.id;
+  const lastDot = id.lastIndexOf(".");
+  return lastDot >= 0 ? id.substring(lastDot + 1) : id;
+}
+
 function lowerOnExecuteBody(
   descriptor: ExtractedDescriptor,
   checker: ts.TypeChecker,
@@ -1318,8 +1325,8 @@ function lowerOnExecuteBody(
   classInfos: ClassInfo[]
 ): FunctionEntry {
   const ir: IrNode[] = [];
-  const flatParams = collectParams(descriptor.args);
-  const hasParams = flatParams.length > 0;
+  const argSlots = collectArgSlots(descriptor.args);
+  const hasArgs = argSlots.length > 0;
   const funcNode = descriptor.onExecuteNode;
 
   const paramLocals = new Map<string, number>();
@@ -1336,11 +1343,11 @@ function lowerOnExecuteBody(
     }
   }
 
-  // Local 0 is always the injected context struct. When the tile has parameters,
-  // local 1 holds the params as a Map<number, Value> (integer-keyed by param index).
-  // The loop below unpacks each param into its own local so user code can reference
-  // params by name via normal LoadLocal instructions.
-  let nextLocal = hasParams ? 2 : 1;
+  // Local 0 is always the injected context struct. When the tile has args,
+  // local 1 holds the args as a Map<slotId, Value> (integer-keyed by slot index).
+  // The loop below unpacks each param/modifier into its own local so user code
+  // can reference them by name via normal LoadLocal instructions.
+  let nextLocal = hasArgs ? 2 : 1;
 
   const ctxParam = funcNode.parameters[0];
   if (ctxParam && ts.isIdentifier(ctxParam.name)) {
@@ -1348,20 +1355,37 @@ function lowerOnExecuteBody(
   }
 
   let paramsSymbol: ts.Symbol | undefined;
-  if (hasParams) {
+  let nextLabelId = 0;
+  if (hasArgs) {
     const paramsParam = funcNode.parameters.length >= 2 ? funcNode.parameters[1] : undefined;
     if (paramsParam) {
       paramsSymbol = checker.getSymbolAtLocation(paramsParam.name);
     }
 
-    for (let i = 0; i < flatParams.length; i++) {
-      const param = flatParams[i];
+    for (const slot of argSlots) {
+      const name = argSlotPropertyName(slot);
       const localIdx = nextLocal++;
-      paramLocals.set(param.name, localIdx);
+      paramLocals.set(name, localIdx);
 
       ir.push({ kind: "LoadLocal", index: 1 });
-      ir.push({ kind: "PushConst", value: mkNumberValue(i) });
-      ir.push({ kind: "MapGet" });
+      ir.push({ kind: "PushConst", value: mkNumberValue(slot.slotId) });
+      if (slot.spec.kind === "modifier" && !slot.repeated) {
+        ir.push({ kind: "MapHas" });
+      } else {
+        ir.push({ kind: "MapGet" });
+      }
+      if (slot.repeated) {
+        const keepLabel = nextLabelId++;
+        const endLabel = nextLabelId++;
+        ir.push({ kind: "Dup" });
+        ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+        ir.push({ kind: "JumpIfFalse", labelId: keepLabel });
+        ir.push({ kind: "Pop" });
+        ir.push({ kind: "PushConst", value: mkNumberValue(0) });
+        ir.push({ kind: "Jump", labelId: endLabel });
+        ir.push({ kind: "Label", labelId: keepLabel });
+        ir.push({ kind: "Label", labelId: endLabel });
+      }
       ir.push({ kind: "StoreLocal", index: localIdx });
     }
   }
@@ -1372,12 +1396,12 @@ function lowerOnExecuteBody(
   if (ctxParam && ts.isIdentifier(ctxParam.name)) {
     scopeStack.addParameterMetadata(ctxParam.name.text, 0, funcScopeId);
   }
-  if (hasParams) {
-    for (let i = 0; i < flatParams.length; i++) {
-      const param = flatParams[i];
-      const idx = paramLocals.get(param.name);
+  if (hasArgs) {
+    for (const slot of argSlots) {
+      const name = argSlotPropertyName(slot);
+      const idx = paramLocals.get(name);
       if (idx !== undefined) {
-        scopeStack.addParameterMetadata(param.name, idx, funcScopeId);
+        scopeStack.addParameterMetadata(name, idx, funcScopeId);
       }
     }
   }
@@ -1392,7 +1416,7 @@ function lowerOnExecuteBody(
     diagnostics: sharedDiagnostics,
     loopStack: [],
     breakStack: [],
-    nextLabelId: 0,
+    nextLabelId,
     callsiteVars,
     functionTable,
     funcIdCounter,
@@ -1412,7 +1436,7 @@ function lowerOnExecuteBody(
     scopeStack.finalizeFunctionScope(ir.length);
     return {
       ir,
-      numParams: hasParams ? 2 : 1,
+      numParams: hasArgs ? 2 : 1,
       numLocals: scopeStack.nextLocal,
       name: `${descriptor.name}.onExecute`,
       injectCtxTypeId: ContextTypeIds.Context,
@@ -1432,7 +1456,7 @@ function lowerOnExecuteBody(
   scopeStack.finalizeFunctionScope(ir.length);
   return {
     ir,
-    numParams: hasParams ? 2 : 1,
+    numParams: hasArgs ? 2 : 1,
     numLocals: scopeStack.nextLocal,
     name: `${descriptor.name}.onExecute`,
     injectCtxTypeId: ContextTypeIds.Context,
@@ -2810,6 +2834,11 @@ function lowerExpression(expr: ts.Expression, ctx: LowerContext): void {
 function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
   if (expr.text === "undefined") {
     ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
+    return;
+  }
+
+  if (expr.text === "Infinity") {
+    ctx.ir.push({ kind: "PushConst", value: mkNumberValue(Number.POSITIVE_INFINITY) });
     return;
   }
 
@@ -7291,6 +7320,46 @@ function lowerListToString(expr: ts.CallExpression, propAccess: ts.PropertyAcces
   lowerListJoinWithSeparator(propAccess.expression, undefined, ctx, expr);
 }
 
+function isNullOrUndefinedLiteral(node: ts.Expression): boolean {
+  if (node.kind === ts.SyntaxKind.NullKeyword) return true;
+  return ts.isIdentifier(node) && node.text === "undefined";
+}
+
+function lowerNullableNilComparison(expr: ts.BinaryExpression, opId: string, ctx: LowerContext): boolean {
+  const leftIsNil = isNullOrUndefinedLiteral(expr.left);
+  const rightIsNil = isNullOrUndefinedLiteral(expr.right);
+  if (!leftIsNil && !rightIsNil) return false;
+  if (leftIsNil && rightIsNil) return false;
+
+  const valueNode = leftIsNil ? expr.right : expr.left;
+  const valueTypeId = resolveExpressionTypeId(valueNode, ctx);
+  if (!valueTypeId) return false;
+
+  const valueDef = ctx.services.types.get(valueTypeId);
+  if (!valueDef) return false;
+
+  if (!valueDef.nullable) {
+    const baseType = valueDef.coreType;
+    if (baseType !== NativeType.Struct && baseType !== NativeType.List && baseType !== NativeType.Map) {
+      return false;
+    }
+  }
+
+  lowerExpression(valueNode, ctx);
+  ctx.ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
+  if (opId === CoreOpId.NotEqualTo) {
+    const notFn = resolveOperator(CoreOpId.Not, [CoreTypeIds.Boolean], ctx.services);
+    if (notFn) {
+      ctx.ir.push({ kind: "HostCallArgs", fnName: notFn, argc: 1 });
+    } else {
+      ctx.diagnostics.push(
+        makeDiag(LoweringDiagCode.UnsupportedOperator, "Missing not() operator for !== nil comparison", expr)
+      );
+    }
+  }
+  return true;
+}
+
 function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): void {
   if (
     expr.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
@@ -7324,6 +7393,11 @@ function lowerBinaryExpression(expr: ts.BinaryExpression, ctx: LowerContext): vo
       )
     );
     return;
+  }
+
+  if (opId === CoreOpId.EqualTo || opId === CoreOpId.NotEqualTo) {
+    const nilSide = lowerNullableNilComparison(expr, opId, ctx);
+    if (nilSide) return;
   }
 
   lowerExpression(expr.left, ctx);
