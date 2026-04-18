@@ -26,6 +26,7 @@ import type { BrainServices } from "../services";
 import { linkBrainProgram } from "./linker";
 import { BrainPage } from "./page";
 import type { BrainRule } from "./rule";
+import { treeshakeProgram } from "./tree-shaker";
 import { FiberScheduler, VM } from "./vm";
 
 /**
@@ -145,6 +146,9 @@ export class Brain implements IBrain {
       linkEnvironment.catalogs,
       linkEnvironment.actionResolver
     );
+
+    // Tree-shake unreachable functions, constants, and variable names.
+    this.program = treeshakeProgram(this.program);
 
     // Create VM with the linked executable program.
     this.vm = new VM(this.services, this.program, this.handles);

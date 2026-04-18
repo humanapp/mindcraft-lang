@@ -10,6 +10,7 @@ export * from "./math-builtins";
 export * from "./operators";
 export * from "./page";
 export * from "./string-builtins";
+export * from "./tree-shaker";
 export * from "./type-system";
 export * from "./vm";
 
