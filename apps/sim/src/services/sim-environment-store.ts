@@ -364,7 +364,7 @@ function logWorkspaceCompile(result: WorkspaceCompileResult): void {
 
     const program = resultsByPath.get(path)?.program;
     if (program) {
-      logger.info(`[user-tile-compiler] ${path}: compiled ${program.kind} "${program.name}"`);
+      logger.debug(`[user-tile-compiler] ${path}: compiled ${program.kind} "${program.name}"`);
     }
   }
 }
