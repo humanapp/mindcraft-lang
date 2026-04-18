@@ -26,7 +26,7 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 | [@mindcraft-lang/ts-compiler](packages/ts-compiler/) | TypeScript-to-Mindcraft bytecode compiler |
 | [@mindcraft-lang/bridge-protocol](packages/bridge-protocol/) | VS Code bridge network protocol types and schemas |
 | [@mindcraft-lang/bridge-client](packages/bridge-client/) | Client SDK for the VS Code bridge |
-| [@mindcraft-lang/bridge-app](packages/bridge-app/) | App-side client for the VS Code bridge |
+| [@mindcraft-lang/bridge-app](packages/bridge-app/) | Opinionated layer atop bridge-client for the VS Code bridge |
 
 ## Apps
 
