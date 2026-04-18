@@ -15,9 +15,9 @@ import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { loadExamples } from "@/examples";
 import { name as simName, version as simVersion } from "../../package.json";
+import { clearBindingToken, loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { applyCompiledUserTiles, hydrateUserTilesAtStartup } from "./user-tile-registration";
 import { initVfsServiceWorker } from "./vfs-service-worker";
-import { clearBindingToken, loadBindingToken, saveBindingToken } from "./vscode-bridge";
 
 // -- AppSettings --
 

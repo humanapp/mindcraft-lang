@@ -7,8 +7,8 @@ import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { useSimEnvironment } from "@/contexts/sim-environment";
+import { clearBindingToken } from "@/services/binding-token-persistence";
 import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
-import { clearBindingToken } from "@/services/vscode-bridge";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",

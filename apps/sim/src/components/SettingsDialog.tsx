@@ -11,8 +11,8 @@ import {
 } from "@mindcraft-lang/ui";
 import { useEffect, useState } from "react";
 import { useSimEnvironment } from "@/contexts/sim-environment";
+import { clearBindingToken, hasBindingToken } from "@/services/binding-token-persistence";
 import type { AppSettings } from "@/services/sim-environment-store";
-import { clearBindingToken, hasBindingToken } from "@/services/vscode-bridge";
 
 interface SettingsDialogProps {
   open: boolean;
