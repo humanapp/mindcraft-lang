@@ -10,9 +10,6 @@ import { ProjectFiles, type ProjectFilesOptions } from "./files.js";
 import { ProjectSession } from "./session.js";
 
 export interface ProjectOptions<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
-  appName: string;
-  projectId: string;
-  projectName: string;
   bridgeUrl: string;
   wsPath: string;
   filesystem: ExportedFileSystem;
@@ -32,15 +29,6 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
   private _peerSeq = 0;
 
   constructor(public readonly options: ProjectOptions<TClient, TServer>) {
-    if (!options.appName) {
-      throw new ProtocolError(ErrorCode.APP_NAME_REQUIRED, "appName is required");
-    }
-    if (!options.projectId) {
-      throw new ProtocolError(ErrorCode.PROJECT_ID_REQUIRED, "projectId is required");
-    }
-    if (!options.projectName) {
-      throw new ProtocolError(ErrorCode.PROJECT_NAME_REQUIRED, "projectName is required");
-    }
     if (!options.bridgeUrl) {
       throw new ProtocolError(ErrorCode.BRIDGE_URL_REQUIRED, "bridgeUrl is required");
     }
@@ -52,9 +40,6 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
       options.wsPath,
       options.bridgeUrl,
       {
-        appName: options.appName,
-        projectId: options.projectId,
-        projectName: options.projectName,
         bindingToken: options.bindingToken,
       },
       options.joinCode
@@ -99,18 +84,6 @@ export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMe
         this.emitDidSync();
       }
     });
-  }
-
-  get appName(): string {
-    return this.options.appName;
-  }
-
-  get projectId(): string {
-    return this.options.projectId;
-  }
-
-  get projectName(): string {
-    return this.options.projectName;
   }
 
   get session(): ProjectSession<TClient, TServer> {

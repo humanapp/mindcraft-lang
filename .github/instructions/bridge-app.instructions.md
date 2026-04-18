@@ -34,7 +34,7 @@ src/
 - `AppProject` -- extends `Project<AppClientMessage, AppServerMessage>` from
   `bridge-client`. Hardcodes `wsPath: "app"`. Manages join code state from
   `session:welcome` and `session:joinCode` messages.
-- `AppProjectOptions` -- simplified options interface (appName, projectId, projectName,
+- `AppProjectOptions` -- simplified options interface (appName,
   bridgeUrl, filesystem). Omits `wsPath` and generic type parameters.
 
 ## AppProject

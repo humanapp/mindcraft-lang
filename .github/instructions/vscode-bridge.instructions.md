@@ -82,7 +82,7 @@ Current handler domains:
 `src/core/session-registry.ts` -- central in-memory session store.
 
 - `AppSession` -- `id`, `ws`, `connectedAt`, `joinCode`, `bindingId`, optional metadata
-  (`appName`, `projectId`, `projectName`)
+  (`appName`)
 - `ExtensionSession` -- `id`, `ws`, `connectedAt`, `appSessionId` (bound app),
   `pendingJoinCode`, `pendingBindingId`
 

@@ -68,9 +68,6 @@ function createProject(): Project {
   });
 
   return new Project({
-    appName: "test",
-    projectId: "test-1",
-    projectName: "Test",
     bridgeUrl: "http://localhost:3000",
     wsPath: "app",
     filesystem: fs,

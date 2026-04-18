@@ -14,6 +14,7 @@ import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { loadExamples } from "@/examples";
+import { name as simName, version as simVersion } from "../../package.json";
 import { applyCompiledUserTiles, hydrateUserTilesAtStartup } from "./user-tile-registration";
 import { initVfsServiceWorker } from "./vfs-service-worker";
 import { clearBindingToken, loadBindingToken, saveBindingToken } from "./vscode-bridge";
@@ -238,11 +239,12 @@ export class SimEnvironmentStore {
   initBridge(): void {
     this._project = createAppProject({
       environment: this.env,
-      app: {
-        id: "sim",
-        name: "Sim",
-        projectId: "sim-default",
-        projectName: "Sim",
+      host: {
+        name: simName,
+        version: simVersion,
+      },
+      defaults: {
+        name: "sim-default",
       },
       bridgeUrl: this._appSettings.vscodeBridgeUrl,
       workspace: this.workspace,

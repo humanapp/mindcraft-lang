@@ -82,9 +82,6 @@ const hello: WsHandler = (ws, payload, id) => {
   if (bound) {
     const app = getAppSessionById(session.appSessionId!);
     if (app) {
-      appStatusPayload.appName = app.appName;
-      appStatusPayload.projectId = app.projectId;
-      appStatusPayload.projectName = app.projectName;
       appStatusPayload.clientConnected = true;
       appStatusPayload.bindingToken = createBindingToken(app.bindingId);
     }

@@ -45,9 +45,6 @@ export const sessionHelloPayloadSchema = z.object({
   protocolVersion: z.number(),
   sessionId: z.string().optional(),
   joinCode: z.string().optional(),
-  appName: z.string().optional(),
-  projectId: z.string().optional(),
-  projectName: z.string().optional(),
   bindingToken: z.string().optional(),
 });
 

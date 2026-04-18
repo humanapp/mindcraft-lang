@@ -499,7 +499,8 @@ import type { WorkspaceCompileResult } from "@mindcraft-lang/bridge-app/compilat
 
 const project = createAppProject({
   environment,
-  app: { id: "my-app", name: "My App", projectId: "project-1", projectName: "My Project" },
+  host: { name: "My App", version: "1.0.0" },
+  defaults: { name: "my-project" },
   bridgeUrl: "localhost:6464",
   workspace,
   bindingToken: loadSavedBindingToken(),

@@ -4,9 +4,6 @@ import type { AppClientMessage, AppServerMessage, FileSystemNotification } from 
 import { CompilationManager, type CompilationProvider } from "./compilation.js";
 
 export interface AppProjectOptions {
-  appName: string;
-  projectId: string;
-  projectName: string;
   bridgeUrl: string;
   filesystem: ExportedFileSystem;
   bindingToken?: string;

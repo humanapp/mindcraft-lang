@@ -108,9 +108,6 @@ export class ProjectManager implements vscode.Disposable {
     const bindingToken = savedToken ?? this._globalState?.get<string>(BINDING_TOKEN_KEY);
 
     const project = new Project<ExtensionClientMessage, ExtensionServerMessage>({
-      appName: "vscode",
-      projectId: "vscode-extension",
-      projectName: "VS Code",
       bridgeUrl,
       wsPath: "extension",
       filesystem: new Map(),
@@ -144,13 +141,9 @@ export class ProjectManager implements vscode.Disposable {
         const clientConnected = msg.payload?.clientConnected ?? false;
         if (bound) {
           const p = msg.payload;
-          if (p?.appName) project.options.appName = p.appName;
-          if (p?.projectId) project.options.projectId = p.projectId;
-          if (p?.projectName) project.options.projectName = p.projectName;
           if (p?.bindingToken) {
             this._globalState?.update(BINDING_TOKEN_KEY, p.bindingToken);
           }
-          this.renameWorkspaceFolder(`${project.options.projectName} (${project.options.appName})`);
         }
         const wasBound = this._appBound;
         const wasClientConnected = this._appClientConnected;
@@ -271,6 +264,7 @@ export class ProjectManager implements vscode.Disposable {
         if (!this.hasWorkspaceFolder()) {
           this.addWorkspaceFolder();
         }
+        this.updateFolderNameFromProject(project);
         this.fireRootChanged();
         return;
       } catch (e) {
@@ -359,6 +353,18 @@ export class ProjectManager implements vscode.Disposable {
 
   private restartTypeScriptServer(): void {
     void vscode.commands.executeCommand("typescript.restartTsServer");
+  }
+
+  private updateFolderNameFromProject(project: ExtensionProject): void {
+    try {
+      const content = project.files.raw.read("mindcraft.json");
+      const json = JSON.parse(content);
+      if (json?.name) {
+        this.renameWorkspaceFolder(json.name);
+      }
+    } catch {
+      // mindcraft.json missing or invalid -- keep default name
+    }
   }
 
   private renameWorkspaceFolder(name: string): void {

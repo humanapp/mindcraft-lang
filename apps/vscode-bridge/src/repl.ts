@@ -21,7 +21,7 @@ function listSessions(): void {
     console.log("\nApp sessions:");
     for (const s of apps) {
       const age = Math.round((Date.now() - s.connectedAt) / 1000);
-      console.log(`  ${s.id}  joinCode=${s.joinCode}  appName=${s.appName}  projectName=${s.projectName}  age=${age}s`);
+      console.log(`  ${s.id}  joinCode=${s.joinCode}  age=${age}s`);
     }
   }
 
@@ -40,9 +40,7 @@ function listSessions(): void {
     console.log("\nDisconnected app sessions:");
     for (const { session: s, disconnectedAt } of disconnectedApps) {
       const ago = Math.round((Date.now() - disconnectedAt) / 1000);
-      console.log(
-        `  ${s.id}  joinCode=${s.joinCode}  appName=${s.appName}  projectName=${s.projectName}  disconnected=${ago}s ago`
-      );
+      console.log(`  ${s.id}  joinCode=${s.joinCode}  disconnected=${ago}s ago`);
     }
   }
 

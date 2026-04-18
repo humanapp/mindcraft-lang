@@ -22,12 +22,6 @@ export interface AppBridgeSnapshot {
 }
 
 export interface AppBridgeOptions {
-  app: {
-    id: string;
-    name: string;
-    projectId: string;
-    projectName: string;
-  };
   bridgeUrl: string;
   workspace: WorkspaceAdapter;
   features?: readonly AppBridgeFeature[];
@@ -93,9 +87,6 @@ class AppBridgeController implements AppBridge {
     this.attachFeatures();
 
     const project = new AppProject({
-      appName: this._options.app.name,
-      projectId: this._options.app.projectId,
-      projectName: this._options.app.projectName,
       bridgeUrl: this._options.bridgeUrl,
       filesystem: this._options.workspace.exportSnapshot(),
       bindingToken: this._options.bindingToken,

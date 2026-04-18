@@ -10,9 +10,6 @@ export interface SessionEventMap {
 }
 
 export interface SessionMeta {
-  appName: string;
-  projectId: string;
-  projectName: string;
   bindingToken?: string;
 }
 
@@ -37,9 +34,6 @@ export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage
       if (status === "connected") {
         const payload: Record<string, string | number> = {
           protocolVersion: PROTOCOL_VERSION,
-          appName: this._meta.appName,
-          projectId: this._meta.projectId,
-          projectName: this._meta.projectName,
         };
         if (this._meta.bindingToken) payload.bindingToken = this._meta.bindingToken;
         if (this._sessionId) payload.sessionId = this._sessionId;

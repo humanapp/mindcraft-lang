@@ -3,7 +3,6 @@ import { PROTOCOL_VERSION, sessionHelloPayloadSchema } from "@mindcraft-lang/bri
 import { createBindingToken } from "#core/binding-token.js";
 import { logger } from "#core/logging/logger.js";
 import {
-  type AppSessionMeta,
   discardAppSession,
   getAppSession,
   getSessionCount,
@@ -52,14 +51,9 @@ const hello: WsHandler = (ws, payload, id) => {
     return;
   }
 
-  const meta: AppSessionMeta = {
-    appName: helloPayload?.appName,
-    projectId: helloPayload?.projectId,
-    projectName: helloPayload?.projectName,
-  };
   const session =
     (helloPayload?.sessionId && reclaimAppSession(helloPayload.sessionId, ws)) ||
-    registerAppSession(ws, meta, helloPayload?.bindingToken);
+    registerAppSession(ws, helloPayload?.bindingToken);
   const counts = getSessionCount();
 
   logger.info(

@@ -27,9 +27,6 @@ export interface AppSession extends BaseSession {
   role: "app";
   joinCode: string;
   bindingId: string;
-  appName?: string;
-  projectId?: string;
-  projectName?: string;
 }
 
 export interface ExtensionSession extends BaseSession {
@@ -104,15 +101,9 @@ function notifyExtensionsAppStatus(appSessionId: string, bound: boolean, clientC
     if (!app) {
       const disconnected = disconnectedAppSessions.get(appSessionId);
       if (disconnected) {
-        payload.appName = disconnected.session.appName;
-        payload.projectId = disconnected.session.projectId;
-        payload.projectName = disconnected.session.projectName;
         payload.bindingToken = createBindingToken(disconnected.session.bindingId);
       }
     } else {
-      payload.appName = app.appName;
-      payload.projectId = app.projectId;
-      payload.projectName = app.projectName;
       payload.bindingToken = createBindingToken(app.bindingId);
     }
     if (clientConnected !== undefined) {
@@ -210,13 +201,7 @@ function stopDisconnectedSweepTimer(): void {
   }
 }
 
-export interface AppSessionMeta {
-  appName?: string;
-  projectId?: string;
-  projectName?: string;
-}
-
-export function registerAppSession(ws: WSContext, meta?: AppSessionMeta, bindingToken?: string): AppSession {
+export function registerAppSession(ws: WSContext, bindingToken?: string): AppSession {
   const existing = appSessions.get(ws);
   if (existing) {
     logger.warn({ sessionId: existing.id }, "app session already registered, replacing");
@@ -246,9 +231,6 @@ export function registerAppSession(ws: WSContext, meta?: AppSessionMeta, binding
     connectedAt: Date.now(),
     joinCode,
     bindingId,
-    appName: meta?.appName,
-    projectId: meta?.projectId,
-    projectName: meta?.projectName,
   };
 
   appSessions.set(ws, session);

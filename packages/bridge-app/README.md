@@ -13,7 +13,7 @@ import { createAppBridge } from "@mindcraft-lang/bridge-app";
 import { createCompilationFeature } from "@mindcraft-lang/bridge-app/compilation";
 
 const bridge = createAppBridge({
-  app: { id: "my-app", name: "My App", projectId: "p1", projectName: "Project" },
+  appName: "My App",
   bridgeUrl: "ws://localhost:6464",
   workspace: myWorkspaceAdapter,
   features: [createCompilationFeature({ compiler })],

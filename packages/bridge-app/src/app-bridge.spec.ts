@@ -130,12 +130,6 @@ function parseSent(socket: MockWebSocket): WsMessage[] {
 
 function createBridge(workspace: MemoryWorkspace, features: readonly AppBridgeFeature[] = []) {
   return createAppBridge({
-    app: {
-      id: "sim",
-      name: "Sim",
-      projectId: "sim-default",
-      projectName: "Sim",
-    },
     bridgeUrl: "http://localhost:3000",
     workspace,
     features,

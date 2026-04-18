@@ -17,6 +17,7 @@ import type {
 } from "./app-bridge.js";
 import { createAppBridge } from "./app-bridge.js";
 import { EXAMPLES_FOLDER, type ExampleDefinition } from "./examples.js";
+import { MINDCRAFT_JSON_PATH, type MindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
 
 export interface DiagnosticSnapshot {
   files: ReadonlyMap<string, readonly DiagnosticEntry[]>;
@@ -277,11 +278,13 @@ export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 
 export interface CreateAppProjectOptions {
   environment: MindcraftEnvironment;
-  app: {
-    id: string;
+  host: {
     name: string;
-    projectId: string;
-    projectName: string;
+    version: string;
+  };
+  defaults?: {
+    name?: string;
+    description?: string;
   };
   bridgeUrl: string;
   workspace: WorkspaceAdapter;
@@ -326,6 +329,7 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
       return currentBridge;
     },
     initialize() {
+      ensureMindcraftJson(workspace, options);
       compiler.replaceWorkspace(workspace.exportSnapshot());
       compiler.compile();
     },
@@ -377,15 +381,39 @@ function augmentWorkspace(
 }
 
 function buildBridge(
-  options: Pick<CreateAppProjectOptions, "app" | "bridgeUrl" | "workspace" | "bindingToken" | "onBindingTokenChange">,
+  options: Pick<CreateAppProjectOptions, "bridgeUrl" | "workspace" | "bindingToken" | "onBindingTokenChange">,
   compiler: TsWorkspaceCompiler
 ): AppBridge {
   return createAppBridge({
-    app: options.app,
     bridgeUrl: options.bridgeUrl,
     workspace: options.workspace,
     features: [createCompilationFeature({ compiler })],
     bindingToken: options.bindingToken,
     onBindingTokenChange: options.onBindingTokenChange,
+  });
+}
+
+function ensureMindcraftJson(workspace: WorkspaceAdapter, options: CreateAppProjectOptions): void {
+  const snapshot = workspace.exportSnapshot();
+  const existing = snapshot.get(MINDCRAFT_JSON_PATH);
+  if (existing && existing.kind === "file") {
+    return;
+  }
+
+  const mindcraftJson: MindcraftJson = {
+    name: options.defaults?.name ?? "untitled",
+    host: {
+      name: options.host.name,
+      version: options.host.version,
+    },
+    version: "0.0.1",
+    description: options.defaults?.description ?? "",
+  };
+
+  workspace.applyRemoteChange({
+    action: "write",
+    path: MINDCRAFT_JSON_PATH,
+    content: serializeMindcraftJson(mindcraftJson),
+    newEtag: "mindcraft-json-init",
   });
 }
