@@ -10,7 +10,7 @@ export { diffMindcraftJsonToManifest, syncManifestToMindcraftJson } from "./mind
 export type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 export { createWebLocksProjectLock } from "./project-lock.js";
 export type { ActiveProject, ProjectManagerOptions } from "./project-manager.js";
-export { ProjectManager } from "./project-manager.js";
+export { DEFAULT_PROJECT_NAME, ProjectManager } from "./project-manager.js";
 export type { ProjectManifest } from "./project-manifest.js";
 export type { ProjectStore } from "./project-store.js";
 export type { WorkspaceAdapter } from "./workspace-adapter.js";

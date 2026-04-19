@@ -5,6 +5,8 @@ import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
 import type { WorkspaceAdapter } from "./workspace-adapter.js";
 
+export const DEFAULT_PROJECT_NAME = "Untitled Project";
+
 export interface ActiveProject {
   readonly manifest: ProjectManifest;
   readonly workspace: WorkspaceAdapter;
@@ -118,6 +120,9 @@ export class ProjectManager {
     if (!this.currentActive) {
       throw new Error("No active project");
     }
+    if (updates.name !== undefined && !updates.name.trim()) {
+      return;
+    }
     const id = this.currentActive.manifest.id;
     this.store.updateProject(id, updates);
     const updated = this.store.getProject(id);
@@ -186,6 +191,10 @@ export class ProjectManager {
   }
 
   private openInternal(manifest: ProjectManifest): ActiveProject {
+    if (!manifest.name.trim()) {
+      manifest = { ...manifest, name: DEFAULT_PROJECT_NAME };
+      this.store.updateProject(manifest.id, { name: DEFAULT_PROJECT_NAME });
+    }
     const snapshot = this.store.loadWorkspace(manifest.id);
     const workspace = createLocalStorageWorkspace({
       storageKey: `${this.store.keyPrefix}:project:${manifest.id}:workspace-live`,

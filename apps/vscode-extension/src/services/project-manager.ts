@@ -172,7 +172,12 @@ export class ProjectManager implements vscode.Disposable {
       })
     );
 
-    project.toRemoteFileChange = (ev) => this.sendChangeWithAck(project, ev);
+    project.toRemoteFileChange = (ev) => {
+      this.sendChangeWithAck(project, ev);
+      if (ev.action === "write" && ev.path === "mindcraft.json") {
+        this.updateFolderNameFromProject(project);
+      }
+    };
     project.fromRemoteFileChange = (ev) => this.handleFilesystemNotification(ev);
 
     this._fsProvider.setFileSystems(project.files.raw, project.files.toRemote);

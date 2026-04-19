@@ -1,6 +1,7 @@
 import {
   createLocalStorageProjectStore,
   createWebLocksProjectLock,
+  DEFAULT_PROJECT_NAME,
   ProjectManager,
   type ProjectManifest,
   type WorkspaceAdapter,
@@ -175,7 +176,7 @@ export class SimEnvironmentStore {
   }
 
   async initialize(): Promise<void> {
-    await this.host.initialize("Untitled Project");
+    await this.host.initialize(DEFAULT_PROJECT_NAME);
     this._uiPreferences = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
     const metadata = this.host.lastUserTileMetadata;
     if (metadata) {

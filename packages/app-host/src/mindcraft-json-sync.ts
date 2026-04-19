@@ -70,7 +70,7 @@ export function diffMindcraftJsonToManifest(
   const patch: Partial<SyncedManifestFields> = {};
   let hasChanges = false;
 
-  if (parsed.name !== manifest.name) {
+  if (parsed.name !== manifest.name && parsed.name.trim()) {
     patch.name = parsed.name;
     hasChanges = true;
   }
