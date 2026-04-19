@@ -26,6 +26,9 @@ export type {
 } from "./app-bridge.js";
 export { createAppBridge } from "./app-bridge.js";
 
+export type { AppEnvironmentHostOptions } from "./app-environment-host.js";
+export { AppEnvironmentHost } from "./app-environment-host.js";
+
 export type { UserTileApplyResult, UserTileMetadata, UserTileRegistrationOptions } from "./user-tile-registration.js";
 export {
   applyCompiledUserTiles,

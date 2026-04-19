@@ -1,33 +1,25 @@
 import {
-  type ActiveProject,
   createLocalStorageProjectStore,
   createWebLocksProjectLock,
-  diffMindcraftJsonToManifest,
-  MINDCRAFT_JSON_PATH,
-  type MindcraftJsonHostInfo,
   ProjectManager,
   type ProjectManifest,
-  syncManifestToMindcraftJson,
   type WorkspaceAdapter,
 } from "@mindcraft-lang/app-host";
-import type { AppBridge, AppBridgeState } from "@mindcraft-lang/bridge-app";
-import { type BridgeProjectHandle, createBridgeProject } from "@mindcraft-lang/bridge-app/compilation";
+import { type AppBridgeState, AppEnvironmentHost, type UserTileMetadata } from "@mindcraft-lang/bridge-app";
 import {
   type BrainDef,
   coreModule,
-  createMindcraftEnvironment,
-  logger,
   type MindcraftEnvironment,
+  mkActuatorTileId,
+  mkSensorTileId,
 } from "@mindcraft-lang/core/app";
 import type { DocsTileEntry } from "@mindcraft-lang/docs";
-import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { loadExamples } from "@/examples";
 import { name as simName, version as simVersion } from "../../package.json";
-import { clearBindingToken, loadBindingToken, saveBindingToken } from "./binding-token-persistence";
-import { applyCompiledUserTiles, hydrateUserTilesAtStartup } from "./user-tile-registration";
+import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
 import { initVfsServiceWorker } from "./vfs-service-worker";
 
 // -- AppSettings --
@@ -108,187 +100,146 @@ function persistUiPreferences(projectId: string, prefs: UiPreferences): void {
 }
 
 export class SimEnvironmentStore {
-  readonly env: MindcraftEnvironment;
-  readonly projectManager: ProjectManager;
+  readonly host: AppEnvironmentHost;
 
   userTileDocEntries: DocsTileEntry[] = [];
-
-  private _docRevision = 0;
-  private _vfsRevision = 0;
-  private readonly docRevisionListeners = new Set<() => void>();
-  private readonly vfsRevisionListeners = new Set<() => void>();
-
-  private _pendingBrainRebuild = false;
-  private readonly _defaultBrainCache = new Map<Archetype, BrainDef>();
-
-  private _project: BridgeProjectHandle | undefined;
-  private _bridgeStatus: AppBridgeState = "disconnected";
-  private _bridgeJoinCode: string | undefined;
-  private readonly _bridgeStatusListeners = new Set<() => void>();
-  private readonly _bridgeJoinCodeListeners = new Set<() => void>();
-  private _bridgeStateUnsub: (() => void) | undefined;
-  private _remoteChangeUnsub: (() => void) | undefined;
 
   private _appSettings: AppSettings = loadAppSettings();
   private readonly _appSettingsListeners = new Set<AppSettingsListener>();
 
   private _uiPreferences: UiPreferences = { ...DEFAULT_UI_PREFS };
 
-  private readonly _host: MindcraftJsonHostInfo = { name: simName, version: simVersion };
-
   constructor() {
-    this.projectManager = new ProjectManager(createLocalStorageProjectStore(simName), {
-      workspaceOptions: { shouldExclude: isCompilerControlledPath },
-      lock: createWebLocksProjectLock(simName),
-    });
-    this.env = createMindcraftEnvironment({
+    this.host = new AppEnvironmentHost({
+      projectManager: new ProjectManager(createLocalStorageProjectStore(simName), {
+        workspaceOptions: { shouldExclude: isCompilerControlledPath },
+        lock: createWebLocksProjectLock(simName),
+      }),
       modules: [coreModule(), createSimModule()],
+      host: { name: simName, version: simVersion },
+      userTileStorageKey: "sim:user-tile-metadata",
+      bridgeUrl: this._appSettings.vscodeBridgeUrl,
+      loadBindingToken,
+      saveBindingToken,
+      examples: loadExamples(),
+      onDidCompile: (_result, tileResult) => {
+        if (tileResult) {
+          this.userTileDocEntries = buildDocEntries(tileResult.metadata);
+        }
+      },
     });
+  }
 
-    this.env.onBrainsInvalidated((event) => {
-      if (event.invalidatedBrains.length > 0) {
-        this._pendingBrainRebuild = true;
-      }
-    });
+  get env(): MindcraftEnvironment {
+    return this.host.env;
+  }
+
+  get projectManager(): ProjectManager {
+    return this.host.projectManager;
   }
 
   get workspace(): WorkspaceAdapter {
-    return this.projectManager.activeProject!.workspace;
+    return this.host.workspace;
   }
 
   get activeProjectManifest(): ProjectManifest | undefined {
-    return this.projectManager.activeProject?.manifest;
+    return this.host.activeProjectManifest;
   }
 
   async initialize(): Promise<void> {
-    await this.projectManager.init();
-    await this.projectManager.ensureDefaultProject("Untitled Project");
-    this._uiPreferences = loadUiPreferences(this.projectManager.activeProject!.manifest.id);
-    this.loadBrainsFromProject();
-    hydrateUserTilesAtStartup(this);
+    await this.host.initialize("Untitled Project");
+    this._uiPreferences = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
+    const metadata = this.host.lastUserTileMetadata;
+    if (metadata) {
+      this.userTileDocEntries = buildDocEntries(metadata);
+    }
     initVfsServiceWorker(this);
-    this.initBridge();
+    this.host.initBridge();
+
+    this.onAppSettingsChange((settings, prev) => {
+      if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl) {
+        this.host.updateBridgeUrl(settings.vscodeBridgeUrl);
+      }
+    });
   }
 
-  // -- Brain Persistence (project-scoped) --
+  // -- Brain Persistence (archetype-typed wrappers) --
 
   saveBrainForArchetype(archetype: Archetype, brainDef: BrainDef): void {
-    this.saveAllBrains({ [archetype]: brainDef });
-  }
-
-  private saveAllBrains(overrides?: Partial<Record<Archetype, BrainDef>>): void {
-    const brainsRecord: Record<string, unknown> = {};
-    const archetypes: Archetype[] = ["carnivore", "herbivore", "plant"];
-    for (const archetype of archetypes) {
-      const brainDef = overrides?.[archetype] ?? this._defaultBrainCache.get(archetype);
-      if (brainDef) {
-        brainsRecord[archetype] = brainDef.toJson();
-      }
-    }
-    this.projectManager.saveAppData("brains", JSON.stringify(brainsRecord));
+    this.host.saveBrainForKey(archetype, brainDef);
   }
 
   loadBrainFromProject(archetype: Archetype): BrainDef | undefined {
-    try {
-      const raw = this.projectManager.loadAppData("brains");
-      if (!raw) return undefined;
-      const record = JSON.parse(raw) as Record<string, unknown>;
-      const json = record[archetype];
-      if (!json) return undefined;
-      const brainDef = this.env.deserializeBrainJsonFromPlain(json) as BrainDef;
-      if (brainDef.pages().size() === 0) {
-        brainDef.appendNewPage();
-      }
-      return brainDef;
-    } catch {
-      return undefined;
-    }
-  }
-
-  private loadBrainsFromProject(): void {
-    const archetypes: Archetype[] = ["carnivore", "herbivore", "plant"];
-    for (const archetype of archetypes) {
-      const brainDef = this.loadBrainFromProject(archetype);
-      if (brainDef) {
-        this._defaultBrainCache.set(archetype, brainDef);
-      }
-    }
-  }
-
-  updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): void {
-    this.projectManager.updateActive(updates);
-    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this._host);
-  }
-
-  // -- Project Switching --
-
-  async switchProject(id: string): Promise<void> {
-    this.saveAllBrains();
-    const active = await this.projectManager.open(id);
-    this._uiPreferences = loadUiPreferences(active.manifest.id);
-    this._defaultBrainCache.clear();
-    this.loadBrainsFromProject();
-
-    if (this._project) {
-      syncManifestToMindcraftJson(this.workspace, active.manifest, this._host);
-      this._project.compiler.replaceWorkspace(active.workspace.exportSnapshot());
-      this._project.compiler.compile();
-    }
-  }
-
-  flushPendingBrainRebuilds(): void {
-    if (!this._pendingBrainRebuild) {
-      return;
-    }
-    this._pendingBrainRebuild = false;
-    this.env.rebuildInvalidatedBrains();
+    return this.host.loadBrainFromProject(archetype) as BrainDef | undefined;
   }
 
   setDefaultBrain(archetype: Archetype, brainDef: BrainDef): void {
-    this._defaultBrainCache.set(archetype, brainDef);
+    this.host.setDefaultBrain(archetype, brainDef);
   }
 
   getDefaultBrain(archetype: Archetype): BrainDef | undefined {
-    return this._defaultBrainCache.get(archetype);
+    return this.host.getDefaultBrain(archetype) as BrainDef | undefined;
   }
 
+  // -- Project metadata --
+
+  updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): void {
+    this.host.updateProjectMetadata(updates);
+  }
+
+  // -- Project lifecycle (delegate) --
+
+  onProjectUnloading(listener: () => void): () => void {
+    return this.host.onProjectUnloading(listener);
+  }
+
+  onProjectLoaded(listener: () => void): () => void {
+    return this.host.onProjectLoaded(listener);
+  }
+
+  // -- Project switching --
+
+  async switchProject(id: string): Promise<void> {
+    await this.host.switchProject(id);
+    this._uiPreferences = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
+    this.userTileDocEntries = [];
+  }
+
+  flushPendingBrainRebuilds(): void {
+    this.host.flushPendingBrainRebuilds();
+  }
+
+  // -- Doc / VFS revision (delegate) --
+
   get docRevision(): number {
-    return this._docRevision;
+    return this.host.docRevision;
   }
 
   bumpDocRevision(): void {
-    this._docRevision++;
-    for (const listener of this.docRevisionListeners) {
-      listener();
-    }
+    this.host.bumpDocRevision();
   }
 
   bumpVfsRevision(): void {
-    this._vfsRevision++;
-    for (const listener of this.vfsRevisionListeners) {
-      listener();
-    }
+    this.host.bumpVfsRevision();
   }
 
   subscribeToDocRevision = (listener: () => void): (() => void) => {
-    this.docRevisionListeners.add(listener);
-    return () => this.docRevisionListeners.delete(listener);
+    return this.host.subscribeToDocRevision(listener);
   };
 
   getDocRevisionSnapshot = (): number => {
-    return this._docRevision;
+    return this.host.getDocRevisionSnapshot();
   };
 
   subscribeToVfsRevision = (listener: () => void): (() => void) => {
-    this.vfsRevisionListeners.add(listener);
-    return () => this.vfsRevisionListeners.delete(listener);
+    return this.host.subscribeToVfsRevision(listener);
   };
 
   getVfsRevisionSnapshot = (): number => {
-    return this._vfsRevision;
+    return this.host.getVfsRevisionSnapshot();
   };
 
-  // -- App Settings --
+  // -- App Settings (sim-specific) --
 
   getAppSettings(): AppSettings {
     return this._appSettings;
@@ -314,7 +265,7 @@ export class SimEnvironmentStore {
     };
   }
 
-  // -- UI Preferences --
+  // -- UI Preferences (sim-specific) --
 
   getUiPreferences(): UiPreferences {
     return this._uiPreferences;
@@ -322,146 +273,49 @@ export class SimEnvironmentStore {
 
   updateUiPreferences(patch: Partial<UiPreferences>): void {
     this._uiPreferences = { ...this._uiPreferences, ...patch };
-    const projectId = this.projectManager.activeProject?.manifest.id;
+    const projectId = this.host.projectManager.activeProject?.manifest.id;
     if (projectId) {
       persistUiPreferences(projectId, this._uiPreferences);
     }
   }
 
-  // -- Bridge --
-
-  initBridge(): void {
-    this._project = createBridgeProject({
-      environment: this.env,
-      host: this._host,
-      bridgeUrl: this._appSettings.vscodeBridgeUrl,
-      workspace: this.workspace,
-      bindingToken: loadBindingToken(),
-      onBindingTokenChange(token) {
-        saveBindingToken(token);
-      },
-      onDidCompile: (result) => {
-        logWorkspaceCompile(result);
-        applyCompiledUserTiles(this, result);
-      },
-    });
-
-    this._project.injectExamples(loadExamples());
-    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this._host);
-    this._project.initialize();
-    this.wireBridgeState(this._project.bridge);
-
-    this.onAppSettingsChange((settings, prev) => {
-      if (settings.vscodeBridgeUrl !== prev.vscodeBridgeUrl) {
-        const shouldStart = this._uiPreferences.bridgeEnabled || this._bridgeStatus !== "disconnected";
-        this.recreateBridge(shouldStart);
-      }
-    });
-  }
+  // -- Bridge (delegate) --
 
   connectBridge(): void {
-    if (!this._project) {
-      this.initBridge();
-    }
-
-    if (!this._project || this._project.bridge.snapshot().status !== "disconnected") {
-      return;
-    }
-
-    this._project.bridge.start();
+    this.host.connectBridge();
   }
 
   disconnectBridge(): void {
-    this._project?.bridge.stop();
+    this.host.disconnectBridge();
   }
 
   subscribeToBridgeStatus = (listener: () => void): (() => void) => {
-    this._bridgeStatusListeners.add(listener);
-    return () => this._bridgeStatusListeners.delete(listener);
+    return this.host.subscribeToBridgeStatus(listener);
   };
 
   getBridgeStatusSnapshot = (): AppBridgeState => {
-    return this._bridgeStatus;
+    return this.host.getBridgeStatusSnapshot();
   };
 
   subscribeToBridgeJoinCode = (listener: () => void): (() => void) => {
-    this._bridgeJoinCodeListeners.add(listener);
-    return () => this._bridgeJoinCodeListeners.delete(listener);
+    return this.host.subscribeToBridgeJoinCode(listener);
   };
 
   getBridgeJoinCodeSnapshot = (): string | undefined => {
-    return this._bridgeJoinCode;
+    return this.host.getBridgeJoinCodeSnapshot();
   };
-
-  private wireBridgeState(bridge: AppBridge): void {
-    this._bridgeStateUnsub?.();
-    this._remoteChangeUnsub?.();
-    this._bridgeStateUnsub = bridge.onStateChange(() => {
-      this.applyBridgeSnapshot(bridge);
-    });
-    this._remoteChangeUnsub = bridge.onRemoteChange((change) => {
-      this.bumpVfsRevision();
-      if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
-        const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);
-        if (patch) {
-          this.projectManager.updateActive(patch);
-        }
-      }
-    });
-    this.applyBridgeSnapshot(bridge);
-  }
-
-  private applyBridgeSnapshot(bridge: AppBridge): void {
-    const snapshot = bridge.snapshot();
-
-    if (snapshot.status !== this._bridgeStatus) {
-      this._bridgeStatus = snapshot.status;
-      for (const listener of this._bridgeStatusListeners) {
-        listener();
-      }
-    }
-
-    if (snapshot.joinCode !== this._bridgeJoinCode) {
-      this._bridgeJoinCode = snapshot.joinCode;
-      for (const listener of this._bridgeJoinCodeListeners) {
-        listener();
-      }
-    }
-  }
-
-  private recreateBridge(shouldStart: boolean): void {
-    if (!this._project) {
-      return;
-    }
-
-    this._bridgeStateUnsub?.();
-    this._bridgeStateUnsub = undefined;
-
-    this._project.recreateBridge(this._appSettings.vscodeBridgeUrl);
-    this.wireBridgeState(this._project.bridge);
-
-    if (shouldStart) {
-      this._project.bridge.start();
-    }
-  }
 }
 
-function logWorkspaceCompile(result: WorkspaceCompileResult): void {
-  const resultsByPath = result.projectResult.results;
-
-  for (const [path, diagnostics] of result.files) {
-    if (diagnostics.length > 0) {
-      logger.warn(`[user-tile-compiler] ${path}: ${diagnostics.length} diagnostic(s)`);
-      for (const diagnostic of diagnostics) {
-        const range = diagnostic.range;
-        logger.warn(`  ${path}:${range.startLine}:${range.startColumn} - ${diagnostic.message}`);
-      }
-      continue;
-    }
-
-    const program = resultsByPath.get(path)?.program;
-    if (program) {
-      logger.debug(`[user-tile-compiler] ${path}: compiled ${program.kind} "${program.name}"`);
-    }
+function buildDocEntries(metadata: readonly UserTileMetadata[]): DocsTileEntry[] {
+  const entries: DocsTileEntry[] = [];
+  for (const entry of metadata) {
+    const tileId = entry.kind === "sensor" ? mkSensorTileId(entry.key) : mkActuatorTileId(entry.key);
+    entries.push({
+      tileId,
+      tags: entry.tags ? [...entry.tags] : [],
+      category: entry.kind === "sensor" ? "Sensors" : "Actuators",
+      content: entry.docsMarkdown ?? "",
+    });
   }
+  return entries;
 }

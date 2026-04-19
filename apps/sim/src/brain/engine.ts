@@ -96,6 +96,9 @@ export class Engine {
   /** Active blip projectiles. */
   private blipPool!: BlipPool;
 
+  private readonly unsubProjectUnloading: () => void;
+  private readonly unsubProjectLoaded: () => void;
+
   /**
    * Number of vision phases. Actors are assigned phase = actorId % VISION_PHASES.
    * Only actors whose phase matches the current tick run a vision query.
@@ -109,7 +112,6 @@ export class Engine {
     readonly obstacles: ReadonlyArray<Obstacle> = [],
     private readonly store: SimEnvironmentStore
   ) {
-    const env = store.env;
     this.world = new ECS.World<Actor>();
     this.actors = {
       carnivore: this.world.where((actor) => actor.archetype === "carnivore"),
@@ -117,23 +119,10 @@ export class Engine {
       plant: this.world.where((actor) => actor.archetype === "plant"),
     };
 
-    // Initialize brains: project store -> pre-loaded default .brain asset -> empty brain
-    const loadBrain = (archetype: Archetype): BrainDef => {
-      const cloneBrain = (brainDef: BrainDef): BrainDef => brainDef.clone();
-
-      const fromProject = store.loadBrainFromProject(archetype);
-      if (fromProject) return fromProject;
-
-      const fromAsset = store.getDefaultBrain(archetype);
-      if (fromAsset) return cloneBrain(fromAsset);
-
-      return createArchetypeFallbackBrain(env, archetype);
-    };
-
     this.brains = {
-      carnivore: loadBrain("carnivore"),
-      herbivore: loadBrain("herbivore"),
-      plant: loadBrain("plant"),
+      carnivore: this.loadBrainDef("carnivore"),
+      herbivore: this.loadBrainDef("herbivore"),
+      plant: this.loadBrainDef("plant"),
     };
 
     this.moverCfg = {
@@ -141,6 +130,9 @@ export class Engine {
       herbivore: ARCHETYPES.herbivore.mover,
       plant: ARCHETYPES.plant.mover,
     };
+
+    this.unsubProjectUnloading = store.onProjectUnloading(() => this.unloadAllBrains());
+    this.unsubProjectLoaded = store.onProjectLoaded(() => this.reloadAllBrains());
   }
 
   start() {
@@ -166,6 +158,9 @@ export class Engine {
   }
 
   shutdown() {
+    this.unsubProjectUnloading();
+    this.unsubProjectLoaded();
+
     // Clean up blips
     this.blipPool.destroyAll();
 
@@ -174,6 +169,33 @@ export class Engine {
       actor.destroy();
     }
     this.world.clear();
+  }
+
+  private loadBrainDef(archetype: Archetype): BrainDef {
+    const fromProject = this.store.loadBrainFromProject(archetype);
+    if (fromProject) return fromProject;
+
+    const fromAsset = this.store.getDefaultBrain(archetype);
+    if (fromAsset) return fromAsset.clone();
+
+    return createArchetypeFallbackBrain(this.env, archetype);
+  }
+
+  private unloadAllBrains(): void {
+    for (const actor of this.world.entities) {
+      actor.brain.events().removeAllListeners();
+      actor.brain.dispose();
+    }
+  }
+
+  private reloadAllBrains(): void {
+    const archetypes: Archetype[] = ["carnivore", "herbivore", "plant"];
+    for (const archetype of archetypes) {
+      this.brains[archetype] = this.loadBrainDef(archetype);
+    }
+    for (const actor of this.world.entities) {
+      actor.replaceBrain(this.brains[actor.archetype]);
+    }
   }
 
   tick(time: number, dt: number) {
