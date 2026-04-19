@@ -276,28 +276,21 @@ export class CompilationManager {
 
 export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 
-export interface CreateBridgeProjectOptions {
+export interface CreateProjectCompilerOptions {
   environment: MindcraftEnvironment;
-  host: {
-    name: string;
-    version: string;
-  };
-  bridgeUrl: string;
   workspace: WorkspaceAdapter;
-  bindingToken?: string;
-  onBindingTokenChange?: (token: string) => void;
+  examples?: readonly ExampleDefinition[];
   onDidCompile?: (result: WorkspaceCompileResult) => void;
 }
 
-export interface BridgeProjectHandle {
+export interface ProjectCompilerHandle {
   readonly compiler: TsWorkspaceCompiler;
-  readonly bridge: AppBridge;
   initialize(): void;
-  recreateBridge(bridgeUrl: string): void;
+  replaceWorkspace(): void;
   injectExamples(examples: ExampleDefinition[]): void;
 }
 
-export function createBridgeProject(options: CreateBridgeProjectOptions): BridgeProjectHandle {
+export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
   const { environment, workspace } = options;
 
   const compiler = createWorkspaceCompiler({ environment });
@@ -306,27 +299,76 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
     compiler.onDidCompile(options.onDidCompile);
   }
 
+  let injectedExamples: ExampleDefinition[] = options.examples ? [...options.examples] : [];
+
+  function buildSnapshot(): WorkspaceSnapshot {
+    const snapshot = new Map(workspace.exportSnapshot());
+    for (const example of injectedExamples) {
+      snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}`, { kind: "directory" });
+      for (const file of example.files) {
+        snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}/${file.path}`, {
+          kind: "file",
+          content: file.content,
+          etag: "example",
+          isReadonly: true,
+        });
+      }
+    }
+    return snapshot;
+  }
+
+  return {
+    compiler,
+    initialize() {
+      compiler.replaceWorkspace(buildSnapshot());
+      compiler.compile();
+    },
+    replaceWorkspace() {
+      compiler.replaceWorkspace(buildSnapshot());
+      compiler.compile();
+    },
+    injectExamples(examples: ExampleDefinition[]) {
+      injectedExamples = examples;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// BridgeProjectHandle -- bridge connection that uses a ProjectCompilerHandle
+// ---------------------------------------------------------------------------
+
+export interface CreateBridgeProjectOptions {
+  projectCompiler: ProjectCompilerHandle;
+  workspace: WorkspaceAdapter;
+  bridgeUrl: string;
+  bindingToken?: string;
+  onBindingTokenChange?: (token: string) => void;
+}
+
+export interface BridgeProjectHandle {
+  readonly bridge: AppBridge;
+  recreateBridge(bridgeUrl: string): void;
+}
+
+export function createBridgeProject(options: CreateBridgeProjectOptions): BridgeProjectHandle {
+  const { projectCompiler, workspace } = options;
+  const compiler = projectCompiler.compiler;
+
   let latestBindingToken = options.bindingToken;
   const onBindingTokenChange = (token: string): void => {
     latestBindingToken = token;
     options.onBindingTokenChange?.(token);
   };
 
-  let injectedExamples: ExampleDefinition[] = [];
-  const augmented = augmentWorkspace(workspace, compiler, () => injectedExamples);
+  const augmented = augmentWorkspace(workspace, compiler, () => []);
   let currentBridge = buildBridge(
     { ...options, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
     compiler
   );
 
   return {
-    compiler,
     get bridge() {
       return currentBridge;
-    },
-    initialize() {
-      compiler.replaceWorkspace(workspace.exportSnapshot());
-      compiler.compile();
     },
     recreateBridge(bridgeUrl: string) {
       currentBridge.stop();
@@ -334,9 +376,6 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
         { ...options, bridgeUrl, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
         compiler
       );
-    },
-    injectExamples(examples: ExampleDefinition[]) {
-      injectedExamples = examples;
     },
   };
 }

@@ -14,8 +14,8 @@ import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraf
 import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
 import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, WorkspaceChange } from "./app-bridge.js";
-import type { BridgeProjectHandle } from "./compilation.js";
-import { createBridgeProject } from "./compilation.js";
+import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
+import { createBridgeProject, createProjectCompiler } from "./compilation.js";
 import type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
 import { applyCompiledUserTiles, hydrateUserTilesFromCache } from "./user-tile-registration.js";
 
@@ -28,11 +28,11 @@ export interface AppEnvironmentHostOptions {
   modules: readonly MindcraftModule[];
   host: MindcraftJsonHostInfo;
   userTileStorageKey: string;
+  examples?: readonly ExampleDefinition[];
 
-  bridgeUrl: string;
+  bridgeUrl?: string;
   loadBindingToken?: () => string | undefined;
   saveBindingToken?: (token: string) => void;
-  examples?: readonly ExampleDefinition[];
 
   onDidCompile?: (result: WorkspaceCompileResult, tileResult: UserTileApplyResult | undefined) => void;
 }
@@ -69,8 +69,8 @@ export class AppEnvironmentHost {
   private readonly _projectLoadedListeners = new Set<() => void>();
 
   // -- Bridge --
-  private _project: BridgeProjectHandle | undefined;
-  private _bridgeUrl: string;
+  private _bridge: BridgeProjectHandle | undefined;
+  private _bridgeUrl: string | undefined;
   private _bridgeStatus: AppBridgeState = "disconnected";
   private _bridgeJoinCode: string | undefined;
   private readonly _bridgeStatusListeners = new Set<() => void>();
@@ -84,6 +84,9 @@ export class AppEnvironmentHost {
 
   // -- User tile metadata (last known) --
   private _lastUserTileMetadata: readonly UserTileMetadata[] | undefined;
+
+  // -- Compilation --
+  private _compiler: ProjectCompilerHandle | undefined;
 
   constructor(options: AppEnvironmentHostOptions) {
     this.projectManager = options.projectManager;
@@ -128,6 +131,32 @@ export class AppEnvironmentHost {
       hydrateUserTilesFromCache(this.env, {
         storageKey: this.userTileStorageKey,
       }) ?? undefined;
+    this.initCompiler();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Compilation (always available, independent of bridge)
+  // ---------------------------------------------------------------------------
+
+  private initCompiler(): void {
+    this._compiler = createProjectCompiler({
+      environment: this.env,
+      workspace: this.workspace,
+      examples: [...this._examples],
+      onDidCompile: (result) => {
+        logWorkspaceCompile(result);
+        const tileResult = applyCompiledUserTiles(this.env, result, {
+          storageKey: this.userTileStorageKey,
+        });
+        if (tileResult) {
+          this._lastUserTileMetadata = tileResult.metadata;
+          this.bumpDocRevision();
+        }
+        this.onDidCompileCallback?.(result, tileResult);
+      },
+    });
+    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this.host);
+    this._compiler.initialize();
   }
 
   // ---------------------------------------------------------------------------
@@ -235,7 +264,7 @@ export class AppEnvironmentHost {
       listener();
     }
 
-    const active = await this.projectManager.open(id);
+    await this.projectManager.open(id);
     this._brainCache.clear();
     this._pendingBrainRebuild = false;
 
@@ -244,15 +273,11 @@ export class AppEnvironmentHost {
     this.bumpDocRevision();
 
     this.loadBrainsFromProject();
+    this.teardownBridge();
+    this.initCompiler();
 
     for (const listener of this._projectLoadedListeners) {
       listener();
-    }
-
-    if (this._project) {
-      syncManifestToMindcraftJson(this.workspace, active.manifest, this.host);
-      this._project.compiler.replaceWorkspace(active.workspace.exportSnapshot());
-      this._project.compiler.compile();
     }
   }
 
@@ -317,61 +342,81 @@ export class AppEnvironmentHost {
   };
 
   // ---------------------------------------------------------------------------
-  // Bridge
+  // Bridge (optional -- only available if bridgeUrl was provided)
   // ---------------------------------------------------------------------------
 
-  get bridgeProject(): BridgeProjectHandle | undefined {
-    return this._project;
-  }
-
   initBridge(): void {
-    this._project = createBridgeProject({
-      environment: this.env,
-      host: this.host,
-      bridgeUrl: this._bridgeUrl,
+    if (!this._bridgeUrl || !this._compiler) {
+      return;
+    }
+
+    this.teardownBridge();
+
+    this._bridge = createBridgeProject({
+      projectCompiler: this._compiler,
       workspace: this.workspace,
+      bridgeUrl: this._bridgeUrl,
       bindingToken: this._loadBindingToken(),
       onBindingTokenChange: (token) => {
         this._saveBindingToken(token);
       },
-      onDidCompile: (result) => {
-        logWorkspaceCompile(result);
-        const tileResult = applyCompiledUserTiles(this.env, result, {
-          storageKey: this.userTileStorageKey,
-        });
-        if (tileResult) {
-          this._lastUserTileMetadata = tileResult.metadata;
-          this.bumpDocRevision();
-        }
-        this.onDidCompileCallback?.(result, tileResult);
-      },
     });
 
-    this._project.injectExamples([...this._examples]);
-    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this.host);
-    this._project.initialize();
-    this.wireBridgeState(this._project.bridge);
+    this.wireBridgeState(this._bridge.bridge);
   }
 
   connectBridge(): void {
-    if (!this._project) {
+    if (!this._bridge) {
       this.initBridge();
     }
 
-    if (!this._project || this._project.bridge.snapshot().status !== "disconnected") {
+    if (!this._bridge || this._bridge.bridge.snapshot().status !== "disconnected") {
       return;
     }
 
-    this._project.bridge.start();
+    this._bridge.bridge.start();
   }
 
   disconnectBridge(): void {
-    this._project?.bridge.stop();
+    this._bridge?.bridge.stop();
+  }
+
+  private teardownBridge(): void {
+    this._bridgeStateUnsub?.();
+    this._bridgeStateUnsub = undefined;
+    this._remoteChangeUnsub?.();
+    this._remoteChangeUnsub = undefined;
+    this._bridge?.bridge.stop();
+    this._bridge = undefined;
+
+    if (this._bridgeStatus !== "disconnected") {
+      this._bridgeStatus = "disconnected";
+      for (const listener of this._bridgeStatusListeners) {
+        listener();
+      }
+    }
+
+    if (this._bridgeJoinCode !== undefined) {
+      this._bridgeJoinCode = undefined;
+      for (const listener of this._bridgeJoinCodeListeners) {
+        listener();
+      }
+    }
   }
 
   updateBridgeUrl(bridgeUrl: string): void {
     this._bridgeUrl = bridgeUrl;
-    this.recreateBridge(this._bridgeStatus !== "disconnected");
+    if (!this._bridge) {
+      return;
+    }
+    const shouldStart = this._bridgeStatus !== "disconnected";
+    this._bridgeStateUnsub?.();
+    this._bridgeStateUnsub = undefined;
+    this._bridge.recreateBridge(bridgeUrl);
+    this.wireBridgeState(this._bridge.bridge);
+    if (shouldStart) {
+      this._bridge.bridge.start();
+    }
   }
 
   subscribeToBridgeStatus = (listener: () => void): (() => void) => {
@@ -425,22 +470,6 @@ export class AppEnvironmentHost {
       for (const listener of this._bridgeJoinCodeListeners) {
         listener();
       }
-    }
-  }
-
-  private recreateBridge(shouldStart: boolean): void {
-    if (!this._project) {
-      return;
-    }
-
-    this._bridgeStateUnsub?.();
-    this._bridgeStateUnsub = undefined;
-
-    this._project.recreateBridge(this._bridgeUrl);
-    this.wireBridgeState(this._project.bridge);
-
-    if (shouldStart) {
-      this._project.bridge.start();
     }
   }
 }
