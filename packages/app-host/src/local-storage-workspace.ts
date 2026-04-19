@@ -141,6 +141,18 @@ class LocalStorageWorkspaceStore implements WorkspaceAdapter {
     this.persist();
   }
 
+  applyLocalChange(change: WorkspaceChange): void {
+    if (this.shouldExclude && isChangeExcluded(change, this.shouldExclude)) {
+      return;
+    }
+
+    applyChange(this.snapshot, change);
+    this.persist();
+    for (const listener of this.listeners) {
+      listener(change);
+    }
+  }
+
   onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
     this.listeners.add(listener);
     return () => {

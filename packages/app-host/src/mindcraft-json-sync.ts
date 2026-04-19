@@ -34,7 +34,7 @@ export function syncManifestToMindcraftJson(
       if (syncedFieldsMatch(fields, parsed)) {
         return;
       }
-      workspace.applyRemoteChange({
+      workspace.applyLocalChange({
         action: "write",
         path: MINDCRAFT_JSON_PATH,
         content: serializeMindcraftJson({ ...parsed, ...fields }),
@@ -50,7 +50,7 @@ export function syncManifestToMindcraftJson(
     version: "0.0.1",
   };
 
-  workspace.applyRemoteChange({
+  workspace.applyLocalChange({
     action: "write",
     path: MINDCRAFT_JSON_PATH,
     content: serializeMindcraftJson(json),

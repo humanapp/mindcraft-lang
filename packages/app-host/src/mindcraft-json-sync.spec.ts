@@ -43,6 +43,17 @@ function makeWorkspace(
         });
       }
     },
+    applyLocalChange(change: WorkspaceChange) {
+      changes.push(change);
+      if (change.action === "write") {
+        snapshot.set(change.path, {
+          kind: "file",
+          content: change.content,
+          etag: change.newEtag,
+          isReadonly: change.isReadonly ?? false,
+        });
+      }
+    },
     onLocalChange() {
       return () => {};
     },

@@ -261,10 +261,10 @@ export class ProjectManager implements vscode.Disposable {
       if (this._project !== project) return;
       try {
         await project.requestSync();
+        this.updateFolderNameFromProject(project);
         if (!this.hasWorkspaceFolder()) {
           this.addWorkspaceFolder();
         }
-        this.updateFolderNameFromProject(project);
         this.fireRootChanged();
         return;
       } catch (e) {
@@ -308,6 +308,9 @@ export class ProjectManager implements vscode.Disposable {
       case "write":
         events.push({ type: vscode.FileChangeType.Created, uri: uri(ev.path) });
         events.push({ type: vscode.FileChangeType.Changed, uri: uri(ev.path) });
+        if (ev.path === "mindcraft.json" && this._project) {
+          this.updateFolderNameFromProject(this._project);
+        }
         break;
       case "delete":
         events.push({ type: vscode.FileChangeType.Deleted, uri: uri(ev.path) });

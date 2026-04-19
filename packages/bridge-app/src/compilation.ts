@@ -408,6 +408,9 @@ function augmentWorkspace(
     applyRemoteChange(change: WorkspaceChange): void {
       workspace.applyRemoteChange(change);
     },
+    applyLocalChange(change: WorkspaceChange): void {
+      workspace.applyLocalChange(change);
+    },
     onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
       return workspace.onLocalChange(listener);
     },
