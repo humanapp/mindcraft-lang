@@ -27,7 +27,7 @@ export interface ReadonlyBitSet {
   equals(val: BitSet): boolean;
 }
 
-export class BitSet implements ReadonlyBitSet {
+export class BitSet implements ReadonlyBitSet, BitSetData {
   static readonly WORD_LENGTH: number = 32;
   // log2(32) = 5; used to convert bit index -> word index via right shift
   static readonly WORD_LOG: number = 5;
@@ -39,8 +39,8 @@ export class BitSet implements ReadonlyBitSet {
 
   constructor(param?: string | BitSet | number) {
     this.data = new List<number>();
-    BitSet.parse(this as unknown as BitSetData, param);
-    this.data = List.from((this as unknown as BitSetData).data.toArray());
+    BitSet.parse(this, param);
+    this.data = List.from(this.data.toArray());
   }
 
   // Hamming weight / population count: counts the number of set bits in a 32-bit word.

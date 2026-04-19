@@ -54,13 +54,13 @@ export class ConstantPool {
       case NativeType.Nil:
         return "nil";
       case NativeType.Boolean:
-        return `bool:${(value as { t: NativeType.Boolean; v: boolean }).v}`;
+        return `bool:${value.v}`;
       case NativeType.Number:
-        return `num:${(value as { t: NativeType.Number; v: number }).v}`;
+        return `num:${value.v}`;
       case NativeType.String:
-        return `str:${(value as { t: NativeType.String; v: string }).v}`;
+        return `str:${value.v}`;
       case NativeType.Enum:
-        return `enum:${(value as { t: NativeType.Enum; typeId: TypeId; v: string }).typeId}:${(value as { t: NativeType.Enum; typeId: TypeId; v: string }).v}`;
+        return `enum:${value.typeId}:${value.v}`;
       case NativeType.List:
       case NativeType.Map:
       case NativeType.Struct:

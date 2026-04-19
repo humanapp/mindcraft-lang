@@ -41,17 +41,14 @@ export class ConversionRegistry implements IConversionRegistry {
    * @param conversion - The conversion to register, defining how to convert from one type to another
    */
   register(conv: Omit<Conversion, "id">): Conversion {
-    const conversion = conv as unknown as Conversion;
-    const name = conversionFnName(conversion.fromType, conversion.toType);
+    const name = conversionFnName(conv.fromType, conv.toType);
     const existing = this.functions.get(name);
     if (existing) {
-      throw new Error(
-        `ConversionRegistry.register: conversion from ${conversion.fromType} to ${conversion.toType} already exists`
-      );
+      throw new Error(`ConversionRegistry.register: conversion from ${conv.fromType} to ${conv.toType} already exists`);
     }
-    const callDef = conversion.callDef ?? anonConversionCallDef;
-    const funcEntry = this.functions.register(name, false, conversion.fn, callDef);
-    conversion.id = funcEntry.id;
+    const callDef = conv.callDef ?? anonConversionCallDef;
+    const funcEntry = this.functions.register(name, false, conv.fn, callDef);
+    const conversion: Conversion = { ...conv, id: funcEntry.id };
 
     // Store in conversions map for pathfinding
     if (!this.conversions.has(conversion.fromType)) {
