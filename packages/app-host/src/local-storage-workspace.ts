@@ -1,9 +1,5 @@
-import type {
-  ExportedFileSystem,
-  ExportedFileSystemEntry,
-  FileSystemNotification,
-} from "@mindcraft-lang/bridge-client";
-import type { WorkspaceAdapter, WorkspaceChange, WorkspaceSnapshot } from "./app-bridge.js";
+import type { WorkspaceAdapter } from "./workspace-adapter.js";
+import type { WorkspaceChange, WorkspaceEntry, WorkspaceSnapshot } from "./workspace-snapshot.js";
 
 export interface LocalStorageWorkspaceOptions {
   storageKey: string;
@@ -36,7 +32,7 @@ function removePath(snapshot: WorkspaceSnapshot, path: string): void {
 }
 
 function filterSnapshot(
-  entries: Iterable<[string, ExportedFileSystemEntry]>,
+  entries: Iterable<[string, WorkspaceEntry]>,
   shouldExclude: ((path: string) => boolean) | undefined
 ): WorkspaceSnapshot {
   const filtered: WorkspaceSnapshot = new Map();
@@ -159,11 +155,19 @@ class LocalStorageWorkspaceStore implements WorkspaceAdapter {
     }
 
     try {
-      const parsed = JSON.parse(raw) as Array<[string, ExportedFileSystemEntry]>;
+      const parsed = JSON.parse(raw) as Array<[string, WorkspaceEntry]>;
       return filterSnapshot(parsed, this.shouldExclude);
     } catch {
       return new Map();
     }
+  }
+
+  flush(): void {
+    if (this.persistTimer !== undefined) {
+      window.clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+    }
+    localStorage.setItem(this.storageKey, JSON.stringify([...this.snapshot]));
   }
 
   private persist(): void {

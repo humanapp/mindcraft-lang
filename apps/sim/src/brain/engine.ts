@@ -16,7 +16,6 @@ const PUPIL_MAX_ANGLE = 0.75; // Max gaze rotation in radians (~43 deg) from res
 const GAZE_SMOOTHING = 0.08; // Lerp factor per frame (lower = smoother)
 
 import { heatColor } from "@/lib/color";
-import { loadBrainFromLocalStorage } from "../services/brain-persistence";
 import { loadDesiredCounts } from "../services/population-persistence";
 import { drawMovementIntent } from "./movement";
 import { type ScoreSnapshot, ScoreTracker } from "./score";
@@ -118,12 +117,12 @@ export class Engine {
       plant: this.world.where((actor) => actor.archetype === "plant"),
     };
 
-    // Initialize brains: localStorage -> pre-loaded default .brain asset -> empty brain
+    // Initialize brains: project store -> pre-loaded default .brain asset -> empty brain
     const loadBrain = (archetype: Archetype): BrainDef => {
       const cloneBrain = (brainDef: BrainDef): BrainDef => brainDef.clone();
 
-      const fromStorage = loadBrainFromLocalStorage(env, archetype);
-      if (fromStorage) return fromStorage;
+      const fromProject = store.loadBrainFromProject(archetype);
+      if (fromProject) return fromProject;
 
       const fromAsset = store.getDefaultBrain(archetype);
       if (fromAsset) return cloneBrain(fromAsset);
@@ -136,14 +135,6 @@ export class Engine {
       herbivore: loadBrain("herbivore"),
       plant: loadBrain("plant"),
     };
-
-    // Log brain source for each archetype
-    for (const archetype of ["carnivore", "herbivore", "plant"] as const) {
-      const fromStorage = localStorage.getItem(`brain-archetype-${archetype}`);
-      const fromAsset = store.getDefaultBrain(archetype);
-      const source = fromStorage ? "localStorage" : fromAsset ? "default asset" : "empty";
-      console.log(`Brain initialization - ${archetype}: ${source}`);
-    }
 
     this.moverCfg = {
       carnivore: ARCHETYPES.carnivore.mover,

@@ -1,25 +1,24 @@
 {
-  "name": "@mindcraft-lang/bridge-app",
-  "version": "0.1.12",
-  "description": "App-side client for the Mindcraft bridge",
+  "name": "@mindcraft-lang/app-host",
+  "version": "0.1.0",
+  "description": "Project management and workspace storage for Mindcraft apps",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
   "repository": {
     "type": "git",
     "url": "https://github.com/humanapp/mindcraft-lang.git",
-    "directory": "packages/bridge-app"
+    "directory": "packages/app-host"
   },
   "bugs": {
     "url": "https://github.com/humanapp/mindcraft-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/bridge-app#readme",
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/app-host#readme",
   "keywords": [
     "mindcraft",
     "visual-programming",
     "tile-based",
     "typescript",
-    "vscode",
     "language",
     "education",
     "stem",
@@ -46,16 +45,6 @@
       "types": "./dist/index.d.ts",
       "browser": "./dist/index.js",
       "import": "./dist/index.js"
-    },
-    "./compilation": {
-      "types": "./dist/compilation.d.ts",
-      "browser": "./dist/compilation.js",
-      "import": "./dist/compilation.js"
-    },
-    "./vfs-service-worker": {
-      "types": "./dist/vfs-service-worker.d.ts",
-      "browser": "./dist/vfs-service-worker.js",
-      "import": "./dist/vfs-service-worker.js"
     }
   },
   "scripts": {
@@ -68,24 +57,15 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
-    "pretest": "npm run build",
-    "test": "tsx --tsconfig tsconfig.spec.json --test $(find test -name '*.spec.ts')",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
     "format": "biome format ./src --write",
     "release:patch": "node ../../scripts/release.js patch",
     "release:minor": "node ../../scripts/release.js minor",
     "release:major": "node ../../scripts/release.js major"
   },
-  "dependencies": {
-    "@mindcraft-lang/app-host": "file:../app-host",
-    "@mindcraft-lang/bridge-client": "file:../bridge-client",
-    "@mindcraft-lang/bridge-protocol": "file:../bridge-protocol",
-    "@mindcraft-lang/core": "file:../core",
-    "@mindcraft-lang/ts-compiler": "file:../ts-compiler"
-  },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",
-    "@types/node": "^25.3.0",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3"
   }

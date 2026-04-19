@@ -1,5 +1,1 @@
-export {
-  deserializeBrainFromArrayBuffer,
-  loadBrainFromLocalStorage,
-  saveBrainToLocalStorage,
-} from "./brain-persistence";
+export { deserializeBrainFromArrayBuffer } from "./brain-persistence";

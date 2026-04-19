@@ -1,6 +1,16 @@
-import type { AppBridge, AppBridgeState, WorkspaceAdapter } from "@mindcraft-lang/bridge-app";
-import { createLocalStorageWorkspace } from "@mindcraft-lang/bridge-app";
-import { type AppProjectHandle, createAppProject } from "@mindcraft-lang/bridge-app/compilation";
+import {
+  type ActiveProject,
+  createLocalStorageProjectStore,
+  diffMindcraftJsonToManifest,
+  MINDCRAFT_JSON_PATH,
+  type MindcraftJsonHostInfo,
+  ProjectManager,
+  type ProjectManifest,
+  syncManifestToMindcraftJson,
+  type WorkspaceAdapter,
+} from "@mindcraft-lang/app-host";
+import type { AppBridge, AppBridgeState } from "@mindcraft-lang/bridge-app";
+import { type BridgeProjectHandle, createBridgeProject } from "@mindcraft-lang/bridge-app/compilation";
 import {
   type BrainDef,
   coreModule,
@@ -52,9 +62,9 @@ function persistAppSettings(settings: AppSettings): void {
   localStorage.setItem(APP_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
 }
 
-// -- UiPreferences --
+// -- UiPreferences (per-project, non-portable) --
 
-const UI_PREFS_STORAGE_KEY = "ui-preferences";
+const UI_PREFS_KEY_PREFIX = `${simName}:project-ui:`;
 
 export interface UiPreferences {
   collapsedArchetypes: Record<string, boolean>;
@@ -70,9 +80,9 @@ const DEFAULT_UI_PREFS: UiPreferences = {
   debugEnabled: false,
 };
 
-function loadUiPreferences(): UiPreferences {
+function loadUiPreferences(projectId: string): UiPreferences {
   try {
-    const raw = localStorage.getItem(UI_PREFS_STORAGE_KEY);
+    const raw = localStorage.getItem(`${UI_PREFS_KEY_PREFIX}${projectId}`);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<UiPreferences>;
       return {
@@ -88,9 +98,9 @@ function loadUiPreferences(): UiPreferences {
   return { ...DEFAULT_UI_PREFS };
 }
 
-function persistUiPreferences(prefs: UiPreferences): void {
+function persistUiPreferences(projectId: string, prefs: UiPreferences): void {
   try {
-    localStorage.setItem(UI_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+    localStorage.setItem(`${UI_PREFS_KEY_PREFIX}${projectId}`, JSON.stringify(prefs));
   } catch {
     // storage full or unavailable
   }
@@ -98,7 +108,7 @@ function persistUiPreferences(prefs: UiPreferences): void {
 
 export class SimEnvironmentStore {
   readonly env: MindcraftEnvironment;
-  readonly workspace: WorkspaceAdapter;
+  readonly projectManager: ProjectManager;
 
   userTileDocEntries: DocsTileEntry[] = [];
 
@@ -110,7 +120,7 @@ export class SimEnvironmentStore {
   private _pendingBrainRebuild = false;
   private readonly _defaultBrainCache = new Map<Archetype, BrainDef>();
 
-  private _project: AppProjectHandle | undefined;
+  private _project: BridgeProjectHandle | undefined;
   private _bridgeStatus: AppBridgeState = "disconnected";
   private _bridgeJoinCode: string | undefined;
   private readonly _bridgeStatusListeners = new Set<() => void>();
@@ -121,11 +131,12 @@ export class SimEnvironmentStore {
   private _appSettings: AppSettings = loadAppSettings();
   private readonly _appSettingsListeners = new Set<AppSettingsListener>();
 
-  private _uiPreferences: UiPreferences = loadUiPreferences();
+  private _uiPreferences: UiPreferences = { ...DEFAULT_UI_PREFS };
+
+  private readonly _host: MindcraftJsonHostInfo = { name: simName, version: simVersion };
 
   constructor() {
-    this.workspace = createLocalStorageWorkspace({
-      storageKey: "sim:vscode-bridge:filesystem",
+    this.projectManager = new ProjectManager(createLocalStorageProjectStore(simName), {
       shouldExclude: isCompilerControlledPath,
     });
     this.env = createMindcraftEnvironment({
@@ -139,10 +150,87 @@ export class SimEnvironmentStore {
     });
   }
 
+  get workspace(): WorkspaceAdapter {
+    return this.projectManager.activeProject!.workspace;
+  }
+
+  get activeProjectManifest(): ProjectManifest | undefined {
+    return this.projectManager.activeProject?.manifest;
+  }
+
   initialize(): void {
+    this.projectManager.ensureDefaultProject("Untitled Project");
+    this._uiPreferences = loadUiPreferences(this.projectManager.activeProject!.manifest.id);
+    this.loadBrainsFromProject();
     hydrateUserTilesAtStartup(this);
     initVfsServiceWorker(this);
     this.initBridge();
+  }
+
+  // -- Brain Persistence (project-scoped) --
+
+  saveBrainForArchetype(archetype: Archetype, brainDef: BrainDef): void {
+    this.saveAllBrains({ [archetype]: brainDef });
+  }
+
+  private saveAllBrains(overrides?: Partial<Record<Archetype, BrainDef>>): void {
+    const brainsRecord: Record<string, unknown> = {};
+    const archetypes: Archetype[] = ["carnivore", "herbivore", "plant"];
+    for (const archetype of archetypes) {
+      const brainDef = overrides?.[archetype] ?? this._defaultBrainCache.get(archetype);
+      if (brainDef) {
+        brainsRecord[archetype] = brainDef.toJson();
+      }
+    }
+    this.projectManager.saveAppData("brains", JSON.stringify(brainsRecord));
+  }
+
+  loadBrainFromProject(archetype: Archetype): BrainDef | undefined {
+    try {
+      const raw = this.projectManager.loadAppData("brains");
+      if (!raw) return undefined;
+      const record = JSON.parse(raw) as Record<string, unknown>;
+      const json = record[archetype];
+      if (!json) return undefined;
+      const brainDef = this.env.deserializeBrainJsonFromPlain(json) as BrainDef;
+      if (brainDef.pages().size() === 0) {
+        brainDef.appendNewPage();
+      }
+      return brainDef;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private loadBrainsFromProject(): void {
+    const archetypes: Archetype[] = ["carnivore", "herbivore", "plant"];
+    for (const archetype of archetypes) {
+      const brainDef = this.loadBrainFromProject(archetype);
+      if (brainDef) {
+        this._defaultBrainCache.set(archetype, brainDef);
+      }
+    }
+  }
+
+  updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): void {
+    this.projectManager.updateActive(updates);
+    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this._host);
+  }
+
+  // -- Project Switching --
+
+  switchProject(id: string): void {
+    this.saveAllBrains();
+    const active = this.projectManager.open(id);
+    this._uiPreferences = loadUiPreferences(active.manifest.id);
+    this._defaultBrainCache.clear();
+    this.loadBrainsFromProject();
+
+    if (this._project) {
+      syncManifestToMindcraftJson(this.workspace, active.manifest, this._host);
+      this._project.compiler.replaceWorkspace(active.workspace.exportSnapshot());
+      this._project.compiler.compile();
+    }
   }
 
   flushPendingBrainRebuilds(): void {
@@ -231,21 +319,18 @@ export class SimEnvironmentStore {
 
   updateUiPreferences(patch: Partial<UiPreferences>): void {
     this._uiPreferences = { ...this._uiPreferences, ...patch };
-    persistUiPreferences(this._uiPreferences);
+    const projectId = this.projectManager.activeProject?.manifest.id;
+    if (projectId) {
+      persistUiPreferences(projectId, this._uiPreferences);
+    }
   }
 
   // -- Bridge --
 
   initBridge(): void {
-    this._project = createAppProject({
+    this._project = createBridgeProject({
       environment: this.env,
-      host: {
-        name: simName,
-        version: simVersion,
-      },
-      defaults: {
-        name: "sim-default",
-      },
+      host: this._host,
       bridgeUrl: this._appSettings.vscodeBridgeUrl,
       workspace: this.workspace,
       bindingToken: loadBindingToken(),
@@ -259,6 +344,7 @@ export class SimEnvironmentStore {
     });
 
     this._project.injectExamples(loadExamples());
+    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this._host);
     this._project.initialize();
     this.wireBridgeState(this._project.bridge);
 
@@ -310,8 +396,14 @@ export class SimEnvironmentStore {
     this._bridgeStateUnsub = bridge.onStateChange(() => {
       this.applyBridgeSnapshot(bridge);
     });
-    this._remoteChangeUnsub = bridge.onRemoteChange(() => {
+    this._remoteChangeUnsub = bridge.onRemoteChange((change) => {
       this.bumpVfsRevision();
+      if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
+        const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);
+        if (patch) {
+          this.projectManager.updateActive(patch);
+        }
+      }
     });
     this.applyBridgeSnapshot(bridge);
   }

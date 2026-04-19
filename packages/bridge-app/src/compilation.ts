@@ -1,3 +1,5 @@
+import type { ExampleDefinition } from "@mindcraft-lang/app-host";
+import { EXAMPLES_FOLDER } from "@mindcraft-lang/app-host";
 import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core";
 import {
@@ -16,8 +18,6 @@ import type {
   WorkspaceSnapshot,
 } from "./app-bridge.js";
 import { createAppBridge } from "./app-bridge.js";
-import { EXAMPLES_FOLDER, type ExampleDefinition } from "./examples.js";
-import { MINDCRAFT_JSON_PATH, type MindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
 
 export interface DiagnosticSnapshot {
   files: ReadonlyMap<string, readonly DiagnosticEntry[]>;
@@ -276,15 +276,11 @@ export class CompilationManager {
 
 export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 
-export interface CreateAppProjectOptions {
+export interface CreateBridgeProjectOptions {
   environment: MindcraftEnvironment;
   host: {
     name: string;
     version: string;
-  };
-  defaults?: {
-    name?: string;
-    description?: string;
   };
   bridgeUrl: string;
   workspace: WorkspaceAdapter;
@@ -293,7 +289,7 @@ export interface CreateAppProjectOptions {
   onDidCompile?: (result: WorkspaceCompileResult) => void;
 }
 
-export interface AppProjectHandle {
+export interface BridgeProjectHandle {
   readonly compiler: TsWorkspaceCompiler;
   readonly bridge: AppBridge;
   initialize(): void;
@@ -301,7 +297,7 @@ export interface AppProjectHandle {
   injectExamples(examples: ExampleDefinition[]): void;
 }
 
-export function createAppProject(options: CreateAppProjectOptions): AppProjectHandle {
+export function createBridgeProject(options: CreateBridgeProjectOptions): BridgeProjectHandle {
   const { environment, workspace } = options;
 
   const compiler = createWorkspaceCompiler({ environment });
@@ -329,7 +325,6 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
       return currentBridge;
     },
     initialize() {
-      ensureMindcraftJson(workspace, options);
       compiler.replaceWorkspace(workspace.exportSnapshot());
       compiler.compile();
     },
@@ -377,11 +372,14 @@ function augmentWorkspace(
     onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
       return workspace.onLocalChange(listener);
     },
+    flush(): void {
+      workspace.flush();
+    },
   };
 }
 
 function buildBridge(
-  options: Pick<CreateAppProjectOptions, "bridgeUrl" | "workspace" | "bindingToken" | "onBindingTokenChange">,
+  options: Pick<CreateBridgeProjectOptions, "bridgeUrl" | "workspace" | "bindingToken" | "onBindingTokenChange">,
   compiler: TsWorkspaceCompiler
 ): AppBridge {
   return createAppBridge({
@@ -390,30 +388,5 @@ function buildBridge(
     features: [createCompilationFeature({ compiler })],
     bindingToken: options.bindingToken,
     onBindingTokenChange: options.onBindingTokenChange,
-  });
-}
-
-function ensureMindcraftJson(workspace: WorkspaceAdapter, options: CreateAppProjectOptions): void {
-  const snapshot = workspace.exportSnapshot();
-  const existing = snapshot.get(MINDCRAFT_JSON_PATH);
-  if (existing && existing.kind === "file") {
-    return;
-  }
-
-  const mindcraftJson: MindcraftJson = {
-    name: options.defaults?.name ?? "untitled",
-    host: {
-      name: options.host.name,
-      version: options.host.version,
-    },
-    version: "0.0.1",
-    description: options.defaults?.description ?? "",
-  };
-
-  workspace.applyRemoteChange({
-    action: "write",
-    path: MINDCRAFT_JSON_PATH,
-    content: serializeMindcraftJson(mindcraftJson),
-    newEtag: "mindcraft-json-init",
   });
 }

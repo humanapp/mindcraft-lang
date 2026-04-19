@@ -1,19 +1,27 @@
+import type { ProjectManifest } from "@mindcraft-lang/app-host";
 import type { BrainDef } from "@mindcraft-lang/core/app";
 import type { ITileCatalog } from "@mindcraft-lang/core/brain";
 import { DocsSidebar, DocsSidebarProvider, useDocsSidebar } from "@mindcraft-lang/docs";
-import { BrainEditorDialog, BrainEditorProvider, Toaster } from "@mindcraft-lang/ui";
+import {
+  BrainEditorDialog,
+  BrainEditorProvider,
+  ProjectPickerDialog,
+  type ProjectPickerItem,
+  Toaster,
+} from "@mindcraft-lang/ui";
 import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain/editor/config";
 import { genVisualForTile } from "./brain/editor/visual-provider";
+import { NewProjectDialog } from "./components/NewProjectDialog";
+import { ProjectHeader } from "./components/ProjectHeader";
 import { Sidebar } from "./components/Sidebar";
 import { useSimEnvironment } from "./contexts/sim-environment";
 import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
-import { saveBrainToLocalStorage } from "./services/brain-persistence";
 import { loadDesiredCounts } from "./services/population-persistence";
 
 /** Compare two snapshots by display-relevant fields to skip no-op re-renders. */
@@ -71,6 +79,63 @@ function App() {
   const [scene, setScene] = useState<Playground | null>(null);
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
+
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
+  const [projectName, setProjectName] = useState(() => store.activeProjectManifest?.name ?? "");
+  const [projectList, setProjectList] = useState<ProjectManifest[]>(() => store.projectManager.projects);
+
+  useEffect(() => {
+    const unsubActive = store.projectManager.onActiveProjectChange((project) => {
+      setProjectName(project?.manifest.name ?? "");
+    });
+    const unsubList = store.projectManager.onProjectListChange((projects) => {
+      setProjectList(projects);
+    });
+    return () => {
+      unsubActive();
+      unsubList();
+    };
+  }, [store]);
+
+  const pickerItems = useMemo<ProjectPickerItem[]>(
+    () =>
+      projectList.map((p) => ({
+        id: p.id,
+        title: p.name,
+        updatedAt: p.updatedAt,
+      })),
+    [projectList]
+  );
+
+  const handleSelectProject = useCallback(
+    (id: string) => {
+      store.switchProject(id);
+      setIsPickerOpen(false);
+    },
+    [store]
+  );
+
+  const handleDeleteProject = useCallback(
+    (id: string) => {
+      store.projectManager.delete(id);
+    },
+    [store]
+  );
+
+  const handleNewProject = useCallback(() => {
+    setIsPickerOpen(false);
+    setIsNewProjectOpen(true);
+  }, []);
+
+  const handleNewProjectConfirm = useCallback(
+    (name: string) => {
+      store.projectManager.create(name);
+    },
+    [store]
+  );
+
+  const defaultNewProjectName = useMemo(() => `Project ${projectList.length + 1}`, [projectList.length]);
 
   const docRevision = useSyncExternalStore(store.subscribeToDocRevision, store.getDocRevisionSnapshot);
   const vfsRevision = useSyncExternalStore(store.subscribeToVfsRevision, store.getVfsRevisionSnapshot);
@@ -169,7 +234,7 @@ function App() {
   const handleBrainSubmit = (brainDef: BrainDef) => {
     if (editingArchetype) {
       scene?.updateBrainDef(editingArchetype, brainDef);
-      saveBrainToLocalStorage(editingArchetype, brainDef);
+      store.saveBrainForArchetype(editingArchetype, brainDef);
     }
     setEditingArchetype(null);
     setIsBrainEditorOpen(false);
@@ -193,6 +258,11 @@ function App() {
         {/* Game Canvas -- flex-1 lets the Phaser Scale.FIT fill available space */}
         <main className="flex-1 min-w-0 relative" aria-label="Game canvas" style={{ backgroundColor: "#2d3561" }}>
           <PhaserGame store={store} onSceneReady={handleSceneReady} />
+          <ProjectHeader
+            projectName={projectName}
+            onBrowseProjects={() => setIsPickerOpen(true)}
+            onNewProject={() => setIsNewProjectOpen(true)}
+          />
           {/* Mobile sidebar toggle */}
           <button
             type="button"
@@ -239,6 +309,23 @@ function App() {
             onSubmit={handleBrainSubmit}
           />
         </DocsBrainEditorProvider>
+
+        <ProjectPickerDialog
+          open={isPickerOpen}
+          onOpenChange={setIsPickerOpen}
+          projects={pickerItems}
+          activeProjectId={store.activeProjectManifest?.id}
+          onSelect={handleSelectProject}
+          onDelete={handleDeleteProject}
+          onCreate={handleNewProject}
+        />
+
+        <NewProjectDialog
+          open={isNewProjectOpen}
+          onOpenChange={setIsNewProjectOpen}
+          onConfirm={handleNewProjectConfirm}
+          defaultName={defaultNewProjectName}
+        />
       </div>
 
       {/* Docs sidebar -- fixed overlay, sibling to main layout */}

@@ -26,21 +26,21 @@ consumers see updated types.
 ```
 src/
   index.ts           # barrel (all public exports)
-  app-project.ts     # AppProject class (extends Project with app-role behavior)
+  bridge-project.ts   # BridgeProject class (extends Project with app-role behavior)
 ```
 
 ## Key Exports
 
-- `AppProject` -- extends `Project<AppClientMessage, AppServerMessage>` from
+- `BridgeProject` -- extends `Project<AppClientMessage, AppServerMessage>` from
   `bridge-client`. Hardcodes `wsPath: "app"`. Manages join code state from
   `session:welcome` and `session:joinCode` messages.
-- `AppProjectOptions` -- simplified options interface (appName,
+- `BridgeProjectOptions` -- simplified options interface (appName,
   bridgeUrl, filesystem). Omits `wsPath` and generic type parameters.
 
-## AppProject
+## BridgeProject
 
 - Extends `Project` parameterized with app-role message types from `bridge-protocol`.
-- Constructor maps `AppProjectOptions` to `ProjectOptions`, injecting `wsPath: "app"`.
+- Constructor maps `BridgeProjectOptions` to `ProjectOptions`, injecting `wsPath: "app"`.
 - Join code lifecycle: listens for `session:welcome` and `session:joinCode` on the
   session. Exposes `joinCode` getter and `onJoinCodeChange(fn)` subscriber (returns
   unsubscribe function). Deduplicates -- won't fire if value unchanged.

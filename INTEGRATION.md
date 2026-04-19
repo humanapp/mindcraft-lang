@@ -489,15 +489,15 @@ For non-browser apps, implement `WorkspaceAdapter` directly with `exportSnapshot
 
 #### App Project
 
-`createAppProject` is the recommended high-level API. It creates the workspace compiler,
+`createBridgeProject` is the recommended high-level API. It creates the workspace compiler,
 wires it to the bridge, and handles virtual filesystem transfer:
 
 ```typescript
 import { createLocalStorageWorkspace } from "@mindcraft-lang/bridge-app";
-import { createAppProject } from "@mindcraft-lang/bridge-app/compilation";
+import { createBridgeProject } from "@mindcraft-lang/bridge-app/compilation";
 import type { WorkspaceCompileResult } from "@mindcraft-lang/bridge-app/compilation";
 
-const project = createAppProject({
+const project = createBridgeProject({
   environment,
   host: { name: "My App", version: "1.0.0" },
   defaults: { name: "my-project" },
@@ -515,7 +515,7 @@ const project = createAppProject({
 project.initialize();
 ```
 
-The returned `AppProjectHandle` exposes:
+The returned `BridgeProjectHandle` exposes:
 
 | Member | Description |
 |--------|-------------|

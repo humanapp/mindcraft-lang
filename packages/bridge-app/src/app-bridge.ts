@@ -1,9 +1,9 @@
-import type { ConnectionStatus, ExportedFileSystem, FileSystemNotification } from "@mindcraft-lang/bridge-client";
+import type { WorkspaceAdapter, WorkspaceChange, WorkspaceSnapshot } from "@mindcraft-lang/app-host";
+import type { ConnectionStatus } from "@mindcraft-lang/bridge-client";
 import type { AppClientMessage, CompileDiagnosticEntry } from "@mindcraft-lang/bridge-protocol";
-import { AppProject } from "./app-project.js";
+import { BridgeProject } from "./bridge-project.js";
 
-export type WorkspaceSnapshot = ExportedFileSystem;
-export type WorkspaceChange = FileSystemNotification;
+export type { WorkspaceAdapter, WorkspaceChange, WorkspaceSnapshot };
 export type AppBridgeState = ConnectionStatus;
 export type DiagnosticEntry = CompileDiagnosticEntry;
 
@@ -27,12 +27,6 @@ export interface AppBridgeOptions {
   features?: readonly AppBridgeFeature[];
   bindingToken?: string;
   onBindingTokenChange?: (token: string) => void;
-}
-
-export interface WorkspaceAdapter {
-  exportSnapshot(): WorkspaceSnapshot;
-  applyRemoteChange(change: WorkspaceChange): void;
-  onLocalChange(listener: (change: WorkspaceChange) => void): () => void;
 }
 
 export interface AppBridgeFeature {
@@ -69,7 +63,7 @@ class AppBridgeController implements AppBridge {
   private readonly _syncListeners = new Set<() => void>();
   private readonly _diagnosticVersions = new Map<string, number>();
   private readonly _featureDisposers: (() => void)[] = [];
-  private _project: AppProject | undefined;
+  private _project: BridgeProject | undefined;
   private _workspaceUnsub: (() => void) | undefined;
   private _projectUnsubs: (() => void)[] = [];
   private _status: AppBridgeState = "disconnected";
@@ -86,7 +80,7 @@ class AppBridgeController implements AppBridge {
 
     this.attachFeatures();
 
-    const project = new AppProject({
+    const project = new BridgeProject({
       bridgeUrl: this._options.bridgeUrl,
       filesystem: this._options.workspace.exportSnapshot(),
       bindingToken: this._options.bindingToken,
@@ -286,7 +280,7 @@ class AppBridgeController implements AppBridge {
     }
   }
 
-  private requireProject(): AppProject {
+  private requireProject(): BridgeProject {
     if (!this._project) {
       throw new Error("Bridge not started");
     }

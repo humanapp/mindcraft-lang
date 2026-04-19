@@ -74,6 +74,8 @@ class MemoryWorkspace implements WorkspaceAdapter {
     };
   }
 
+  flush(): void {}
+
   applyLocalChange(change: WorkspaceChange): void {
     applyChange(this._fs, change);
     for (const listener of this._listeners) {
