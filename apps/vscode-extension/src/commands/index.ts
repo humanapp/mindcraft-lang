@@ -109,6 +109,10 @@ export function registerCommands(context: vscode.ExtensionContext, projectManage
 
     vscode.commands.registerCommand("mindcraft.copyExampleToWorkspace", async (arg?: string | vscode.Uri) => {
       await copyExampleToWorkspace(projectManager, arg);
+    }),
+
+    vscode.commands.registerCommand("mindcraft.unlockMindcraftJson", () => {
+      projectManager.fsProvider.unlockMindcraftJson();
     })
   );
 }

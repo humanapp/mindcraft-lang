@@ -80,6 +80,10 @@
         "command": "mindcraft.copyExampleToWorkspace",
         "title": "Mindcraft: Copy Example to Workspace",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "mindcraft.unlockMindcraftJson",
+        "title": "Mindcraft: Unlock mindcraft.json for Editing"
       }
     ],
     "menus": {
