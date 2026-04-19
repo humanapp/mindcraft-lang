@@ -60,18 +60,38 @@ function persistAppSettings(settings: AppSettings): void {
 const UI_PREFS_KEY_PREFIX = `${simName}:project-ui:`;
 
 export interface UiPreferences {
-  collapsedArchetypes: Record<string, boolean>;
   timeScale: number;
   bridgeEnabled: boolean;
   debugEnabled: boolean;
 }
 
 const DEFAULT_UI_PREFS: UiPreferences = {
-  collapsedArchetypes: {},
   timeScale: 1,
   bridgeEnabled: false,
   debugEnabled: false,
 };
+
+// -- Collapsed archetypes (global, not per-project) --
+
+const COLLAPSED_ARCHETYPES_KEY = `${simName}:collapsed-archetypes`;
+
+function loadCollapsedArchetypes(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_ARCHETYPES_KEY);
+    if (raw) return JSON.parse(raw) as Record<string, boolean>;
+  } catch {
+    // corrupted data
+  }
+  return {};
+}
+
+function persistCollapsedArchetypes(value: Record<string, boolean>): void {
+  try {
+    localStorage.setItem(COLLAPSED_ARCHETYPES_KEY, JSON.stringify(value));
+  } catch {
+    // storage full or unavailable
+  }
+}
 
 function loadUiPreferences(projectId: string): UiPreferences {
   try {
@@ -79,7 +99,6 @@ function loadUiPreferences(projectId: string): UiPreferences {
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<UiPreferences>;
       return {
-        collapsedArchetypes: parsed.collapsedArchetypes ?? DEFAULT_UI_PREFS.collapsedArchetypes,
         timeScale: typeof parsed.timeScale === "number" ? parsed.timeScale : DEFAULT_UI_PREFS.timeScale,
         bridgeEnabled: parsed.bridgeEnabled === true,
         debugEnabled: parsed.debugEnabled === true,
@@ -108,6 +127,9 @@ export class SimEnvironmentStore {
   private readonly _appSettingsListeners = new Set<AppSettingsListener>();
 
   private _uiPreferences: UiPreferences = { ...DEFAULT_UI_PREFS };
+  private _collapsedArchetypes: Record<string, boolean> = loadCollapsedArchetypes();
+
+  private _isSwitchingProject = false;
 
   constructor() {
     this.host = new AppEnvironmentHost({
@@ -127,6 +149,12 @@ export class SimEnvironmentStore {
           this.userTileDocEntries = buildDocEntries(tileResult.metadata);
         }
       },
+    });
+
+    this.host.onProjectLoaded(() => {
+      const prefs = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
+      this._uiPreferences = this._isSwitchingProject ? { ...prefs, bridgeEnabled: false } : prefs;
+      this.userTileDocEntries = [];
     });
   }
 
@@ -200,9 +228,9 @@ export class SimEnvironmentStore {
   // -- Project switching --
 
   async switchProject(id: string): Promise<void> {
+    this._isSwitchingProject = true;
     await this.host.switchProject(id);
-    this._uiPreferences = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
-    this.userTileDocEntries = [];
+    this._isSwitchingProject = false;
   }
 
   flushPendingBrainRebuilds(): void {
@@ -277,6 +305,17 @@ export class SimEnvironmentStore {
     if (projectId) {
       persistUiPreferences(projectId, this._uiPreferences);
     }
+  }
+
+  // -- Collapsed archetypes (global) --
+
+  getCollapsedArchetypes(): Record<string, boolean> {
+    return this._collapsedArchetypes;
+  }
+
+  updateCollapsedArchetypes(value: Record<string, boolean>): void {
+    this._collapsedArchetypes = value;
+    persistCollapsedArchetypes(value);
   }
 
   // -- Bridge (delegate) --

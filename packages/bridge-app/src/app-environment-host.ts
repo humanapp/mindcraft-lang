@@ -126,12 +126,12 @@ export class AppEnvironmentHost {
   async initialize(defaultProjectName: string): Promise<void> {
     await this.projectManager.init();
     await this.projectManager.ensureDefaultProject(defaultProjectName);
-    this.loadBrainsFromProject();
     this._lastUserTileMetadata =
       hydrateUserTilesFromCache(this.env, {
         storageKey: this.userTileStorageKey,
       }) ?? undefined;
     this.initCompiler();
+    this.loadBrainsFromProject();
   }
 
   // ---------------------------------------------------------------------------
@@ -272,9 +272,9 @@ export class AppEnvironmentHost {
     this._lastUserTileMetadata = undefined;
     this.bumpDocRevision();
 
-    this.loadBrainsFromProject();
     this.teardownBridge();
     this.initCompiler();
+    this.loadBrainsFromProject();
 
     for (const listener of this._projectLoadedListeners) {
       listener();

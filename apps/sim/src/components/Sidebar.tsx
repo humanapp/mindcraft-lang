@@ -61,14 +61,20 @@ export function Sidebar({
 }: SidebarProps) {
   const store = useSimEnvironment();
   const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
-  const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>(
-    () => store.getUiPreferences().collapsedArchetypes
+  const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>(() =>
+    store.getCollapsedArchetypes()
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bridgeEnabled, setBridgeEnabled] = useState(() => store.getUiPreferences().bridgeEnabled);
   const bridgeStatus = useSyncExternalStore(store.subscribeToBridgeStatus, store.getBridgeStatusSnapshot);
   const joinCode = useSyncExternalStore(store.subscribeToBridgeJoinCode, store.getBridgeJoinCodeSnapshot);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    return store.onProjectLoaded(() => {
+      setBridgeEnabled(store.getUiPreferences().bridgeEnabled);
+    });
+  }, [store]);
 
   useEffect(() => {
     if (bridgeEnabled) {
@@ -189,7 +195,7 @@ export function Sidebar({
           const toggleCollapsed = () =>
             setCollapsedArchetypes((prev) => {
               const next = { ...prev, [arch]: !prev[arch] };
-              store.updateUiPreferences({ collapsedArchetypes: next });
+              store.updateCollapsedArchetypes(next);
               return next;
             });
           return (

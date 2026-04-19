@@ -71,15 +71,23 @@ export function ProjectPickerDialog({
         </DialogHeader>
         <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
           {sorted.map((project) => (
-            <button
+            // biome-ignore lint/a11y/useSemanticElements: <button> cannot nest the delete <Button> children
+            <div
               key={project.id}
-              type="button"
+              role="button"
+              tabIndex={0}
               aria-current={project.id === activeProjectId ? true : undefined}
               className={cn(
                 "group flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-accent",
                 project.id === activeProjectId && "bg-accent/60"
               )}
               onClick={() => handleSelect(project.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleSelect(project.id);
+                }
+              }}
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
@@ -144,7 +152,7 @@ export function ProjectPickerDialog({
                   )}
                 </span>
               )}
-            </button>
+            </div>
           ))}
         </div>
         <Button variant="outline" className="w-full" onClick={onCreate}>

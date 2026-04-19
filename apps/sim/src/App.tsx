@@ -93,11 +93,25 @@ function App() {
     const unsubList = store.projectManager.onProjectListChange((projects) => {
       setProjectList(projects);
     });
+    const unsubLoaded = store.onProjectLoaded(() => {
+      const prefs = store.getUiPreferences();
+      setTimeSpeed(prefs.timeScale);
+      setDebugEnabled(prefs.debugEnabled);
+    });
     return () => {
       unsubActive();
       unsubList();
+      unsubLoaded();
     };
   }, [store]);
+
+  useEffect(() => {
+    if (!scene) return;
+    const isDebug = scene.matter.world.drawDebug;
+    if (debugEnabled !== isDebug) {
+      scene.toggleDebugMode();
+    }
+  }, [scene, debugEnabled]);
 
   const pickerItems = useMemo<ProjectPickerItem[]>(
     () =>
@@ -184,11 +198,7 @@ function App() {
     for (const [arch, count] of Object.entries(counts)) {
       scene.setDesiredCount(arch as Archetype, count);
     }
-    const prefs = store.getUiPreferences();
-    if (prefs.debugEnabled) {
-      scene.toggleDebugMode();
-    }
-  }, [scene, store]);
+  }, [scene]);
 
   // Poll the engine for score data. The snapshot is a fresh object each call,
   // so compare rounded display values to avoid re-renders when nothing the
