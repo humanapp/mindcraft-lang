@@ -1,6 +1,7 @@
 import {
   type ActiveProject,
   createLocalStorageProjectStore,
+  createWebLocksProjectLock,
   diffMindcraftJsonToManifest,
   MINDCRAFT_JSON_PATH,
   type MindcraftJsonHostInfo,
@@ -137,7 +138,8 @@ export class SimEnvironmentStore {
 
   constructor() {
     this.projectManager = new ProjectManager(createLocalStorageProjectStore(simName), {
-      shouldExclude: isCompilerControlledPath,
+      workspaceOptions: { shouldExclude: isCompilerControlledPath },
+      lock: createWebLocksProjectLock(simName),
     });
     this.env = createMindcraftEnvironment({
       modules: [coreModule(), createSimModule()],
@@ -158,8 +160,9 @@ export class SimEnvironmentStore {
     return this.projectManager.activeProject?.manifest;
   }
 
-  initialize(): void {
-    this.projectManager.ensureDefaultProject("Untitled Project");
+  async initialize(): Promise<void> {
+    await this.projectManager.init();
+    await this.projectManager.ensureDefaultProject("Untitled Project");
     this._uiPreferences = loadUiPreferences(this.projectManager.activeProject!.manifest.id);
     this.loadBrainsFromProject();
     hydrateUserTilesAtStartup(this);
@@ -219,9 +222,9 @@ export class SimEnvironmentStore {
 
   // -- Project Switching --
 
-  switchProject(id: string): void {
+  async switchProject(id: string): Promise<void> {
     this.saveAllBrains();
-    const active = this.projectManager.open(id);
+    const active = await this.projectManager.open(id);
     this._uiPreferences = loadUiPreferences(active.manifest.id);
     this._defaultBrainCache.clear();
     this.loadBrainsFromProject();

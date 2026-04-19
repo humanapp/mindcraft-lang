@@ -11,6 +11,7 @@ import {
 } from "@mindcraft-lang/ui";
 import { Menu, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { toast } from "sonner";
 import type { ArchetypeStats, ScoreSnapshot } from "@/brain/score";
 import type { Archetype } from "./brain/actor";
 import { buildBrainEditorConfig } from "./brain/editor/config";
@@ -110,8 +111,14 @@ function App() {
 
   const handleSelectProject = useCallback(
     (id: string) => {
-      store.switchProject(id);
-      setIsPickerOpen(false);
+      store.switchProject(id).then(
+        () => {
+          setIsPickerOpen(false);
+        },
+        () => {
+          toast.error("This project is already open in another tab");
+        }
+      );
     },
     [store]
   );
@@ -130,7 +137,9 @@ function App() {
 
   const handleNewProjectConfirm = useCallback(
     (name: string) => {
-      store.projectManager.create(name);
+      store.projectManager.create(name).catch(() => {
+        toast.error("Failed to create project");
+      });
     },
     [store]
   );

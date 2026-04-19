@@ -1,5 +1,6 @@
 import type { LocalStorageWorkspaceOptions } from "./local-storage-workspace.js";
 import { createLocalStorageWorkspace } from "./local-storage-workspace.js";
+import type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
 import type { WorkspaceAdapter } from "./workspace-adapter.js";
@@ -9,22 +10,36 @@ export interface ActiveProject {
   readonly workspace: WorkspaceAdapter;
 }
 
+export interface ProjectManagerOptions {
+  workspaceOptions?: Omit<LocalStorageWorkspaceOptions, "storageKey">;
+  lock?: ProjectLock;
+}
+
 export class ProjectManager {
   private readonly store: ProjectStore;
   private readonly workspaceOptions: Omit<LocalStorageWorkspaceOptions, "storageKey">;
+  private readonly lock: ProjectLock | undefined;
   private readonly activeProjectListeners = new Set<(project: ActiveProject | undefined) => void>();
   private readonly projectListListeners = new Set<(projects: ProjectManifest[]) => void>();
   private currentActive: ActiveProject | undefined;
+  private currentLockHandle: ProjectLockHandle | undefined;
 
-  constructor(store: ProjectStore, workspaceOptions?: Omit<LocalStorageWorkspaceOptions, "storageKey">) {
+  constructor(store: ProjectStore, options?: ProjectManagerOptions) {
     this.store = store;
-    this.workspaceOptions = workspaceOptions ?? {};
+    this.workspaceOptions = options?.workspaceOptions ?? {};
+    this.lock = options?.lock;
+  }
 
-    const activeId = store.getActiveProjectId();
+  async init(): Promise<void> {
+    const activeId = this.store.getActiveProjectId();
     if (activeId) {
-      const manifest = store.getProject(activeId);
+      const manifest = this.store.getProject(activeId);
       if (manifest) {
-        this.currentActive = this.openInternal(manifest);
+        const handle = await this.acquireLock(manifest.id);
+        if (handle) {
+          this.currentLockHandle = handle;
+          this.currentActive = this.openInternal(manifest);
+        }
       }
     }
   }
@@ -37,23 +52,37 @@ export class ProjectManager {
     return this.currentActive;
   }
 
-  create(name: string): ProjectManifest {
+  async create(name: string): Promise<ProjectManifest> {
     const manifest = this.store.createProject(name);
     this.notifyProjectList();
-    this.open(manifest.id);
+    await this.open(manifest.id);
     return manifest;
   }
 
-  open(id: string): ActiveProject {
+  async open(id: string): Promise<ActiveProject> {
+    const result = await this.tryOpen(id);
+    if (!result) {
+      throw new Error("Project is already open in another tab");
+    }
+    return result;
+  }
+
+  private async tryOpen(id: string): Promise<ActiveProject | undefined> {
     const manifest = this.store.getProject(id);
     if (!manifest) {
       throw new Error(`Project not found: ${id}`);
+    }
+
+    const handle = await this.acquireLock(id);
+    if (!handle) {
+      return undefined;
     }
 
     if (this.currentActive) {
       this.closeInternal();
     }
 
+    this.currentLockHandle = handle;
     const active = this.openInternal(manifest);
     this.currentActive = active;
     this.store.setActiveProjectId(id);
@@ -99,15 +128,18 @@ export class ProjectManager {
     }
   }
 
-  ensureDefaultProject(defaultName: string): ActiveProject {
+  async ensureDefaultProject(defaultName: string): Promise<ActiveProject> {
     if (this.currentActive) {
       return this.currentActive;
     }
     const existing = this.store.listProjects();
-    if (existing.length > 0) {
-      return this.open(existing[0].id);
+    for (const project of existing) {
+      const result = await this.tryOpen(project.id);
+      if (result) {
+        return result;
+      }
     }
-    this.create(defaultName);
+    await this.create(defaultName);
     return this.currentActive!;
   }
 
@@ -146,6 +178,13 @@ export class ProjectManager {
     };
   }
 
+  private async acquireLock(id: string): Promise<ProjectLockHandle | undefined> {
+    if (!this.lock) {
+      return { release() {} };
+    }
+    return this.lock.tryAcquire(id);
+  }
+
   private openInternal(manifest: ProjectManifest): ActiveProject {
     const snapshot = this.store.loadWorkspace(manifest.id);
     const workspace = createLocalStorageWorkspace({
@@ -170,6 +209,8 @@ export class ProjectManager {
     const { manifest, workspace } = this.currentActive;
     workspace.flush();
     this.store.saveWorkspace(manifest.id, workspace.exportSnapshot());
+    this.currentLockHandle?.release();
+    this.currentLockHandle = undefined;
   }
 
   private notifyActiveProject(): void {

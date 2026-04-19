@@ -128,62 +128,62 @@ describe("ProjectManager", () => {
   });
 
   describe("ensureDefaultProject", () => {
-    it("creates a project when none exist", () => {
-      const active = pm.ensureDefaultProject("Default");
+    it("creates a project when none exist", async () => {
+      const active = await pm.ensureDefaultProject("Default");
       assert.strictEqual(active.manifest.name, "Default");
       assert.strictEqual(pm.activeProject?.manifest.id, active.manifest.id);
     });
 
-    it("returns existing active project if one is already open", () => {
-      const first = pm.ensureDefaultProject("First");
-      const second = pm.ensureDefaultProject("Second");
+    it("returns existing active project if one is already open", async () => {
+      const first = await pm.ensureDefaultProject("First");
+      const second = await pm.ensureDefaultProject("Second");
       assert.strictEqual(first.manifest.id, second.manifest.id);
       assert.strictEqual(pm.projects.length, 1);
     });
 
-    it("opens first existing project when no active project", () => {
+    it("opens first existing project when no active project", async () => {
       memStore.createProject("Existing");
       const fresh = new ProjectManager(memStore);
-      const active = fresh.ensureDefaultProject("Ignored");
+      const active = await fresh.ensureDefaultProject("Ignored");
       assert.strictEqual(active.manifest.name, "Existing");
       fresh.close();
     });
   });
 
   describe("create", () => {
-    it("creates and opens the new project", () => {
-      const manifest = pm.create("New One");
+    it("creates and opens the new project", async () => {
+      const manifest = await pm.create("New One");
       assert.strictEqual(manifest.name, "New One");
       assert.strictEqual(pm.activeProject?.manifest.id, manifest.id);
     });
 
-    it("fires project list listener", () => {
+    it("fires project list listener", async () => {
       const calls: number[] = [];
       pm.onProjectListChange((projects) => calls.push(projects.length));
-      pm.create("A");
+      await pm.create("A");
       assert.strictEqual(calls.length, 1);
       assert.strictEqual(calls[0], 1);
     });
   });
 
   describe("open / close", () => {
-    it("opens a project by ID", () => {
-      const m = pm.create("Openable");
+    it("opens a project by ID", async () => {
+      const m = await pm.create("Openable");
       pm.close();
       assert.strictEqual(pm.activeProject, undefined);
 
-      const opened = pm.open(m.id);
+      const opened = await pm.open(m.id);
       assert.strictEqual(opened.manifest.id, m.id);
     });
 
-    it("throws when opening nonexistent project", () => {
-      assert.throws(() => pm.open("ghost"), /not found/i);
+    it("throws when opening nonexistent project", async () => {
+      await assert.rejects(() => pm.open("ghost"), /not found/i);
     });
 
-    it("fires active project listener on open and close", () => {
+    it("fires active project listener on open and close", async () => {
       const calls: Array<string | undefined> = [];
       pm.onActiveProjectChange((p) => calls.push(p?.manifest.name));
-      const m = pm.create("Watched");
+      await pm.create("Watched");
       pm.close();
       assert.deepStrictEqual(calls, ["Watched", undefined]);
     });
@@ -195,21 +195,21 @@ describe("ProjectManager", () => {
   });
 
   describe("delete", () => {
-    it("removes a non-active project", () => {
-      const a = pm.create("A");
+    it("removes a non-active project", async () => {
+      const a = await pm.create("A");
       const b = memStore.createProject("B");
       pm.delete(b.id);
       assert.strictEqual(pm.projects.length, 1);
       assert.strictEqual(pm.projects[0].id, a.id);
     });
 
-    it("throws when deleting the active project", () => {
-      pm.create("Active");
+    it("throws when deleting the active project", async () => {
+      await pm.create("Active");
       assert.throws(() => pm.delete(pm.activeProject!.manifest.id), /active project/i);
     });
 
-    it("fires project list listener", () => {
-      pm.create("A");
+    it("fires project list listener", async () => {
+      await pm.create("A");
       const b = memStore.createProject("B");
       const calls: number[] = [];
       pm.onProjectListChange((projects) => calls.push(projects.length));
@@ -219,20 +219,20 @@ describe("ProjectManager", () => {
   });
 
   describe("updateActive", () => {
-    it("renames the active project", () => {
-      pm.create("Old Name");
+    it("renames the active project", async () => {
+      await pm.create("Old Name");
       pm.updateActive({ name: "New Name" });
       assert.strictEqual(pm.activeProject?.manifest.name, "New Name");
     });
 
-    it("updates the description", () => {
-      pm.create("Project");
+    it("updates the description", async () => {
+      await pm.create("Project");
       pm.updateActive({ description: "A cool project" });
       assert.strictEqual(pm.activeProject?.manifest.description, "A cool project");
     });
 
-    it("fires both listeners", () => {
-      pm.create("X");
+    it("fires both listeners", async () => {
+      await pm.create("X");
       const activeCalls: string[] = [];
       const listCalls: string[] = [];
       pm.onActiveProjectChange((p) => activeCalls.push(p?.manifest.name ?? ""));
@@ -248,8 +248,8 @@ describe("ProjectManager", () => {
   });
 
   describe("app data pass-through", () => {
-    it("saves and loads app data for the active project", () => {
-      pm.create("Data Project");
+    it("saves and loads app data for the active project", async () => {
+      await pm.create("Data Project");
       pm.saveAppData("key1", "value1");
       assert.strictEqual(pm.loadAppData("key1"), "value1");
     });
@@ -262,8 +262,8 @@ describe("ProjectManager", () => {
       assert.throws(() => pm.saveAppData("key1", "value1"), /no active project/i);
     });
 
-    it("deletes app data", () => {
-      pm.create("Deletable");
+    it("deletes app data", async () => {
+      await pm.create("Deletable");
       pm.saveAppData("k", "v");
       pm.deleteAppData("k");
       assert.strictEqual(pm.loadAppData("k"), undefined);
@@ -271,29 +271,31 @@ describe("ProjectManager", () => {
   });
 
   describe("listener unsubscribe", () => {
-    it("stops receiving events after unsubscribe", () => {
+    it("stops receiving events after unsubscribe", async () => {
       const calls: number[] = [];
       const unsub = pm.onProjectListChange((projects) => calls.push(projects.length));
-      pm.create("A");
+      await pm.create("A");
       unsub();
-      pm.create("B");
+      await pm.create("B");
       assert.strictEqual(calls.length, 1);
     });
   });
 
-  describe("constructor restores active project", () => {
-    it("opens previously active project on construction", () => {
+  describe("init restores active project", () => {
+    it("opens previously active project on init", async () => {
       const manifest = memStore.createProject("Persisted");
       memStore.setActiveProjectId(manifest.id);
 
       const restored = new ProjectManager(memStore);
+      await restored.init();
       assert.strictEqual(restored.activeProject?.manifest.name, "Persisted");
       restored.close();
     });
 
-    it("handles stale active project ID gracefully", () => {
+    it("handles stale active project ID gracefully", async () => {
       memStore.setActiveProjectId("deleted-id");
       const restored = new ProjectManager(memStore);
+      await restored.init();
       assert.strictEqual(restored.activeProject, undefined);
       restored.close();
     });
