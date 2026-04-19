@@ -61,7 +61,11 @@ function collectReleaseDeps(pkgDir, visited, order, isRoot) {
   if (!pkg.name) return;
   if (!isRoot && !pkg.name.startsWith(SCOPE)) return;
 
-  for (const [name, val] of Object.entries(pkg.dependencies || {})) {
+  const allDeps = {
+    ...pkg.dependencies,
+    ...pkg.devDependencies,
+  };
+  for (const [name, val] of Object.entries(allDeps)) {
     if (!val.startsWith("file:")) continue;
     if (!name.startsWith(SCOPE)) continue;
     const depDir = resolve(realDir, val.slice(5));
