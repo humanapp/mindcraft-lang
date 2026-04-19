@@ -38,11 +38,13 @@ describe("LocalStorageProjectStore", () => {
   beforeEach(() => {
     const mock = new MockLocalStorage();
     (globalThis as Record<string, unknown>).localStorage = mock;
+    (globalThis as Record<string, unknown>).sessionStorage = new MockLocalStorage();
     store = createLocalStorageProjectStore("test-app");
   });
 
   afterEach(() => {
     delete (globalThis as Record<string, unknown>).localStorage;
+    delete (globalThis as Record<string, unknown>).sessionStorage;
   });
 
   describe("listProjects", () => {
@@ -225,6 +227,23 @@ describe("LocalStorageProjectStore", () => {
       store.setActiveProjectId("some-id");
       store.setActiveProjectId(undefined);
       assert.strictEqual(store.getActiveProjectId(), undefined);
+    });
+
+    it("prefers sessionStorage over localStorage", () => {
+      localStorage.setItem("test-app:active-project", "from-local");
+      sessionStorage.setItem("test-app:active-project", "from-session");
+      assert.strictEqual(store.getActiveProjectId(), "from-session");
+    });
+
+    it("falls back to localStorage when sessionStorage is empty", () => {
+      localStorage.setItem("test-app:active-project", "from-local");
+      assert.strictEqual(store.getActiveProjectId(), "from-local");
+    });
+
+    it("writes to both sessionStorage and localStorage", () => {
+      store.setActiveProjectId("dual");
+      assert.strictEqual(sessionStorage.getItem("test-app:active-project"), "dual");
+      assert.strictEqual(localStorage.getItem("test-app:active-project"), "dual");
     });
   });
 

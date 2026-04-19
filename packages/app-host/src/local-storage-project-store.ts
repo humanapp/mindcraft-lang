@@ -131,13 +131,19 @@ class LocalStorageProjectStore implements ProjectStore {
   }
 
   getActiveProjectId(): string | undefined {
-    return localStorage.getItem(this.key("active-project")) ?? undefined;
+    return (
+      sessionStorage.getItem(this.key("active-project")) ??
+      localStorage.getItem(this.key("active-project")) ??
+      undefined
+    );
   }
 
   setActiveProjectId(id: string | undefined): void {
     if (id === undefined) {
+      sessionStorage.removeItem(this.key("active-project"));
       localStorage.removeItem(this.key("active-project"));
     } else {
+      sessionStorage.setItem(this.key("active-project"), id);
       localStorage.setItem(this.key("active-project"), id);
     }
   }
