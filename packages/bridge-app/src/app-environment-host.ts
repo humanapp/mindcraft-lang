@@ -54,6 +54,7 @@ export class AppEnvironmentHost {
 
   // -- Brain cache --
   private readonly _brainCache = new Map<string, IBrainDef>();
+  private readonly _defaultBrainCache = new Map<string, IBrainDef>();
 
   // -- Brain rebuild coordination --
   private _pendingBrainRebuild = false;
@@ -131,7 +132,7 @@ export class AppEnvironmentHost {
         storageKey: this.userTileStorageKey,
       }) ?? undefined;
     this.initCompiler();
-    this.loadBrainsFromProject();
+    await this.loadBrainsFromProject();
   }
 
   // ---------------------------------------------------------------------------
@@ -163,23 +164,23 @@ export class AppEnvironmentHost {
   // Brain persistence (keyed by app-defined string)
   // ---------------------------------------------------------------------------
 
-  saveBrainForKey(key: string, brainDef: IBrainDef): void {
+  async saveBrainForKey(key: string, brainDef: IBrainDef): Promise<void> {
     this._brainCache.set(key, brainDef);
-    const record = this.loadBrainRecord();
+    const record = await this.loadBrainRecord();
     record[key] = brainDef.toJson();
-    this.projectManager.saveAppData("brains", JSON.stringify(record));
+    await this.projectManager.saveAppData("brains", JSON.stringify(record));
   }
 
-  removeBrain(key: string): void {
+  async removeBrain(key: string): Promise<void> {
     this._brainCache.delete(key);
-    const record = this.loadBrainRecord();
+    const record = await this.loadBrainRecord();
     delete record[key];
-    this.projectManager.saveAppData("brains", JSON.stringify(record));
+    await this.projectManager.saveAppData("brains", JSON.stringify(record));
   }
 
-  loadBrainFromProject(key: string): IBrainDef | undefined {
+  async loadBrainFromProject(key: string): Promise<IBrainDef | undefined> {
     try {
-      const raw = this.projectManager.loadAppData("brains");
+      const raw = await this.projectManager.loadAppData("brains");
       if (!raw) return undefined;
       const record = JSON.parse(raw) as Record<string, unknown>;
       const json = record[key];
@@ -189,41 +190,42 @@ export class AppEnvironmentHost {
         brainDef.appendNewPage();
       }
       return brainDef;
-    } catch {
+    } catch (err) {
+      logger.warn(`Failed to load brain "${key}":`, err);
       return undefined;
     }
   }
 
   setDefaultBrain(key: string, brainDef: IBrainDef): void {
-    this._brainCache.set(key, brainDef);
+    this._defaultBrainCache.set(key, brainDef);
   }
 
   getDefaultBrain(key: string): IBrainDef | undefined {
-    return this._brainCache.get(key);
+    return this._defaultBrainCache.get(key);
   }
 
-  private saveAllBrains(): void {
+  private async saveAllBrains(): Promise<void> {
     const record: Record<string, unknown> = {};
     for (const [key, def] of this._brainCache) {
       record[key] = def.toJson();
     }
-    this.projectManager.saveAppData("brains", JSON.stringify(record));
+    await this.projectManager.saveAppData("brains", JSON.stringify(record));
   }
 
-  private loadBrainRecord(): Record<string, unknown> {
+  private async loadBrainRecord(): Promise<Record<string, unknown>> {
     try {
-      const raw = this.projectManager.loadAppData("brains");
+      const raw = await this.projectManager.loadAppData("brains");
       if (raw) return JSON.parse(raw) as Record<string, unknown>;
-    } catch {
-      // corrupted data
+    } catch (err) {
+      logger.warn("Failed to load brain record:", err);
     }
     return {};
   }
 
-  private loadBrainsFromProject(): void {
-    const record = this.loadBrainRecord();
+  private async loadBrainsFromProject(): Promise<void> {
+    const record = await this.loadBrainRecord();
     for (const key of Object.keys(record)) {
-      const def = this.loadBrainFromProject(key);
+      const def = await this.loadBrainFromProject(key);
       if (def) {
         this._brainCache.set(key, def);
       }
@@ -234,8 +236,8 @@ export class AppEnvironmentHost {
   // Project metadata
   // ---------------------------------------------------------------------------
 
-  updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): void {
-    this.projectManager.updateActive(updates);
+  async updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
+    await this.projectManager.updateActive(updates);
     syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this.host);
   }
 
@@ -254,17 +256,34 @@ export class AppEnvironmentHost {
   }
 
   // ---------------------------------------------------------------------------
-  // Project switching
+  // Project switching / creation
   // ---------------------------------------------------------------------------
 
+  async createProject(name: string): Promise<ProjectManifest> {
+    await this.beginProjectTransition();
+    const manifest = await this.projectManager.create(name);
+    await this.completeProjectTransition();
+    return manifest;
+  }
+
   async switchProject(id: string): Promise<void> {
-    this.saveAllBrains();
+    if (this.projectManager.activeProject?.manifest.id === id) {
+      return;
+    }
+    await this.beginProjectTransition();
+    await this.projectManager.open(id);
+    await this.completeProjectTransition();
+  }
+
+  private async beginProjectTransition(): Promise<void> {
+    await this.saveAllBrains();
 
     for (const listener of this._projectUnloadingListeners) {
       listener();
     }
+  }
 
-    await this.projectManager.open(id);
+  private async completeProjectTransition(): Promise<void> {
     this._brainCache.clear();
     this._pendingBrainRebuild = false;
 
@@ -274,7 +293,7 @@ export class AppEnvironmentHost {
 
     this.teardownBridge();
     this.initCompiler();
-    this.loadBrainsFromProject();
+    await this.loadBrainsFromProject();
 
     for (const listener of this._projectLoadedListeners) {
       listener();
@@ -448,7 +467,7 @@ export class AppEnvironmentHost {
       if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
         const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);
         if (patch) {
-          this.projectManager.updateActive(patch);
+          void this.projectManager.updateActive(patch);
         }
       }
     });

@@ -1,8 +1,9 @@
 export type { ExampleDefinition, ExampleFile } from "./examples.js";
 export { EXAMPLES_FOLDER } from "./examples.js";
+export { createIdbProjectStore } from "./idb-project-store.js";
+export type { InMemoryWorkspaceOptions } from "./in-memory-workspace.js";
+export { createInMemoryWorkspace } from "./in-memory-workspace.js";
 export { createLocalStorageProjectStore } from "./local-storage-project-store.js";
-export type { LocalStorageWorkspaceOptions } from "./local-storage-workspace.js";
-export { createLocalStorageWorkspace } from "./local-storage-workspace.js";
 export type { MindcraftJson } from "./mindcraft-json.js";
 export { MINDCRAFT_JSON_PATH, parseMindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
 export type { MindcraftJsonHostInfo } from "./mindcraft-json-sync.js";

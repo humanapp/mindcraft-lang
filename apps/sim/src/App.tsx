@@ -84,9 +84,10 @@ function App() {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
   const [projectName, setProjectName] = useState(() => store.activeProjectManifest?.name ?? "");
-  const [projectList, setProjectList] = useState<ProjectManifest[]>(() => store.projectManager.projects);
+  const [projectList, setProjectList] = useState<ProjectManifest[]>([]);
 
   useEffect(() => {
+    store.projectManager.listProjects().then(setProjectList, () => toast.error("Failed to load projects"));
     const unsubActive = store.projectManager.onActiveProjectChange((project) => {
       setProjectName(project?.manifest.name ?? "");
     });
@@ -139,7 +140,9 @@ function App() {
 
   const handleDeleteProject = useCallback(
     (id: string) => {
-      store.projectManager.delete(id);
+      store.projectManager.delete(id).catch(() => {
+        toast.error("Failed to delete project");
+      });
     },
     [store]
   );
@@ -151,7 +154,7 @@ function App() {
 
   const handleNewProjectConfirm = useCallback(
     (name: string) => {
-      store.projectManager.create(name).catch(() => {
+      store.createProject(name).catch(() => {
         toast.error("Failed to create project");
       });
     },
@@ -253,7 +256,7 @@ function App() {
   const handleBrainSubmit = (brainDef: BrainDef) => {
     if (editingArchetype) {
       scene?.updateBrainDef(editingArchetype, brainDef);
-      store.saveBrainForArchetype(editingArchetype, brainDef);
+      void store.saveBrainForArchetype(editingArchetype, brainDef);
     }
     setEditingArchetype(null);
     setIsBrainEditorOpen(false);

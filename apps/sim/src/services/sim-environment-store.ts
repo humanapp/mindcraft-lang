@@ -1,5 +1,5 @@
 import {
-  createLocalStorageProjectStore,
+  createIdbProjectStore,
   createWebLocksProjectLock,
   DEFAULT_PROJECT_NAME,
   ProjectManager,
@@ -132,31 +132,42 @@ export class SimEnvironmentStore {
 
   private _isSwitchingProject = false;
 
-  constructor() {
-    this.host = new AppEnvironmentHost({
-      projectManager: new ProjectManager(createLocalStorageProjectStore(simName), {
-        workspaceOptions: { shouldExclude: isCompilerControlledPath },
-        lock: createWebLocksProjectLock(simName),
-      }),
-      modules: [coreModule(), createSimModule()],
-      host: { name: simName, version: simVersion },
-      userTileStorageKey: "sim:user-tile-metadata",
-      bridgeUrl: this._appSettings.vscodeBridgeUrl,
-      loadBindingToken,
-      saveBindingToken,
-      examples: loadExamples(),
-      onDidCompile: (_result, tileResult) => {
-        if (tileResult) {
-          this.userTileDocEntries = buildDocEntries(tileResult.metadata);
-        }
-      },
-    });
+  private constructor(host: AppEnvironmentHost) {
+    this.host = host;
 
     this.host.onProjectLoaded(() => {
       const prefs = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
       this._uiPreferences = this._isSwitchingProject ? { ...prefs, bridgeEnabled: false } : prefs;
       this.userTileDocEntries = [];
     });
+  }
+
+  static async create(): Promise<SimEnvironmentStore> {
+    const appSettings = loadAppSettings();
+    const projectStore = await createIdbProjectStore(simName);
+    let instanceRef: SimEnvironmentStore | undefined;
+    const host = new AppEnvironmentHost({
+      projectManager: new ProjectManager(projectStore, {
+        workspaceOptions: { shouldExclude: isCompilerControlledPath },
+        lock: createWebLocksProjectLock(simName),
+      }),
+      modules: [coreModule(), createSimModule()],
+      host: { name: simName, version: simVersion },
+      userTileStorageKey: "sim:user-tile-metadata",
+      bridgeUrl: appSettings.vscodeBridgeUrl,
+      loadBindingToken,
+      saveBindingToken,
+      examples: loadExamples(),
+      onDidCompile: (_result, tileResult) => {
+        if (tileResult && instanceRef) {
+          instanceRef.userTileDocEntries = buildDocEntries(tileResult.metadata);
+        }
+      },
+    });
+    const instance = new SimEnvironmentStore(host);
+    instanceRef = instance;
+    instance._appSettings = appSettings;
+    return instance;
   }
 
   get env(): MindcraftEnvironment {
@@ -194,12 +205,12 @@ export class SimEnvironmentStore {
 
   // -- Brain Persistence (archetype-typed wrappers) --
 
-  saveBrainForArchetype(archetype: Archetype, brainDef: BrainDef): void {
-    this.host.saveBrainForKey(archetype, brainDef);
+  async saveBrainForArchetype(archetype: Archetype, brainDef: BrainDef): Promise<void> {
+    await this.host.saveBrainForKey(archetype, brainDef);
   }
 
-  loadBrainFromProject(archetype: Archetype): BrainDef | undefined {
-    return this.host.loadBrainFromProject(archetype) as BrainDef | undefined;
+  async loadBrainFromProject(archetype: Archetype): Promise<BrainDef | undefined> {
+    return this.host.loadBrainFromProject(archetype) as Promise<BrainDef | undefined>;
   }
 
   setDefaultBrain(archetype: Archetype, brainDef: BrainDef): void {
@@ -212,8 +223,8 @@ export class SimEnvironmentStore {
 
   // -- Project metadata --
 
-  updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): void {
-    this.host.updateProjectMetadata(updates);
+  async updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
+    await this.host.updateProjectMetadata(updates);
   }
 
   // -- Project lifecycle (delegate) --
@@ -226,7 +237,14 @@ export class SimEnvironmentStore {
     return this.host.onProjectLoaded(listener);
   }
 
-  // -- Project switching --
+  // -- Project switching / creation --
+
+  async createProject(name: string): Promise<ProjectManifest> {
+    this._isSwitchingProject = true;
+    const manifest = await this.host.createProject(name);
+    this._isSwitchingProject = false;
+    return manifest;
+  }
 
   async switchProject(id: string): Promise<void> {
     this._isSwitchingProject = true;

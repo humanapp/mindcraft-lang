@@ -5,5 +5,6 @@ export interface WorkspaceAdapter {
   applyRemoteChange(change: WorkspaceChange): void;
   applyLocalChange(change: WorkspaceChange): void;
   onLocalChange(listener: (change: WorkspaceChange) => void): () => void;
+  onAnyChange(listener: () => void): () => void;
   flush(): void;
 }

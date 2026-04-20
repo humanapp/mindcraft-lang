@@ -1,11 +1,11 @@
 export type {
   ExampleDefinition,
   ExampleFile,
-  LocalStorageWorkspaceOptions,
+  InMemoryWorkspaceOptions,
   MindcraftJson,
 } from "@mindcraft-lang/app-host";
 export {
-  createLocalStorageWorkspace,
+  createInMemoryWorkspace,
   EXAMPLES_FOLDER,
   MINDCRAFT_JSON_PATH,
   parseMindcraftJson,

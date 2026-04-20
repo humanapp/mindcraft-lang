@@ -10,15 +10,15 @@ class MemoryProjectStore implements ProjectStore {
   private appData = new Map<string, string>();
   private activeId: string | undefined;
 
-  listProjects(): ProjectManifest[] {
+  async listProjects(): Promise<ProjectManifest[]> {
     return [...this.projects];
   }
 
-  getProject(id: string): ProjectManifest | undefined {
+  async getProject(id: string): Promise<ProjectManifest | undefined> {
     return this.projects.find((p) => p.id === id);
   }
 
-  createProject(name: string): ProjectManifest {
+  async createProject(name: string): Promise<ProjectManifest> {
     const manifest: ProjectManifest = {
       id: `id-${this.projects.length + 1}`,
       name,
@@ -30,7 +30,7 @@ class MemoryProjectStore implements ProjectStore {
     return manifest;
   }
 
-  deleteProject(id: string): void {
+  async deleteProject(id: string): Promise<void> {
     this.projects = this.projects.filter((p) => p.id !== id);
     this.workspaces.delete(id);
     for (const key of this.appData.keys()) {
@@ -40,38 +40,38 @@ class MemoryProjectStore implements ProjectStore {
     }
   }
 
-  updateProject(id: string, updates: Partial<Pick<ProjectManifest, "name" | "description">>): void {
+  async updateProject(id: string, updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
     const idx = this.projects.findIndex((p) => p.id === id);
     if (idx === -1) return;
     this.projects[idx] = { ...this.projects[idx], ...updates, updatedAt: Date.now() };
   }
 
-  duplicateProject(id: string, newName: string): ProjectManifest {
-    const source = this.getProject(id);
+  async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
+    const source = await this.getProject(id);
     if (!source) throw new Error(`not found: ${id}`);
-    const dup = this.createProject(newName);
+    const dup = await this.createProject(newName);
     const ws = this.workspaces.get(id);
     if (ws) this.workspaces.set(dup.id, new Map(ws));
     return dup;
   }
 
-  loadWorkspace(id: string): WorkspaceSnapshot | undefined {
+  async loadWorkspace(id: string): Promise<WorkspaceSnapshot | undefined> {
     return this.workspaces.get(id);
   }
 
-  saveWorkspace(id: string, snapshot: WorkspaceSnapshot): void {
+  async saveWorkspace(id: string, snapshot: WorkspaceSnapshot): Promise<void> {
     this.workspaces.set(id, snapshot);
   }
 
-  loadAppData(id: string, key: string): string | undefined {
+  async loadAppData(id: string, key: string): Promise<string | undefined> {
     return this.appData.get(`${id}:${key}`);
   }
 
-  saveAppData(id: string, key: string, data: string): void {
+  async saveAppData(id: string, key: string, data: string): Promise<void> {
     this.appData.set(`${id}:${key}`, data);
   }
 
-  deleteAppData(id: string, key: string): void {
+  async deleteAppData(id: string, key: string): Promise<void> {
     this.appData.delete(`${id}:${key}`);
   }
 
@@ -84,47 +84,17 @@ class MemoryProjectStore implements ProjectStore {
   }
 }
 
-class MockLocalStorage {
-  private data = new Map<string, string>();
-  getItem(key: string): string | null {
-    return this.data.get(key) ?? null;
-  }
-  setItem(key: string, value: string): void {
-    this.data.set(key, value);
-  }
-  removeItem(key: string): void {
-    this.data.delete(key);
-  }
-  key(index: number): string | null {
-    return [...this.data.keys()][index] ?? null;
-  }
-  get length(): number {
-    return this.data.size;
-  }
-  clear(): void {
-    this.data.clear();
-  }
-}
-
 describe("ProjectManager", () => {
   let memStore: MemoryProjectStore;
   let pm: ProjectManager;
 
   beforeEach(() => {
-    const mock = new MockLocalStorage();
-    (globalThis as Record<string, unknown>).localStorage = mock;
-    (globalThis as Record<string, unknown>).window = {
-      setTimeout: globalThis.setTimeout.bind(globalThis),
-      clearTimeout: globalThis.clearTimeout.bind(globalThis),
-    };
     memStore = new MemoryProjectStore();
     pm = new ProjectManager(memStore);
   });
 
-  afterEach(() => {
-    pm.close();
-    delete (globalThis as Record<string, unknown>).localStorage;
-    delete (globalThis as Record<string, unknown>).window;
+  afterEach(async () => {
+    await pm.close();
   });
 
   describe("ensureDefaultProject", () => {
@@ -138,15 +108,16 @@ describe("ProjectManager", () => {
       const first = await pm.ensureDefaultProject("First");
       const second = await pm.ensureDefaultProject("Second");
       assert.strictEqual(first.manifest.id, second.manifest.id);
-      assert.strictEqual(pm.projects.length, 1);
+      const projects = await pm.listProjects();
+      assert.strictEqual(projects.length, 1);
     });
 
     it("opens first existing project when no active project", async () => {
-      memStore.createProject("Existing");
+      await memStore.createProject("Existing");
       const fresh = new ProjectManager(memStore);
       const active = await fresh.ensureDefaultProject("Ignored");
       assert.strictEqual(active.manifest.name, "Existing");
-      fresh.close();
+      await fresh.close();
     });
   });
 
@@ -169,7 +140,7 @@ describe("ProjectManager", () => {
   describe("open / close", () => {
     it("opens a project by ID", async () => {
       const m = await pm.create("Openable");
-      pm.close();
+      await pm.close();
       assert.strictEqual(pm.activeProject, undefined);
 
       const opened = await pm.open(m.id);
@@ -184,12 +155,12 @@ describe("ProjectManager", () => {
       const calls: Array<string | undefined> = [];
       pm.onActiveProjectChange((p) => calls.push(p?.manifest.name));
       await pm.create("Watched");
-      pm.close();
+      await pm.close();
       assert.deepStrictEqual(calls, ["Watched", undefined]);
     });
 
-    it("close is idempotent when nothing is open", () => {
-      pm.close();
+    it("close is idempotent when nothing is open", async () => {
+      await pm.close();
       assert.strictEqual(pm.activeProject, undefined);
     });
   });
@@ -197,23 +168,24 @@ describe("ProjectManager", () => {
   describe("delete", () => {
     it("removes a non-active project", async () => {
       const a = await pm.create("A");
-      const b = memStore.createProject("B");
-      pm.delete(b.id);
-      assert.strictEqual(pm.projects.length, 1);
-      assert.strictEqual(pm.projects[0].id, a.id);
+      const b = await memStore.createProject("B");
+      await pm.delete(b.id);
+      const projects = await pm.listProjects();
+      assert.strictEqual(projects.length, 1);
+      assert.strictEqual(projects[0].id, a.id);
     });
 
     it("throws when deleting the active project", async () => {
       await pm.create("Active");
-      assert.throws(() => pm.delete(pm.activeProject!.manifest.id), /active project/i);
+      await assert.rejects(() => pm.delete(pm.activeProject!.manifest.id), /active project/i);
     });
 
     it("fires project list listener", async () => {
       await pm.create("A");
-      const b = memStore.createProject("B");
+      const b = await memStore.createProject("B");
       const calls: number[] = [];
       pm.onProjectListChange((projects) => calls.push(projects.length));
-      pm.delete(b.id);
+      await pm.delete(b.id);
       assert.deepStrictEqual(calls, [1]);
     });
   });
@@ -221,13 +193,13 @@ describe("ProjectManager", () => {
   describe("updateActive", () => {
     it("renames the active project", async () => {
       await pm.create("Old Name");
-      pm.updateActive({ name: "New Name" });
+      await pm.updateActive({ name: "New Name" });
       assert.strictEqual(pm.activeProject?.manifest.name, "New Name");
     });
 
     it("updates the description", async () => {
       await pm.create("Project");
-      pm.updateActive({ description: "A cool project" });
+      await pm.updateActive({ description: "A cool project" });
       assert.strictEqual(pm.activeProject?.manifest.description, "A cool project");
     });
 
@@ -237,36 +209,36 @@ describe("ProjectManager", () => {
       const listCalls: string[] = [];
       pm.onActiveProjectChange((p) => activeCalls.push(p?.manifest.name ?? ""));
       pm.onProjectListChange((projects) => listCalls.push(projects[0]?.name ?? ""));
-      pm.updateActive({ name: "Y" });
+      await pm.updateActive({ name: "Y" });
       assert.deepStrictEqual(activeCalls, ["Y"]);
       assert.deepStrictEqual(listCalls, ["Y"]);
     });
 
-    it("throws when no active project", () => {
-      assert.throws(() => pm.updateActive({ name: "Nope" }), /no active project/i);
+    it("throws when no active project", async () => {
+      await assert.rejects(() => pm.updateActive({ name: "Nope" }), /no active project/i);
     });
   });
 
   describe("app data pass-through", () => {
     it("saves and loads app data for the active project", async () => {
       await pm.create("Data Project");
-      pm.saveAppData("key1", "value1");
-      assert.strictEqual(pm.loadAppData("key1"), "value1");
+      await pm.saveAppData("key1", "value1");
+      assert.strictEqual(await pm.loadAppData("key1"), "value1");
     });
 
-    it("returns undefined when no active project", () => {
-      assert.strictEqual(pm.loadAppData("key1"), undefined);
+    it("returns undefined when no active project", async () => {
+      assert.strictEqual(await pm.loadAppData("key1"), undefined);
     });
 
-    it("throws on save when no active project", () => {
-      assert.throws(() => pm.saveAppData("key1", "value1"), /no active project/i);
+    it("throws on save when no active project", async () => {
+      await assert.rejects(() => pm.saveAppData("key1", "value1"), /no active project/i);
     });
 
     it("deletes app data", async () => {
       await pm.create("Deletable");
-      pm.saveAppData("k", "v");
-      pm.deleteAppData("k");
-      assert.strictEqual(pm.loadAppData("k"), undefined);
+      await pm.saveAppData("k", "v");
+      await pm.deleteAppData("k");
+      assert.strictEqual(await pm.loadAppData("k"), undefined);
     });
   });
 
@@ -283,13 +255,13 @@ describe("ProjectManager", () => {
 
   describe("init restores active project", () => {
     it("opens previously active project on init", async () => {
-      const manifest = memStore.createProject("Persisted");
+      const manifest = await memStore.createProject("Persisted");
       memStore.setActiveProjectId(manifest.id);
 
       const restored = new ProjectManager(memStore);
       await restored.init();
       assert.strictEqual(restored.activeProject?.manifest.name, "Persisted");
-      restored.close();
+      await restored.close();
     });
 
     it("handles stale active project ID gracefully", async () => {
@@ -297,7 +269,7 @@ describe("ProjectManager", () => {
       const restored = new ProjectManager(memStore);
       await restored.init();
       assert.strictEqual(restored.activeProject, undefined);
-      restored.close();
+      await restored.close();
     });
   });
 });

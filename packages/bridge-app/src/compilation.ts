@@ -288,6 +288,7 @@ export interface ProjectCompilerHandle {
   initialize(): void;
   replaceWorkspace(): void;
   injectExamples(examples: ExampleDefinition[]): void;
+  getExamples(): ExampleDefinition[];
 }
 
 export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
@@ -330,6 +331,9 @@ export function createProjectCompiler(options: CreateProjectCompilerOptions): Pr
     injectExamples(examples: ExampleDefinition[]) {
       injectedExamples = examples;
     },
+    getExamples() {
+      return injectedExamples;
+    },
   };
 }
 
@@ -360,7 +364,7 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
     options.onBindingTokenChange?.(token);
   };
 
-  const augmented = augmentWorkspace(workspace, compiler, () => []);
+  const augmented = augmentWorkspace(workspace, compiler, () => projectCompiler.getExamples());
   let currentBridge = buildBridge(
     { ...options, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
     compiler
@@ -413,6 +417,9 @@ function augmentWorkspace(
     },
     onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
       return workspace.onLocalChange(listener);
+    },
+    onAnyChange(listener: () => void): () => void {
+      return workspace.onAnyChange(listener);
     },
     flush(): void {
       workspace.flush();

@@ -31,7 +31,7 @@ import {
 export class Engine {
   private world: ECS.World<Actor>;
   private actors: { [key in Archetype]: ECS.Query<Actor> };
-  private brains: { [key in Archetype]: BrainDef };
+  private brains!: { [key in Archetype]: BrainDef };
   private moverCfg: { [key in Archetype]: Partial<MoverConfig> };
 
   get clock(): Phaser.Time.Clock {
@@ -51,7 +51,7 @@ export class Engine {
   }
 
   /** Spatial grid rebuilt each tick for fast proximity queries */
-  private grid: SpatialGrid;
+  private grid!: SpatialGrid;
 
   /** Tracks per-archetype stats and computes the ecosystem score. */
   private scoreTracker = new ScoreTracker();
@@ -119,36 +119,35 @@ export class Engine {
       plant: this.world.where((actor) => actor.archetype === "plant"),
     };
 
-    this.brains = {
-      carnivore: this.loadBrainDef("carnivore"),
-      herbivore: this.loadBrainDef("herbivore"),
-      plant: this.loadBrainDef("plant"),
-    };
-
     this.moverCfg = {
       carnivore: ARCHETYPES.carnivore.mover,
       herbivore: ARCHETYPES.herbivore.mover,
       plant: ARCHETYPES.plant.mover,
     };
 
-    this.unsubProjectUnloading = store.onProjectUnloading(() => this.unloadAllBrains());
-    this.unsubProjectLoaded = store.onProjectLoaded(() => this.reloadAllBrains());
+    this.unsubProjectUnloading = store.onProjectUnloading(() => void this.unloadAllBrains());
+    this.unsubProjectLoaded = store.onProjectLoaded(() =>
+      this.reloadAllBrains().catch((err) => console.error("Failed to reload brains:", err))
+    );
   }
 
-  start() {
-    // Create the spatial grid after the scene is ready so dimensions are known.
-    // Cell size 150px balances grid granularity vs. overhead for typical vision ranges (600px).
+  start(): void {
     this.grid = new SpatialGrid(this.worldWidth, this.worldHeight, 150);
-    // Precompute obstacle bounds once (obstacles are static).
     this.precomputedObstacles = precomputeObstacles(this.obstacles);
-    // Create a persistent graphics layer for the grid debug overlay.
     this.gridDebugGfx = this.scene.add.graphics();
-    this.gridDebugGfx.setDepth(-2); // Below actors and their debug graphics
+    this.gridDebugGfx.setDepth(-2);
     this.blipPool = new BlipPool(this);
-    this.spawnInitialActors();
   }
 
-  private spawnInitialActors() {
+  async loadBrains(): Promise<void> {
+    this.brains = {
+      carnivore: await this.loadBrainDef("carnivore"),
+      herbivore: await this.loadBrainDef("herbivore"),
+      plant: await this.loadBrainDef("plant"),
+    };
+  }
+
+  spawnInitialActors() {
     Object.keys(ARCHETYPES).forEach((archetype) => {
       const count = this.desiredCounts[archetype as Archetype];
       for (let i = 0; i < count; i++) {
@@ -171,8 +170,8 @@ export class Engine {
     this.world.clear();
   }
 
-  private loadBrainDef(archetype: Archetype): BrainDef {
-    const fromProject = this.store.loadBrainFromProject(archetype);
+  private async loadBrainDef(archetype: Archetype): Promise<BrainDef> {
+    const fromProject = await this.store.loadBrainFromProject(archetype);
     if (fromProject) return fromProject;
 
     const fromAsset = this.store.getDefaultBrain(archetype);
@@ -188,10 +187,10 @@ export class Engine {
     }
   }
 
-  private reloadAllBrains(): void {
+  private async reloadAllBrains(): Promise<void> {
     const archetypes: Archetype[] = ["carnivore", "herbivore", "plant"];
     for (const archetype of archetypes) {
-      this.brains[archetype] = this.loadBrainDef(archetype);
+      this.brains[archetype] = await this.loadBrainDef(archetype);
     }
     for (const actor of this.world.entities) {
       actor.replaceBrain(this.brains[actor.archetype]);

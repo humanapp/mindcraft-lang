@@ -1,5 +1,5 @@
-import type { LocalStorageWorkspaceOptions } from "./local-storage-workspace.js";
-import { createLocalStorageWorkspace } from "./local-storage-workspace.js";
+import type { InMemoryWorkspaceOptions } from "./in-memory-workspace.js";
+import { createInMemoryWorkspace } from "./in-memory-workspace.js";
 import type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
@@ -13,40 +13,46 @@ export interface ActiveProject {
 }
 
 export interface ProjectManagerOptions {
-  workspaceOptions?: Omit<LocalStorageWorkspaceOptions, "storageKey">;
+  workspaceOptions?: InMemoryWorkspaceOptions;
   lock?: ProjectLock;
+  autoSaveDelayMs?: number;
 }
 
 export class ProjectManager {
   private readonly store: ProjectStore;
-  private readonly workspaceOptions: Omit<LocalStorageWorkspaceOptions, "storageKey">;
+  private readonly workspaceOptions: InMemoryWorkspaceOptions;
   private readonly lock: ProjectLock | undefined;
+  private readonly autoSaveDelayMs: number;
   private readonly activeProjectListeners = new Set<(project: ActiveProject | undefined) => void>();
   private readonly projectListListeners = new Set<(projects: ProjectManifest[]) => void>();
   private currentActive: ActiveProject | undefined;
   private currentLockHandle: ProjectLockHandle | undefined;
+  private autoSaveUnsub: (() => void) | undefined;
+  private autoSaveTimerId: ReturnType<typeof setTimeout> | undefined;
 
   constructor(store: ProjectStore, options?: ProjectManagerOptions) {
     this.store = store;
     this.workspaceOptions = options?.workspaceOptions ?? {};
     this.lock = options?.lock;
+    this.autoSaveDelayMs = options?.autoSaveDelayMs ?? 2000;
   }
 
   async init(): Promise<void> {
     const activeId = this.store.getActiveProjectId();
     if (activeId) {
-      const manifest = this.store.getProject(activeId);
+      const manifest = await this.store.getProject(activeId);
       if (manifest) {
         const handle = await this.acquireLock(manifest.id);
         if (handle) {
           this.currentLockHandle = handle;
-          this.currentActive = this.openInternal(manifest);
+          this.currentActive = await this.openInternal(manifest);
+          this.startAutoSave(this.currentActive.workspace);
         }
       }
     }
   }
 
-  get projects(): ProjectManifest[] {
+  async listProjects(): Promise<ProjectManifest[]> {
     return this.store.listProjects();
   }
 
@@ -55,8 +61,8 @@ export class ProjectManager {
   }
 
   async create(name: string): Promise<ProjectManifest> {
-    const manifest = this.store.createProject(name);
-    this.notifyProjectList();
+    const manifest = await this.store.createProject(name);
+    await this.notifyProjectList();
     await this.open(manifest.id);
     return manifest;
   }
@@ -70,7 +76,7 @@ export class ProjectManager {
   }
 
   private async tryOpen(id: string): Promise<ActiveProject | undefined> {
-    const manifest = this.store.getProject(id);
+    const manifest = await this.store.getProject(id);
     if (!manifest) {
       throw new Error(`Project not found: ${id}`);
     }
@@ -81,42 +87,43 @@ export class ProjectManager {
     }
 
     if (this.currentActive) {
-      this.closeInternal();
+      await this.closeInternal();
     }
 
     this.currentLockHandle = handle;
-    const active = this.openInternal(manifest);
+    const active = await this.openInternal(manifest);
     this.currentActive = active;
+    this.startAutoSave(active.workspace);
     this.store.setActiveProjectId(id);
     this.notifyActiveProject();
     return active;
   }
 
-  close(): void {
+  async close(): Promise<void> {
     if (!this.currentActive) {
       return;
     }
-    this.closeInternal();
+    await this.closeInternal();
     this.currentActive = undefined;
     this.store.setActiveProjectId(undefined);
     this.notifyActiveProject();
   }
 
-  delete(id: string): void {
+  async delete(id: string): Promise<void> {
     if (this.currentActive?.manifest.id === id) {
       throw new Error("Cannot delete the active project");
     }
-    this.store.deleteProject(id);
-    this.notifyProjectList();
+    await this.store.deleteProject(id);
+    await this.notifyProjectList();
   }
 
-  duplicate(id: string, newName: string): ProjectManifest {
-    const manifest = this.store.duplicateProject(id, newName);
-    this.notifyProjectList();
+  async duplicate(id: string, newName: string): Promise<ProjectManifest> {
+    const manifest = await this.store.duplicateProject(id, newName);
+    await this.notifyProjectList();
     return manifest;
   }
 
-  updateActive(updates: Partial<Pick<ProjectManifest, "name" | "description">>): void {
+  async updateActive(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
     if (!this.currentActive) {
       throw new Error("No active project");
     }
@@ -124,12 +131,12 @@ export class ProjectManager {
       return;
     }
     const id = this.currentActive.manifest.id;
-    this.store.updateProject(id, updates);
-    const updated = this.store.getProject(id);
+    await this.store.updateProject(id, updates);
+    const updated = await this.store.getProject(id);
     if (updated) {
       this.currentActive = { manifest: updated, workspace: this.currentActive.workspace };
       this.notifyActiveProject();
-      this.notifyProjectList();
+      await this.notifyProjectList();
     }
   }
 
@@ -137,7 +144,7 @@ export class ProjectManager {
     if (this.currentActive) {
       return this.currentActive;
     }
-    const existing = this.store.listProjects();
+    const existing = await this.store.listProjects();
     for (const project of existing) {
       const result = await this.tryOpen(project.id);
       if (result) {
@@ -148,25 +155,25 @@ export class ProjectManager {
     return this.currentActive!;
   }
 
-  saveAppData(key: string, data: string): void {
+  async saveAppData(key: string, data: string): Promise<void> {
     if (!this.currentActive) {
       throw new Error("No active project");
     }
-    this.store.saveAppData(this.currentActive.manifest.id, key, data);
+    await this.store.saveAppData(this.currentActive.manifest.id, key, data);
   }
 
-  loadAppData(key: string): string | undefined {
+  async loadAppData(key: string): Promise<string | undefined> {
     if (!this.currentActive) {
       return undefined;
     }
     return this.store.loadAppData(this.currentActive.manifest.id, key);
   }
 
-  deleteAppData(key: string): void {
+  async deleteAppData(key: string): Promise<void> {
     if (!this.currentActive) {
       throw new Error("No active project");
     }
-    this.store.deleteAppData(this.currentActive.manifest.id, key);
+    await this.store.deleteAppData(this.currentActive.manifest.id, key);
   }
 
   onActiveProjectChange(listener: (project: ActiveProject | undefined) => void): () => void {
@@ -190,16 +197,13 @@ export class ProjectManager {
     return this.lock.tryAcquire(id);
   }
 
-  private openInternal(manifest: ProjectManifest): ActiveProject {
+  private async openInternal(manifest: ProjectManifest): Promise<ActiveProject> {
     if (!manifest.name.trim()) {
       manifest = { ...manifest, name: DEFAULT_PROJECT_NAME };
-      this.store.updateProject(manifest.id, { name: DEFAULT_PROJECT_NAME });
+      await this.store.updateProject(manifest.id, { name: DEFAULT_PROJECT_NAME });
     }
-    const snapshot = this.store.loadWorkspace(manifest.id);
-    const workspace = createLocalStorageWorkspace({
-      storageKey: `${this.store.keyPrefix}:project:${manifest.id}:files`,
-      ...this.workspaceOptions,
-    });
+    const snapshot = await this.store.loadWorkspace(manifest.id);
+    const workspace = createInMemoryWorkspace(this.workspaceOptions);
 
     if (snapshot) {
       workspace.applyRemoteChange({
@@ -211,15 +215,44 @@ export class ProjectManager {
     return { manifest, workspace };
   }
 
-  private closeInternal(): void {
+  private async closeInternal(): Promise<void> {
     if (!this.currentActive) {
       return;
     }
+    this.stopAutoSave();
     const { manifest, workspace } = this.currentActive;
     workspace.flush();
-    this.store.saveWorkspace(manifest.id, workspace.exportSnapshot());
+    await this.store.saveWorkspace(manifest.id, workspace.exportSnapshot());
     this.currentLockHandle?.release();
     this.currentLockHandle = undefined;
+  }
+
+  private startAutoSave(workspace: WorkspaceAdapter): void {
+    this.autoSaveUnsub = workspace.onAnyChange(() => {
+      this.scheduleAutoSave();
+    });
+  }
+
+  private stopAutoSave(): void {
+    if (this.autoSaveTimerId !== undefined) {
+      clearTimeout(this.autoSaveTimerId);
+      this.autoSaveTimerId = undefined;
+    }
+    this.autoSaveUnsub?.();
+    this.autoSaveUnsub = undefined;
+  }
+
+  private scheduleAutoSave(): void {
+    if (this.autoSaveTimerId !== undefined) {
+      clearTimeout(this.autoSaveTimerId);
+    }
+    this.autoSaveTimerId = setTimeout(() => {
+      this.autoSaveTimerId = undefined;
+      if (this.currentActive) {
+        const { manifest, workspace } = this.currentActive;
+        this.store.saveWorkspace(manifest.id, workspace.exportSnapshot());
+      }
+    }, this.autoSaveDelayMs);
   }
 
   private notifyActiveProject(): void {
@@ -228,8 +261,8 @@ export class ProjectManager {
     }
   }
 
-  private notifyProjectList(): void {
-    const projects = this.store.listProjects();
+  private async notifyProjectList(): Promise<void> {
+    const projects = await this.store.listProjects();
     for (const listener of this.projectListListeners) {
       listener(projects);
     }

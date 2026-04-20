@@ -1,3 +1,4 @@
+import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
 import type { WorkspaceEntry, WorkspaceSnapshot } from "./workspace-snapshot.js";
@@ -15,7 +16,7 @@ class LocalStorageProjectStore implements ProjectStore {
     this.prefix = keyPrefix;
   }
 
-  listProjects(): ProjectManifest[] {
+  async listProjects(): Promise<ProjectManifest[]> {
     const ids = this.loadIndex();
     const manifests: ProjectManifest[] = [];
     for (const id of ids) {
@@ -27,14 +28,14 @@ class LocalStorageProjectStore implements ProjectStore {
     return manifests;
   }
 
-  getProject(id: string): ProjectManifest | undefined {
+  async getProject(id: string): Promise<ProjectManifest | undefined> {
     if (!this.loadIndex().includes(id)) {
       return undefined;
     }
     return this.loadMetadata(id);
   }
 
-  createProject(name: string): ProjectManifest {
+  async createProject(name: string): Promise<ProjectManifest> {
     const manifest: ProjectManifest = {
       id: crypto.randomUUID(),
       name,
@@ -49,10 +50,11 @@ class LocalStorageProjectStore implements ProjectStore {
     return manifest;
   }
 
-  deleteProject(id: string): void {
+  async deleteProject(id: string): Promise<void> {
     const ids = this.loadIndex().filter((i) => i !== id);
     this.saveIndex(ids);
     localStorage.removeItem(this.key(`project:${id}:metadata`));
+    localStorage.removeItem(this.key(`project:${id}:files`));
     localStorage.removeItem(this.key(`project:${id}:workspace`));
     this.removeAppDataKeys(id);
 
@@ -62,7 +64,7 @@ class LocalStorageProjectStore implements ProjectStore {
     }
   }
 
-  updateProject(id: string, updates: Partial<Pick<ProjectManifest, "name" | "description">>): void {
+  async updateProject(id: string, updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
     const manifest = this.loadMetadata(id);
     if (!manifest) {
       return;
@@ -74,17 +76,17 @@ class LocalStorageProjectStore implements ProjectStore {
     });
   }
 
-  duplicateProject(id: string, newName: string): ProjectManifest {
-    const source = this.getProject(id);
+  async duplicateProject(id: string, newName: string): Promise<ProjectManifest> {
+    const source = await this.getProject(id);
     if (!source) {
       throw new Error(`Project not found: ${id}`);
     }
 
-    const newManifest = this.createProject(newName);
+    const newManifest = await this.createProject(newName);
 
-    const workspace = this.loadWorkspace(id);
+    const workspace = await this.loadWorkspace(id);
     if (workspace) {
-      this.saveWorkspace(newManifest.id, workspace);
+      await this.saveWorkspace(newManifest.id, workspace);
     }
 
     const appDataKeys = this.findAppDataKeys(id);
@@ -99,8 +101,16 @@ class LocalStorageProjectStore implements ProjectStore {
     return newManifest;
   }
 
-  loadWorkspace(id: string): WorkspaceSnapshot | undefined {
-    const raw = localStorage.getItem(this.key(`project:${id}:workspace`));
+  async loadWorkspace(id: string): Promise<WorkspaceSnapshot | undefined> {
+    let raw = localStorage.getItem(this.key(`project:${id}:files`));
+    if (!raw) {
+      const legacyKey = this.key(`project:${id}:workspace`);
+      raw = localStorage.getItem(legacyKey);
+      if (raw) {
+        localStorage.setItem(this.key(`project:${id}:files`), raw);
+        localStorage.removeItem(legacyKey);
+      }
+    }
     if (!raw) {
       return undefined;
     }
@@ -112,21 +122,22 @@ class LocalStorageProjectStore implements ProjectStore {
     }
   }
 
-  saveWorkspace(id: string, snapshot: WorkspaceSnapshot): void {
-    localStorage.setItem(this.key(`project:${id}:workspace`), JSON.stringify([...snapshot]));
-    this.touchProject(id);
+  async saveWorkspace(id: string, snapshot: WorkspaceSnapshot): Promise<void> {
+    snapshot.delete(MINDCRAFT_JSON_PATH);
+    localStorage.setItem(this.key(`project:${id}:files`), JSON.stringify([...snapshot]));
+    await this.touchProject(id);
   }
 
-  loadAppData(id: string, key: string): string | undefined {
+  async loadAppData(id: string, key: string): Promise<string | undefined> {
     return localStorage.getItem(this.key(`project:${id}:app:${key}`)) ?? undefined;
   }
 
-  saveAppData(id: string, key: string, data: string): void {
+  async saveAppData(id: string, key: string, data: string): Promise<void> {
     localStorage.setItem(this.key(`project:${id}:app:${key}`), data);
-    this.touchProject(id);
+    await this.touchProject(id);
   }
 
-  deleteAppData(id: string, key: string): void {
+  async deleteAppData(id: string, key: string): Promise<void> {
     localStorage.removeItem(this.key(`project:${id}:app:${key}`));
   }
 
@@ -184,8 +195,8 @@ class LocalStorageProjectStore implements ProjectStore {
     localStorage.setItem(this.key(`project:${manifest.id}:metadata`), JSON.stringify(manifest));
   }
 
-  private touchProject(id: string): void {
-    this.updateProject(id, {});
+  private async touchProject(id: string): Promise<void> {
+    await this.updateProject(id, {});
   }
 
   private findAppDataKeys(projectId: string): string[] {

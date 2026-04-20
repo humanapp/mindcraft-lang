@@ -2,7 +2,7 @@ import type { WorkspaceAdapter } from "./app-bridge.js";
 
 export interface VfsSwRegistrationOptions {
   swUrl: string;
-  workspace: WorkspaceAdapter;
+  getWorkspace: () => WorkspaceAdapter;
   onReady?: () => void;
 }
 
@@ -36,7 +36,7 @@ export function registerVfsServiceWorker(options: VfsSwRegistrationOptions): voi
 
     if (msg.type === "vfs-read") {
       const path = msg.path as string;
-      const snapshot = options.workspace.exportSnapshot();
+      const snapshot = options.getWorkspace().exportSnapshot();
       const entry = snapshot.get(path);
       const port = (event as MessageEvent).ports?.[0];
       if (!port) return;

@@ -29,7 +29,7 @@ export function ProjectHeader({ projectName, onBrowseProjects, onNewProject }: P
   const commitRename = useCallback(() => {
     const trimmed = nameValue.trim();
     if (trimmed && trimmed !== projectName) {
-      store.updateProjectMetadata({ name: trimmed });
+      store.updateProjectMetadata({ name: trimmed }).catch(() => setNameValue(projectName));
     }
     setIsEditing(false);
   }, [nameValue, projectName, store]);

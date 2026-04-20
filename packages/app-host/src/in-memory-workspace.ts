@@ -1,14 +1,12 @@
 import type { WorkspaceAdapter } from "./workspace-adapter.js";
 import type { WorkspaceChange, WorkspaceEntry, WorkspaceSnapshot } from "./workspace-snapshot.js";
 
-export interface LocalStorageWorkspaceOptions {
-  storageKey: string;
-  debounceMs?: number;
+export interface InMemoryWorkspaceOptions {
   shouldExclude?: (path: string) => boolean;
 }
 
-export function createLocalStorageWorkspace(options: LocalStorageWorkspaceOptions): WorkspaceAdapter {
-  return new LocalStorageWorkspaceStore(options);
+export function createInMemoryWorkspace(options?: InMemoryWorkspaceOptions): WorkspaceAdapter {
+  return new InMemoryWorkspace(options?.shouldExclude);
 }
 
 function ensureParentDirectories(snapshot: WorkspaceSnapshot, path: string): void {
@@ -113,19 +111,14 @@ function isChangeExcluded(change: WorkspaceChange, shouldExclude: (path: string)
   }
 }
 
-class LocalStorageWorkspaceStore implements WorkspaceAdapter {
-  private readonly snapshot: WorkspaceSnapshot;
+class InMemoryWorkspace implements WorkspaceAdapter {
+  private readonly snapshot: WorkspaceSnapshot = new Map();
   private readonly listeners = new Set<(change: WorkspaceChange) => void>();
-  private readonly storageKey: string;
-  private readonly debounceMs: number;
+  private readonly anyChangeListeners = new Set<() => void>();
   private readonly shouldExclude: ((path: string) => boolean) | undefined;
-  private persistTimer: number | undefined;
 
-  constructor(options: LocalStorageWorkspaceOptions) {
-    this.storageKey = options.storageKey;
-    this.debounceMs = options.debounceMs ?? 500;
-    this.shouldExclude = options.shouldExclude;
-    this.snapshot = this.loadSnapshot();
+  constructor(shouldExclude: ((path: string) => boolean) | undefined) {
+    this.shouldExclude = shouldExclude;
   }
 
   exportSnapshot(): WorkspaceSnapshot {
@@ -136,20 +129,22 @@ class LocalStorageWorkspaceStore implements WorkspaceAdapter {
     if (this.shouldExclude && isChangeExcluded(change, this.shouldExclude)) {
       return;
     }
-
     applyChange(this.snapshot, change);
-    this.persist();
+    for (const listener of this.anyChangeListeners) {
+      listener();
+    }
   }
 
   applyLocalChange(change: WorkspaceChange): void {
     if (this.shouldExclude && isChangeExcluded(change, this.shouldExclude)) {
       return;
     }
-
     applyChange(this.snapshot, change);
-    this.persist();
     for (const listener of this.listeners) {
       listener(change);
+    }
+    for (const listener of this.anyChangeListeners) {
+      listener();
     }
   }
 
@@ -160,36 +155,14 @@ class LocalStorageWorkspaceStore implements WorkspaceAdapter {
     };
   }
 
-  private loadSnapshot(): WorkspaceSnapshot {
-    const raw = localStorage.getItem(this.storageKey);
-    if (!raw) {
-      return new Map();
-    }
-
-    try {
-      const parsed = JSON.parse(raw) as Array<[string, WorkspaceEntry]>;
-      return filterSnapshot(parsed, this.shouldExclude);
-    } catch {
-      return new Map();
-    }
+  onAnyChange(listener: () => void): () => void {
+    this.anyChangeListeners.add(listener);
+    return () => {
+      this.anyChangeListeners.delete(listener);
+    };
   }
 
   flush(): void {
-    if (this.persistTimer !== undefined) {
-      window.clearTimeout(this.persistTimer);
-      this.persistTimer = undefined;
-    }
-    localStorage.setItem(this.storageKey, JSON.stringify([...this.snapshot]));
-  }
-
-  private persist(): void {
-    if (this.persistTimer !== undefined) {
-      window.clearTimeout(this.persistTimer);
-    }
-
-    this.persistTimer = window.setTimeout(() => {
-      this.persistTimer = undefined;
-      localStorage.setItem(this.storageKey, JSON.stringify([...this.snapshot]));
-    }, this.debounceMs);
+    // No-op: persistence is handled by the project store.
   }
 }
