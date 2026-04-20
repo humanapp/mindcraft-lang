@@ -175,9 +175,9 @@ export class Engine {
     if (fromProject) return fromProject;
 
     const fromAsset = this.store.getDefaultBrain(archetype);
-    if (fromAsset) return fromAsset.clone();
-
-    return createArchetypeFallbackBrain(this.env, archetype);
+    const brain = fromAsset ? fromAsset.clone() : createArchetypeFallbackBrain(this.env, archetype);
+    await this.store.saveBrainForArchetype(archetype, brain);
+    return brain;
   }
 
   private unloadAllBrains(): void {
