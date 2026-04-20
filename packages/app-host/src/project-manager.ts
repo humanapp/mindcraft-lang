@@ -197,7 +197,7 @@ export class ProjectManager {
     }
     const snapshot = this.store.loadWorkspace(manifest.id);
     const workspace = createLocalStorageWorkspace({
-      storageKey: `${this.store.keyPrefix}:project:${manifest.id}:workspace`,
+      storageKey: `${this.store.keyPrefix}:project:${manifest.id}:files`,
       ...this.workspaceOptions,
     });
 
