@@ -57,6 +57,9 @@ function makeWorkspace(
     onLocalChange() {
       return () => {};
     },
+    onAnyChange() {
+      return () => {};
+    },
     flush() {},
     get _changes() {
       return changes;
