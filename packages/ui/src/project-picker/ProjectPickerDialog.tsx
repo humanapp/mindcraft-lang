@@ -87,8 +87,8 @@ export function ProjectPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex h-170 w-240 max-w-240 flex-col gap-0 overflow-hidden p-0">
-        <DialogHeader className="flex-row items-center justify-between space-y-0 border-b px-6 py-4">
+      <DialogContent className="left-0 top-0 translate-x-0 translate-y-0 flex h-dvh max-w-full flex-col gap-0 overflow-hidden p-0 rounded-none sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-170 sm:max-w-240 sm:w-[calc(100vw-2rem)] sm:rounded-lg">
+        <DialogHeader className="flex-row items-center justify-between space-y-0 border-b px-4 py-3 sm:px-6 sm:py-4">
           <div>
             <DialogTitle>Projects</DialogTitle>
             <DialogDescription className="mt-0.5">Select a project to open, or create a new one.</DialogDescription>
@@ -98,8 +98,8 @@ export function ProjectPickerDialog({
             New Project
           </Button>
         </DialogHeader>
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-4 gap-4">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4">
             {sorted.map((project) => {
               const isActive = project.id === activeProjectId;
               const isConfirmingDelete = confirmDeleteId === project.id;
@@ -113,7 +113,7 @@ export function ProjectPickerDialog({
                   aria-current={isActive ? true : undefined}
                   className={cn(
                     "group relative cursor-pointer overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm transition-all hover:shadow-md",
-                    isActive ? "ring-2 ring-primary" : "hover:scale-[1.02]"
+                    isActive ? "ring-2 ring-primary" : "sm:hover:scale-[1.02]"
                   )}
                   onClick={() => {
                     if (!isConfirmingDelete) handleSelect(project.id);
@@ -183,7 +183,7 @@ export function ProjectPickerDialog({
                       variant="ghost"
                       size="icon"
                       aria-label={`Delete ${project.title}`}
-                      className="absolute right-2 top-2 h-7 w-7 bg-black/30 text-white opacity-0 transition-opacity hover:bg-black/50 hover:text-white group-hover:opacity-100"
+                      className="absolute right-2 top-2 h-7 w-7 bg-black/30 text-white transition-opacity hover:bg-black/50 hover:text-white sm:opacity-0 sm:group-hover:opacity-100"
                       onClick={(e) => {
                         e.stopPropagation();
                         setConfirmDeleteId(project.id);
