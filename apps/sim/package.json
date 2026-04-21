@@ -28,6 +28,7 @@
     "game-maker"
   ],
   "scripts": {
+    "predev": "npm run build --prefix ../../packages/core",
     "dev": "vite --config vite/config.dev.mjs --force",
     "prebuild": "npm run build --prefix ../../packages/core && tsc --build tsconfig.refs.json",
     "build": "vite build --config vite/config.prod.mjs",
