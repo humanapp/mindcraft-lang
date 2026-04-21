@@ -181,6 +181,8 @@ for (const dir of releaseOrder) {
   const pkg = readPkgAt(dir);
   const name = shortNameOf(pkg);
   const tagPrefix = `${name}-v`;
+  const isTarget = dir === releaseOrder[releaseOrder.length - 1];
+  const effectiveBump = isTarget ? bump : "patch";
 
   console.log(`\n--- ${pkg.name} ---`);
 
@@ -188,7 +190,7 @@ for (const dir of releaseOrder) {
   preReleaseChecks(dir);
 
   // Bump version
-  run(`npm version ${bump} --git-tag-version=false`, dir);
+  run(`npm version ${effectiveBump} --git-tag-version=false`, dir);
 
   const newVersion = readPkgAt(dir).version;
   const tag = `${tagPrefix}${newVersion}`;
