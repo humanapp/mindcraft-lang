@@ -2,6 +2,8 @@ import { BrainDef, type MindcraftEnvironment } from "@mindcraft-lang/core/app";
 import type { Archetype } from "./actor";
 import type { MoverConfig } from "./movement";
 
+export const ARCHETYPE_NAMES: readonly Archetype[] = ["carnivore", "herbivore", "plant"];
+
 const RADIUS = 15;
 
 /**

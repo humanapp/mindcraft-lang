@@ -4,7 +4,7 @@ import type { Playground } from "@/game/scenes/Playground";
 import { heatColor } from "@/lib/color";
 import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 import { Actor, type Archetype } from "./actor";
-import { ARCHETYPES, createArchetypeFallbackBrain } from "./archetypes";
+import { ARCHETYPE_NAMES, ARCHETYPES, createArchetypeFallbackBrain } from "./archetypes";
 import { BLIP_DAMAGE, BLIP_RADIUS, BLIP_SPEED, type Blip, BlipPool } from "./blip";
 import type { MoverConfig } from "./movement";
 import { drawMovementIntent } from "./movement";
@@ -134,12 +134,12 @@ export class Engine {
   }
 
   spawnInitialActors() {
-    Object.keys(ARCHETYPES).forEach((archetype) => {
-      const count = this.desiredCounts[archetype as Archetype];
+    for (const archetype of ARCHETYPE_NAMES) {
+      const count = this.desiredCounts[archetype];
       for (let i = 0; i < count; i++) {
-        this.spawn(archetype as Archetype);
+        this.spawn(archetype);
       }
-    });
+    }
   }
 
   shutdown() {
@@ -205,7 +205,7 @@ export class Engine {
     // If any archetype is below its desired count and has no pending
     // respawns that will cover the deficit, spawn some immediately
     // (capped to avoid frame spikes).
-    for (const arch of ["carnivore", "herbivore", "plant"] as const) {
+    for (const arch of ARCHETYPE_NAMES) {
       const current = this.actors[arch].entities.length;
       const desired = this.desiredCounts[arch];
       const pendingForArch = this.pendingRespawns.filter((p) => p.archetype === arch).length;
