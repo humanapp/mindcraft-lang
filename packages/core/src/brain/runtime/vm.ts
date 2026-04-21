@@ -2144,7 +2144,7 @@ export class VM implements IVM {
 
     // Try custom setter if provided (try-catch for Roblox-TS compatibility)
     try {
-      const setterFn = (ctx as { setResolvedVariable?: (name: string, value: Value) => boolean }).setResolvedVariable;
+      const setterFn = ctx.setResolvedVariable;
       if (setterFn) {
         setterFn(name, value);
         return;
