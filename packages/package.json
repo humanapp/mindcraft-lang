@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "install": "node scripts/install.js",
+    "install": "for dir in */; do (cd \"$dir\" && npm install); done",
+    "build": "for dir in */; do (cd \"$dir\" && npm run check --if-present && npm run build --if-present && npm test --if-present); done",
     "release:all:patch": "node ../scripts/release-all.js patch",
     "release:all:minor": "node ../scripts/release-all.js minor",
     "release:all:major": "node ../scripts/release-all.js major"
