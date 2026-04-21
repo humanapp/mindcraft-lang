@@ -168,6 +168,11 @@ export class Playground extends Scene {
 
     this.engine.start();
 
+    // After scene.restart(), the new Matter world's timing.timeScale resets
+    // to 1. Re-apply the persisted timeSpeed so blips (which integrate via
+    // Matter) stay in sync with actor movement (which uses scaledDelta).
+    this.setTimeSpeed(store.getUiPreferences().timeScale);
+
     // Set up cleanup for brainDefs when scene shuts down (including restart)
     this.events.once("shutdown", this.shutdown, this);
 
