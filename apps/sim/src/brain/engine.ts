@@ -97,6 +97,16 @@ export class Engine {
 
   private readonly unsubProjectUnloading: () => void;
   private readonly unsubProjectLoaded: () => void;
+  private readonly unsubDesiredCountsReloaded: () => void;
+
+  /** True once `loadBrains` has populated `this.brains` at least once. */
+  private brainsLoaded = false;
+
+  /**
+   * Set when a population reconcile is requested before brains are loaded.
+   * The reconcile runs as soon as brain loading completes.
+   */
+  private pendingReconcile = false;
 
   /**
    * Number of vision phases. Actors are assigned phase = actorId % VISION_PHASES.
@@ -130,6 +140,10 @@ export class Engine {
     this.unsubProjectLoaded = store.onProjectLoaded(() =>
       this.reloadAllBrains().catch((err) => console.error("Failed to reload brains:", err))
     );
+    this.unsubDesiredCountsReloaded = store.onDesiredCountsReloaded(() => {
+      this.desiredCounts = { ...store.getDesiredCounts() };
+      this.reconcilePopulations();
+    });
   }
 
   start(): void {
@@ -146,6 +160,8 @@ export class Engine {
       herbivore: await this.loadBrainDef("herbivore"),
       plant: await this.loadBrainDef("plant"),
     };
+    this.brainsLoaded = true;
+    this.flushPendingReconcile();
   }
 
   spawnInitialActors() {
@@ -158,6 +174,7 @@ export class Engine {
   }
 
   shutdown() {
+    this.unsubDesiredCountsReloaded();
     this.unsubProjectUnloading();
     this.unsubProjectLoaded();
 
@@ -189,10 +206,65 @@ export class Engine {
   }
 
   private async reloadAllBrains(): Promise<void> {
-    const archetypes: Archetype[] = ["carnivore", "herbivore", "plant"];
-    for (const archetype of archetypes) {
-      this.brains[archetype] = await this.loadBrainDef(archetype);
+    this.brains = {
+      carnivore: await this.loadBrainDef("carnivore"),
+      herbivore: await this.loadBrainDef("herbivore"),
+      plant: await this.loadBrainDef("plant"),
+    };
+    this.brainsLoaded = true;
+    for (const actor of this.world.entities) {
+      actor.replaceBrain(this.brains[actor.archetype]);
     }
+    this.flushPendingReconcile();
+  }
+
+  private flushPendingReconcile(): void {
+    if (this.pendingReconcile) {
+      this.pendingReconcile = false;
+      this.reconcilePopulations();
+    }
+  }
+
+  /**
+   * Make the live population for each archetype match its desired count
+   * exactly: spawn new actors to fill any deficit, destroy excess actors
+   * (oldest first), and clear pending respawns so they cannot push the
+   * population back over the target.
+   *
+   * If brains have not finished loading, the reconcile is deferred until
+   * `loadBrains`/`reloadAllBrains` completes.
+   */
+  reconcilePopulations(): void {
+    if (!this.brainsLoaded) {
+      this.pendingReconcile = true;
+      return;
+    }
+    this.pendingRespawns = [];
+    for (const arch of ["carnivore", "herbivore", "plant"] as const) {
+      const current = [...this.actors[arch].entities];
+      const desired = this.desiredCounts[arch];
+      if (current.length > desired) {
+        const excess = current.length - desired;
+        for (let i = 0; i < excess; i++) {
+          this.removeActor(current[i]);
+        }
+      } else if (current.length < desired) {
+        const deficit = desired - current.length;
+        for (let i = 0; i < deficit; i++) {
+          this.spawn(arch);
+        }
+      }
+    }
+  }
+
+  /**
+   * Remove an actor from the world without scheduling a respawn. Used by
+   * reconciliation to cull excess populations.
+   */
+  private removeActor(actor: Actor): void {
+    this.world.remove(actor);
+    actor.sprite.destroy();
+    actor.destroy();
     for (const actor of this.world.entities) {
       actor.replaceBrain(this.brains[actor.archetype]);
     }
