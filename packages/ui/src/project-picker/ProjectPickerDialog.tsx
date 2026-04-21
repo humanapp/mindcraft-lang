@@ -23,6 +23,29 @@ export interface ProjectPickerDialogProps {
   onCreate: () => void;
 }
 
+const CARD_GRADIENTS = [
+  "from-blue-500 to-indigo-600",
+  "from-purple-500 to-pink-600",
+  "from-emerald-500 to-teal-600",
+  "from-orange-500 to-red-600",
+  "from-yellow-400 to-orange-500",
+  "from-sky-500 to-blue-600",
+  "from-rose-500 to-pink-600",
+  "from-violet-500 to-purple-600",
+];
+
+function hashId(id: string): number {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) {
+    h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  return h;
+}
+
+function cardGradient(id: string): string {
+  return CARD_GRADIENTS[hashId(id) % CARD_GRADIENTS.length];
+}
+
 function formatRelativeTime(timestamp: number): string {
   const now = Date.now();
   const diff = now - timestamp;
@@ -64,62 +87,77 @@ export function ProjectPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle>Projects</DialogTitle>
-          <DialogDescription>Select a project to open, or create a new one.</DialogDescription>
+      <DialogContent className="flex h-170 w-240 max-w-240 flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="flex-row items-center justify-between space-y-0 border-b px-6 py-4">
+          <div>
+            <DialogTitle>Projects</DialogTitle>
+            <DialogDescription className="mt-0.5">Select a project to open, or create a new one.</DialogDescription>
+          </div>
+          <Button variant="outline" onClick={onCreate} className="shrink-0">
+            <Plus aria-hidden="true" className="mr-2 h-4 w-4" />
+            New Project
+          </Button>
         </DialogHeader>
-        <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
-          {sorted.map((project) => (
-            // biome-ignore lint/a11y/useSemanticElements: <button> cannot nest the delete <Button> children
-            <div
-              key={project.id}
-              role="button"
-              tabIndex={0}
-              aria-current={project.id === activeProjectId ? true : undefined}
-              className={cn(
-                "group flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-accent",
-                project.id === activeProjectId && "bg-accent/60"
-              )}
-              onClick={() => handleSelect(project.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  handleSelect(project.id);
-                }
-              }}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">{project.title}</span>
-                  {project.id === activeProjectId && (
-                    <span
-                      aria-hidden="true"
-                      className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] text-primary"
-                    >
-                      active
-                    </span>
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="grid grid-cols-4 gap-4">
+            {sorted.map((project) => {
+              const isActive = project.id === activeProjectId;
+              const isConfirmingDelete = confirmDeleteId === project.id;
+
+              return (
+                // biome-ignore lint/a11y/useSemanticElements: button cannot nest interactive children
+                <div
+                  key={project.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-current={isActive ? true : undefined}
+                  className={cn(
+                    "group relative cursor-pointer overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm transition-all hover:shadow-md",
+                    isActive ? "ring-2 ring-primary" : "hover:scale-[1.02]"
                   )}
-                </div>
-                {project.description && <p className="truncate text-xs text-muted-foreground">{project.description}</p>}
-                <div className="mt-0.5 flex items-center gap-2">
-                  <span className="text-[10px] text-muted-foreground">{formatRelativeTime(project.updatedAt)}</span>
-                  {project.tags?.map((tag) => (
-                    <span key={tag} className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                      {tag}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              {project.id !== activeProjectId && (
-                <span
-                  className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100"
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
-                  role="none"
+                  onClick={() => {
+                    if (!isConfirmingDelete) handleSelect(project.id);
+                  }}
+                  onKeyDown={(e) => {
+                    if ((e.key === "Enter" || e.key === " ") && !isConfirmingDelete) {
+                      e.preventDefault();
+                      handleSelect(project.id);
+                    }
+                  }}
                 >
-                  {confirmDeleteId === project.id ? (
-                    <div className="flex items-center gap-1">
+                  <div className={cn("h-24 bg-linear-to-br", cardGradient(project.id))} />
+                  <div className="p-3">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-sm font-medium">{project.title}</span>
+                      {isActive && (
+                        <span
+                          aria-hidden="true"
+                          className="shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] text-primary"
+                        >
+                          active
+                        </span>
+                      )}
+                    </div>
+                    {project.description && (
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{project.description}</p>
+                    )}
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
+                      <span className="text-[10px] text-muted-foreground">{formatRelativeTime(project.updatedAt)}</span>
+                      {project.tags?.map((tag) => (
+                        <span key={tag} className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  {!isActive && isConfirmingDelete && (
+                    <div
+                      className="flex items-center gap-1 border-t px-3 pb-3 pt-2"
+                      role="none"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <span className="mr-auto text-xs text-muted-foreground">Delete?</span>
                       <Button
                         variant="destructive"
                         size="sm"
@@ -139,26 +177,26 @@ export function ProjectPickerDialog({
                         Cancel
                       </Button>
                     </div>
-                  ) : (
+                  )}
+                  {!isActive && !isConfirmingDelete && (
                     <Button
                       variant="ghost"
                       size="icon"
                       aria-label={`Delete ${project.title}`}
-                      className="h-6 w-6"
-                      onClick={() => setConfirmDeleteId(project.id)}
+                      className="absolute right-2 top-2 h-7 w-7 bg-black/30 text-white opacity-0 transition-opacity hover:bg-black/50 hover:text-white group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmDeleteId(project.id);
+                      }}
                     >
                       <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
                     </Button>
                   )}
-                </span>
-              )}
-            </div>
-          ))}
+                </div>
+              );
+            })}
+          </div>
         </div>
-        <Button variant="outline" className="w-full" onClick={onCreate}>
-          <Plus aria-hidden="true" className="mr-2 h-4 w-4" />
-          New Project
-        </Button>
       </DialogContent>
     </Dialog>
   );
