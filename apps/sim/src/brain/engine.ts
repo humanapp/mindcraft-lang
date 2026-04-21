@@ -16,7 +16,6 @@ const PUPIL_MAX_ANGLE = 0.75; // Max gaze rotation in radians (~43 deg) from res
 const GAZE_SMOOTHING = 0.08; // Lerp factor per frame (lower = smoother)
 
 import { heatColor } from "@/lib/color";
-import { loadDesiredCounts } from "../services/population-persistence";
 import { drawMovementIntent } from "./movement";
 import { type ScoreSnapshot, ScoreTracker } from "./score";
 import { SpatialGrid } from "./spatial-grid";
@@ -82,7 +81,7 @@ export class Engine {
    * respawns when at or above them. Actors are never actively killed;
    * excess populations die off naturally.
    */
-  private desiredCounts = loadDesiredCounts();
+  private desiredCounts: Record<Archetype, number>;
 
   /** Max actors to spawn per archetype per tick to avoid frame spikes. */
   private static readonly MAX_SPAWNS_PER_TICK = 3;
@@ -124,6 +123,8 @@ export class Engine {
       herbivore: ARCHETYPES.herbivore.mover,
       plant: ARCHETYPES.plant.mover,
     };
+
+    this.desiredCounts = { ...store.getDesiredCounts() };
 
     this.unsubProjectUnloading = store.onProjectUnloading(() => void this.unloadAllBrains());
     this.unsubProjectLoaded = store.onProjectLoaded(() =>

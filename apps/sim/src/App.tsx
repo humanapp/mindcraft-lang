@@ -23,7 +23,8 @@ import { useSimEnvironment } from "./contexts/sim-environment";
 import { createDocsRegistry } from "./docs/docs-registry";
 import type { Playground } from "./game/scenes/Playground";
 import { PhaserGame } from "./PhaserGame";
-import { loadDesiredCounts } from "./services/population-persistence";
+import { downloadTextFile } from "./utils/file-download";
+import { pickFile } from "./utils/file-upload";
 
 /** Compare two snapshots by display-relevant fields to skip no-op re-renders. */
 function statsEqual(
@@ -161,6 +162,62 @@ function App() {
     [store]
   );
 
+  const handleExportProject = useCallback(() => {
+    store.exportProject().then(
+      (json) => {
+        const safeName =
+          (store.activeProjectManifest?.name ?? "project")
+            .replace(/[^a-zA-Z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .toLowerCase() || "project";
+        downloadTextFile(json, `${safeName}.mindcraft`);
+      },
+      () => {
+        toast.error("Failed to export project");
+      }
+    );
+  }, [store]);
+
+  const handleImportProject = useCallback(() => {
+    pickFile(".mindcraft,.json").then(
+      (file) => {
+        if (!file) return;
+        store.importProject(file).then(
+          async (result) => {
+            if (!result.success || !result.projectId) {
+              const errorMsg = result.diagnostics.find((d) => d.severity === "error")?.message ?? "Import failed";
+              toast.error(errorMsg);
+              return;
+            }
+
+            try {
+              await store.switchProject(result.projectId);
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : "Failed to open imported project";
+              toast.error(msg);
+              return;
+            }
+
+            const warnings = result.diagnostics.filter((d) => d.severity === "warning");
+            if (warnings.length > 0) {
+              toast.warning(`Imported with ${warnings.length} warning(s)`, {
+                description: warnings.map((w) => w.message).join("\n"),
+              });
+            } else {
+              toast.success("Project imported successfully");
+            }
+          },
+          () => {
+            toast.error("Failed to import project");
+          }
+        );
+      },
+      () => {
+        toast.error("Failed to open file picker");
+      }
+    );
+  }, [store]);
+
   const defaultNewProjectName = useMemo(() => `Project ${projectList.length + 1}`, [projectList.length]);
 
   const docRevision = useSyncExternalStore(store.subscribeToDocRevision, store.getDocRevisionSnapshot);
@@ -194,14 +251,19 @@ function App() {
     scene?.setTimeSpeed(timeSpeed);
   }, [scene, timeSpeed]);
 
-  // Restore persisted population counts when the scene becomes available.
+  // Restore persisted population counts when the scene becomes available, and
+  // re-push them whenever a different project is loaded.
   useEffect(() => {
     if (!scene) return;
-    const counts = loadDesiredCounts();
-    for (const [arch, count] of Object.entries(counts)) {
-      scene.setDesiredCount(arch as Archetype, count);
-    }
-  }, [scene]);
+    const pushCountsToScene = () => {
+      const counts = store.getDesiredCounts();
+      for (const [arch, count] of Object.entries(counts)) {
+        scene.setDesiredCount(arch as Archetype, count);
+      }
+    };
+    pushCountsToScene();
+    return store.onDesiredCountsReloaded(pushCountsToScene);
+  }, [scene, store]);
 
   // Poll the engine for score data. The snapshot is a fresh object each call,
   // so compare rounded display values to avoid re-renders when nothing the
@@ -234,8 +296,9 @@ function App() {
   const handleDesiredCountChange = useCallback(
     (archetype: Archetype, count: number) => {
       scene?.setDesiredCount(archetype, count);
+      store.setDesiredCount(archetype, count);
     },
-    [scene]
+    [scene, store]
   );
 
   const handleToggleDebug = useCallback(() => {
@@ -284,6 +347,8 @@ function App() {
             projectName={projectName}
             onBrowseProjects={() => setIsPickerOpen(true)}
             onNewProject={() => setIsNewProjectOpen(true)}
+            onExportProject={handleExportProject}
+            onImportProject={handleImportProject}
           />
           {/* Mobile sidebar toggle */}
           <button

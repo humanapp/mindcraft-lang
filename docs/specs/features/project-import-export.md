@@ -33,6 +33,19 @@ their section of the file and can evolve it independently.
   host. The `host.name` in the file must match the importing app's package
   name, and `host.version` must not be newer than the importing app's current
   version. Cross-host portability is not a goal.
+- **Storage-only.** Import writes exclusively to the project store. It must
+  not modify active game state, UI state, global localStorage, or any other
+  mutable state outside the store. A caller can import any number of projects
+  without affecting the currently active project. Activation (loading brains,
+  applying population counts, initializing the compiler) happens only when
+  the caller explicitly opens the imported project via `switchProject`.
+- **Atomic.** Import is all-or-nothing. If any validation step fails, nothing
+  is written to the store. All parsing, validation, and app layer callback
+  execution completes before the first store write. There is no partial
+  project to clean up on failure.
+- **Greenfield.** This is pre-release code with no shipped customers. No
+  migration, backward-compatibility, or data-loss mitigation work is needed.
+  Breaking changes to stored data formats are acceptable.
 
 ## File Format
 
@@ -148,7 +161,8 @@ object is always in a format the importing host understands. When importing,
 a host:
 
 1. Reads `app`.
-2. If missing (e.g. hand-edited file), falls back to defaults with a warning.
+2. If missing, the import fails. A host that provides an app layer callback
+   is declaring that `app` is required for a valid project.
 3. Deserializes using its own logic, consulting `host.version` to handle any
    schema differences between versions. Brain references
    (`"brain": "carnivore"`) are resolved against the top-level `brains` map.
@@ -227,6 +241,47 @@ If `success` is `false`, no project was created. If `success` is `true`, the
 project was created and `projectId` is set; `diagnostics` may still contain
 warnings (e.g. skipped brains).
 
+### Store-first import strategy
+
+Import uses the same project-load code path as opening any existing project.
+Rather than creating a live project, writing files into its workspace, and
+then flushing back to storage, import follows a two-phase approach:
+
+1. **Parse and validate.** Read the file, parse JSON, validate the envelope
+   (host, version, required fields), validate file paths, build the workspace
+   snapshot in memory, serialize brains, run the app layer callback. All of
+   this happens before any store write. If any step fails, return an error
+   diagnostic with no side effects -- nothing is written to the store.
+
+2. **Write to store.** Once all validation passes, call
+   `ProjectManager.createFromSnapshot()` to write the project manifest,
+   description, workspace snapshot, and app data to the store. This is the
+   only step that mutates persistent state. The project is not opened.
+
+This design has several benefits:
+
+- **Single load code path.** There is no separate "import load" vs "normal
+  load" path. The project is fully written to storage before it is ever
+  opened, and opening uses the same `openInternal` logic as every other
+  project.
+- **`mindcraft.json` regeneration is handled by the normal path.** The
+  project-open path already regenerates `mindcraft.json` from the manifest
+  and host info (via `syncManifestToMindcraftJson` in
+  `AppEnvironmentHost`). There is no need for the import function to do
+  this separately.
+- **No live workspace manipulation during import.** The import function
+  never touches a live workspace. It builds a `WorkspaceSnapshot` (a
+  `Map<string, WorkspaceEntry>`) from the file entries and passes it to
+  the store. Directory entries are not needed in the snapshot -- the
+  workspace's `import` action infers them from file paths.
+- **App layer callback is pure.** The callback must not perform side
+  effects (no writes to localStorage, no UI mutations, no game state
+  changes). It validates the `app` payload and returns diagnostics plus
+  optional `appData` entries to be written to the project store. Any
+  app-specific activation (e.g. applying population counts to the running
+  simulation) happens later, when the project is opened via
+  `switchProject`.
+
 ### Common layer
 
 1. Check file size via `File.size` (raw byte count) before reading the file
@@ -244,28 +299,61 @@ warnings (e.g. skipped brains).
 5. Validate required fields (`name`, `description`, `files`, `brains`).
    If malformed, return an error diagnostic.
 6. If `name` is empty after trimming, substitute `DEFAULT_PROJECT_NAME`.
-7. Create a new project via `ProjectManager.create(name)`.
-8. Update the project description via `ProjectManager.updateActive({ description })`.
-9. Write each file entry into the workspace using `applyLocalChange` with
-   `action: "write"`. If an individual file write fails, record a warning
-   diagnostic and continue.
-10. For each brain in `brains`, attempt deserialization via
-    `BrainDef.fromJson()`. If a brain fails, record a warning diagnostic
-    and skip it. Save the successfully deserialized brains via
-    `saveAppData("brains", ...)`.
-11. Trigger `syncManifestToMindcraftJson` to generate `mindcraft.json`.
-12. Trigger recompilation so user tiles and diagnostics are up to date.
+7. Validate file entries and build a `WorkspaceSnapshot`. For each file
+   entry, validate `path` (string, no `..`, no leading `/`, `/` separator)
+   and `content` (string). Invalid entries produce a warning diagnostic and
+   are skipped. Valid entries become `WorkspaceFileEntry` values
+   (`kind: "file"`, `isReadonly: false`, `etag: crypto.randomUUID()`).
+8. Validate and serialize the `brains` object. If not a valid object,
+   record a warning and substitute `"{}"`.
+9. Run the app layer callback (if provided). If `doc.app` is undefined,
+   return an error diagnostic -- a host that provides a callback is
+   declaring that `app` is required. Otherwise, call the callback with
+   the `app` field. The callback must be pure -- no side effects. It
+   validates the app-specific payload and returns diagnostics plus
+   optional `appData` entries (key/value pairs to be written to the
+   project store). If the callback returns any error-severity diagnostic,
+   abort and return the errors. This happens before any project is created
+   so errors bail out cleanly.
+10. Create the project in the store via `ProjectManager.createFromSnapshot()`,
+    passing: name, description, workspace snapshot, and app data entries.
+    App data is assembled as `{ ...callbackAppData, brains: serializedBrains }`
+    -- brains always wins if the callback also returns a `brains` key.
+    This writes everything to the store without opening the project.
+11. Return `{ success: true, projectId, diagnostics }`. The caller is
+    responsible for calling `switchProject(projectId)` to open the project
+    through the normal load path.
 
 ### App layer
 
-13. The host app reads `app`.
-14. If present, deserialize app-specific state (e.g. actor configs, population
-    counts), consulting `host.version` for schema differences.
-    Brain references are resolved against the top-level `brains` map;
-    unresolvable references fall back to defaults with a warning diagnostic.
-15. If missing, use defaults (same as new project) and record a warning
-    diagnostic.
-16. Return the `ImportResult`.
+The app layer callback runs during the validation phase (step 9). It must
+not perform side effects -- no writes to localStorage, no UI mutations, no
+game state changes. Its contract:
+
+- **Input:** the `app` object from the export file, plus `host.version`.
+- **Output:** `{ diagnostics, appData? }` where `appData` is an optional
+  `Record<string, string>` of key/value pairs to store as project app data.
+- If `app` is present, validate and transform it into store-compatible
+  entries. For the sim, this means converting the `actors` array into a
+  serialized JSON string stored under a project app data key (e.g.
+  `"actors"`).
+- If `app` is missing but a callback is provided, the common layer returns
+  an error: "No app-specific data found in the export file." A host that
+  provides a callback is declaring that `app` is required for a valid
+  project.
+- If the callback returns any error-severity diagnostic, the common layer
+  aborts import and returns the errors. No project is created.
+- Any app-specific activation (applying population counts, updating
+  simulation state) happens when the project is opened via `switchProject`,
+  not during import.
+
+After `importProject` returns success, the caller may open the imported
+project by calling `switchProject(projectId)`. This is not required --
+the imported project is fully persisted and will appear in the project
+picker. If the caller does open it, the normal load path initializes the
+compiler, loads brains from app data, regenerates `mindcraft.json`, fires
+project-loaded listeners, and gives the host a chance to read its app
+data and apply it to the running state.
 
 ## Validation Rules
 

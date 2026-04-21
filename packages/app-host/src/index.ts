@@ -8,6 +8,17 @@ export type { MindcraftJson } from "./mindcraft-json.js";
 export { MINDCRAFT_JSON_PATH, parseMindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
 export type { MindcraftJsonHostInfo } from "./mindcraft-json-sync.js";
 export { diffMindcraftJsonToManifest, syncManifestToMindcraftJson } from "./mindcraft-json-sync.js";
+export type {
+  ImportAppLayerCallback,
+  ImportAppLayerResult,
+  ImportDiagnostic,
+  ImportResult,
+  MindcraftExportCommon,
+  MindcraftExportDocument,
+  MindcraftExportFile,
+  MindcraftExportHost,
+} from "./project-io.js";
+export { buildExportCommon, DEFAULT_MAX_FILE_SIZE, importProject } from "./project-io.js";
 export type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 export { createWebLocksProjectLock } from "./project-lock.js";
 export type { ActiveProject, ProjectManagerOptions } from "./project-manager.js";

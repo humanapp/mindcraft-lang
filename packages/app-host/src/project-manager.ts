@@ -4,6 +4,7 @@ import type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
 import type { WorkspaceAdapter } from "./workspace-adapter.js";
+import type { WorkspaceSnapshot } from "./workspace-snapshot.js";
 
 export const DEFAULT_PROJECT_NAME = "Untitled Project";
 
@@ -64,6 +65,24 @@ export class ProjectManager {
     const manifest = await this.store.createProject(name);
     await this.notifyProjectList();
     await this.open(manifest.id);
+    return manifest;
+  }
+
+  async createFromSnapshot(
+    name: string,
+    description: string,
+    snapshot: WorkspaceSnapshot,
+    appData?: Record<string, string>
+  ): Promise<ProjectManifest> {
+    const manifest = await this.store.createProject(name);
+    await this.store.updateProject(manifest.id, { description });
+    await this.store.saveWorkspace(manifest.id, snapshot);
+    if (appData) {
+      for (const [key, value] of Object.entries(appData)) {
+        await this.store.saveAppData(manifest.id, key, value);
+      }
+    }
+    await this.notifyProjectList();
     return manifest;
   }
 

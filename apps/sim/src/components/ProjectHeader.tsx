@@ -1,5 +1,12 @@
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Input } from "@mindcraft-lang/ui";
-import { Check, FolderOpen, Menu, Pencil, Plus, X } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+} from "@mindcraft-lang/ui";
+import { Check, Download, FolderOpen, Menu, Pencil, Plus, Upload, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSimEnvironment } from "@/contexts/sim-environment";
 
@@ -7,9 +14,17 @@ interface ProjectHeaderProps {
   projectName: string;
   onBrowseProjects: () => void;
   onNewProject: () => void;
+  onExportProject: () => void;
+  onImportProject: () => void;
 }
 
-export function ProjectHeader({ projectName, onBrowseProjects, onNewProject }: ProjectHeaderProps) {
+export function ProjectHeader({
+  projectName,
+  onBrowseProjects,
+  onNewProject,
+  onExportProject,
+  onImportProject,
+}: ProjectHeaderProps) {
   const store = useSimEnvironment();
   const [isEditing, setIsEditing] = useState(false);
   const [nameValue, setNameValue] = useState("");
@@ -70,6 +85,15 @@ export function ProjectHeader({ projectName, onBrowseProjects, onNewProject }: P
           <DropdownMenuItem onSelect={onBrowseProjects}>
             <FolderOpen className="w-4 h-4 mr-2" />
             Browse Projects
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={onExportProject}>
+            <Download className="w-4 h-4 mr-2" />
+            Export Project
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={onImportProject}>
+            <Upload className="w-4 h-4 mr-2" />
+            Import Project
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

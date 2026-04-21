@@ -1,7 +1,11 @@
 import {
+  buildExportCommon,
   createIdbProjectStore,
   createWebLocksProjectLock,
   DEFAULT_PROJECT_NAME,
+  type ImportResult,
+  importProject as importProjectCommon,
+  type MindcraftExportDocument,
   ProjectManager,
   type ProjectManifest,
   type WorkspaceAdapter,
@@ -18,6 +22,7 @@ import type { DocsTileEntry } from "@mindcraft-lang/docs";
 import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
+import { ARCHETYPES } from "@/brain/archetypes";
 import { loadExamples } from "@/examples";
 import { name as simName, version as simVersion } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
@@ -119,6 +124,16 @@ function persistUiPreferences(projectId: string, prefs: UiPreferences): void {
   }
 }
 
+function defaultDesiredCounts(): Record<Archetype, number> {
+  return {
+    carnivore: ARCHETYPES.carnivore.initialSpawnCount,
+    herbivore: ARCHETYPES.herbivore.initialSpawnCount,
+    plant: ARCHETYPES.plant.initialSpawnCount,
+  };
+}
+
+const DESIRED_COUNTS_DEBOUNCE_MS = 200;
+
 export class SimEnvironmentStore {
   readonly host: AppEnvironmentHost;
 
@@ -130,6 +145,10 @@ export class SimEnvironmentStore {
   private _uiPreferences: UiPreferences = { ...DEFAULT_UI_PREFS };
   private _collapsedArchetypes: Record<string, boolean> = loadCollapsedArchetypes();
 
+  private _desiredCounts: Record<Archetype, number> = defaultDesiredCounts();
+  private readonly _desiredCountsListeners = new Set<() => void>();
+  private _desiredCountsSaveTimer: ReturnType<typeof setTimeout> | undefined;
+
   private _isSwitchingProject = false;
 
   private constructor(host: AppEnvironmentHost) {
@@ -139,7 +158,34 @@ export class SimEnvironmentStore {
       const prefs = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
       this._uiPreferences = this._isSwitchingProject ? { ...prefs, bridgeEnabled: false } : prefs;
       this.userTileDocEntries = [];
+      void this.reloadDesiredCountsFromProject();
     });
+  }
+
+  private async reloadDesiredCountsFromProject(): Promise<void> {
+    if (this._desiredCountsSaveTimer !== undefined) {
+      clearTimeout(this._desiredCountsSaveTimer);
+      this._desiredCountsSaveTimer = undefined;
+    }
+    const next = defaultDesiredCounts();
+    try {
+      const raw = await this.host.projectManager.loadAppData("actors");
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<Record<Archetype, number>>;
+        for (const key of Object.keys(next) as Archetype[]) {
+          const value = parsed[key];
+          if (typeof value === "number" && Number.isFinite(value)) {
+            next[key] = Math.max(0, Math.min(100, Math.round(value)));
+          }
+        }
+      }
+    } catch {
+      // corrupted or missing data -- fall back to defaults
+    }
+    this._desiredCounts = next;
+    for (const fn of this._desiredCountsListeners) {
+      fn();
+    }
   }
 
   static async create(): Promise<SimEnvironmentStore> {
@@ -252,6 +298,71 @@ export class SimEnvironmentStore {
     this._isSwitchingProject = false;
   }
 
+  // -- Project export / import --
+
+  async exportProject(): Promise<string> {
+    const manifest = this.host.activeProjectManifest!;
+    const workspace = this.host.workspace;
+    const pm = this.host.projectManager;
+
+    const common = await buildExportCommon({ name: simName, version: simVersion }, manifest, workspace, (key) =>
+      pm.loadAppData(key)
+    );
+
+    const counts = this.getDesiredCounts();
+    const actors: { archetype: string; brain: string | null; desiredCount: number }[] = [];
+    for (const archetype of Object.keys(ARCHETYPES)) {
+      const hasBrain = archetype in (common.brains as Record<string, unknown>);
+      actors.push({
+        archetype,
+        brain: hasBrain ? archetype : null,
+        desiredCount: counts[archetype as Archetype] ?? 0,
+      });
+    }
+
+    const doc: MindcraftExportDocument = { ...common, app: { actors } };
+    return JSON.stringify(doc, null, 2);
+  }
+
+  async importProject(file: File): Promise<ImportResult> {
+    const pm = this.host.projectManager;
+
+    return importProjectCommon(file, simName, simVersion, pm, {
+      appLayerCallback: (app) => {
+        const diagnostics: { severity: "error" | "warning"; message: string }[] = [];
+        const appData = app as { actors?: unknown[] } | null;
+        if (!appData?.actors || !Array.isArray(appData.actors) || appData.actors.length === 0) {
+          return {
+            diagnostics: [{ severity: "error", message: "No actor data found in app layer." }],
+          };
+        }
+
+        const counts: Record<string, number> = {};
+        for (const entry of appData.actors) {
+          const actorEntry = entry as { archetype?: string; desiredCount?: number } | null;
+          if (!actorEntry?.archetype || !(actorEntry.archetype in ARCHETYPES)) {
+            diagnostics.push({
+              severity: "warning",
+              message: `Skipped unknown archetype: "${actorEntry?.archetype ?? "(none)"}".`,
+            });
+            continue;
+          }
+          if (typeof actorEntry.desiredCount === "number") {
+            counts[actorEntry.archetype] = Math.max(0, Math.min(100, Math.round(actorEntry.desiredCount)));
+          }
+        }
+        return {
+          diagnostics,
+          appData: { actors: JSON.stringify(counts) },
+        };
+      },
+    });
+  }
+
+  async loadAppData(key: string): Promise<string | undefined> {
+    return this.host.projectManager.loadAppData(key);
+  }
+
   flushPendingBrainRebuilds(): void {
     this.host.flushPendingBrainRebuilds();
   }
@@ -335,6 +446,31 @@ export class SimEnvironmentStore {
   updateCollapsedArchetypes(value: Record<string, boolean>): void {
     this._collapsedArchetypes = value;
     persistCollapsedArchetypes(value);
+  }
+
+  // -- Desired population counts (per-project, debounced auto-save) --
+
+  getDesiredCounts(): Record<Archetype, number> {
+    return this._desiredCounts;
+  }
+
+  setDesiredCount(archetype: Archetype, count: number): void {
+    const clamped = Math.max(0, Math.min(100, Math.round(count)));
+    this._desiredCounts = { ...this._desiredCounts, [archetype]: clamped };
+    if (this._desiredCountsSaveTimer !== undefined) {
+      clearTimeout(this._desiredCountsSaveTimer);
+    }
+    this._desiredCountsSaveTimer = setTimeout(() => {
+      this._desiredCountsSaveTimer = undefined;
+      void this.host.projectManager.saveAppData("actors", JSON.stringify(this._desiredCounts));
+    }, DESIRED_COUNTS_DEBOUNCE_MS);
+  }
+
+  onDesiredCountsReloaded(listener: () => void): () => void {
+    this._desiredCountsListeners.add(listener);
+    return () => {
+      this._desiredCountsListeners.delete(listener);
+    };
   }
 
   // -- Bridge (delegate) --
