@@ -47,6 +47,7 @@ export function NewProjectDialog({ open, onOpenChange, onConfirm, defaultName }:
           <Input
             ref={inputRef}
             value={name}
+            className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -58,10 +59,14 @@ export function NewProjectDialog({ open, onOpenChange, onConfirm, defaultName }:
           />
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="cancel" onClick={() => onOpenChange(false)} className="rounded-lg">
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={!name.trim()}>
+          <Button
+            onClick={handleConfirm}
+            disabled={!name.trim()}
+            className="rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white"
+          >
             Create
           </Button>
         </DialogFooter>
