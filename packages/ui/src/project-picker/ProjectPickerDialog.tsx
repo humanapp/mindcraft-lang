@@ -65,26 +65,36 @@ function formatRelativeTime(timestamp: number): string {
 interface ProjectCardProps {
   project: ProjectPickerItem;
   isActive: boolean;
+  isConfirmingDelete: boolean;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
+  onStartDelete: () => void;
+  onCancelDelete: () => void;
 }
 
-function ProjectCard({ project, isActive, onSelect, onDelete }: ProjectCardProps) {
-  const [confirmingDelete, setConfirmingDelete] = React.useState(false);
+function ProjectCard({
+  project,
+  isActive,
+  isConfirmingDelete,
+  onSelect,
+  onDelete,
+  onStartDelete,
+  onCancelDelete,
+}: ProjectCardProps) {
   const cancelRef = React.useRef<HTMLButtonElement>(null);
   const openRef = React.useRef<HTMLButtonElement>(null);
+  const wasConfirmingRef = React.useRef(false);
   const descId = `project-desc-${project.id}`;
 
   React.useEffect(() => {
-    if (confirmingDelete) {
+    if (isConfirmingDelete) {
+      wasConfirmingRef.current = true;
       cancelRef.current?.focus();
+    } else if (wasConfirmingRef.current) {
+      wasConfirmingRef.current = false;
+      openRef.current?.focus();
     }
-  }, [confirmingDelete]);
-
-  const handleCancelDelete = () => {
-    setConfirmingDelete(false);
-    setTimeout(() => openRef.current?.focus(), 0);
-  };
+  }, [isConfirmingDelete]);
 
   const descriptionParts: string[] = [];
   if (project.description) descriptionParts.push(project.description);
@@ -127,7 +137,7 @@ function ProjectCard({ project, isActive, onSelect, onDelete }: ProjectCardProps
         </div>
       </div>
 
-      {!confirmingDelete && (
+      {!isConfirmingDelete && (
         <button
           ref={openRef}
           type="button"
@@ -139,36 +149,30 @@ function ProjectCard({ project, isActive, onSelect, onDelete }: ProjectCardProps
           onKeyDown={(e) => {
             if (!isActive && (e.key === "Delete" || e.key === "Backspace")) {
               e.preventDefault();
-              setConfirmingDelete(true);
+              onStartDelete();
             }
           }}
         />
       )}
 
-      {!isActive && !confirmingDelete && (
+      {!isActive && !isConfirmingDelete && (
         <button
           tabIndex={-1}
           type="button"
           className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded bg-black/30 text-white outline-none transition-opacity hover:bg-black/50 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-inset sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
           aria-label={`Delete ${project.title}`}
-          onClick={() => setConfirmingDelete(true)}
+          onClick={() => onStartDelete()}
         >
           <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
         </button>
       )}
 
-      {!isActive && confirmingDelete && (
+      {!isActive && isConfirmingDelete && (
         // biome-ignore lint/a11y/useSemanticElements: fieldset cannot be positioned absolute inside li
         <div
           role="group"
           aria-label={`Confirm deletion of ${project.title}`}
           className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-background/95 p-4"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              e.stopPropagation();
-              handleCancelDelete();
-            }
-          }}
         >
           <p className="text-center text-sm font-medium">Delete &ldquo;{project.title}&rdquo;?</p>
           <p className="text-center text-xs text-muted-foreground">This cannot be undone.</p>
@@ -178,7 +182,7 @@ function ProjectCard({ project, isActive, onSelect, onDelete }: ProjectCardProps
               variant="ghost"
               size="sm"
               aria-label={`Cancel deleting ${project.title}`}
-              onClick={handleCancelDelete}
+              onClick={onCancelDelete}
             >
               Cancel
             </Button>
@@ -206,6 +210,7 @@ export function ProjectPickerDialog({
   onDelete,
   onCreate,
 }: ProjectPickerDialogProps) {
+  const [confirmingDeleteId, setConfirmingDeleteId] = React.useState<string | null>(null);
   const sorted = React.useMemo(() => [...projects].sort((a, b) => b.updatedAt - a.updatedAt), [projects]);
 
   const handleSelect = (id: string) => {
@@ -215,7 +220,15 @@ export function ProjectPickerDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="left-0 top-0 translate-x-0 translate-y-0 flex h-dvh max-w-full flex-col gap-0 overflow-hidden p-0 rounded-none sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-170 sm:max-w-240 sm:w-[calc(100vw-2rem)] sm:rounded-lg">
+      <DialogContent
+        className="left-0 top-0 translate-x-0 translate-y-0 flex h-dvh max-w-full flex-col gap-0 overflow-hidden p-0 rounded-none sm:left-[50%] sm:top-[50%] sm:translate-x-[-50%] sm:translate-y-[-50%] sm:h-170 sm:max-w-240 sm:w-[calc(100vw-2rem)] sm:rounded-lg"
+        onEscapeKeyDown={(e) => {
+          if (confirmingDeleteId !== null) {
+            e.preventDefault();
+            setConfirmingDeleteId(null);
+          }
+        }}
+      >
         <DialogHeader className="flex-row items-center justify-between space-y-0 border-b px-4 py-3 sm:px-6 sm:py-4">
           <div>
             <DialogTitle>Projects</DialogTitle>
@@ -233,8 +246,11 @@ export function ProjectPickerDialog({
                 key={project.id}
                 project={project}
                 isActive={project.id === activeProjectId}
+                isConfirmingDelete={confirmingDeleteId === project.id}
                 onSelect={handleSelect}
                 onDelete={onDelete}
+                onStartDelete={() => setConfirmingDeleteId(project.id)}
+                onCancelDelete={() => setConfirmingDeleteId(null)}
               />
             ))}
           </ul>
