@@ -50,7 +50,6 @@ export class Playground extends Scene {
         graphics.fillStyle(0xffffff, 1);
         graphics.fillCircle(2 * config.radius - 7.2, config.radius - 4.5, 5);
         graphics.fillCircle(2 * config.radius - 7.2, config.radius + 4.5, 5);
-        // Pupils (static for now; see updatePupils() for dynamic gaze WIP)
         graphics.fillStyle(0x000000, 1);
         graphics.fillCircle(2 * config.radius - 5, config.radius - 3.6, 1.5);
         graphics.fillCircle(2 * config.radius - 5, config.radius + 3.6, 1.5);
@@ -203,9 +202,6 @@ export class Playground extends Scene {
     // Update sprite tints to reflect each actor's current energy level.
     this.engine.updateEnergyVisuals();
 
-    // TODO: re-enable once pupil gaze math is corrected
-    // this.engine.updatePupils();
-
     // Always update debug vision cones (clears them when debug is off)
     this.engine.drawDebugVisionCones();
   }
@@ -287,16 +283,6 @@ export class Playground extends Scene {
     // Create health bar graphics, rendered above actors
     actor.healthBarGfx = this.add.graphics();
     actor.healthBarGfx.setDepth(2);
-
-    // Dynamic pupil circles disabled for now (see updatePupils() WIP)
-    // if (actor.animalComp) {
-    //   const pupilRadius = 1.5 * config.scale;
-    //   const p1 = this.add.circle(0, 0, pupilRadius, 0x000000);
-    //   const p2 = this.add.circle(0, 0, pupilRadius, 0x000000);
-    //   p1.setDepth(1);
-    //   p2.setDepth(1);
-    //   actor.pupils = [p1, p2];
-    // }
 
     return sprite;
   }

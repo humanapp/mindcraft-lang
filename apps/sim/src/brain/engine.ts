@@ -1,21 +1,12 @@
 import type { BrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
 import * as ECS from "miniplex";
 import type { Playground } from "@/game/scenes/Playground";
+import { heatColor } from "@/lib/color";
 import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 import { Actor, type Archetype } from "./actor";
 import { ARCHETYPES, createArchetypeFallbackBrain } from "./archetypes";
 import { BLIP_DAMAGE, BLIP_RADIUS, BLIP_SPEED, type Blip, BlipPool } from "./blip";
 import type { MoverConfig } from "./movement";
-
-// Eye layout constants (must match texture generation in Playground.ts)
-const EYE_OFFSET_X = 7.8; // Eye center X offset from sprite center (along facing direction)
-const EYE_OFFSET_Y = 4.5; // Eye center Y offset from sprite center (perpendicular)
-const PUPIL_ORBIT_RADIUS = 2.4; // Distance from eye center that the pupil orbits at
-const PUPIL_REST_ANGLE = 0.39; // Resting angle in radians (~22 deg, slightly inward from pure forward)
-const PUPIL_MAX_ANGLE = 0.75; // Max gaze rotation in radians (~43 deg) from rest
-const GAZE_SMOOTHING = 0.08; // Lerp factor per frame (lower = smoother)
-
-import { heatColor } from "@/lib/color";
 import { drawMovementIntent } from "./movement";
 import { type ScoreSnapshot, ScoreTracker } from "./score";
 import { SpatialGrid } from "./spatial-grid";
@@ -450,53 +441,6 @@ export class Engine {
     for (let row = 0; row <= numRows; row++) {
       const y = row * cellSize;
       gfx.lineBetween(0, y, numCols * cellSize, y);
-    }
-  }
-
-  /**
-   * Update dynamic pupil positions for all animal actors.
-   * Pupils are positioned relative to the actor sprite, offset by
-   * the smoothed movement intent turn value for a subtle gaze effect.
-   */
-  updatePupils(): void {
-    for (const actor of this.world.entities) {
-      if (!actor.pupils) continue;
-
-      const sprite = actor.sprite;
-      const rot = sprite.rotation;
-      const scale = sprite.scale;
-      const cos = Math.cos(rot);
-      const sin = Math.sin(rot);
-
-      // Smooth the gaze toward the current intent turn value
-      const targetGaze = actor.lastIntent ? actor.lastIntent.turn : 0;
-      actor.smoothedGaze += (targetGaze - actor.smoothedGaze) * GAZE_SMOOTHING;
-
-      // Perpendicular shift from gaze (positive turn = clockwise = shift pupils "right" in local space)
-      const gazeAngle = actor.smoothedGaze * PUPIL_MAX_ANGLE;
-
-      // Two eyes: index 0 = "top" eye (negative Y offset), index 1 = "bottom" eye (positive Y offset)
-      const eyeYSigns = [-1, 1];
-
-      for (let i = 0; i < 2; i++) {
-        const eyeY = eyeYSigns[i] * EYE_OFFSET_Y;
-
-        // Pupil orbits around eye center; rest angle points slightly inward per eye
-        // Top eye (eyeYSign=-1) needs positive angle to point inward; bottom eye needs negative
-        const restAngle = -eyeYSigns[i] * PUPIL_REST_ANGLE;
-        const angle = restAngle + gazeAngle;
-
-        // Local-space pupil position: eye center + orbital offset
-        const localX = EYE_OFFSET_X + Math.cos(angle) * PUPIL_ORBIT_RADIUS;
-        const localY = eyeY + Math.sin(angle) * PUPIL_ORBIT_RADIUS;
-
-        // Rotate local offset to world space and apply scale
-        const worldX = sprite.x + (localX * cos - localY * sin) * scale;
-        const worldY = sprite.y + (localX * sin + localY * cos) * scale;
-
-        actor.pupils[i].setPosition(worldX, worldY);
-        actor.pupils[i].setScale(scale);
-      }
     }
   }
 
