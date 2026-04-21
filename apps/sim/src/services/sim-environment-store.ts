@@ -239,6 +239,7 @@ export class SimEnvironmentStore {
     if (metadata) {
       this.userTileDocEntries = buildDocEntries(metadata);
     }
+    await this.reloadDesiredCountsFromProject();
     initVfsServiceWorker(this);
     this.host.initBridge();
 
