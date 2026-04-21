@@ -1,6 +1,6 @@
 {
   "name": "@mindcraft-lang/app-host",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Project management and workspace storage for Mindcraft apps",
   "license": "MIT",
   "type": "module",
