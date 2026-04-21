@@ -180,7 +180,6 @@ export class Playground extends Scene {
     this.scene.pause();
     this.engine.loadBrains().then(
       () => {
-        this.engine.spawnInitialActors();
         this.scene.resume();
         const onReady = this.registry.get(SCENE_READY_KEY) as ((scene: Phaser.Scene) => void) | undefined;
         onReady?.(this);

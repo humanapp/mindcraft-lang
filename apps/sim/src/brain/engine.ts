@@ -133,15 +133,6 @@ export class Engine {
     };
   }
 
-  spawnInitialActors() {
-    for (const archetype of ARCHETYPE_NAMES) {
-      const count = this.desiredCounts[archetype];
-      for (let i = 0; i < count; i++) {
-        this.spawn(archetype);
-      }
-    }
-  }
-
   shutdown() {
     if (this._isShutdown) return;
     this._isShutdown = true;
