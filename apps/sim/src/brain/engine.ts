@@ -95,9 +95,8 @@ export class Engine {
   /** Active blip projectiles. */
   private blipPool!: BlipPool;
 
-  private readonly unsubProjectUnloading: () => void;
-  private readonly unsubProjectLoaded: () => void;
   private readonly unsubDesiredCountsReloaded: () => void;
+  private _isShutdown = false;
 
   /** True once `loadBrains` has populated `this.brains` at least once. */
   private brainsLoaded = false;
@@ -136,10 +135,6 @@ export class Engine {
 
     this.desiredCounts = { ...store.getDesiredCounts() };
 
-    this.unsubProjectUnloading = store.onProjectUnloading(() => void this.unloadAllBrains());
-    this.unsubProjectLoaded = store.onProjectLoaded(() =>
-      this.reloadAllBrains().catch((err) => console.error("Failed to reload brains:", err))
-    );
     this.unsubDesiredCountsReloaded = store.onDesiredCountsReloaded(() => {
       this.desiredCounts = { ...store.getDesiredCounts() };
       this.reconcilePopulations();
@@ -174,9 +169,10 @@ export class Engine {
   }
 
   shutdown() {
+    if (this._isShutdown) return;
+    this._isShutdown = true;
+
     this.unsubDesiredCountsReloaded();
-    this.unsubProjectUnloading();
-    this.unsubProjectLoaded();
 
     // Clean up blips
     this.blipPool.destroyAll();
@@ -196,26 +192,6 @@ export class Engine {
     const brain = fromAsset ? fromAsset.clone() : createArchetypeFallbackBrain(this.env, archetype);
     await this.store.saveBrainForArchetype(archetype, brain);
     return brain;
-  }
-
-  private unloadAllBrains(): void {
-    for (const actor of this.world.entities) {
-      actor.brain.events().removeAllListeners();
-      actor.brain.dispose();
-    }
-  }
-
-  private async reloadAllBrains(): Promise<void> {
-    this.brains = {
-      carnivore: await this.loadBrainDef("carnivore"),
-      herbivore: await this.loadBrainDef("herbivore"),
-      plant: await this.loadBrainDef("plant"),
-    };
-    this.brainsLoaded = true;
-    for (const actor of this.world.entities) {
-      actor.replaceBrain(this.brains[actor.archetype]);
-    }
-    this.flushPendingReconcile();
   }
 
   private flushPendingReconcile(): void {
@@ -271,6 +247,7 @@ export class Engine {
   }
 
   tick(time: number, dt: number) {
+    if (this._isShutdown) return;
     this.store.flushPendingBrainRebuilds();
 
     // Rebuild spatial grid once per tick -- O(N) and avoids incremental bookkeeping

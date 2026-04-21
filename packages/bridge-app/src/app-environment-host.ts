@@ -292,6 +292,10 @@ export class AppEnvironmentHost {
     this.bumpDocRevision();
 
     this.teardownBridge();
+    this._lastUserTileMetadata =
+      hydrateUserTilesFromCache(this.env, {
+        storageKey: this.userTileStorageKey,
+      }) ?? undefined;
     this.initCompiler();
     await this.loadBrainsFromProject();
 
@@ -309,7 +313,11 @@ export class AppEnvironmentHost {
       return;
     }
     this._pendingBrainRebuild = false;
-    this.env.rebuildInvalidatedBrains();
+    try {
+      this.env.rebuildInvalidatedBrains();
+    } catch (err) {
+      logger.warn("Failed to rebuild invalidated brains:", err);
+    }
   }
 
   // ---------------------------------------------------------------------------

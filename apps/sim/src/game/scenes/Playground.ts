@@ -23,6 +23,8 @@ export class Playground extends Scene {
   private wallBodies: MatterJS.BodyType[] = [];
   private engine: Engine;
   private timeSpeed: number = 1;
+  private unsubProjectUnloading?: () => void;
+  private unsubProjectLoaded?: () => void;
   private obstacles: Array<{
     x: number;
     y: number;
@@ -106,7 +108,16 @@ export class Playground extends Scene {
       this.obstacles.push({ x, y, width, height });
     }
 
-    this.engine = new Engine(this, this.obstacles, this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore);
+    const store = this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore;
+    this.engine = new Engine(this, this.obstacles, store);
+
+    this.unsubProjectUnloading = store.onProjectUnloading(() => {
+      this.engine.shutdown();
+    });
+    this.unsubProjectLoaded = store.onProjectLoaded(() => {
+      this.engine.shutdown();
+      this.scene.restart();
+    });
 
     // Set up Matter collision events -- handle both initial contact and
     // ongoing contact so bump sensors fire every frame while actors overlap
@@ -178,6 +189,10 @@ export class Playground extends Scene {
   }
 
   private shutdown() {
+    this.unsubProjectUnloading?.();
+    this.unsubProjectUnloading = undefined;
+    this.unsubProjectLoaded?.();
+    this.unsubProjectLoaded = undefined;
     this.engine.shutdown();
   }
 
