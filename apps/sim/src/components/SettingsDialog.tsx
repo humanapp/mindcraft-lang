@@ -71,7 +71,7 @@ export function SettingsDialog({ open, onOpenChange, onBridgeDisabled }: Setting
               className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
               value={draft.vscodeBridgeUrl}
               onChange={(e) => setDraft((prev) => ({ ...prev, vscodeBridgeUrl: e.target.value }))}
-              placeholder="localhost:6464"
+              placeholder="vscode-bridge.mindcraft-lang.org"
             />
           </div>
         </div>

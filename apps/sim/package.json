@@ -50,6 +50,7 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@mindcraft-lang/core": "file:../../packages/core",
     "@mindcraft-lang/docs": "file:../../packages/docs",
+    "@mindcraft-lang/app-host": "file:../../packages/app-host",
     "@mindcraft-lang/ts-compiler": "file:../../packages/ts-compiler",
     "@mindcraft-lang/bridge-app": "file:../../packages/bridge-app",
     "@mindcraft-lang/ui": "file:../../packages/ui",

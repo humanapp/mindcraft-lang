@@ -107,8 +107,6 @@ export class Actor {
   sprite: Phaser.Physics.Matter.Sprite;
   debugGraphics?: Phaser.GameObjects.Graphics; // For debug visualization
   healthBarGfx?: Phaser.GameObjects.Graphics; // Energy health bar drawn above the sprite
-  pupils?: [Phaser.GameObjects.Arc, Phaser.GameObjects.Arc]; // Dynamic pupil circles
-  smoothedGaze = 0; // Smoothed gaze turn value for pupil animation
   readonly bumpQueue = new Set<number>(); // IDs of actors this one has bumped into
   sightQueue: SightResult[] = []; // Visible actors from the last vision check
   private chatBubble?: Phaser.GameObjects.Container;
@@ -394,7 +392,7 @@ export class Actor {
     }
   }
 
-  /** Clean up all owned resources (timers, graphics, bubbles, pupils). */
+  /** Clean up all owned resources (timers, graphics, bubbles). */
   destroy() {
     this.clearDisplayString();
     if (this.debugGraphics) {
@@ -404,11 +402,6 @@ export class Actor {
     if (this.healthBarGfx) {
       this.healthBarGfx.destroy();
       this.healthBarGfx = undefined;
-    }
-    if (this.pupils) {
-      this.pupils[0].destroy();
-      this.pupils[1].destroy();
-      this.pupils = undefined;
     }
     this.brain.events().removeAllListeners();
     this.brain.dispose();

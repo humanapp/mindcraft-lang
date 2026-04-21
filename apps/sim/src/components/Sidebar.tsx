@@ -1,14 +1,13 @@
 import { useDocsSidebar } from "@mindcraft-lang/docs";
 import { Button, Slider, Switch } from "@mindcraft-lang/ui";
 import { BookOpen, Check, ChevronDown, ChevronRight, CircleHelp, Copy, FileText, Info, Settings } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
 import type { ScoreSnapshot } from "@/brain/score";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { useSimEnvironment } from "@/contexts/sim-environment";
 import { clearBindingToken } from "@/services/binding-token-persistence";
-import { loadDesiredCounts, saveDesiredCounts } from "@/services/population-persistence";
 
 const ARCHETYPE_COLORS: Record<string, string> = {
   carnivore: "#e63946",
@@ -60,9 +59,9 @@ export function Sidebar({
   onClose,
 }: SidebarProps) {
   const store = useSimEnvironment();
-  const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(loadDesiredCounts);
-  const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>(
-    () => store.getUiPreferences().collapsedArchetypes
+  const [desiredCounts, setDesiredCounts] = useState<Record<Archetype, number>>(() => store.getDesiredCounts());
+  const [collapsedArchetypes, setCollapsedArchetypes] = useState<Record<string, boolean>>(() =>
+    store.getCollapsedArchetypes()
   );
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [bridgeEnabled, setBridgeEnabled] = useState(() => store.getUiPreferences().bridgeEnabled);
@@ -71,12 +70,23 @@ export function Sidebar({
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    return store.onProjectLoaded(() => {
+      setBridgeEnabled(store.getUiPreferences().bridgeEnabled);
+    });
+  }, [store]);
+
+  useEffect(() => {
+    return store.onDesiredCountsReloaded(() => {
+      setDesiredCounts(store.getDesiredCounts());
+    });
+  }, [store]);
+
+  useEffect(() => {
     if (bridgeEnabled) {
       store.connectBridge();
     }
   }, [bridgeEnabled, store]);
 
-  const desiredCountTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const { toggle: toggleDocs, isOpen: isDocsOpen, open: openDocs, navigateToEntry } = useDocsSidebar();
 
   const openAbout = () => {
@@ -85,15 +95,9 @@ export function Sidebar({
   };
 
   const updateDesiredCount = (archetype: Archetype, count: number) => {
-    setDesiredCounts((prev) => {
-      const next = { ...prev, [archetype]: count };
-      saveDesiredCounts(next);
-      return next;
-    });
-    clearTimeout(desiredCountTimers.current[archetype]);
-    desiredCountTimers.current[archetype] = setTimeout(() => {
-      onDesiredCountChange(archetype, count);
-    }, 200);
+    setDesiredCounts((prev) => ({ ...prev, [archetype]: count }));
+    store.setDesiredCount(archetype, count);
+    onDesiredCountChange(archetype, count);
   };
 
   const totalDeaths = snapshot ? snapshot.carnivore.deaths + snapshot.herbivore.deaths + snapshot.plant.deaths : 0;
@@ -189,7 +193,7 @@ export function Sidebar({
           const toggleCollapsed = () =>
             setCollapsedArchetypes((prev) => {
               const next = { ...prev, [arch]: !prev[arch] };
-              store.updateUiPreferences({ collapsedArchetypes: next });
+              store.updateCollapsedArchetypes(next);
               return next;
             });
           return (

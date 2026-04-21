@@ -10,6 +10,7 @@ const packages = [
     "bridge-protocol",
     "bridge-client",
     "bridge-app",
+    "app-host"
 ];
 
 for (const pkg of packages) {

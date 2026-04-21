@@ -1,23 +1,12 @@
 import type { BrainDef, MindcraftEnvironment, Vector2 } from "@mindcraft-lang/core/app";
 import * as ECS from "miniplex";
 import type { Playground } from "@/game/scenes/Playground";
+import { heatColor } from "@/lib/color";
 import type { SimEnvironmentStore } from "@/services/sim-environment-store";
 import { Actor, type Archetype } from "./actor";
-import { ARCHETYPES, createArchetypeFallbackBrain } from "./archetypes";
+import { ARCHETYPE_NAMES, ARCHETYPES, createArchetypeFallbackBrain } from "./archetypes";
 import { BLIP_DAMAGE, BLIP_RADIUS, BLIP_SPEED, type Blip, BlipPool } from "./blip";
 import type { MoverConfig } from "./movement";
-
-// Eye layout constants (must match texture generation in Playground.ts)
-const EYE_OFFSET_X = 7.8; // Eye center X offset from sprite center (along facing direction)
-const EYE_OFFSET_Y = 4.5; // Eye center Y offset from sprite center (perpendicular)
-const PUPIL_ORBIT_RADIUS = 2.4; // Distance from eye center that the pupil orbits at
-const PUPIL_REST_ANGLE = 0.39; // Resting angle in radians (~22 deg, slightly inward from pure forward)
-const PUPIL_MAX_ANGLE = 0.75; // Max gaze rotation in radians (~43 deg) from rest
-const GAZE_SMOOTHING = 0.08; // Lerp factor per frame (lower = smoother)
-
-import { heatColor } from "@/lib/color";
-import { loadBrainFromLocalStorage } from "../services/brain-persistence";
-import { loadDesiredCounts } from "../services/population-persistence";
 import { drawMovementIntent } from "./movement";
 import { type ScoreSnapshot, ScoreTracker } from "./score";
 import { SpatialGrid } from "./spatial-grid";
@@ -32,7 +21,7 @@ import {
 export class Engine {
   private world: ECS.World<Actor>;
   private actors: { [key in Archetype]: ECS.Query<Actor> };
-  private brains: { [key in Archetype]: BrainDef };
+  private brains!: { [key in Archetype]: BrainDef };
   private moverCfg: { [key in Archetype]: Partial<MoverConfig> };
 
   get clock(): Phaser.Time.Clock {
@@ -52,7 +41,7 @@ export class Engine {
   }
 
   /** Spatial grid rebuilt each tick for fast proximity queries */
-  private grid: SpatialGrid;
+  private grid!: SpatialGrid;
 
   /** Tracks per-archetype stats and computes the ecosystem score. */
   private scoreTracker = new ScoreTracker();
@@ -83,7 +72,7 @@ export class Engine {
    * respawns when at or above them. Actors are never actively killed;
    * excess populations die off naturally.
    */
-  private desiredCounts = loadDesiredCounts();
+  private desiredCounts: Record<Archetype, number>;
 
   /** Max actors to spawn per archetype per tick to avoid frame spikes. */
   private static readonly MAX_SPAWNS_PER_TICK = 3;
@@ -96,6 +85,8 @@ export class Engine {
 
   /** Active blip projectiles. */
   private blipPool!: BlipPool;
+
+  private _isShutdown = false;
 
   /**
    * Number of vision phases. Actors are assigned phase = actorId % VISION_PHASES.
@@ -110,7 +101,6 @@ export class Engine {
     readonly obstacles: ReadonlyArray<Obstacle> = [],
     private readonly store: SimEnvironmentStore
   ) {
-    const env = store.env;
     this.world = new ECS.World<Actor>();
     this.actors = {
       carnivore: this.world.where((actor) => actor.archetype === "carnivore"),
@@ -118,63 +108,35 @@ export class Engine {
       plant: this.world.where((actor) => actor.archetype === "plant"),
     };
 
-    // Initialize brains: localStorage -> pre-loaded default .brain asset -> empty brain
-    const loadBrain = (archetype: Archetype): BrainDef => {
-      const cloneBrain = (brainDef: BrainDef): BrainDef => brainDef.clone();
-
-      const fromStorage = loadBrainFromLocalStorage(env, archetype);
-      if (fromStorage) return fromStorage;
-
-      const fromAsset = store.getDefaultBrain(archetype);
-      if (fromAsset) return cloneBrain(fromAsset);
-
-      return createArchetypeFallbackBrain(env, archetype);
-    };
-
-    this.brains = {
-      carnivore: loadBrain("carnivore"),
-      herbivore: loadBrain("herbivore"),
-      plant: loadBrain("plant"),
-    };
-
-    // Log brain source for each archetype
-    for (const archetype of ["carnivore", "herbivore", "plant"] as const) {
-      const fromStorage = localStorage.getItem(`brain-archetype-${archetype}`);
-      const fromAsset = store.getDefaultBrain(archetype);
-      const source = fromStorage ? "localStorage" : fromAsset ? "default asset" : "empty";
-      console.log(`Brain initialization - ${archetype}: ${source}`);
-    }
-
     this.moverCfg = {
       carnivore: ARCHETYPES.carnivore.mover,
       herbivore: ARCHETYPES.herbivore.mover,
       plant: ARCHETYPES.plant.mover,
     };
+
+    this.desiredCounts = { ...store.getDesiredCounts() };
   }
 
-  start() {
-    // Create the spatial grid after the scene is ready so dimensions are known.
-    // Cell size 150px balances grid granularity vs. overhead for typical vision ranges (600px).
+  start(): void {
     this.grid = new SpatialGrid(this.worldWidth, this.worldHeight, 150);
-    // Precompute obstacle bounds once (obstacles are static).
     this.precomputedObstacles = precomputeObstacles(this.obstacles);
-    // Create a persistent graphics layer for the grid debug overlay.
     this.gridDebugGfx = this.scene.add.graphics();
-    this.gridDebugGfx.setDepth(-2); // Below actors and their debug graphics
+    this.gridDebugGfx.setDepth(-2);
     this.blipPool = new BlipPool(this);
-    this.spawnInitialActors();
   }
 
-  private spawnInitialActors() {
-    Object.keys(ARCHETYPES).forEach((archetype) => {
-      const count = this.desiredCounts[archetype as Archetype];
-      for (let i = 0; i < count; i++) {
-        this.spawn(archetype as Archetype);
-      }
-    });
+  async loadBrains(): Promise<void> {
+    this.brains = {
+      carnivore: await this.loadBrainDef("carnivore"),
+      herbivore: await this.loadBrainDef("herbivore"),
+      plant: await this.loadBrainDef("plant"),
+    };
   }
 
   shutdown() {
+    if (this._isShutdown) return;
+    this._isShutdown = true;
+
     // Clean up blips
     this.blipPool.destroyAll();
 
@@ -185,7 +147,18 @@ export class Engine {
     this.world.clear();
   }
 
+  private async loadBrainDef(archetype: Archetype): Promise<BrainDef> {
+    const fromProject = await this.store.loadBrainFromProject(archetype);
+    if (fromProject) return fromProject;
+
+    const fromAsset = this.store.getDefaultBrain(archetype);
+    const brain = fromAsset ? fromAsset.clone() : createArchetypeFallbackBrain(this.env, archetype);
+    await this.store.saveBrainForArchetype(archetype, brain);
+    return brain;
+  }
+
   tick(time: number, dt: number) {
+    if (this._isShutdown) return;
     this.store.flushPendingBrainRebuilds();
 
     // Rebuild spatial grid once per tick -- O(N) and avoids incremental bookkeeping
@@ -223,7 +196,7 @@ export class Engine {
     // If any archetype is below its desired count and has no pending
     // respawns that will cover the deficit, spawn some immediately
     // (capped to avoid frame spikes).
-    for (const arch of ["carnivore", "herbivore", "plant"] as const) {
+    for (const arch of ARCHETYPE_NAMES) {
       const current = this.actors[arch].entities.length;
       const desired = this.desiredCounts[arch];
       const pendingForArch = this.pendingRespawns.filter((p) => p.archetype === arch).length;
@@ -459,53 +432,6 @@ export class Engine {
     for (let row = 0; row <= numRows; row++) {
       const y = row * cellSize;
       gfx.lineBetween(0, y, numCols * cellSize, y);
-    }
-  }
-
-  /**
-   * Update dynamic pupil positions for all animal actors.
-   * Pupils are positioned relative to the actor sprite, offset by
-   * the smoothed movement intent turn value for a subtle gaze effect.
-   */
-  updatePupils(): void {
-    for (const actor of this.world.entities) {
-      if (!actor.pupils) continue;
-
-      const sprite = actor.sprite;
-      const rot = sprite.rotation;
-      const scale = sprite.scale;
-      const cos = Math.cos(rot);
-      const sin = Math.sin(rot);
-
-      // Smooth the gaze toward the current intent turn value
-      const targetGaze = actor.lastIntent ? actor.lastIntent.turn : 0;
-      actor.smoothedGaze += (targetGaze - actor.smoothedGaze) * GAZE_SMOOTHING;
-
-      // Perpendicular shift from gaze (positive turn = clockwise = shift pupils "right" in local space)
-      const gazeAngle = actor.smoothedGaze * PUPIL_MAX_ANGLE;
-
-      // Two eyes: index 0 = "top" eye (negative Y offset), index 1 = "bottom" eye (positive Y offset)
-      const eyeYSigns = [-1, 1];
-
-      for (let i = 0; i < 2; i++) {
-        const eyeY = eyeYSigns[i] * EYE_OFFSET_Y;
-
-        // Pupil orbits around eye center; rest angle points slightly inward per eye
-        // Top eye (eyeYSign=-1) needs positive angle to point inward; bottom eye needs negative
-        const restAngle = -eyeYSigns[i] * PUPIL_REST_ANGLE;
-        const angle = restAngle + gazeAngle;
-
-        // Local-space pupil position: eye center + orbital offset
-        const localX = EYE_OFFSET_X + Math.cos(angle) * PUPIL_ORBIT_RADIUS;
-        const localY = eyeY + Math.sin(angle) * PUPIL_ORBIT_RADIUS;
-
-        // Rotate local offset to world space and apply scale
-        const worldX = sprite.x + (localX * cos - localY * sin) * scale;
-        const worldY = sprite.y + (localX * sin + localY * cos) * scale;
-
-        actor.pupils[i].setPosition(worldX, worldY);
-        actor.pupils[i].setScale(scale);
-      }
     }
   }
 

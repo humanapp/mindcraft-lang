@@ -33,6 +33,7 @@ export interface IBrainDef {
   insertNewPageAtIndex(index: number): OpResult<{ page: IBrainPageDef; index: number }>;
   containsTileId(tileId: string): boolean;
   purgeUnusedTiles(): void;
+  toJson(): unknown;
 }
 
 export type BrainPageDefEvents = {

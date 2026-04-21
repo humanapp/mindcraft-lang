@@ -77,6 +77,7 @@
     "release:major": "node ../../scripts/release.js major"
   },
   "dependencies": {
+    "@mindcraft-lang/app-host": "file:../app-host",
     "@mindcraft-lang/bridge-client": "file:../bridge-client",
     "@mindcraft-lang/bridge-protocol": "file:../bridge-protocol",
     "@mindcraft-lang/core": "file:../core",

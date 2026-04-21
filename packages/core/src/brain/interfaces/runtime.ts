@@ -251,7 +251,7 @@ export interface ExecutionContext {
    * @param name - Variable name to resolve
    * @returns The variable's value, or undefined if not found
    */
-  resolveVariable?(name: string): Value | undefined;
+  resolveVariable?: (name: string) => Value | undefined;
 
   /**
    * Set a resolved variable through the resolution chain.
@@ -262,7 +262,7 @@ export interface ExecutionContext {
    * @param value - The value to store
    * @returns true if successful, false otherwise
    */
-  setResolvedVariable?(name: string, value: Value): boolean;
+  setResolvedVariable?: (name: string, value: Value) => boolean;
 
   /**
    * Optional application-specific data that can be attached to the execution context.

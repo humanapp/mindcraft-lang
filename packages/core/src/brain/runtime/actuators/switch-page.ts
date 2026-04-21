@@ -32,30 +32,19 @@ const kAnonymousNumberSlotId = getSlotId(callDef, AnonNumber);
 const kAnonymousStringSlotId = getSlotId(callDef, AnonString);
 
 function fnSwitchPage(ctx: ExecutionContext, args: MapValue): Value {
-  const hasArg = args.v.has(0);
-  if (!hasArg) {
-    // No argument provided -- restart the current page
-    ctx.brain.requestPageRestart();
-    return VOID_VALUE;
-  }
-  const argValue = args.v.get(0);
-  if (!argValue) {
-    // Argument is explicitly undefined or null -- restart the current page
-    ctx.brain.requestPageRestart();
-    return VOID_VALUE;
-  }
+  const numberArg = args.v.get(kAnonymousNumberSlotId);
+  const stringArg = args.v.get(kAnonymousStringSlotId);
 
-  const hasNumberArg = isNumberValue(argValue);
-  const hasStringArg = isStringValue(argValue);
-
-  if (hasNumberArg) {
-    const pageNumber = argValue.v - 1; // Convert 1-based to 0-based index
+  if (numberArg && isNumberValue(numberArg)) {
+    const pageNumber = numberArg.v - 1; // Convert 1-based to 0-based index
     ctx.brain.requestPageChange(pageNumber);
-  } else if (hasStringArg) {
-    const str = argValue.v;
+  } else if (stringArg && isStringValue(stringArg)) {
     // Try stable pageId first (from BrainTilePageDef), then fall back to
     // page name lookup so brain code can compute page names at runtime.
-    ctx.brain.requestPageChangeByPageId(str);
+    ctx.brain.requestPageChangeByPageId(stringArg.v);
+  } else {
+    // No argument provided -- restart the current page
+    ctx.brain.requestPageRestart();
   }
 
   return VOID_VALUE;

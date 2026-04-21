@@ -54,6 +54,7 @@ class MockWebSocket {
 class MemoryWorkspace implements WorkspaceAdapter {
   private readonly _fs = new FileSystem();
   private readonly _listeners = new Set<(change: WorkspaceChange) => void>();
+  private readonly _anyChangeListeners = new Set<() => void>();
 
   constructor(entries: ExportedFileSystem = new Map()) {
     this._fs.import(entries);
@@ -65,6 +66,9 @@ class MemoryWorkspace implements WorkspaceAdapter {
 
   applyRemoteChange(change: WorkspaceChange): void {
     applyChange(this._fs, change);
+    for (const listener of this._anyChangeListeners) {
+      listener();
+    }
   }
 
   onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
@@ -74,10 +78,22 @@ class MemoryWorkspace implements WorkspaceAdapter {
     };
   }
 
+  onAnyChange(listener: () => void): () => void {
+    this._anyChangeListeners.add(listener);
+    return () => {
+      this._anyChangeListeners.delete(listener);
+    };
+  }
+
+  flush(): void {}
+
   applyLocalChange(change: WorkspaceChange): void {
     applyChange(this._fs, change);
     for (const listener of this._listeners) {
       listener(change);
+    }
+    for (const listener of this._anyChangeListeners) {
+      listener();
     }
   }
 

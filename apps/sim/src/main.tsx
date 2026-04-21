@@ -12,8 +12,8 @@ import { SimEnvironmentStore } from "./services/sim-environment-store";
 enableClipboardLogging(true);
 logger.level = LogLevel.DEBUG;
 
-const simStore = new SimEnvironmentStore();
-simStore.initialize();
+const simStore = await SimEnvironmentStore.create();
+await simStore.initialize();
 
 // React 19 dev mode calls performance.measure() on every render/commit and
 // never clears the entries, leaking PerformanceMeasure objects indefinitely.

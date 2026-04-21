@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { registerCommands } from "./commands";
 import { ExampleCodeLensProvider } from "./providers/example-codelens-provider";
 import { ExampleDecorationProvider } from "./providers/example-decoration-provider";
+import { MindcraftJsonCodeLensProvider } from "./providers/mindcraft-json-codelens-provider";
 import { MINDCRAFT_EXAMPLE_SCHEME } from "./services/mindcraft-example-fs-provider";
 import { MINDCRAFT_SCHEME } from "./services/mindcraft-fs-provider";
 import { ProjectManager } from "./services/project-manager";
@@ -25,6 +26,10 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.registerFileDecorationProvider(projectManager.fsProvider),
     vscode.window.registerFileDecorationProvider(exampleDecorationProvider),
     vscode.languages.registerCodeLensProvider({ scheme: MINDCRAFT_EXAMPLE_SCHEME }, new ExampleCodeLensProvider()),
+    vscode.languages.registerCodeLensProvider(
+      { scheme: MINDCRAFT_SCHEME, pattern: "**/mindcraft.json" },
+      new MindcraftJsonCodeLensProvider(projectManager.fsProvider)
+    ),
     exampleDecorationProvider
   );
 

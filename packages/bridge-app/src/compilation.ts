@@ -1,3 +1,5 @@
+import type { ExampleDefinition } from "@mindcraft-lang/app-host";
+import { EXAMPLES_FOLDER } from "@mindcraft-lang/app-host";
 import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core";
 import {
@@ -16,8 +18,6 @@ import type {
   WorkspaceSnapshot,
 } from "./app-bridge.js";
 import { createAppBridge } from "./app-bridge.js";
-import { EXAMPLES_FOLDER, type ExampleDefinition } from "./examples.js";
-import { MINDCRAFT_JSON_PATH, type MindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
 
 export interface DiagnosticSnapshot {
   files: ReadonlyMap<string, readonly DiagnosticEntry[]>;
@@ -276,32 +276,22 @@ export class CompilationManager {
 
 export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 
-export interface CreateAppProjectOptions {
+export interface CreateProjectCompilerOptions {
   environment: MindcraftEnvironment;
-  host: {
-    name: string;
-    version: string;
-  };
-  defaults?: {
-    name?: string;
-    description?: string;
-  };
-  bridgeUrl: string;
   workspace: WorkspaceAdapter;
-  bindingToken?: string;
-  onBindingTokenChange?: (token: string) => void;
+  examples?: readonly ExampleDefinition[];
   onDidCompile?: (result: WorkspaceCompileResult) => void;
 }
 
-export interface AppProjectHandle {
+export interface ProjectCompilerHandle {
   readonly compiler: TsWorkspaceCompiler;
-  readonly bridge: AppBridge;
   initialize(): void;
-  recreateBridge(bridgeUrl: string): void;
+  replaceWorkspace(): void;
   injectExamples(examples: ExampleDefinition[]): void;
+  getExamples(): ExampleDefinition[];
 }
 
-export function createAppProject(options: CreateAppProjectOptions): AppProjectHandle {
+export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
   const { environment, workspace } = options;
 
   const compiler = createWorkspaceCompiler({ environment });
@@ -310,28 +300,79 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
     compiler.onDidCompile(options.onDidCompile);
   }
 
+  let injectedExamples: ExampleDefinition[] = options.examples ? [...options.examples] : [];
+
+  function buildSnapshot(): WorkspaceSnapshot {
+    const snapshot = new Map(workspace.exportSnapshot());
+    for (const example of injectedExamples) {
+      snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}`, { kind: "directory" });
+      for (const file of example.files) {
+        snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}/${file.path}`, {
+          kind: "file",
+          content: file.content,
+          etag: "example",
+          isReadonly: true,
+        });
+      }
+    }
+    return snapshot;
+  }
+
+  return {
+    compiler,
+    initialize() {
+      compiler.replaceWorkspace(buildSnapshot());
+      compiler.compile();
+    },
+    replaceWorkspace() {
+      compiler.replaceWorkspace(buildSnapshot());
+      compiler.compile();
+    },
+    injectExamples(examples: ExampleDefinition[]) {
+      injectedExamples = examples;
+    },
+    getExamples() {
+      return injectedExamples;
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// BridgeProjectHandle -- bridge connection that uses a ProjectCompilerHandle
+// ---------------------------------------------------------------------------
+
+export interface CreateBridgeProjectOptions {
+  projectCompiler: ProjectCompilerHandle;
+  workspace: WorkspaceAdapter;
+  bridgeUrl: string;
+  bindingToken?: string;
+  onBindingTokenChange?: (token: string) => void;
+}
+
+export interface BridgeProjectHandle {
+  readonly bridge: AppBridge;
+  recreateBridge(bridgeUrl: string): void;
+}
+
+export function createBridgeProject(options: CreateBridgeProjectOptions): BridgeProjectHandle {
+  const { projectCompiler, workspace } = options;
+  const compiler = projectCompiler.compiler;
+
   let latestBindingToken = options.bindingToken;
   const onBindingTokenChange = (token: string): void => {
     latestBindingToken = token;
     options.onBindingTokenChange?.(token);
   };
 
-  let injectedExamples: ExampleDefinition[] = [];
-  const augmented = augmentWorkspace(workspace, compiler, () => injectedExamples);
+  const augmented = augmentWorkspace(workspace, compiler, () => projectCompiler.getExamples());
   let currentBridge = buildBridge(
     { ...options, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
     compiler
   );
 
   return {
-    compiler,
     get bridge() {
       return currentBridge;
-    },
-    initialize() {
-      ensureMindcraftJson(workspace, options);
-      compiler.replaceWorkspace(workspace.exportSnapshot());
-      compiler.compile();
     },
     recreateBridge(bridgeUrl: string) {
       currentBridge.stop();
@@ -339,9 +380,6 @@ export function createAppProject(options: CreateAppProjectOptions): AppProjectHa
         { ...options, bridgeUrl, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
         compiler
       );
-    },
-    injectExamples(examples: ExampleDefinition[]) {
-      injectedExamples = examples;
     },
   };
 }
@@ -374,14 +412,23 @@ function augmentWorkspace(
     applyRemoteChange(change: WorkspaceChange): void {
       workspace.applyRemoteChange(change);
     },
+    applyLocalChange(change: WorkspaceChange): void {
+      workspace.applyLocalChange(change);
+    },
     onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
       return workspace.onLocalChange(listener);
+    },
+    onAnyChange(listener: () => void): () => void {
+      return workspace.onAnyChange(listener);
+    },
+    flush(): void {
+      workspace.flush();
     },
   };
 }
 
 function buildBridge(
-  options: Pick<CreateAppProjectOptions, "bridgeUrl" | "workspace" | "bindingToken" | "onBindingTokenChange">,
+  options: Pick<CreateBridgeProjectOptions, "bridgeUrl" | "workspace" | "bindingToken" | "onBindingTokenChange">,
   compiler: TsWorkspaceCompiler
 ): AppBridge {
   return createAppBridge({
@@ -390,30 +437,5 @@ function buildBridge(
     features: [createCompilationFeature({ compiler })],
     bindingToken: options.bindingToken,
     onBindingTokenChange: options.onBindingTokenChange,
-  });
-}
-
-function ensureMindcraftJson(workspace: WorkspaceAdapter, options: CreateAppProjectOptions): void {
-  const snapshot = workspace.exportSnapshot();
-  const existing = snapshot.get(MINDCRAFT_JSON_PATH);
-  if (existing && existing.kind === "file") {
-    return;
-  }
-
-  const mindcraftJson: MindcraftJson = {
-    name: options.defaults?.name ?? "untitled",
-    host: {
-      name: options.host.name,
-      version: options.host.version,
-    },
-    version: "0.0.1",
-    description: options.defaults?.description ?? "",
-  };
-
-  workspace.applyRemoteChange({
-    action: "write",
-    path: MINDCRAFT_JSON_PATH,
-    content: serializeMindcraftJson(mindcraftJson),
-    newEtag: "mindcraft-json-init",
   });
 }

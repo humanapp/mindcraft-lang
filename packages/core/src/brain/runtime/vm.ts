@@ -2116,7 +2116,7 @@ export class VM implements IVM {
 
     // Try custom resolution if provided (try-catch for Roblox-TS compatibility)
     try {
-      const resolverFn = (ctx as { resolveVariable?: (name: string) => Value | undefined }).resolveVariable;
+      const resolverFn = ctx.resolveVariable;
       if (resolverFn) {
         const value = resolverFn(name);
         return value ?? V.nil();
@@ -2144,7 +2144,7 @@ export class VM implements IVM {
 
     // Try custom setter if provided (try-catch for Roblox-TS compatibility)
     try {
-      const setterFn = (ctx as { setResolvedVariable?: (name: string, value: Value) => boolean }).setResolvedVariable;
+      const setterFn = ctx.setResolvedVariable;
       if (setterFn) {
         setterFn(name, value);
         return;

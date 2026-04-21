@@ -5,10 +5,13 @@ import {
   type BrainServices,
   type BrainSyncFunctionEntry,
   CoreActuatorId,
+  CoreParameterId,
   type ExecutionContext,
+  getSlotId,
   type HostSyncFn,
   type MapValue,
   mkNumberValue,
+  mkParameterTileId,
   mkStringValue,
   NativeType,
   ValueDict,
@@ -50,9 +53,14 @@ before(() => {
 
 describe("switch-page actuator", () => {
   let fn: HostSyncFn;
+  let numberSlotId: number;
+  let stringSlotId: number;
 
   before(() => {
-    fn = getSyncEntry(CoreActuatorId.SwitchPage).fn;
+    const entry = getSyncEntry(CoreActuatorId.SwitchPage);
+    fn = entry.fn;
+    numberSlotId = getSlotId(entry.callDef, mkParameterTileId(CoreParameterId.AnonymousNumber));
+    stringSlotId = getSlotId(entry.callDef, mkParameterTileId(CoreParameterId.AnonymousString));
   });
 
   test("calls requestPageChange with 0-based index for number arg", () => {
@@ -65,7 +73,7 @@ describe("switch-page actuator", () => {
       } as never,
     });
     const args = mkArgs();
-    args.v.set(0, mkNumberValue(3));
+    args.v.set(numberSlotId, mkNumberValue(3));
 
     const result = fn.exec(ctx, args);
 
@@ -83,7 +91,7 @@ describe("switch-page actuator", () => {
       } as never,
     });
     const args = mkArgs();
-    args.v.set(0, mkStringValue("my-page"));
+    args.v.set(stringSlotId, mkStringValue("my-page"));
 
     const result = fn.exec(ctx, args);
 

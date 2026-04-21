@@ -21,6 +21,7 @@ Mindcraft draws inspiration from other tile-based programming systems past and p
 | Package | Description |
 |---------|-------------|
 | [@mindcraft-lang/core](packages/core/) | Mindcraft Language runtime -- tiles, parser, compiler, VM (multi-target: Roblox, Node.js, ESM) |
+| [@mindcraft-lang/app-host](packages/app-host/) | Project management, workspace storage, and IDB persistence for Mindcraft apps |
 | [@mindcraft-lang/ui](packages/ui/) | Shared React UI -- shadcn/ui primitives + brain editor components |
 | [@mindcraft-lang/docs](packages/docs/) | Shared documentation subsystem -- renders as in-app sidebar or full-screen SPA |
 | [@mindcraft-lang/ts-compiler](packages/ts-compiler/) | TypeScript-to-Mindcraft bytecode compiler |

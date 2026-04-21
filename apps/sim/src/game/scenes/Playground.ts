@@ -23,6 +23,8 @@ export class Playground extends Scene {
   private wallBodies: MatterJS.BodyType[] = [];
   private engine: Engine;
   private timeSpeed: number = 1;
+  private unsubProjectUnloading?: () => void;
+  private unsubProjectLoaded?: () => void;
   private obstacles: Array<{
     x: number;
     y: number;
@@ -48,7 +50,6 @@ export class Playground extends Scene {
         graphics.fillStyle(0xffffff, 1);
         graphics.fillCircle(2 * config.radius - 7.2, config.radius - 4.5, 5);
         graphics.fillCircle(2 * config.radius - 7.2, config.radius + 4.5, 5);
-        // Pupils (static for now; see updatePupils() for dynamic gaze WIP)
         graphics.fillStyle(0x000000, 1);
         graphics.fillCircle(2 * config.radius - 5, config.radius - 3.6, 1.5);
         graphics.fillCircle(2 * config.radius - 5, config.radius + 3.6, 1.5);
@@ -106,7 +107,16 @@ export class Playground extends Scene {
       this.obstacles.push({ x, y, width, height });
     }
 
-    this.engine = new Engine(this, this.obstacles, this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore);
+    const store = this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore;
+    this.engine = new Engine(this, this.obstacles, store);
+
+    this.unsubProjectUnloading = store.onProjectUnloading(() => {
+      this.engine.shutdown();
+    });
+    this.unsubProjectLoaded = store.onProjectLoaded(() => {
+      this.engine.shutdown();
+      this.scene.restart();
+    });
 
     // Set up Matter collision events -- handle both initial contact and
     // ongoing contact so bump sensors fire every frame while actors overlap
@@ -158,15 +168,34 @@ export class Playground extends Scene {
 
     this.engine.start();
 
+    // After scene.restart(), the new Matter world's timing.timeScale resets
+    // to 1. Re-apply the persisted timeSpeed so blips (which integrate via
+    // Matter) stay in sync with actor movement (which uses scaledDelta).
+    this.setTimeSpeed(store.getUiPreferences().timeScale);
+
     // Set up cleanup for brainDefs when scene shuts down (including restart)
     this.events.once("shutdown", this.shutdown, this);
 
-    // Notify React that the scene is ready
-    const onReady = this.registry.get(SCENE_READY_KEY) as ((scene: Phaser.Scene) => void) | undefined;
-    onReady?.(this);
+    // Pause update loop until async brain loading finishes
+    this.scene.pause();
+    this.engine.loadBrains().then(
+      () => {
+        this.scene.resume();
+        const onReady = this.registry.get(SCENE_READY_KEY) as ((scene: Phaser.Scene) => void) | undefined;
+        onReady?.(this);
+      },
+      (err) => {
+        console.error("Failed to load brains:", err);
+        this.scene.resume();
+      }
+    );
   }
 
   private shutdown() {
+    this.unsubProjectUnloading?.();
+    this.unsubProjectUnloading = undefined;
+    this.unsubProjectLoaded?.();
+    this.unsubProjectLoaded = undefined;
     this.engine.shutdown();
   }
 
@@ -176,9 +205,6 @@ export class Playground extends Scene {
 
     // Update sprite tints to reflect each actor's current energy level.
     this.engine.updateEnergyVisuals();
-
-    // TODO: re-enable once pupil gaze math is corrected
-    // this.engine.updatePupils();
 
     // Always update debug vision cones (clears them when debug is off)
     this.engine.drawDebugVisionCones();
@@ -261,16 +287,6 @@ export class Playground extends Scene {
     // Create health bar graphics, rendered above actors
     actor.healthBarGfx = this.add.graphics();
     actor.healthBarGfx.setDepth(2);
-
-    // Dynamic pupil circles disabled for now (see updatePupils() WIP)
-    // if (actor.animalComp) {
-    //   const pupilRadius = 1.5 * config.scale;
-    //   const p1 = this.add.circle(0, 0, pupilRadius, 0x000000);
-    //   const p2 = this.add.circle(0, 0, pupilRadius, 0x000000);
-    //   p1.setDepth(1);
-    //   p2.setDepth(1);
-    //   actor.pupils = [p1, p2];
-    // }
 
     return sprite;
   }
