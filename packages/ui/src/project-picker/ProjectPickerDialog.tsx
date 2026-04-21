@@ -229,18 +229,23 @@ export function ProjectPickerDialog({
           }
         }}
       >
-        <DialogHeader className="flex-row items-center justify-between space-y-0 border-b px-4 py-3 sm:px-6 sm:py-4">
-          <div>
-            <DialogTitle>Projects</DialogTitle>
-            <DialogDescription className="mt-0.5">Select a project to open, or create a new one.</DialogDescription>
-          </div>
-          <Button variant="outline" onClick={onCreate} className="shrink-0">
-            <Plus aria-hidden="true" className="mr-2 h-4 w-4" />
-            New Project
-          </Button>
+        <DialogHeader className="flex-col space-y-0.5 border-b px-4 py-3 sm:px-6 sm:py-4">
+          <DialogTitle>Projects</DialogTitle>
+          <DialogDescription>Select a project to open, or create a new one.</DialogDescription>
         </DialogHeader>
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4" aria-label="Projects">
+            <li className="list-none">
+              <button
+                type="button"
+                className="flex h-full min-h-36 w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-muted-foreground/30 bg-card text-muted-foreground outline-none transition-colors hover:border-primary/50 hover:text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:hover:scale-[1.02]"
+                aria-label="Create new project"
+                onClick={onCreate}
+              >
+                <Plus aria-hidden="true" className="h-8 w-8" />
+                <span className="text-sm font-medium">New Project</span>
+              </button>
+            </li>
             {sorted.map((project) => (
               <ProjectCard
                 key={project.id}
