@@ -1,6 +1,6 @@
 {
   "name": "@mindcraft-lang/bridge-protocol",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "WebSocket protocol types and schemas for the Mindcraft VS Code Bridge",
   "license": "MIT",
   "type": "module",
