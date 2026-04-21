@@ -50,7 +50,7 @@
   },
   "scripts": {
     "build": "tsc --build",
-    "build:prod": "tsc --build",
+    "build:prod": "tsc --build tsconfig.prod.json",
     "clean": "tsc --build --clean",
     "watch": "tsc --build --watch",
     "lint:only": "biome lint ./src",
