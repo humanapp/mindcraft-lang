@@ -210,6 +210,7 @@ function execSee(ctx: ExecutionContext, args: MapValue): Value {
   );
   ctx.rule?.setVariable("targetActor", state.rememberedActorId!);
   ctx.rule?.setVariable("targetPos", state.rememberedPos!);
+  self.debugTargetPos = targetPos;
   return TRUE_VALUE;
 }
 

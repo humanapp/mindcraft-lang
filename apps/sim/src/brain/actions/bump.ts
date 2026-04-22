@@ -14,6 +14,7 @@ import {
   optional,
   TRUE_VALUE,
   type Value,
+  Vector2,
 } from "@mindcraft-lang/core/app";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
@@ -77,6 +78,11 @@ function execBump(ctx: ExecutionContext, args: MapValue): Value {
 
   // Store as "targetActor" for the DO side to access
   ctx.rule?.setVariable("targetActor", mkNumberValue(bumpedActorId));
+
+  const bumpedActor = self.engine.getActorById(bumpedActorId);
+  if (bumpedActor) {
+    self.debugTargetPos = new Vector2(bumpedActor.sprite.x, bumpedActor.sprite.y);
+  }
 
   return TRUE_VALUE;
 }

@@ -364,6 +364,12 @@ export class Engine {
     // Draw / clear the spatial grid overlay
     this.drawDebugGrid(debugEnabled);
 
+    // Single time value shared across all target lines this frame.
+    const globalT = this.scene.time.now * 0.06;
+    const dashLen = 8;
+    const gapLen = 6;
+    const period = dashLen + gapLen;
+
     for (const actor of this.world.entities) {
       if (debugEnabled && actor.debugGraphics) {
         // Clear graphics for this frame
@@ -377,6 +383,38 @@ export class Engine {
         // Draw movement intent if actor has a saved intent from last tick
         if (actor.lastIntent) {
           drawMovementIntent(actor.debugGraphics, actor, actor.lastIntent);
+        }
+
+        // Draw target line if the current page has a targetActor or targetPos.
+        // Dash on/off is determined purely by (worldX + worldY - globalT) mod period
+        // so the pattern is fixed in world space — actor position only controls
+        // which slice of the pattern gets drawn, not where dashes fall.
+        if (actor.debugTargetPos) {
+          const tx = actor.debugTargetPos.X;
+          const ty = actor.debugTargetPos.Y;
+          const ax = actor.sprite.x;
+          const ay = actor.sprite.y;
+          const dx = tx - ax;
+          const dy = ty - ay;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len > 0) {
+            const nx = dx / len;
+            const ny = dy / len;
+            const worldProjection = ax * nx + ay * ny;
+            const phase = ((globalT - worldProjection) % period + period) % period;
+
+            actor.debugGraphics.lineStyle(2, 0x44aaff, 0.7);
+            for (let d = phase - period; d < len; d += period) {
+              const s = Math.max(d, 0);
+              const e = Math.min(d + dashLen, len);
+              if (e > s) {
+                actor.debugGraphics.beginPath();
+                actor.debugGraphics.moveTo(ax + nx * s, ay + ny * s);
+                actor.debugGraphics.lineTo(ax + nx * e, ay + ny * e);
+                actor.debugGraphics.strokePath();
+              }
+            }
+          }
         }
       } else if (actor.debugGraphics) {
         // Clear graphics if debug is off
