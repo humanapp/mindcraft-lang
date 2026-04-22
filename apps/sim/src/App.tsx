@@ -78,6 +78,7 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [timeSpeed, setTimeSpeed] = useState(() => store.getUiPreferences().timeScale);
   const [debugEnabled, setDebugEnabled] = useState(() => store.getUiPreferences().debugEnabled);
+  const [isPlaying, setIsPlaying] = useState(true);
   const [scene, setScene] = useState<Playground | null>(null);
   const [snapshot, setSnapshot] = useState<ScoreSnapshot | null>(null);
   const prevSnapshotRef = useRef<ScoreSnapshot | null>(null);
@@ -251,6 +252,10 @@ function App() {
     scene?.setTimeSpeed(timeSpeed);
   }, [scene, timeSpeed]);
 
+  useEffect(() => {
+    scene?.setPaused(!isPlaying);
+  }, [scene, isPlaying]);
+
   // Restore persisted population counts when the scene becomes available, and
   // re-push them whenever a different project is loaded.
   useEffect(() => {
@@ -279,6 +284,10 @@ function App() {
     }, 250);
     return () => clearInterval(id);
   }, [scene]);
+
+  const handleTogglePlay = useCallback((playing: boolean) => {
+    setIsPlaying(playing);
+  }, []);
 
   const handleTimeSpeedChange = useCallback(
     (speed: number) => {
@@ -374,6 +383,8 @@ function App() {
           snapshot={snapshot}
           timeSpeed={timeSpeed}
           onTimeSpeedChange={handleTimeSpeedChange}
+          isPlaying={isPlaying}
+          onTogglePlay={handleTogglePlay}
           onEditBrain={handleEditBrain}
           onDesiredCountChange={handleDesiredCountChange}
           onToggleDebug={handleToggleDebug}

@@ -37,6 +37,8 @@ export interface SidebarProps {
   snapshot: ScoreSnapshot | null;
   timeSpeed: number;
   onTimeSpeedChange: (speed: number) => void;
+  isPlaying: boolean;
+  onTogglePlay: (playing: boolean) => void;
   onEditBrain: (archetype: Archetype) => void;
   onDesiredCountChange: (archetype: Archetype, count: number) => void;
   onToggleDebug: () => void;
@@ -51,6 +53,8 @@ export function Sidebar({
   snapshot,
   timeSpeed,
   onTimeSpeedChange,
+  isPlaying,
+  onTogglePlay,
   onEditBrain,
   onDesiredCountChange,
   onToggleDebug,
@@ -163,23 +167,34 @@ export function Sidebar({
           )}
         </div>
 
-        {/* Time Scale */}
-        <div className="space-y-1.5">
-          <div className="flex justify-between items-center">
-            <span id="time-scale-label" className="text-xs font-medium">
-              Time Scale
-            </span>
-            <span className="text-xs text-muted-foreground font-mono tabular-nums">{timeSpeed.toFixed(1)}x</span>
+        {/* Playback & Time Scale */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium">Play/Pause</span>
+            <Switch
+              id="play-pause-toggle"
+              checked={isPlaying}
+              onCheckedChange={onTogglePlay}
+              aria-label="Toggle simulation playback"
+            />
           </div>
-          <Slider
-            value={[timeSpeed]}
-            onValueChange={([value]) => onTimeSpeedChange(value)}
-            min={0}
-            max={2}
-            step={0.1}
-            className="w-full"
-            aria-labelledby="time-scale-label"
-          />
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center">
+              <span id="time-scale-label" className="text-xs font-medium">
+                Time Scale
+              </span>
+              <span className="text-xs text-muted-foreground font-mono tabular-nums">{timeSpeed.toFixed(1)}x</span>
+            </div>
+            <Slider
+              value={[timeSpeed]}
+              onValueChange={([value]) => onTimeSpeedChange(value)}
+              min={0}
+              max={2}
+              step={0.1}
+              className="w-full"
+              aria-labelledby="time-scale-label"
+            />
+          </div>
         </div>
 
         <div className="border-t border-border" />

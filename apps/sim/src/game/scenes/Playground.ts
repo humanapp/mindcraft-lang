@@ -24,6 +24,7 @@ type ObstacleBody = MatterJS.BodyType & { _obstacleSize: { width: number; height
 export class Playground extends Scene {
   private engine: Engine;
   private timeSpeed: number = 1;
+  private gameplayPaused: boolean = false;
   private unsubProjectUnloading?: () => void;
   private unsubProjectLoaded?: () => void;
   private obstacleBodies: ObstacleBody[] = [];
@@ -170,8 +171,8 @@ export class Playground extends Scene {
         this.matter.body.setStatic(body, true);
         this.persistObstacles();
       } else {
-        this.matter.body.setAngularVelocity(body, 0);
-        this.matter.body.setVelocity(body, { x: 0, y: 0 });
+        //this.matter.body.setAngularVelocity(body, 0);
+        //this.matter.body.setVelocity(body, { x: 0, y: 0 });
         const actor = this.lookupActorByBody(body);
         if (actor) {
           actor.isBeingDragged = false;
@@ -278,8 +279,10 @@ export class Playground extends Scene {
   }
 
   update(time: number, delta: number): void {
-    const scaledDelta = delta * this.timeSpeed;
-    this.engine.tick(time, scaledDelta);
+    if (!this.gameplayPaused) {
+      const scaledDelta = delta * this.timeSpeed;
+      this.engine.tick(time, scaledDelta);
+    }
 
     // Update sprite tints to reflect each actor's current energy level.
     this.engine.updateEnergyVisuals();
@@ -466,18 +469,14 @@ export class Playground extends Scene {
     }
   }
 
+  setPaused(paused: boolean) {
+    this.gameplayPaused = paused;
+  }
+
   // Method to set time scale for the simulation
   setTimeSpeed(speed: number) {
     this.timeSpeed = speed;
-    if (speed === 0) {
-      this.matter.world.pause();
-    } else {
-      this.matter.world.resume();
-      // Scale the underlying Matter.js engine timing so collisions,
-      // velocity integration, and force application all run at the
-      // desired speed. Our brain/mover code also receives scaledDelta.
-      this.matter.world.engine.timing.timeScale = speed;
-    }
+    this.matter.world.engine.timing.timeScale = speed;
   }
 
   // Methods to access and update engine braindefs
