@@ -23,6 +23,7 @@ import { isCompilerControlledPath } from "@mindcraft-lang/ts-compiler";
 import { createSimModule } from "@/brain";
 import type { Archetype } from "@/brain/actor";
 import { ARCHETYPES } from "@/brain/archetypes";
+import type { Obstacle } from "@/brain/vision";
 import { loadExamples } from "@/examples";
 import { name as simName, version as simVersion } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
@@ -132,6 +133,30 @@ function defaultDesiredCounts(): Record<Archetype, number> {
   };
 }
 
+function parseObstacles(value: unknown): Obstacle[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const result: Obstacle[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const o = entry as Partial<Obstacle>;
+    if (
+      typeof o.x === "number" &&
+      typeof o.y === "number" &&
+      typeof o.width === "number" &&
+      typeof o.height === "number" &&
+      Number.isFinite(o.x) &&
+      Number.isFinite(o.y) &&
+      Number.isFinite(o.width) &&
+      Number.isFinite(o.height) &&
+      o.width > 0 &&
+      o.height > 0
+    ) {
+      result.push({ x: o.x, y: o.y, width: o.width, height: o.height });
+    }
+  }
+  return result;
+}
+
 const DESIRED_COUNTS_DEBOUNCE_MS = 200;
 
 export class SimEnvironmentStore {
@@ -149,6 +174,9 @@ export class SimEnvironmentStore {
   private readonly _desiredCountsListeners = new Set<() => void>();
   private _desiredCountsSaveTimer: ReturnType<typeof setTimeout> | undefined;
 
+  private _obstacles: Obstacle[] | undefined;
+  private _projectDataReloadPromise: Promise<void> = Promise.resolve();
+
   private _isSwitchingProject = false;
 
   private constructor(host: AppEnvironmentHost) {
@@ -158,8 +186,36 @@ export class SimEnvironmentStore {
       const prefs = loadUiPreferences(this.host.projectManager.activeProject!.manifest.id);
       this._uiPreferences = this._isSwitchingProject ? { ...prefs, bridgeEnabled: false } : prefs;
       this.userTileDocEntries = [];
-      void this.reloadDesiredCountsFromProject();
+      this._projectDataReloadPromise = this.reloadProjectData();
     });
+  }
+
+  private async reloadProjectData(): Promise<void> {
+    await Promise.all([this.reloadDesiredCountsFromProject(), this.reloadObstaclesFromProject()]);
+  }
+
+  /**
+   * Resolves once the most recent project-load reload of cached app data
+   * (desired counts, obstacles) has finished. Consumers that depend on
+   * cached project data after a project switch should await this before
+   * reading {@link getObstacles} or {@link getDesiredCounts}.
+   */
+  waitForProjectDataReload(): Promise<void> {
+    return this._projectDataReloadPromise;
+  }
+
+  private async reloadObstaclesFromProject(): Promise<void> {
+    let next: Obstacle[] | undefined;
+    try {
+      const raw = await this.host.projectManager.loadAppData("obstacles");
+      if (raw) {
+        const parsed = JSON.parse(raw) as unknown;
+        next = parseObstacles(parsed);
+      }
+    } catch {
+      // corrupted or missing data -- leave undefined so the scene reseeds
+    }
+    this._obstacles = next;
   }
 
   private async reloadDesiredCountsFromProject(): Promise<void> {
@@ -239,7 +295,8 @@ export class SimEnvironmentStore {
     if (metadata) {
       this.userTileDocEntries = buildDocEntries(metadata);
     }
-    await this.reloadDesiredCountsFromProject();
+    this._projectDataReloadPromise = this.reloadProjectData();
+    await this._projectDataReloadPromise;
     initVfsServiceWorker(this);
     this.host.initBridge();
 
@@ -321,7 +378,13 @@ export class SimEnvironmentStore {
       });
     }
 
-    const doc: MindcraftExportDocument = { ...common, app: { actors } };
+    const app: { actors: typeof actors; obstacles?: Obstacle[] } = { actors };
+    const obstacles = this._obstacles;
+    if (obstacles && obstacles.length > 0) {
+      app.obstacles = obstacles.map((o) => ({ x: o.x, y: o.y, width: o.width, height: o.height }));
+    }
+
+    const doc: MindcraftExportDocument = { ...common, app };
     return JSON.stringify(doc, null, 2);
   }
 
@@ -331,7 +394,7 @@ export class SimEnvironmentStore {
     return importProjectCommon(file, simName, simVersion, pm, {
       appLayerCallback: (app) => {
         const diagnostics: { severity: "error" | "warning"; message: string }[] = [];
-        const appData = app as { actors?: unknown[] } | null;
+        const appData = app as { actors?: unknown[]; obstacles?: unknown } | null;
         if (!appData?.actors || !Array.isArray(appData.actors) || appData.actors.length === 0) {
           return {
             diagnostics: [{ severity: "error", message: "No actor data found in app layer." }],
@@ -352,9 +415,23 @@ export class SimEnvironmentStore {
             counts[actorEntry.archetype] = Math.max(0, Math.min(100, Math.round(actorEntry.desiredCount)));
           }
         }
+
+        const importedAppData: Record<string, string> = { actors: JSON.stringify(counts) };
+        if (appData.obstacles !== undefined) {
+          const obstacles = parseObstacles(appData.obstacles);
+          if (obstacles) {
+            importedAppData.obstacles = JSON.stringify(obstacles);
+          } else {
+            diagnostics.push({
+              severity: "warning",
+              message: "Ignored malformed obstacle data in app layer.",
+            });
+          }
+        }
+
         return {
           diagnostics,
-          appData: { actors: JSON.stringify(counts) },
+          appData: importedAppData,
         };
       },
     });
@@ -472,6 +549,23 @@ export class SimEnvironmentStore {
     return () => {
       this._desiredCountsListeners.delete(listener);
     };
+  }
+
+  // -- Obstacles (per-project, persisted on first generation) --
+
+  /**
+   * Returns the cached obstacles for the active project. `undefined` means
+   * no obstacles have been persisted yet -- the scene should generate a
+   * fresh set and call {@link setObstacles}.
+   */
+  getObstacles(): Obstacle[] | undefined {
+    return this._obstacles;
+  }
+
+  setObstacles(obstacles: ReadonlyArray<Obstacle>): void {
+    const next = obstacles.map((o) => ({ x: o.x, y: o.y, width: o.width, height: o.height }));
+    this._obstacles = next;
+    void this.host.projectManager.saveAppData("obstacles", JSON.stringify(next));
   }
 
   // -- Bridge (delegate) --

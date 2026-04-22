@@ -72,21 +72,19 @@ export class Playground extends Scene {
       g.destroy();
     }
 
-    // Create static obstacles with random sizes and positions
+    // Create static obstacles. Use the project's persisted obstacle set if
+    // one exists; otherwise generate a fresh random set and persist it so
+    // the same obstacles are restored on subsequent loads of this project.
+    const store = this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore;
     const brownColor = 0x6c757d;
-    const obstacleCount = 4;
-    const minWidth = 30;
-    const maxWidth = 120;
-    const minHeight = 30;
-    const maxHeight = 120;
-    const margin = 100; // Keep obstacles away from edges
 
-    for (let i = 0; i < obstacleCount; i++) {
-      const width = Phaser.Math.Between(minWidth, maxWidth);
-      const height = Phaser.Math.Between(minHeight, maxHeight);
-      const x = Phaser.Math.Between(margin, this.scale.width - margin);
-      const y = Phaser.Math.Between(margin, this.scale.height - margin);
+    const persisted = store.getObstacles();
+    const obstacleData =
+      persisted && persisted.length > 0
+        ? persisted.map((o) => ({ x: o.x, y: o.y, width: o.width, height: o.height }))
+        : this.generateRandomObstacles();
 
+    for (const { x, y, width, height } of obstacleData) {
       // Create a visual rectangle
       this.add.rectangle(x, y, width, height, brownColor, 0.8);
 
@@ -102,12 +100,13 @@ export class Playground extends Scene {
       });
 
       this.wallBodies.push(obstacleBody);
-
-      // Store obstacle bounds for spawn collision checking
       this.obstacles.push({ x, y, width, height });
     }
 
-    const store = this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore;
+    if (!persisted || persisted.length === 0) {
+      store.setObstacles(this.obstacles);
+    }
+
     this.engine = new Engine(this, this.obstacles, store);
 
     this.unsubProjectUnloading = store.onProjectUnloading(() => {
@@ -115,7 +114,12 @@ export class Playground extends Scene {
     });
     this.unsubProjectLoaded = store.onProjectLoaded(() => {
       this.engine.shutdown();
-      this.scene.restart();
+      // Wait for the store to finish reloading project app data (obstacles,
+      // desired counts) before restarting the scene. Otherwise create() may
+      // run with stale cached data from the previous project.
+      void store.waitForProjectDataReload().then(() => {
+        this.scene.restart();
+      });
     });
 
     // Set up Matter collision events -- handle both initial contact and
@@ -208,6 +212,25 @@ export class Playground extends Scene {
 
     // Always update debug vision cones (clears them when debug is off)
     this.engine.drawDebugVisionCones();
+  }
+
+  private generateRandomObstacles(): Array<{ x: number; y: number; width: number; height: number }> {
+    const obstacleCount = 4;
+    const minWidth = 30;
+    const maxWidth = 120;
+    const minHeight = 30;
+    const maxHeight = 120;
+    const margin = 100; // Keep obstacles away from edges
+
+    const obstacles: Array<{ x: number; y: number; width: number; height: number }> = [];
+    for (let i = 0; i < obstacleCount; i++) {
+      const width = Phaser.Math.Between(minWidth, maxWidth);
+      const height = Phaser.Math.Between(minHeight, maxHeight);
+      const x = Phaser.Math.Between(margin, this.scale.width - margin);
+      const y = Phaser.Math.Between(margin, this.scale.height - margin);
+      obstacles.push({ x, y, width, height });
+    }
+    return obstacles;
   }
 
   public randomPositionWithinBounds(radius: number = 20): Vector2 {
