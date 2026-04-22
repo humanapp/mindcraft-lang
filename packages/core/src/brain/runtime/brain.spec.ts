@@ -30,6 +30,7 @@ import {
   mkActionDescriptor,
   mkCallDef,
   mkNumberValue,
+  mkSensorTileId,
   mkVariableTileId,
   NativeType,
   NIL_VALUE,
@@ -990,5 +991,88 @@ describe("Brain behavioral -- nil value overloads", () => {
     const brain = runBrain(brainDef);
 
     assert.equal(brain.getVariable(v.varName), undefined, "DO should not execute");
+  });
+});
+
+describe("Brain behavioral -- timeout sensor", () => {
+  function getCoreSensor(sensorId: string): BrainTileSensorDef {
+    const tile = services.tiles.get(mkSensorTileId(sensorId)) as BrainTileSensorDef;
+    assert.ok(tile, `${sensorId} sensor tile should be registered`);
+    return tile;
+  }
+
+  test("WHEN [timeout][constant 0.5] -> fires after 500ms", () => {
+    const timeoutTile = getCoreSensor(CoreSensorId.Timeout);
+    const v = mkVar("t-const");
+
+    const brainDef = buildBrain([timeoutTile, mkLiteral(0.5)], [v, opAssign, mkLiteral(1)]);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+
+    for (let t = 16; t <= 1000; t += 16) {
+      brain.think(t);
+    }
+
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1, "DO should have run after timeout fired");
+  });
+
+  test("WHEN [timeout][random + 5] -> evaluates expression as delay (does not fire under 4s)", () => {
+    const timeoutTile = getCoreSensor(CoreSensorId.Timeout);
+    const randomTile = getCoreSensor(CoreSensorId.Random);
+
+    const v = mkVar("t-expr");
+    const brainDef = buildBrain([timeoutTile, randomTile, opAdd, mkLiteral(5)], [v, opAssign, mkLiteral(1)]);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+
+    // delay = random(0..1) + 5 = 5..6 seconds. After 4 seconds it must NOT have fired.
+    // (If the parser silently dropped the arg, the default 1s delay would have fired by 1s.)
+    for (let t = 16; t <= 4000; t += 16) {
+      brain.think(t);
+    }
+
+    assert.equal(brain.getVariable(v.varName), undefined, "timeout should not have fired before 5s");
+
+    // Continue past the upper bound (6s). Timeout MUST fire by then.
+    for (let t = 4016; t <= 7000; t += 16) {
+      brain.think(t);
+    }
+
+    assert.equal(
+      extractNumberValue(brain.getVariable(v.varName)),
+      1,
+      "DO should have run after timeout fired (within 5..6s window)"
+    );
+  });
+
+  test("WHEN [timeout][unassignedVar + random] -> nil-poisoned delay never fires (rule evaluates false)", () => {
+    const timeoutTile = getCoreSensor(CoreSensorId.Timeout);
+    const randomTile = getCoreSensor(CoreSensorId.Random);
+
+    // unassignedVar is NEVER written. At runtime its value is nil. The compiler
+    // typed it as number based on its declared type, so the number+number Add
+    // overload runs at runtime with one nil operand. Hardened math ops return
+    // NIL_VALUE; the timeout sensor sees a non-numeric delay and refuses to fire.
+    const unassignedVar = mkVar("unassigned");
+    const sentinelVar = mkVar("sentinel");
+    const brainDef = buildBrain([timeoutTile, unassignedVar, opAdd, randomTile], [sentinelVar, opAssign, mkLiteral(1)]);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+
+    for (let t = 16; t <= 5000; t += 16) {
+      brain.think(t);
+    }
+
+    assert.equal(
+      brain.getVariable(sentinelVar.varName),
+      undefined,
+      "DO should NEVER run when delay expression evaluates to nil/NaN"
+    );
   });
 });

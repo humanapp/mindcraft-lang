@@ -7,6 +7,7 @@ import {
   BrainFunctionEntry,
   CoreOpId,
   type ExecutionContext,
+  FALSE_VALUE,
   HostAsyncFn,
   type HostFn,
   type IFunctionRegistry,
@@ -281,6 +282,83 @@ export class OperatorOverloads implements IOperatorOverloads {
   }
 }
 
+// Operand validation helpers ensure that math operators reject nil and NaN
+// operands. The compiler resolves overloads by static type, but at runtime an
+// operand may turn out to be nil (e.g. an unassigned variable) or NaN (e.g. a
+// poisoned earlier computation). We return NIL_VALUE for arithmetic and
+// FALSE_VALUE for comparisons so a faulty subexpression makes the surrounding
+// rule evaluate false rather than faulting the VM or producing NaN-poisoned
+// downstream values.
+
+export function asValidNumber(v: Value | undefined): number | undefined {
+  if (v === undefined || v.t !== NativeType.Number) {
+    return undefined;
+  }
+  if (MathOps.isNaN(v.v)) {
+    return undefined;
+  }
+  return v.v;
+}
+
+export function asValidString(v: Value | undefined): string | undefined {
+  if (v === undefined || v.t !== NativeType.String) {
+    return undefined;
+  }
+  return v.v;
+}
+
+export function safeNumBinary(args: MapValue, op: (a: number, b: number) => number): Value {
+  const a = asValidNumber(args.v.get(0));
+  const b = asValidNumber(args.v.get(1));
+  if (a === undefined || b === undefined) {
+    return NIL_VALUE;
+  }
+  const result = op(a, b);
+  if (MathOps.isNaN(result)) {
+    return NIL_VALUE;
+  }
+  return mkNumberValue(result);
+}
+
+export function safeNumUnary(args: MapValue, op: (a: number) => number): Value {
+  const a = asValidNumber(args.v.get(0));
+  if (a === undefined) {
+    return NIL_VALUE;
+  }
+  const result = op(a);
+  if (MathOps.isNaN(result)) {
+    return NIL_VALUE;
+  }
+  return mkNumberValue(result);
+}
+
+export function safeNumCompare(args: MapValue, cmp: (a: number, b: number) => boolean): Value {
+  const a = asValidNumber(args.v.get(0));
+  const b = asValidNumber(args.v.get(1));
+  if (a === undefined || b === undefined) {
+    return FALSE_VALUE;
+  }
+  return mkBooleanValue(cmp(a, b));
+}
+
+export function safeStrConcat(args: MapValue): Value {
+  const a = asValidString(args.v.get(0));
+  const b = asValidString(args.v.get(1));
+  if (a === undefined || b === undefined) {
+    return NIL_VALUE;
+  }
+  return { t: NativeType.String, v: `${a}${b}` };
+}
+
+export function safeStrCompare(args: MapValue, cmp: (a: string, b: string) => boolean): Value {
+  const a = asValidString(args.v.get(0));
+  const b = asValidString(args.v.get(1));
+  if (a === undefined || b === undefined) {
+    return FALSE_VALUE;
+  }
+  return mkBooleanValue(cmp(a, b));
+}
+
 /**
  * Registers all core operators with their type-specific overloads.
  * This includes logical (and, or, not), arithmetic (+, -, *, /, negate),
@@ -370,13 +448,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkNumberValue(a.v + b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => a + b) },
     false
   );
   operatorOverloads.binary(
@@ -384,13 +456,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkNumberValue(a.v - b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => a - b) },
     false
   );
   operatorOverloads.binary(
@@ -398,13 +464,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkNumberValue(a.v * b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => a * b) },
     false
   );
   operatorOverloads.binary(
@@ -413,14 +473,15 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        if (b.v === 0) {
-          throw new Error("Division by zero");
-        }
-        return mkNumberValue(a.v / b.v);
-      },
+      exec: (_ctx: ExecutionContext, args: MapValue) =>
+        safeNumBinary(args, (a, b) => {
+          // Division by zero yields NIL_VALUE rather than faulting; safeNumBinary
+          // catches both 0/0 (NaN result) and finite/0 (Infinity result is rejected by NaN check on subsequent ops).
+          if (b === 0) {
+            return 0 / 0;
+          }
+          return a / b;
+        }),
     },
     false
   );
@@ -430,14 +491,13 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        if (b.v === 0) {
-          throw new Error("Division by zero");
-        }
-        return mkNumberValue(a.v % b.v);
-      },
+      exec: (_ctx: ExecutionContext, args: MapValue) =>
+        safeNumBinary(args, (a, b) => {
+          if (b === 0) {
+            return 0 / 0;
+          }
+          return a % b;
+        }),
     },
     false
   );
@@ -446,25 +506,14 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkNumberValue(MathOps.pow(a.v, b.v));
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.pow(a, b)) },
     false
   );
   operatorOverloads.unary(
     CoreOpId.Negate,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        return mkNumberValue(-a.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumUnary(args, (a) => -a) },
     false
   );
 
@@ -473,13 +522,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkNumberValue(MathOps.bitAnd(a.v, b.v));
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.bitAnd(a, b)) },
     false
   );
   operatorOverloads.binary(
@@ -487,13 +530,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkNumberValue(MathOps.bitOr(a.v, b.v));
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.bitOr(a, b)) },
     false
   );
   operatorOverloads.binary(
@@ -501,25 +538,14 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkNumberValue(MathOps.bitXor(a.v, b.v));
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.bitXor(a, b)) },
     false
   );
   operatorOverloads.unary(
     CoreOpId.BitwiseNot,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        return mkNumberValue(MathOps.bitNot(a.v));
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumUnary(args, (a) => MathOps.bitNot(a)) },
     false
   );
   operatorOverloads.binary(
@@ -527,13 +553,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkNumberValue(MathOps.leftShift(a.v, b.v));
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.leftShift(a, b)) },
     false
   );
   operatorOverloads.binary(
@@ -541,13 +561,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkNumberValue(MathOps.rightShift(a.v, b.v));
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.rightShift(a, b)) },
     false
   );
 
@@ -597,13 +611,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkBooleanValue(a.v === b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a === b) },
     false
   );
   operatorOverloads.binary(
@@ -611,13 +619,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkBooleanValue(a.v !== b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a !== b) },
     false
   );
   operatorOverloads.binary(
@@ -625,13 +627,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkBooleanValue(a.v < b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a < b) },
     false
   );
   operatorOverloads.binary(
@@ -639,13 +635,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkBooleanValue(a.v <= b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a <= b) },
     false
   );
   operatorOverloads.binary(
@@ -653,13 +643,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkBooleanValue(a.v > b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a > b) },
     false
   );
   operatorOverloads.binary(
@@ -667,13 +651,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as NumberValue;
-        const b = args.v.get(1) as NumberValue;
-        return mkBooleanValue(a.v >= b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a >= b) },
     false
   );
   operatorOverloads.binary(
@@ -694,13 +672,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.String,
     CoreTypeIds.String,
     CoreTypeIds.String,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as StringValue;
-        const b = args.v.get(1) as StringValue;
-        return { t: NativeType.String, v: `${a.v}${b.v}` };
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeStrConcat(args) },
     false
   );
   operatorOverloads.binary(
@@ -708,13 +680,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.String,
     CoreTypeIds.String,
     CoreTypeIds.Boolean,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as StringValue;
-        const b = args.v.get(1) as StringValue;
-        return mkBooleanValue(a.v === b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeStrCompare(args, (a, b) => a === b) },
     false
   );
   operatorOverloads.binary(
@@ -722,13 +688,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.String,
     CoreTypeIds.String,
     CoreTypeIds.Boolean,
-    {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as StringValue;
-        const b = args.v.get(1) as StringValue;
-        return mkBooleanValue(a.v !== b.v);
-      },
-    },
+    { exec: (_ctx: ExecutionContext, args: MapValue) => safeStrCompare(args, (a, b) => a !== b) },
     false
   );
   operatorOverloads.binary(

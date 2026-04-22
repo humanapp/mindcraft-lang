@@ -1,3 +1,4 @@
+import { MathOps } from "../../../platform/math";
 import {
   type ActionDescriptor,
   type BrainActionCallDef,
@@ -57,11 +58,16 @@ function onPageEntered(ctx: ExecutionContext) {
 
 function execTimeout(ctx: ExecutionContext, args: MapValue): Value {
   let delay = 1; // default 1 second
-  const anonNumberValue = args.v.get(kAnonymousNumberSlotId)!;
-  if (anonNumberValue) {
-    if (isNumberValue(anonNumberValue)) {
-      delay = anonNumberValue.v;
+  const anonNumberValue = args.v.get(kAnonymousNumberSlotId);
+  if (anonNumberValue !== undefined) {
+    // The user supplied a delay expression. If it failed to evaluate to a
+    // valid finite number (e.g. nil from an unassigned variable, or a
+    // NaN-poisoned arithmetic result), refuse to fire so the rule
+    // evaluates false rather than silently using the default delay.
+    if (!isNumberValue(anonNumberValue) || MathOps.isNaN(anonNumberValue.v)) {
+      return FALSE_VALUE;
     }
+    delay = anonNumberValue.v;
   }
 
   let state = getCallSiteState<TimeoutState>(ctx);
