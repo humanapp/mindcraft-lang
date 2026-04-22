@@ -6,7 +6,7 @@
 
 import type { Vector2 } from "@mindcraft-lang/core/app";
 import type { Actor } from "./actor";
-import type { Obstacle } from "./vision";
+import type { PrecomputedObstacle } from "./vision";
 
 export type Steering = {
   turn: number; // -1..+1
@@ -384,7 +384,8 @@ function nearestPointOnAABB(
  * The summed repulsion is then converted into a turn + forward steering.
  *
  * @param self          The moving actor
- * @param obstacles     Static AABB obstacles (center-based, from vision.ts)
+ * @param obstacles     Current obstacle AABBs (rebuilt per-tick from live
+ *                      Matter bodies, since obstacles can be dragged)
  * @param worldWidth    Width of the world (for boundary walls)
  * @param worldHeight   Height of the world (for boundary walls)
  * @param avoidRadius   Distance at which avoidance begins (pixels)
@@ -392,7 +393,7 @@ function nearestPointOnAABB(
  */
 export function steerAvoidObstacles(
   self: Actor,
-  obstacles: ReadonlyArray<Obstacle>,
+  obstacles: ReadonlyArray<PrecomputedObstacle>,
   worldWidth: number,
   worldHeight: number,
   avoidRadius: number = 60,
@@ -420,9 +421,9 @@ export function steerAvoidObstacles(
 
   // -- AABB obstacles -------------------------------------------
   for (const obs of obstacles) {
-    const halfW = obs.width / 2;
-    const halfH = obs.height / 2;
-    const { nx, ny } = nearestPointOnAABB(px, py, obs.x, obs.y, halfW, halfH);
+    const halfW = (obs.maxX - obs.minX) / 2;
+    const halfH = (obs.maxY - obs.minY) / 2;
+    const { nx, ny } = nearestPointOnAABB(px, py, obs.cx, obs.cy, halfW, halfH);
     accumulate(nx, ny);
   }
 

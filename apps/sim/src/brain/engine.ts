@@ -10,13 +10,7 @@ import type { MoverConfig } from "./movement";
 import { drawMovementIntent } from "./movement";
 import { type ScoreSnapshot, ScoreTracker } from "./score";
 import { SpatialGrid } from "./spatial-grid";
-import {
-  type Obstacle,
-  type PrecomputedObstacle,
-  precomputeObstacles,
-  queryVisibleActors,
-  type SightResult,
-} from "./vision";
+import { type PrecomputedObstacle, queryVisibleActors, refreshObstaclesFromBodies, type SightResult } from "./vision";
 
 export class Engine {
   private world: ECS.World<Actor>;
@@ -54,8 +48,21 @@ export class Engine {
     return this._elapsedMs;
   }
 
-  /** Precomputed obstacle bounds for fast LOS checks */
+  /**
+   * Live world-AABBs of every obstacle body, refreshed at the top of each
+   * tick from `obstacleBodies`. Exposed via {@link obstacles} for steering
+   * and consumed directly by LOS checks. Rebuilt in-place to avoid GC.
+   */
   private precomputedObstacles: PrecomputedObstacle[] = [];
+
+  /**
+   * Current obstacle AABBs (live). Steering and any other consumers should
+   * read this each tick rather than caching, because obstacles can be
+   * dragged and rotated by the user.
+   */
+  get obstacles(): ReadonlyArray<PrecomputedObstacle> {
+    return this.precomputedObstacles;
+  }
 
   /** Persistent graphics object for the spatial-grid debug overlay */
   private gridDebugGfx?: Phaser.GameObjects.Graphics;
@@ -98,7 +105,7 @@ export class Engine {
 
   constructor(
     private scene: Playground,
-    readonly obstacles: ReadonlyArray<Obstacle> = [],
+    readonly obstacleBodies: ReadonlyArray<MatterJS.BodyType> = [],
     private readonly store: SimEnvironmentStore
   ) {
     this.world = new ECS.World<Actor>();
@@ -119,7 +126,7 @@ export class Engine {
 
   start(): void {
     this.grid = new SpatialGrid(this.worldWidth, this.worldHeight, 150);
-    this.precomputedObstacles = precomputeObstacles(this.obstacles);
+    refreshObstaclesFromBodies(this.obstacleBodies, this.precomputedObstacles);
     this.gridDebugGfx = this.scene.add.graphics();
     this.gridDebugGfx.setDepth(-2);
     this.blipPool = new BlipPool(this);
@@ -160,6 +167,12 @@ export class Engine {
   tick(time: number, dt: number) {
     if (this._isShutdown) return;
     this.store.flushPendingBrainRebuilds();
+
+    // Refresh obstacle AABBs from live Matter bodies. Obstacles are
+    // dynamic (draggable) so their position/rotation can change every
+    // frame; any stale snapshot would let LOS rays and avoidance see
+    // obstacles where they used to be rather than where they are now.
+    refreshObstaclesFromBodies(this.obstacleBodies, this.precomputedObstacles);
 
     // Rebuild spatial grid once per tick -- O(N) and avoids incremental bookkeeping
     this.grid.rebuild(this.world.entities);

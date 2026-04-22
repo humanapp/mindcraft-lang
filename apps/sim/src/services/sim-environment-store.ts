@@ -151,7 +151,8 @@ function parseObstacles(value: unknown): Obstacle[] | undefined {
       o.width > 0 &&
       o.height > 0
     ) {
-      result.push({ x: o.x, y: o.y, width: o.width, height: o.height });
+      const rotation = typeof o.rotation === "number" && Number.isFinite(o.rotation) ? o.rotation : undefined;
+      result.push({ x: o.x, y: o.y, width: o.width, height: o.height, rotation });
     }
   }
   return result;
@@ -381,7 +382,13 @@ export class SimEnvironmentStore {
     const app: { actors: typeof actors; obstacles?: Obstacle[] } = { actors };
     const obstacles = this._obstacles;
     if (obstacles && obstacles.length > 0) {
-      app.obstacles = obstacles.map((o) => ({ x: o.x, y: o.y, width: o.width, height: o.height }));
+      app.obstacles = obstacles.map((o) => ({
+        x: o.x,
+        y: o.y,
+        width: o.width,
+        height: o.height,
+        ...(o.rotation !== undefined ? { rotation: o.rotation } : {}),
+      }));
     }
 
     const doc: MindcraftExportDocument = { ...common, app };
@@ -563,7 +570,13 @@ export class SimEnvironmentStore {
   }
 
   setObstacles(obstacles: ReadonlyArray<Obstacle>): void {
-    const next = obstacles.map((o) => ({ x: o.x, y: o.y, width: o.width, height: o.height }));
+    const next = obstacles.map((o) => ({
+      x: o.x,
+      y: o.y,
+      width: o.width,
+      height: o.height,
+      ...(o.rotation !== undefined ? { rotation: o.rotation } : {}),
+    }));
     this._obstacles = next;
     void this.host.projectManager.saveAppData("obstacles", JSON.stringify(next));
   }

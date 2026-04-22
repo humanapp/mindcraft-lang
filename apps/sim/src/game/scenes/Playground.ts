@@ -19,29 +19,26 @@ const CATEGORY_WALL = 0x0001;
 const CATEGORY_ACTOR = 0x0002;
 const CATEGORY_BLIP = 0x0004;
 
+type ObstacleBody = MatterJS.BodyType & { _obstacleSize: { width: number; height: number } };
+
 export class Playground extends Scene {
-  private wallBodies: MatterJS.BodyType[] = [];
   private engine: Engine;
   private timeSpeed: number = 1;
   private unsubProjectUnloading?: () => void;
   private unsubProjectLoaded?: () => void;
-  private obstacles: Array<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }> = [];
+  private obstacleBodies: ObstacleBody[] = [];
   private draggedActor?: Actor;
-  private draggedObstacle?: {
-    body: MatterJS.BodyType;
-    constraint: MatterJS.ConstraintType;
-  };
 
   constructor() {
     super("Playground");
   }
 
   create() {
+    // scene.restart() re-runs create() on the same Scene instance, so any
+    // class fields populated below would otherwise accumulate across reloads.
+    this.obstacleBodies = [];
+    this.draggedActor = undefined;
+
     // Set physics world bounds (creates boundary walls)
     this.matter.world.setBounds(0, 0, this.scale.width, this.scale.height, 32, true, true, true, true);
 
@@ -84,43 +81,96 @@ export class Playground extends Scene {
     const brownColor = 0x6c757d;
 
     const persisted = store.getObstacles();
-    const obstacleData =
+    // For brand-new projects, generate random obstacles AND assign each a
+    // random rotation. For persisted projects, honor the saved rotation
+    // (or 0 if the field is missing from older saves) so reloading
+    // doesn't shuffle obstacles around.
+    const obstacleData: Array<{ x: number; y: number; width: number; height: number; rotation: number }> =
       persisted && persisted.length > 0
-        ? persisted.map((o) => ({ x: o.x, y: o.y, width: o.width, height: o.height }))
-        : this.generateRandomObstacles();
+        ? persisted.map((o) => ({
+            x: o.x,
+            y: o.y,
+            width: o.width,
+            height: o.height,
+            rotation: o.rotation ?? 0,
+          }))
+        : this.generateRandomObstacles().map((o) => ({
+            ...o,
+            rotation: Phaser.Math.FloatBetween(0, Math.PI * 2),
+          }));
 
-    for (const { x, y, width, height } of obstacleData) {
+    for (const { x, y, width, height, rotation } of obstacleData) {
       const rect = this.add.rectangle(x, y, width, height, brownColor, 0.8);
       const obstacleGO = this.matter.add.gameObject(rect, {
         shape: { type: "rectangle", width, height },
-        isStatic: false,
-        mass: 2000,
-        frictionAir: 0.9,
-        friction: 0.95,
-        restitution: 0.05,
+        angle: rotation,
         collisionFilter: {
           category: CATEGORY_WALL,
           mask: CATEGORY_WALL | CATEGORY_ACTOR | CATEGORY_BLIP,
         },
       }) as Phaser.GameObjects.Rectangle & { body: MatterJS.BodyType };
 
-      const obstacleBody = obstacleGO.body as MatterJS.BodyType;
-      obstacleBody.sleepThreshold = Number.POSITIVE_INFINITY;
-
-      this.wallBodies.push(obstacleBody);
-      this.obstacles.push({ x, y, width, height });
-
-      obstacleGO.setInteractive({ useHandCursor: true });
-      obstacleGO.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
-        this.startDraggingObstacle(obstacleBody, pointer);
-      });
+      // Construct dynamic so Matter computes a real mass/inertia from
+      // density*area, then freeze. If we constructed static, the dynamic
+      // properties would be zeroed and a later setStatic(false) on drag
+      // would leave the body with bad mass/inertia (NaN propagates and
+      // the visual disappears).
+      const obstacleBody = obstacleGO.body as ObstacleBody;
+      obstacleBody._obstacleSize = { width, height };
+      this.matter.body.setStatic(obstacleBody, true);
+      this.obstacleBodies.push(obstacleBody);
     }
 
     if (!persisted || persisted.length === 0) {
-      store.setObstacles(this.obstacles);
+      this.persistObstacles();
     }
 
-    this.engine = new Engine(this, this.obstacles, store);
+    this.engine = new Engine(this, this.obstacleBodies, store);
+
+    // Obstacles are static at rest so actor collisions cannot push them
+    // around. To allow drag, we flip the hit-tested obstacle to non-static
+    // on pointerdown (registered before the pointer constraint so this
+    // handler runs first), then back to static on dragend. We also boost
+    // density on grab so the dragged body feels heavy and resists fast
+    // flicks rather than whipping around. High frictionAir damps linear
+    // velocity strongly, which makes off-center pointer pulls translate
+    // into rotation (the body resists sliding so the spring torque turns
+    // it instead).
+    const DRAG_DENSITY = 0.05;
+    const DRAG_FRICTION_AIR = 0.4;
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+      const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      for (const body of this.obstacleBodies) {
+        const b = body.bounds;
+        if (worldPoint.x >= b.min.x && worldPoint.x <= b.max.x && worldPoint.y >= b.min.y && worldPoint.y <= b.max.y) {
+          this.matter.body.setStatic(body, false);
+          this.matter.body.setDensity(body, DRAG_DENSITY);
+          body.frictionAir = DRAG_FRICTION_AIR;
+          break;
+        }
+      }
+    });
+
+    // Canonical Matter.js mouse-drag. Filtered (via collisionFilter.mask)
+    // to only grab obstacle bodies -- actors have their own drag handling.
+    // angularStiffness: 0 disables the constraint's angle-locking spring,
+    // so pulling a corner sideways generates real torque (r x F) and the
+    // body rotates like a box dragged across a floor.
+    this.matter.add.pointerConstraint({
+      stiffness: 0.05,
+      damping: 0.1,
+      angularStiffness: 0,
+      collisionFilter: {
+        category: 0x0001,
+        mask: CATEGORY_WALL,
+        group: 0,
+      },
+    } as Phaser.Types.Physics.Matter.MatterConstraintConfig);
+
+    this.matter.world.on("dragend", (body: MatterJS.BodyType) => {
+      this.matter.body.setStatic(body, true);
+      this.persistObstacles();
+    });
 
     this.unsubProjectUnloading = store.onProjectUnloading(() => {
       this.engine.shutdown();
@@ -188,11 +238,9 @@ export class Playground extends Scene {
     // `spawn()` so it only fires when the pointer is actually over an actor.
     this.input.on(Phaser.Input.Events.POINTER_UP, () => {
       this.releaseDraggedActor();
-      this.releaseDraggedObstacle();
     });
     this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, () => {
       this.releaseDraggedActor();
-      this.releaseDraggedObstacle();
     });
 
     this.engine.start();
@@ -260,23 +308,6 @@ export class Playground extends Scene {
       }
     }
 
-    if (this.draggedObstacle) {
-      const pointer = this.input.activePointer;
-      const c = this.draggedObstacle.constraint as unknown as {
-        pointA: { x: number; y: number };
-      };
-      c.pointA.x = pointer.worldX;
-      c.pointA.y = pointer.worldY;
-      // Damp the body's velocity each frame to keep heavy obstacles from
-      // building up momentum and overshooting.
-      const body = this.draggedObstacle.body;
-      this.matter.body.setVelocity(body, {
-        x: body.velocity.x * 0.85,
-        y: body.velocity.y * 0.85,
-      });
-      this.matter.body.setAngularVelocity(body, body.angularVelocity * 0.85);
-    }
-
     // Update sprite tints to reflect each actor's current energy level.
     this.engine.updateEnergyVisuals();
 
@@ -304,37 +335,17 @@ export class Playground extends Scene {
     }
   }
 
-  private startDraggingObstacle(body: MatterJS.BodyType, pointer: Phaser.Input.Pointer): void {
-    this.releaseDraggedActor();
-    this.releaseDraggedObstacle();
-
-    // Express the click point in the body's local frame so the joint
-    // anchors at the exact spot the user grabbed (off-center grabs will
-    // produce torque and let the obstacle swing/rotate).
-    const dx = pointer.worldX - body.position.x;
-    const dy = pointer.worldY - body.position.y;
-    const cos = Math.cos(-body.angle);
-    const sin = Math.sin(-body.angle);
-    const localX = dx * cos - dy * sin;
-    const localY = dx * sin + dy * cos;
-
-    // A soft, heavily-damped spring from the world (cursor) to the body.
-    // Low stiffness + high damping + the body's heavy mass + high
-    // frictionAir keeps motion controlled and sluggish.
-    const constraint = this.matter.add.worldConstraint(body, 0, 0.02, {
-      pointA: { x: pointer.worldX, y: pointer.worldY },
-      pointB: { x: localX, y: localY },
-      damping: 0.9,
-    });
-    this.draggedObstacle = { body, constraint };
-  }
-
-  private releaseDraggedObstacle(): void {
-    if (!this.draggedObstacle) return;
-    this.matter.world.removeConstraint(this.draggedObstacle.constraint);
-    this.matter.body.setVelocity(this.draggedObstacle.body, { x: 0, y: 0 });
-    this.matter.body.setAngularVelocity(this.draggedObstacle.body, 0);
-    this.draggedObstacle = undefined;
+  private persistObstacles(): void {
+    const store = this.game.registry.get(STORE_REGISTRY_KEY) as SimEnvironmentStore;
+    store.setObstacles(
+      this.obstacleBodies.map((b) => ({
+        x: b.position.x,
+        y: b.position.y,
+        width: b._obstacleSize.width,
+        height: b._obstacleSize.height,
+        rotation: b.angle,
+      }))
+    );
   }
 
   private generateRandomObstacles(): Array<{ x: number; y: number; width: number; height: number }> {
@@ -362,12 +373,14 @@ export class Playground extends Scene {
       const x = Phaser.Math.Between(40, this.scale.width - 40);
       const y = Phaser.Math.Between(40, this.scale.height - 40);
 
-      // Check if position overlaps with any obstacle
+      // Check if position overlaps with any obstacle. Read live world
+      // AABBs from each Matter body so we don't spawn into an obstacle
+      // that has been dragged to a new location.
       let overlaps = false;
-      for (const obstacle of this.obstacles) {
-        // Check if circle (actor) intersects with rectangle (obstacle)
-        const closestX = Math.max(obstacle.x - obstacle.width / 2, Math.min(x, obstacle.x + obstacle.width / 2));
-        const closestY = Math.max(obstacle.y - obstacle.height / 2, Math.min(y, obstacle.y + obstacle.height / 2));
+      for (const body of this.obstacleBodies) {
+        const b = body.bounds;
+        const closestX = Math.max(b.min.x, Math.min(x, b.max.x));
+        const closestY = Math.max(b.min.y, Math.min(y, b.max.y));
         const distanceX = x - closestX;
         const distanceY = y - closestY;
         const distanceSquared = distanceX * distanceX + distanceY * distanceY;

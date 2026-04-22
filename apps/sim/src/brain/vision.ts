@@ -4,12 +4,14 @@ import type { SpatialGrid } from "./spatial-grid";
 /**
  * An axis-aligned rectangle used as a line-of-sight obstacle.
  * x, y = center; width, height = full dimensions.
+ * rotation = optional initial angle in radians (defaults to 0 if absent).
  */
 export interface Obstacle {
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
+  readonly rotation?: number;
 }
 
 /**
@@ -51,6 +53,46 @@ export function precomputeObstacles(obstacles: ReadonlyArray<Obstacle>): Precomp
       cullRadiusSq: halfW * halfW + halfH * halfH,
     };
   });
+}
+
+/**
+ * Build a PrecomputedObstacle from a (possibly rotated) Matter body's
+ * world-space AABB. Use this when obstacle bodies can move or rotate, so
+ * LOS and avoidance see their current bounds rather than stale spawn
+ * positions. The AABB of a rotated rectangle is larger than the body
+ * itself; this is acceptable for occlusion and avoidance heuristics.
+ */
+export function precomputeObstacleFromBody(body: MatterJS.BodyType): PrecomputedObstacle {
+  const bounds = body.bounds;
+  const minX = bounds.min.x;
+  const maxX = bounds.max.x;
+  const minY = bounds.min.y;
+  const maxY = bounds.max.y;
+  const halfW = (maxX - minX) / 2;
+  const halfH = (maxY - minY) / 2;
+  return {
+    minX,
+    maxX,
+    minY,
+    maxY,
+    cx: minX + halfW,
+    cy: minY + halfH,
+    cullRadiusSq: halfW * halfW + halfH * halfH,
+  };
+}
+
+/**
+ * Refresh an existing PrecomputedObstacle array in-place from the current
+ * world AABBs of the supplied bodies. Allocates only when the input length
+ * changes; otherwise mutates entries to avoid per-tick GC pressure.
+ */
+export function refreshObstaclesFromBodies(bodies: ReadonlyArray<MatterJS.BodyType>, out: PrecomputedObstacle[]): void {
+  if (out.length !== bodies.length) {
+    out.length = bodies.length;
+  }
+  for (let i = 0; i < bodies.length; i++) {
+    out[i] = precomputeObstacleFromBody(bodies[i]);
+  }
 }
 
 export interface SightResult {
