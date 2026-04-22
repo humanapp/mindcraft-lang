@@ -410,32 +410,30 @@ export class Engine {
           drawMovementIntent(actor.debugGraphics, actor, actor.lastIntent);
         }
 
-        // Draw target line if the current page has a targetActor or targetPos.
-        // Dash on/off is determined purely by (worldX + worldY - globalT) mod period
-        // so the pattern is fixed in world space — actor position only controls
-        // which slice of the pattern gets drawn, not where dashes fall.
-        if (actor.debugTargetPos) {
-          const tx = actor.debugTargetPos.X;
-          const ty = actor.debugTargetPos.Y;
+        // Draw a target line for each actor this brain is currently targeting.
+        if (actor.debugTargetPositions.size > 0) {
           const ax = actor.sprite.x;
           const ay = actor.sprite.y;
-          const dx = tx - ax;
-          const dy = ty - ay;
-          const len = Math.sqrt(dx * dx + dy * dy);
-          if (len > 0) {
-            const nx = dx / len;
-            const ny = dy / len;
-            const phase = globalT % period;
-
-            actor.debugGraphics.lineStyle(2, 0x44aaff, 0.7);
-            for (let d = phase - period; d < len; d += period) {
-              const s = Math.max(d, 0);
-              const e = Math.min(d + dashLen, len);
-              if (e > s) {
-                actor.debugGraphics.beginPath();
-                actor.debugGraphics.moveTo(ax + nx * s, ay + ny * s);
-                actor.debugGraphics.lineTo(ax + nx * e, ay + ny * e);
-                actor.debugGraphics.strokePath();
+          actor.debugGraphics.lineStyle(2, 0x44aaff, 0.7);
+          for (const targetPos of actor.debugTargetPositions.values()) {
+            const tx = targetPos.X;
+            const ty = targetPos.Y;
+            const dx = tx - ax;
+            const dy = ty - ay;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len > 0) {
+              const nx = dx / len;
+              const ny = dy / len;
+              const phase = globalT % period;
+              for (let d = phase - period; d < len; d += period) {
+                const s = Math.max(d, 0);
+                const e = Math.min(d + dashLen, len);
+                if (e > s) {
+                  actor.debugGraphics.beginPath();
+                  actor.debugGraphics.moveTo(ax + nx * s, ay + ny * s);
+                  actor.debugGraphics.lineTo(ax + nx * e, ay + ny * e);
+                  actor.debugGraphics.strokePath();
+                }
               }
             }
           }

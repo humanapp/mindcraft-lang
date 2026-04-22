@@ -81,7 +81,7 @@ function execBump(ctx: ExecutionContext, args: MapValue): Value {
 
   const bumpedActor = self.engine.getActorById(bumpedActorId);
   if (bumpedActor) {
-    self.debugTargetPos = new Vector2(bumpedActor.sprite.x, bumpedActor.sprite.y);
+    self.debugTargetPositions.set(bumpedActor.actorId, new Vector2(bumpedActor.sprite.x, bumpedActor.sprite.y));
   }
 
   return TRUE_VALUE;

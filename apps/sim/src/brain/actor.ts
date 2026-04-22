@@ -135,7 +135,7 @@ export class Actor {
   visionRange: number;
   visionFOV: number;
   lastIntent?: { turn: number; throttle: number; speedMultiplier: number }; // Last computed movement intent for debug visualization
-  debugTargetPos?: Vector2; // Last known target position for debug line rendering
+  readonly debugTargetPositions = new Map<number, Vector2>(); // target actor id -> position, populated each tick by sensors
 
   get age(): number {
     return this.engine.clock.now - this.bornAt;
@@ -205,7 +205,7 @@ export class Actor {
   };
 
   pageDeactivated = (_: { pageIndex: number }) => {
-    this.debugTargetPos = undefined;
+    this.debugTargetPositions.clear();
   };
 
   physicsTick(time: number, dt: number): void {
@@ -248,7 +248,7 @@ export class Actor {
     }
 
     // Run brain logic (pass sim time so ctx.time / ctx.dt honor time scale)
-    this.debugTargetPos = undefined;
+    this.debugTargetPositions.clear();
     this.brain.think(this.engine.simTime);
 
     // Inject obstacle/wall avoidance steering for animals
