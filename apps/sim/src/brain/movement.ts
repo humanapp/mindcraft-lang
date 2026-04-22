@@ -553,7 +553,7 @@ export function drawMovementIntent(
   intent: { turn: number; throttle: number; speedMultiplier?: number },
   baseLength: number = 80,
   color: number = 0x00ff00,
-  alpha: number = 0.8
+  alpha: number = 0.5
 ): void {
   const ox = actor.sprite.x;
   const oy = actor.sprite.y;
@@ -565,10 +565,10 @@ export function drawMovementIntent(
   //   >1 -> lerp green toward cyan (fast)
   if (speed < 1) {
     const t = clamp(1 - speed, 0, 1); // 0 at speed=1, 1 at speed=0
-    color = lerpColor(0x00ff00, 0xff4400, t);
+    color = lerpColor(color, 0xff4400, t);
   } else if (speed > 1) {
     const t = clamp((speed - 1) / 2, 0, 1); // 0 at speed=1, 1 at speed=3+
-    color = lerpColor(0x00ff00, 0x00ffff, t);
+    color = lerpColor(color, 0x00ffff, t);
   }
 
   // Calculate the intended direction based on current facing + turn
