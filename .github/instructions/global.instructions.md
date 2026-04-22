@@ -50,3 +50,17 @@ Common substitutions:
 ## After Making Code Changes
 
 After making any code changes in this workspace, always run `npm run typecheck` and `npm run check` in the package directory where the files were modified. This runs TypeScript (type checking) and Biome (linter/formatter) to ensure code validity and style consistency.
+
+## Broad View Before Acting
+
+Before making any change that touches more than one call site, method signature, or data flow, read all involved files end-to-end and explicitly identify every invariant the change must preserve -- ordering, symmetry, consistency across parallel code paths, and structural conventions -- before writing a single line of code.
+
+Examples of invariants to check:
+
+- If two methods delegate to the same set of components, they must call them in the same order.
+- If a refactor introduces a new interface (e.g. `physicsTick` / `gameplayTick`), all implementations must be symmetric -- no component gets one method but not the other.
+- If a pattern exists across parallel code paths (e.g. plant and animal processing pipelines), changes must preserve that parallelism.
+
+If a proposed change would violate any identified invariant, reject it and find an approach that does not.
+
+The goal is not just to fix the immediate problem -- it is to leave the code cleaner and more coherent than it was found. If the task reveals a structural issue adjacent to the immediate change (fragmented logic, asymmetric patterns, misplaced responsibilities), address it as part of the same change rather than leaving it as-is. A narrowly transactional fix that technically works but worsens the overall structure is not acceptable. Use the sanity check: is the code more coherent after this change than before? If not, reconsider the approach.
