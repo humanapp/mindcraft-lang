@@ -32,6 +32,10 @@ export class Playground extends Scene {
     height: number;
   }> = [];
   private draggedActor?: Actor;
+  private draggedObstacle?: {
+    body: MatterJS.BodyType;
+    constraint: MatterJS.ConstraintType;
+  };
 
   constructor() {
     super("Playground");
@@ -86,22 +90,30 @@ export class Playground extends Scene {
         : this.generateRandomObstacles();
 
     for (const { x, y, width, height } of obstacleData) {
-      // Create a visual rectangle
-      this.add.rectangle(x, y, width, height, brownColor, 0.8);
-
-      // Create a static Matter body for the obstacle
-      const obstacleBody = this.matter.add.rectangle(x, y, width, height, {
-        isStatic: true,
+      const rect = this.add.rectangle(x, y, width, height, brownColor, 0.8);
+      const obstacleGO = this.matter.add.gameObject(rect, {
+        shape: { type: "rectangle", width, height },
+        isStatic: false,
+        mass: 2000,
+        frictionAir: 0.9,
+        friction: 0.95,
+        restitution: 0.05,
         collisionFilter: {
           category: CATEGORY_WALL,
-          mask: CATEGORY_ACTOR | CATEGORY_BLIP,
+          mask: CATEGORY_WALL | CATEGORY_ACTOR | CATEGORY_BLIP,
         },
-        restitution: 0.3,
-        friction: 0.1,
-      });
+      }) as Phaser.GameObjects.Rectangle & { body: MatterJS.BodyType };
+
+      const obstacleBody = obstacleGO.body as MatterJS.BodyType;
+      obstacleBody.sleepThreshold = Number.POSITIVE_INFINITY;
 
       this.wallBodies.push(obstacleBody);
       this.obstacles.push({ x, y, width, height });
+
+      obstacleGO.setInteractive({ useHandCursor: true });
+      obstacleGO.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+        this.startDraggingObstacle(obstacleBody, pointer);
+      });
     }
 
     if (!persisted || persisted.length === 0) {
@@ -176,9 +188,11 @@ export class Playground extends Scene {
     // `spawn()` so it only fires when the pointer is actually over an actor.
     this.input.on(Phaser.Input.Events.POINTER_UP, () => {
       this.releaseDraggedActor();
+      this.releaseDraggedObstacle();
     });
     this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, () => {
       this.releaseDraggedActor();
+      this.releaseDraggedObstacle();
     });
 
     this.engine.start();
@@ -246,6 +260,23 @@ export class Playground extends Scene {
       }
     }
 
+    if (this.draggedObstacle) {
+      const pointer = this.input.activePointer;
+      const c = this.draggedObstacle.constraint as unknown as {
+        pointA: { x: number; y: number };
+      };
+      c.pointA.x = pointer.worldX;
+      c.pointA.y = pointer.worldY;
+      // Damp the body's velocity each frame to keep heavy obstacles from
+      // building up momentum and overshooting.
+      const body = this.draggedObstacle.body;
+      this.matter.body.setVelocity(body, {
+        x: body.velocity.x * 0.85,
+        y: body.velocity.y * 0.85,
+      });
+      this.matter.body.setAngularVelocity(body, body.angularVelocity * 0.85);
+    }
+
     // Update sprite tints to reflect each actor's current energy level.
     this.engine.updateEnergyVisuals();
 
@@ -271,6 +302,39 @@ export class Playground extends Scene {
       actor.plantComp.springAnchor.x = sprite.x;
       actor.plantComp.springAnchor.y = sprite.y;
     }
+  }
+
+  private startDraggingObstacle(body: MatterJS.BodyType, pointer: Phaser.Input.Pointer): void {
+    this.releaseDraggedActor();
+    this.releaseDraggedObstacle();
+
+    // Express the click point in the body's local frame so the joint
+    // anchors at the exact spot the user grabbed (off-center grabs will
+    // produce torque and let the obstacle swing/rotate).
+    const dx = pointer.worldX - body.position.x;
+    const dy = pointer.worldY - body.position.y;
+    const cos = Math.cos(-body.angle);
+    const sin = Math.sin(-body.angle);
+    const localX = dx * cos - dy * sin;
+    const localY = dx * sin + dy * cos;
+
+    // A soft, heavily-damped spring from the world (cursor) to the body.
+    // Low stiffness + high damping + the body's heavy mass + high
+    // frictionAir keeps motion controlled and sluggish.
+    const constraint = this.matter.add.worldConstraint(body, 0, 0.02, {
+      pointA: { x: pointer.worldX, y: pointer.worldY },
+      pointB: { x: localX, y: localY },
+      damping: 0.9,
+    });
+    this.draggedObstacle = { body, constraint };
+  }
+
+  private releaseDraggedObstacle(): void {
+    if (!this.draggedObstacle) return;
+    this.matter.world.removeConstraint(this.draggedObstacle.constraint);
+    this.matter.body.setVelocity(this.draggedObstacle.body, { x: 0, y: 0 });
+    this.matter.body.setAngularVelocity(this.draggedObstacle.body, 0);
+    this.draggedObstacle = undefined;
   }
 
   private generateRandomObstacles(): Array<{ x: number; y: number; width: number; height: number }> {
