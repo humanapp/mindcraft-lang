@@ -94,6 +94,7 @@ export class Engine {
   private blipPool!: BlipPool;
 
   private _isShutdown = false;
+  private prevPhysicsTimestamp = 0;
 
   /**
    * Number of vision phases. Actors are assigned phase = actorId % VISION_PHASES.
@@ -130,6 +131,7 @@ export class Engine {
     this.gridDebugGfx = this.scene.add.graphics();
     this.gridDebugGfx.setDepth(-2);
     this.blipPool = new BlipPool(this);
+    this.scene.matter.world.on("afterupdate", this.onAfterPhysicsUpdate, this);
   }
 
   async loadBrains(): Promise<void> {
@@ -140,9 +142,19 @@ export class Engine {
     };
   }
 
+  private onAfterPhysicsUpdate(event: { timestamp: number }) {
+    const dt = this.prevPhysicsTimestamp > 0 ? event.timestamp - this.prevPhysicsTimestamp : 0;
+    this.prevPhysicsTimestamp = event.timestamp;
+    if (dt <= 0) return;
+    for (const actor of this.world.entities) {
+      actor.physicsTick(event.timestamp, dt);
+    }
+  }
+
   shutdown() {
     if (this._isShutdown) return;
     this._isShutdown = true;
+    this.scene.matter.world.off("afterupdate", this.onAfterPhysicsUpdate, this);
 
     // Clean up blips
     this.blipPool.destroyAll();

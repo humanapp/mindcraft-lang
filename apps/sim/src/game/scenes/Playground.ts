@@ -200,6 +200,7 @@ export class Playground extends Scene {
     // Set up Matter collision events -- handle both initial contact and
     // ongoing contact so bump sensors fire every frame while actors overlap
     const handleCollisionPairs = (pairs: Phaser.Types.Physics.Matter.MatterCollisionPair[]) => {
+      if (this.gameplayPaused) return;
       for (const pair of pairs) {
         const bodyA = pair.bodyA;
         const bodyB = pair.bodyB;

@@ -10,7 +10,8 @@ export type Archetype = "carnivore" | "herbivore" | "plant";
 export class AnimalComp {
   steeringQueue: Steering[] = [];
   constructor(public actor: Actor) {}
-  tick(time: number, dt: number) {
+  physicsTick(_time: number, _dt: number): void {}
+  gameplayTick(time: number, dt: number): void {
     const dtSec = dt / 1000;
     const forceMag = this.actor.mover.step(this.actor.sprite, dtSec, this.steeringQueue);
 
@@ -33,7 +34,8 @@ export class PlantComp {
   private springVelY = 0;
 
   constructor(public actor: Actor) {}
-  tick(time: number, dt: number) {
+  gameplayTick(_time: number, _dt: number): void {}
+  physicsTick(time: number, dt: number) {
     if (this.springAnchor && this.actor.sprite.body) {
       const dtSec = dt / 1000;
       if (dtSec <= 0) return;
@@ -206,6 +208,12 @@ export class Actor {
     this.debugTargetPos = undefined;
   };
 
+  physicsTick(time: number, dt: number): void {
+    if (this.isBeingDragged) return;
+    this.plantComp?.physicsTick(time, dt);
+    this.animalComp?.physicsTick(time, dt);
+  }
+
   tick(time: number, dt: number) {
     if (this.isBeingDragged) {
       // Keep the chat bubble glued to the sprite while dragging.
@@ -257,12 +265,8 @@ export class Actor {
     }
 
     // Apply component logic
-    if (this.plantComp) {
-      this.plantComp.tick(time, dt);
-    }
-    if (this.animalComp) {
-      this.animalComp.tick(time, dt);
-    }
+    this.plantComp?.gameplayTick(time, dt);
+    this.animalComp?.gameplayTick(time, dt);
 
     // Update chat bubble position to follow sprite
     if (this.chatBubble) {
