@@ -400,8 +400,7 @@ export class Engine {
           if (len > 0) {
             const nx = dx / len;
             const ny = dy / len;
-            const worldProjection = ax * nx + ay * ny;
-            const phase = ((globalT - worldProjection) % period + period) % period;
+            const phase = globalT % period;
 
             actor.debugGraphics.lineStyle(2, 0x44aaff, 0.7);
             for (let d = phase - period; d < len; d += period) {
