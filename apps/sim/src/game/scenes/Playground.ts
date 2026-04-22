@@ -467,6 +467,7 @@ export class Playground extends Scene {
     } else {
       this.matter.world.createDebugGraphic();
       this.matter.world.drawDebug = true;
+      this.matter.world.debugConfig.showPositions = false;
     }
   }
 
