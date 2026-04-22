@@ -31,6 +31,7 @@ export class Playground extends Scene {
     width: number;
     height: number;
   }> = [];
+  private draggedActor?: Actor;
 
   constructor() {
     super("Playground");
@@ -170,6 +171,16 @@ export class Playground extends Scene {
       handleCollisionPairs(event.pairs);
     });
 
+    // Release the dragged actor when the pointer is lifted anywhere. The
+    // pointer-down handler that picks an actor up is bound per-sprite in
+    // `spawn()` so it only fires when the pointer is actually over an actor.
+    this.input.on(Phaser.Input.Events.POINTER_UP, () => {
+      this.releaseDraggedActor();
+    });
+    this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, () => {
+      this.releaseDraggedActor();
+    });
+
     this.engine.start();
 
     // After scene.restart(), the new Matter world's timing.timeScale resets
@@ -207,11 +218,59 @@ export class Playground extends Scene {
     const scaledDelta = delta * this.timeSpeed;
     this.engine.tick(time, scaledDelta);
 
+    // Drive the dragged actor toward the pointer. Setting velocity (rather
+    // than teleporting position) keeps Matter's solver in charge of
+    // collisions, so the dragged body still pushes neighbors out of the way.
+    if (this.draggedActor) {
+      const actor = this.draggedActor;
+      const sprite = actor.sprite;
+      if (actor.isDying || !sprite?.body) {
+        this.releaseDraggedActor();
+      } else {
+        const pointer = this.input.activePointer;
+        const dx = pointer.worldX - sprite.x;
+        const dy = pointer.worldY - sprite.y;
+        // Matter's velocity units are pixels-per-step. Clamp the per-step
+        // travel so a fast pointer flick cannot tunnel through walls or
+        // other bodies.
+        const maxStep = 20;
+        const distSq = dx * dx + dy * dy;
+        let vx = dx;
+        let vy = dy;
+        if (distSq > maxStep * maxStep) {
+          const scale = maxStep / Math.sqrt(distSq);
+          vx = dx * scale;
+          vy = dy * scale;
+        }
+        sprite.setVelocity(vx, vy);
+      }
+    }
+
     // Update sprite tints to reflect each actor's current energy level.
     this.engine.updateEnergyVisuals();
 
     // Always update debug vision cones (clears them when debug is off)
     this.engine.drawDebugVisionCones();
+  }
+
+  private releaseDraggedActor(): void {
+    const actor = this.draggedActor;
+    if (!actor) return;
+    actor.isBeingDragged = false;
+    this.draggedActor = undefined;
+
+    // The actor may have been killed (sprite destroyed, body removed) while
+    // being dragged; only touch the body / anchor if it still exists.
+    const sprite = actor.sprite;
+    if (!sprite?.body) return;
+    sprite.setVelocity(0, 0);
+
+    // Plants are anchored to a fixed point by their spring; re-anchor to the
+    // drop location so they don't snap back to where they originally spawned.
+    if (actor.plantComp?.springAnchor) {
+      actor.plantComp.springAnchor.x = sprite.x;
+      actor.plantComp.springAnchor.y = sprite.y;
+    }
   }
 
   private generateRandomObstacles(): Array<{ x: number; y: number; width: number; height: number }> {
@@ -302,6 +361,17 @@ export class Playground extends Scene {
 
     sprite.setDataEnabled();
     sprite.data.set("actorId", actor.actorId);
+
+    // Allow the user to grab the actor with the pointer. Use the default
+    // (texture-frame) hit area so the entire visible sprite is clickable.
+    sprite.setInteractive({ useHandCursor: true });
+    sprite.on(Phaser.Input.Events.POINTER_DOWN, () => {
+      if (this.draggedActor && this.draggedActor !== actor) {
+        this.releaseDraggedActor();
+      }
+      this.draggedActor = actor;
+      actor.isBeingDragged = true;
+    });
 
     // Create debug graphics for this actor
     actor.debugGraphics = this.add.graphics();

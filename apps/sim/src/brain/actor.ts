@@ -123,6 +123,12 @@ export class Actor {
    * does not double-process a death within the same tick.
    */
   isDying = false;
+  /**
+   * Set to true while a user is dragging this actor. The body remains
+   * physical (so it still collides with other bodies), but the brain does
+   * not tick and steering/component logic is skipped.
+   */
+  isBeingDragged = false;
   hasVision = false;
   visionRange: number;
   visionFOV: number;
@@ -201,6 +207,14 @@ export class Actor {
   };
 
   tick(time: number, dt: number) {
+    if (this.isBeingDragged) {
+      // Keep the chat bubble glued to the sprite while dragging.
+      if (this.chatBubble) {
+        this.chatBubble.setPosition(this.sprite.x, this.sprite.y - 20);
+      }
+      return;
+    }
+
     // Update passive energy regen / decay
     const dtSec = dt / 1000;
     const energyCfg = ARCHETYPES[this.archetype].energy;
