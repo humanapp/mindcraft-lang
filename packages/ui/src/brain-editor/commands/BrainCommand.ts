@@ -46,6 +46,24 @@ export class BrainCommandHistory {
   }
 
   /**
+   * Record a command in the undo history WITHOUT executing it.
+   *
+   * Used when the underlying model has already reached the target state through
+   * some other means (e.g. an interactive drag that mutated the model directly
+   * for fluid feedback) and only the net change should be undoable.
+   */
+  recordCommand(command: BrainCommand): void {
+    this.undoStack.push(command);
+    this.redoStack = [];
+
+    if (this.undoStack.length > this.maxHistorySize) {
+      this.undoStack.shift();
+    }
+
+    this.notifyChange();
+  }
+
+  /**
    * Undo the most recent command.
    */
   undo(): void {

@@ -145,7 +145,7 @@ export class BrainPageDef implements IBrainPageDef {
     });
   }
 
-  private subscribeToRule_(rule: BrainRuleDef): void {
+  subscribeToRule_(rule: BrainRuleDef): void {
     // Unsubscribe first if already subscribed (safety)
     this.unsubscribeFromRule_(rule);
 
@@ -163,7 +163,7 @@ export class BrainPageDef implements IBrainPageDef {
     this.ruleSubscriptions_.set(rule, unsubscribe);
   }
 
-  private unsubscribeFromRule_(rule: BrainRuleDef): void {
+  unsubscribeFromRule_(rule: BrainRuleDef): void {
     const unsubscribe = this.ruleSubscriptions_.get(rule);
     if (unsubscribe) {
       unsubscribe();

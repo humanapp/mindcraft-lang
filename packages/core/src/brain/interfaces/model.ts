@@ -62,6 +62,7 @@ export type BrainRuleDefEvents = {
 };
 
 export interface IBrainRuleDef {
+  id(): number;
   page(): IBrainPageDef | undefined;
   setPage(page: IBrainPageDef | undefined): void;
   ancestor(): IBrainRuleDef | undefined;

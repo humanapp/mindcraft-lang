@@ -15,6 +15,7 @@ import {
   type ITileCatalog,
   RuleSide,
 } from "../interfaces";
+import type { BrainPageDef } from "./pagedef";
 import { BrainTileSet } from "./tileset";
 
 export interface RuleJson {
@@ -36,7 +37,13 @@ export const kMaxBrainRuleCommentLength = 500; // never reduce this value!
 // JSON serialization version.
 const kVersion = 1;
 
+// Module-scoped counter for assigning stable, process-unique ids to rules.
+// Used by UI layers as a React key so that structural moves do not unmount
+// the dragged rule mid-drag.
+let nextRuleId_ = 1;
+
 export class BrainRuleDef implements IBrainRuleDef {
+  private readonly id_: number;
   private page_?: IBrainPageDef;
   private ancestor_?: BrainRuleDef; // Next rule up in the tree, if any
   private readonly children_ = new List<BrainRuleDef>();
@@ -49,10 +56,19 @@ export class BrainRuleDef implements IBrainRuleDef {
   private dirtyChangedDebounceThread_?: thread;
 
   constructor() {
+    this.id_ = nextRuleId_++;
     this.when_ = new BrainTileSet(this, RuleSide.When);
     this.do_ = new BrainTileSet(this, RuleSide.Do);
     this.subscribeToTileSet_(this.when_);
     this.subscribeToTileSet_(this.do_);
+  }
+
+  /**
+   * Returns a stable, process-unique numeric id for this rule.
+   * Useful as a React key during structural mutations.
+   */
+  id(): number {
+    return this.id_;
   }
 
   /**
@@ -388,6 +404,89 @@ export class BrainRuleDef implements IBrainRuleDef {
       if (parentIndex < 0) return false; // Safety check
       page.children().insert(parentIndex + 1, this);
       this.setAncestor(undefined);
+    }
+
+    this.markDirty();
+    return true;
+  }
+
+  /**
+   * Re-parent this rule to an arbitrary location within the same page.
+   *
+   * Exactly one of `newParent` or `newPage` must be provided. `newParent`
+   * places the rule as a child of another rule; `newPage` places it at
+   * page level. The rule is inserted at `newIndex` in the destination
+   * children list. Children of this rule move with it as a subtree.
+   *
+   * Returns false (no-op) when:
+   * - both/neither destination provided
+   * - the move would exceed `kMaxBrainRuleDepth`
+   * - `newParent` is this rule or one of its descendants
+   * - the rule is not currently attached to a page
+   *
+   * Returns true on a successful move OR when the rule is already at the
+   * requested location.
+   */
+  moveTo(newParent: BrainRuleDef | undefined, newPage: IBrainPageDef | undefined, newIndex: number): boolean {
+    if ((newParent === undefined) === (newPage === undefined)) {
+      return false;
+    }
+
+    // Cannot move under self/descendant
+    if (newParent) {
+      let cursor: BrainRuleDef | undefined = newParent;
+      while (cursor) {
+        if (cursor === this) return false;
+        cursor = cursor.ancestor_;
+      }
+    }
+
+    const newDepth = newParent ? newParent.myDepth() + 1 : 0;
+    if (newDepth + this.maxDepth() > kMaxBrainRuleDepth) {
+      return false;
+    }
+
+    const oldParent = this.ancestor_;
+    const oldPage = oldParent ? undefined : (this.page() as IBrainPageDef | undefined);
+    if (!oldParent && !oldPage) return false;
+    const oldIndex = this.myIndex_();
+    if (oldIndex < 0) return false;
+
+    // Determine list relationship for no-op detection. `newIndex` is interpreted
+    // as the final position in the destination list AFTER removal of this rule.
+    const sameList = oldParent === newParent && oldPage === newPage;
+    let targetIndex = newIndex;
+
+    // No-op fast path: moving to the exact same slot.
+    if (sameList && oldIndex === targetIndex) {
+      return true;
+    }
+
+    // Remove from current location.
+    if (oldParent) {
+      oldParent.children_.remove(oldIndex);
+      oldParent.unsubscribeFromChildRule_(this);
+    } else if (oldPage) {
+      oldPage.children().remove(oldIndex);
+      (oldPage as BrainPageDef).unsubscribeFromRule_(this);
+    }
+
+    // Clamp to the destination list size after removal.
+    if (newParent) {
+      const size = newParent.children_.size();
+      if (targetIndex < 0) targetIndex = 0;
+      if (targetIndex > size) targetIndex = size;
+      newParent.children_.insert(targetIndex, this);
+      newParent.subscribeToChildRule_(this);
+      this.setAncestor(newParent);
+    } else if (newPage) {
+      const pageChildren = newPage.children();
+      const size = pageChildren.size();
+      if (targetIndex < 0) targetIndex = 0;
+      if (targetIndex > size) targetIndex = size;
+      pageChildren.insert(targetIndex, this);
+      this.setAncestor(undefined);
+      (newPage as BrainPageDef).subscribeToRule_(this);
     }
 
     this.markDirty();

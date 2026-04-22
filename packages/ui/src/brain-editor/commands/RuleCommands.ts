@@ -134,6 +134,42 @@ export class DeleteRuleCommand implements BrainCommand {
 }
 
 /**
+ * Snapshot of where a rule lives within a brain page tree.
+ */
+export interface RuleLocation {
+  parentRule?: BrainRuleDef;
+  pageDef?: BrainPageDef;
+  index: number;
+}
+
+/**
+ * Command to move a rule from one location to another within its page.
+ *
+ * The rule must already exist in the page; both `from` and `to` are captured
+ * by the drag controller. Using `recordCommand` (not `executeCommand`) is
+ * appropriate when the model has already been mutated to the `to` state.
+ */
+export class MoveRuleCommand implements BrainCommand {
+  constructor(
+    private rule: BrainRuleDef,
+    private from: RuleLocation,
+    private to: RuleLocation
+  ) {}
+
+  execute(): void {
+    this.rule.moveTo(this.to.parentRule, this.to.pageDef, this.to.index);
+  }
+
+  undo(): void {
+    this.rule.moveTo(this.from.parentRule, this.from.pageDef, this.from.index);
+  }
+
+  getDescription(): string {
+    return "Move rule";
+  }
+}
+
+/**
  * Command to move a rule up.
  */
 export class MoveRuleUpCommand implements BrainCommand {

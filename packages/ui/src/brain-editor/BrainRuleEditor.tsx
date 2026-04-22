@@ -34,6 +34,7 @@ import {
 } from "./commands";
 import { useRuleCapabilities } from "./hooks/useRuleCapabilities";
 import { useTileSelection } from "./hooks/useTileSelection";
+import { useRuleDragController } from "./RuleDragContext";
 import { copyRuleToClipboard, hasRuleInClipboard, onClipboardChanged } from "./rule-clipboard";
 import { buildNodeMap, computeTileBadges, type TileBadge } from "./tile-badges";
 
@@ -104,6 +105,27 @@ export function BrainRuleEditor({
   commandHistory,
 }: BrainRuleEditorProps) {
   const { brainServices, tileCatalogs } = useBrainEditorConfig();
+  const dragController = useRuleDragController();
+  const isDragging = dragController.draggingRuleId === ruleDef.id();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const handleHandlePointerDown = useCallback(
+    (event: React.PointerEvent<HTMLButtonElement>) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      // Begin drag tracking. The controller applies a movement threshold;
+      // a release before the threshold leaves the menu free to open via click.
+      const started = dragController.beginDrag(ruleDef, event);
+      if (started) {
+        // Suppress the radix trigger's pointer-down open behaviour so the menu
+        // only opens for non-drag clicks (handled by the click handler below).
+        event.preventDefault();
+      }
+    },
+    [dragController, ruleDef]
+  );
+  const handleHandleClick = useCallback(() => {
+    if (dragController.draggingRuleId !== null) return;
+    setMenuOpen((open) => !open);
+  }, [dragController]);
   const [canMoveUp, setCanMoveUp] = useState(ruleDef.canMoveUp());
   const [canMoveDown, setCanMoveDown] = useState(ruleDef.canMoveDown());
   const [canIndent, setCanIndent] = useState(ruleDef.canIndent());
@@ -332,7 +354,12 @@ export function BrainRuleEditor({
           ...indentStyle,
           background: "linear-gradient(55deg, #16143A 0%, #8B6CF3 100%)",
           ...containerGlass.containerStyle,
+          opacity: isDragging ? 0.85 : undefined,
+          transform: isDragging ? "scale(1.02)" : undefined,
+          transition: isDragging ? "none" : "transform 120ms ease, opacity 120ms ease",
+          zIndex: isDragging ? 30 : undefined,
         }}
+        data-rule-id={ruleDef.id()}
         role="listitem"
         aria-label={`Rule ${lineNumber}${isDirty ? " (modified)" : ""}`}
       >
@@ -384,14 +411,16 @@ export function BrainRuleEditor({
         )}
         <div className="flex flex-1 gap-1">
           {/* this button is the rule handle */}
-          <DropdownMenu>
+          <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="relative rounded-full self-center h-9 w-9 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:scale-105 transition-all font-semibold text-lg border-2 border-slate-300"
+                className={`relative rounded-full self-center h-9 w-9 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:scale-105 transition-all font-semibold text-lg border-2 border-slate-300 ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
                 style={handleGlass.containerStyle}
                 aria-label={`Rule ${lineNumber} actions${isDirty ? ", unsaved changes" : ""}`}
                 aria-haspopup="menu"
+                onPointerDown={handleHandlePointerDown}
+                onClick={handleHandleClick}
               >
                 <span
                   className="absolute inset-0 rounded-full pointer-events-none"

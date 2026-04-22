@@ -1,9 +1,10 @@
 import { task, type thread } from "@mindcraft-lang/core";
 import type { BrainPageDef, BrainRuleDef } from "@mindcraft-lang/core/brain/model";
-import { useEffect, useRef, useState } from "react";
-import { useBrainEditorConfig } from "./BrainEditorContext";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BrainRuleEditor } from "./BrainRuleEditor";
 import type { BrainCommandHistory } from "./commands";
+import { useRuleDrag } from "./hooks/useRuleDrag";
+import { RuleDragProvider } from "./RuleDragContext";
 
 interface BrainPageEditorProps {
   pageDef: BrainPageDef;
@@ -127,10 +128,17 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
 
   const flattenedRules = flattenRules(pageDef.children().toArray() as BrainRuleDef[]);
 
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const dragController = useRuleDrag({ pageDef, commandHistory, containerRef, zoom });
+  const dragContextValue = useMemo(
+    () => ({ draggingRuleId: dragController.draggingRuleId, beginDrag: dragController.beginDrag }),
+    [dragController.draggingRuleId, dragController.beginDrag]
+  );
+
   return (
-    <>
+    <RuleDragProvider value={dragContextValue}>
       {/* biome-ignore lint/a11y/useSemanticElements: changing to ul/li requires restructuring BrainRuleEditor */}
-      <div className="h-full overflow-auto" role="list" aria-label="Brain rules">
+      <div ref={containerRef} className="h-full overflow-auto" role="list" aria-label="Brain rules">
         <div
           className="p-3 sm:p-6"
           style={{
@@ -140,9 +148,9 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
             minHeight: `${100 / zoom}%`,
           }}
         >
-          {flattenedRules.map((flatRule, idx) => (
+          {flattenedRules.map((flatRule) => (
             <BrainRuleEditor
-              key={flatRule.lineNumber}
+              key={flatRule.ruleDef.id()}
               ruleDef={flatRule.ruleDef}
               index={flatRule.index}
               pageDef={pageDef}
@@ -154,6 +162,6 @@ export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 
           ))}
         </div>
       </div>
-    </>
+    </RuleDragProvider>
   );
 }
