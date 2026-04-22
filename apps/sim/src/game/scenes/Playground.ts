@@ -27,7 +27,6 @@ export class Playground extends Scene {
   private unsubProjectUnloading?: () => void;
   private unsubProjectLoaded?: () => void;
   private obstacleBodies: ObstacleBody[] = [];
-  private draggedActor?: Actor;
 
   constructor() {
     super("Playground");
@@ -37,7 +36,6 @@ export class Playground extends Scene {
     // scene.restart() re-runs create() on the same Scene instance, so any
     // class fields populated below would otherwise accumulate across reloads.
     this.obstacleBodies = [];
-    this.draggedActor = undefined;
 
     // Set physics world bounds (creates boundary walls)
     this.matter.world.setBounds(0, 0, this.scale.width, this.scale.height, 32, true, true, true, true);
@@ -127,49 +125,62 @@ export class Playground extends Scene {
 
     this.engine = new Engine(this, this.obstacleBodies, store);
 
-    // Obstacles are static at rest so actor collisions cannot push them
-    // around. To allow drag, we flip the hit-tested obstacle to non-static
-    // on pointerdown (registered before the pointer constraint so this
-    // handler runs first), then back to static on dragend. We also boost
-    // density on grab so the dragged body feels heavy and resists fast
-    // flicks rather than whipping around. High frictionAir damps linear
-    // velocity strongly, which makes off-center pointer pulls translate
-    // into rotation (the body resists sliding so the spring torque turns
-    // it instead).
+    // Pointer drag for actors and obstacles. The pointer
+    // constraint is a soft spring (low stiffness, zero angularStiffness)
+    // so pulling a body by its corner generates real torque and rotates
+    // it like a box dragged across a floor. Per-body drag-time tweaks
+    // (density boost for heft, frictionAir for ground-friction-style
+    // damping) are applied on DRAG_START and restored on DRAG_END.
     const DRAG_DENSITY = 0.05;
     const DRAG_FRICTION_AIR = 0.4;
-    this.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
-      const worldPoint = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-      for (const body of this.obstacleBodies) {
-        const b = body.bounds;
-        if (worldPoint.x >= b.min.x && worldPoint.x <= b.max.x && worldPoint.y >= b.min.y && worldPoint.y <= b.max.y) {
-          this.matter.body.setStatic(body, false);
-          this.matter.body.setDensity(body, DRAG_DENSITY);
-          body.frictionAir = DRAG_FRICTION_AIR;
-          break;
-        }
-      }
-    });
+    const dragOriginals = new Map<MatterJS.BodyType, { density: number; frictionAir: number }>();
 
-    // Canonical Matter.js mouse-drag. Filtered (via collisionFilter.mask)
-    // to only grab obstacle bodies -- actors have their own drag handling.
-    // angularStiffness: 0 disables the constraint's angle-locking spring,
-    // so pulling a corner sideways generates real torque (r x F) and the
-    // body rotates like a box dragged across a floor.
     this.matter.add.pointerConstraint({
       stiffness: 0.05,
       damping: 0.1,
       angularStiffness: 0,
       collisionFilter: {
         category: 0x0001,
-        mask: CATEGORY_WALL,
+        mask: CATEGORY_WALL | CATEGORY_ACTOR,
         group: 0,
       },
     } as Phaser.Types.Physics.Matter.MatterConstraintConfig);
 
+    this.matter.world.on("dragstart", (body: MatterJS.BodyType) => {
+      if ("_obstacleSize" in body) {
+        // Obstacle was static; flip dynamic so the constraint can move it.
+        this.matter.body.setStatic(body, false);
+      }
+      dragOriginals.set(body, { density: body.density, frictionAir: body.frictionAir });
+      this.matter.body.setDensity(body, DRAG_DENSITY);
+      body.frictionAir = DRAG_FRICTION_AIR;
+      const actor = this.lookupActorByBody(body);
+      if (actor) actor.isBeingDragged = true;
+    });
+
     this.matter.world.on("dragend", (body: MatterJS.BodyType) => {
-      this.matter.body.setStatic(body, true);
-      this.persistObstacles();
+      const orig = dragOriginals.get(body);
+      if (orig) {
+        this.matter.body.setDensity(body, orig.density);
+        body.frictionAir = orig.frictionAir;
+        dragOriginals.delete(body);
+      }
+      const isObstacle = "_obstacleSize" in body;
+      if (isObstacle) {
+        this.matter.body.setStatic(body, true);
+        this.persistObstacles();
+      } else {
+        this.matter.body.setAngularVelocity(body, 0);
+        this.matter.body.setVelocity(body, { x: 0, y: 0 });
+        const actor = this.lookupActorByBody(body);
+        if (actor) {
+          actor.isBeingDragged = false;
+          if (actor.plantComp?.springAnchor) {
+            actor.plantComp.springAnchor.x = body.position.x;
+            actor.plantComp.springAnchor.y = body.position.y;
+          }
+        }
+      }
     });
 
     this.unsubProjectUnloading = store.onProjectUnloading(() => {
@@ -233,16 +244,6 @@ export class Playground extends Scene {
       handleCollisionPairs(event.pairs);
     });
 
-    // Release the dragged actor when the pointer is lifted anywhere. The
-    // pointer-down handler that picks an actor up is bound per-sprite in
-    // `spawn()` so it only fires when the pointer is actually over an actor.
-    this.input.on(Phaser.Input.Events.POINTER_UP, () => {
-      this.releaseDraggedActor();
-    });
-    this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, () => {
-      this.releaseDraggedActor();
-    });
-
     this.engine.start();
 
     // After scene.restart(), the new Matter world's timing.timeScale resets
@@ -280,34 +281,6 @@ export class Playground extends Scene {
     const scaledDelta = delta * this.timeSpeed;
     this.engine.tick(time, scaledDelta);
 
-    // Drive the dragged actor toward the pointer. Setting velocity (rather
-    // than teleporting position) keeps Matter's solver in charge of
-    // collisions, so the dragged body still pushes neighbors out of the way.
-    if (this.draggedActor) {
-      const actor = this.draggedActor;
-      const sprite = actor.sprite;
-      if (actor.isDying || !sprite?.body) {
-        this.releaseDraggedActor();
-      } else {
-        const pointer = this.input.activePointer;
-        const dx = pointer.worldX - sprite.x;
-        const dy = pointer.worldY - sprite.y;
-        // Matter's velocity units are pixels-per-step. Clamp the per-step
-        // travel so a fast pointer flick cannot tunnel through walls or
-        // other bodies.
-        const maxStep = 20;
-        const distSq = dx * dx + dy * dy;
-        let vx = dx;
-        let vy = dy;
-        if (distSq > maxStep * maxStep) {
-          const scale = maxStep / Math.sqrt(distSq);
-          vx = dx * scale;
-          vy = dy * scale;
-        }
-        sprite.setVelocity(vx, vy);
-      }
-    }
-
     // Update sprite tints to reflect each actor's current energy level.
     this.engine.updateEnergyVisuals();
 
@@ -315,24 +288,11 @@ export class Playground extends Scene {
     this.engine.drawDebugVisionCones();
   }
 
-  private releaseDraggedActor(): void {
-    const actor = this.draggedActor;
-    if (!actor) return;
-    actor.isBeingDragged = false;
-    this.draggedActor = undefined;
-
-    // The actor may have been killed (sprite destroyed, body removed) while
-    // being dragged; only touch the body / anchor if it still exists.
-    const sprite = actor.sprite;
-    if (!sprite?.body) return;
-    sprite.setVelocity(0, 0);
-
-    // Plants are anchored to a fixed point by their spring; re-anchor to the
-    // drop location so they don't snap back to where they originally spawned.
-    if (actor.plantComp?.springAnchor) {
-      actor.plantComp.springAnchor.x = sprite.x;
-      actor.plantComp.springAnchor.y = sprite.y;
-    }
+  private lookupActorByBody(body: MatterJS.BodyType): Actor | undefined {
+    const sprite = body.gameObject as Phaser.Physics.Matter.Sprite | null;
+    const actorId = sprite?.data?.get("actorId");
+    if (typeof actorId !== "number") return undefined;
+    return this.engine.getActorById(actorId);
   }
 
   private persistObstacles(): void {
@@ -426,10 +386,8 @@ export class Playground extends Scene {
     // Set initial random facing direction
     sprite.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
 
-    // Prevent the body from sleeping (so forces always apply)
-    sprite.setFixedRotation(); // Let our mover control rotation, not physics
     const body = sprite.body as MatterJS.BodyType;
-    body.sleepThreshold = Number.POSITIVE_INFINITY; // Never auto-sleep
+    body.sleepThreshold = Number.POSITIVE_INFINITY;
 
     // Configure spring anchor if archetype uses it
     if (actor.plantComp) {
@@ -438,17 +396,6 @@ export class Playground extends Scene {
 
     sprite.setDataEnabled();
     sprite.data.set("actorId", actor.actorId);
-
-    // Allow the user to grab the actor with the pointer. Use the default
-    // (texture-frame) hit area so the entire visible sprite is clickable.
-    sprite.setInteractive({ useHandCursor: true });
-    sprite.on(Phaser.Input.Events.POINTER_DOWN, () => {
-      if (this.draggedActor && this.draggedActor !== actor) {
-        this.releaseDraggedActor();
-      }
-      this.draggedActor = actor;
-      actor.isBeingDragged = true;
-    });
 
     // Create debug graphics for this actor
     actor.debugGraphics = this.add.graphics();
