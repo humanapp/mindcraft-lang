@@ -9,6 +9,8 @@ These instructions apply to all Copilot features, including inline tab completio
 
 ## Code Quality
 
+- This code will be used for teaching; document to enable context-free understanding and keep the structure clean and modular.
+- This is a production codebase; only suggest code that is correct, complete, and ready for production use. Do not suggest code that is incomplete, placeholder, or meant for prototyping or debugging.
 - Never emit placeholder code. Do not use `TODO`, `FIXME`, `...`, `/* implementation */`,
   `throw new Error("Not implemented")`, or any other stub pattern unless the user has
   explicitly written a stub and is asking to fill it in.
