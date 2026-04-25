@@ -1,3 +1,8 @@
+import type {
+  MindcraftExportCommon,
+  MindcraftExportFile,
+  MindcraftExportHost,
+} from "@mindcraft-lang/service-api";
 import { EXAMPLES_FOLDER } from "./examples.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ProjectManager } from "./project-manager.js";
@@ -6,27 +11,12 @@ import type { ProjectManifest } from "./project-manifest.js";
 import type { WorkspaceAdapter } from "./workspace-adapter.js";
 import type { WorkspaceEntry } from "./workspace-snapshot.js";
 
-export interface MindcraftExportHost {
-  name: string;
-  version: string;
-}
-
-export interface MindcraftExportFile {
-  path: string;
-  content: string;
-}
-
-export interface MindcraftExportCommon {
-  host: MindcraftExportHost;
-  name: string;
-  description: string;
-  files: MindcraftExportFile[];
-  brains: Record<string, unknown>;
-}
-
-export interface MindcraftExportDocument extends MindcraftExportCommon {
-  app?: unknown;
-}
+export type {
+  MindcraftExportCommon,
+  MindcraftExportDocument,
+  MindcraftExportFile,
+  MindcraftExportHost,
+} from "@mindcraft-lang/service-api";
 
 export interface ImportDiagnostic {
   severity: "error" | "warning";
