@@ -8,7 +8,10 @@ export interface ProjectStore {
   getProject(id: string): Promise<ProjectManifest | undefined>;
   createProject(name: string): Promise<ProjectManifest>;
   deleteProject(id: string): Promise<void>;
-  updateProject(id: string, updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void>;
+  updateProject(
+    id: string,
+    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+  ): Promise<void>;
   duplicateProject(id: string, newName: string): Promise<ProjectManifest>;
 
   loadWorkspace(id: string): Promise<WorkspaceSnapshot | undefined>;

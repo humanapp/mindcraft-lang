@@ -71,6 +71,7 @@ export async function buildExportCommon(
     host,
     name: manifest.name,
     description: manifest.description,
+    thumbnailUrl: manifest.thumbnailUrl,
     files,
     brains,
   };
@@ -146,6 +147,9 @@ export async function importProject(
     if (typeof doc.description !== "string") {
       return errorResult('Invalid export file: "description" must be a string.');
     }
+    if (doc.thumbnailUrl !== undefined && typeof doc.thumbnailUrl !== "string") {
+      return errorResult('Invalid export file: "thumbnailUrl" must be a string when present.');
+    }
     if (!Array.isArray(doc.files)) {
       return errorResult('Invalid export file: "files" must be an array.');
     }
@@ -155,6 +159,7 @@ export async function importProject(
 
     const name = typeof doc.name === "string" && doc.name.trim() ? doc.name.trim() : DEFAULT_PROJECT_NAME;
     const description = doc.description;
+    const thumbnailUrl = typeof doc.thumbnailUrl === "string" ? doc.thumbnailUrl : undefined;
 
     const warnings: ImportDiagnostic[] = [];
 
@@ -208,7 +213,7 @@ export async function importProject(
 
     const appData: Record<string, string> = { ...callbackAppData, brains: serializedBrains };
 
-    const manifest = await projectManager.createFromSnapshot(name, description, snapshot, appData);
+    const manifest = await projectManager.createFromSnapshot(name, description, snapshot, appData, thumbnailUrl);
 
     return { success: true, projectId: manifest.id, diagnostics: warnings };
   } catch (e) {

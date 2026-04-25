@@ -64,7 +64,10 @@ class LocalStorageProjectStore implements ProjectStore {
     }
   }
 
-  async updateProject(id: string, updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
+  async updateProject(
+    id: string,
+    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+  ): Promise<void> {
     const manifest = this.loadMetadata(id);
     if (!manifest) {
       return;

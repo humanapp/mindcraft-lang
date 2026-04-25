@@ -40,7 +40,10 @@ class MemoryProjectStore implements ProjectStore {
     }
   }
 
-  async updateProject(id: string, updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
+  async updateProject(
+    id: string,
+    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+  ): Promise<void> {
     const idx = this.projects.findIndex((p) => p.id === id);
     if (idx === -1) return;
     this.projects[idx] = { ...this.projects[idx], ...updates, updatedAt: Date.now() };
