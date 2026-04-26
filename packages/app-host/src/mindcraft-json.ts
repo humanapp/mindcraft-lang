@@ -8,6 +8,7 @@ export interface MindcraftJson {
   };
   version: string;
   description: string;
+  thumbnailUrl?: string;
 }
 
 export function parseMindcraftJson(content: string): MindcraftJson | undefined {
@@ -22,6 +23,9 @@ export function parseMindcraftJson(content: string): MindcraftJson | undefined {
       typeof parsed.host.name !== "string" ||
       typeof parsed.host.version !== "string"
     ) {
+      return undefined;
+    }
+    if (parsed.thumbnailUrl !== undefined && typeof parsed.thumbnailUrl !== "string") {
       return undefined;
     }
     return parsed as MindcraftJson;

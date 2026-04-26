@@ -8,14 +8,14 @@ export interface MindcraftJsonHostInfo {
   version: string;
 }
 
-type SyncedManifestFields = { name: string; description: string };
+type SyncedManifestFields = { name: string; description: string; thumbnailUrl?: string };
 
 function syncedFieldsFromManifest(manifest: ProjectManifest): SyncedManifestFields {
-  return { name: manifest.name, description: manifest.description };
+  return { name: manifest.name, description: manifest.description, thumbnailUrl: manifest.thumbnailUrl };
 }
 
 function syncedFieldsMatch(a: SyncedManifestFields, b: SyncedManifestFields): boolean {
-  return a.name === b.name && a.description === b.description;
+  return a.name === b.name && a.description === b.description && a.thumbnailUrl === b.thumbnailUrl;
 }
 
 export function syncManifestToMindcraftJson(
@@ -76,6 +76,10 @@ export function diffMindcraftJsonToManifest(
   }
   if (parsed.description !== manifest.description) {
     patch.description = parsed.description;
+    hasChanges = true;
+  }
+  if (parsed.thumbnailUrl !== manifest.thumbnailUrl) {
+    patch.thumbnailUrl = parsed.thumbnailUrl;
     hasChanges = true;
   }
 

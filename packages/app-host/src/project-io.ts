@@ -1,3 +1,8 @@
+import type {
+  MindcraftExportCommon,
+  MindcraftExportFile,
+  MindcraftExportHost,
+} from "@mindcraft-lang/service-api";
 import { EXAMPLES_FOLDER } from "./examples.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ProjectManager } from "./project-manager.js";
@@ -6,27 +11,12 @@ import type { ProjectManifest } from "./project-manifest.js";
 import type { WorkspaceAdapter } from "./workspace-adapter.js";
 import type { WorkspaceEntry } from "./workspace-snapshot.js";
 
-export interface MindcraftExportHost {
-  name: string;
-  version: string;
-}
-
-export interface MindcraftExportFile {
-  path: string;
-  content: string;
-}
-
-export interface MindcraftExportCommon {
-  host: MindcraftExportHost;
-  name: string;
-  description: string;
-  files: MindcraftExportFile[];
-  brains: Record<string, unknown>;
-}
-
-export interface MindcraftExportDocument extends MindcraftExportCommon {
-  app?: unknown;
-}
+export type {
+  MindcraftExportCommon,
+  MindcraftExportDocument,
+  MindcraftExportFile,
+  MindcraftExportHost,
+} from "@mindcraft-lang/service-api";
 
 export interface ImportDiagnostic {
   severity: "error" | "warning";
@@ -81,6 +71,7 @@ export async function buildExportCommon(
     host,
     name: manifest.name,
     description: manifest.description,
+    thumbnailUrl: manifest.thumbnailUrl,
     files,
     brains,
   };
@@ -156,6 +147,9 @@ export async function importProject(
     if (typeof doc.description !== "string") {
       return errorResult('Invalid export file: "description" must be a string.');
     }
+    if (doc.thumbnailUrl !== undefined && typeof doc.thumbnailUrl !== "string") {
+      return errorResult('Invalid export file: "thumbnailUrl" must be a string when present.');
+    }
     if (!Array.isArray(doc.files)) {
       return errorResult('Invalid export file: "files" must be an array.');
     }
@@ -165,6 +159,7 @@ export async function importProject(
 
     const name = typeof doc.name === "string" && doc.name.trim() ? doc.name.trim() : DEFAULT_PROJECT_NAME;
     const description = doc.description;
+    const thumbnailUrl = typeof doc.thumbnailUrl === "string" ? doc.thumbnailUrl : undefined;
 
     const warnings: ImportDiagnostic[] = [];
 
@@ -218,7 +213,7 @@ export async function importProject(
 
     const appData: Record<string, string> = { ...callbackAppData, brains: serializedBrains };
 
-    const manifest = await projectManager.createFromSnapshot(name, description, snapshot, appData);
+    const manifest = await projectManager.createFromSnapshot(name, description, snapshot, appData, thumbnailUrl);
 
     return { success: true, projectId: manifest.id, diagnostics: warnings };
   } catch (e) {

@@ -115,7 +115,10 @@ class IdbProjectStore implements ProjectStore {
     }
   }
 
-  async updateProject(id: string, updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
+  async updateProject(
+    id: string,
+    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+  ): Promise<void> {
     const manifest = await this.db.get("projects", id);
     if (!manifest) {
       return;

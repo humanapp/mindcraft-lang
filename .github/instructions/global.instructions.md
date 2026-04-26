@@ -14,7 +14,29 @@ If you choose to create ad-hoc feature documentation or example files, they must
 
 ## Comments in Source Files
 
-**Do not add rationale or explanatory comments to source files.** Comments that explain why a file is structured a certain way, why a refactor was done, or what constraints drove a design decision do not belong in source code. The code should speak for itself, and historical rationale belongs in commit messages or design docs -- not inline.
+This codebase is used for teaching, so API documentation is desired. Document
+exported types, functions, classes, and non-trivial fields with JSDoc that
+explains **what** they are and how to use them, so a reader can understand the
+code without external context.
+
+What to write:
+
+- JSDoc on exported symbols (types, interfaces, classes, functions, public
+  methods) describing purpose, inputs, outputs, and invariants.
+- Field-level JSDoc on non-obvious properties (units, formats, allowed values,
+  nullability semantics).
+- Brief inline comments where the logic itself is non-obvious and a reader
+  would genuinely benefit from a hint about intent or an invariant.
+
+What NOT to write:
+
+- **Rationale or history-lesson comments.** Do not explain why a file is
+  structured a certain way, why a refactor was done, or what constraints drove
+  a past design decision. That belongs in commit messages or design docs.
+- Comments that just restate what the code literally does
+  (`// increment i by 1`).
+- Stub-style placeholders like
+  `// no implementation yet, but could add things like ...`.
 
 Examples of comments to avoid:
 
@@ -22,7 +44,34 @@ Examples of comments to avoid:
 - `// moved here to avoid circular dependency`
 - `// refactored from X to satisfy Y constraint`
 
-Only add comments where the logic itself is non-obvious and a reader would genuinely benefit from a brief hint.
+Also avoid **design-justification** comments that explain why the current
+shape was chosen rather than what it is. These read as "what" but are
+actually "why we chose this over an alternative." A reader who has never
+seen the alternative gains nothing from them.
+
+Examples to avoid:
+
+- `// returned as a URL so clients can fetch without a server round-trip`
+- `// optional because callers may not have computed it yet`
+- `// stored as a string instead of a number so leading zeros are preserved`
+- `// exposed publicly so the listing endpoint can avoid a join`
+- `// the URL representation -- not a storage key -- is exposed so ...`
+
+Treat the following phrasings as red flags in JSDoc on exported symbols
+and delete them when they introduce design rationale (they are usually
+fine inside cross-references like "call `foo()` rather than `bar()`"):
+
+- "... so that ..."
+- "... rather than ..." (when comparing the chosen design to an alternative)
+- "... instead of ..." (same)
+- "... not a ... -- ..."
+- "... is exposed because ..."
+- "... was chosen ..."
+
+Removal test: cover the comment with your hand and re-read the code. If a
+reader cannot figure out **what the field/function is** or **how to use it
+correctly** without the comment, keep it. If covering the comment only
+removes *justification* of the current design, delete it.
 
 ## ASCII-Only Text in Comments and Documentation
 

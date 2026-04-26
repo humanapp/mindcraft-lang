@@ -72,10 +72,11 @@ export class ProjectManager {
     name: string,
     description: string,
     snapshot: WorkspaceSnapshot,
-    appData?: Record<string, string>
+    appData?: Record<string, string>,
+    thumbnailUrl?: string
   ): Promise<ProjectManifest> {
     const manifest = await this.store.createProject(name);
-    await this.store.updateProject(manifest.id, { description });
+    await this.store.updateProject(manifest.id, { description, thumbnailUrl });
     await this.store.saveWorkspace(manifest.id, snapshot);
     if (appData) {
       for (const [key, value] of Object.entries(appData)) {
@@ -142,7 +143,9 @@ export class ProjectManager {
     return manifest;
   }
 
-  async updateActive(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
+  async updateActive(
+    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
+  ): Promise<void> {
     if (!this.currentActive) {
       throw new Error("No active project");
     }

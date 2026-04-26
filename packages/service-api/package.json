@@ -1,32 +1,29 @@
 {
-  "name": "@mindcraft-lang/app-host",
-  "version": "0.2.1",
-  "description": "Project management and workspace storage for Mindcraft apps",
+  "name": "@mindcraft-lang/service-api",
+  "version": "0.2.0",
+  "description": "Request/response schemas, shared enums, error shapes, and serialization formats for the Mindcraft backend service API",
   "license": "MIT",
   "type": "module",
   "author": "humanapp",
   "repository": {
     "type": "git",
     "url": "https://github.com/humanapp/mindcraft-lang.git",
-    "directory": "packages/app-host"
+    "directory": "packages/service-api"
   },
   "bugs": {
     "url": "https://github.com/humanapp/mindcraft-lang/issues"
   },
-  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/app-host#readme",
+  "homepage": "https://github.com/humanapp/mindcraft-lang/tree/main/packages/service-api#readme",
   "keywords": [
     "mindcraft",
     "visual-programming",
     "tile-based",
     "typescript",
-    "language",
+    "api",
+    "schemas",
     "education",
     "stem",
-    "coding",
-    "game-development",
-    "creative-coding",
-    "kodu",
-    "project-spark"
+    "coding"
   ],
   "files": [
     "dist",
@@ -58,20 +55,16 @@
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
     "typecheck": "tsc --noEmit",
-    "pretest": "npm run build:prod",
-    "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
     "format": "biome format ./src --write",
     "release:patch": "node ../../scripts/release.js patch",
     "release:minor": "node ../../scripts/release.js minor",
     "release:major": "node ../../scripts/release.js major"
   },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
   "devDependencies": {
     "@biomejs/biome": "2.3.15",
-    "tsx": "^4.21.0",
     "typescript": "~5.9.3"
-  },
-  "dependencies": {
-    "@mindcraft-lang/service-api": "file:../service-api",
-    "idb": "^8.0.3"
   }
 }
