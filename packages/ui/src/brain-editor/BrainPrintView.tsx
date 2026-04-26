@@ -177,6 +177,7 @@ interface BrainPrintViewProps {
   brainDef: BrainDef;
 }
 
+/** Visual print layout for a brain. Renders each page as a series of WHEN/DO rule rows with tile chips. */
 export function BrainPrintView({ brainDef }: BrainPrintViewProps) {
   const pages = brainDef.pages().toArray() as BrainPageDef[];
 

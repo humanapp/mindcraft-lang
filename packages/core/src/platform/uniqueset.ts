@@ -1,3 +1,4 @@
+/** Cross-platform set of unique string or number values. Roblox build uses a Luau table; Node/ESM build uses a native `Set`. */
 export declare class UniqueSet<T extends string | number> {
   constructor(values?: readonly T[]);
 

@@ -14,6 +14,7 @@
 
 let clipboardLoggingEnabled = false;
 
+/** Returns true when clipboard payload logging is currently enabled. */
 export function isClipboardLoggingEnabled(): boolean {
   return clipboardLoggingEnabled;
 }

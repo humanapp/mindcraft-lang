@@ -62,6 +62,7 @@ interface BrainPrintTextViewProps {
   brainDef: BrainDef;
 }
 
+/** Plain-text print layout for a brain. Renders pages and rules as indented WHEN/DO labels. */
 export function BrainPrintTextView({ brainDef }: BrainPrintTextViewProps) {
   const editorConfig = useBrainEditorConfig();
   const pages = brainDef.pages().toArray() as BrainPageDef[];

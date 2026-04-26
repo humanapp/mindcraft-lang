@@ -5,6 +5,7 @@ import { UserTileProject } from "./compiler/project.js";
 import type { CompileDiagnostic, DiagnosticSeverity } from "./compiler/types.js";
 import { buildCompiledActionBundle } from "./runtime/action-bundle.js";
 
+/** A file in a {@link WorkspaceSnapshot}: `content` plus the `etag` used for optimistic concurrency. */
 export type WorkspaceFileEntry = {
   kind: "file";
   content: string;
@@ -12,14 +13,21 @@ export type WorkspaceFileEntry = {
   isReadonly: boolean;
 };
 
+/** A directory entry in a {@link WorkspaceSnapshot}. */
 export type WorkspaceDirectoryEntry = {
   kind: "directory";
 };
 
+/** Tagged union of file and directory entries that may appear in a {@link WorkspaceSnapshot}. */
 export type WorkspaceSnapshotEntry = WorkspaceFileEntry | WorkspaceDirectoryEntry;
 
+/** Read-only snapshot of every file and directory in the workspace, keyed by path. */
 export type WorkspaceSnapshot = ReadonlyMap<string, WorkspaceSnapshotEntry>;
 
+/**
+ * Tagged-union of incremental edits accepted by
+ * {@link WorkspaceCompiler.applyWorkspaceChange}.
+ */
 export type WorkspaceChange =
   | {
       action: "write";
@@ -53,6 +61,7 @@ export type WorkspaceChange =
       entries: Iterable<[string, WorkspaceSnapshotEntry]>;
     };
 
+/** Source range for a workspace diagnostic. Lines and columns are 1-based. */
 export interface WorkspaceDiagnosticRange {
   startLine: number;
   startColumn: number;
@@ -60,6 +69,7 @@ export interface WorkspaceDiagnosticRange {
   endColumn: number;
 }
 
+/** A single diagnostic for a workspace file. `code` is the namespaced compiler diagnostic code (e.g. `MC1004`). */
 export interface WorkspaceDiagnosticEntry {
   severity: DiagnosticSeverity;
   message: string;
@@ -67,22 +77,33 @@ export interface WorkspaceDiagnosticEntry {
   range: WorkspaceDiagnosticRange;
 }
 
+/** Result of a {@link WorkspaceCompiler.compile} call. */
 export interface WorkspaceCompileResult {
+  /** Diagnostics keyed by workspace path. Files with no diagnostics are absent. */
   files: ReadonlyMap<string, readonly WorkspaceDiagnosticEntry[]>;
   projectResult: ProjectCompileResult;
+  /** Compiled action bundle. Absent when the project has blocking diagnostics. */
   bundle?: CompiledActionBundle;
 }
 
+/** Options for {@link createWorkspaceCompiler}. */
 export interface CreateWorkspaceCompilerOptions {
   environment: MindcraftEnvironment;
+  /** Override the ambient declarations source. When omitted, declarations are generated from the environment's type registry. */
   ambientSource?: string;
 }
 
+/** Driver for incremental workspace compilation. Receives snapshot/change inputs and emits diagnostics and a bundle. */
 export interface WorkspaceCompiler {
   replaceWorkspace(snapshot: WorkspaceSnapshot): void;
   applyWorkspaceChange(change: WorkspaceChange): void;
   compile(): WorkspaceCompileResult;
+  /** Subscribe to compile results. Returns a disposer. */
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void;
+  /**
+   * Files synthesized by the compiler (e.g. `mindcraft.d.ts`, `tsconfig.json`).
+   * The host should keep these in sync with the workspace.
+   */
   getCompilerControlledFiles(): ReadonlyMap<string, string>;
 }
 
@@ -217,6 +238,7 @@ const TSCONFIG_CONTENT = JSON.stringify(
   2
 );
 
+/** Construct a {@link WorkspaceCompiler} bound to the given environment and (optional) ambient declarations. */
 export function createWorkspaceCompiler(options: CreateWorkspaceCompilerOptions): WorkspaceCompiler {
   return new WorkspaceCompilerController(options);
 }

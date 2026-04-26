@@ -3,6 +3,12 @@ import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
 import type { WorkspaceEntry, WorkspaceSnapshot } from "./workspace-snapshot.js";
 
+/**
+ * Create a {@link ProjectStore} backed by `localStorage`.
+ *
+ * @param keyPrefix - Prefix applied to every `localStorage` and `sessionStorage`
+ *   key written by the store.
+ */
 export function createLocalStorageProjectStore(keyPrefix: string): ProjectStore {
   return new LocalStorageProjectStore(keyPrefix);
 }

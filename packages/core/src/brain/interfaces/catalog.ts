@@ -6,6 +6,7 @@ import type { TypeId } from "./type-system";
 // Tile Catalog
 // ----------------------------------------------------
 
+/** Mutable catalog of {@link IBrainTileDef}s keyed by `tileId`. Brains consult catalogs to enumerate available tiles. */
 export interface ITileCatalog {
   has(tileId: string): boolean;
   add(tile: IBrainTileDef): void;
@@ -20,6 +21,7 @@ export interface ITileCatalog {
 // Tile Definition Builder
 // ----------------------------------------------------
 
+/** Factory for built-in tileDef shapes (operators, control flow, variables, literals). */
 export interface IBrainTileDefBuilder {
   // operator tiles
   createOperatorTileDef(opId: string, opts: BrainTileDefCreateOptions): IBrainTileDef;

@@ -4,47 +4,76 @@ import type { AppClientMessage, CompileDiagnosticEntry } from "@mindcraft-lang/b
 import { BridgeProject } from "./bridge-project.js";
 
 export type { WorkspaceAdapter, WorkspaceChange, WorkspaceSnapshot };
+/** Connection status of the underlying bridge session. */
 export type AppBridgeState = ConnectionStatus;
+/** A single compiler diagnostic entry surfaced through the bridge. */
 export type DiagnosticEntry = CompileDiagnosticEntry;
 
+/**
+ * App-side handle for a Mindcraft bridge session. Owns the lifecycle of the
+ * underlying connection and forwards local workspace edits to and from the
+ * remote peer.
+ */
 export interface AppBridge {
+  /** Open the bridge connection. No-op if already started. */
   start(): void;
+  /** Close the bridge connection and release resources. */
   stop(): void;
+  /** Request a full workspace resync from the peer. */
   requestSync(): Promise<void>;
+  /** Read the current connection state. */
   snapshot(): AppBridgeSnapshot;
+  /** Subscribe to connection-state changes. Returns an unsubscribe function. */
   onStateChange(listener: (state: AppBridgeState) => void): () => void;
+  /** Subscribe to workspace changes pushed by the remote peer. */
   onRemoteChange(listener: (change: WorkspaceChange) => void): () => void;
 }
 
+/** Snapshot of the bridge connection state. */
 export interface AppBridgeSnapshot {
   status: AppBridgeState;
+  /** Code the user pastes into the peer to bind the session, when available. */
   joinCode?: string;
 }
 
+/** Options for {@link createAppBridge}. */
 export interface AppBridgeOptions {
   bridgeUrl: string;
   workspace: WorkspaceAdapter;
+  /** Optional features attached to the bridge for the duration of each session. */
   features?: readonly AppBridgeFeature[];
+  /** Persisted token used to rebind to a previously established session. */
   bindingToken?: string;
+  /** Callback invoked whenever the server issues an updated binding token. */
   onBindingTokenChange?: (token: string) => void;
 }
 
+/**
+ * Pluggable extension to {@link AppBridge}. `attach` is invoked when the bridge
+ * starts and must return a disposer that cleans up when the bridge stops.
+ */
 export interface AppBridgeFeature {
   attach(context: AppBridgeFeatureContext): () => void;
 }
 
+/** Context passed to an {@link AppBridgeFeature} on attach. */
 export interface AppBridgeFeatureContext {
   snapshot(): AppBridgeSnapshot;
   workspaceSnapshot(): WorkspaceSnapshot;
   onStateChange(listener: (state: AppBridgeState) => void): () => void;
   onRemoteChange(listener: (change: WorkspaceChange) => void): () => void;
+  /** Subscribe to full-workspace sync completions from the peer. */
   onDidSync(listener: () => void): () => void;
+  /** Send the diagnostics for `file` to the peer. */
   publishDiagnostics(file: string, diagnostics: readonly DiagnosticEntry[]): void;
+  /** Send a compile pass/fail status update for `file` to the peer. */
   publishStatus(update: AppBridgeFeatureStatus): void;
 }
 
+/** Per-file compile status published by features through {@link AppBridgeFeatureContext}. */
 export interface AppBridgeFeatureStatus {
   file: string;
+  /** `true` when the file compiled with no errors. */
   success: boolean;
   diagnosticCount: {
     error: number;
@@ -52,6 +81,7 @@ export interface AppBridgeFeatureStatus {
   };
 }
 
+/** Create an {@link AppBridge}. */
 export function createAppBridge(options: AppBridgeOptions): AppBridge {
   return new AppBridgeController(options);
 }

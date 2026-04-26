@@ -29,6 +29,12 @@ function appDataKey(projectId: string, key: string): string {
   return `${projectId}:${key}`;
 }
 
+/**
+ * Create a {@link ProjectStore} backed by IndexedDB.
+ *
+ * @param keyPrefix - Used to derive the IndexedDB database name and the
+ *   `localStorage`/`sessionStorage` keys that track the active project.
+ */
 export async function createIdbProjectStore(keyPrefix: string): Promise<ProjectStore> {
   let migrateWorkspacesToFiles: Map<string, Array<[string, WorkspaceEntry]>> | undefined;
 

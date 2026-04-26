@@ -93,21 +93,26 @@ export interface BrainActionCallConditionalSpec {
   readonly else?: BrainActionCallSpec;
 }
 
+/** A flattened (slot-indexed) view of an arg in a {@link BrainActionCallDef}. */
 export interface BrainActionArgSlot {
   readonly slotId: number;
   readonly argSpec: BrainActionCallArgSpec;
   readonly choiceGroup?: number;
 }
 
+/** Compiled call definition: the original {@link BrainActionCallSpec} tree plus its flattened arg slots. */
 export type BrainActionCallDef = {
   callSpec: BrainActionCallSpec;
   argSlots: ReadonlyList<BrainActionArgSlot>;
 };
 
+/** Stable string key identifying a registered action. */
 export type ActionKey = string;
 
+/** The action kind  */
 export type ActionKind = "sensor" | "actuator";
 
+/** Static metadata for a registered action: its key, kind, call grammar, async flag, and (for sensors) output type. */
 export type ActionDescriptor = {
   key: ActionKey;
   kind: ActionKind;
@@ -116,6 +121,7 @@ export type ActionDescriptor = {
   outputType?: TypeId;
 };
 
+/** Flatten a {@link BrainActionCallSpec} tree into a {@link BrainActionCallDef}. */
 export function mkCallDef(callSpec: BrainActionCallSpec): BrainActionCallDef {
   const argSlots = callSpecToArgSlots(callSpec);
   return {
@@ -140,6 +146,7 @@ export function getSlotId(callDef: BrainActionCallDef, tileIdOrSpec: string | Br
 
 let nextChoiceGroupId = 0;
 
+/** Flatten a {@link BrainActionCallSpec} into ordered, slot-indexed args. */
 export function callSpecToArgSlots(callSpec: BrainActionCallSpec): ReadonlyList<BrainActionArgSlot> {
   const argList = List.empty<BrainActionArgSlot>();
   callSpecToArgSlotsImpl(callSpec, argList, undefined);

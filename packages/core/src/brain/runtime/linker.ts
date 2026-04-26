@@ -256,6 +256,11 @@ function toExecutableAction(
   return appendArtifactTables(resolved.descriptor, resolved.artifact, functions, constants, variableNames);
 }
 
+/**
+ * Link an {@link UnlinkedBrainProgram} into an {@link ExecutableBrainProgram} by
+ * resolving every action reference through `resolver` and inlining bytecode-backed
+ * action artifacts into the program's function/constant/variable tables.
+ */
 export function linkBrainProgram(
   program: UnlinkedBrainProgram,
   brainDef: IBrainDef,

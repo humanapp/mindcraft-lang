@@ -39,6 +39,7 @@ import {
 import type { BrainServices } from "../services";
 import { registerEnumConversions } from "./conversions";
 
+/** Concrete {@link ITypeRegistry}: in-memory type table with constructor-based parameterized types and structural-compatibility caching. */
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
   private nameToId = new Dict<string, TypeId>();
@@ -710,6 +711,7 @@ export class TypeRegistry implements ITypeRegistry {
 // ----------------------------------------------------
 // Register core types
 
+/** Register the built-in core types (`Void`, `Nil`, `Boolean`, `Number`, `String`, `Any`, `Function`, list/map constructors) on `services.types`. */
 export function registerCoreTypes(services: BrainServices) {
   const typeRegistry = services.types;
   typeRegistry.addVoidType(CoreTypeNames.Void);

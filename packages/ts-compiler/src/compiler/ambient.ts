@@ -529,6 +529,7 @@ function buildAmbientDeclarationsFromRegistry(registry: ITypeRegistry): string {
   return `${AMBIENT_HEADER}${AMBIENT_MODULE_START}${typeMapEntries}  }\n\n${typeDeclarations}${AMBIENT_MODULE_END}`;
 }
 
+/** Generate the ambient `.d.ts` source that exposes the host's registered types and functions to the user-tile compiler. */
 export function buildAmbientDeclarations(types: ITypeRegistry): string {
   return buildAmbientDeclarationsFromRegistry(types);
 }

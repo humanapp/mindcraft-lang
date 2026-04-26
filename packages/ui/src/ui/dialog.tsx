@@ -4,14 +4,19 @@ import * as React from "react";
 
 import { cn } from "../lib/utils";
 
+/** shadcn/ui dialog root, backed by Radix `Dialog.Root`. Wraps a controlled or uncontrolled modal. */
 const Dialog = DialogPrimitive.Root;
 
+/** Element that opens the parent {@link Dialog}. */
 const DialogTrigger = DialogPrimitive.Trigger;
 
+/** Portal target for {@link Dialog} content. */
 const DialogPortal = DialogPrimitive.Portal;
 
+/** Element that closes the parent {@link Dialog}. */
 const DialogClose = DialogPrimitive.Close;
 
+/** Full-viewport overlay rendered behind {@link DialogContent}. */
 const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Overlay>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
@@ -27,6 +32,7 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+/** Centered modal container. Renders an overlay and an optional close button (suppressed via `hideClose`). */
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
@@ -55,16 +61,19 @@ const DialogContent = React.forwardRef<
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
+/** Header section inside a {@link DialogContent}. */
 const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("flex flex-col space-y-1.5 text-center sm:text-left", className)} {...props} />
 );
 DialogHeader.displayName = "DialogHeader";
 
+/** Footer section inside a {@link DialogContent}. */
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2", className)} {...props} />
 );
 DialogFooter.displayName = "DialogFooter";
 
+/** Accessible title for a {@link Dialog}, backed by Radix `Dialog.Title`. */
 const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
@@ -77,6 +86,7 @@ const DialogTitle = React.forwardRef<
 ));
 DialogTitle.displayName = DialogPrimitive.Title.displayName;
 
+/** Accessible description for a {@link Dialog}, backed by Radix `Dialog.Description`. */
 const DialogDescription = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Description>,
   React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>

@@ -6,6 +6,7 @@ import fnPreviousPage from "./previous-page";
 import fnRandom from "./random";
 import fnTimeout from "./timeout";
 
+/** Register the built-in sensors on `services`. */
 export function registerCoreSensors(services: BrainServices) {
   services.actions.register(fnRandom.binding);
   services.actions.register(fnOnPageEntered.binding);

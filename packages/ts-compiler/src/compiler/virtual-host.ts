@@ -15,6 +15,7 @@ function resolvePath(base: string, relative: string): string {
   return `/${segments.join("/")}`;
 }
 
+/** Build a minimal in-memory `ts.CompilerHost` backed by `files`. Used by {@link UserTileProject} to compile without touching disk. */
 export function createVirtualCompilerHost(files: Map<string, string>, options: ts.CompilerOptions): ts.CompilerHost {
   return {
     getSourceFile(fileName, languageVersion) {

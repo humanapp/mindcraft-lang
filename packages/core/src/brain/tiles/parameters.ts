@@ -9,6 +9,7 @@ import {
 import { BrainTileDefBase } from "../model/tiledef";
 import type { BrainServices } from "../services";
 
+/** Tile definition for a named parameter slot of a sensor/actuator, typed by `dataType`. */
 export class BrainTileParameterDef extends BrainTileDefBase {
   readonly kind = "parameter";
   readonly parameterId: string;
@@ -32,6 +33,7 @@ function registerParameterTileDef(
   services.tiles.registerTileDef(tileDef);
 }
 
+/** Register the built-in anonymous parameter tiles for boolean/number/string args on `services`. */
 export function registerCoreParameterTileDefs(services: BrainServices) {
   const tiles = services.tiles;
   const register = (parameterId: string, dataType: TypeId, opts: BrainTileDefCreateOptions = {}) => {

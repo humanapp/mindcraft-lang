@@ -1,5 +1,7 @@
+/** Lexical scope kind tracked by {@link ScopeStack}. */
 export type ScopeKind = "function" | "block" | "module";
 
+/** Static description of a lexical scope spanning IR indices `irStartIndex`..`irEndIndex`. */
 export interface ScopeMetadata {
   scopeId: number;
   kind: ScopeKind;
@@ -9,6 +11,7 @@ export interface ScopeMetadata {
   name: string | null;
 }
 
+/** Static description of a local: storage kind, owning scope, and (optional) static type hint. */
 export interface LocalMetadata {
   name: string;
   slotIndex: number;
@@ -18,6 +21,7 @@ export interface LocalMetadata {
   typeHint: string | null;
 }
 
+/** Lowering-time scope/local manager: assigns slot indices to declarations and resolves identifiers to slots. */
 export class ScopeStack {
   private scopes: Map<string, number>[] = [new Map()];
   private _nextLocal: number;

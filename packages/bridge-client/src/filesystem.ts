@@ -4,25 +4,43 @@ import { ErrorCode, ProtocolError } from "./error-codes.js";
 
 export type { FileSystemNotification };
 
+/** Result of {@link IFileSystem.write}. */
 export interface WriteResult {
+  /** New etag of the file after the write. */
   etag: string;
+  /** `true` when the written content exceeded the per-file content cap. */
   oversized?: boolean;
 }
 
+/** In-memory filesystem interface used by bridge clients. */
 export interface IFileSystem {
+  /** List the immediate children of `path`, or the root when omitted. */
   list(path?: string): FileTreeEntry[];
+  /** Read a file's UTF-8 contents. */
   read(path: string): string;
+  /**
+   * Write `content` to `path`. When `expectedEtag` is provided and disagrees
+   * with the current etag, throws {@link ProtocolError} with `ETAG_MISMATCH`.
+   */
   write(path: string, content: string, isReadonly?: boolean, etag?: string): WriteResult;
+  /** Restore a file with a known etag (used by sync), bypassing optimistic-concurrency checks. */
   writeRestore(path: string, content: string, isReadonly: boolean, etag: string): void;
   delete(path: string): void;
   rename(oldPath: string, newPath: string): void;
   stat(path: string): StatResult;
   mkdir(path: string): void;
   rmdir(path: string): void;
+  /** Snapshot the entire filesystem. */
   export(): ExportedFileSystem;
+  /** Replace the entire filesystem with `entries`. */
   import(entries: ExportedFileSystem): void;
 }
 
+/**
+ * Wraps an {@link IFileSystem} and emits a {@link FileSystemNotification} for
+ * every mutation. Also exposes {@link applyNotification} for receiving remote
+ * mutations.
+ */
 export class NotifyingFileSystem implements IFileSystem {
   constructor(
     private _fs: IFileSystem,
@@ -168,6 +186,7 @@ export class NotifyingFileSystem implements IFileSystem {
   }
 }
 
+/** In-memory tree-backed implementation of {@link IFileSystem}. */
 export class FileSystem implements IFileSystem {
   private _root = new FileTree("", "");
 
@@ -237,6 +256,7 @@ export class FileSystem implements IFileSystem {
   }
 }
 
+/** A regular file entry in an {@link ExportedFileSystem}. */
 export type ExportedFileEntry = {
   kind: "file";
   content: string;
@@ -244,18 +264,23 @@ export type ExportedFileEntry = {
   isReadonly: boolean;
 };
 
+/** A directory entry in an {@link ExportedFileSystem}. */
 export type ExportedDirectoryEntry = {
   kind: "directory";
 };
 
+/** Either a file or a directory entry in an {@link ExportedFileSystem}. */
 export type ExportedFileSystemEntry = ExportedFileEntry | ExportedDirectoryEntry;
 
+/** Map from absolute path to entry, used as the snapshot/import format. */
 export type ExportedFileSystem = Map<string, ExportedFileSystemEntry>;
 
+/** Result of {@link IFileSystem.stat}. */
 export type StatResult =
   | { kind: "file"; path: string; name: string; etag: string; isReadonly: boolean }
   | { kind: "directory"; path: string; name: string };
 
+/** A file entry returned by {@link IFileSystem.list}. */
 export type TreeFileEntry = {
   kind: "file";
   path: string;
@@ -264,16 +289,19 @@ export type TreeFileEntry = {
   isReadonly: boolean;
 };
 
+/** A file entry that also carries its content. */
 export type TreeFileEntryWithContent = TreeFileEntry & {
   content: string;
 };
 
+/** A directory entry returned by {@link IFileSystem.list}. */
 export type TreeDirectoryEntry = {
   kind: "directory";
   path: string;
   name: string;
 };
 
+/** Either a file or a directory entry returned by {@link IFileSystem.list}. */
 export type FileTreeEntry = TreeFileEntry | TreeDirectoryEntry;
 
 class FileTree {

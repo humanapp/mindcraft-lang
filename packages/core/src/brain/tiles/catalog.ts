@@ -8,12 +8,15 @@ import { BrainTileMissingDef, type MissingTileJson } from "./missing";
 import { BrainTilePageDef, type PageTileJson } from "./pagetiles";
 import { BrainTileVariableDef, type VariableTileJson } from "./variables";
 
+/** Discriminated union of every persistent tile JSON shape supported by {@link TileCatalog.toJson}. */
 export type CatalogTileJson = LiteralTileJson | VariableTileJson | PageTileJson | MissingTileJson;
 
+/** Display label fallback for a tile when no metadata label is set: the trailing dotted segment of its tile id. */
 export function getCatalogFallbackLabel(tileDef: IBrainTileDef): string {
   return tileDef.tileId.split(".").pop() || tileDef.tileId;
 }
 
+/** In-memory {@link ITileCatalog}: stores {@link IBrainTileDef}s keyed by tile id, with JSON round-tripping. */
 export class TileCatalog implements ITileCatalog {
   private readonly tiles = new Dict<string, IBrainTileDef>();
 

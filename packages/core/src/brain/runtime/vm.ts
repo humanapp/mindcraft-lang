@@ -98,6 +98,7 @@ import type { BrainServices } from "../services";
 // Configuration & Limits
 ///////////////////////////
 
+/** Default tunable values used when no {@link VmConfig} is supplied. */
 export const DEFAULT_VM_CONFIG: VmConfig = {
   maxFrameDepth: 256,
   maxStackSize: 4096,
@@ -458,6 +459,7 @@ class BytecodeVerifier {
 // VM Core
 ///////////////////////////
 
+/** Concrete bytecode {@link IVM} implementation: spawns and runs fibers against a compiled {@link Program}. */
 export class VM implements IVM {
   private config: VmConfig;
   private verifier: BytecodeVerifier;
@@ -2290,18 +2292,21 @@ export class VM implements IVM {
 // Fiber Scheduler
 ///////////////////////////
 
+/** Tunables for {@link FiberScheduler}. */
 export interface SchedulerConfig {
   maxFibersPerTick: number;
   defaultBudget: number;
   autoGcHandles: boolean;
 }
 
+/** Default values for {@link SchedulerConfig}. */
 export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
   maxFibersPerTick: 64,
   defaultBudget: 1000,
   autoGcHandles: true,
 };
 
+/** Concrete cooperative {@link IFiberScheduler}: maintains a fiber pool and dispatches budgeted execution slices on each `tick()`. */
 export class FiberScheduler implements IFiberScheduler {
   private config: SchedulerConfig;
   private fibers = new Dict<number, Fiber>();

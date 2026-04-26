@@ -9,6 +9,7 @@ interface RenameVariableDialogProps {
   onSubmit: (newName: string) => void;
 }
 
+/** Dialog that prompts for a new name for an existing variable and submits via `onSubmit`. */
 export function RenameVariableDialog({ isOpen, initialName, onOpenChange, onSubmit }: RenameVariableDialogProps) {
   const [variableName, setVariableName] = useState(initialName);
 

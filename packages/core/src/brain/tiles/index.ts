@@ -25,6 +25,7 @@ import { registerCoreParameterTileDefs } from "./parameters";
 import { registerCoreSensorTileDefs } from "./sensors";
 import { registerCoreVariableFactoryTileDefs } from "./variables";
 
+/** Register every built-in tile component (operators, control-flow, factories, parameters, actuators, sensors). */
 export function registerCoreTileComponents(services: BrainServices) {
   registerCoreOperatorTileDefs(services);
   registerCoreControlFlowTileDefs(services);

@@ -4,8 +4,11 @@ import type { ProjectCompileResult } from "../compiler/compile.js";
 import type { UserAuthoredProgram } from "../compiler/types.js";
 import { buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-metadata.js";
 
+/** Options for {@link buildCompiledActionBundle}. */
 export interface BuildCompiledActionBundleOptions {
+  /** Resolve a parameter type name to its `TypeId`. Defaults to `services.types.resolveByName`. */
   resolveTypeId?: UserTileTypeResolver;
+  /** Override the bundle revision. Defaults to a content hash of the included programs. */
   revision?: string;
   services: BrainServices;
 }
@@ -63,6 +66,7 @@ function addTiles(target: Map<string, IBrainTileDef>, tiles: readonly IBrainTile
   }
 }
 
+/** Build a {@link CompiledActionBundle} from a {@link ProjectCompileResult}. Returns undefined when the project has blocking diagnostics. */
 export function buildCompiledActionBundle(
   result: ProjectCompileResult,
   options: BuildCompiledActionBundleOptions

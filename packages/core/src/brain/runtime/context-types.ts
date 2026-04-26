@@ -15,6 +15,7 @@ import {
 } from "../interfaces";
 import type { BrainServices } from "../services";
 
+/** Stable type-system names for the built-in context structs. */
 export const ContextTypeNames = {
   Context: "Context",
   BrainContext: "BrainContext",
@@ -22,6 +23,7 @@ export const ContextTypeNames = {
   RuleContext: "RuleContext",
 };
 
+/** Resolved {@link TypeId}s of the built-in context struct types. */
 export const ContextTypeIds = {
   Context: mkTypeId(NativeType.Struct, ContextTypeNames.Context),
   BrainContext: mkTypeId(NativeType.Struct, ContextTypeNames.BrainContext),
@@ -29,6 +31,7 @@ export const ContextTypeIds = {
   RuleContext: mkTypeId(NativeType.Struct, ContextTypeNames.RuleContext),
 };
 
+/** Register the built-in context struct types and their host method bindings. */
 export function registerContextTypes(services: BrainServices) {
   const { types, functions } = services;
 

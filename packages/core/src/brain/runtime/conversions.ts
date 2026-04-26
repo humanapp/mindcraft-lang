@@ -23,6 +23,7 @@ import type { IFunctionRegistry } from "../interfaces/functions";
 import type { TypeId } from "../interfaces/type-system";
 import type { BrainServices } from "../services";
 
+/** Build the host function name used to register a conversion from `fromType` to `toType`. */
 export function conversionFnName(fromType: TypeId, toType: TypeId): string {
   return `$$conv_${fromType}_to_${toType}`;
 }
@@ -165,6 +166,7 @@ const anonConversionCallDef = mkCallDef({
   anonymous: true,
 });
 
+/** Register the implicit/explicit conversions for an enum type (string<->enum, number<->enum). */
 export function registerEnumConversions(typeId: TypeId, services: BrainServices) {
   const enumType = services.types.get(typeId);
   if (!enumType || enumType.coreType !== NativeType.Enum) {
@@ -230,6 +232,7 @@ function resolveEnumPrimitiveValue(typeId: TypeId, args: MapValue, services: Bra
   return symbol.value;
 }
 
+/** Register the built-in conversions between core primitive types (number<->string, boolean<->number, etc.). */
 export function registerCoreConversions(services: BrainServices) {
   const conversionRegistry = services.conversions;
   // Number -> String conversion

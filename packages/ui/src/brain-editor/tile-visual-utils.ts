@@ -30,6 +30,12 @@ function defaultTileLabel(tileDef: IBrainTileDef): string {
   return getCatalogFallbackLabel(tileDef);
 }
 
+/**
+ * Resolve the visual (label, icon, colors) for a tile by merging the tile's
+ * intrinsic metadata with the app-supplied `resolveTileVisual` from `config`.
+ * The label falls back to a kind-specific default (literal value, variable
+ * name, accessor field name) when neither source provides a meaningful one.
+ */
 export function resolveTileVisual(config: BrainEditorConfig, tileDef: IBrainTileDef): TileVisual {
   const intrinsicVisual = tileDef.metadata as TileVisual | undefined;
   const appVisual = config.resolveTileVisual?.(tileDef);

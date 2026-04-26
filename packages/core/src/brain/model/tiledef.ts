@@ -10,10 +10,9 @@ import type {
   TilePlacement,
 } from "../interfaces";
 
-export type AstBuildContext = {};
-
 const emptyBitSet = new BitSet();
 
+/** Abstract base implementing the common {@link IBrainTileDef} fields shared by all tile definitions. */
 export abstract class BrainTileDefBase implements IBrainTileDef {
   abstract readonly kind: BrainTileKind;
   readonly tileId: TileId;
@@ -45,6 +44,7 @@ export abstract class BrainTileDefBase implements IBrainTileDef {
   }
 }
 
+/** Abstract base for tiles bound to an {@link ActionDescriptor} (sensors and actuators). */
 export abstract class BrainActionTileBase extends BrainTileDefBase implements IBrainActionTileDef {
   readonly action: ActionDescriptor;
 

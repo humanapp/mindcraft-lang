@@ -123,6 +123,7 @@ export class RenameVariableCommand implements BrainCommand {
   }
 }
 
+/** Command that sets or clears the comment on a {@link BrainRuleDef}. */
 export class SetRuleCommentCommand implements BrainCommand {
   private oldComment: string | undefined;
 

@@ -1,5 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 
+/**
+ * Hook that renders markdown content into a hidden portal and triggers the
+ * browser's print dialog. Returns `triggerPrint` together with the current
+ * `printContent` (to render via portal) and `printRootRef`.
+ */
 export function useDocsPrint() {
   const printRootRef = useRef<HTMLDivElement | null>(null);
   const [printContent, setPrintContent] = useState<string | null>(null);

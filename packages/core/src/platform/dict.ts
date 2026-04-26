@@ -1,5 +1,6 @@
 import type { List } from "./list";
 
+/** Cross-platform key/value map. Roblox build uses a Luau table; Node/ESM build uses a `Map`. */
 export declare class Dict<K, V> {
   constructor(entries?: ReadonlyArray<readonly [K, V]>);
   static empty<K, V>(): Dict<K, V>;

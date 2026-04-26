@@ -392,6 +392,7 @@ interface DocsPrintViewProps {
   content: string;
 }
 
+/** Renders a markdown doc page with print-optimized styling. */
 export function DocsPrintView({ content }: DocsPrintViewProps) {
   return (
     <div className="docs-print-view">

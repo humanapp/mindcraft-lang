@@ -3,8 +3,11 @@ import { MINDCRAFT_JSON_PATH, parseMindcraftJson, serializeMindcraftJson } from 
 import type { ProjectManifest } from "./project-manifest.js";
 import type { WorkspaceAdapter } from "./workspace-adapter.js";
 
+/** Identifies the host application when writing `mindcraft.json`. */
 export interface MindcraftJsonHostInfo {
+  /** Host application identifier (e.g. `"sim"`). */
   name: string;
+  /** Semver string of the host application. */
   version: string;
 }
 
@@ -18,6 +21,11 @@ function syncedFieldsMatch(a: SyncedManifestFields, b: SyncedManifestFields): bo
   return a.name === b.name && a.description === b.description && a.thumbnailUrl === b.thumbnailUrl;
 }
 
+/**
+ * Write the synced fields from `manifest` into the workspace's `mindcraft.json`,
+ * creating the file if it does not exist. Does nothing if the file already
+ * matches the manifest.
+ */
 export function syncManifestToMindcraftJson(
   workspace: WorkspaceAdapter,
   manifest: ProjectManifest,
@@ -58,6 +66,11 @@ export function syncManifestToMindcraftJson(
   });
 }
 
+/**
+ * Compute the patch needed to bring `manifest` into agreement with the synced
+ * fields of a `mindcraft.json` document. Returns `undefined` if the document
+ * is unparseable or no fields differ.
+ */
 export function diffMindcraftJsonToManifest(
   content: string,
   manifest: ProjectManifest

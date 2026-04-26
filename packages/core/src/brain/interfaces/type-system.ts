@@ -5,9 +5,10 @@ import type { StructFieldGetterFn, StructFieldSetterFn, StructSnapshotNativeFn }
 // Type System
 // ----------------------------------------------------
 
-export type TypeId = string; // datatype identifier
+/** Datatype identifier (e.g. `"number:<int>"`). Build with {@link mkTypeId}. */
+export type TypeId = string;
 
-// These are the "native" brain types. Concrete types are built atop these.
+/** Native runtime types the brain VM understands. Concrete types are built atop these. */
 export enum NativeType {
   Unknown = -1,
   Void = 0,
@@ -24,6 +25,7 @@ export enum NativeType {
   Function = 11,
 }
 
+/** Stable lower-case name for a {@link NativeType} (e.g. `NativeType.Number` -> `"number"`). */
 export function nativeTypeToString(coreType: NativeType): string {
   switch (coreType) {
     case NativeType.Unknown:
@@ -57,10 +59,12 @@ export function nativeTypeToString(coreType: NativeType): string {
   }
 }
 
+/** String/JSON formatter for runtime values of a registered type. */
 export interface TypeCodec {
   stringify(value: unknown): string;
 }
 
+/** Common fields shared by every registered type definition. */
 export interface TypeDef {
   coreType: NativeType;
   typeId: TypeId;
@@ -70,8 +74,10 @@ export interface TypeDef {
   autoInstantiated?: boolean;
 }
 
+/** Primitive value backing an {@link EnumSymbolDef}. */
 export type EnumPrimitiveValue = string | number;
 
+/** A single symbol within an enum type. */
 export interface EnumSymbolDef {
   key: string;
   label: string;
@@ -79,26 +85,33 @@ export interface EnumSymbolDef {
   deprecated?: boolean;
 }
 
+/** Shape fields specific to enum types. */
 export interface EnumTypeShape {
   symbols: List<EnumSymbolDef>;
   defaultKey?: string;
 }
 
+/** A registered enum type. */
 export type EnumTypeDef = TypeDef & EnumTypeShape;
 
+/** Shape fields specific to list types. */
 export interface ListTypeShape {
   elementTypeId: TypeId;
 }
 
+/** A registered list type. */
 export type ListTypeDef = TypeDef & ListTypeShape;
 
+/** Shape fields specific to map types. */
 export interface MapTypeShape {
   keyTypeId: TypeId;
   valueTypeId: TypeId;
 }
 
+/** A registered map type. */
 export type MapTypeDef = TypeDef & MapTypeShape;
 
+/** Declaration of a method callable on instances of a struct type. */
 export interface StructMethodDecl {
   name: string;
   params: List<{ name: string; typeId: TypeId }>;
@@ -106,6 +119,7 @@ export interface StructMethodDecl {
   isAsync?: boolean;
 }
 
+/** Shape fields specific to struct types. */
 export interface StructTypeShape {
   fields: List<{
     name: string;
@@ -129,27 +143,35 @@ export interface StructTypeShape {
   methods?: List<StructMethodDecl>;
 }
 
+/** A registered struct type. */
 export type StructTypeDef = TypeDef & StructTypeShape;
 
+/** Shape fields specific to nullable types. */
 export interface NullableTypeShape {
   baseTypeId: TypeId;
 }
 
+/** A registered nullable wrapper around `baseTypeId`. */
 export type NullableTypeDef = TypeDef & NullableTypeShape;
 
+/** Shape fields specific to union types. */
 export interface UnionTypeShape {
   memberTypeIds: List<TypeId>;
 }
 
+/** A registered union of `memberTypeIds`. */
 export type UnionTypeDef = TypeDef & UnionTypeShape;
 
+/** Shape fields specific to function types: parameter and return type ids. */
 export interface FunctionTypeShape {
   paramTypeIds: List<TypeId>;
   returnTypeId: TypeId;
 }
 
+/** A registered function type. */
 export type FunctionTypeDef = TypeDef & FunctionTypeShape;
 
+/** Constructor for parameterized type families (e.g. `List<T>`). Registered via {@link ITypeRegistry.registerConstructor}. */
 export interface TypeConstructor {
   name: string;
   arity: number;
@@ -157,6 +179,7 @@ export interface TypeConstructor {
   construct(registry: ITypeRegistry, args: List<TypeId>): TypeDef;
 }
 
+/** Mutable registry of {@link TypeDef}s, keyed by {@link TypeId} and resolvable by name. */
 export interface ITypeRegistry {
   get(id: TypeId): TypeDef | undefined;
   getEnumSymbol(typeId: TypeId, key: string): EnumSymbolDef | undefined;

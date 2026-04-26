@@ -1,3 +1,4 @@
+/** 2D vector value type. Mirrors Roblox's `Vector2` API for cross-platform code. */
 export declare interface Vector2 {
   readonly X: number;
   readonly Y: number;
@@ -21,6 +22,7 @@ export declare interface Vector2 {
   rotate(this: Vector2, angle: number): Vector2;
 }
 
+/** Constructor and static members for {@link Vector2}. */
 export declare interface Vector2Constructor {
   readonly zero: Vector2;
   readonly one: Vector2;
@@ -29,4 +31,5 @@ export declare interface Vector2Constructor {
   new (x?: number, y?: number): Vector2;
 }
 
+/** {@link Vector2} constructor and namespace. */
 export declare const Vector2: Vector2Constructor;

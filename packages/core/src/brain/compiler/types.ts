@@ -58,15 +58,13 @@ export type Span = {
   to: number; // exclusive
 };
 
+/** A single arg slot bound to an expression, used by sensors/actuators/parameters. */
 export type SlotExpr = {
   slotId: number;
   expr: Expr;
 };
 
-/**
- * Individual Expr variant types for strong typing in visitor callbacks.
- * Each type represents a specific kind of expression node in the AST.
- */
+/** AST node for a binary operator expression (e.g. `a + b`). */
 export type BinaryOpExpr = {
   nodeId: number;
   kind: "binaryOp";
@@ -75,6 +73,7 @@ export type BinaryOpExpr = {
   right: Expr;
   span: Span;
 };
+/** AST node for a prefix/postfix unary operator expression (e.g. `-x`). */
 export type UnaryOpExpr = {
   nodeId: number;
   kind: "unaryOp";
@@ -82,18 +81,21 @@ export type UnaryOpExpr = {
   operand: Expr;
   span: Span;
 };
+/** AST node for a literal value tile. */
 export type LiteralExpr = {
   nodeId: number;
   kind: "literal";
   tileDef: BrainTileLiteralDef;
   span: Span;
 };
+/** AST node for a variable read tile. */
 export type VariableExpr = {
   nodeId: number;
   kind: "variable";
   tileDef: BrainTileVariableDef;
   span: Span;
 };
+/** AST node for an assignment to a variable or struct field. */
 export type AssignmentExpr = {
   nodeId: number;
   kind: "assignment";
@@ -101,6 +103,7 @@ export type AssignmentExpr = {
   value: Expr;
   span: Span;
 };
+/** AST node for a named parameter passed to a sensor/actuator. */
 export type ParameterExpr = {
   nodeId: number;
   kind: "parameter";
@@ -108,30 +111,34 @@ export type ParameterExpr = {
   value: Expr;
   span: Span;
 };
+/** AST node for a modifier (flag/option) tile. */
 export type ModifierExpr = {
   nodeId: number;
   kind: "modifier";
   tileDef: BrainTileModifierDef;
   span: Span;
 };
+/** AST node for an actuator call: anonymous args, named parameters, and modifier flags. */
 export type ActuatorExpr = {
   nodeId: number;
   kind: "actuator";
   tileDef: BrainTileActuatorDef;
-  anons: List<SlotExpr>; // anonymous value inputs (plain args)
-  parameters: List<SlotExpr>; // named value inputs (parameter: value)
-  modifiers: List<SlotExpr>; // modifier inputs (flags/options)
+  anons: List<SlotExpr>;
+  parameters: List<SlotExpr>;
+  modifiers: List<SlotExpr>;
   span: Span;
 };
+/** AST node for a sensor call: anonymous args, named parameters, and modifier flags. */
 export type SensorExpr = {
   nodeId: number;
   kind: "sensor";
   tileDef: BrainTileSensorDef;
-  anons: List<SlotExpr>; // anonymous value inputs (plain args)
-  parameters: List<SlotExpr>; // named value inputs (parameter: value)
-  modifiers: List<SlotExpr>; // modifier inputs (flags/options)
+  anons: List<SlotExpr>;
+  parameters: List<SlotExpr>;
+  modifiers: List<SlotExpr>;
   span: Span;
 };
+/** AST node for a field access on a struct expression (e.g. `obj.field`). */
 export type FieldAccessExpr = {
   nodeId: number;
   kind: "fieldAccess";
@@ -139,14 +146,16 @@ export type FieldAccessExpr = {
   accessor: BrainTileAccessorDef;
   span: Span;
 };
-export type EmptyExpr = { nodeId: number; kind: "empty" }; // Represents intentionally empty input
+/** AST node representing an intentionally empty input slot. */
+export type EmptyExpr = { nodeId: number; kind: "empty" };
+/** AST node representing a parse error, optionally wrapping a partial expression. */
 export type ErrorExpr = {
   nodeId: number;
   kind: "errorExpr";
   expr?: Expr;
   message: string;
   span?: Span;
-}; // Parse error with optional partial result
+};
 
 /**
  * Expression AST discriminated union representing all parseable brain tile constructs.
@@ -234,6 +243,7 @@ export function acceptExprVisitor<T>(expr: Expr, visitor: ExprVisitor<T>): T {
   }
 }
 
+/** Per-node type information: inferred type, expected type, and optional overload/conversion bindings. */
 export type TypeInfo = {
   inferred: TypeId;
   expected: TypeId;
@@ -242,10 +252,12 @@ export type TypeInfo = {
   conversion?: Conversion;
 };
 
+/** Type-checking diagnostic attached to a specific AST node. */
 export type TypeInfoDiag = {
   code: DiagCode;
   nodeId: number;
   message: string;
 };
 
+/** Map from AST `nodeId` to its {@link TypeInfo}. */
 export type TypeEnv = Dict<number, TypeInfo>;

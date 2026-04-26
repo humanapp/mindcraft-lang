@@ -9,14 +9,25 @@ import type { ExportedFileSystem } from "../filesystem.js";
 import { ProjectFiles, type ProjectFilesOptions } from "./files.js";
 import { ProjectSession } from "./session.js";
 
+/** Options for {@link Project}. */
 export interface ProjectOptions<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
   bridgeUrl: string;
+  /** WebSocket path on the bridge server (e.g. `"app"` or `"extension"`). */
   wsPath: string;
+  /** Initial filesystem snapshot the project starts with. */
   filesystem: ExportedFileSystem;
   joinCode?: string;
+  /** Token used to rebind to a previously established session. */
   bindingToken?: string;
 }
 
+/**
+ * Pairs a {@link ProjectSession} with a {@link ProjectFiles} and translates
+ * `filesystem:change` and `filesystem:sync` messages between them.
+ *
+ * @typeParam TClient - Union of message types this side may send.
+ * @typeParam TServer - Union of message types this side may receive.
+ */
 export class Project<TClient extends WsMessage = WsMessage, TServer extends WsMessage = WsMessage> {
   private _session: ProjectSession<TClient, TServer>;
   private _files: ProjectFiles;

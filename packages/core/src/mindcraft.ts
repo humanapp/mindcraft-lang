@@ -53,7 +53,10 @@ import { Error } from "./platform/error";
 import { List } from "./platform/list";
 import { TypeUtils } from "./platform/types";
 
+/** Tile definition value. Alias for {@link IBrainTileDef}. */
 export type TileDefinitionInput = IBrainTileDef;
+
+/** Definition of a value-conversion overload. Same as {@link Conversion} but without the auto-assigned `id`. */
 export type ConversionDefinition = Omit<Conversion, "id">;
 
 type TypeDefInput = Omit<TypeDef, "codec">;
@@ -63,6 +66,10 @@ interface StructDefineOptions {
   variableFactory?: boolean;
 }
 
+/**
+ * Type definition accepted by {@link MindcraftModuleApi.defineType}. The shape
+ * fields determine the type's category (struct, enum, list, etc.).
+ */
 export type MindcraftTypeDefinition =
   | TypeDefInput
   | (TypeDefInput & StructTypeShape & StructDefineOptions)
@@ -72,8 +79,10 @@ export type MindcraftTypeDefinition =
   | (TypeDefInput & NullableTypeShape)
   | (TypeDefInput & UnionTypeShape)
   | (TypeDefInput & Partial<FunctionTypeShape>);
+/** Compiled user-tile artifact. Alias for {@link UserActionArtifact}. */
 export type CompiledActionArtifact = UserActionArtifact;
 
+/** A host-implemented function registered with a brain's function registry. */
 export interface HostFunctionDefinition {
   readonly name: string;
   readonly isAsync: boolean;
@@ -81,12 +90,14 @@ export interface HostFunctionDefinition {
   readonly callDef: BrainActionCallDef;
 }
 
+/** A host-implemented sensor: descriptor + function + sensor tile. Build with {@link createHostSensor}. */
 export interface HostSensorDefinition {
   readonly descriptor: ActionDescriptor;
   readonly function: HostFunctionDefinition;
   readonly tile: IBrainActionTileDef;
 }
 
+/** A host-implemented actuator: descriptor + function + actuator tile. Build with {@link createHostActuator}. */
 export interface HostActuatorDefinition {
   readonly descriptor: ActionDescriptor;
   readonly function: HostFunctionDefinition;
@@ -110,12 +121,15 @@ type AsyncHostActionOptions = HostActionOptionsBase & {
   readonly isAsync: true;
 };
 
+/** Options for {@link createHostSensor}. Sensors return a value of `outputType`. */
 export type CreateHostSensorOptions = (SyncHostActionOptions | AsyncHostActionOptions) & {
   readonly outputType: TypeId;
 };
 
+/** Options for {@link createHostActuator}. Actuators do not return a value. */
 export type CreateHostActuatorOptions = SyncHostActionOptions | AsyncHostActionOptions;
 
+/** Build a {@link HostSensorDefinition} from `options`. */
 export function createHostSensor(options: CreateHostSensorOptions): HostSensorDefinition {
   const isAsync = options.isAsync ?? false;
   const descriptor: ActionDescriptor = {
@@ -135,6 +149,7 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
   };
 }
 
+/** Build a {@link HostActuatorDefinition} from `options`. */
 export function createHostActuator(options: CreateHostActuatorOptions): HostActuatorDefinition {
   const isAsync = options.isAsync ?? false;
   const descriptor: ActionDescriptor = {
@@ -153,6 +168,7 @@ export function createHostActuator(options: CreateHostActuatorOptions): HostActu
   };
 }
 
+/** A single overload of an operator: argument types, result type, and the implementing host function. */
 export interface OperatorOverloadDefinition {
   readonly argTypes: readonly TypeId[];
   readonly resultType: TypeId;
@@ -160,11 +176,13 @@ export interface OperatorOverloadDefinition {
   readonly isAsync?: boolean;
 }
 
+/** A registerable operator: its `OpSpec` plus zero or more overloads. */
 export interface OperatorDefinition {
   readonly spec: OpSpec;
   readonly overloads?: readonly OperatorOverloadDefinition[];
 }
 
+/** A catalog of tile definitions. Brains are matched against catalogs to enumerate available tiles. */
 export interface MindcraftCatalog {
   has(tileId: string): boolean;
   get(tileId: string): TileDefinitionInput | undefined;
@@ -173,26 +191,35 @@ export interface MindcraftCatalog {
   delete(tileId: string): boolean;
 }
 
+/** Options for {@link MindcraftEnvironment.createBrain}. */
 export interface CreateBrainOptions {
+  /** Opaque value forwarded to the brain's runtime context. */
   context?: unknown;
+  /** Catalogs the brain should consult when resolving tiles. */
   catalogs?: readonly MindcraftCatalog[];
 }
 
+/** A brain instance produced by {@link MindcraftEnvironment.createBrain}. */
 export interface MindcraftBrain extends IBrain {
   readonly definition: IBrainDef;
   readonly status: "active" | "invalidated" | "disposed";
+  /** Recompile and rebuild this brain against the current environment. */
   rebuild(): void;
+  /** Dispose this brain, releasing its runtime state. */
   dispose(): void;
 }
 
+/** Function that mutates an in-memory `BrainJson` to upgrade it from an older module schema. */
 export type BrainJsonMigration = (json: unknown) => void;
 
+/** A unit of installable functionality (types, host functions, tiles, operators) for a {@link MindcraftEnvironment}. */
 export interface MindcraftModule {
   readonly id: string;
   install(api: MindcraftModuleApi): void;
   migrateBrainJson?: BrainJsonMigration;
 }
 
+/** API exposed to {@link MindcraftModule.install} for registering types, tiles, functions, operators, and conversions. */
 export interface MindcraftModuleApi {
   readonly brainServices: BrainServices;
   defineType(def: MindcraftTypeDefinition): string;
@@ -206,38 +233,53 @@ export interface MindcraftModuleApi {
   registerConversion(def: ConversionDefinition): void;
 }
 
+/** Definition of a modifier tile. */
 export interface ModifierTileInput {
   readonly id: string;
   readonly label: string;
   readonly iconUrl?: string;
 }
 
+/** Definition of a parameter tile. */
 export interface ParameterTileInput {
   readonly id: string;
   readonly dataType: TypeId;
   readonly label?: string;
   readonly iconUrl?: string;
+  /** When true, the tile is excluded from default catalog listings. */
   readonly hidden?: boolean;
 }
 
+/** Snapshot of tile metadata applied via {@link MindcraftEnvironment.hydrateTileMetadata}. */
 export interface HydratedTileMetadataSnapshot {
   readonly revision: string;
   readonly tiles: readonly TileDefinitionInput[];
 }
 
+/**
+ * A bundle of compiled user actions and the tiles they back. Apply with
+ * {@link MindcraftEnvironment.replaceActionBundle}.
+ */
 export interface CompiledActionBundle {
   readonly revision: string;
   readonly tiles: readonly TileDefinitionInput[];
   readonly actions: Dict<string, CompiledActionArtifact>;
 }
 
+/** Result of {@link MindcraftEnvironment.replaceActionBundle}: which actions changed and which brains were invalidated. */
 export interface ActionBundleUpdate {
   readonly changedActionKeys: readonly string[];
   readonly invalidatedBrains: readonly MindcraftBrain[];
 }
 
+/** Event payload for {@link MindcraftEnvironment.onBrainsInvalidated}. */
 export interface BrainInvalidationEvent extends ActionBundleUpdate {}
 
+/**
+ * Top-level Mindcraft environment: hosts brain services, manages catalogs and
+ * action bundles, and creates {@link MindcraftBrain} instances. Build with
+ * {@link createMindcraftEnvironment}.
+ */
 export interface MindcraftEnvironment {
   readonly brainServices: BrainServices;
   withServices<T>(callback: (services: BrainServices) => T): T;
@@ -1037,10 +1079,12 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
   }
 }
 
+/** Construct a {@link MindcraftEnvironment}, installing each module in `options.modules`. */
 export function createMindcraftEnvironment(options: CreateMindcraftEnvironmentOptions = {}): MindcraftEnvironment {
   return new MindcraftEnvironmentImpl(options.modules ?? []);
 }
 
+/** The built-in `mindcraft.core` module: registers the core types, operators, and tile components every brain needs. */
 export function coreModule(): MindcraftModule {
   return {
     id: "mindcraft.core",
@@ -1050,6 +1094,7 @@ export function coreModule(): MindcraftModule {
   };
 }
 
+/** Access the underlying {@link BrainServices} of a {@link MindcraftEnvironment}. Throws on foreign implementations. */
 export function getMindcraftEnvironmentServices(environment: MindcraftEnvironment): BrainServices {
   if (!(environment instanceof MindcraftEnvironmentImpl)) {
     throw new Error("Unsupported MindcraftEnvironment implementation");
@@ -1057,6 +1102,7 @@ export function getMindcraftEnvironmentServices(environment: MindcraftEnvironmen
   return environment.brainServices;
 }
 
+/** Run `callback` with the environment's {@link BrainServices} and return its result. */
 export function withMindcraftEnvironmentServices<T>(
   environment: MindcraftEnvironment,
   callback: (services: BrainServices) => T

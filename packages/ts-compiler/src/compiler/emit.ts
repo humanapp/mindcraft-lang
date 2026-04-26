@@ -11,6 +11,7 @@ import type { IrNode, IrSourceSpan } from "./ir.js";
 import type { LocalMetadata, ScopeMetadata } from "./scope.js";
 import type { CallSiteInfo, CompileDiagnostic, DebugSpan, LocalInfo, ScopeInfo, SuspendSiteInfo } from "./types.js";
 
+/** Result of {@link emitFunction}: bytecode plus debug-span and per-PC metadata. */
 export interface EmitResult {
   bytecode: FunctionBytecode;
   diagnostics: CompileDiagnostic[];
@@ -22,6 +23,11 @@ export interface EmitResult {
   suspendSites: SuspendSiteInfo[];
 }
 
+/**
+ * Emit bytecode for one function from its IR, resolving labels, host function
+ * names, and call/suspend site metadata. Records source spans and PC mappings
+ * for debug inspection.
+ */
 export function emitFunction(
   ir: readonly IrNode[],
   numParams: number,

@@ -13,6 +13,7 @@ import { BrainTileLiteralDef } from "./literals";
 import { BrainTileOperatorDef } from "./operators";
 import { BrainTileVariableDef } from "./variables";
 
+/** Concrete {@link IBrainTileDefBuilder}: factory methods for building each kind of {@link IBrainTileDef}. */
 export class BrainTileDefBuilder implements IBrainTileDefBuilder {
   private services_?: BrainServices;
 

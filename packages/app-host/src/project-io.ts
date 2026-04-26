@@ -1,8 +1,4 @@
-import type {
-  MindcraftExportCommon,
-  MindcraftExportFile,
-  MindcraftExportHost,
-} from "@mindcraft-lang/service-api";
+import type { MindcraftExportCommon, MindcraftExportFile, MindcraftExportHost } from "@mindcraft-lang/service-api";
 import { EXAMPLES_FOLDER } from "./examples.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
 import type { ProjectManager } from "./project-manager.js";
@@ -18,24 +14,44 @@ export type {
   MindcraftExportHost,
 } from "@mindcraft-lang/service-api";
 
+/** A diagnostic produced while importing a project. */
 export interface ImportDiagnostic {
   severity: "error" | "warning";
   message: string;
 }
 
+/** Result of {@link importProject}. */
 export interface ImportResult {
+  /** `true` when the project was created. `false` if any error diagnostics were produced. */
   success: boolean;
+  /** Id of the newly created project, or `undefined` on failure. */
   projectId: string | undefined;
+  /** Errors and warnings collected during import. */
   diagnostics: ImportDiagnostic[];
 }
 
+/** Result returned by an {@link ImportAppLayerCallback}. */
 export interface ImportAppLayerResult {
+  /** Diagnostics produced by the app layer. Any `error` aborts the import. */
   diagnostics: ImportDiagnostic[];
+  /** Optional app-data entries to seed into the new project (key -> serialized value). */
   appData?: Record<string, string>;
 }
 
+/**
+ * Hook invoked by {@link importProject} to validate and translate the host's
+ * `app` payload into project app-data.
+ *
+ * @param app - The raw `app` field from the export document.
+ * @param hostVersion - The semver of the host that produced the export.
+ */
 export type ImportAppLayerCallback = (app: unknown, hostVersion: string) => ImportAppLayerResult;
 
+/**
+ * Build the common (non-app-specific) portion of an export document from the
+ * active project. The result still needs an app-specific `app` field added by
+ * the caller before serialization.
+ */
 export async function buildExportCommon(
   host: MindcraftExportHost,
   manifest: ProjectManifest,
@@ -77,6 +93,7 @@ export async function buildExportCommon(
   };
 }
 
+/** Default upper bound on import file size, in bytes (5 MB). */
 export const DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 function compareSemver(a: string, b: string): number {
@@ -102,6 +119,21 @@ function isValidFilePath(path: unknown): path is string {
   return true;
 }
 
+/**
+ * Import a project from a `.mindcraft` export file produced by
+ * {@link buildExportCommon}. Validates the host name/version, file paths, and
+ * brain payload before creating the project via `projectManager`.
+ *
+ * @param file - The user-selected export file.
+ * @param hostName - Expected host application identifier; imports from other
+ *   hosts are rejected.
+ * @param hostVersion - Current host semver; imports from newer hosts are
+ *   rejected.
+ * @param projectManager - Manager used to create the new project.
+ * @param options.maxFileSize - Override the {@link DEFAULT_MAX_FILE_SIZE} cap.
+ * @param options.appLayerCallback - Hook to validate/translate the export's
+ *   `app` payload. If provided, the export must include an `app` field.
+ */
 export async function importProject(
   file: File,
   hostName: string,

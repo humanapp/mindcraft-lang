@@ -6,6 +6,7 @@ import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import type { BrainPageDefEvents, IBrainDef, IBrainPageDef, IBrainRuleDef, ITileCatalog } from "../interfaces";
 import { BrainRuleDef, type RuleJson } from "./ruledef";
 
+/** Serialized form of an {@link IBrainPageDef}: stable id, name, and rule tree. */
 export interface PageJson {
   version: number;
   pageId: string;
@@ -15,6 +16,7 @@ export interface PageJson {
 
 // Maximum allowed length for brain page names.
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
+/** Maximum length of a page's display name. Never reduce this value. */
 export const kMaxPageNameLength = 100; // never reduce this value!
 
 // Current serialization version.
@@ -22,6 +24,7 @@ export const kMaxPageNameLength = 100; // never reduce this value!
 // v2: added stable pageId
 const kVersion = 2;
 
+/** Concrete {@link IBrainPageDef}: a named page with a list of {@link BrainRuleDef}s. */
 export class BrainPageDef implements IBrainPageDef {
   private name_: string = "Unnamed Page"; // TODO: i18n
   private readonly pageId_: string;

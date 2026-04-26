@@ -13,6 +13,7 @@ import {
 } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
+/** Serialized form of a {@link BrainTileVariableDef}. */
 export interface VariableTileJson {
   version: number;
   kind: "variable";
@@ -28,6 +29,7 @@ import { BrainTileFactoryDef } from "./factories";
 // Current serialization version.
 const kVersion = 1;
 
+/** Tile definition representing a named variable read/write. Backs `Variable` tiles in the catalog. */
 export class BrainTileVariableDef extends BrainTileDefBase {
   readonly kind = "variable";
   readonly varName: string;
@@ -73,6 +75,7 @@ export class BrainTileVariableDef extends BrainTileDefBase {
   }
 }
 
+/** Build a factory tile that manufactures new {@link BrainTileVariableDef}s of `producedDataType`. */
 export function createVariableFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
@@ -87,6 +90,7 @@ export function createVariableFactoryTileDef(
   );
 }
 
+/** Build {@link createVariableFactoryTileDef} and register it with `services`. */
 export function registerVariableFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
@@ -107,6 +111,7 @@ function manufactureVarTileDef(
   return tileDef;
 }
 
+/** Register the built-in variable factories for `Boolean`, `Number`, and `String` types. */
 export function registerCoreVariableFactoryTileDefs(services: BrainServices) {
   registerVariableFactoryTileDef(CoreVariableFactoryId.Boolean, CoreTypeIds.Boolean, {}, services);
   registerVariableFactoryTileDef(CoreVariableFactoryId.Number, CoreTypeIds.Number, {}, services);

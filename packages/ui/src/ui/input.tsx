@@ -2,8 +2,10 @@ import * as React from "react";
 
 import { cn } from "../lib/utils";
 
+/** Props for {@link Input}. Extends standard `<input>` props. */
 export interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {}
 
+/** shadcn/ui input. Styled `<input>` element with form-friendly defaults. */
 const Input = React.forwardRef<HTMLInputElement, InputProps>(({ className, type, ...props }, ref) => {
   return (
     <input

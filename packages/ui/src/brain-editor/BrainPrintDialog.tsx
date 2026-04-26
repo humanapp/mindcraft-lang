@@ -15,6 +15,7 @@ interface BrainPrintDialogProps {
   brainDef: BrainDef;
 }
 
+/** Print preview dialog for a brain. Lets the user pick visual or text mode and triggers the browser print dialog. */
 export function BrainPrintDialog({ isOpen, onOpenChange, brainDef }: BrainPrintDialogProps) {
   const [mode, setMode] = useState<PrintMode>("visual");
   const printRootRef = useRef<HTMLDivElement | null>(null);

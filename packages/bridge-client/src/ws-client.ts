@@ -21,6 +21,11 @@ const DEFAULT_HEARTBEAT_INTERVAL = 15_000;
 const DEFAULT_MAX_MISSED_HEARTBEATS = 2;
 const DEFAULT_MAX_QUEUE_SIZE = 1000;
 
+/**
+ * Reconnecting WebSocket client used by {@link ProjectSession}. Handles
+ * heartbeats, request/response correlation by message `id`, and queueing of
+ * outbound messages while disconnected.
+ */
 export class WsClient {
   private ws: WebSocket | undefined;
   private url = "";

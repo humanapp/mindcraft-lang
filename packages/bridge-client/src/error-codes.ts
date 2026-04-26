@@ -1,3 +1,4 @@
+/** Error code constants used by {@link ProtocolError}. */
 export const ErrorCode = {
   INVALID_PATH: "INVALID_PATH",
   FILE_NOT_FOUND: "FILE_NOT_FOUND",
@@ -13,8 +14,10 @@ export const ErrorCode = {
   SYNC_FAILED: "SYNC_FAILED",
 } as const;
 
+/** Union of all {@link ErrorCode} values. */
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
 
+/** Error thrown by the bridge client when a protocol or filesystem rule is violated. */
 export class ProtocolError extends Error {
   constructor(
     public readonly code: ErrorCode,

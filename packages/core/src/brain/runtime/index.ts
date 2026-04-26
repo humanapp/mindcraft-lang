@@ -26,6 +26,7 @@ import { registerCoreSensors } from "./sensors";
 import { registerStringBuiltins } from "./string-builtins";
 import { registerCoreTypes } from "./type-system";
 
+/** Register all built-in runtime components (types, contexts, actuators, sensors, operators, conversions, builtins) on `services`. */
 export function registerCoreRuntimeComponents(services: BrainServices) {
   registerCoreTypes(services);
   registerContextTypes(services);

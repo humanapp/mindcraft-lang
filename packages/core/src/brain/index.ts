@@ -15,6 +15,7 @@ import { registerCoreRuntimeComponents } from "./runtime";
 import type { BrainServices } from "./services";
 import { registerCoreTileComponents } from "./tiles";
 
+/** Register the core runtime components (types, operators, conversions, builtins) and core tile components on `services`. Returns the same `services` for chaining. */
 export function installCoreBrainComponents(services: BrainServices): BrainServices {
   registerCoreRuntimeComponents(services);
   registerCoreTileComponents(services);

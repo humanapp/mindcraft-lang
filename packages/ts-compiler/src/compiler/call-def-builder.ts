@@ -13,6 +13,7 @@ import {
 } from "@mindcraft-lang/core/brain";
 import type { ExtractedArgSpec } from "./types.js";
 
+/** Build the runtime {@link BrainActionCallDef} for a user tile from the descriptor's extracted arg specs. */
 export function buildCallDef(tileName: string, args: readonly ExtractedArgSpec[]): BrainActionCallDef {
   if (args.length === 0) {
     return mkCallDef(bag());

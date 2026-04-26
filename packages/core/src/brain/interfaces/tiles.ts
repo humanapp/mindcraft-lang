@@ -8,8 +8,10 @@ import type { TypeId } from "./type-system";
 // Core Types and Enums
 // ----------------------------------------------------
 
-export type TileId = string; // brain tile identifier
+/** Brain tile identifier. Build with {@link mkTileId} or domain-specific helpers (e.g. {@link mkSensorTileId}). */
+export type TileId = string;
 
+/** Categorization of a brain tile. */
 export type BrainTileKind =
   | "undefined"
   | "sensor"
@@ -25,12 +27,14 @@ export type BrainTileKind =
   | "page"
   | "missing";
 
+/** Identifies which side(s) of a rule (`when`, `do`, or both) a tile is allowed on. */
 export enum RuleSide {
   When = 1 << 0,
   Do = 1 << 1,
   Either = When | Do,
 }
 
+/** Bitmask describing where a tile may be placed in the editor. */
 export enum TilePlacement {
   WhenSide = RuleSide.When,
   DoSide = RuleSide.Do,
@@ -42,6 +46,7 @@ export enum TilePlacement {
   Inline = 1 << 4,
 }
 
+/** Display metadata for a tile (label, icon, docs, search tags). */
 export interface ITileMetadata {
   label: string;
   iconUrl?: string;
@@ -49,6 +54,7 @@ export interface ITileMetadata {
   tags?: readonly string[];
 }
 
+/** Optional flags configurable on tileDef constructors. */
 export interface BrainTileDefCreateOptions {
   placement?: TilePlacement;
   deprecated?: boolean;
@@ -76,6 +82,7 @@ export interface BrainTileDefCreateOptions {
  */
 export type LiteralDisplayFormat = string;
 
+/** Built-in display-format constants. See {@link LiteralDisplayFormat} for the format string grammar. */
 export const LiteralDisplayFormats = {
   Default: "default",
   Percent: "percent",
@@ -111,20 +118,24 @@ export function parseDisplayFormat(fmt: LiteralDisplayFormat): { kind: string; d
   return { kind: "default" };
 }
 
+/** Options for {@link IBrainTileDefBuilder.createLiteralTileDef}. Adds value-formatting controls to the base options. */
 export type BrainTileLiteralDefOptions = BrainTileDefCreateOptions & {
   valueLabel?: string;
   displayFormat?: LiteralDisplayFormat;
 };
 
+/** Compose a tile id from an `area` (e.g. `"op"`, `"sensor"`) and an `id`. */
 export function mkTileId(area: string, id: string): string {
   return `tile.${area}->${id}`;
 }
 
+/** Result of {@link parseTileId}: the tile's `area` and `id` fragments. */
 export interface ParsedTileId {
   readonly area: string;
   readonly id: string;
 }
 
+/** Inverse of {@link mkTileId}. Returns undefined when `tileId` is not a valid tile id. */
 export function parseTileId(tileId: string): ParsedTileId | undefined {
   const kPrefix = "tile.";
   const kSep = "->";
@@ -142,6 +153,7 @@ export function parseTileId(tileId: string): ParsedTileId | undefined {
 // Tile Definitions
 // ----------------------------------------------------
 
+/** Definition of a single brain tile: stable id, kind, display metadata, placement, and capability/requirement bits. */
 export interface IBrainTileDef {
   readonly kind: BrainTileKind;
   readonly tileId: TileId;

@@ -1,10 +1,16 @@
 import type { WorkspaceAdapter } from "./workspace-adapter.js";
 import type { WorkspaceChange, WorkspaceEntry, WorkspaceSnapshot } from "./workspace-snapshot.js";
 
+/** Options for {@link createInMemoryWorkspace}. */
 export interface InMemoryWorkspaceOptions {
+  /**
+   * Predicate invoked for every change. Changes whose path(s) match are
+   * silently dropped before being applied to the snapshot.
+   */
   shouldExclude?: (path: string) => boolean;
 }
 
+/** Create a {@link WorkspaceAdapter} that stores all files in memory. */
 export function createInMemoryWorkspace(options?: InMemoryWorkspaceOptions): WorkspaceAdapter {
   return new InMemoryWorkspace(options?.shouldExclude);
 }

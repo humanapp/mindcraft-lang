@@ -39,6 +39,7 @@ interface BrainTileEditorProps {
   badge?: TileBadge;
 }
 
+/** A {@link BrainTile} wrapped with a context menu offering insert/replace/delete and tile-specific edit actions. */
 export function BrainTileEditor({ tileDef, tileIndex, side, ruleDef, commandHistory, badge }: BrainTileEditorProps) {
   const [pickerMode, setPickerMode] = useState<"insert" | "replace" | null>(null);
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);

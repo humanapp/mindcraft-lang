@@ -19,6 +19,7 @@ export enum Axis {
   Z = 2,
 }
 
+/** 3D vector value type. Mirrors Roblox's `Vector3` API for cross-platform code. */
 export declare interface Vector3 {
   readonly X: number;
   readonly Y: number;
@@ -44,6 +45,7 @@ export declare interface Vector3 {
   idiv(this: Vector3, other: Vector3 | number): Vector3;
 }
 
+/** Constructor and static members for {@link Vector3}. */
 export declare interface Vector3Constructor {
   readonly zero: Vector3;
   readonly one: Vector3;
@@ -57,4 +59,5 @@ export declare interface Vector3Constructor {
   new (x?: number, y?: number, z?: number): Vector3;
 }
 
+/** {@link Vector3} constructor and namespace. */
 export declare const Vector3: Vector3Constructor;

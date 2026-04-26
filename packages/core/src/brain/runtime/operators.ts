@@ -290,6 +290,7 @@ export class OperatorOverloads implements IOperatorOverloads {
 // rule evaluate false rather than faulting the VM or producing NaN-poisoned
 // downstream values.
 
+/** Coerce `v` to a finite number, or undefined if `v` is not a non-NaN {@link NumberValue}. */
 export function asValidNumber(v: Value | undefined): number | undefined {
   if (v === undefined || v.t !== NativeType.Number) {
     return undefined;
@@ -300,6 +301,7 @@ export function asValidNumber(v: Value | undefined): number | undefined {
   return v.v;
 }
 
+/** Coerce `v` to a string, or undefined if `v` is not a {@link StringValue}. */
 export function asValidString(v: Value | undefined): string | undefined {
   if (v === undefined || v.t !== NativeType.String) {
     return undefined;
@@ -307,6 +309,7 @@ export function asValidString(v: Value | undefined): string | undefined {
   return v.v;
 }
 
+/** Apply a binary numeric op to slot 0 and slot 1 of `args`. Returns nil on bad operands or NaN result. */
 export function safeNumBinary(args: MapValue, op: (a: number, b: number) => number): Value {
   const a = asValidNumber(args.v.get(0));
   const b = asValidNumber(args.v.get(1));
@@ -320,6 +323,7 @@ export function safeNumBinary(args: MapValue, op: (a: number, b: number) => numb
   return mkNumberValue(result);
 }
 
+/** Apply a unary numeric op to slot 0 of `args`. Returns nil on bad operand or NaN result. */
 export function safeNumUnary(args: MapValue, op: (a: number) => number): Value {
   const a = asValidNumber(args.v.get(0));
   if (a === undefined) {
@@ -332,6 +336,7 @@ export function safeNumUnary(args: MapValue, op: (a: number) => number): Value {
   return mkNumberValue(result);
 }
 
+/** Apply a numeric comparison to slots 0 and 1 of `args`. Returns false on bad operands. */
 export function safeNumCompare(args: MapValue, cmp: (a: number, b: number) => boolean): Value {
   const a = asValidNumber(args.v.get(0));
   const b = asValidNumber(args.v.get(1));
@@ -341,6 +346,7 @@ export function safeNumCompare(args: MapValue, cmp: (a: number, b: number) => bo
   return mkBooleanValue(cmp(a, b));
 }
 
+/** Concatenate slot 0 and slot 1 of `args` as strings. Returns nil on bad operands. */
 export function safeStrConcat(args: MapValue): Value {
   const a = asValidString(args.v.get(0));
   const b = asValidString(args.v.get(1));
@@ -350,6 +356,7 @@ export function safeStrConcat(args: MapValue): Value {
   return { t: NativeType.String, v: `${a}${b}` };
 }
 
+/** Apply a string comparison to slots 0 and 1 of `args`. Returns false on bad operands. */
 export function safeStrCompare(args: MapValue, cmp: (a: string, b: string) => boolean): Value {
   const a = asValidString(args.v.get(0));
   const b = asValidString(args.v.get(1));

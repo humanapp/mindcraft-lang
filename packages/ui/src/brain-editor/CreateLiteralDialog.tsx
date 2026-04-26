@@ -14,6 +14,11 @@ interface CreateLiteralDialogProps {
   onSubmit: (value: unknown, displayFormat?: LiteralDisplayFormat) => void;
 }
 
+/**
+ * Dialog that creates a new literal tile. Renders inputs appropriate for the
+ * given `literalType`: built-in string/number forms, or fields from the matching
+ * `customLiteralTypes` entry in {@link BrainEditorConfig}.
+ */
 export function CreateLiteralDialog({ isOpen, title, literalType, onOpenChange, onSubmit }: CreateLiteralDialogProps) {
   const { customLiteralTypes } = useBrainEditorConfig();
   const [stringValue, setStringValue] = useState("");

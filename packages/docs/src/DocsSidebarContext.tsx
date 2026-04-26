@@ -15,6 +15,7 @@ import type { TileVisual } from "@mindcraft-lang/ui/brain-editor/types";
 import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
 import { DocsRegistry } from "./DocsRegistry";
 
+/** Identifier of the active sidebar tab. */
 export type DocTab = "tiles" | "patterns" | "concepts";
 
 interface DocsSidebarContextValue {
@@ -76,6 +77,10 @@ interface DocsSidebarProviderProps {
   initialNavTab?: DocTab | null;
 }
 
+/**
+ * Context provider that backs the docs sidebar's open state, active tab,
+ * navigation stack, registry, and tile-visual resolution.
+ */
 export function DocsSidebarProvider({
   children,
   registry: externalRegistry,
@@ -172,6 +177,7 @@ export function DocsSidebarProvider({
   return <DocsSidebarContext.Provider value={value}>{children}</DocsSidebarContext.Provider>;
 }
 
+/** Access the docs sidebar context. Throws when used outside a {@link DocsSidebarProvider}. */
 export function useDocsSidebar(): DocsSidebarContextValue {
   const ctx = useContext(DocsSidebarContext);
   if (!ctx) {
@@ -180,14 +186,17 @@ export function useDocsSidebar(): DocsSidebarContextValue {
   return ctx;
 }
 
+/** Read the tile catalog from the docs sidebar context. */
 export function useDocsTileCatalog(): ITileCatalog | undefined {
   return useDocsSidebar().tileCatalog;
 }
 
+/** Read the tile-visual resolver from the docs sidebar context. */
 export function useDocsResolveTileVisual(): (tileDef: IBrainTileDef) => TileVisual | undefined {
   return useDocsSidebar().resolveTileVisual;
 }
 
+/** Read the brain services from the docs sidebar context. */
 export function useDocsBrainServices(): BrainServices | undefined {
   return useDocsSidebar().brainServices;
 }

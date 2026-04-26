@@ -12,6 +12,7 @@ interface EditLiteralFormatDialogProps {
   onSubmit: (newFormat: LiteralDisplayFormat) => void;
 }
 
+/** Dialog that edits the {@link LiteralDisplayFormat} of an existing literal tile. */
 export function EditLiteralFormatDialog({ isOpen, literalDef, onOpenChange, onSubmit }: EditLiteralFormatDialogProps) {
   const [displayFormat, setDisplayFormat] = useState<LiteralDisplayFormat>(literalDef.displayFormat);
 

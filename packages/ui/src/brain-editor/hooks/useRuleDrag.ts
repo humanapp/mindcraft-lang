@@ -32,6 +32,7 @@ interface DragState {
   ghostOffsetY: number;
 }
 
+/** Options for {@link useRuleDrag}. */
 export interface UseRuleDragOptions {
   pageDef: BrainPageDef;
   commandHistory: BrainCommandHistory;
@@ -39,6 +40,7 @@ export interface UseRuleDragOptions {
   zoom: number;
 }
 
+/** Result of {@link useRuleDrag}: the id of the rule currently being dragged and a `beginDrag` starter. */
 export interface UseRuleDragResult {
   draggingRuleId: number | null;
   beginDrag: (rule: BrainRuleDef, event: React.PointerEvent<HTMLElement>) => boolean;
@@ -158,6 +160,14 @@ function resolveTarget(page: BrainPageDef, flat: FlatEntry[], slot: number, dept
   return { parentRule: parent, index: idx + 1 };
 }
 
+/**
+ * Hook that wires drag-to-reorder for the rules of a single page.
+ *
+ * Installs window-level pointer listeners after a movement threshold is
+ * crossed, mutates the model directly during drag for fluid feedback, and on
+ * a successful drop records a single {@link MoveRuleCommand} on `commandHistory`
+ * representing the net move.
+ */
 export function useRuleDrag(opts: UseRuleDragOptions): UseRuleDragResult {
   const [draggingRuleId, setDraggingRuleId] = useState<number | null>(null);
   const dragRef = useRef<DragState | null>(null);

@@ -1,11 +1,22 @@
+/** Handle returned by {@link ProjectLock.tryAcquire}. */
 export interface ProjectLockHandle {
+  /** Release the lock. */
   release(): void;
 }
 
+/** Cross-tab lock used to ensure a project is only open in one tab at a time. */
 export interface ProjectLock {
+  /**
+   * Attempt to acquire the lock for `projectId` without waiting. Resolves with
+   * a handle on success, or `undefined` if the lock is already held.
+   */
   tryAcquire(projectId: string): Promise<ProjectLockHandle | undefined>;
 }
 
+/**
+ * Create a {@link ProjectLock} backed by the Web Locks API. When the Web Locks
+ * API is unavailable, `tryAcquire` resolves with a no-op handle.
+ */
 export function createWebLocksProjectLock(keyPrefix: string): ProjectLock {
   return new WebLocksProjectLock(keyPrefix);
 }

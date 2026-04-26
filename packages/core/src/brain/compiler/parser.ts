@@ -1140,6 +1140,14 @@ function specContainsRepeat(spec: BrainActionCallSpec): boolean {
 //--------------------------------------------------
 // Public API
 
+/**
+ * Parse a slice of brain tiles into an {@link ParseResult}.
+ *
+ * @param src - The full source list of tiles.
+ * @param to - Exclusive end index (`-1` means end of `src`).
+ * @param from - Inclusive start index.
+ * @param startNodeId - First node id to assign during parsing; the result's `nextNodeId` continues from here.
+ */
 export function parseBrainTiles(
   src: ReadonlyList<IBrainTileDef>,
   to: number = -1,

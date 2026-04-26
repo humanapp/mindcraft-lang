@@ -18,6 +18,7 @@ import {
 import type { BrainPageDef } from "./pagedef";
 import { BrainTileSet } from "./tileset";
 
+/** Serialized form of an {@link IBrainRuleDef}: `when`/`do` tile-id lists, child rules, and optional comment. */
 export interface RuleJson {
   version: number;
   when: ReadonlyList<string>;
@@ -28,10 +29,12 @@ export interface RuleJson {
 
 // Maximum allowed depth for rules in the tree
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
+/** Maximum nesting depth of child rules within a single rule tree. Never reduce this value. */
 export const kMaxBrainRuleDepth = 20; // never reduce this value!
 
 // Maximum allowed length for a rule comment.
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
+/** Maximum length of a rule's author comment. Never reduce this value. */
 export const kMaxBrainRuleCommentLength = 500; // never reduce this value!
 
 // JSON serialization version.
@@ -42,6 +45,7 @@ const kVersion = 1;
 // the dragged rule mid-drag.
 let nextRuleId_ = 1;
 
+/** Concrete {@link IBrainRuleDef}: a single rule with `when` and `do` tile-sets and child rules. */
 export class BrainRuleDef implements IBrainRuleDef {
   private readonly id_: number;
   private page_?: IBrainPageDef;

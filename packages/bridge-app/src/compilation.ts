@@ -19,31 +19,41 @@ import type {
 } from "./app-bridge.js";
 import { createAppBridge } from "./app-bridge.js";
 
+/** Latest compile diagnostics, keyed by file path. */
 export interface DiagnosticSnapshot {
   files: ReadonlyMap<string, readonly DiagnosticEntry[]>;
 }
 
+/** Workspace-aware compiler that the {@link createCompilationFeature} drives. */
 export interface WorkspaceCompiler {
   replaceWorkspace(snapshot: WorkspaceSnapshot): void;
   applyWorkspaceChange(change: WorkspaceChange): void;
+  /** Run a compile pass and return the resulting diagnostics. */
   compile(): DiagnosticSnapshot;
+  /** Subscribe to compile completions. Returns an unsubscribe function. */
   onDidCompile(listener: (snapshot: DiagnosticSnapshot) => void): () => void;
 }
 
+/** Options for {@link createCompilationFeature}. */
 export interface CompilationFeatureOptions {
   compiler: WorkspaceCompiler;
+  /** When `true` (the default), per-file pass/fail status is published alongside diagnostics. */
   publishStatus?: boolean;
 }
 
+/** Result of a compile pass driven by {@link CompilationManager}. */
 export interface CompilationResult {
   files: Map<string, CompileDiagnosticEntry[]>;
 }
 
+/** Lower-level compile interface used by {@link CompilationManager}. */
 export interface CompilationProvider {
   fileWritten(path: string, content: string): void;
   fileDeleted(path: string): void;
   fileRenamed(oldPath: string, newPath: string): void;
+  /** Replace the provider's view of the workspace with `files`. */
   fullSync(files: Iterable<[string, { kind: string; content?: string }]>): void;
+  /** Compile every known file and return per-file diagnostics. */
   compileAll(): CompilationResult;
 }
 
@@ -69,6 +79,11 @@ function buildFeatureStatus(file: string, diagnostics: readonly DiagnosticEntry[
   };
 }
 
+/**
+ * Build an {@link AppBridgeFeature} that compiles the workspace on remote
+ * changes and publishes diagnostics (and, by default, per-file status) to the
+ * peer.
+ */
 export function createCompilationFeature(options: CompilationFeatureOptions): AppBridgeFeature {
   return {
     attach(context: AppBridgeFeatureContext): () => void {
@@ -149,6 +164,11 @@ export function createCompilationFeature(options: CompilationFeatureOptions): Ap
   };
 }
 
+/**
+ * Drives a {@link CompilationProvider} from incoming filesystem notifications
+ * and emits diagnostics to the peer. Sends version-tagged `compile:diagnostics`
+ * and `compile:status` messages when connected.
+ */
 export class CompilationManager {
   private readonly _provider: CompilationProvider;
   private readonly _send: (msg: AppClientMessage) => void;
@@ -276,21 +296,32 @@ export class CompilationManager {
 
 export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 
+/** Options for {@link createProjectCompiler}. */
 export interface CreateProjectCompilerOptions {
   environment: MindcraftEnvironment;
   workspace: WorkspaceAdapter;
+  /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];
   onDidCompile?: (result: WorkspaceCompileResult) => void;
 }
 
+/** Handle returned by {@link createProjectCompiler}. */
 export interface ProjectCompilerHandle {
   readonly compiler: TsWorkspaceCompiler;
+  /** Seed the compiler from the current workspace snapshot and run an initial compile. */
   initialize(): void;
+  /** Re-seed the compiler with the latest workspace snapshot and recompile. */
   replaceWorkspace(): void;
+  /** Replace the set of injected example projects. */
   injectExamples(examples: ExampleDefinition[]): void;
+  /** Read the currently injected example projects. */
   getExamples(): ExampleDefinition[];
 }
 
+/**
+ * Wrap a {@link WorkspaceAdapter} as a TS workspace compiler. The compiler's
+ * input includes the live workspace plus any injected examples.
+ */
 export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
   const { environment, workspace } = options;
 
@@ -341,6 +372,7 @@ export function createProjectCompiler(options: CreateProjectCompilerOptions): Pr
 // BridgeProjectHandle -- bridge connection that uses a ProjectCompilerHandle
 // ---------------------------------------------------------------------------
 
+/** Options for {@link createBridgeProject}. */
 export interface CreateBridgeProjectOptions {
   projectCompiler: ProjectCompilerHandle;
   workspace: WorkspaceAdapter;
@@ -349,11 +381,17 @@ export interface CreateBridgeProjectOptions {
   onBindingTokenChange?: (token: string) => void;
 }
 
+/** Handle returned by {@link createBridgeProject}. */
 export interface BridgeProjectHandle {
   readonly bridge: AppBridge;
+  /** Tear down the current bridge and create a new one pointing at `bridgeUrl`. */
   recreateBridge(bridgeUrl: string): void;
 }
 
+/**
+ * Wire up an {@link AppBridge} that uses `projectCompiler` for diagnostics and
+ * surfaces compiler-controlled and example files to the remote peer.
+ */
 export function createBridgeProject(options: CreateBridgeProjectOptions): BridgeProjectHandle {
   const { projectCompiler, workspace } = options;
   const compiler = projectCompiler.compiler;

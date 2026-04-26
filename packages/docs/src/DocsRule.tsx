@@ -36,6 +36,7 @@ interface DocsTileChipProps {
   side: RuleSide;
 }
 
+/** Read-only rendering of a single brain tile, used inside doc tile strips and rule rows. */
 export function DocsTileChip({ tileDef, side }: DocsTileChipProps) {
   const resolveTileVisual = useDocsResolveTileVisual();
   const visual = resolveTileVisual(tileDef);
@@ -177,6 +178,7 @@ interface InlineTileIconProps {
   tileDef: IBrainTileDef;
 }
 
+/** Compact tile rendering used inline in prose for `tile:xxx` references. */
 export function InlineTileIcon({ tileDef }: InlineTileIconProps) {
   const resolveTileVisual = useDocsResolveTileVisual();
   const visual = resolveTileVisual(tileDef);
@@ -291,6 +293,7 @@ function DocsRuleRow({ comment, whenTiles, doTiles, depth = 0, lineNumber }: Doc
 // Flat rule representation (tileIds resolved to IBrainTileDef)
 // ---------------------------------------------------------------------------
 
+/** Flat representation of a brain rule with `tileId`s already resolved to `IBrainTileDef`s. */
 export interface DocsRuleData {
   comment?: string;
   whenTiles: IBrainTileDef[];
@@ -321,6 +324,7 @@ function flattenRules(rules: DocsRuleData[], startLine: number = 1): Array<DocsR
   return result;
 }
 
+/** Render a stack of read-only brain rules as numbered rows. */
 export function DocsRuleBlock({ rules }: DocsRuleBlockProps) {
   const flat = flattenRules(rules);
   return (

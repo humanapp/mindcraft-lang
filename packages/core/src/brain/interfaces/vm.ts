@@ -11,6 +11,7 @@ import { NativeType, type TypeId } from "./type-system";
 // Configuration & Limits
 ///////////////////////////
 
+/** VM tunables: stack/frame/handle/fiber limits and per-tick instruction budget. */
 export interface VmConfig {
   /** Maximum number of frames per fiber (recursion limit) */
   maxFrameDepth: number;
@@ -32,8 +33,10 @@ export interface VmConfig {
 // Value Model
 ///////////////////////////
 
+/** Opaque identifier for a pending async operation. */
 export type HandleId = number;
 
+/** Tagged error payload produced by the VM (timeouts, host exceptions, stack faults, etc.). */
 export type ErrorValue = {
   tag: "Timeout" | "Cancelled" | "HostError" | "ScriptError" | "StackOverflow" | "StackUnderflow";
   message: string;
@@ -42,6 +45,7 @@ export type ErrorValue = {
   stackTrace?: List<string>;
 };
 
+/** Dictionary of brain {@link Value}s with typed accessors per native type. */
 export class ValueDict extends Dict<string | number, Value> {
   getString(key: string | number): StringValue | undefined {
     const val = this.get(key);
@@ -100,18 +104,30 @@ export class ValueDict extends Dict<string | number, Value> {
   }
 }
 
+/** Brain runtime value of unknown native type. */
 export type UnknownValue = { t: NativeType.Unknown };
+/** Brain runtime value representing the absence of a value (statement result). */
 export type VoidValue = { t: NativeType.Void };
+/** Brain runtime value representing nil. */
 export type NilValue = { t: NativeType.Nil };
+/** Brain runtime boolean value. */
 export type BooleanValue = { t: NativeType.Boolean; v: boolean };
+/** Brain runtime number value. */
 export type NumberValue = { t: NativeType.Number; v: number };
+/** Brain runtime string value. */
 export type StringValue = { t: NativeType.String; v: string };
-export type EnumValue = { t: NativeType.Enum; typeId: TypeId; v: string }; // enum key
+/** Brain runtime enum value: `typeId` plus the symbol `key`. */
+export type EnumValue = { t: NativeType.Enum; typeId: TypeId; v: string };
+/** Brain runtime list value. */
 export type ListValue = { t: NativeType.List; typeId: TypeId; v: List<Value> };
+/** Brain runtime map value. */
 export type MapValue = { t: NativeType.Map; typeId: TypeId; v: ValueDict };
-export type StructValue = { t: NativeType.Struct; typeId: TypeId; v?: Dict<string, Value>; native?: unknown }; // field name -> value
+/** Brain runtime struct value. `v` holds field values; `native` holds an optional host-backing object. */
+export type StructValue = { t: NativeType.Struct; typeId: TypeId; v?: Dict<string, Value>; native?: unknown };
+/** Brain runtime function value: function id plus optional captured upvalues. */
 export type FunctionValue = { t: NativeType.Function; funcId: number; captures?: List<Value> };
 
+/** Tagged-union of all brain runtime values, including VM-internal `handle` and `err`. */
 export type Value =
   | UnknownValue
   | VoidValue
@@ -127,35 +143,42 @@ export type Value =
   | { t: "handle"; id: HandleId } // VM-internal type
   | { t: "err"; e: ErrorValue }; // VM-internal type
 
-// Pooled singleton values for common immutable values.
-// Reuse these instead of allocating new objects to reduce GC pressure.
-// Boolean true/false, nil, void, and unknown are used frequently in the VM
-// and never mutated, so a single shared instance suffices.
+/** Pooled singleton {@link UnknownValue}. */
 export const UNKNOWN_VALUE: UnknownValue = { t: NativeType.Unknown };
+/** Pooled singleton {@link VoidValue}. */
 export const VOID_VALUE: VoidValue = { t: NativeType.Void };
+/** Pooled singleton {@link NilValue}. */
 export const NIL_VALUE: NilValue = { t: NativeType.Nil };
+/** Pooled singleton {@link BooleanValue} for `true`. */
 export const TRUE_VALUE: BooleanValue = { t: NativeType.Boolean, v: true };
+/** Pooled singleton {@link BooleanValue} for `false`. */
 export const FALSE_VALUE: BooleanValue = { t: NativeType.Boolean, v: false };
 
-// Value creation helpers
+/** Return the pooled singleton {@link BooleanValue} for `b`. */
 export function mkBooleanValue(b: boolean): BooleanValue {
   return b ? TRUE_VALUE : FALSE_VALUE;
 }
+/** Build a {@link NumberValue}. */
 export function mkNumberValue(n: number): NumberValue {
   return { t: NativeType.Number, v: n };
 }
+/** Build a {@link StringValue}. */
 export function mkStringValue(str: string): StringValue {
   return { t: NativeType.String, v: str };
 }
+/** Build a {@link StructValue} with explicit fields and optional `native` backing. */
 export function mkStructValue(typeId: TypeId, fields: Dict<string, Value>, native?: unknown): StructValue {
   return { t: NativeType.Struct, typeId, v: fields, native };
 }
+/** Build a native-backed {@link StructValue} with no field map. */
 export function mkNativeStructValue(typeId: TypeId, native: unknown): StructValue {
   return { t: NativeType.Struct, typeId, v: new Dict<string, Value>(), native };
 }
+/** Build a {@link ListValue}. */
 export function mkListValue(typeId: TypeId, items: List<Value>): ListValue {
   return { t: NativeType.List, typeId, v: items };
 }
+/** Build a {@link FunctionValue}, optionally with captured upvalues. */
 export function mkFunctionValue(funcId: number, captures?: List<Value>): FunctionValue {
   if (captures !== undefined) {
     return { t: NativeType.Function, funcId, captures };
@@ -167,24 +190,28 @@ export function mkFunctionValue(funcId: number, captures?: List<Value>): Functio
 //}
 
 // Value extractors
+/** Return the boolean payload, or undefined if `v` is not a {@link BooleanValue}. */
 export function extractBooleanValue(v: Value | undefined): boolean | undefined {
   if (v && v.t === NativeType.Boolean) {
     return v.v;
   }
   return undefined;
 }
+/** Return the number payload, or undefined if `v` is not a {@link NumberValue}. */
 export function extractNumberValue(v: Value | undefined): number | undefined {
   if (v && v.t === NativeType.Number) {
     return v.v;
   }
   return undefined;
 }
+/** Return the string payload, or undefined if `v` is not a {@link StringValue}. */
 export function extractStringValue(v: Value | undefined): string | undefined {
   if (v && v.t === NativeType.String) {
     return v.v;
   }
   return undefined;
 }
+/** Return the list payload, or undefined if `v` is not a {@link ListValue}. */
 export function extractListValue(v: Value | undefined): List<Value> | undefined {
   if (v && v.t === NativeType.List) {
     return v.v;
@@ -193,42 +220,55 @@ export function extractListValue(v: Value | undefined): List<Value> | undefined 
 }
 
 // Type guards
+/** Type guard for VM-internal handle values. */
 export function isHandleValue(v: Value): v is { t: "handle"; id: HandleId } {
   return v.t === "handle";
 }
+/** Type guard for {@link UnknownValue}. */
 export function isUnknownValue(v: Value): v is UnknownValue {
   return v.t === NativeType.Unknown;
 }
+/** Type guard for {@link VoidValue}. */
 export function isVoidValue(v: Value): v is VoidValue {
   return v.t === NativeType.Void;
 }
+/** Type guard for {@link NilValue}. */
 export function isNilValue(v: Value): v is NilValue {
   return v.t === NativeType.Nil;
 }
+/** Type guard for {@link BooleanValue}. */
 export function isBooleanValue(v: Value): v is BooleanValue {
   return v.t === NativeType.Boolean;
 }
+/** Type guard for {@link NumberValue}. */
 export function isNumberValue(v: Value): v is NumberValue {
   return v.t === NativeType.Number;
 }
+/** Type guard for {@link StringValue}. */
 export function isStringValue(v: Value): v is StringValue {
   return v.t === NativeType.String;
 }
+/** Type guard for {@link EnumValue}. */
 export function isEnumValue(v: Value): v is EnumValue {
   return v.t === NativeType.Enum;
 }
+/** Type guard for {@link ListValue}. */
 export function isListValue(v: Value): v is ListValue {
   return v.t === NativeType.List;
 }
+/** Type guard for {@link MapValue}. */
 export function isMapValue(v: Value): v is MapValue {
   return v.t === NativeType.Map;
 }
+/** Type guard for {@link StructValue}. */
 export function isStructValue(v: Value): v is StructValue {
   return v.t === NativeType.Struct;
 }
+/** Type guard for {@link FunctionValue}. */
 export function isFunctionValue(v: Value): v is FunctionValue {
   return v.t === NativeType.Function;
 }
+/** Type guard for VM-internal error values. */
 export function isErrValue(v: Value): v is { t: "err"; e: ErrorValue } {
   return v.t === "err";
 }
@@ -237,6 +277,7 @@ export function isErrValue(v: Value): v is { t: "err"; e: ErrorValue } {
 // Opcodes
 ///////////////////////////
 
+/** Brain VM bytecode opcodes. */
 export enum Op {
   // Stack manipulation
   PUSH_CONST = 0,
@@ -333,12 +374,14 @@ export enum Op {
   LOAD_CAPTURE,
 }
 
+/** Current bytecode format version. */
 export const BYTECODE_VERSION = 1;
 
 ///////////////////////////
 // Bytecode Structures
 ///////////////////////////
 
+/** Single VM instruction: opcode plus up to three operands. */
 export interface Instr {
   op: Op;
   a?: number;
@@ -346,6 +389,7 @@ export interface Instr {
   c?: number;
 }
 
+/** Compiled function body: instruction list plus param/local counts and optional metadata. */
 export interface FunctionBytecode {
   code: List<Instr>;
   numParams: number;
@@ -356,6 +400,7 @@ export interface FunctionBytecode {
   injectCtxTypeId?: TypeId;
 }
 
+/** Compiled program: functions, constant pool, named variables, and entry point. */
 export interface Program {
   version: number;
   functions: List<FunctionBytecode>;
@@ -420,12 +465,14 @@ export type StructFieldSetterFn = (
  */
 export type StructSnapshotNativeFn = (source: StructValue, ctx: ExecutionContext) => unknown;
 
+/** Tagged-union of host function bindings: synchronous or asynchronous. */
 export type HostFn = HostSyncFn | HostAsyncFn;
 
 ///////////////////////////
 // VM Execution Results
 ///////////////////////////
 
+/** Status of a single fiber-execution slice. */
 export enum VmStatus {
   DONE = "DONE",
   YIELDED = "YIELDED",
@@ -433,6 +480,7 @@ export enum VmStatus {
   FAULT = "FAULT",
 }
 
+/** Result of running a fiber: completed, voluntarily yielded, blocked on a handle, or faulted. */
 export type VmRunResult =
   | { status: VmStatus.DONE; result?: Value }
   | { status: VmStatus.YIELDED }
@@ -443,6 +491,7 @@ export type VmRunResult =
 // Fiber State Machine
 ///////////////////////////
 
+/** Lifecycle states of a {@link Fiber}. */
 export enum FiberState {
   RUNNABLE = "RUNNABLE",
   WAITING = "WAITING",
@@ -451,6 +500,7 @@ export enum FiberState {
   CANCELLED = "CANCELLED",
 }
 
+/** Per-frame binding describing the action and call-site whose state slots back this frame. */
 export interface ActionFrameBinding {
   actionKey: string;
   callSiteId: number;
@@ -458,6 +508,7 @@ export interface ActionFrameBinding {
   actionInstance: ActionInstance;
 }
 
+/** Single call frame on a fiber's frame stack. */
 export interface Frame {
   funcId: number;
   pc: number;
@@ -468,12 +519,14 @@ export interface Frame {
   actionBinding?: ActionFrameBinding;
 }
 
+/** Active try/catch handler installed by `TRY` and removed by `END_TRY`. */
 export interface Handler {
   catchPc: number;
   stackHeight: number;
   frameDepth: number;
 }
 
+/** State recorded when a fiber blocks on a handle, used to resume execution. */
 export interface AwaitSite {
   resumePc: number;
   stackHeight: number;
@@ -481,6 +534,7 @@ export interface AwaitSite {
   handleId: HandleId;
 }
 
+/** A single VM execution thread: stacks, frames, handlers, and execution context. */
 export interface Fiber {
   id: number;
   state: FiberState;
@@ -510,6 +564,7 @@ export interface Fiber {
 // Async Handle Management
 ///////////////////////////
 
+/** Lifecycle states of an async {@link Handle}. */
 export enum HandleState {
   PENDING = "PENDING",
   RESOLVED = "RESOLVED",
@@ -517,6 +572,7 @@ export enum HandleState {
   CANCELLED = "CANCELLED",
 }
 
+/** Async operation handle: state, result/error, and the set of waiting fibers. */
 export interface Handle {
   id: HandleId;
   state: HandleState;
@@ -526,6 +582,7 @@ export interface Handle {
   createdAt: number;
 }
 
+/** Events emitted by a {@link HandleTable}. */
 export type HandleTableEvents = {
   /**
    * Emitted when a handle completes (resolved, rejected, or cancelled)
@@ -533,6 +590,7 @@ export type HandleTableEvents = {
   completed: HandleId;
 };
 
+/** Tracks pending async operations: creates handles, resolves/rejects/cancels them, and notifies waiters. */
 export class HandleTable {
   private nextId = 1;
   private handles = new Dict<HandleId, Handle>();
@@ -628,6 +686,7 @@ export class HandleTable {
 // Scheduler Interface
 ///////////////////////////
 
+/** Minimal scheduler hooks the VM uses to enqueue, complete, and look up fibers. */
 export interface Scheduler {
   onHandleCompleted: (handleId: HandleId) => void;
   onFiberWaiting?: (fiberId: number, handleId: HandleId) => void;
@@ -693,6 +752,7 @@ export interface IVM {
 // Fiber Scheduler Interface
 ///////////////////////////
 
+/** Counters returned by {@link IFiberScheduler.getStats}. */
 export interface FiberSchedulerStats {
   totalFibers: number;
   runnableFibers: number;

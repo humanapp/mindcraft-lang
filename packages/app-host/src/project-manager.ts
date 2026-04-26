@@ -6,19 +6,30 @@ import type { ProjectStore } from "./project-store.js";
 import type { WorkspaceAdapter } from "./workspace-adapter.js";
 import type { WorkspaceSnapshot } from "./workspace-snapshot.js";
 
+/** Display name used when a project is created without an explicit name. */
 export const DEFAULT_PROJECT_NAME = "Untitled Project";
 
+/** The currently open project together with its in-memory workspace. */
 export interface ActiveProject {
   readonly manifest: ProjectManifest;
   readonly workspace: WorkspaceAdapter;
 }
 
+/** Options for {@link ProjectManager}. */
 export interface ProjectManagerOptions {
+  /** Options forwarded to the in-memory workspace created for the active project. */
   workspaceOptions?: InMemoryWorkspaceOptions;
+  /** Cross-tab lock used to ensure a project is only open in one tab. */
   lock?: ProjectLock;
+  /** Debounce delay before persisting the workspace after a change. Defaults to 2000 ms. */
   autoSaveDelayMs?: number;
 }
 
+/**
+ * Coordinates project lifecycle on top of a {@link ProjectStore}: opening,
+ * closing, creating, deleting, duplicating, and auto-saving the active
+ * project's workspace and app data.
+ */
 export class ProjectManager {
   private readonly store: ProjectStore;
   private readonly workspaceOptions: InMemoryWorkspaceOptions;
@@ -143,9 +154,7 @@ export class ProjectManager {
     return manifest;
   }
 
-  async updateActive(
-    updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>
-  ): Promise<void> {
+  async updateActive(updates: Partial<Pick<ProjectManifest, "name" | "description" | "thumbnailUrl">>): Promise<void> {
     if (!this.currentActive) {
       throw new Error("No active project");
     }

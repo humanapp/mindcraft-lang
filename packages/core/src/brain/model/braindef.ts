@@ -22,6 +22,7 @@ import { BrainTilePageDef } from "../tiles/pagetiles";
 import { BrainPageDef, type PageJson } from "./pagedef";
 import type { RuleJson } from "./ruledef";
 
+/** Serialized form of an {@link IBrainDef}: name, tile catalog, and page list. */
 export interface BrainJson {
   version: number;
   name: string;
@@ -31,12 +32,15 @@ export interface BrainJson {
 
 // Maximum allowed length for brain names.
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
+/** Maximum length of a brain's display name. Never reduce this value. */
 export const kMaxBrainNameLength = 100; // never reduce this value!
 
 // Maximum allowed number of pages in a brain.
 // WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
+/** Maximum number of pages a single brain may contain. Never reduce this value. */
 export const kMaxBrainPageCount = 20; // never reduce this value!
 
+/** Warning codes emitted by {@link BrainDef} during page operations. */
 export enum BrainDefWarningCode {
   MaxPagesExceeded = "MaxPagesExceeded",
   PageIndexOutOfBounds = "PageIndexOutOfBounds",
@@ -112,6 +116,7 @@ export function brainJsonFromPlain(plain: unknown): BrainJson {
   return { version: obj.version, name: obj.name, catalog, pages };
 }
 
+/** Concrete {@link IBrainDef} implementation: in-memory brain model with mutation, serialization, and compilation. */
 export class BrainDef implements IBrainDef {
   private name_: string = "Unnamed Brain"; // TODO: i18n
   private readonly pages_ = new List<BrainPageDef>();

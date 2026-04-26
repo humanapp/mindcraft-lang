@@ -62,10 +62,12 @@ export interface BrainEditorConfig {
 
 const BrainEditorContext = createContext<BrainEditorConfig | null>(null);
 
+/** Provider for the brain editor configuration. Wrap any subtree that uses brain editor components. */
 export function BrainEditorProvider({ config, children }: { config: BrainEditorConfig; children: ReactNode }) {
   return <BrainEditorContext.Provider value={config}>{children}</BrainEditorContext.Provider>;
 }
 
+/** Read the active {@link BrainEditorConfig}. Throws when used outside a {@link BrainEditorProvider}. */
 export function useBrainEditorConfig(): BrainEditorConfig {
   const config = useContext(BrainEditorContext);
   if (!config) {

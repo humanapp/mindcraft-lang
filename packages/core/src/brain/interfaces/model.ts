@@ -10,11 +10,13 @@ import type { IBrainTileDef, RuleSide } from "./tiles";
 // Brain, Page, Rule, and Tile Definitions
 // ----------------------------------------------------
 
+/** Events emitted by an {@link IBrainDef}. */
 export type BrainDefEvents = {
   name_changed: { oldName: string; newName: string };
   brain_changed: { what: string; pageWhat?: unknown; ruleWhat?: unknown };
 };
 
+/** Definition of a brain: name, pages, catalogs, and conversion registry. Compile to an {@link IBrain} via `compile()`. */
 export interface IBrainDef {
   name(): string;
   setName(newName: string): void;
@@ -36,11 +38,13 @@ export interface IBrainDef {
   toJson(): unknown;
 }
 
+/** Events emitted by an {@link IBrainPageDef}. */
 export type BrainPageDefEvents = {
   name_changed: { oldName: string; newName: string };
   page_changed: { what: string; ruleWhat?: unknown };
 };
 
+/** Definition of a single page in a brain: an ordered list of rules. */
 export interface IBrainPageDef {
   pageId(): string;
   name(): string;
@@ -56,11 +60,13 @@ export interface IBrainPageDef {
   containsTileId(tileId: string): boolean;
 }
 
+/** Events emitted by an {@link IBrainRuleDef}. */
 export type BrainRuleDefEvents = {
   rule_deleted: {};
   rule_dirtyChanged: { isDirty: boolean };
 };
 
+/** Definition of a single rule within a page: a `when` tile-set and a `do` tile-set, plus child rules and metadata. */
 export interface IBrainRuleDef {
   id(): number;
   page(): IBrainPageDef | undefined;
@@ -92,11 +98,13 @@ export interface IBrainRuleDef {
   clone(): IBrainRuleDef;
 }
 
+/** Events emitted by an {@link IBrainTileSet}. */
 export type BrainTileSetEvents = {
   tileSet_dirtyChanged: { side: RuleSide; isDirty: boolean };
   tileSet_typechecked: { side: RuleSide; typecheckResult?: unknown };
 };
 
+/** Ordered set of tiles backing one side (`when` or `do`) of a rule. */
 export interface IBrainTileSet {
   rule(): IBrainRuleDef | undefined;
   side(): RuleSide;

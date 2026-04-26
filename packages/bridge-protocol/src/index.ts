@@ -1,3 +1,4 @@
+/** Wire-format version of the bridge protocol. Bumped on incompatible changes. */
 export const PROTOCOL_VERSION = 1;
 
 export type {
@@ -46,4 +47,5 @@ export {
 export type { WsMessage } from "./schemas.js";
 export { wsMessageSchema } from "./schemas.js";
 
+/** Identifies which side of the bridge a session belongs to. */
 export type SessionRole = "app" | "extension";

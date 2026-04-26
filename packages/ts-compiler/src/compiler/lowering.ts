@@ -25,6 +25,7 @@ import type { CompileDiagnostic, ExtractedDescriptor } from "./types.js";
 const TRUE_VALUE: Value = { t: 2, v: true };
 const FALSE_VALUE: Value = { t: 2, v: false };
 
+/** A lowered function: IR body plus the slot/scope metadata needed by the emitter. */
 export interface FunctionEntry {
   ir: IrNode[];
   numParams: number;
@@ -39,35 +40,41 @@ export interface FunctionEntry {
   functionSpan?: IrSourceSpan;
 }
 
+/** A function imported from another user-tile source file by the lowering phase. */
 export interface ImportedFunction {
   localName: string;
   node: ts.FunctionDeclaration;
 }
 
+/** A top-level `const` variable imported from another user-tile source file. */
 export interface ImportedVariable {
   name: string;
   initializer: ts.Expression | undefined;
   sourceModule: string;
 }
 
+/** A class declaration imported from another user-tile source file. */
 export interface ImportedClass {
   node: ts.ClassDeclaration;
   name: string;
   sourceFile: ts.SourceFile;
 }
 
+/** An enum declaration imported from another user-tile source file. */
 export interface ImportedEnum {
   node: ts.EnumDeclaration;
   name: string;
   sourceFile: ts.SourceFile;
 }
 
+/** An interface declaration imported from another user-tile source file. */
 export interface ImportedInterface {
   node: ts.InterfaceDeclaration;
   name: string;
   sourceFile: ts.SourceFile;
 }
 
+/** A type alias imported from another user-tile source file. */
 export interface ImportedTypeAlias {
   node: ts.TypeAliasDeclaration;
   name: string;
@@ -100,6 +107,7 @@ interface TypeAliasInfo {
   sourceFile: ts.SourceFile;
 }
 
+/** Build the function-table key for a class declared in `fileName` with class name `className`. */
 export function qualifiedClassName(fileName: string, className: string): string {
   return `${fileName}::${className}`;
 }
@@ -116,6 +124,7 @@ function isUserSourceDecl(decl: ts.Declaration): boolean {
   return !sf.fileName.endsWith(".d.ts");
 }
 
+/** Result of lowering a TS source file to IR functions ready for emission. */
 export interface ProgramLoweringResult {
   functions: FunctionEntry[];
   entryFuncId: number;
@@ -795,6 +804,7 @@ function emitBinaryOperatorForNodes(
   return true;
 }
 
+/** Lower a validated descriptor's TS source to IR functions, producing a {@link ProgramLoweringResult}. */
 export function lowerProgram(
   sourceFile: ts.SourceFile,
   descriptor: ExtractedDescriptor,

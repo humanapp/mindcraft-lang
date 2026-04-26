@@ -15,6 +15,7 @@ import type { BrainServices } from "../services";
 
 const mapCallDef = mkCallDef({ type: "bag", items: [] });
 
+/** Register the built-in map operations on `services.functions`. */
 export function registerMapBuiltins(services: BrainServices) {
   const { functions, types } = services;
 

@@ -3,6 +3,7 @@ import * as React from "react";
 
 import { cn } from "../lib/utils";
 
+/** shadcn/ui switch (toggle) built on Radix `Switch.Root`. */
 const Switch = React.forwardRef<
   React.ElementRef<typeof SwitchPrimitives.Root>,
   React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>

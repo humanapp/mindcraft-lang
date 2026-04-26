@@ -95,6 +95,11 @@ interface BrainRuleEditorProps {
   commandHistory: BrainCommandHistory;
 }
 
+/**
+ * Editable WHEN/DO rule row. Supports drag-to-reorder, indent/outdent,
+ * tile add/insert/replace/remove via context menu, and rule-level commands
+ * (paste, delete, comment).
+ */
 export function BrainRuleEditor({
   ruleDef,
   index,

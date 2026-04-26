@@ -3,16 +3,28 @@ import { WsClient } from "../ws-client.js";
 
 type InternalHandler = (msg: WsMessage) => void;
 
+/** Lifecycle state of a {@link ProjectSession}. */
 export type ConnectionStatus = "disconnected" | "connecting" | "connected" | "reconnecting";
 
+/** Map of event names to payload types for {@link ProjectSession.addEventListener}. */
 export interface SessionEventMap {
   status: ConnectionStatus;
 }
 
+/** Mutable session-scoped metadata persisted across reconnects. */
 export interface SessionMeta {
+  /** Token used to rebind to a previously established session. */
   bindingToken?: string;
 }
 
+/**
+ * Session layer over {@link WsClient}: sends an initial `session:hello` on
+ * connect, tracks the session id and binding token, and lets callers subscribe
+ * to typed inbound messages.
+ *
+ * @typeParam TClient - Union of message types this side may send.
+ * @typeParam TServer - Union of message types this side may receive.
+ */
 export class ProjectSession<TClient extends WsMessage, TServer extends WsMessage> {
   private _client: WsClient | undefined;
   private _status: ConnectionStatus = "disconnected";

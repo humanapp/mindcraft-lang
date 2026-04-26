@@ -32,4 +32,5 @@ export declare const MathOps: {
   isNaN: (value: number) => boolean;
 };
 
+/** Positive infinity constant. Cross-platform alias for `Number.POSITIVE_INFINITY`. */
 export declare const INFINITY: number;

@@ -10,8 +10,10 @@ import { BitSet } from "@mindcraft-lang/core/util";
 import { collectParams } from "../compiler/arg-spec-utils.js";
 import type { ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";
 
+/** Resolve a parameter type name to a runtime `TypeId`, or `undefined` when the type is not registered. */
 export type UserTileTypeResolver = (typeName: string) => TypeId | undefined;
 
+/** Output of {@link buildUserTileMetadata}: the tile metadata pieces a brain needs to register a user tile. */
 export interface BuiltUserTileMetadata {
   actionDescriptor: ActionDescriptor;
   actionTile: BrainTileActuatorDef | BrainTileSensorDef;
@@ -59,6 +61,7 @@ function buildParameterTiles(
   return Array.from(parameterTiles.values());
 }
 
+/** Build the action descriptor, action tile, and parameter tiles for a compiled user tile. Returns undefined when a parameter type cannot be resolved. */
 export function buildUserTileMetadata(
   program: UserAuthoredProgram,
   resolveTypeId: UserTileTypeResolver

@@ -2,11 +2,13 @@ import ts from "typescript";
 import { DescriptorDiagCode } from "./diag-codes.js";
 import type { CompileDiagnostic, ExtractedArgSpec, ExtractedDescriptor, ExtractedParam, SourceSpan } from "./types.js";
 
+/** Result of {@link extractDescriptor}: the descriptor (when extraction succeeded) plus any diagnostics. */
 export interface ExtractionResult {
   descriptor?: ExtractedDescriptor;
   diagnostics: CompileDiagnostic[];
 }
 
+/** Walk the source file's default export and extract a {@link ExtractedDescriptor} from a `Sensor({...})` or `Actuator({...})` call. */
 export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   const diagnostics: CompileDiagnostic[] = [];
 

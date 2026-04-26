@@ -3,13 +3,20 @@ import { Project, type ProjectOptions } from "@mindcraft-lang/bridge-client";
 import type { AppClientMessage, AppServerMessage, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import { CompilationManager, type CompilationProvider } from "./compilation.js";
 
+/** Options for {@link BridgeProject}. */
 export interface BridgeProjectOptions {
   bridgeUrl: string;
   filesystem: ExportedFileSystem;
+  /** Token used to rebind to a previously established session. */
   bindingToken?: string;
+  /** Optional provider that compiles workspace files and emits diagnostics over the bridge. */
   compilationProvider?: CompilationProvider;
 }
 
+/**
+ * App-side bridge {@link Project} that exposes the join code and an optional
+ * compilation manager.
+ */
 export class BridgeProject extends Project<AppClientMessage, AppServerMessage> {
   private _joinCode: string | undefined;
   private readonly _joinCodeListeners = new Set<(joinCode: string | undefined) => void>();

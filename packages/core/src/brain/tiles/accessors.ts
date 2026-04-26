@@ -3,6 +3,7 @@ import type { TypeId } from "../interfaces/type-system";
 import { BrainTileDefBase } from "../model/tiledef";
 import type { BrainServices } from "../services";
 
+/** Options for {@link BrainTileAccessorDef}. Adds a `readOnly` flag to the standard tile options. */
 export type BrainAccessorTileDefCreateOptions = BrainTileDefCreateOptions & {
   /** When true, the field is read-only and cannot appear as an assignment target. */
   readOnly?: boolean;
@@ -46,6 +47,7 @@ export class BrainTileAccessorDef extends BrainTileDefBase {
   }
 }
 
+/** Build a {@link BrainTileAccessorDef} for `structTypeId.fieldName` of type `fieldTypeId`. */
 export function createAccessorTileDef(
   structTypeId: TypeId,
   fieldName: string,
@@ -55,10 +57,12 @@ export function createAccessorTileDef(
   return new BrainTileAccessorDef(structTypeId, fieldName, fieldTypeId, opts);
 }
 
+/** Type guard for {@link BrainTileAccessorDef}. */
 export function isAccessorTileDef(tileDef: BrainTileDefBase): tileDef is BrainTileAccessorDef {
   return tileDef.kind === "accessor";
 }
 
+/** Build {@link createAccessorTileDef} and register it with `services`. */
 export function registerAccessorTileDef(
   structTypeId: TypeId,
   fieldName: string,

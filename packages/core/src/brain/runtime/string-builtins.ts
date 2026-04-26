@@ -31,6 +31,7 @@ function optNum(args: MapValue, index: number): number | undefined {
   return (val as NumberValue).v;
 }
 
+/** Register the built-in string operations (`$$str_length`, etc.) on `services.functions`. */
 export function registerStringBuiltins(services: BrainServices) {
   const { functions, types } = services;
 

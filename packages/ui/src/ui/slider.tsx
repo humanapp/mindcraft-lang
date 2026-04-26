@@ -3,6 +3,7 @@ import * as React from "react";
 
 import { cn } from "../lib/utils";
 
+/** shadcn/ui slider built on Radix `Slider.Root`. */
 const Slider = React.forwardRef<
   React.ElementRef<typeof SliderPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root>

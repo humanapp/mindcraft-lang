@@ -20,6 +20,7 @@ interface DisplayFormatPickerProps {
   onChange: (format: LiteralDisplayFormat) => void;
 }
 
+/** Picker that lets the user select a {@link LiteralDisplayFormat} (default, fixed decimals, thousands, time). */
 export function DisplayFormatPicker({ value, onChange }: DisplayFormatPickerProps) {
   const [isExpanded, setIsExpanded] = useState(value !== "default");
 

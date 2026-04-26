@@ -2,6 +2,7 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import type { ActionDescriptor, ActionKey, IBrainActionRegistry, ResolvedAction } from "../interfaces";
 
+/** In-memory {@link IBrainActionRegistry}: keyed registry of {@link ResolvedAction}s used during brain linking. */
 export class BrainActionRegistry implements IBrainActionRegistry {
   private readonly actions = new Dict<ActionKey, ResolvedAction>();
 

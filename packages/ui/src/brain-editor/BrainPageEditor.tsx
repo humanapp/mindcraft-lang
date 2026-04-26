@@ -46,6 +46,7 @@ function flattenRules(rules: BrainRuleDef[], depth: number = 0, startLineNumber:
   return result;
 }
 
+/** Renders the rules of a single brain page as a flattened, indented list of {@link BrainRuleEditor} rows. */
 export function BrainPageEditor({ pageDef, pageNumber, commandHistory, zoom = 1 }: BrainPageEditorProps) {
   const [ruleCount, setRuleCount] = useState(pageDef.children().size());
   const [updateCounter, setUpdateCounter] = useState(0);

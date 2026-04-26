@@ -36,6 +36,7 @@ import type {
 import { validateAst } from "./validator.js";
 import { createVirtualCompilerHost } from "./virtual-host.js";
 
+/** Per-function debug info attached to a {@link CompileResult}. */
 export interface FunctionDebugInfo {
   funcIndex: number;
   name: string;
@@ -47,6 +48,7 @@ export interface FunctionDebugInfo {
   suspendSites: SuspendSiteInfo[];
 }
 
+/** Result of compiling a single user-tile source file. */
 export interface CompileResult {
   diagnostics: CompileDiagnostic[];
   program?: UserAuthoredProgram;
@@ -54,8 +56,11 @@ export interface CompileResult {
   functionDebugInfo?: FunctionDebugInfo[];
 }
 
+/** Result of compiling every user-tile source file in a {@link UserTileProject}. */
 export interface ProjectCompileResult {
+  /** Per-source-file compile result, keyed by workspace path. */
   results: Map<string, CompileResult>;
+  /** TypeScript pre-emit diagnostics, keyed by workspace path. */
   tsErrors: Map<string, CompileDiagnostic[]>;
 }
 
@@ -124,6 +129,7 @@ function normalizeWorkspacePath(path: string): string {
   return path.startsWith("/") ? path.slice(1) : path;
 }
 
+/** True for paths the workspace compiler synthesizes (`mindcraft.d.ts`, `tsconfig.json`). */
 export function isCompilerControlledPath(path: string): boolean {
   const normalized = normalizeWorkspacePath(path);
   return normalized === "mindcraft.d.ts" || normalized === "tsconfig.json";
@@ -136,6 +142,11 @@ function isExamplePath(path: string): boolean {
   return normalized.startsWith(EXAMPLES_PREFIX);
 }
 
+/**
+ * In-memory user-tile project. Holds a mutable file map, runs the TypeScript
+ * compiler over user `.ts` sources, extracts descriptors, lowers them to IR,
+ * and emits bytecode.
+ */
 export class UserTileProject {
   private _files = new Map<string, string>();
   private readonly _ambientSource: string | undefined;

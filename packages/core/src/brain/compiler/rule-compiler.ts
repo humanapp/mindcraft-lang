@@ -53,6 +53,7 @@ interface CompilationContext {
   diags: List<CompilationDiag>;
 }
 
+/** Result of compiling one rule: emitted instructions, variable names, and diagnostics. */
 export interface CompilationResult {
   instrs: ReadonlyList<Instr>;
   /** Variable names used in this compilation, for LOAD_VAR/STORE_VAR instructions */

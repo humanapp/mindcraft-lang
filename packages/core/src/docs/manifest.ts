@@ -21,6 +21,7 @@ export interface CoreTileDocMeta {
   contentKey: string;
 }
 
+/** Documentation manifest for built-in core tiles. Pair each entry with the markdown content keyed by `contentKey`. */
 export const coreTileDocs: readonly CoreTileDocMeta[] = [
   // -- Operators: logic ------------------------------------------------------
   { tileId: "tile.op->and", tags: ["logic", "boolean", "operators"], category: "Operators", contentKey: "op-and" },
@@ -192,6 +193,7 @@ export interface CoreConceptDocMeta {
   contentKey: string;
 }
 
+/** Documentation manifest for core conceptual articles (not tied to a specific tile). */
 export const coreConceptDocs: readonly CoreConceptDocMeta[] = [
   {
     id: "rule-evaluation",

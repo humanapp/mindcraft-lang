@@ -9,11 +9,13 @@ import type { TypeId } from "./type-system";
 import type { HandleId, MapValue, Program, Value } from "./vm";
 import { NIL_VALUE } from "./vm";
 
+/** Reference to a registered action, by program-local slot and stable key. */
 export interface ActionRef {
   slot: number;
   key: ActionKey;
 }
 
+/** Identifies one ACTION_CALL site within a brain program. */
 export interface ActionCallSiteEntry {
   actionSlot: number;
   callSiteId: number;
@@ -44,8 +46,10 @@ export interface UnlinkedBrainProgram extends Program {
   pages: List<PageMetadata>;
 }
 
+/** Compiled brain program prior to action linking. Alias for {@link UnlinkedBrainProgram}. */
 export type BrainProgram = UnlinkedBrainProgram;
 
+/** Action binding implemented by a host (sync or async) function. */
 export interface HostActionBinding {
   binding: "host";
   descriptor: ActionDescriptor;
@@ -54,6 +58,7 @@ export interface HostActionBinding {
   execAsync?: (ctx: ExecutionContext, args: MapValue, handleId: HandleId) => void;
 }
 
+/** Compiled user-authored action: bytecode plus action metadata. */
 export interface UserActionArtifact extends Program {
   key: ActionKey;
   kind: ActionKind;
@@ -66,14 +71,17 @@ export interface UserActionArtifact extends Program {
   revisionId: string;
 }
 
+/** Action binding implemented by a compiled bytecode artifact. */
 export interface BytecodeResolvedAction {
   binding: "bytecode";
   descriptor: ActionDescriptor;
   artifact: UserActionArtifact;
 }
 
+/** Tagged-union of action bindings: host function or compiled bytecode. */
 export type ResolvedAction = HostActionBinding | BytecodeResolvedAction;
 
+/** Bytecode-backed action ready for VM execution: entry function id and state-slot count. */
 export interface BytecodeExecutableAction {
   binding: "bytecode";
   descriptor: ActionDescriptor;
@@ -82,29 +90,35 @@ export interface BytecodeExecutableAction {
   numStateSlots: number;
 }
 
+/** Tagged-union of executable action bindings: host function or executable bytecode. */
 export type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
 
+/** Linked brain program ready for VM execution: program-local action slots resolved to executable bindings. */
 export interface ExecutableBrainProgram extends Program {
   ruleIndex: Dict<string, number>;
   pages: List<PageMetadata>;
   actions: List<ExecutableAction>;
 }
 
+/** Resolves action descriptors to concrete bindings during brain linking. */
 export interface BrainActionResolver {
   resolveAction(descriptor: ActionDescriptor): ResolvedAction | undefined;
 }
 
+/** Mutable registry of resolved actions keyed by `ActionKey`. */
 export interface IBrainActionRegistry extends BrainActionResolver {
   register(action: ResolvedAction): ResolvedAction;
   getByKey(key: ActionKey): ResolvedAction | undefined;
   size(): number;
 }
 
+/** Linker inputs: tile catalogs and the action resolver to bind compiled programs against. */
 export interface BrainLinkEnvironment {
   catalogs: ReadonlyList<ITileCatalog>;
   actionResolver: BrainActionResolver;
 }
 
+/** Per-page metadata embedded in a {@link UnlinkedBrainProgram}. */
 export interface PageMetadata {
   /** Page index in the brain */
   pageIndex: number;
@@ -141,9 +155,12 @@ export interface ActionInstance {
   hostState?: unknown;
 }
 
+/** Maps `callSiteId` to its persistent {@link ActionInstance} for an active page. */
 export type ActionInstanceMap = Dict<number, ActionInstance>;
+/** Alias for {@link ActionInstanceMap}, used in call-site state contexts. */
 export type CallSiteStateMap = ActionInstanceMap;
 
+/** Events emitted by an {@link IBrain}. */
 export type BrainEvents = {
   page_activated: { pageIndex: number };
   page_deactivated: { pageIndex: number };

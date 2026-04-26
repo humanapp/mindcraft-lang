@@ -1,3 +1,4 @@
+/** Tag identifying the type of the next value in a tagged binary stream. */
 export enum DataType {
   U8 = 1,
   Bytes = 2,
@@ -9,6 +10,7 @@ export enum DataType {
   Chunk = 8,
 }
 
+/** Cross-platform read-only byte buffer. */
 export interface IByteArray {
   length(): number; // in bytes
   slice(start: number, end?: number): IByteArray;
@@ -17,6 +19,7 @@ export interface IByteArray {
   hashCode(): number;
 }
 
+/** Tagged binary read stream. Reads primitive values and chunked data with `DataType` tags for self-describing serialization. */
 export interface IReadStream {
   peekTag(): number; // peeks at next four-cc tag without advancing
   readTag(tag: number): void; // reads and verifies four-cc tag match
@@ -41,6 +44,7 @@ export interface IReadStream {
   popReadPos(): void; // pop read position from stack and restore it
 }
 
+/** Tagged binary write stream. Counterpart of {@link IReadStream}. */
 export interface IWriteStream {
   writeTag(tag: number): void; // writes u32 (four-cc tag)
   writeU8(v: number): void;

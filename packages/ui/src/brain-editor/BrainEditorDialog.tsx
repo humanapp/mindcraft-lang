@@ -51,6 +51,7 @@ import {
   ReplaceLastPageCommand,
 } from "./commands";
 
+/** Props for {@link BrainEditorDialog}. */
 export interface BrainEditorDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -58,6 +59,11 @@ export interface BrainEditorDialogProps {
   onSubmit: (newBrainDef: BrainDef) => void;
 }
 
+/**
+ * Modal brain editor with page navigation, toolbar (undo/redo, copy, paste,
+ * print, docs toggle), and save/load. Edits are made on a clone of `srcBrainDef`;
+ * `onSubmit` is invoked with the resulting brain when the user confirms.
+ */
 export function BrainEditorDialog({ isOpen, onOpenChange, srcBrainDef, onSubmit }: BrainEditorDialogProps) {
   const { getDefaultBrain, docsIntegration, brainServices, tileCatalogs } = useBrainEditorConfig();
   const isDocsOpen = docsIntegration?.isOpen ?? false;

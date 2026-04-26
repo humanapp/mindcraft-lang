@@ -15,6 +15,10 @@ interface BrainTileProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "
   badge?: TileBadge;
 }
 
+/**
+ * Renders a single brain tile as a styled button with icon, label, and optional
+ * data-type indicator and badge. Forwards a ref to the underlying button.
+ */
 export const BrainTile = forwardRef<HTMLButtonElement, BrainTileProps>(
   ({ tileDef, side, badge, className = "", ...props }, ref) => {
     const editorConfig = useBrainEditorConfig();

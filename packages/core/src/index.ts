@@ -1,5 +1,6 @@
 import { Vector2 } from "./platform/vector2";
 
+/** Placeholder constant used to verify named-export resolution against the package entry point. */
 export const CORE_PLACEHOLDER = "testing symbol export";
 
 export * as brain from "./brain";

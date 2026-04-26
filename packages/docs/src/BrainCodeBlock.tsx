@@ -177,6 +177,12 @@ interface BrainCodeBlockProps {
   meta?: string;
 }
 
+/**
+ * Renders a fenced ```brain``` code block: the JSON inside is parsed and shown
+ * either as a strip of read-only tile chips or as a stack of read-only rule
+ * rows. For rule blocks, also exposes a copy-to-clipboard action so the user
+ * can paste the example into the brain editor.
+ */
 export function BrainCodeBlock({ content, meta = "" }: BrainCodeBlockProps) {
   const { close } = useDocsSidebar();
   const tileCatalog = useDocsTileCatalog();

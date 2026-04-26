@@ -40,6 +40,7 @@ interface Fixup {
   field: "a" | "b";
 }
 
+/** Builds a {@link FunctionBytecode} from emitted instructions, resolving forward jumps via labels and fixups. */
 export class BytecodeEmitter implements IBytecodeEmitter {
   private instrs: List<Instr> = List.empty();
   private labels: Dict<number, number> = Dict.empty(); // labelId -> instruction index

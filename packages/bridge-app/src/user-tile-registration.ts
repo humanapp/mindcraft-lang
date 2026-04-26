@@ -33,27 +33,44 @@ import {
 
 const METADATA_CACHE_VERSION = 3 as const;
 
+/** Cached metadata describing a user-authored sensor or actuator tile. */
 export interface UserTileMetadata {
+  /** Stable key used to identify the tile across compiles. */
   key: string;
+  /** Whether the tile is a sensor or an actuator. */
   kind: "sensor" | "actuator";
+  /** Source-level identifier of the user's function. */
   name: string;
+  /** Brain-action call signature derived from the source. */
   callSpec: BrainActionCallSpec;
+  /** Argument descriptors derived from the source. */
   args: ExtractedArgSpec[];
+  /** For sensors, the typeId of the value the tile produces. */
   outputType?: string;
+  /** Whether the tile's call returns a `Promise`. */
   isAsync: boolean;
+  /** Optional human-readable label for the tile. */
   label?: string;
+  /** Optional icon URL for the tile. */
   iconUrl?: string;
+  /** Optional Markdown documentation shown in the editor. */
   docsMarkdown?: string;
+  /** Optional categorization tags. */
   tags?: string[];
 }
 
+/** Options shared by user-tile registration functions. */
 export interface UserTileRegistrationOptions {
+  /** `localStorage` key under which the metadata cache is stored. */
   storageKey: string;
 }
 
+/** Result returned by {@link applyCompiledUserTiles}. */
 export interface UserTileApplyResult {
   metadata: readonly UserTileMetadata[];
+  /** Action keys whose call definition changed since the previous bundle. */
   changedActionKeys: readonly string[];
+  /** Number of brains invalidated by the change. */
   invalidatedBrainCount: number;
 }
 
@@ -288,6 +305,7 @@ function buildHydratedSnapshot(
   });
 }
 
+/** Extract user-tile metadata from a workspace compile result, sorted by key. */
 export function collectMetadataFromCompile(result: WorkspaceCompileResult): UserTileMetadata[] {
   const metadata: UserTileMetadata[] = [];
 
@@ -301,6 +319,11 @@ export function collectMetadataFromCompile(result: WorkspaceCompileResult): User
   return metadata;
 }
 
+/**
+ * Restore user tiles from `localStorage` so the editor can render them before
+ * the first compile finishes. Returns the cached metadata, or `undefined` when
+ * no usable cache exists.
+ */
 export function hydrateUserTilesFromCache(
   env: MindcraftEnvironment,
   options: UserTileRegistrationOptions
@@ -330,6 +353,11 @@ export function hydrateUserTilesFromCache(
   return loaded.metadata;
 }
 
+/**
+ * Apply the user-tile bundle from a workspace compile result to the
+ * environment, refreshing the metadata cache. Returns `undefined` when the
+ * compile produced no bundle.
+ */
 export function applyCompiledUserTiles(
   env: MindcraftEnvironment,
   result: WorkspaceCompileResult,

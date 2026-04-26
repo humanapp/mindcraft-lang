@@ -2,6 +2,7 @@ import type { IByteArray, IReadStream, IWriteStream } from "./stream-types";
 
 export { DataType, type IByteArray, type IReadStream, type IWriteStream } from "./stream-types";
 
+/** In-memory tagged binary stream implementing both {@link IReadStream} and {@link IWriteStream}. */
 export declare class MemoryStream implements IReadStream, IWriteStream {
   constructor(initial?: IByteArray, initialCapacity?: number);
 

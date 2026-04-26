@@ -2,6 +2,7 @@ import { Error } from "../../platform/error";
 import { CoreTypeIds, type ITileCatalog, mkPageTileId, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
+/** Serialized form of a {@link BrainTilePageDef}. */
 export interface PageTileJson {
   version: number;
   kind: "page";

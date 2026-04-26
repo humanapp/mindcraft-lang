@@ -4,6 +4,7 @@ import fnRestartPage from "./restart-page";
 import fnSwitchPage from "./switch-page";
 import fnYield from "./yield";
 
+/** Register the built-in actuators on `services`. */
 export function registerCoreActuators(services: BrainServices) {
   services.actions.register(fnSwitchPage.binding);
   services.actions.register(fnRestartPage.binding);

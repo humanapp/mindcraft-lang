@@ -29,8 +29,10 @@ const noopController: RuleDragController = {
 
 const RuleDragContext = createContext<RuleDragController>(noopController);
 
+/** Provider for a {@link RuleDragController}. Defaults to a no-op controller when omitted. */
 export const RuleDragProvider = RuleDragContext.Provider;
 
+/** Read the current {@link RuleDragController} from context. */
 export function useRuleDragController(): RuleDragController {
   return useContext(RuleDragContext);
 }

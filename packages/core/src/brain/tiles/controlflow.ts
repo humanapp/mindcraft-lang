@@ -2,6 +2,7 @@ import { type BrainTileDefCreateOptions, CoreControlFlowId, mkControlFlowTileId,
 import { BrainTileDefBase } from "../model/tiledef";
 import type { BrainServices } from "../services";
 
+/** Tile definition for a control-flow construct (parens, etc.) identified by `cfId`. */
 export class BrainTileControlFlowDef extends BrainTileDefBase {
   readonly kind = "controlFlow";
   readonly cfId: string;
@@ -12,6 +13,7 @@ export class BrainTileControlFlowDef extends BrainTileDefBase {
   }
 }
 
+/** Register the built-in control-flow tiles on `services`. */
 export function registerCoreControlFlowTileDefs(services: BrainServices) {
   const tiles = services.tiles;
   const register = (cfId: string, opts: BrainTileDefCreateOptions = {}) => {

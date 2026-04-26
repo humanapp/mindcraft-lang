@@ -30,6 +30,7 @@ const UNSUPPORTED_TYPES = new Set([
   "RegExp",
 ]);
 
+/** Walk the AST and report diagnostics for unsupported syntax (var, decorators, regex, etc.). */
 export function validateAst(sourceFile: ts.SourceFile): CompileDiagnostic[] {
   const diagnostics: CompileDiagnostic[] = [];
 

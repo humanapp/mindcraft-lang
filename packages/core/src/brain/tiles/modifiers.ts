@@ -1,6 +1,7 @@
 import { type BrainTileDefCreateOptions, mkModifierTileId, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
+/** Tile definition for a modifier on a sensor or actuator. */
 export class BrainTileModifierDef extends BrainTileDefBase {
   readonly kind = "modifier";
   readonly modifierId: string;

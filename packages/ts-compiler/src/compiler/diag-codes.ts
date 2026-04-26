@@ -439,4 +439,5 @@ export enum CompileDiagCode {
 /**
  * Union of all TypeScript compiler diagnostic codes.
  */
+/** Union of every diagnostic code emitted by the user-tile compiler. */
 export type TsDiagCode = ValidatorDiagCode | DescriptorDiagCode | LoweringDiagCode | EmitDiagCode | CompileDiagCode;

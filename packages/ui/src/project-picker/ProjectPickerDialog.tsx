@@ -5,14 +5,17 @@ import { cn } from "../lib/utils";
 import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 
+/** Summary of a project shown as a card in {@link ProjectPickerDialog}. */
 export interface ProjectPickerItem {
   id: string;
   title: string;
   description?: string;
   tags?: string[];
+  /** Last-modified timestamp as a Unix epoch millisecond value. */
   updatedAt: number;
 }
 
+/** Props for {@link ProjectPickerDialog}. */
 export interface ProjectPickerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -201,6 +204,12 @@ function ProjectCard({
   );
 }
 
+/**
+ * Modal that presents a grid of project cards (sorted by `updatedAt` descending),
+ * a Create action, and inline delete confirmation per card. Calls `onSelect`
+ * when a project is opened, `onDelete` after the user confirms a deletion, and
+ * `onCreate` when the create card is activated.
+ */
 export function ProjectPickerDialog({
   open,
   onOpenChange,

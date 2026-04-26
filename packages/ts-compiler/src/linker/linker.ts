@@ -3,11 +3,13 @@ import type { BrainProgram, FunctionBytecode, Instr, Value } from "@mindcraft-la
 import { isFunctionValue, NativeType, Op } from "@mindcraft-lang/core/brain";
 import type { DebugMetadata, LinkedUserProgram, UserAuthoredProgram } from "../compiler/types.js";
 
+/** Output of {@link linkUserPrograms}: the merged brain program and per-program offset metadata. */
 export interface LinkResult {
   linkedProgram: BrainProgram;
   linkedArtifacts: LinkedUserProgram[];
 }
 
+/** Append each user program's bytecode, constants, and variable names to a base brain program, fixing up cross-table indices. */
 export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserAuthoredProgram[]): LinkResult {
   const linkedFunctions: FunctionBytecode[] = brainProgram.functions.toArray();
   const linkedConstants: Value[] = brainProgram.constants.toArray();

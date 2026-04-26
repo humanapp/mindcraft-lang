@@ -15,18 +15,22 @@ import { DocsRegistry } from "./DocsRegistry";
 // Shared manifest types -- apps define their manifests using these shapes.
 // ---------------------------------------------------------------------------
 
+/** Per-tile metadata an app supplies to register an app-specific tile doc page. */
 export interface AppTileDocMeta {
   tileId: string;
   tags: string[];
   category: string;
+  /** Key into the app's `content` map identifying the markdown body for this tile. */
   contentKey: string;
 }
 
+/** Per-pattern metadata an app supplies to register an app-specific pattern doc page. */
 export interface AppPatternDocMeta {
   id: string;
   title: string;
   tags: string[];
   category: string;
+  /** Key into the app's `content` map identifying the markdown body for this pattern. */
   contentKey: string;
 }
 
@@ -51,6 +55,10 @@ export interface BuildDocsRegistryOptions {
 // Factory
 // ---------------------------------------------------------------------------
 
+/**
+ * Build a {@link DocsRegistry} that contains the core docs and any
+ * app-specific tile and pattern entries supplied in `options`.
+ */
 export function buildDocsRegistry(options?: BuildDocsRegistryOptions): DocsRegistry {
   const registry = new DocsRegistry();
 

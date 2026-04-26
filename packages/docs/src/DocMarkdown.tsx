@@ -225,6 +225,11 @@ interface DocMarkdownProps {
   children: string;
 }
 
+/**
+ * Render a markdown string with the docs-package custom components: ```brain```
+ * fences are rendered via {@link BrainCodeBlock} and `tile:xxx` references via
+ * {@link InlineTileIcon}.
+ */
 export function DocMarkdown({ children }: DocMarkdownProps) {
   return (
     <Markdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>

@@ -9,6 +9,7 @@ interface CreateVariableDialogProps {
   onSubmit: (variableName: string) => void;
 }
 
+/** Dialog that prompts for a new variable name and submits the trimmed value via `onSubmit`. */
 export function CreateVariableDialog({ isOpen, title, onOpenChange, onSubmit }: CreateVariableDialogProps) {
   const [variableName, setVariableName] = useState("");
 

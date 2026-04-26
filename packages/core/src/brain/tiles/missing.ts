@@ -3,6 +3,7 @@ import type { BrainTileKind, ITileCatalog, TileId } from "../interfaces";
 import { TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
+/** Serialized form of a {@link BrainTileMissingDef}. */
 export interface MissingTileJson {
   version: number;
   kind: "missing";

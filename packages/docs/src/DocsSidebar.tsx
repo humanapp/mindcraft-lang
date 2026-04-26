@@ -372,12 +372,14 @@ function ConceptCard({ entry, onClick }: ConceptCardProps) {
 // Content panel -- shared between desktop and mobile
 // ---------------------------------------------------------------------------
 
+/** Props for {@link DocsPanelContent}. */
 export interface DocsPanelContentProps {
   tabBarClassName?: string;
   scrollClassName?: string;
   searchRef?: React.Ref<HTMLInputElement>;
 }
 
+/** Tab bar plus searchable list/detail content shared by the desktop and mobile sidebars. */
 export function DocsPanelContent({ tabBarClassName, scrollClassName = "p-3", searchRef }: DocsPanelContentProps) {
   const { activeTab, setTab, registry, navKey, navTab, navigateToEntry, navigateBack, tileCatalog } = useDocsSidebar();
   const resolveTileVisual = useDocsResolveTileVisual();
@@ -740,6 +742,7 @@ function MobilePanel() {
   );
 }
 
+/** Resizable side panel that hosts {@link DocsPanelContent} on desktop. */
 export function DocsSidebar() {
   const { isOpen } = useDocsSidebar();
   const isMobile = useIsMobile();

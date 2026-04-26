@@ -56,6 +56,7 @@ export class BrainTileSensorDef extends BrainActionTileBase {
   }
 }
 
+/** Register the built-in core sensor tiles on `services`. */
 export function registerCoreSensorTileDefs(services: BrainServices) {
   const tiles = services.tiles;
   const register = (sensorId: string, action: typeof fnRandom.descriptor, opts: BrainTileDefCreateOptions = {}) => {

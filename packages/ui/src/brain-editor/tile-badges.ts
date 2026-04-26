@@ -20,6 +20,7 @@ import { acceptExprVisitor } from "@mindcraft-lang/core/brain";
 import type { TypeInfoDiag } from "@mindcraft-lang/core/brain/compiler";
 import { ParseDiagCode, TypeDiagCode } from "@mindcraft-lang/core/brain/compiler";
 
+/** Badge attached to a tile in the editor to surface a parser or type-checker diagnostic. */
 export interface TileBadge {
   type: "error" | "warning";
   message: string;

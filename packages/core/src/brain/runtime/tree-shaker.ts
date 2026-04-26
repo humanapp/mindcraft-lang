@@ -294,6 +294,7 @@ function remapInstructionConsts(ins: Instr, constRemap: Dict<number, number>): I
   return ins;
 }
 
+/** Strip unreachable functions, constants, and variable names from `program` and dedupe constants. */
 export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBrainProgram {
   const reachableFuncs = markReachableFunctions(program);
   const reachableConsts = markReachableConstants(program, reachableFuncs);

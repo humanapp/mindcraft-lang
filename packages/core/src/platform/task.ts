@@ -1,8 +1,10 @@
 // task.ts
 // Platform-agnostic type definitions for the task API
 
+/** Opaque handle to a scheduled thread. */
 export type thread = unknown;
 
+/** Cross-platform analog of Roblox's `task` library: schedule callbacks via defer/delay/spawn and yield via wait. */
 export declare namespace task {
   /** Queues the calling script to be run during the parallel execution phase of the frame. */
   function desynchronize(): void;

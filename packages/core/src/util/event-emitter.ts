@@ -1,6 +1,7 @@
 import { Dict } from "../platform/dict";
 import { List } from "../platform/list";
 
+/** Callback invoked by {@link EventEmitter.emit} with the event payload. */
 export type EventListener<T = unknown> = (data: T) => void;
 
 /**

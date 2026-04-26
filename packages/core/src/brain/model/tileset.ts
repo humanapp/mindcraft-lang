@@ -17,8 +17,7 @@ import {
 } from "../interfaces";
 import { BrainTileMissingDef } from "../tiles/missing";
 
-// Maximum allowed number of tiles in a tileset.
-// WARNING: This value must never be lowered, as it could invalidate existing saves. It may be safely increased.
+/** Maximum number of tiles in a single rule's WHEN or DO tile set. Never reduce this value. */
 export const kMaxTileSetSize = 20; // never reduce this value!
 
 function createMissingTileFallback(tileId: string): BrainTileMissingDef {
@@ -31,6 +30,7 @@ function createMissingTileFallback(tileId: string): BrainTileMissingDef {
   return new BrainTileMissingDef(tileId, kind, label);
 }
 
+/** Concrete {@link IBrainTileSet}: ordered list of tiles backing one side of a rule. */
 export class BrainTileSet implements IBrainTileSet {
   private readonly tiles_ = new List<IBrainTileDef>();
   private readonly emitter_ = new EventEmitter<BrainTileSetEvents>();

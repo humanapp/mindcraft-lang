@@ -15,6 +15,7 @@ function num(args: MapValue, index: number): number {
   return (args.v.get(index) as NumberValue).v;
 }
 
+/** Register the built-in math functions on `services.functions`. */
 export function registerMathBuiltins(services: BrainServices) {
   const { functions } = services;
 

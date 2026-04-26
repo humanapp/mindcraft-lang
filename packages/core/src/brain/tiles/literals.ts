@@ -17,6 +17,7 @@ import {
 } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
+/** Serialized form of a {@link BrainTileLiteralDef}. */
 export interface LiteralTileJson {
   version: number;
   kind: "literal";
@@ -35,6 +36,7 @@ import { BrainTileFactoryDef } from "./factories";
 // v2: added displayFormat
 const kVersion = 2;
 
+/** Tile definition for an immutable literal value of `valueType`, optionally formatted by {@link LiteralDisplayFormat}. */
 export class BrainTileLiteralDef extends BrainTileDefBase {
   readonly kind = "literal";
   readonly valueLabel: string;
@@ -136,6 +138,7 @@ function literalValueFromJson(typeDef: TypeDef, json: unknown): unknown {
   }
 }
 
+/** Register a literal-value factory tile of `producedDataType` with `services`. */
 export function registerLiteralFactoryTileDef(
   factoryId: string,
   producedDataType: TypeId,
@@ -167,6 +170,7 @@ function manufactureLiteralTileDef(
   return tileDef;
 }
 
+/** Register the built-in literal factories (`Number`, `String`) and well-known `true`/`false`/`nil` tiles. */
 export function registerCoreLiteralFactoryTileDefs(services: BrainServices) {
   const tiles = services.tiles;
   // --------------------------------------------------------------

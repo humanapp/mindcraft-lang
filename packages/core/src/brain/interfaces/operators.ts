@@ -32,28 +32,36 @@ export const CoreOpId = {
   Assign: "assign",
 } as const;
 
+/** Operator identifier (e.g. `"add"`, `"eq"`). */
 export type OpId = string;
 
+/** Operator associativity. `none` disallows chaining. */
 export type OpAssoc = "left" | "right" | "none";
+
+/** Operator fixity. */
 export type OpFixity = "infix" | "prefix" | "postfix";
 
+/** Pratt-parser metadata for an operator: precedence (higher binds tighter), fixity, and associativity. */
 export interface OpParse {
   fixity: OpFixity;
-  precedence: number; // higher binds tighter
-  assoc?: OpAssoc; // only meaningful for infix
+  precedence: number;
+  assoc?: OpAssoc;
 }
 
+/** Specification of an operator: its id and parser metadata. */
 export type OpSpec = {
   id: OpId;
   parse: OpParse;
 };
 
+/** A registered operator overload bound to specific arg types and a host function. */
 export type OpOverload = {
   argTypes: TypeId[];
   resultType: TypeId;
   fnEntry: BrainFunctionEntry;
 };
 
+/** Read-only view of a registered operator and its overloads. */
 export interface IReadOnlyRegisteredOperator {
   readonly id: OpId;
   readonly parse: OpParse;
@@ -62,16 +70,19 @@ export interface IReadOnlyRegisteredOperator {
   overloads(): ReadonlyList<OpOverload>;
 }
 
+/** Mutable operator: add or remove typed overloads. */
 export interface IRegisteredOperator extends IReadOnlyRegisteredOperator {
   add(overload: OpOverload): void;
   remove(argTypes: TypeId[]): boolean;
 }
 
+/** Registry of operator specs keyed by `OpId`. */
 export interface IOperatorTable {
   add(op: OpSpec): IRegisteredOperator;
   get(id: OpId): IRegisteredOperator | undefined;
 }
 
+/** High-level operator/overload registry combining the operator table with type-aware lookup. */
 export interface IOperatorOverloads {
   table(): IOperatorTable;
   binary(op: OpId, lhs: TypeId, rhs: TypeId, result: TypeId, fn: HostFn, isAsync: boolean): IRegisteredOperator;

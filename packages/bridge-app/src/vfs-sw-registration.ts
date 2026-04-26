@@ -1,11 +1,19 @@
 import type { WorkspaceAdapter } from "./app-bridge.js";
 
+/** Options for {@link registerVfsServiceWorker}. */
 export interface VfsSwRegistrationOptions {
+  /** URL of the service worker script. */
   swUrl: string;
+  /** Returns the workspace whose files the service worker should serve. */
   getWorkspace: () => WorkspaceAdapter;
+  /** Invoked once a service worker is controlling the page. */
   onReady?: () => void;
 }
 
+/**
+ * Register a service worker that serves files from the in-memory workspace via
+ * `MessageChannel` requests. No-op in environments without `navigator.serviceWorker`.
+ */
 export function registerVfsServiceWorker(options: VfsSwRegistrationOptions): void {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     return;

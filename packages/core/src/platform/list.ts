@@ -1,3 +1,4 @@
+/** Read-only view of a {@link List}. */
 export declare interface ReadonlyList<T> {
   size(): number;
   isEmpty(): boolean;
@@ -15,6 +16,7 @@ export declare interface ReadonlyList<T> {
   toArray(): T[];
 }
 
+/** Cross-platform mutable list. Roblox build uses a Luau table; Node/ESM build uses a native `Array`. */
 export declare class List<T> implements ReadonlyList<T> {
   static from<T>(xs: readonly T[]): List<T>;
   static empty<T>(): List<T>;

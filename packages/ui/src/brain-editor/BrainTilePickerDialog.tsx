@@ -67,6 +67,7 @@ function fuzzyMatch(filter: string, text: string): boolean {
   return true;
 }
 
+/** Props for {@link BrainTilePickerDialog}. */
 export interface BrainTilePickerDialogProps {
   isOpen: boolean;
   side: RuleSide;
@@ -80,6 +81,13 @@ export interface BrainTilePickerDialogProps {
   onCancel: () => void;
 }
 
+/**
+ * Modal that shows tiles available for insertion, grouped by kind. Honors
+ * `expectedType`, the parent expression `expr`, the rule's available
+ * capabilities, and an optional brain-local `localCatalog`. Calls
+ * `onTileSelected` with the chosen tile def; if it returns false, the dialog
+ * stays open.
+ */
 export function BrainTilePickerDialog({
   isOpen,
   side,

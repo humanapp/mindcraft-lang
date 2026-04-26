@@ -7,6 +7,7 @@ import {
 } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
+/** Tile definition that produces other tile definitions on demand via {@link manufacture}. */
 export class BrainTileFactoryDef extends BrainTileDefBase {
   readonly kind = "factory";
   readonly factoryId: string;

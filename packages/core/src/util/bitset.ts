@@ -17,6 +17,7 @@ const P: BitSetData = {
   _: 0,
 };
 
+/** Read-only view of a {@link BitSet}. */
 export interface ReadonlyBitSet {
   get(ndx: number): number;
   isEmpty(): boolean;

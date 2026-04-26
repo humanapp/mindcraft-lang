@@ -32,6 +32,7 @@ import { computeInferredTypes } from "./inferred-types";
 import { parseBrainTiles } from "./parser";
 import type { Expr, ParseResult, TypeEnv, TypeInfo, TypeInfoDiag } from "./types";
 
+/** Combined parse + type-check result for a single rule's `when` and `do` sides. */
 export interface TypecheckResult {
   /**
    * Result of compiling brain tiles to CST (concrete syntax tree). May contain multiple expressions
@@ -56,6 +57,7 @@ export interface TypecheckResult {
   };
 }
 
+/** Parse and type-check a rule's `when` and `do` tile lists, returning combined and per-side results. */
 export function parseRule(
   whenSrc: ReadonlyList<IBrainTileDef>,
   doSrc: ReadonlyList<IBrainTileDef>,

@@ -1,9 +1,11 @@
 import { NativeType, nativeTypeToString, type TypeId } from "./type-system";
 
+/** Build a {@link TypeId} from a `NativeType` and a (unique) type name. */
 export function mkTypeId(coreType: NativeType, typeName: string): TypeId {
   return `${nativeTypeToString(coreType)}:<${typeName}>`;
 }
 
+/** Type names for the brain's built-in primitive types. */
 export const CoreTypeNames = {
   Unknown: "unknown",
   Void: "void",
@@ -15,6 +17,7 @@ export const CoreTypeNames = {
   Function: "function",
 };
 
+/** {@link TypeId}s for the brain's built-in primitive types. */
 export const CoreTypeIds = {
   Unknown: mkTypeId(NativeType.Unknown, CoreTypeNames.Unknown),
   Void: mkTypeId(NativeType.Void, CoreTypeNames.Void),

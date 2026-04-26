@@ -23,17 +23,26 @@ import { applyCompiledUserTiles, hydrateUserTilesFromCache } from "./user-tile-r
 // Options
 // ---------------------------------------------------------------------------
 
+/** Options for {@link AppEnvironmentHost}. */
 export interface AppEnvironmentHostOptions {
   projectManager: ProjectManager;
+  /** Mindcraft modules to register with the environment. */
   modules: readonly MindcraftModule[];
+  /** Identifies the host application when writing `mindcraft.json`. */
   host: MindcraftJsonHostInfo;
+  /** `localStorage` key under which the user-tile metadata cache is stored. */
   userTileStorageKey: string;
+  /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];
 
+  /** When set, enables the optional bridge connection to a remote peer. */
   bridgeUrl?: string;
+  /** Loads a previously persisted bridge binding token. */
   loadBindingToken?: () => string | undefined;
+  /** Persists an updated bridge binding token. */
   saveBindingToken?: (token: string) => void;
 
+  /** Invoked after every successful workspace compile. */
   onDidCompile?: (result: WorkspaceCompileResult, tileResult: UserTileApplyResult | undefined) => void;
 }
 
@@ -41,6 +50,11 @@ export interface AppEnvironmentHostOptions {
 // AppEnvironmentHost
 // ---------------------------------------------------------------------------
 
+/**
+ * Glue layer that wires a {@link ProjectManager}, a {@link MindcraftEnvironment},
+ * the workspace compiler, user-tile registration, and (optionally) the bridge
+ * into a single host an app UI can drive.
+ */
 export class AppEnvironmentHost {
   readonly env: MindcraftEnvironment;
   readonly projectManager: ProjectManager;
