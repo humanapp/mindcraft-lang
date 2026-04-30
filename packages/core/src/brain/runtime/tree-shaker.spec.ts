@@ -817,22 +817,30 @@ describe("treeshakeProgram -- integration", () => {
     assert.equal(closureInstr.a, 1);
   });
 
-  test("BytecodeVerifier passes after tree-shaking", () => {
+  test("tree-shaken program runs without faulting", () => {
     const prog = mkProgram({
       functions: [
         mkFunc([mkInstr(Op.CALL, 2), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.RET)], 0, "dead"),
-        mkFunc([mkInstr(Op.RET)], 0, "helper"),
+        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "helper"),
       ],
+      constants: [mkNumberValue(42)],
       entryPoint: 0,
     });
 
     const shaken = treeshakeProgram(prog);
 
-    assert.doesNotThrow(() => {
-      const handles = new HandleTable(100);
-      new VM(services, shaken, handles);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, shaken, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, {
+      onHandleCompleted: () => {},
+      enqueueRunnable: () => {},
+      getFiber: () => undefined,
     });
+    assert.equal(result.status, VmStatus.DONE);
   });
 
   test("no dead code produces functionally identical program", () => {

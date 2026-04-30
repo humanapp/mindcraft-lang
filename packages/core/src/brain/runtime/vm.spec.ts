@@ -15,9 +15,13 @@ import { before, describe, test } from "node:test";
 
 import { Dict, List } from "@mindcraft-lang/core";
 import {
-  type BrainServices,
+  BrainServices,
   BYTECODE_VERSION,
+  CoreOpId,
+  CoreTypeIds,
+  ErrorCode,
   type ExecutionContext,
+  errorCodeName,
   FALSE_VALUE,
   type Fiber,
   FiberState,
@@ -29,6 +33,7 @@ import {
   type IBrainRule,
   type Instr,
   isFunctionValue,
+  isOverflowError,
   type MapValue,
   mkBooleanValue,
   mkCallDef,
@@ -41,6 +46,7 @@ import {
   type NumberValue,
   Op,
   type Program,
+  pooledError,
   setCallSiteState,
   TRUE_VALUE,
   type Value,
@@ -681,7 +687,7 @@ describe("VM -- local variables", () => {
     }
   });
 
-  test("LOAD_LOCAL out of bounds rejected by verifier", () => {
+  test("LOAD_LOCAL out of bounds faults as ScriptError", () => {
     const prog = mkProgram([
       {
         code: List.from([
@@ -694,7 +700,187 @@ describe("VM -- local variables", () => {
       },
     ]);
     const handles = new HandleTable(100);
-    assert.throws(() => new VM(services, prog, handles), /LOAD_LOCAL index 5 out of bounds/);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT);
+    if (result.status === VmStatus.FAULT) {
+      assert.equal(result.error.tag, ErrorCode.ScriptError);
+    }
+  });
+});
+
+// ---- Out-of-bounds operands fault gracefully ----
+
+describe("VM -- malformed bytecode faults as ScriptError", () => {
+  function expectScriptErrorFault(prog: Program): void {
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT, "expected fiber to fault");
+    if (result.status === VmStatus.FAULT) {
+      assert.equal(result.error.tag, ErrorCode.ScriptError);
+    }
+  }
+
+  test("PUSH_CONST out-of-bounds constant index faults", () => {
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 99 }, { op: Op.RET }])], []));
+  });
+
+  test("LOAD_VAR out-of-bounds name index faults", () => {
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.LOAD_VAR, a: 7 }, { op: Op.RET }])], [], []));
+  });
+
+  test("STORE_VAR out-of-bounds name index faults", () => {
+    expectScriptErrorFault(
+      mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.STORE_VAR, a: 7 }, { op: Op.RET }])], [NIL_VALUE], [])
+    );
+  });
+
+  test("JMP target out of bounds faults via PC bounds check", () => {
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.JMP, a: 99 }, { op: Op.RET }])], []));
+  });
+
+  test("CALL with unknown funcId faults", () => {
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.CALL, a: 99, b: 0 }, { op: Op.RET }])], []));
+  });
+
+  test("CALL with mismatched argc faults", () => {
+    expectScriptErrorFault(
+      mkProgram(
+        [mkFunc([{ op: Op.CALL, a: 1, b: 0 }, { op: Op.RET }], 0, "main"), mkFunc([{ op: Op.RET }], 2, "callee")],
+        []
+      )
+    );
+  });
+
+  test("CALL_INDIRECT with bad funcId faults", () => {
+    // Push a fabricated FunctionValue referencing a missing funcId, then CALL_INDIRECT with 0 args.
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }])],
+      [mkFunctionValue(99)]
+    );
+    expectScriptErrorFault(prog);
+  });
+
+  test("INSTANCE_OF with non-string constant faults", () => {
+    expectScriptErrorFault(
+      mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST, a: 0 },
+            { op: Op.PUSH_CONST, a: 1 },
+            { op: Op.INSTANCE_OF, a: 1 },
+            { op: Op.RET },
+          ]),
+        ],
+        [NIL_VALUE, mkNumberValue(42)]
+      )
+    );
+  });
+
+  test("LOAD_CAPTURE without captures faults", () => {
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.LOAD_CAPTURE, a: 0 }, { op: Op.RET }])], []));
+  });
+
+  test("HOST_CALL with unknown fnId faults", () => {
+    expectScriptErrorFault(
+      mkProgram([mkFunc([{ op: Op.MAP_NEW }, { op: Op.HOST_CALL, a: 99999, c: 0 }, { op: Op.RET }])], [])
+    );
+  });
+
+  test("THROW of a non-error value faults as ScriptError", () => {
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.THROW }])], [mkNumberValue(1)]));
+  });
+
+  test("Unknown opcode faults", () => {
+    // 255 is not assigned in the Op enum.
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: 255 as unknown as Op }, { op: Op.RET }])], []));
+  });
+
+  test("randomized Instr arrays never let a platform throw escape runFiber", () => {
+    // Construct random Instr objects from the assigned Op values plus a couple of
+    // unassigned opcodes; pick wild operand values; run each program. The dispatch
+    // try/catch must convert every failure to a ScriptError fault.
+    const ops: number[] = [];
+    const seen = new Set<number>();
+    for (const key of Object.keys(Op)) {
+      const v = (Op as unknown as Record<string, number | string>)[key];
+      if (typeof v === "number" && !seen.has(v)) {
+        seen.add(v);
+        ops.push(v);
+      }
+    }
+    ops.push(200, 250, 255);
+
+    const constants: Value[] = [
+      NIL_VALUE,
+      TRUE_VALUE,
+      FALSE_VALUE,
+      mkNumberValue(0),
+      mkNumberValue(-1),
+      mkStringValue("x"),
+      mkFunctionValue(0),
+      mkFunctionValue(99),
+    ];
+
+    let seed = 0x12345678;
+    function nextRand(): number {
+      seed = (seed * 1664525 + 1013904223) | 0;
+      return seed >>> 0;
+    }
+
+    const TRIALS = 200;
+    const PROG_LEN = 12;
+
+    for (let trial = 0; trial < TRIALS; trial++) {
+      const code: Instr[] = [];
+      for (let i = 0; i < PROG_LEN; i++) {
+        const op = ops[nextRand() % ops.length] as Op;
+        code.push({
+          op,
+          a: (nextRand() % 200) - 50,
+          b: (nextRand() % 200) - 50,
+          c: (nextRand() % 200) - 50,
+        });
+      }
+      code.push({ op: Op.RET });
+
+      const prog = mkProgram([mkFunc(code, 0, `fuzz-${trial}`)], constants, ["x", "y"]);
+      const handles = new HandleTable(100);
+      const vm = new VM(services, prog, handles);
+      const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+      fiber.instrBudget = 200;
+
+      let result: ReturnType<typeof vm.runFiber>;
+      try {
+        result = vm.runFiber(fiber, mkSchedulerCallbacks());
+      } catch (e) {
+        assert.fail(`trial ${trial}: platform throw escaped runFiber: ${String(e)}`);
+      }
+
+      // Acceptable terminal states for a randomized program: DONE (rare), YIELDED
+      // (budget exhausted on a tight loop), or FAULT with a controlled tag
+      // (ScriptError for malformed bytecode; StackUnderflow when a POP-family
+      // op runs on an empty stack; StackOverflow if a tight loop exceeds caps).
+      if (result.status === VmStatus.FAULT) {
+        const tag = result.error.tag;
+        assert.ok(
+          tag === ErrorCode.ScriptError || tag === ErrorCode.StackUnderflow || tag === ErrorCode.StackOverflow,
+          `trial ${trial}: fault tag must be controlled, got ${errorCodeName(tag)}`
+        );
+      } else {
+        assert.ok(
+          result.status === VmStatus.DONE || result.status === VmStatus.YIELDED,
+          `trial ${trial}: unexpected status ${String(result.status)}`
+        );
+      }
+    }
   });
 });
 
@@ -994,7 +1180,7 @@ describe("VM -- action calls", () => {
     assert.equal(seenCallSiteId, 9);
   });
 
-  test("ACTION_CALL out-of-bounds slot is rejected by verifier", () => {
+  test("ACTION_CALL out-of-bounds slot faults as ScriptError", () => {
     const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = {
       ...mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 1, c: 0 }, { op: Op.RET }])], [args]),
@@ -1013,7 +1199,15 @@ describe("VM -- action calls", () => {
     };
 
     const handles = new HandleTable(100);
-    assert.throws(() => new VM(services, prog, handles), /ACTION_CALL actionSlot 1 out of bounds/);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT);
+    if (result.status === VmStatus.FAULT) {
+      assert.equal(result.error.tag, ErrorCode.ScriptError);
+    }
   });
 
   test("ACTION_CALL_ASYNC preserves host-backed handle behavior", () => {
@@ -1062,7 +1256,7 @@ describe("VM -- action calls", () => {
 
   test("ACTION_CALL routes sync bytecode actions through the current fiber and caller TRY handlers", () => {
     const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
-    const errVal: Value = { t: "err", e: { tag: "ScriptError", message: "bytecode boom" } };
+    const errVal: Value = { t: "err", e: { tag: ErrorCode.ScriptError, message: "bytecode boom" } };
     const descriptor = {
       key: "test-vm-action-call-bytecode-throw",
       kind: "actuator" as const,
@@ -1178,36 +1372,6 @@ describe("VM -- action calls", () => {
       assert.equal((result.result as NumberValue).v, 7);
     }
     assert.equal(seenRule, fakeRule);
-  });
-
-  test("sync bytecode actions with reachable YIELD are rejected by the verifier", () => {
-    const descriptor = {
-      key: "test-vm-action-sync-yield-verifier",
-      kind: "actuator" as const,
-      callDef: mkCallDef({ type: "bag", items: [] }),
-      isAsync: false,
-    };
-    const prog = {
-      ...mkProgram(
-        [
-          mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }], 0, "root"),
-          mkFunc([{ op: Op.CALL, a: 2, b: 0 }, { op: Op.RET }], 0, "action-entry"),
-          mkFunc([{ op: Op.YIELD }, { op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }], 0, "action-helper"),
-        ],
-        [NIL_VALUE]
-      ),
-      actions: List.from([
-        {
-          binding: "bytecode" as const,
-          descriptor,
-          entryFuncId: 1,
-          numStateSlots: 0,
-        },
-      ]),
-    };
-
-    const handles = new HandleTable(100);
-    assert.throws(() => new VM(services, prog, handles), /sync bytecode action cannot suspend via YIELD/);
   });
 
   test("sync bytecode actions fault if an indirect call reaches a suspension point at runtime", () => {
@@ -1401,7 +1565,7 @@ describe("VM -- async await/resume", () => {
 describe("VM -- exception handling", () => {
   test("TRY/THROW catches and pushes error value", () => {
     // TRY (catch -> 4), PUSH err, THROW, [catch]: POP error, PUSH 1, RET
-    const errVal: Value = { t: "err", e: { tag: "ScriptError", message: "test" } };
+    const errVal: Value = { t: "err", e: { tag: ErrorCode.ScriptError, message: "test" } };
     const prog = mkProgram(
       [
         mkFunc([
@@ -1430,7 +1594,7 @@ describe("VM -- exception handling", () => {
   });
 
   test("uncaught THROW faults the fiber", () => {
-    const errVal: Value = { t: "err", e: { tag: "ScriptError", message: "uncaught" } };
+    const errVal: Value = { t: "err", e: { tag: ErrorCode.ScriptError, message: "uncaught" } };
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.THROW }])], [errVal]);
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
@@ -2479,7 +2643,7 @@ describe("HandleTable", () => {
     const table = new HandleTable(10);
     const id = table.createPending();
 
-    table.reject(id, { tag: "HostError", message: "fail" });
+    table.reject(id, { tag: ErrorCode.HostError, message: "fail" });
     const h = table.get(id)!;
     assert.equal(h.state, HandleState.REJECTED);
     assert.equal(h.error!.message, "fail");
@@ -2506,5 +2670,276 @@ describe("HandleTable", () => {
     assert.equal(removed, 1);
     assert.ok(table.get(id1) === undefined);
     assert.ok(table.get(id2) !== undefined);
+  });
+});
+
+// ---- Error code pool ----
+
+describe("ErrorCode pool", () => {
+  test("pooledError returns identity-equal canonical instance per code", () => {
+    const a = pooledError(ErrorCode.ScriptError);
+    const b = pooledError(ErrorCode.ScriptError);
+    assert.equal(a, b);
+    assert.equal(a.tag, ErrorCode.ScriptError);
+    assert.equal(a.message, "");
+  });
+
+  test("pooledError returns distinct instances for distinct codes", () => {
+    const allCodes = [
+      ErrorCode.Timeout,
+      ErrorCode.Cancelled,
+      ErrorCode.HostError,
+      ErrorCode.ScriptError,
+      ErrorCode.StackOverflow,
+      ErrorCode.StackUnderflow,
+    ];
+    for (let i = 0; i < allCodes.length; i++) {
+      for (let j = i + 1; j < allCodes.length; j++) {
+        assert.notEqual(pooledError(allCodes[i]!), pooledError(allCodes[j]!));
+      }
+    }
+  });
+
+  test("errorCodeName matches the prior string-tag form", () => {
+    assert.equal(errorCodeName(ErrorCode.Timeout), "Timeout");
+    assert.equal(errorCodeName(ErrorCode.Cancelled), "Cancelled");
+    assert.equal(errorCodeName(ErrorCode.HostError), "HostError");
+    assert.equal(errorCodeName(ErrorCode.ScriptError), "ScriptError");
+    assert.equal(errorCodeName(ErrorCode.StackOverflow), "StackOverflow");
+    assert.equal(errorCodeName(ErrorCode.StackUnderflow), "StackUnderflow");
+  });
+
+  test("uncaught THROW with richErrors=false returns the pooled instance to onFiberFault", () => {
+    const errVal: Value = { t: "err", e: { tag: ErrorCode.ScriptError, message: "uncaught" } };
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.THROW }])], [errVal]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles, { richErrors: false });
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    let observed: { tag: ErrorCode; message: string } | undefined;
+    const callbacks = {
+      ...mkSchedulerCallbacks(),
+      onFiberFault: (_fid: number, err: unknown) => {
+        observed = err as { tag: ErrorCode; message: string };
+      },
+    };
+
+    vm.runFiber(fiber, callbacks);
+
+    assert.ok(observed !== undefined);
+    assert.equal(observed!.tag, ErrorCode.ScriptError);
+    assert.equal(observed, errVal.e);
+  });
+
+  test("VM uses pooled instance when richErrors=false and fault originates in dispatch", () => {
+    // Build a program that triggers the Op.THROW path with a non-error value,
+    // forcing the VM to construct a fresh ScriptError. With richErrors=false
+    // the construction must return the pooled canonical singleton.
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.THROW }])], [mkNumberValue(1)]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles, { richErrors: false });
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    let observed: { tag: ErrorCode; message: string } | undefined;
+    const callbacks = {
+      ...mkSchedulerCallbacks(),
+      onFiberFault: (_fid: number, err: unknown) => {
+        observed = err as { tag: ErrorCode; message: string };
+      },
+    };
+
+    vm.runFiber(fiber, callbacks);
+
+    assert.ok(observed !== undefined);
+    assert.equal(observed, pooledError(ErrorCode.ScriptError));
+  });
+});
+
+// ---- Capacity overflow surfaces as ErrorCode.StackOverflow ----
+
+describe("VM -- overflow faults", () => {
+  test("operand stack overflow surfaces as ErrorCode.StackOverflow", () => {
+    // Tight loop that pushes a constant forever. PUSH_CONST advances pc to 1,
+    // then JMP -1 returns pc to 0, looping the push without ever popping.
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.JMP, a: -1 },
+        ]),
+      ],
+      [mkNumberValue(1)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles, { maxStackSize: 8 });
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT);
+    if (result.status === VmStatus.FAULT) {
+      assert.equal(result.error.tag, ErrorCode.StackOverflow);
+    }
+  });
+
+  test("frame depth overflow surfaces as ErrorCode.StackOverflow", () => {
+    // Function 0 recurses into itself unconditionally, exhausting maxFrameDepth.
+    const prog = mkProgram([mkFunc([{ op: Op.CALL, a: 0, b: 0 }, { op: Op.RET }])]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles, { maxFrameDepth: 8, maxStackSize: 1024 });
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT);
+    if (result.status === VmStatus.FAULT) {
+      assert.equal(result.error.tag, ErrorCode.StackOverflow);
+    }
+  });
+
+  test("handler stack overflow surfaces as ErrorCode.StackOverflow", () => {
+    // Tight loop pushing TRY frames without END_TRY: TRY advances pc by 1,
+    // JMP -2 returns pc to 0, looping handler installation.
+    const prog = mkProgram([
+      mkFunc([
+        { op: Op.TRY, a: 10 },
+        { op: Op.JMP, a: -1 },
+      ]),
+    ]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles, { maxHandlers: 8 });
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 1000;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT);
+    if (result.status === VmStatus.FAULT) {
+      assert.equal(result.error.tag, ErrorCode.StackOverflow);
+    }
+  });
+
+  test("HandleTable.createPending throws OverflowError when full", () => {
+    const handles = new HandleTable(2);
+    handles.createPending();
+    handles.createPending();
+    let caught: unknown;
+    try {
+      handles.createPending();
+    } catch (e) {
+      caught = e;
+    }
+    assert.ok(isOverflowError(caught), "expected OverflowError to be thrown");
+  });
+
+  test("FiberScheduler.spawn throws OverflowError when fiber pool is full", () => {
+    // Long-running program (infinite loop) so fibers stay RUNNABLE and occupy slots.
+    const prog = mkProgram([mkFunc([{ op: Op.JMP, a: 0 }])]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const scheduler = new FiberScheduler(vm, {
+      maxFibersPerTick: 1,
+      defaultBudget: 1,
+      autoGcHandles: true,
+      maxFibers: 3,
+    });
+
+    scheduler.spawn(0, List.empty(), mkCtx());
+    scheduler.spawn(0, List.empty(), mkCtx());
+    scheduler.spawn(0, List.empty(), mkCtx());
+
+    let caught: unknown;
+    try {
+      scheduler.spawn(0, List.empty(), mkCtx());
+    } catch (e) {
+      caught = e;
+    }
+    assert.ok(isOverflowError(caught), "expected OverflowError to be thrown");
+  });
+
+  test("operand stack underflow surfaces as ErrorCode.StackUnderflow", () => {
+    // POP on an empty operand stack: malformed bytecode that hits the
+    // pop() underflow guard.
+    const prog = mkProgram([mkFunc([{ op: Op.POP }, { op: Op.RET }])]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT);
+    if (result.status === VmStatus.FAULT) {
+      assert.equal(result.error.tag, ErrorCode.StackUnderflow);
+    }
+  });
+});
+
+// ---- Operator monomorphization audit (V1.4) ----
+
+/**
+ * Build a BrainServices that wraps `services.types` with a Proxy that increments
+ * `counter.n` for every property access (including method calls). Used to assert
+ * that the dispatch hot path does not consult the type registry for primitive
+ * arithmetic.
+ */
+function makeServicesWithTypeAccessCounter(base: BrainServices, counter: { n: number }): BrainServices {
+  const countingTypes = new Proxy(base.types, {
+    get(target, prop, receiver) {
+      counter.n++;
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+  return new BrainServices({
+    tiles: base.tiles,
+    actions: base.actions,
+    operatorTable: base.operatorTable,
+    operatorOverloads: base.operatorOverloads,
+    types: countingTypes,
+    tileBuilder: base.tileBuilder,
+    functions: base.functions,
+    conversions: base.conversions,
+  });
+}
+
+describe("VM -- operator monomorphization (V1.4)", () => {
+  test("primitive number arithmetic does not consult ITypeRegistry on the dispatch hot path", () => {
+    const resolved = services.operatorOverloads.resolve(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+    assert.ok(resolved !== undefined, "add(number, number) overload must be registered");
+    const addFnId = resolved!.overload.fnEntry.id;
+
+    // Tight number-heavy loop: 1000 iterations of `1 + 1` via HOST_CALL_ARGS.
+    const ITER = 1000;
+    const code: Instr[] = [];
+    for (let i = 0; i < ITER; i++) {
+      code.push({ op: Op.PUSH_CONST, a: 0 });
+      code.push({ op: Op.PUSH_CONST, a: 0 });
+      code.push({ op: Op.HOST_CALL_ARGS, a: addFnId, b: 2, c: 0 });
+      code.push({ op: Op.POP });
+    }
+    code.push({ op: Op.PUSH_CONST, a: 0 });
+    code.push({ op: Op.RET });
+
+    const prog = mkProgram([mkFunc(code)], [mkNumberValue(1)]);
+    const handles = new HandleTable(100);
+
+    const counter = { n: 0 };
+    const countedServices = makeServicesWithTypeAccessCounter(services, counter);
+    const vm = new VM(countedServices, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = ITER * 4 + 10;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    assert.equal(counter.n, 0, `expected 0 ITypeRegistry accesses during primitive arithmetic, got ${counter.n}`);
+  });
+
+  test("counter wrapper observes type-registry access (positive control)", () => {
+    // Positive control: directly invoking a method on the wrapped registry must
+    // increment the counter, ensuring the previous test's zero count is meaningful.
+    const counter = { n: 0 };
+    const countedServices = makeServicesWithTypeAccessCounter(services, counter);
+    countedServices.types.get(CoreTypeIds.Number);
+    assert.ok(counter.n > 0, "counter must observe registry access");
   });
 });

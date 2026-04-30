@@ -8,6 +8,65 @@ import type { ActionInstance, ExecutionContext } from "./runtime";
 import { NativeType, type TypeId } from "./type-system";
 
 ///////////////////////////
+// Capacity-violation signaling
+///////////////////////////
+
+/**
+ * Thrown by VM-side capacity checks (operand stack push, frame stack push,
+ * handler stack push, handle table allocation, fiber pool allocation) when
+ * a configured limit would be exceeded. Caught by the VM dispatch loop and
+ * converted into an `ErrorCode.StackOverflow` fault on the offending fiber.
+ *
+ * Hosts that invoke `HandleTable.createPending` or
+ * `FiberScheduler.spawn` / `addFiber` directly may receive this thrown
+ * value; detect it with {@link isOverflowError}.
+ */
+export class OverflowError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OverflowError";
+  }
+}
+
+/**
+ * Thrown by VM-side underflow checks (operand stack `pop` / `peek` on an
+ * empty stack). Caught by the VM dispatch loop and converted into an
+ * `ErrorCode.StackUnderflow` fault on the offending fiber.
+ */
+export class UnderflowError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UnderflowError";
+  }
+}
+
+/**
+ * Throw an {@link OverflowError}. Always surfaces as
+ * `ErrorCode.StackOverflow` at the VM dispatch boundary.
+ */
+export function throwOverflow(message: string): never {
+  throw new OverflowError(message);
+}
+
+/**
+ * Throw an {@link UnderflowError}. Always surfaces as
+ * `ErrorCode.StackUnderflow` at the VM dispatch boundary.
+ */
+export function throwUnderflow(message: string): never {
+  throw new UnderflowError(message);
+}
+
+/** True if `e` is an {@link OverflowError}. */
+export function isOverflowError(e: unknown): e is OverflowError {
+  return e instanceof OverflowError;
+}
+
+/** True if `e` is an {@link UnderflowError}. */
+export function isUnderflowError(e: unknown): e is UnderflowError {
+  return e instanceof UnderflowError;
+}
+
+///////////////////////////
 // Configuration & Limits
 ///////////////////////////
 
@@ -19,14 +78,21 @@ export interface VmConfig {
   maxStackSize: number;
   /** Maximum number of handlers per fiber */
   maxHandlers: number;
-  /** Maximum number of fibers system-wide */
-  maxFibers: number;
   /** Maximum number of pending handles */
   maxHandles: number;
   /** Default instruction budget per fiber execution */
   defaultBudget: number;
   /** Enable debug mode: validates stack depth after function calls, warns on potential leaks */
   debugStackChecks?: boolean;
+  /**
+   * When true (default), the VM allocates a fresh {@link ErrorValue} for every
+   * fault, populating `message`, `detail`, `site`, and `stackTrace` for
+   * diagnostics. When false, the VM returns the frozen pooled instance for the
+   * code (see {@link pooledError}) and discards per-instance detail. The
+   * pooled path eliminates per-fault allocation; the rich path preserves
+   * developer ergonomics. The MCU port runs with this disabled.
+   */
+  richErrors?: boolean;
 }
 
 ///////////////////////////
@@ -36,14 +102,72 @@ export interface VmConfig {
 /** Opaque identifier for a pending async operation. */
 export type HandleId = number;
 
+/**
+ * Numeric fault classifier carried by every {@link ErrorValue}. Wire-stable
+ * across the TS reference VM and the C++ MCU port. Values are explicit so
+ * adding new codes does not renumber existing ones.
+ */
+export enum ErrorCode {
+  Timeout = 1,
+  Cancelled = 2,
+  HostError = 3,
+  ScriptError = 4,
+  StackOverflow = 5,
+  StackUnderflow = 6,
+}
+
+/**
+ * Return the canonical string name for a code (e.g. `ErrorCode.ScriptError ->
+ * "ScriptError"`). Use at the diagnostics boundary when rendering errors for
+ * humans. The runtime itself never compares against the name.
+ */
+export function errorCodeName(code: ErrorCode): string {
+  switch (code) {
+    case ErrorCode.Timeout:
+      return "Timeout";
+    case ErrorCode.Cancelled:
+      return "Cancelled";
+    case ErrorCode.HostError:
+      return "HostError";
+    case ErrorCode.ScriptError:
+      return "ScriptError";
+    case ErrorCode.StackOverflow:
+      return "StackOverflow";
+    case ErrorCode.StackUnderflow:
+      return "StackUnderflow";
+    default:
+      return `ErrorCode(${code as number})`;
+  }
+}
+
 /** Tagged error payload produced by the VM (timeouts, host exceptions, stack faults, etc.). */
 export type ErrorValue = {
-  tag: "Timeout" | "Cancelled" | "HostError" | "ScriptError" | "StackOverflow" | "StackUnderflow";
+  tag: ErrorCode;
   message: string;
   detail?: unknown;
   site?: { funcId: number; pc: number };
   stackTrace?: List<string>;
 };
+
+const POOLED_ERRORS: { readonly [K in ErrorCode]: ErrorValue } = {
+  [ErrorCode.Timeout]: { tag: ErrorCode.Timeout, message: "" },
+  [ErrorCode.Cancelled]: { tag: ErrorCode.Cancelled, message: "" },
+  [ErrorCode.HostError]: { tag: ErrorCode.HostError, message: "" },
+  [ErrorCode.ScriptError]: { tag: ErrorCode.ScriptError, message: "" },
+  [ErrorCode.StackOverflow]: { tag: ErrorCode.StackOverflow, message: "" },
+  [ErrorCode.StackUnderflow]: { tag: ErrorCode.StackUnderflow, message: "" },
+};
+
+/**
+ * Return the canonical pooled {@link ErrorValue} for `code`. The same call
+ * with the same code returns an identity-equal instance with empty `message`
+ * and no `detail` / `site` / `stackTrace`. The returned instance is shared;
+ * callers must treat it as immutable. Use when {@link VmConfig.richErrors}
+ * is disabled or when the caller has no per-instance context to attach.
+ */
+export function pooledError(code: ErrorCode): ErrorValue {
+  return POOLED_ERRORS[code];
+}
 
 /** Dictionary of brain {@link Value}s with typed accessors per native type. */
 export class ValueDict extends Dict<string | number, Value> {
@@ -597,11 +721,11 @@ export class HandleTable {
   private eventEmitter = new EventEmitter<HandleTableEvents>();
   public readonly events = this.eventEmitter.consumer();
 
-  constructor(private maxHandles: number) {}
+  constructor(public readonly maxHandles: number) {}
 
   createPending(): HandleId {
     if (this.handles.size() >= this.maxHandles) {
-      throw new Error(`Handle limit exceeded: ${this.maxHandles}`);
+      throwOverflow(`Handle limit exceeded: ${this.maxHandles}`);
     }
 
     const id = this.nextId++;
@@ -654,7 +778,7 @@ export class HandleTable {
       throw new Error(`Cannot cancel handle ${id} in state ${h.state}`);
     }
     h.state = HandleState.CANCELLED;
-    h.error = { tag: "Cancelled", message };
+    h.error = { tag: ErrorCode.Cancelled, message };
     this.eventEmitter.emit("completed", id);
   }
 

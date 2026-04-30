@@ -25,9 +25,18 @@ import type {
   Value,
   VmConfig,
 } from "../interfaces";
-import { getOrCreateActionInstance, NativeType, ValueDict } from "../interfaces";
 import {
-  BYTECODE_VERSION,
+  ErrorCode,
+  getOrCreateActionInstance,
+  isOverflowError,
+  isUnderflowError,
+  NativeType,
+  pooledError,
+  throwOverflow,
+  throwUnderflow,
+  ValueDict,
+} from "../interfaces";
+import {
   FALSE_VALUE,
   type Fiber,
   FiberState,
@@ -103,9 +112,9 @@ export const DEFAULT_VM_CONFIG: VmConfig = {
   maxFrameDepth: 256,
   maxStackSize: 4096,
   maxHandlers: 64,
-  maxFibers: 10000,
   maxHandles: 100000,
   defaultBudget: 1000,
+  richErrors: true,
 };
 
 ///////////////////////////
@@ -257,212 +266,19 @@ const VALID_TRANSITIONS: Record<FiberState, UniqueSet<FiberState>> = {
 };
 
 ///////////////////////////
-// Bytecode Verification
-///////////////////////////
-
-class BytecodeVerifier {
-  constructor(private prog: Program) {}
-
-  verify(): { ok: boolean; errors: List<string> } {
-    const errors = List.empty<string>();
-
-    if (this.prog.version !== BYTECODE_VERSION) {
-      errors.push(`Bytecode version mismatch: expected ${BYTECODE_VERSION}, got ${this.prog.version}`);
-    }
-
-    for (let i = 0; i < this.prog.functions.size(); i++) {
-      const fn = this.prog.functions.get(i)!;
-      this.verifyFunction(fn, i, errors);
-    }
-
-    if ((this.prog as ExecutableBrainProgram).actions !== undefined) {
-      this.verifyExecutableActions(this.prog as ExecutableBrainProgram, errors);
-    }
-
-    return { ok: errors.size() === 0, errors };
-  }
-
-  private verifyExecutableActions(program: ExecutableBrainProgram, errors: List<string>): void {
-    for (let i = 0; i < program.actions.size(); i++) {
-      const action = program.actions.get(i)!;
-      if (action.binding !== "bytecode") {
-        continue;
-      }
-
-      if (action.entryFuncId < 0 || action.entryFuncId >= this.prog.functions.size()) {
-        errors.push(
-          `action '${action.descriptor.key}' entryFuncId ${action.entryFuncId} out of bounds [0, ${this.prog.functions.size()})`
-        );
-        continue;
-      }
-
-      if (
-        action.activationFuncId !== undefined &&
-        (action.activationFuncId < 0 || action.activationFuncId >= this.prog.functions.size())
-      ) {
-        errors.push(
-          `action '${action.descriptor.key}' activationFuncId ${action.activationFuncId} out of bounds [0, ${this.prog.functions.size()})`
-        );
-      }
-
-      if (action.descriptor.isAsync) {
-        continue;
-      }
-
-      this.verifySyncActionFunction(program, action, action.entryFuncId, new Dict<number, boolean>(), errors);
-    }
-  }
-
-  private verifySyncActionFunction(
-    program: ExecutableBrainProgram,
-    action: Extract<ExecutableAction, { binding: "bytecode" }>,
-    funcId: number,
-    visited: Dict<number, boolean>,
-    errors: List<string>
-  ): void {
-    if (visited.has(funcId)) {
-      return;
-    }
-    visited.set(funcId, true);
-
-    const fn = this.prog.functions.get(funcId);
-    if (!fn) {
-      errors.push(`action '${action.descriptor.key}' references missing function ${funcId}`);
-      return;
-    }
-
-    const funcName = fn.name ?? `func[${funcId}]`;
-
-    for (let pc = 0; pc < fn.code.size(); pc++) {
-      const ins = fn.code.get(pc)!;
-      const site = `${action.descriptor.key}:${funcName}@${pc}`;
-
-      switch (ins.op) {
-        case Op.YIELD:
-        case Op.AWAIT:
-        case Op.HOST_CALL_ASYNC:
-        case Op.HOST_CALL_ARGS_ASYNC:
-        case Op.ACTION_CALL_ASYNC:
-          errors.push(`${site}: sync bytecode action cannot suspend via ${Op[ins.op]}`);
-          break;
-        case Op.ACTION_CALL: {
-          const actionSlot = ins.a ?? 0;
-          if (actionSlot >= 0 && actionSlot < program.actions.size()) {
-            const target = program.actions.get(actionSlot)!;
-            if (target.descriptor.isAsync) {
-              errors.push(
-                `${site}: sync bytecode action cannot invoke async action '${target.descriptor.key}' with ACTION_CALL`
-              );
-            }
-          }
-          break;
-        }
-        case Op.CALL:
-          if (ins.a !== undefined) {
-            this.verifySyncActionFunction(program, action, ins.a, visited, errors);
-          }
-          break;
-      }
-    }
-  }
-
-  private verifyFunction(fn: FunctionBytecode, funcId: number, errors: List<string>): void {
-    const funcName = fn.name ?? `func[${funcId}]`;
-
-    for (let pc = 0; pc < fn.code.size(); pc++) {
-      const ins = fn.code.get(pc)!;
-      this.verifyInstruction(ins, pc, fn, funcName, errors);
-    }
-  }
-
-  private verifyInstruction(
-    ins: Instr,
-    pc: number,
-    fn: FunctionBytecode,
-    funcName: string,
-    errors: List<string>
-  ): void {
-    const site = `${funcName}@${pc}`;
-
-    switch (ins.op) {
-      case Op.PUSH_CONST: {
-        const k = ins.a ?? 0;
-        if (k < 0 || k >= this.prog.constants.size()) {
-          errors.push(`${site}: PUSH_CONST index ${k} out of bounds [0, ${this.prog.constants.size()})`);
-        }
-        break;
-      }
-      case Op.LOAD_VAR:
-      case Op.STORE_VAR: {
-        const nameIdx = ins.a ?? 0;
-        if (nameIdx < 0 || nameIdx >= this.prog.variableNames.size()) {
-          errors.push(
-            `${site}: ${Op[ins.op]} name index ${nameIdx} out of bounds [0, ${this.prog.variableNames.size()})`
-          );
-        }
-        break;
-      }
-      case Op.JMP:
-      case Op.JMP_IF_FALSE:
-      case Op.JMP_IF_TRUE: {
-        const rel = (ins.a ?? 0) | 0;
-        const target = pc + rel;
-        if (target < 0 || target >= fn.code.size()) {
-          errors.push(`${site}: ${Op[ins.op]} target ${target} out of bounds [0, ${fn.code.size()})`);
-        }
-        break;
-      }
-      case Op.TRY: {
-        const catchRel = (ins.a ?? 0) | 0;
-        const catchPc = pc + catchRel;
-        if (catchPc < 0 || catchPc >= fn.code.size()) {
-          errors.push(`${site}: TRY catchPc ${catchPc} out of bounds [0, ${fn.code.size()})`);
-        }
-        break;
-      }
-      case Op.CALL: {
-        const calleeId = ins.a ?? 0;
-        const argc = ins.b ?? 0;
-        if (calleeId < 0 || calleeId >= this.prog.functions.size()) {
-          errors.push(`${site}: CALL funcId ${calleeId} out of bounds [0, ${this.prog.functions.size()})`);
-        } else {
-          const callee = this.prog.functions.get(calleeId)!;
-          if (argc !== callee.numParams) {
-            errors.push(`${site}: CALL argc ${argc} != ${callee.numParams} params`);
-          }
-        }
-        break;
-      }
-      case Op.ACTION_CALL:
-      case Op.ACTION_CALL_ASYNC: {
-        const actionSlot = ins.a ?? 0;
-        const actionCount = (this.prog as ExecutableBrainProgram).actions?.size() ?? 0;
-        if (actionSlot < 0 || actionSlot >= actionCount) {
-          errors.push(`${site}: ${Op[ins.op]} actionSlot ${actionSlot} out of bounds [0, ${actionCount})`);
-        }
-        break;
-      }
-      case Op.LOAD_LOCAL:
-      case Op.STORE_LOCAL: {
-        const idx = ins.a ?? 0;
-        const numLocals = fn.numLocals ?? fn.numParams;
-        if (idx < 0 || idx >= numLocals) {
-          errors.push(`${site}: ${Op[ins.op]} index ${idx} out of bounds [0, ${numLocals})`);
-        }
-        break;
-      }
-    }
-  }
-}
-
-///////////////////////////
 // VM Core
 ///////////////////////////
 
-/** Concrete bytecode {@link IVM} implementation: spawns and runs fibers against a compiled {@link Program}. */
+/**
+ * Concrete bytecode {@link IVM} implementation: spawns and runs fibers against a compiled {@link Program}.
+ *
+ * The VM trusts the bytecode it receives. The compiler is the sole guarantor
+ * of validity; there is no static verification layer. Malformed bytecode
+ * surfaces as a `ScriptError` fault on the offending fiber, never as a
+ * platform-level throw escaping `runFiber`.
+ */
 export class VM implements IVM {
   private config: VmConfig;
-  private verifier: BytecodeVerifier;
   private services: BrainServices;
   private fns: BrainServices["functions"];
   private nextInternalFiberId = -1;
@@ -476,12 +292,6 @@ export class VM implements IVM {
     this.services = services;
     this.fns = services.functions;
     this.config = { ...DEFAULT_VM_CONFIG, ...config };
-    this.verifier = new BytecodeVerifier(prog);
-
-    const verification = this.verifier.verify();
-    if (!verification.ok) {
-      throw new Error(`Bytecode verification failed:\n${verification.errors.toArray().join("\n")}`);
-    }
 
     // Wire HandleTable events to forward to VM consumers
     // This allows external components to listen to handle completion via VM
@@ -551,7 +361,7 @@ export class VM implements IVM {
 
       if (fiber.pendingInjectedThrow) {
         fiber.pendingInjectedThrow = false;
-        const err = fiber.lastError ?? { tag: "ScriptError", message: "Unknown error" };
+        const err = fiber.lastError ?? this.makeError(ErrorCode.ScriptError, "Unknown error");
         const caught = this.throwValue(fiber, err);
         if (!caught) {
           this.transitionState(fiber, FiberState.FAULT);
@@ -564,18 +374,20 @@ export class VM implements IVM {
 
       const frame = this.topFrame(fiber);
       if (!frame) {
-        const err: ErrorValue = { tag: "ScriptError", message: "No frame on stack" };
+        const err = this.makeError(ErrorCode.ScriptError, "No frame on stack");
         this.faultFiber(fiber, err, scheduler);
         return { status: VmStatus.FAULT, error: err };
       }
 
       const fn = this.prog.functions.get(frame.funcId)!;
       if (frame.pc < 0 || frame.pc >= fn.code.size()) {
-        const err: ErrorValue = {
-          tag: "ScriptError",
-          message: `PC out of bounds: ${frame.pc} not in [0, ${fn.code.size()})`,
-          site: { funcId: frame.funcId, pc: frame.pc },
-        };
+        const err = this.makeError(
+          ErrorCode.ScriptError,
+          `PC out of bounds: ${frame.pc} not in [0, ${fn.code.size()})`,
+          {
+            site: { funcId: frame.funcId, pc: frame.pc },
+          }
+        );
         this.faultFiber(fiber, err, scheduler);
         return { status: VmStatus.FAULT, error: err };
       }
@@ -714,22 +526,32 @@ export class VM implements IVM {
         case Op.LOAD_CAPTURE:
           return this.execLoadCapture(fiber, ins, frame);
         default: {
-          const err: ErrorValue = {
-            tag: "ScriptError",
-            message: `Unknown opcode: ${ins.op}`,
+          const err = this.makeError(ErrorCode.ScriptError, `Unknown opcode: ${ins.op}`, {
             site: { funcId: frame.funcId, pc: frame.pc },
-          };
+          });
           this.faultFiber(fiber, err, scheduler);
           return { status: VmStatus.FAULT, error: err };
         }
       }
     } catch (e) {
-      const err: ErrorValue = {
-        tag: "ScriptError",
-        message: `Internal error: ${SU.toString(e)}`,
+      if (isOverflowError(e)) {
+        const err = this.makeError(ErrorCode.StackOverflow, e.message, {
+          site: { funcId: frame.funcId, pc: frame.pc },
+        });
+        this.faultFiber(fiber, err, scheduler);
+        return { status: VmStatus.FAULT, error: err };
+      }
+      if (isUnderflowError(e)) {
+        const err = this.makeError(ErrorCode.StackUnderflow, e.message, {
+          site: { funcId: frame.funcId, pc: frame.pc },
+        });
+        this.faultFiber(fiber, err, scheduler);
+        return { status: VmStatus.FAULT, error: err };
+      }
+      const err = this.makeError(ErrorCode.ScriptError, `Internal error: ${SU.toString(e)}`, {
         detail: e,
         site: { funcId: frame.funcId, pc: frame.pc },
-      };
+      });
       this.faultFiber(fiber, err, scheduler);
       return { status: VmStatus.FAULT, error: err };
     }
@@ -913,7 +735,7 @@ export class VM implements IVM {
     }
 
     if (fiber.frames.size() >= this.config.maxFrameDepth) {
-      throw new Error(`Stack overflow: frame depth limit ${SU.toString(this.config.maxFrameDepth)} exceeded`);
+      throwOverflow(`Stack overflow: frame depth limit ${SU.toString(this.config.maxFrameDepth)} exceeded`);
     }
 
     const callee = this.prog.functions.get(calleeId)!;
@@ -963,7 +785,7 @@ export class VM implements IVM {
     }
 
     if (fiber.frames.size() >= this.config.maxFrameDepth) {
-      throw new Error(`Stack overflow: frame depth limit ${SU.toString(this.config.maxFrameDepth)} exceeded`);
+      throwOverflow(`Stack overflow: frame depth limit ${SU.toString(this.config.maxFrameDepth)} exceeded`);
     }
 
     const callee = this.prog.functions.get(calleeId)!;
@@ -1270,10 +1092,7 @@ export class VM implements IVM {
     }
 
     if (h.state === HandleState.REJECTED || h.state === HandleState.CANCELLED) {
-      const err: ErrorValue = h.error ?? {
-        tag: "HostError",
-        message: "Handle failed without error",
-      };
+      const err: ErrorValue = h.error ?? this.makeError(ErrorCode.HostError, "Handle failed without error");
       const caught = this.throwValue(fiber, err);
       if (!caught) {
         this.transitionState(fiber, FiberState.FAULT);
@@ -1300,7 +1119,7 @@ export class VM implements IVM {
 
   private execTry(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     if (fiber.handlers.size() >= this.config.maxHandlers) {
-      throw new Error(`Handler limit exceeded: ${this.config.maxHandlers}`);
+      throwOverflow(`Handler limit exceeded: ${this.config.maxHandlers}`);
     }
 
     const catchRel = (ins.a ?? 0) | 0;
@@ -1326,12 +1145,10 @@ export class VM implements IVM {
     const v = this.pop(fiber);
     const err: ErrorValue = isErrValue(v)
       ? v.e
-      : {
-          tag: "ScriptError",
-          message: "THROW requires error value",
+      : this.makeError(ErrorCode.ScriptError, "THROW requires error value", {
           detail: v,
           site: { funcId: frame.funcId, pc: frame.pc },
-        };
+        });
 
     const caught = this.throwValue(fiber, err);
     if (!caught) {
@@ -1893,7 +1710,7 @@ export class VM implements IVM {
     callSiteId: number
   ): void {
     if (fiber.frames.size() >= this.config.maxFrameDepth) {
-      throw new Error(`Stack overflow: frame depth limit ${this.config.maxFrameDepth} exceeded`);
+      throwOverflow(`Stack overflow: frame depth limit ${this.config.maxFrameDepth} exceeded`);
     }
 
     const fn = this.prog.functions.get(action.entryFuncId)!;
@@ -2017,7 +1834,7 @@ export class VM implements IVM {
 
     const h = this.handles.get(handleId);
     if (!h) {
-      const err: ErrorValue = { tag: "HostError", message: `Handle ${handleId} no longer exists` };
+      const err: ErrorValue = this.makeError(ErrorCode.HostError, `Handle ${handleId} no longer exists`);
       fiber.lastError = err;
       fiber.pendingInjectedThrow = true;
       fiber.await = undefined;
@@ -2048,8 +1865,8 @@ export class VM implements IVM {
       const err: ErrorValue =
         h.error ??
         (h.state === HandleState.CANCELLED
-          ? { tag: "Cancelled", message: "Operation cancelled" }
-          : { tag: "HostError", message: "Operation failed" });
+          ? this.makeError(ErrorCode.Cancelled, "Operation cancelled")
+          : this.makeError(ErrorCode.HostError, "Operation failed"));
       fiber.lastError = err;
       fiber.pendingInjectedThrow = true;
     }
@@ -2071,7 +1888,7 @@ export class VM implements IVM {
     }
 
     this.transitionState(fiber, FiberState.CANCELLED);
-    fiber.lastError = { tag: "Cancelled", message: "Fiber cancelled" };
+    fiber.lastError = this.makeError(ErrorCode.Cancelled, "Fiber cancelled");
     this.cancelAsyncActionHandle(fiber);
     scheduler.onFiberCancelled?.(fiber.id);
   }
@@ -2084,21 +1901,21 @@ export class VM implements IVM {
   private peek(fiber: Fiber): Value {
     const n = fiber.vstack.size();
     if (n <= 0) {
-      throw new Error("Stack underflow: cannot peek empty stack");
+      throwUnderflow("Stack underflow: cannot peek empty stack");
     }
     return fiber.vstack.get(n - 1)!;
   }
 
   private pop(fiber: Fiber): Value {
     if (fiber.vstack.size() <= 0) {
-      throw new Error("Stack underflow: cannot pop empty stack");
+      throwUnderflow("Stack underflow: cannot pop empty stack");
     }
     return fiber.vstack.pop()!;
   }
 
   private push(fiber: Fiber, v: Value): void {
     if (fiber.vstack.size() >= this.config.maxStackSize) {
-      throw new Error(`Stack overflow: limit ${this.config.maxStackSize} exceeded`);
+      throwOverflow(`Stack overflow: limit ${this.config.maxStackSize} exceeded`);
     }
     fiber.vstack.push(v);
   }
@@ -2174,7 +1991,7 @@ export class VM implements IVM {
     }
 
     if (fiber.frames.size() >= this.config.maxFrameDepth) {
-      throw new Error(`Stack overflow: frame depth limit ${this.config.maxFrameDepth} exceeded`);
+      throwOverflow(`Stack overflow: frame depth limit ${this.config.maxFrameDepth} exceeded`);
     }
 
     const callee = this.prog.functions.get(calleeId)!;
@@ -2286,6 +2103,26 @@ export class VM implements IVM {
     this.rejectAsyncActionHandle(fiber, err);
     scheduler.onFiberFault?.(fiber.id, err);
   }
+
+  /**
+   * Construct an {@link ErrorValue} for an in-VM fault. When
+   * {@link VmConfig.richErrors} is true (default), allocates a fresh object
+   * carrying `message`, `detail`, and `site`. When false, returns the frozen
+   * pooled instance for `code` and discards the detail arguments.
+   */
+  private makeError(
+    code: ErrorCode,
+    message: string,
+    opts?: { detail?: unknown; site?: { funcId: number; pc: number } }
+  ): ErrorValue {
+    if (this.config.richErrors === false) {
+      return pooledError(code);
+    }
+    const err: ErrorValue = { tag: code, message };
+    if (opts?.detail !== undefined) err.detail = opts.detail;
+    if (opts?.site !== undefined) err.site = opts.site;
+    return err;
+  }
 }
 
 ///////////////////////////
@@ -2297,6 +2134,8 @@ export interface SchedulerConfig {
   maxFibersPerTick: number;
   defaultBudget: number;
   autoGcHandles: boolean;
+  /** Maximum number of fibers tracked by the scheduler at any one time. */
+  maxFibers: number;
 }
 
 /** Default values for {@link SchedulerConfig}. */
@@ -2304,6 +2143,7 @@ export const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
   maxFibersPerTick: 64,
   defaultBudget: 1000,
   autoGcHandles: true,
+  maxFibers: 10000,
 };
 
 /** Concrete cooperative {@link IFiberScheduler}: maintains a fiber pool and dispatches budgeted execution slices on each `tick()`. */
@@ -2329,6 +2169,9 @@ export class FiberScheduler implements IFiberScheduler {
   }
 
   addFiber(fiber: Fiber): void {
+    if (this.fibers.size() >= this.config.maxFibers) {
+      throwOverflow(`Fiber limit exceeded: ${this.config.maxFibers}`);
+    }
     this.fibers.set(fiber.id, fiber);
     this.enqueueRunnable(fiber.id);
   }
