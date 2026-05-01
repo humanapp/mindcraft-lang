@@ -13,6 +13,7 @@ export interface ReadonlyList<T> {
   reduce<U>(fn: (acc: U, v: T, i: number) => U, initial: U): U;
   slice(start?: number, end?: number): ReadonlyList<T>;
   toArray(): T[];
+  subview(start: number, count: number): ReadonlyList<T>;
 }
 
 export class List<T> implements ReadonlyList<T> {
@@ -123,5 +124,133 @@ export class List<T> implements ReadonlyList<T> {
 
   raw(): Array<T> {
     return this.xs;
+  }
+
+  subview(start: number, count: number): ReadonlyList<T> {
+    if (start < 0 || count < 0 || start + count > this.xs.length) {
+      throw new Error(`subview out of range: start=${start}, count=${count}, size=${this.xs.length}`);
+    }
+    return new Sublist<T>(this, start, count);
+  }
+}
+
+class Sublist<T> implements ReadonlyList<T> {
+  private readonly _list: List<T>;
+  private readonly _start: number;
+  private readonly _count: number;
+
+  constructor(list: List<T>, start: number, count: number) {
+    this._list = list;
+    this._start = start;
+    this._count = count;
+  }
+
+  size(): number {
+    return this._count;
+  }
+
+  isEmpty(): boolean {
+    return this._count === 0;
+  }
+
+  get(i: number): T {
+    if (i < 0 || i >= this._count) {
+      throw new Error(`Sublist index out of range: ${i}`);
+    }
+    return this._list.get(this._start + i);
+  }
+
+  forEach(fn: (v: T, i: number) => void): void {
+    for (let i = 0; i < this._count; i++) {
+      fn(this._list.get(this._start + i), i);
+    }
+  }
+
+  map<U>(fn: (v: T, i: number) => U): ReadonlyList<U> {
+    const out = new List<U>();
+    for (let i = 0; i < this._count; i++) {
+      out.push(fn(this._list.get(this._start + i), i));
+    }
+    return out;
+  }
+
+  filter(fn: (v: T, i: number) => boolean): ReadonlyList<T> {
+    const out = new List<T>();
+    for (let i = 0; i < this._count; i++) {
+      const v = this._list.get(this._start + i);
+      if (fn(v, i)) out.push(v);
+    }
+    return out;
+  }
+
+  find(fn: (v: T, i: number) => boolean): T | undefined {
+    for (let i = 0; i < this._count; i++) {
+      const v = this._list.get(this._start + i);
+      if (fn(v, i)) return v;
+    }
+    return undefined;
+  }
+
+  findIndex(fn: (v: T, i: number) => boolean): number {
+    for (let i = 0; i < this._count; i++) {
+      if (fn(this._list.get(this._start + i), i)) return i;
+    }
+    return -1;
+  }
+
+  indexOf(v: T): number {
+    for (let i = 0; i < this._count; i++) {
+      if (this._list.get(this._start + i) === v) return i;
+    }
+    return -1;
+  }
+
+  contains(v: T): boolean {
+    return this.indexOf(v) !== -1;
+  }
+
+  reduce(fn: (acc: T, v: T, i: number) => T): T;
+  reduce<U>(fn: (acc: U, v: T, i: number) => U, initial?: U): U {
+    if (arguments.length < 2) {
+      if (this._count === 0) {
+        throw new Error("Reduce of empty list with no initial value");
+      }
+      let acc = this._list.get(this._start) as unknown as U;
+      for (let i = 1; i < this._count; i++) {
+        acc = fn(acc, this._list.get(this._start + i), i);
+      }
+      return acc;
+    }
+    let acc = initial as U;
+    for (let i = 0; i < this._count; i++) {
+      acc = fn(acc, this._list.get(this._start + i), i);
+    }
+    return acc;
+  }
+
+  slice(start?: number, end?: number): ReadonlyList<T> {
+    const len = this._count;
+    const s = start === undefined ? 0 : start < 0 ? Math.max(len + start, 0) : Math.min(start, len);
+    const e = end === undefined ? len : end < 0 ? Math.max(len + end, 0) : Math.min(end, len);
+    const out = new List<T>();
+    for (let i = s; i < e; i++) {
+      out.push(this._list.get(this._start + i));
+    }
+    return out;
+  }
+
+  toArray(): T[] {
+    const out: T[] = [];
+    for (let i = 0; i < this._count; i++) {
+      out.push(this._list.get(this._start + i));
+    }
+    return out;
+  }
+
+  subview(start: number, count: number): ReadonlyList<T> {
+    if (start < 0 || count < 0 || start + count > this._count) {
+      throw new Error(`subview out of range: start=${start}, count=${count}, size=${this._count}`);
+    }
+    return new Sublist<T>(this._list, this._start + start, count);
   }
 }

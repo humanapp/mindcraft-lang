@@ -11,6 +11,7 @@ export interface ReadonlyList<T extends defined> {
   reduce(fn: (acc: T, v: T, i: number) => T): T;
   reduce<U extends defined>(fn: (acc: U, v: T, i: number) => U, initial: U): U;
   toArray(): Array<T>;
+  subview(start: number, count: number): ReadonlyList<T>;
 }
 
 export class List<T extends defined> implements ReadonlyList<T> {
@@ -310,5 +311,13 @@ export class List<T extends defined> implements ReadonlyList<T> {
 
   raw(): Array<T> {
     return this.xs;
+  }
+
+  subview(start: number, count: number): ReadonlyList<T> {
+    const len = this.size();
+    if (start < 0 || count < 0 || start + count > len) {
+      error(`subview out of range: start=${start}, count=${count}, size=${len}`);
+    }
+    return this.slice(start, start + count);
   }
 }
