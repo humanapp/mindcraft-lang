@@ -433,7 +433,7 @@ export class UserTileProject {
     const program: UserAuthoredProgram = {
       version: 1,
       functions: List.from(emittedFunctions),
-      constants: pool.getConstants(),
+      constantPools: pool.toPools(),
       variableNames: List.empty(),
       entryPoint: programResult.entryFuncId,
       key: buildUserActionKey(descriptor.kind, descriptor.name),

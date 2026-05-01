@@ -56,7 +56,7 @@ interface CompilationContext {
 /** Result of compiling one rule: emitted instructions, variable names, and diagnostics. */
 export interface CompilationResult {
   instrs: ReadonlyList<Instr>;
-  /** Variable names used in this compilation, for LOAD_VAR/STORE_VAR instructions */
+  /** Variable names used in this compilation, for LOAD_VAR_SLOT/STORE_VAR_SLOT instructions */
   variableNames: ReadonlyList<string>;
   /** Diagnostics collected during compilation */
   diags: ReadonlyList<CompilationDiag>;
@@ -113,8 +113,7 @@ export class ExprCompiler implements ExprVisitor<void> {
         nodeId: expr.nodeId,
       });
       // Emit nil placeholder to maintain stack consistency
-      const nilIdx = this.context.constantPool.add(NIL_VALUE);
-      this.emitter.pushConst(nilIdx);
+      this.pushNilPlaceholder();
       return;
     }
 
@@ -215,8 +214,7 @@ export class ExprCompiler implements ExprVisitor<void> {
       // gracefully The diagnostic is tracked against the operator's nodeId,
       // which we don't have here So we emit a nil placeholder to maintain stack
       // balance
-      const nilIdx = this.context.constantPool.add(NIL_VALUE);
-      this.emitter.pushConst(nilIdx);
+      this.pushNilPlaceholder();
     }
   }
 
@@ -233,8 +231,7 @@ export class ExprCompiler implements ExprVisitor<void> {
         nodeId: expr.nodeId,
       });
       // Emit nil placeholder to maintain stack consistency
-      const nilIdx = this.context.constantPool.add(NIL_VALUE);
-      this.emitter.pushConst(nilIdx);
+      this.pushNilPlaceholder();
       return;
     }
 
@@ -261,8 +258,7 @@ export class ExprCompiler implements ExprVisitor<void> {
       // gracefully The diagnostic is tracked against the operator's nodeId,
       // which we don't have here So we emit a nil placeholder to maintain stack
       // balance
-      const nilIdx = this.context.constantPool.add(NIL_VALUE);
-      this.emitter.pushConst(nilIdx);
+      this.pushNilPlaceholder();
     }
   }
 
@@ -271,15 +267,49 @@ export class ExprCompiler implements ExprVisitor<void> {
   // ==========================================
 
   visitLiteral(expr: LiteralExpr): void {
-    // Convert literal value to a VM Value object and add to constant pool
-    const value = expr.tileDef.value;
-    const constIdx = this.createConstant(value);
-    this.emitter.pushConst(constIdx);
+    // Convert literal value to a VM Value object and route to the appropriate
+    // typed sub-pool of the constant pool.
+    this.pushLiteralValue(expr.tileDef.value);
   }
 
-  private createConstant(value: unknown): number {
+  /**
+   * Add `value` to the appropriate typed sub-pool and emit the matching
+   * `PUSH_CONST*` opcode. Plain numbers go to the number pool, plain strings
+   * to the string pool, everything else to the residual pool.
+   */
+  private pushLiteralValue(value: unknown): void {
     const valueObj: Value = this.valueFromLiteral(value);
-    return this.context.constantPool.add(valueObj);
+    this.pushValueConstant(valueObj);
+  }
+
+  /** Add a pre-built `Value` to the appropriate typed sub-pool and emit the matching push opcode. */
+  private pushValueConstant(value: Value): void {
+    const ref = this.context.constantPool.addValue(value);
+    if (ref.kind === "number") {
+      this.emitter.pushConstNum(ref.idx);
+    } else if (ref.kind === "string") {
+      this.emitter.pushConstStr(ref.idx);
+    } else {
+      this.emitter.pushConst(ref.idx);
+    }
+  }
+
+  /** Push a `NIL` placeholder used for stack-balance recovery on compilation errors. */
+  private pushNilPlaceholder(): void {
+    const idx = this.context.constantPool.addOther(NIL_VALUE);
+    this.emitter.pushConst(idx);
+  }
+
+  /** Add a string to the string sub-pool and emit `PUSH_CONST_STR`. */
+  private pushStringConstant(value: string): void {
+    const idx = this.context.constantPool.addString(value);
+    this.emitter.pushConstStr(idx);
+  }
+
+  /** Add a number to the number sub-pool and emit `PUSH_CONST_NUM`. */
+  private pushNumberConstant(value: number): void {
+    const idx = this.context.constantPool.addNumber(value);
+    this.emitter.pushConstNum(idx);
   }
 
   private valueFromLiteral(value: unknown): Value {
@@ -314,7 +344,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     // For l-values, see visitAssignment which handles stores
     const varName = expr.tileDef.varName;
     const varNameIdx = this.getOrCreateVariableIndex(varName);
-    this.emitter.loadVar(varNameIdx);
+    this.emitter.loadVarSlot(varNameIdx);
   }
 
   /**
@@ -349,8 +379,7 @@ export class ExprCompiler implements ExprVisitor<void> {
       // 3. Emit the value expression
       // 4. Call emitter.setField() -- uses SET_FIELD which supports native-backed structs
       acceptExprVisitor(expr.target.object, this);
-      const fieldNameIdx = this.createConstant(expr.target.accessor.fieldName);
-      this.emitter.pushConst(fieldNameIdx);
+      this.pushStringConstant(expr.target.accessor.fieldName);
       acceptExprVisitor(expr.value, this);
       this.emitter.setField();
     } else {
@@ -369,7 +398,7 @@ export class ExprCompiler implements ExprVisitor<void> {
       this.emitter.dup();
 
       // Store the top value to the variable in execution context
-      this.emitter.storeVar(varNameIdx);
+      this.emitter.storeVarSlot(varNameIdx);
 
       // Stack now contains the assigned value (assignment as expression)
     }
@@ -472,9 +501,8 @@ export class ExprCompiler implements ExprVisitor<void> {
     const emitMapEntry = (slotId: number, emitValue: () => void) => {
       // Stack: [map]
 
-      // Push the key (slotId as string)
-      const keyConst = this.createConstant(slotId);
-      this.emitter.pushConst(keyConst); // Stack: [map, key]
+      // Push the key (slotId as a number)
+      this.pushNumberConstant(slotId); // Stack: [map, key]
 
       // Push the value
       emitValue(); // Stack: [map, key, value]
@@ -514,8 +542,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     }
     modCounts.forEach((count, slotId) => {
       emitMapEntry(slotId, () => {
-        const countConst = this.createConstant(count);
-        this.emitter.pushConst(countConst);
+        this.pushNumberConstant(count);
       });
     });
 
@@ -534,8 +561,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     // 2. Push the field name constant
     // 3. Call emitter.getField()
     acceptExprVisitor(expr.object, this);
-    const fieldNameIdx = this.createConstant(expr.accessor.fieldName);
-    this.emitter.pushConst(fieldNameIdx);
+    this.pushStringConstant(expr.accessor.fieldName);
     this.emitter.getField();
   }
 
@@ -602,7 +628,7 @@ export function compileRule(
 
   // If there were no expressions, push TRUE (empty WHEN always executes DO)
   if (whenExprs.size() === 0) {
-    const trueIdx = constantPool.add(TRUE_VALUE);
+    const trueIdx = constantPool.addOther(TRUE_VALUE);
     emitter.pushConst(trueIdx);
   }
 

@@ -31,7 +31,6 @@ import {
   isOverflowError,
   isUnderflowError,
   NativeType,
-  pooledError,
   throwOverflow,
   throwUnderflow,
   ValueDict,
@@ -76,7 +75,7 @@ import type { BrainServices } from "../services";
  * - Budgeted execution for fairness and DoS protection
  * - Comprehensive bounds checking and validation
  * - Proper lifecycle management and resource cleanup
- * - Named variable access via LOAD_VAR/STORE_VAR with resolution chain
+ * - Slot-indexed variable access via LOAD_VAR_SLOT/STORE_VAR_SLOT
  *
  * Threading Model:
  * - Single-threaded execution per VM instance
@@ -91,9 +90,11 @@ import type { BrainServices } from "../services";
  * - Type-safe value operations
  *
  * Variable Access:
- * - All variables stored in ExecutionContext by name
- * - Resolved through resolution chain (local -> shared -> parent)
- * - Accessed via LOAD_VAR/STORE_VAR with variable names
+ * - Variables are addressed by compiler-assigned slot ids
+ * - Slot ids are operands to LOAD_VAR_SLOT/STORE_VAR_SLOT and index into the
+ *   loaded program's variableNames pool
+ * - The dispatch loop calls ctx.getVariableBySlot/setVariableBySlot directly
+ * - Host functions still address variables by name via ctx.getVariable/setVariable
  *
  * Invariants:
  * - vstack contains only operand stack (variables managed by ExecutionContext)
@@ -114,7 +115,6 @@ export const DEFAULT_VM_CONFIG: VmConfig = {
   maxHandlers: 64,
   maxHandles: 100000,
   defaultBudget: 1000,
-  richErrors: true,
 };
 
 ///////////////////////////
@@ -409,17 +409,21 @@ export class VM implements IVM {
   ): VmRunResult | undefined {
     try {
       switch (ins.op) {
-        case Op.PUSH_CONST:
+        case Op.PUSH_CONST_VAL:
           return this.execPushConst(fiber, ins, frame);
+        case Op.PUSH_CONST_NUM:
+          return this.execPushConstNum(fiber, ins, frame);
+        case Op.PUSH_CONST_STR:
+          return this.execPushConstStr(fiber, ins, frame);
         case Op.POP:
           return this.execPop(fiber, frame);
         case Op.DUP:
           return this.execDup(fiber, frame);
         case Op.SWAP:
           return this.execSwap(fiber, frame);
-        case Op.LOAD_VAR:
+        case Op.LOAD_VAR_SLOT:
           return this.execLoadVar(fiber, ins, frame);
-        case Op.STORE_VAR:
+        case Op.STORE_VAR_SLOT:
           return this.execStoreVar(fiber, ins, frame);
         case Op.JMP:
           return this.execJmp(fiber, ins, frame);
@@ -559,10 +563,30 @@ export class VM implements IVM {
 
   private execPushConst(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const k = ins.a ?? 0;
-    if (k < 0 || k >= this.prog.constants.size()) {
-      throw new Error(`PUSH_CONST: constant index ${k} out of bounds`);
+    if (k < 0 || k >= this.prog.constantPools.values.size()) {
+      throw new Error(`PUSH_CONST_VAL: constant index ${k} out of bounds`);
     }
-    this.push(fiber, this.prog.constants.get(k)!);
+    this.push(fiber, this.prog.constantPools.values.get(k)!);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execPushConstNum(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const k = ins.a ?? 0;
+    if (k < 0 || k >= this.prog.constantPools.numbers.size()) {
+      throw new Error(`PUSH_CONST_NUM: constant index ${k} out of bounds`);
+    }
+    this.push(fiber, V.num(this.prog.constantPools.numbers.get(k)!));
+    frame.pc++;
+    return undefined;
+  }
+
+  private execPushConstStr(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const k = ins.a ?? 0;
+    if (k < 0 || k >= this.prog.constantPools.strings.size()) {
+      throw new Error(`PUSH_CONST_STR: constant index ${k} out of bounds`);
+    }
+    this.push(fiber, V.str(this.prog.constantPools.strings.get(k)!));
     frame.pc++;
     return undefined;
   }
@@ -590,25 +614,23 @@ export class VM implements IVM {
   }
 
   private execLoadVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const nameIdx = ins.a ?? 0;
-    if (nameIdx < 0 || nameIdx >= this.prog.variableNames.size()) {
-      throw new Error(`LOAD_VAR: name index ${nameIdx} out of bounds`);
+    const slotId = ins.a ?? 0;
+    if (slotId < 0 || slotId >= this.prog.variableNames.size()) {
+      throw new Error(`LOAD_VAR_SLOT: slot index ${slotId} out of bounds`);
     }
-    const varName = this.prog.variableNames.get(nameIdx)!;
-    const value = this.resolveVariable(fiber, varName);
+    const value = fiber.executionContext.getVariableBySlot(slotId);
     this.push(fiber, value);
     frame.pc++;
     return undefined;
   }
 
   private execStoreVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const nameIdx = ins.a ?? 0;
-    if (nameIdx < 0 || nameIdx >= this.prog.variableNames.size()) {
-      throw new Error(`STORE_VAR: name index ${nameIdx} out of bounds`);
+    const slotId = ins.a ?? 0;
+    if (slotId < 0 || slotId >= this.prog.variableNames.size()) {
+      throw new Error(`STORE_VAR_SLOT: slot index ${slotId} out of bounds`);
     }
-    const varName = this.prog.variableNames.get(nameIdx)!;
     const value = deepCopyValue(this.pop(fiber), this.services.types, fiber.executionContext);
-    this.setResolvedVariable(fiber, varName, value);
+    fiber.executionContext.setVariableBySlot(slotId, value);
     frame.pc++;
     return undefined;
   }
@@ -697,14 +719,10 @@ export class VM implements IVM {
   private execInstanceOf(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const value = this.pop(fiber);
     const constIdx = ins.a ?? 0;
-    if (constIdx < 0 || constIdx >= this.prog.constants.size()) {
-      throw new Error(`INSTANCE_OF: constant index ${constIdx} out of bounds`);
+    if (constIdx < 0 || constIdx >= this.prog.constantPools.strings.size()) {
+      throw new Error(`INSTANCE_OF: string-constant index ${constIdx} out of bounds`);
     }
-    const typeIdVal = this.prog.constants.get(constIdx)!;
-    if (!isStringValue(typeIdVal)) {
-      throw new Error("INSTANCE_OF: constant must be a string typeId");
-    }
-    const targetTypeId = typeIdVal.v;
+    const targetTypeId = this.prog.constantPools.strings.get(constIdx)!;
     const result = isStructValue(value) && value.typeId === targetTypeId;
     this.push(fiber, V.bool(result));
     frame.pc++;
@@ -1196,11 +1214,8 @@ export class VM implements IVM {
   // List operations
   private execListNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     let typeId: TypeId = "list:<unknown>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constants.size()) {
-      const typeIdVal = this.prog.constants.get(ins.b);
-      if (typeIdVal && isStringValue(typeIdVal)) {
-        typeId = typeIdVal.v;
-      }
+    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
+      typeId = this.prog.constantPools.strings.get(ins.b)!;
     }
     this.push(fiber, V.list(List.empty<Value>(), typeId));
     frame.pc++;
@@ -1339,11 +1354,8 @@ export class VM implements IVM {
   // Map operations
   private execMapNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     let typeId: TypeId = "map:<unknown>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constants.size()) {
-      const typeIdVal = this.prog.constants.get(ins.b);
-      if (typeIdVal && isStringValue(typeIdVal)) {
-        typeId = typeIdVal.v;
-      }
+    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
+      typeId = this.prog.constantPools.strings.get(ins.b)!;
     }
     this.push(fiber, V.map(new ValueDict(), typeId));
     frame.pc++;
@@ -1426,13 +1438,10 @@ export class VM implements IVM {
       fields.set(fieldName.v, value);
     }
 
-    // Use constant pool index b for typeId if provided, otherwise generic
+    // Use string-constant index b for typeId if provided, otherwise generic
     let typeId = "struct:<anonymous>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constants.size()) {
-      const typeIdVal = this.prog.constants.get(ins.b);
-      if (typeIdVal && isStringValue(typeIdVal)) {
-        typeId = typeIdVal.v;
-      }
+    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
+      typeId = this.prog.constantPools.strings.get(ins.b)!;
     }
 
     this.push(fiber, V.struct(fields, typeId));
@@ -1488,11 +1497,8 @@ export class VM implements IVM {
     }
 
     let typeId = "struct:<anonymous>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constants.size()) {
-      const typeIdVal = this.prog.constants.get(ins.b);
-      if (typeIdVal && isStringValue(typeIdVal)) {
-        typeId = typeIdVal.v;
-      }
+    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
+      typeId = this.prog.constantPools.strings.get(ins.b)!;
     }
 
     const fields = new Dict<string, Value>();
@@ -1920,62 +1926,6 @@ export class VM implements IVM {
     fiber.vstack.push(v);
   }
 
-  /**
-   * Resolve a named variable through the execution context resolution chain.
-   *
-   * Resolution order:
-   * 1. Check if context has custom resolveVariable implementation
-   * 2. Try local scope: getVariable(name)
-   * 3. Try shared scope (if exists)
-   * 4. Walk parent context chain
-   * 5. Return nil if not found
-   */
-  private resolveVariable(fiber: Fiber, name: string): Value {
-    const ctx = fiber.executionContext;
-
-    // Try custom resolution if provided (try-catch for Roblox-TS compatibility)
-    try {
-      const resolverFn = ctx.resolveVariable;
-      if (resolverFn) {
-        const value = resolverFn(name);
-        return value ?? V.nil();
-      }
-    } catch {
-      // No custom resolver, fall through to default
-    }
-
-    const value = ctx.getVariable(name);
-    if (value !== undefined) {
-      return value;
-    }
-
-    // Not found - return nil
-    return V.nil();
-  }
-
-  /**
-   * Set a resolved variable through the execution context resolution chain.
-   * If the variable exists in any scope, updates it there.
-   * Otherwise, creates it in the current context.
-   */
-  private setResolvedVariable(fiber: Fiber, name: string, value: Value): void {
-    const ctx = fiber.executionContext;
-
-    // Try custom setter if provided (try-catch for Roblox-TS compatibility)
-    try {
-      const setterFn = ctx.setResolvedVariable;
-      if (setterFn) {
-        setterFn(name, value);
-        return;
-      }
-    } catch {
-      // No custom setter, fall through to default
-    }
-
-    // Create/update in current context
-    ctx.setVariable(name, value);
-  }
-
   private allocLocals(fn: FunctionBytecode, args: List<Value>): List<Value> {
     const numLocals = fn.numLocals ?? fn.numParams;
     const locals = List.empty<Value>();
@@ -2105,20 +2055,15 @@ export class VM implements IVM {
   }
 
   /**
-   * Construct an {@link ErrorValue} for an in-VM fault. When
-   * {@link VmConfig.richErrors} is true (default), allocates a fresh object
-   * carrying `message`, `detail`, and `site`. When false, returns the frozen
-   * pooled instance for `code` and discards the detail arguments.
+   * Construct an {@link ErrorValue} for an in-VM fault. Allocates a fresh
+   * object carrying `message`, `detail`, and `site`.
    */
   private makeError(
     code: ErrorCode,
     message: string,
     opts?: { detail?: unknown; site?: { funcId: number; pc: number } }
   ): ErrorValue {
-    if (this.config.richErrors === false) {
-      return pooledError(code);
-    }
-    const err: ErrorValue = { tag: code, message };
+    const err: ErrorValue = { code: code, message };
     if (opts?.detail !== undefined) err.detail = opts.detail;
     if (opts?.site !== undefined) err.site = opts.site;
     return err;

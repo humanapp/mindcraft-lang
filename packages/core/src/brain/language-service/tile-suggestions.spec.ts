@@ -333,7 +333,7 @@ test("Test 9: Actuator with parameter needing value (errorExpr) -> value tiles",
 
   if (restartPageTile) {
     const priorityParamDef = new BrainTileParameterDef("test.priority", CoreTypeIds.Number, {
-      visual: { label: "priority" },
+      metadata: { label: "priority" },
     });
     const paramExpr: ParameterExpr = {
       nodeId: 10,
@@ -386,13 +386,13 @@ test("Test 9: Actuator with parameter needing value (errorExpr) -> value tiles",
 
 test("Test 10: Integration -- parse [actuator, priority] -> suggest value tiles", () => {
   const testParamId = "test.priority.10";
-  const testParamDef = new BrainTileParameterDef(testParamId, CoreTypeIds.Number, { visual: { label: "priority" } });
+  const testParamDef = new BrainTileParameterDef(testParamId, CoreTypeIds.Number, { metadata: { label: "priority" } });
   services.tiles.registerTileDef(testParamDef);
 
   const testCallDef = mkCallDef(bag(optional(param(testParamId))));
   const testFnEntry = services.functions.register("test-move-10", false, { exec: () => VOID_VALUE }, testCallDef);
   const testActuatorDef = new BrainTileActuatorDef("test-move-10", mkActionDescriptor("actuator", testFnEntry), {
-    visual: { label: "move" },
+    metadata: { label: "move" },
   });
   services.tiles.registerTileDef(testActuatorDef);
 
@@ -557,12 +557,14 @@ describe("Replace operand/operator in binary expression", () => {
 
   test("Test 15: Replace parameter value in [test-move] [priority] [42] -> Number", () => {
     const testParamId = "test.priority.15";
-    const testParamDef = new BrainTileParameterDef(testParamId, CoreTypeIds.Number, { visual: { label: "priority" } });
+    const testParamDef = new BrainTileParameterDef(testParamId, CoreTypeIds.Number, {
+      metadata: { label: "priority" },
+    });
     services.tiles.registerTileDef(testParamDef);
     const testCallDef = mkCallDef(bag(optional(param(testParamId))));
     const testFnEntry = services.functions.register("test-move-15", false, { exec: () => VOID_VALUE }, testCallDef);
     const testActuatorDef = new BrainTileActuatorDef("test-move-15", mkActionDescriptor("actuator", testFnEntry), {
-      visual: { label: "move" },
+      metadata: { label: "move" },
     });
     services.tiles.registerTileDef(testActuatorDef);
 
@@ -681,16 +683,16 @@ describe("Parameter value expression chains", () => {
 
   before(() => {
     const id = "test.priority.18";
-    testParamDef = new BrainTileParameterDef(id, CoreTypeIds.Number, { visual: { label: "priority" } });
+    testParamDef = new BrainTileParameterDef(id, CoreTypeIds.Number, { metadata: { label: "priority" } });
     services.tiles.registerTileDef(testParamDef);
     const callDef = mkCallDef(bag(optional(param(id))));
     const fnEntry = services.functions.register("test-move-18", false, { exec: () => VOID_VALUE }, callDef);
     testActuatorDef = new BrainTileActuatorDef("test-move-18", mkActionDescriptor("actuator", fnEntry), {
-      visual: { label: "move" },
+      metadata: { label: "move" },
     });
     services.tiles.registerTileDef(testActuatorDef);
 
-    numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "1", { visual: { label: "1" } }, services);
+    numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "1", { metadata: { label: "1" } }, services);
     services.tiles.registerTileDef(numLitDef);
   });
 
@@ -929,11 +931,11 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
   }
 
   before(() => {
-    modADef = new BrainTileModifierDef("test.modA", { visual: { label: "A" } });
-    modBDef = new BrainTileModifierDef("test.modB", { visual: { label: "B" } });
-    modCDef = new BrainTileModifierDef("test.modC", { visual: { label: "C" } });
-    modFastDef = new BrainTileModifierDef("test.fast", { visual: { label: "fast" } });
-    modSlowDef = new BrainTileModifierDef("test.slow", { visual: { label: "slow" } });
+    modADef = new BrainTileModifierDef("test.modA", { metadata: { label: "A" } });
+    modBDef = new BrainTileModifierDef("test.modB", { metadata: { label: "B" } });
+    modCDef = new BrainTileModifierDef("test.modC", { metadata: { label: "C" } });
+    modFastDef = new BrainTileModifierDef("test.fast", { metadata: { label: "fast" } });
+    modSlowDef = new BrainTileModifierDef("test.slow", { metadata: { label: "slow" } });
     services.tiles.registerTileDef(modADef);
     services.tiles.registerTileDef(modBDef);
     services.tiles.registerTileDef(modCDef);
@@ -941,7 +943,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
     services.tiles.registerTileDef(modSlowDef);
 
     const priorityId = "test.priority.24";
-    const priorityDef = new BrainTileParameterDef(priorityId, CoreTypeIds.Number, { visual: { label: "priority" } });
+    const priorityDef = new BrainTileParameterDef(priorityId, CoreTypeIds.Number, { metadata: { label: "priority" } });
     services.tiles.registerTileDef(priorityDef);
 
     richCallDef = mkCallDef(
@@ -953,7 +955,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
     );
     const richFnEntry = services.functions.register("test-rich", false, { exec: () => VOID_VALUE }, richCallDef);
     richActuatorDef = new BrainTileActuatorDef("test-rich", mkActionDescriptor("actuator", richFnEntry), {
-      visual: { label: "rich" },
+      metadata: { label: "rich" },
     });
     services.tiles.registerTileDef(richActuatorDef);
 
@@ -1051,14 +1053,14 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
   });
 
   test("Test 29: Conditional -- args available only when condition met", () => {
-    const modXDef = new BrainTileModifierDef("test.modX", { visual: { label: "X" } });
-    const modYDef = new BrainTileModifierDef("test.modY", { visual: { label: "Y" } });
+    const modXDef = new BrainTileModifierDef("test.modX", { metadata: { label: "X" } });
+    const modYDef = new BrainTileModifierDef("test.modY", { metadata: { label: "Y" } });
     services.tiles.registerTileDef(modXDef);
     services.tiles.registerTileDef(modYDef);
 
     const testCondParamId = "test.condValue";
     const testCondParamDef = new BrainTileParameterDef(testCondParamId, CoreTypeIds.Number, {
-      visual: { label: "val" },
+      metadata: { label: "val" },
     });
     services.tiles.registerTileDef(testCondParamDef);
 
@@ -1070,7 +1072,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
     );
     const condFnEntry = services.functions.register("test-cond", false, { exec: () => VOID_VALUE }, condCallDef);
     const condActuatorDef = new BrainTileActuatorDef("test-cond", mkActionDescriptor("actuator", condFnEntry), {
-      visual: { label: "cond" },
+      metadata: { label: "cond" },
     });
     services.tiles.registerTileDef(condActuatorDef);
 
@@ -1159,8 +1161,8 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
 
 describe("Non-inline sensor operator suggestions", () => {
   test("Test 30: Non-inline sensor with satisfied choice -> no infix operators", () => {
-    const modPDef = new BrainTileModifierDef("test.modP", { visual: { label: "P" } });
-    const modQDef = new BrainTileModifierDef("test.modQ", { visual: { label: "Q" } });
+    const modPDef = new BrainTileModifierDef("test.modP", { metadata: { label: "P" } });
+    const modQDef = new BrainTileModifierDef("test.modQ", { metadata: { label: "Q" } });
     services.tiles.registerTileDef(modPDef);
     services.tiles.registerTileDef(modQDef);
 
@@ -1170,7 +1172,7 @@ describe("Non-inline sensor operator suggestions", () => {
       "test-sense",
       mkActionDescriptor("sensor", sensorFnEntry, CoreTypeIds.Number),
       {
-        visual: { label: "sense" },
+        metadata: { label: "sense" },
       }
     );
     services.tiles.registerTileDef(testSensorDef);
@@ -1223,10 +1225,10 @@ describe("Non-inline sensor operator suggestions", () => {
   });
 
   test("Test 30c: Non-inline sensor at max capacity -> no operators", () => {
-    const modRDef = new BrainTileModifierDef("test.modR", { visual: { label: "R" } });
-    const modSDef = new BrainTileModifierDef("test.modS", { visual: { label: "S" } });
-    const modNrDef = new BrainTileModifierDef("test.modNr", { visual: { label: "Near" } });
-    const modFrDef = new BrainTileModifierDef("test.modFr", { visual: { label: "Far" } });
+    const modRDef = new BrainTileModifierDef("test.modR", { metadata: { label: "R" } });
+    const modSDef = new BrainTileModifierDef("test.modS", { metadata: { label: "S" } });
+    const modNrDef = new BrainTileModifierDef("test.modNr", { metadata: { label: "Near" } });
+    const modFrDef = new BrainTileModifierDef("test.modFr", { metadata: { label: "Far" } });
     services.tiles.registerTileDef(modRDef);
     services.tiles.registerTileDef(modSDef);
     services.tiles.registerTileDef(modNrDef);
@@ -1243,7 +1245,7 @@ describe("Non-inline sensor operator suggestions", () => {
       "test-sense2",
       mkActionDescriptor("sensor", senseFnEntry, CoreTypeIds.Boolean),
       {
-        visual: { label: "sense2" },
+        metadata: { label: "sense2" },
       }
     );
     services.tiles.registerTileDef(senseDef);
@@ -1433,11 +1435,11 @@ describe("Incomplete expression type constraints", () => {
     const sayCallDef = mkCallDef(bag(anonStringSpec));
     const sayFnEntry = services.functions.register("test-say", false, { exec: () => VOID_VALUE }, sayCallDef);
     const sayDef = new BrainTileActuatorDef("test-say", mkActionDescriptor("actuator", sayFnEntry), {
-      visual: { label: "say" },
+      metadata: { label: "say" },
     });
     services.tiles.registerTileDef(sayDef);
 
-    const strLitDef = new BrainTileLiteralDef(CoreTypeIds.String, "hi", { visual: { label: "hi" } }, services);
+    const strLitDef = new BrainTileLiteralDef(CoreTypeIds.String, "hi", { metadata: { label: "hi" } }, services);
     services.tiles.registerTileDef(strLitDef);
     const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
@@ -1543,7 +1545,7 @@ describe("Incomplete expression type constraints", () => {
     const numActCallDef = mkCallDef(bag(anonNumSpec));
     const numActFnEntry = services.functions.register("test-numact", false, { exec: () => VOID_VALUE }, numActCallDef);
     const numActDef = new BrainTileActuatorDef("test-numact", mkActionDescriptor("actuator", numActFnEntry), {
-      visual: { label: "numact" },
+      metadata: { label: "numact" },
     });
     services.tiles.registerTileDef(numActDef);
 
@@ -1584,10 +1586,10 @@ describe("Accessor / struct field suggestions", () => {
         { name: "mag", typeId: CoreTypeIds.Number },
       ]),
     });
-    accessorXDef = new BrainTileAccessorDef(posStructTypeId, "x", CoreTypeIds.Number, { visual: { label: "x" } });
-    accessorYDef = new BrainTileAccessorDef(posStructTypeId, "y", CoreTypeIds.Number, { visual: { label: "y" } });
+    accessorXDef = new BrainTileAccessorDef(posStructTypeId, "x", CoreTypeIds.Number, { metadata: { label: "x" } });
+    accessorYDef = new BrainTileAccessorDef(posStructTypeId, "y", CoreTypeIds.Number, { metadata: { label: "y" } });
     accessorMagDef = new BrainTileAccessorDef(posStructTypeId, "mag", CoreTypeIds.Number, {
-      visual: { label: "mag" },
+      metadata: { label: "mag" },
       readOnly: true,
     });
     services.tiles.registerTileDef(accessorXDef);
@@ -1768,10 +1770,10 @@ describe("Accessor / struct field suggestions", () => {
       ]),
     });
     const accessorDxDef = new BrainTileAccessorDef(velStructTypeId, "dx", CoreTypeIds.Number, {
-      visual: { label: "dx" },
+      metadata: { label: "dx" },
     });
     const accessorDyDef = new BrainTileAccessorDef(velStructTypeId, "dy", CoreTypeIds.Number, {
-      visual: { label: "dy" },
+      metadata: { label: "dy" },
     });
     services.tiles.registerTileDef(accessorDxDef);
     services.tiles.registerTileDef(accessorDyDef);
@@ -1858,7 +1860,7 @@ describe("Sub-expression filtering", () => {
       "hello",
       {
         persist: false,
-        visual: { label: "hello" },
+        metadata: { label: "hello" },
       },
       services
     );
@@ -2024,8 +2026,8 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 54: [not] [sensor-with-args] -> call spec tiles suggested", () => {
-    const modNearDef = new BrainTileModifierDef("test.near54", { visual: { label: "near" } });
-    const modFarDef = new BrainTileModifierDef("test.far54", { visual: { label: "far" } });
+    const modNearDef = new BrainTileModifierDef("test.near54", { metadata: { label: "near" } });
+    const modFarDef = new BrainTileModifierDef("test.far54", { metadata: { label: "far" } });
     services.tiles.registerTileDef(modNearDef);
     services.tiles.registerTileDef(modFarDef);
 
@@ -2033,7 +2035,7 @@ describe("Sub-expression filtering", () => {
     const fnEntry54 = services.functions.register("test-see54", false, { exec: () => TRUE_VALUE }, callDef54);
     const seeDef = new BrainTileSensorDef("test-see54", mkActionDescriptor("sensor", fnEntry54, CoreTypeIds.Boolean), {
       placement: TilePlacement.WhenSide,
-      visual: { label: "see" },
+      metadata: { label: "see" },
     });
     services.tiles.registerTileDef(seeDef);
 
@@ -2141,7 +2143,7 @@ describe("Capability requirements filtering", () => {
       CoreTypeIds.Number,
       { t: 3, v: 99 },
       {
-        visual: { label: "guarded-99" },
+        metadata: { label: "guarded-99" },
         persist: false,
         valueLabel: "guarded-99",
         requirements: reqBitSet,
@@ -2201,7 +2203,7 @@ describe("Capability requirements filtering", () => {
       CoreTypeIds.Number,
       { t: 3, v: 55 },
       {
-        visual: { label: "multi-req" },
+        metadata: { label: "multi-req" },
         persist: false,
         valueLabel: "multi-req",
         requirements: reqMulti,
@@ -2264,10 +2266,10 @@ describe("Struct-specific operator and accessor behavior", () => {
         { name: "mag", typeId: CoreTypeIds.Number },
       ]),
     });
-    accessorXDef = new BrainTileAccessorDef(posStructTypeId, "x", CoreTypeIds.Number, { visual: { label: "x" } });
-    accessorYDef = new BrainTileAccessorDef(posStructTypeId, "y", CoreTypeIds.Number, { visual: { label: "y" } });
+    accessorXDef = new BrainTileAccessorDef(posStructTypeId, "x", CoreTypeIds.Number, { metadata: { label: "x" } });
+    accessorYDef = new BrainTileAccessorDef(posStructTypeId, "y", CoreTypeIds.Number, { metadata: { label: "y" } });
     accessorMagDef = new BrainTileAccessorDef(posStructTypeId, "mag", CoreTypeIds.Number, {
-      visual: { label: "mag" },
+      metadata: { label: "mag" },
       readOnly: true,
     });
     services.tiles.registerTileDef(accessorXDef);
@@ -2613,7 +2615,7 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
 
   before(() => {
     const durationId = "test.duration.78";
-    durationParamDef = new BrainTileParameterDef(durationId, CoreTypeIds.Number, { visual: { label: "duration" } });
+    durationParamDef = new BrainTileParameterDef(durationId, CoreTypeIds.Number, { metadata: { label: "duration" } });
     services.tiles.registerTileDef(durationParamDef);
 
     const anonStr = param(CoreParameterId.AnonymousString, { anonymous: true });
@@ -2621,18 +2623,18 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
     const callDef = mkCallDef(bag(optional(anonStr), optional(durationParam)));
     const fnEntry = services.functions.register("test-say-78", false, { exec: () => VOID_VALUE }, callDef);
     sayActuatorDef = new BrainTileActuatorDef("test-say-78", mkActionDescriptor("actuator", fnEntry), {
-      visual: { label: "say" },
+      metadata: { label: "say" },
       placement: TilePlacement.DoSide,
     });
     services.tiles.registerTileDef(sayActuatorDef);
 
-    numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "5", { visual: { label: "5" } }, services);
+    numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "5", { metadata: { label: "5" } }, services);
     services.tiles.registerTileDef(numLitDef);
 
     strLitDef = new BrainTileLiteralDef(
       CoreTypeIds.String,
       "test78greet",
-      { visual: { label: "test78greet" } },
+      { metadata: { label: "test78greet" } },
       services
     );
     services.tiles.registerTileDef(strLitDef);
@@ -2936,13 +2938,15 @@ describe("Replace repeated modifier and anonymous slot value", () => {
 
   test("Test 75: Replace value in anonymous slot -> actuators excluded", () => {
     const anonNumParamId = "test.anonNum75";
-    const anonNumParamDef = new BrainTileParameterDef(anonNumParamId, CoreTypeIds.Number, { visual: { label: "amt" } });
+    const anonNumParamDef = new BrainTileParameterDef(anonNumParamId, CoreTypeIds.Number, {
+      metadata: { label: "amt" },
+    });
     services.tiles.registerTileDef(anonNumParamDef);
 
     const callDef75 = mkCallDef(bag(param(anonNumParamId, { anonymous: true })));
     const fnEntry75 = services.functions.register("test-anon75", false, { exec: () => VOID_VALUE }, callDef75);
     const actuatorDef75 = new BrainTileActuatorDef("test-anon75", mkActionDescriptor("actuator", fnEntry75), {
-      visual: { label: "anon75" },
+      metadata: { label: "anon75" },
     });
     services.tiles.registerTileDef(actuatorDef75);
 
@@ -3064,11 +3068,11 @@ describe("Replace repeated modifier and anonymous slot value", () => {
 
 describe("See-like sensor optional+choice+repeated modifiers", () => {
   test("Test 77: [see-like] -> nearby and faraway modifiers available", () => {
-    const modCarnDef = new BrainTileModifierDef("test.carn77", { visual: { label: "carnivore" } });
-    const modHerbDef = new BrainTileModifierDef("test.herb77", { visual: { label: "herbivore" } });
-    const modPlantDef = new BrainTileModifierDef("test.plant77", { visual: { label: "plant" } });
-    const modNearDef77 = new BrainTileModifierDef("test.near77", { visual: { label: "nearby" } });
-    const modFarDef77 = new BrainTileModifierDef("test.far77", { visual: { label: "far away" } });
+    const modCarnDef = new BrainTileModifierDef("test.carn77", { metadata: { label: "carnivore" } });
+    const modHerbDef = new BrainTileModifierDef("test.herb77", { metadata: { label: "herbivore" } });
+    const modPlantDef = new BrainTileModifierDef("test.plant77", { metadata: { label: "plant" } });
+    const modNearDef77 = new BrainTileModifierDef("test.near77", { metadata: { label: "nearby" } });
+    const modFarDef77 = new BrainTileModifierDef("test.far77", { metadata: { label: "far away" } });
     services.tiles.registerTileDef(modCarnDef);
     services.tiles.registerTileDef(modHerbDef);
     services.tiles.registerTileDef(modPlantDef);
@@ -3086,7 +3090,7 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
       "test-see77",
       mkActionDescriptor("sensor", seeFnEntry, CoreTypeIds.Boolean),
       {
-        visual: { label: "see" },
+        metadata: { label: "see" },
       }
     );
     services.tiles.registerTileDef(seeDef77);

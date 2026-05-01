@@ -5,7 +5,7 @@ import { compiler, type FunctionBytecode, Op, type Program, type Value } from "@
 describe("core brain imports", () => {
   test("Op enum is importable and has expected members", () => {
     assert.equal(typeof Op, "object");
-    assert.equal(typeof Op.PUSH_CONST, "number");
+    assert.equal(typeof Op.PUSH_CONST_VAL, "number");
     assert.equal(typeof Op.RET, "number");
   });
 

@@ -34,6 +34,8 @@ function mkCtx(
     getVariable: () => undefined,
     setVariable: () => {},
     clearVariable: () => {},
+    getVariableBySlot: () => NIL_VALUE,
+    setVariableBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -70,7 +72,11 @@ function mkEmptyBrainProgram(): BrainProgram {
   return {
     version: BYTECODE_VERSION,
     functions: List.empty(),
-    constants: List.empty(),
+    constantPools: {
+      numbers: List.empty<number>(),
+      strings: List.empty<string>(),
+      values: List.empty(),
+    },
     variableNames: List.empty(),
     entryPoint: 0,
     ruleIndex: Dict.empty(),
@@ -81,7 +87,7 @@ function mkEmptyBrainProgram(): BrainProgram {
 
 function mkBrainProgramWithStubFunction(): BrainProgram {
   const stubFn: FunctionBytecode = {
-    code: List.from([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }]),
+    code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }]),
     numParams: 0,
     numLocals: 0,
     name: "brain-stub",
@@ -98,7 +104,11 @@ function mkBrainProgramWithStubFunction(): BrainProgram {
   return {
     version: BYTECODE_VERSION,
     functions: List.from([stubFn]),
-    constants: List.from([mkNumberValue(99) as Value]),
+    constantPools: {
+      numbers: List.empty<number>(),
+      strings: List.empty<string>(),
+      values: List.from([mkNumberValue(99) as Value]),
+    },
     variableNames: List.empty(),
     entryPoint: 0,
     ruleIndex: Dict.empty(),
@@ -119,7 +129,7 @@ describe("linker", () => {
 
   test("constant pool indices are correct after merging", () => {
     const brainProg = mkBrainProgramWithStubFunction();
-    assert.equal(brainProg.constants.size(), 1);
+    assert.equal(brainProg.constantPools.values.size(), 1);
 
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -136,13 +146,13 @@ export default Sensor({
     assert.ok(result.program);
 
     const userProg = result.program!;
-    const userConstCount = userProg.constants.size();
+    const userConstCount = userProg.constantPools.values.size();
     assert.ok(userConstCount > 0, "user program should have constants");
 
     const { linkedProgram, linkedArtifacts } = linkUserPrograms(brainProg, [userProg]);
 
-    assert.equal(linkedProgram.constants.size(), 1 + userConstCount);
-    assert.equal((linkedProgram.constants.get(0) as NumberValue).v, 99);
+    assert.equal(linkedProgram.constantPools.values.size(), 1 + userConstCount);
+    assert.equal((linkedProgram.constantPools.values.get(0) as NumberValue).v, 99);
 
     assert.equal(linkedArtifacts.length, 1);
     assert.equal(resolveLinkedFuncId(linkedArtifacts[0], userProg.entryFuncId), userProg.entryFuncId + 1);
@@ -380,7 +390,7 @@ export default Sensor({
     const originalFn = linkedProgram.functions.get(0);
     assert.equal(originalFn.name, "brain-stub");
     assert.equal(originalFn.code.size(), 2);
-    assert.equal(originalFn.code.get(0).op, Op.PUSH_CONST);
+    assert.equal(originalFn.code.get(0).op, Op.PUSH_CONST_VAL);
     assert.equal(originalFn.code.get(0).a, 0);
 
     const handles = new HandleTable(100);
@@ -424,17 +434,17 @@ export default Sensor({
     const brainProg = mkBrainProgramWithStubFunction();
     const funcOffset = brainProg.functions.size();
 
-    const originalFuncConsts = userProg.constants
+    const originalFuncConsts = userProg.constantPools.values
       .toArray()
       .filter((c): c is { t: NativeType.Function; funcId: number } => c.t === NativeType.Function);
     assert.ok(originalFuncConsts.length > 0, "user program should have at least one FunctionValue constant");
 
     const { linkedProgram, linkedArtifacts } = linkUserPrograms(brainProg, [userProg]);
 
-    const constOffset = brainProg.constants.size();
+    const constOffset = brainProg.constantPools.values.size();
     for (const origFc of originalFuncConsts) {
-      const origIndex = userProg.constants.toArray().indexOf(origFc);
-      const linkedConst = linkedProgram.constants.get(constOffset + origIndex);
+      const origIndex = userProg.constantPools.values.toArray().indexOf(origFc);
+      const linkedConst = linkedProgram.constantPools.values.get(constOffset + origIndex);
       assert.equal(linkedConst.t, NativeType.Function);
       assert.equal(
         (linkedConst as { funcId: number }).funcId,

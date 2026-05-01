@@ -14,6 +14,7 @@ import {
   mkParameterTileId,
   mkStringValue,
   NativeType,
+  NIL_VALUE,
   ValueDict,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
@@ -25,6 +26,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     getVariable: () => undefined,
     setVariable: () => {},
     clearVariable: () => {},
+    getVariableBySlot: () => NIL_VALUE,
+    setVariableBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,

@@ -30,8 +30,8 @@ The brain VM (`packages/core/src/brain/runtime/`) is a stack-based bytecode virt
 
 | Range   | Category   | Opcodes                                                                                              |
 | ------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| 0-3     | Stack      | `PUSH_CONST`, `POP`, `DUP`, `SWAP`                                                                   |
-| 10-11   | Variables  | `LOAD_VAR`, `STORE_VAR`                                                                              |
+| 0-5     | Stack      | `PUSH_CONST_VAL`, `POP`, `DUP`, `SWAP`, `PUSH_CONST_NUM`, `PUSH_CONST_STR`                          |
+| 10-11   | Variables  | `LOAD_VAR_SLOT`, `STORE_VAR_SLOT`                                                                    |
 | 20-22   | Control    | `JMP`, `JMP_IF_FALSE`, `JMP_IF_TRUE`                                                                 |
 | 30-31   | Calls      | `CALL`, `RET`                                                                                        |
 | 40-43   | Host       | `HOST_CALL`, `HOST_CALL_ASYNC`, `HOST_CALL_ARGS`, `HOST_CALL_ARGS_ASYNC`                             |
@@ -151,14 +151,18 @@ Singletons: `UNKNOWN_VALUE`, `VOID_VALUE`, `NIL_VALUE`, `TRUE_VALUE`, `FALSE_VAL
 - `WAITING` (suspended on a handle; resumed via `onHandleCompleted`)
 - `FAULT` (with `ErrorValue`)
 
-## Variable Resolution
+## Variable Access
 
-`resolveVariable(fiber, name)` walks:
-1. Optional custom `resolveVariable` hook on `ExecutionContext`
-2. `ctx.getVariable(name)`
-3. Returns `NIL_VALUE` if not found
+Variable access is **slot-keyed at dispatch time**. The `LOAD_VAR_SLOT` and `STORE_VAR_SLOT` opcodes carry a `slotId: u16` operand which is a program-scoped index into `Program.variableNames`. The dispatch loop calls `ExecutionContext.getVariableBySlot(slotId)` / `setVariableBySlot(slotId, value)` -- it performs no `Dict.get(name)` lookup for variable access.
 
-There is no built-in scope chain walk -- scope chaining must be implemented by the application via `resolveVariable`/`setResolvedVariable` hooks on `ExecutionContext`.
+`Brain` owns the value list:
+
+- `Brain.variables: List<Value | undefined>` -- one entry per slot. `undefined` means the slot has never been written; bytecode reads observe `NIL_VALUE`.
+- `Brain.varSlotByName: Dict<string, number>` -- name -> slot map, rebuilt at program load from `Program.variableNames` via the private `installVariableTable(programVariableNames)` helper. Hot-reload copies values forward by name; variables present only in the previous program are dropped.
+
+Name-keyed access remains available to host code via `ExecutionContext.getVariable` / `setVariable` / `clearVariable`. Writing through `setVariable(name, value)` for a name not present in `variableNames` lazy-extends the value list with a fresh slot; that slot is **not addressable from bytecode** and is dropped on the next `installVariableTable` call.
+
+There is no built-in scope chain walk and no `resolveVariable` / `setResolvedVariable` hook. Application-level scope chaining must be implemented inside the host's name-keyed `getVariable` / `setVariable` closures on `ExecutionContext`.
 
 ## FiberScheduler
 

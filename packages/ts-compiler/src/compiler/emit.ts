@@ -3,7 +3,6 @@ import {
   type FunctionBytecode,
   type IFunctionRegistry,
   mkFunctionValue,
-  mkStringValue,
   type TypeId,
 } from "@mindcraft-lang/core/brain";
 import { EmitDiagCode } from "./diag-codes.js";
@@ -93,8 +92,14 @@ export function emitFunction(
 
     switch (node.kind) {
       case "PushConst": {
-        const idx = pool.add(node.value);
-        emitter.pushConst(idx);
+        const ref = pool.addValue(node.value);
+        if (ref.kind === "number") {
+          emitter.pushConstNum(ref.idx);
+        } else if (ref.kind === "string") {
+          emitter.pushConstStr(ref.idx);
+        } else {
+          emitter.pushConst(ref.idx);
+        }
         break;
       }
       case "LoadLocal":
@@ -188,7 +193,7 @@ export function emitFunction(
         emitter.mapGet();
         break;
       case "MapNew": {
-        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        const typeIdIdx = pool.addString(node.typeId);
         emitter.mapNew(typeIdIdx);
         break;
       }
@@ -202,7 +207,7 @@ export function emitFunction(
         emitter.mapDelete();
         break;
       case "StructNew": {
-        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        const typeIdIdx = pool.addString(node.typeId);
         emitter.structNew(typeIdIdx);
         break;
       }
@@ -210,12 +215,12 @@ export function emitFunction(
         emitter.structSet();
         break;
       case "StructCopyExcept": {
-        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        const typeIdIdx = pool.addString(node.typeId);
         emitter.structCopyExcept(node.numExclude, typeIdIdx);
         break;
       }
       case "ListNew": {
-        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        const typeIdIdx = pool.addString(node.typeId);
         emitter.listNew(typeIdIdx);
         break;
       }
@@ -247,8 +252,8 @@ export function emitFunction(
         emitter.listSwap();
         break;
       case "GetField": {
-        const fieldIdx = pool.add(mkStringValue(node.fieldName));
-        emitter.pushConst(fieldIdx);
+        const fieldIdx = pool.addString(node.fieldName);
+        emitter.pushConstStr(fieldIdx);
         emitter.getField();
         break;
       }
@@ -262,7 +267,7 @@ export function emitFunction(
         emitter.typeCheck(node.nativeType);
         break;
       case "InstanceOf": {
-        const typeIdIdx = pool.add(mkStringValue(node.typeId));
+        const typeIdIdx = pool.addString(node.typeId);
         emitter.instanceOf(typeIdIdx);
         break;
       }
@@ -291,7 +296,7 @@ export function emitFunction(
             suspendSites: [],
           };
         }
-        const idx = pool.add(mkFunctionValue(funcId));
+        const idx = pool.addOther(mkFunctionValue(funcId));
         emitter.pushConst(idx);
         break;
       }

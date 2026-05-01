@@ -36,6 +36,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     getVariable: () => undefined,
     setVariable: () => {},
     clearVariable: () => {},
+    getVariableBySlot: () => NIL_VALUE,
+    setVariableBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -80,7 +82,7 @@ function wrapAsExecutable(prog: UserAuthoredProgram): ExecutableBrainProgram {
   return {
     version: prog.version,
     functions: prog.functions,
-    constants: prog.constants,
+    constantPools: prog.constantPools,
     variableNames: prog.variableNames,
     entryPoint: prog.entryFuncId,
     ruleIndex: Dict.empty(),
@@ -229,7 +231,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const originalFuncCount = prog.functions.size();
-    const originalConstCount = prog.constants.size();
+    const originalConstCount = prog.constantPools.values.size();
 
     const executable = wrapAsExecutable(prog);
     const shaken = treeshakeProgram(executable);
@@ -239,8 +241,8 @@ export default Sensor({
       `expected fewer functions: ${shaken.functions.size()} < ${originalFuncCount}`
     );
     assert.ok(
-      shaken.constants.size() <= originalConstCount,
-      `expected no more constants: ${shaken.constants.size()} <= ${originalConstCount}`
+      shaken.constantPools.values.size() <= originalConstCount,
+      `expected no more constants: ${shaken.constantPools.values.size()} <= ${originalConstCount}`
     );
 
     const originalResult = runProgram(prog);
@@ -408,7 +410,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const originalFuncCount = prog.functions.size();
-    const originalConstCount = prog.constants.size();
+    const originalConstCount = prog.constantPools.values.size();
 
     const executable = wrapAsExecutable(prog);
     const shaken = treeshakeProgram(executable);

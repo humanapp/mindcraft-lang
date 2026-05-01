@@ -1002,9 +1002,11 @@ codebase infrastructure:
   `getScopes()`. Extend with debug-aware queries.
 
 **2. Error and Stack Trace Infrastructure**
-- `ErrorValue` type contains `tag` (Timeout, Cancelled, HostError, ScriptError,
-  StackOverflow, StackUnderflow), `message`, `site: { funcId, pc }`, and
-  `stackTrace: List<string>`
+- `ErrorValue` type contains `tag: ErrorCode` (numeric enum: Timeout=1, Cancelled=2,
+  HostError=3, ScriptError=4, StackOverflow=5, StackUnderflow=6),
+  `message`, `site: { funcId, pc }`, and `stackTrace: List<string>`. Use
+  `errorCodeName(tag)` at the diagnostics boundary to recover the canonical
+  string label for display.
 - Frame inspection is already performed during error handling
 - Reuse this path for debugger stack reconstruction (map PC to span via debug metadata).
 
@@ -1861,7 +1863,8 @@ StoppedEvent {
   reason: "exception"
   triggeringFiberId: number
   faultInfo: {
-    tag: string               -- error tag (e.g. "ScriptError", "HostError")
+    tag: number               -- numeric ErrorCode (e.g. ErrorCode.ScriptError = 4)
+    tagName: string           -- canonical name from errorCodeName(tag)
     message: string           -- human-readable error message
     isUserCode: boolean       -- true if fault originated in user bytecode
     location: {               -- source location of the faulting instruction

@@ -26,7 +26,9 @@ import {
   mkTypeId,
   NativeType,
   type NullableTypeDef,
+  type StructFieldDef,
   type StructFieldGetterFn,
+  type StructFieldInput,
   type StructMethodDecl,
   type StructTypeDef,
   type StructTypeShape,
@@ -38,6 +40,22 @@ import {
 } from "../interfaces";
 import type { BrainServices } from "../services";
 import { registerEnumConversions } from "./conversions";
+
+/**
+ * Build a `List<StructFieldDef>` by assigning each input field a stable
+ * `fieldIndex` starting at `baseIndex`. Used by every struct registration
+ * path so `fields.get(i).fieldIndex === baseIndex + i` always holds.
+ */
+function assignFieldIndices(inputs: List<StructFieldInput>, baseIndex: number): List<StructFieldDef> {
+  return inputs.map(
+    (field, i): StructFieldDef => ({
+      name: field.name,
+      typeId: field.typeId,
+      readOnly: field.readOnly,
+      fieldIndex: baseIndex + i,
+    })
+  );
+}
 
 /** Concrete {@link ITypeRegistry}: in-memory type table with constructor-based parameterized types and structural-compatibility caching. */
 export class TypeRegistry implements ITypeRegistry {
@@ -286,7 +304,6 @@ export class TypeRegistry implements ITypeRegistry {
     this.validateTypeName(name);
     const typeId = mkTypeId(NativeType.Struct, name);
     this.validateTypeNotRegistered(typeId);
-    // Ensure no duplicate field names
     const fieldNames = new UniqueSet<string>();
     shape.fields.forEach((field) => {
       if (fieldNames.has(field.name)) {
@@ -294,7 +311,6 @@ export class TypeRegistry implements ITypeRegistry {
       }
       fieldNames.add(field.name);
     });
-    // Ensure field types exist, and gather codecs
     const fieldCodecs = new Dict<string, TypeCodec>();
     shape.fields.forEach((field) => {
       const fieldTypeDef = this.get(field.typeId);
@@ -309,7 +325,12 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new StructCodec(fieldCodecs),
       name,
-      ...shape,
+      fields: assignFieldIndices(shape.fields, 0),
+      nominal: shape.nominal,
+      fieldGetter: shape.fieldGetter,
+      fieldSetter: shape.fieldSetter,
+      snapshotNative: shape.snapshotNative,
+      methods: shape.methods,
     };
     this.add(structTypeDef);
     return typeId;
@@ -324,7 +345,7 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       codec: new StructCodec(new Dict<string, TypeCodec>()),
       name,
-      fields: List.empty<{ name: string; typeId: TypeId }>(),
+      fields: List.empty<StructFieldDef>(),
     };
     this.add(placeholder);
     return typeId;
@@ -354,7 +375,7 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
     const structDef = existing as StructTypeDef;
-    structDef.fields = shape.fields;
+    structDef.fields = assignFieldIndices(shape.fields, 0);
     structDef.codec = new StructCodec(fieldCodecs);
     if (shape.nominal !== undefined) structDef.nominal = shape.nominal;
     if (shape.fieldGetter) structDef.fieldGetter = shape.fieldGetter;
@@ -376,11 +397,7 @@ export class TypeRegistry implements ITypeRegistry {
     structDef.methods = existing.concat(methods);
   }
 
-  addStructFields(
-    typeId: TypeId,
-    fields: List<{ name: string; typeId: TypeId; readOnly?: boolean }>,
-    fieldGetter?: StructFieldGetterFn
-  ): void {
+  addStructFields(typeId: TypeId, fields: List<StructFieldInput>, fieldGetter?: StructFieldGetterFn): void {
     const typeDef = this.get(typeId);
     if (!typeDef) {
       throw new Error(`Type ${typeId} not found`);
@@ -413,7 +430,8 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
 
-    structDef.fields = structDef.fields.concat(fields);
+    const baseIndex = structDef.fields.size();
+    structDef.fields = structDef.fields.concat(assignFieldIndices(fields, baseIndex));
     structDef.codec = new StructCodec(fieldCodecs);
 
     if (fieldGetter) {

@@ -80,6 +80,8 @@ test("coreModule installs through MindcraftModuleApi with brainServices", () => 
     registerTile: fail,
     registerOperator: fail,
     registerConversion: fail,
+    registerModifiers: fail,
+    registerParameters: fail,
   };
 
   coreModule().install(api);

@@ -18,6 +18,7 @@ import {
   type MapValue,
   mkTypeId,
   NativeType,
+  NIL_VALUE,
   type NullableTypeDef,
   nativeTypeToString,
   type StructTypeDef,
@@ -43,6 +44,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     getVariable: () => undefined,
     setVariable: () => {},
     clearVariable: () => {},
+    getVariableBySlot: () => NIL_VALUE,
+    setVariableBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -830,5 +833,83 @@ describe("removeUserTypes", () => {
     assert.ok(registry.get(CoreTypeIds.Number));
     assert.ok(registry.get(CoreTypeIds.String));
     assert.ok(registry.get(CoreTypeIds.Boolean));
+  });
+});
+
+describe("StructTypeDef.fields[i].fieldIndex", () => {
+  before(() => {
+    services = __test__createBrainServices();
+  });
+
+  test("addStructType assigns sequential fieldIndex starting at 0", () => {
+    const registry = services.types;
+    const typeId = registry.addStructType("FieldIndexA", {
+      fields: List.from([
+        { name: "x", typeId: CoreTypeIds.Number },
+        { name: "y", typeId: CoreTypeIds.Number },
+        { name: "label", typeId: CoreTypeIds.String },
+      ]),
+    });
+    const def = registry.get(typeId) as StructTypeDef;
+    assert.equal(def.fields.size(), 3);
+    for (let i = 0; i < def.fields.size(); i++) {
+      assert.equal(def.fields.get(i).fieldIndex, i, `field ${i} fieldIndex mismatch`);
+    }
+  });
+
+  test("finalizeStructType assigns sequential fieldIndex on the reserved type", () => {
+    const registry = services.types;
+    const typeId = registry.reserveStructType("FieldIndexB");
+    registry.finalizeStructType(typeId, {
+      fields: List.from([
+        { name: "a", typeId: CoreTypeIds.Number },
+        { name: "b", typeId: CoreTypeIds.String },
+      ]),
+    });
+    const def = registry.get(typeId) as StructTypeDef;
+    for (let i = 0; i < def.fields.size(); i++) {
+      assert.equal(def.fields.get(i).fieldIndex, i);
+    }
+  });
+
+  test("addStructFields continues fieldIndex from existing tail", () => {
+    const registry = services.types;
+    const typeId = registry.addStructType("FieldIndexC", {
+      fields: List.from([{ name: "first", typeId: CoreTypeIds.Number }]),
+    });
+    registry.addStructFields(
+      typeId,
+      List.from([
+        { name: "second", typeId: CoreTypeIds.Number },
+        { name: "third", typeId: CoreTypeIds.String },
+      ])
+    );
+    const def = registry.get(typeId) as StructTypeDef;
+    assert.equal(def.fields.size(), 3);
+    for (let i = 0; i < def.fields.size(); i++) {
+      assert.equal(def.fields.get(i).fieldIndex, i);
+    }
+    assert.equal(def.fields.get(0).name, "first");
+    assert.equal(def.fields.get(1).name, "second");
+    assert.equal(def.fields.get(2).name, "third");
+  });
+
+  test("forEach iteration order matches fieldIndex", () => {
+    const registry = services.types;
+    const typeId = registry.addStructType("FieldIndexD", {
+      fields: List.from([
+        { name: "alpha", typeId: CoreTypeIds.Number },
+        { name: "beta", typeId: CoreTypeIds.Number },
+        { name: "gamma", typeId: CoreTypeIds.Number },
+      ]),
+    });
+    const def = registry.get(typeId) as StructTypeDef;
+    let expected = 0;
+    def.fields.forEach((field, i) => {
+      assert.equal(i, expected);
+      assert.equal(field.fieldIndex, expected);
+      expected++;
+    });
+    assert.equal(expected, 3);
   });
 });

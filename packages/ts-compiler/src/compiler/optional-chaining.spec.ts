@@ -33,6 +33,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     getVariable: () => undefined,
     setVariable: () => {},
     clearVariable: () => {},
+    getVariableBySlot: () => NIL_VALUE,
+    setVariableBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,

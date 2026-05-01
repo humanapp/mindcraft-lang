@@ -47,6 +47,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
     getVariable: () => undefined,
     setVariable: () => {},
     clearVariable: () => {},
+    getVariableBySlot: () => NIL_VALUE,
+    setVariableBySlot: () => {},
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -309,7 +311,7 @@ export default Sensor({
     assert.ok(prog.revisionId);
     assert.equal(prog.activationFuncId, undefined);
     assert.equal(prog.functions.size(), 1);
-    assert.ok(prog.constants.size() > 0);
+    assert.ok(prog.constantPools.values.size() > 0);
   });
 
   test("invalid output type produces diagnostic for unregistered type", () => {

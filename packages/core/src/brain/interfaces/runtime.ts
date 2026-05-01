@@ -256,30 +256,24 @@ export interface ExecutionContext {
   clearVariable(varId: string): void;
 
   /**
-   * Resolve a named variable through the resolution chain.
-   * This is used for cross-context variable access.
+   * Read a variable by its compiler-assigned slot index. The slot index is
+   * the operand of `LOAD_VAR_SLOT` and corresponds to a position in the
+   * loaded program's `variableNames` list. Returns the slot's current value,
+   * or `NIL_VALUE` if the slot has never been written.
    *
-   * Resolution order:
-   * 1. Local scope (getVariable)
-   * 2. Shared scope (if exists)
-   * 3. Parent context chain (if exists)
-   * 4. Returns nil if not found
-   *
-   * @param name - Variable name to resolve
-   * @returns The variable's value, or undefined if not found
+   * @param slotId - Slot index assigned by the compiler
    */
-  resolveVariable?: (name: string) => Value | undefined;
+  getVariableBySlot(slotId: number): Value;
 
   /**
-   * Set a resolved variable through the resolution chain.
-   * If the variable exists in any scope, updates it there.
-   * Otherwise, creates it in the current context.
+   * Write a variable by its compiler-assigned slot index. The slot index is
+   * the operand of `STORE_VAR_SLOT` and corresponds to a position in the
+   * loaded program's `variableNames` list.
    *
-   * @param name - Variable name to set
+   * @param slotId - Slot index assigned by the compiler
    * @param value - The value to store
-   * @returns true if successful, false otherwise
    */
-  setResolvedVariable?: (name: string, value: Value) => boolean;
+  setVariableBySlot(slotId: number, value: Value): void;
 
   /**
    * Optional application-specific data that can be attached to the execution context.

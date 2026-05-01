@@ -14,7 +14,7 @@ import { Op } from "../interfaces/vm";
  * const loopStart = em.label();
  * em.mark(loopStart);
  * em.pushConst(0);
- * em.loadVar(1);
+ * em.loadVarSlot(1);
  * em.add();
  * em.dup();
  * em.pushConst(1);
@@ -87,7 +87,15 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   // ==========================================
 
   pushConst(constIdx: number): void {
-    this.emit({ op: Op.PUSH_CONST, a: constIdx });
+    this.emit({ op: Op.PUSH_CONST_VAL, a: constIdx });
+  }
+
+  pushConstNum(constIdx: number): void {
+    this.emit({ op: Op.PUSH_CONST_NUM, a: constIdx });
+  }
+
+  pushConstStr(constIdx: number): void {
+    this.emit({ op: Op.PUSH_CONST_STR, a: constIdx });
   }
 
   pop(): void {
@@ -103,15 +111,15 @@ export class BytecodeEmitter implements IBytecodeEmitter {
   }
 
   // ==========================================
-  // Variables (stored in execution context by name)
+  // Variables (slot-indexed; slot id is a position in the program's variableNames pool)
   // ==========================================
 
-  loadVar(varNameIdx: number): void {
-    this.emit({ op: Op.LOAD_VAR, a: varNameIdx });
+  loadVarSlot(slotId: number): void {
+    this.emit({ op: Op.LOAD_VAR_SLOT, a: slotId });
   }
 
-  storeVar(varNameIdx: number): void {
-    this.emit({ op: Op.STORE_VAR, a: varNameIdx });
+  storeVarSlot(slotId: number): void {
+    this.emit({ op: Op.STORE_VAR_SLOT, a: slotId });
   }
 
   // ==========================================

@@ -17,6 +17,7 @@ import {
   type IBrainDef,
   type IBrainPageDef,
   type IBrainRule,
+  NIL_VALUE,
   resetActionInstance,
   type UnlinkedBrainProgram,
   type Value,
@@ -62,11 +63,21 @@ export class Brain implements IBrain {
   pages: List<BrainPage> = new List<BrainPage>();
 
   /**
-   * Variable storage at the Brain level.
-   * Variables are keyed by their unique ID (not by name).
-   * This is the default scope for all variables.
+   * Variable storage at the Brain level, indexed by compiler-assigned slot id.
+   * Slot ids correspond to positions in the loaded program's variableNames pool;
+   * they are the operand of LOAD_VAR_SLOT / STORE_VAR_SLOT. A slot value of
+   * `undefined` means the slot has never been written; bytecode reads of such
+   * slots observe `NIL_VALUE`.
    */
-  private readonly variables: Dict<string, Value> = new Dict<string, Value>();
+  private variables: List<Value | undefined> = List.empty();
+
+  /**
+   * Map from variable name to slot id. Populated from `Program.variableNames`
+   * at program load. Names not in the program may be lazily added by host
+   * functions calling the name-keyed `setVariable` API; such slots are addressable
+   * by name only (no bytecode operand can target them).
+   */
+  private varSlotByName: Dict<string, number> = new Dict<string, number>();
 
   /**
    * Unlinked program emitted by the brain compiler.
@@ -150,6 +161,9 @@ export class Brain implements IBrain {
     // Tree-shake unreachable functions, constants, and variable names.
     this.program = treeshakeProgram(this.program);
 
+    // Wire the brain-level variable storage to the loaded program's variableNames pool.
+    this.installVariableTable(this.program.variableNames);
+
     // Create VM with the linked executable program.
     this.vm = new VM(this.services, this.program, this.handles);
 
@@ -195,6 +209,12 @@ export class Brain implements IBrain {
       clearVariable(varId: string): void {
         brain.clearVariable(varId);
       },
+      getVariableBySlot(slotId: number): Value {
+        return brain.getVariableBySlot(slotId);
+      },
+      setVariableBySlot(slotId: number, value: Value): void {
+        brain.setVariableBySlot(slotId, value);
+      },
       time: 0,
       dt: 0,
       currentTick: 0,
@@ -222,36 +242,123 @@ export class Brain implements IBrain {
   }
 
   /**
-   * Get a variable value by its unique ID.
-   * @param varId - Unique identifier for the variable
+   * Get a variable value by its name. The brain looks up the slot id assigned
+   * to the name (either by the loaded program or lazily by a previous host
+   * write) and returns the slot's current value, or `undefined` if the name
+   * has never been associated with a slot.
+   *
+   * @param varId - Variable name
    * @returns The variable's current value, or undefined if not found
    */
   getVariable<T extends Value>(varId: string): T | undefined {
-    return this.variables.get(varId) as T | undefined;
+    const slotId = this.varSlotByName.get(varId);
+    if (slotId === undefined) return undefined;
+    if (slotId >= this.variables.size()) return undefined;
+    return this.variables.get(slotId) as T | undefined;
   }
 
   /**
-   * Set a variable value by its unique ID.
-   * @param varId - Unique identifier for the variable
+   * Set a variable value by its name. If the name is not yet bound to a slot,
+   * a new slot is allocated and `varSlotByName` is extended. Slots allocated
+   * this way are not addressable from bytecode (no `LOAD_VAR_SLOT` operand can
+   * target them) -- only host functions that use the name-keyed API can read
+   * them back.
+   *
+   * @param varId - Variable name
    * @param value - The value to store
    */
   setVariable(varId: string, value: Value): void {
-    this.variables.set(varId, value);
+    const existingSlot = this.varSlotByName.get(varId);
+    if (existingSlot !== undefined) {
+      this.variables.set(existingSlot, value);
+      return;
+    }
+    const newSlot = this.variables.size();
+    this.variables.push(value);
+    this.varSlotByName.set(varId, newSlot);
   }
 
   /**
-   * Clear a variable by its unique ID.
-   * @param varId - Unique identifier for the variable
+   * Clear a variable by its name. Resets the underlying slot to the
+   * never-written sentinel; the slot itself is retained so subsequent
+   * bytecode operands remain valid (and observe `NIL_VALUE`).
+   *
+   * @param varId - Variable name
    */
   clearVariable(varId: string): void {
-    this.variables.delete(varId);
+    const slotId = this.varSlotByName.get(varId);
+    if (slotId === undefined) return;
+    if (slotId < this.variables.size()) {
+      this.variables.set(slotId, undefined);
+    }
   }
 
   /**
-   * Clear all variables (useful for reset/cleanup).
+   * Reset every slot to the never-written sentinel while preserving the
+   * program-derived slot layout (slot ids and `varSlotByName` mappings
+   * remain stable).
    */
   clearVariables(): void {
-    this.variables.clear();
+    for (let i = 0; i < this.variables.size(); i++) {
+      this.variables.set(i, undefined);
+    }
+  }
+
+  /**
+   * Read a variable by its compiler-assigned slot id. Returns `NIL_VALUE`
+   * if the slot is out of range or has never been written. Called by the
+   * VM dispatch loop on every `LOAD_VAR_SLOT`.
+   */
+  getVariableBySlot(slotId: number): Value {
+    if (slotId < 0 || slotId >= this.variables.size()) return NIL_VALUE;
+    const v = this.variables.get(slotId);
+    return v === undefined ? NIL_VALUE : v;
+  }
+
+  /**
+   * Write a variable by its compiler-assigned slot id. Called by the VM
+   * dispatch loop on every `STORE_VAR_SLOT`. Out-of-range slot ids are
+   * a compiler / linker bug; the VM enforces bounds against
+   * `program.variableNames.size()` before calling this.
+   */
+  setVariableBySlot(slotId: number, value: Value): void {
+    if (slotId < 0) return;
+    while (this.variables.size() <= slotId) {
+      this.variables.push(undefined);
+    }
+    this.variables.set(slotId, value);
+  }
+
+  /**
+   * Wire the brain's variable storage to a program's `variableNames` pool.
+   * Allocates a fresh slot list of size `programVariableNames.size()`
+   * with the never-written sentinel, builds a fresh name->slot map, and
+   * copies any previously-set values forward by name -- preserving values
+   * for variables that exist in both the previous and the new program.
+   * Variables present only in the previous program are dropped; variables
+   * new to the program start unwritten (read as `NIL_VALUE` from bytecode,
+   * `undefined` from the name-keyed `getVariable`).
+   */
+  private installVariableTable(programVariableNames: List<string>): void {
+    const previousValues = this.variables;
+    const previousSlots = this.varSlotByName;
+
+    const newSize = programVariableNames.size();
+    const newValues = List.empty<Value | undefined>();
+    const newSlots = new Dict<string, number>();
+    for (let i = 0; i < newSize; i++) {
+      const name = programVariableNames.get(i)!;
+      newSlots.set(name, i);
+      const oldSlot = previousSlots.get(name);
+      if (oldSlot !== undefined && oldSlot < previousValues.size()) {
+        newValues.push(previousValues.get(oldSlot));
+      } else {
+        newValues.push(undefined);
+      }
+    }
+
+    this.variables = newValues;
+    this.varSlotByName = newSlots;
   }
 
   setEnabled(enabled: boolean) {

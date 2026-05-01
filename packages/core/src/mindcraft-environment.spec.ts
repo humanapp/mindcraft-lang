@@ -208,7 +208,11 @@ function createBundleSensor(
           name: "entry",
         },
       ]),
-      constants: List.empty(),
+      constantPools: {
+        numbers: List.empty<number>(),
+        strings: List.empty<string>(),
+        values: List.empty(),
+      },
       variableNames: List.empty(),
       entryPoint: 0,
       key: descriptor.key,

@@ -711,14 +711,18 @@ describe("Brain behavioral -- action state", () => {
           code: List.from([
             { op: Op.HOST_CALL_ARGS, a: activationFnEntry.id, b: 0, c: 0 },
             { op: Op.STORE_CALLSITE_VAR, a: 0 },
-            { op: Op.PUSH_CONST, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
             { op: Op.RET },
           ]),
           numParams: 0,
           name: "activation",
         },
       ]),
-      constants: List.from([NIL_VALUE]),
+      constantPools: {
+        numbers: List.empty<number>(),
+        strings: List.empty<string>(),
+        values: List.from([NIL_VALUE]),
+      },
       variableNames: List.empty(),
       entryPoint: 0,
       key: descriptor.key,
@@ -844,7 +848,7 @@ describe("Brain behavioral -- compiled program structure", () => {
     assert.equal(program!.version, 1, "bytecode version should be 1");
     assert.ok(program!.functions.size() > 0, "should have at least one function");
     assert.ok(program!.pages.size() > 0, "should have at least one page");
-    assert.ok(program!.constants.size() > 0, "should have constants");
+    assert.ok(program!.constantPools.values.size() > 0, "should have constants");
   });
 
   test("action tiles compile to unlinked action refs and page action callsites", () => {
@@ -1073,6 +1077,88 @@ describe("Brain behavioral -- timeout sensor", () => {
       brain.getVariable(sentinelVar.varName),
       undefined,
       "DO should NEVER run when delay expression evaluates to nil/NaN"
+    );
+  });
+});
+
+// ---- Slot-keyed variable storage ----
+
+describe("Brain -- slot-keyed variable storage", () => {
+  test("storage agreement: setVariable(name, v) is readable via getVariableBySlot at the program-assigned slot", () => {
+    const v = mkVar("agreed");
+    const brainDef = buildBrain([], [v, opAssign, mkLiteral(123)]);
+    const brain = brainDef.compile();
+    brain.initialize();
+
+    const program = brain.getProgram();
+    assert.ok(program !== undefined, "program should exist after initialize");
+    let slotId = -1;
+    for (let i = 0; i < program!.variableNames.size(); i++) {
+      if (program!.variableNames.get(i) === v.varName) {
+        slotId = i;
+        break;
+      }
+    }
+    assert.ok(slotId >= 0, "program.variableNames should contain the test variable");
+
+    const written = mkNumberValue(777);
+    brain.setVariable(v.varName, written);
+
+    const readByName = brain.getVariable(v.varName);
+    const readBySlot = (brain as Brain).getVariableBySlot(slotId);
+    assert.equal(readByName, written, "name-keyed read should return the written value");
+    assert.equal(readBySlot, written, "slot-keyed read should return the written value");
+  });
+
+  test("name-keyed setVariable lazy-extends for names not in program.variableNames", () => {
+    const v = mkVar("only-program-var");
+    const brainDef = buildBrain([], [v, opAssign, mkLiteral(1)]);
+    const brain = brainDef.compile();
+    brain.initialize();
+
+    const fresh = mkNumberValue(42);
+    brain.setVariable("not-in-program", fresh);
+
+    const readBack = brain.getVariable("not-in-program");
+    assert.equal(readBack, fresh, "host-allocated slot must be readable by name");
+  });
+
+  test("hot-reload via re-initialize preserves values for surviving variable names", () => {
+    const v = mkVar("preserve");
+    const brainDef = buildBrain([], [v, opAssign, mkLiteral(1)]);
+    const brain = brainDef.compile();
+    brain.initialize();
+
+    const persisted = mkNumberValue(99);
+    brain.setVariable(v.varName, persisted);
+
+    brain.initialize();
+
+    const readAfter = brain.getVariable(v.varName);
+    assert.equal(readAfter, persisted, "value should survive re-initialize when name is still in variableNames");
+  });
+
+  test("clearVariable resets slot so name-keyed read returns undefined and slot-keyed read returns NIL", () => {
+    const v = mkVar("clearable");
+    const brainDef = buildBrain([], [v, opAssign, mkLiteral(1)]);
+    const brain = brainDef.compile();
+    brain.initialize();
+
+    brain.setVariable(v.varName, mkNumberValue(5));
+    brain.clearVariable(v.varName);
+
+    assert.equal(brain.getVariable(v.varName), undefined, "name-keyed read of cleared slot returns undefined");
+
+    const program = brain.getProgram();
+    let slotId = -1;
+    for (let i = 0; i < program!.variableNames.size(); i++) {
+      if (program!.variableNames.get(i) === v.varName) slotId = i;
+    }
+    assert.ok(slotId >= 0);
+    assert.equal(
+      (brain as Brain).getVariableBySlot(slotId).t,
+      NativeType.Nil,
+      "slot-keyed read of cleared slot returns NIL"
     );
   });
 });

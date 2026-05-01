@@ -57,7 +57,7 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.spec.json",
     "pretest": "npm run build:prod",
     "test": "tsx --tsconfig tsconfig.spec.json --test $(find src -name '*.spec.ts')",
     "format": "biome format ./src --write",

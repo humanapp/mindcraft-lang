@@ -39,7 +39,11 @@ function mkEmptyBrainProgram(): BrainProgram {
   return {
     version: BYTECODE_VERSION,
     functions: List.empty(),
-    constants: List.empty(),
+    constantPools: {
+      numbers: List.empty<number>(),
+      strings: List.empty<string>(),
+      values: List.empty(),
+    },
     variableNames: List.empty(),
     entryPoint: 0,
     ruleIndex: Dict.empty(),
@@ -261,7 +265,7 @@ export default Sensor({
 
     const brainProgram = mkEmptyBrainProgram();
     const stubFn: FunctionBytecode = {
-      code: List.from([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }]),
+      code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }]),
       numParams: 0,
       numLocals: 0,
       name: "brain-stub",
@@ -269,7 +273,10 @@ export default Sensor({
     const brainWithStub: BrainProgram = {
       ...brainProgram,
       functions: List.from([stubFn, stubFn, stubFn]),
-      constants: List.from([mkNumberValue(0) as Value]),
+      constantPools: {
+        ...brainProgram.constantPools,
+        values: List.from([mkNumberValue(0) as Value]),
+      },
     };
 
     const linkResult = linkUserPrograms(brainWithStub, [result.program!]);

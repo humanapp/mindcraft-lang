@@ -84,15 +84,6 @@ export interface VmConfig {
   defaultBudget: number;
   /** Enable debug mode: validates stack depth after function calls, warns on potential leaks */
   debugStackChecks?: boolean;
-  /**
-   * When true (default), the VM allocates a fresh {@link ErrorValue} for every
-   * fault, populating `message`, `detail`, `site`, and `stackTrace` for
-   * diagnostics. When false, the VM returns the frozen pooled instance for the
-   * code (see {@link pooledError}) and discards per-instance detail. The
-   * pooled path eliminates per-fault allocation; the rich path preserves
-   * developer ergonomics. The MCU port runs with this disabled.
-   */
-  richErrors?: boolean;
 }
 
 ///////////////////////////
@@ -142,32 +133,12 @@ export function errorCodeName(code: ErrorCode): string {
 
 /** Tagged error payload produced by the VM (timeouts, host exceptions, stack faults, etc.). */
 export type ErrorValue = {
-  tag: ErrorCode;
+  code: ErrorCode;
   message: string;
   detail?: unknown;
   site?: { funcId: number; pc: number };
   stackTrace?: List<string>;
 };
-
-const POOLED_ERRORS: { readonly [K in ErrorCode]: ErrorValue } = {
-  [ErrorCode.Timeout]: { tag: ErrorCode.Timeout, message: "" },
-  [ErrorCode.Cancelled]: { tag: ErrorCode.Cancelled, message: "" },
-  [ErrorCode.HostError]: { tag: ErrorCode.HostError, message: "" },
-  [ErrorCode.ScriptError]: { tag: ErrorCode.ScriptError, message: "" },
-  [ErrorCode.StackOverflow]: { tag: ErrorCode.StackOverflow, message: "" },
-  [ErrorCode.StackUnderflow]: { tag: ErrorCode.StackUnderflow, message: "" },
-};
-
-/**
- * Return the canonical pooled {@link ErrorValue} for `code`. The same call
- * with the same code returns an identity-equal instance with empty `message`
- * and no `detail` / `site` / `stackTrace`. The returned instance is shared;
- * callers must treat it as immutable. Use when {@link VmConfig.richErrors}
- * is disabled or when the caller has no per-instance context to attach.
- */
-export function pooledError(code: ErrorCode): ErrorValue {
-  return POOLED_ERRORS[code];
-}
 
 /** Dictionary of brain {@link Value}s with typed accessors per native type. */
 export class ValueDict extends Dict<string | number, Value> {
@@ -404,14 +375,19 @@ export function isErrValue(v: Value): v is { t: "err"; e: ErrorValue } {
 /** Brain VM bytecode opcodes. */
 export enum Op {
   // Stack manipulation
-  PUSH_CONST = 0,
+  /** Pushes `Program.constantPools.values[a]` (residual / non-numeric / non-string pool). */
+  PUSH_CONST_VAL = 0,
   POP,
   DUP,
   SWAP,
+  /** Pushes `Program.constantPools.numbers[a]` as a NumberValue. */
+  PUSH_CONST_NUM = 4,
+  /** Pushes `Program.constantPools.strings[a]` as a StringValue. */
+  PUSH_CONST_STR = 5,
 
-  // Variables (stored in execution context)
-  LOAD_VAR = 10,
-  STORE_VAR,
+  // Variables (stored in the brain by slot index from the program's variableNames pool)
+  LOAD_VAR_SLOT = 10,
+  STORE_VAR_SLOT,
 
   // Control flow
   JMP = 20,
@@ -524,11 +500,48 @@ export interface FunctionBytecode {
   injectCtxTypeId?: TypeId;
 }
 
-/** Compiled program: functions, constant pool, named variables, and entry point. */
+/**
+ * Three parallel typed constant pools carried by every {@link Program}.
+ * Pool indices are independent: the same numeric `idx` in `numbers`,
+ * `strings`, and `values` references unrelated entries.
+ */
+export interface ConstantPools {
+  /** Raw `number` values pushed by `PUSH_CONST_NUM` (wrapped into `NumberValue` at runtime). */
+  numbers: List<number>;
+  /**
+   * Raw `string` values pushed by `PUSH_CONST_STR`, and used directly
+   * (without `Value` wrapping) as the typeId payload for `INSTANCE_OF.a`,
+   * `LIST_NEW.b`, `MAP_NEW.b`, `STRUCT_NEW.b`, `STRUCT_COPY_EXCEPT.b`,
+   * and as the field-name payload for `GET_FIELD.a` / `SET_FIELD.a`.
+   */
+  strings: List<string>;
+  /**
+   * Residual heterogeneous pool addressed by `PUSH_CONST_VAL`. Carries every
+   * `Value` shape that is not a plain number or string: `Nil`, `Boolean`,
+   * `Enum`, `List`, `Map`, `Struct`, `Function`, etc.
+   */
+  values: List<Value>;
+}
+
+/**
+ * Per-pool offsets used by the linker when concatenating constant pools
+ * across artifacts.
+ */
+export interface ConstantOffsets {
+  numbers: number;
+  strings: number;
+  values: number;
+}
+
+/**
+ * Compiled program. Constants are split into typed sub-pools for compactness
+ * and ease of porting to fixed-size native vectors. See {@link ConstantPools}
+ * for pool semantics.
+ */
 export interface Program {
   version: number;
   functions: List<FunctionBytecode>;
-  constants: List<Value>;
+  constantPools: ConstantPools;
   /** Named variable identifiers for cross-context variable access */
   variableNames: List<string>;
   entryPoint?: number;
@@ -778,7 +791,7 @@ export class HandleTable {
       throw new Error(`Cannot cancel handle ${id} in state ${h.state}`);
     }
     h.state = HandleState.CANCELLED;
-    h.error = { tag: ErrorCode.Cancelled, message };
+    h.error = { code: ErrorCode.Cancelled, message };
     this.eventEmitter.emit("completed", id);
   }
 

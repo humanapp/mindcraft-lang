@@ -30,10 +30,22 @@ export interface IBytecodeEmitter {
   // ==========================================
 
   /**
-   * Push a constant value onto the stack.
-   * @param constIdx Index into the constant pool
+   * Push a residual constant value onto the stack.
+   * @param constIdx Index into `Program.constantPools.values` (the residual sub-pool).
    */
   pushConst(constIdx: number): void;
+
+  /**
+   * Push a numeric constant onto the stack as a `NumberValue`.
+   * @param constIdx Index into `Program.constantPools.numbers`.
+   */
+  pushConstNum(constIdx: number): void;
+
+  /**
+   * Push a string constant onto the stack as a `StringValue`.
+   * @param constIdx Index into `Program.constantPools.strings`.
+   */
+  pushConstStr(constIdx: number): void;
 
   /**
    * Pop the top value from the stack.
@@ -51,20 +63,20 @@ export interface IBytecodeEmitter {
   swap(): void;
 
   // ==========================================
-  // Variables (stored in execution context by name)
+  // Variables (slot-indexed; slot id is a position in the program's variableNames pool)
   // ==========================================
 
   /**
-   * Load a variable from the execution context onto the stack.
-   * @param varNameIdx Index into the program's variableNames list
+   * Load a variable from its compiler-assigned slot onto the stack.
+   * @param slotId Slot index. Position in the program's variableNames list.
    */
-  loadVar(varNameIdx: number): void;
+  loadVarSlot(slotId: number): void;
 
   /**
-   * Store the top stack value into a variable in the execution context.
-   * @param varNameIdx Index into the program's variableNames list
+   * Store the top stack value into a variable by its compiler-assigned slot.
+   * @param slotId Slot index. Position in the program's variableNames list.
    */
-  storeVar(varNameIdx: number): void;
+  storeVarSlot(slotId: number): void;
 
   // ==========================================
   // Control flow

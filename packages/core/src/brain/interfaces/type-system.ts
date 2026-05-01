@@ -119,13 +119,30 @@ export interface StructMethodDecl {
   isAsync?: boolean;
 }
 
+/**
+ * Field definition supplied at struct registration. The registry assigns
+ * a stable {@link StructFieldDef.fieldIndex} when storing it.
+ */
+export interface StructFieldInput {
+  readonly name: string;
+  readonly typeId: TypeId;
+  readonly readOnly?: boolean;
+}
+
+/**
+ * Stored field definition on a registered {@link StructTypeDef}. The
+ * {@link fieldIndex} is the field's stable, zero-based position in
+ * {@link StructTypeDef.fields}; `fields.get(i).fieldIndex === i` for every
+ * registered closed struct, and consumers may treat `fieldIndex` as a stable
+ * id for indexed access (e.g. the V3.3 `STRUCT_GET_FIELD` opcode).
+ */
+export interface StructFieldDef extends StructFieldInput {
+  readonly fieldIndex: number;
+}
+
 /** Shape fields specific to struct types. */
 export interface StructTypeShape {
-  fields: List<{
-    name: string;
-    typeId: TypeId;
-    readOnly?: boolean;
-  }>;
+  fields: List<StructFieldInput>;
   /** If true, the struct requires exact TypeId match (no structural subtyping). */
   nominal?: boolean;
   /** If provided, GET_FIELD delegates to this instead of Dict lookup. */
@@ -143,8 +160,13 @@ export interface StructTypeShape {
   methods?: List<StructMethodDecl>;
 }
 
-/** A registered struct type. */
-export type StructTypeDef = TypeDef & StructTypeShape;
+/**
+ * A registered struct type. Differs from {@link StructTypeShape} by storing
+ * fields as {@link StructFieldDef} (with assigned {@link StructFieldDef.fieldIndex}).
+ */
+export interface StructTypeDef extends TypeDef, Omit<StructTypeShape, "fields"> {
+  fields: List<StructFieldDef>;
+}
 
 /** Shape fields specific to nullable types. */
 export interface NullableTypeShape {
@@ -197,11 +219,7 @@ export interface ITypeRegistry {
   reserveStructType(name: string): TypeId;
   finalizeStructType(typeId: TypeId, shape: StructTypeShape): void;
   addStructMethods(typeId: TypeId, methods: List<StructMethodDecl>): void;
-  addStructFields(
-    typeId: TypeId,
-    fields: List<{ name: string; typeId: TypeId; readOnly?: boolean }>,
-    fieldGetter?: StructFieldGetterFn
-  ): void;
+  addStructFields(typeId: TypeId, fields: List<StructFieldInput>, fieldGetter?: StructFieldGetterFn): void;
   addAnyType(name: string): TypeId;
   addFunctionType(name: string): TypeId;
   addNullableType(baseTypeId: TypeId): TypeId;

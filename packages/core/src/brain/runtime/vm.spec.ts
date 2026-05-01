@@ -46,7 +46,6 @@ import {
   type NumberValue,
   Op,
   type Program,
-  pooledError,
   setCallSiteState,
   TRUE_VALUE,
   type Value,
@@ -69,7 +68,11 @@ function mkProgram(functions: FunctionBytecode[], constants: Value[] = [], varia
   return {
     version: BYTECODE_VERSION,
     functions: List.from(functions),
-    constants: List.from(constants),
+    constantPools: {
+      numbers: List.empty<number>(),
+      strings: List.empty<string>(),
+      values: List.from(constants),
+    },
     variableNames: List.from(variableNames),
     entryPoint: 0,
   };
@@ -80,11 +83,17 @@ function mkFunc(code: Instr[], numParams = 0, name?: string): FunctionBytecode {
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+  const slots = List.empty<Value>();
   return {
     brain: undefined as never,
     getVariable: () => undefined,
     setVariable: () => {},
     clearVariable: () => {},
+    getVariableBySlot: (slotId: number) => slots.get(slotId) ?? NIL_VALUE,
+    setVariableBySlot: (slotId: number, value: Value) => {
+      while (slots.size() <= slotId) slots.push(NIL_VALUE);
+      slots.set(slotId, value);
+    },
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -108,7 +117,7 @@ function mkSchedulerCallbacks() {
 
 describe("VM -- stack operations", () => {
   test("PUSH_CONST pushes constant onto stack", () => {
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }])], [mkNumberValue(42)]);
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [mkNumberValue(42)]);
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
     const ctx = mkCtx();
@@ -129,7 +138,7 @@ describe("VM -- stack operations", () => {
     // Push 10, DUP, add them (via two POPs and checking result)
     // Simpler: push 10, dup, pop (discard top), ret -> returns 10
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.DUP }, { op: Op.POP }, { op: Op.RET }])],
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.DUP }, { op: Op.POP }, { op: Op.RET }])],
       [mkNumberValue(10)]
     );
     const handles = new HandleTable(100);
@@ -151,8 +160,8 @@ describe("VM -- stack operations", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // push 1
-          { op: Op.PUSH_CONST, a: 1 }, // push 2
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // push 1
+          { op: Op.PUSH_CONST_VAL, a: 1 }, // push 2
           { op: Op.SWAP }, // [2, 1]
           { op: Op.POP }, // [2]
           { op: Op.RET },
@@ -176,19 +185,15 @@ describe("VM -- stack operations", () => {
 // ---- Variable operations ----
 
 describe("VM -- variable operations", () => {
-  test("STORE_VAR and LOAD_VAR round-trip", () => {
-    const vars = new Dict<string, Value>();
-    const ctx = mkCtx({
-      getVariable: <T extends Value>(id: string) => vars.get(id) as T | undefined,
-      setVariable: (id: string, val: Value) => vars.set(id, val),
-    });
+  test("STORE_VAR_SLOT and LOAD_VAR_SLOT round-trip", () => {
+    const ctx = mkCtx();
 
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // push 99
-          { op: Op.STORE_VAR, a: 0 }, // store to "x"
-          { op: Op.LOAD_VAR, a: 0 }, // load "x"
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // push 99
+          { op: Op.STORE_VAR_SLOT, a: 0 }, // store to slot 0 ("x")
+          { op: Op.LOAD_VAR_SLOT, a: 0 }, // load slot 0 ("x")
           { op: Op.RET },
         ]),
       ],
@@ -207,10 +212,10 @@ describe("VM -- variable operations", () => {
     }
   });
 
-  test("LOAD_VAR returns NIL for unset variable", () => {
+  test("LOAD_VAR_SLOT returns NIL for unset variable", () => {
     const ctx = mkCtx();
 
-    const prog = mkProgram([mkFunc([{ op: Op.LOAD_VAR, a: 0 }, { op: Op.RET }])], [], ["unset"]);
+    const prog = mkProgram([mkFunc([{ op: Op.LOAD_VAR_SLOT, a: 0 }, { op: Op.RET }])], [], ["unset"]);
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
@@ -234,9 +239,9 @@ describe("VM -- control flow", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // 0: push 42
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 0: push 42
           { op: Op.JMP, a: 2 }, // 1: JMP -> pc 1+2 = 3 (RET)
-          { op: Op.PUSH_CONST, a: 1 }, // 2: push 999 (should be skipped)
+          { op: Op.PUSH_CONST_VAL, a: 1 }, // 2: push 999 (should be skipped)
           { op: Op.RET }, // 3
         ]),
       ],
@@ -258,11 +263,11 @@ describe("VM -- control flow", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // 0: push false
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 0: push false
           { op: Op.JMP_IF_FALSE, a: 3 }, // 1: if false, JMP -> 4
-          { op: Op.PUSH_CONST, a: 2 }, // 2: push 999
+          { op: Op.PUSH_CONST_VAL, a: 2 }, // 2: push 999
           { op: Op.RET }, // 3: return 999
-          { op: Op.PUSH_CONST, a: 3 }, // 4: push 1 (taken branch)
+          { op: Op.PUSH_CONST_VAL, a: 3 }, // 4: push 1 (taken branch)
           { op: Op.RET }, // 5: return 1
         ]),
       ],
@@ -284,11 +289,11 @@ describe("VM -- control flow", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // 0: push true
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 0: push true
           { op: Op.JMP_IF_TRUE, a: 3 }, // 1: if true, JMP -> 4
-          { op: Op.PUSH_CONST, a: 1 }, // 2: push 999 (skipped)
+          { op: Op.PUSH_CONST_VAL, a: 1 }, // 2: push 999 (skipped)
           { op: Op.RET }, // 3: return 999
-          { op: Op.PUSH_CONST, a: 2 }, // 4: push 1 (taken branch)
+          { op: Op.PUSH_CONST_VAL, a: 2 }, // 4: push 1 (taken branch)
           { op: Op.RET }, // 5: return 1
         ]),
       ],
@@ -320,7 +325,7 @@ describe("VM -- function calls", () => {
           { op: Op.RET }, // return result from func 1
         ]),
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // push 42
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // push 42
           { op: Op.RET },
         ]),
       ],
@@ -342,8 +347,8 @@ describe("VM -- function calls", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // push 10
-          { op: Op.PUSH_CONST, a: 1 }, // push 20
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // push 10
+          { op: Op.PUSH_CONST_VAL, a: 1 }, // push 20
           { op: Op.CALL, a: 1, b: 2 }, // call func 1 with 2 args
           { op: Op.RET },
         ]),
@@ -376,8 +381,8 @@ describe("VM -- function calls", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // push "first"
-          { op: Op.PUSH_CONST, a: 1 }, // push "second"
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // push "first"
+          { op: Op.PUSH_CONST_VAL, a: 1 }, // push "second"
           { op: Op.CALL, a: 1, b: 2 },
           { op: Op.RET },
         ]),
@@ -408,7 +413,7 @@ describe("VM -- function calls", () => {
   test("CALL with single argument", () => {
     const prog = mkProgram(
       [
-        mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.CALL, a: 1, b: 1 }, { op: Op.RET }]),
+        mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.CALL, a: 1, b: 1 }, { op: Op.RET }]),
         {
           code: List.from([{ op: Op.LOAD_LOCAL, a: 0 }, { op: Op.RET }]),
           numParams: 1,
@@ -436,8 +441,8 @@ describe("VM -- function calls", () => {
       [
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 0 }, // push sentinel 111
-            { op: Op.PUSH_CONST, a: 1 }, // push arg 222
+            { op: Op.PUSH_CONST_VAL, a: 0 }, // push sentinel 111
+            { op: Op.PUSH_CONST_VAL, a: 1 }, // push arg 222
             { op: Op.CALL, a: 1, b: 1 }, // call func 1 with 1 arg (pops 222)
             { op: Op.POP }, // pop return value
             { op: Op.RET }, // return sentinel 111
@@ -448,7 +453,7 @@ describe("VM -- function calls", () => {
         },
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 2 }, // push 333 (return value)
+            { op: Op.PUSH_CONST_VAL, a: 2 }, // push 333 (return value)
             { op: Op.RET },
           ]),
           numParams: 1,
@@ -475,13 +480,13 @@ describe("VM -- function calls", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // push arg 5
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // push arg 5
           { op: Op.CALL, a: 1, b: 1 },
           { op: Op.RET },
         ]),
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 1 }, // push 10
+            { op: Op.PUSH_CONST_VAL, a: 1 }, // push 10
             { op: Op.STORE_LOCAL, a: 2 }, // store into extra local slot 2
             { op: Op.LOAD_LOCAL, a: 2 }, // load it back
             { op: Op.RET }, // return 10
@@ -512,14 +517,14 @@ describe("VM -- function calls", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // push 7
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // push 7
           { op: Op.CALL, a: 1, b: 1 },
           { op: Op.RET },
         ]),
         {
           code: List.from([
             { op: Op.LOAD_LOCAL, a: 0 }, // push 7 (received arg)
-            { op: Op.PUSH_CONST, a: 1 }, // push 3
+            { op: Op.PUSH_CONST_VAL, a: 1 }, // push 3
             { op: Op.CALL, a: 2, b: 2 },
             { op: Op.RET },
           ]),
@@ -557,13 +562,13 @@ describe("VM -- function calls", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // push 50
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // push 50
           { op: Op.CALL, a: 1, b: 1 },
           { op: Op.RET },
         ]),
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 1 }, // push 999
+            { op: Op.PUSH_CONST_VAL, a: 1 }, // push 999
             { op: Op.STORE_LOCAL, a: 0 }, // overwrite arg with 999
             { op: Op.LOAD_LOCAL, a: 0 },
             { op: Op.RET },
@@ -599,9 +604,9 @@ describe("VM -- local variables", () => {
       [
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 0 }, // push 5
+            { op: Op.PUSH_CONST_VAL, a: 0 }, // push 5
             { op: Op.STORE_LOCAL, a: 0 }, // local[0] = 5
-            { op: Op.PUSH_CONST, a: 1 }, // push 10
+            { op: Op.PUSH_CONST_VAL, a: 1 }, // push 10
             { op: Op.STORE_LOCAL, a: 1 }, // local[1] = 10
             { op: Op.LOAD_LOCAL, a: 0 }, // push local[0] (5)
             { op: Op.RET },
@@ -633,7 +638,7 @@ describe("VM -- local variables", () => {
       [
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 0 }, // push 99
+            { op: Op.PUSH_CONST_VAL, a: 0 }, // push 99
             { op: Op.STORE_LOCAL, a: 0 }, // local[0] = 99
             { op: Op.CALL, a: 1, b: 0 },
             { op: Op.POP }, // discard callee result
@@ -646,7 +651,7 @@ describe("VM -- local variables", () => {
         },
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 1 }, // push 1
+            { op: Op.PUSH_CONST_VAL, a: 1 }, // push 1
             { op: Op.STORE_LOCAL, a: 0 }, // local[0] = 1
             { op: Op.LOAD_LOCAL, a: 0 }, // push 1
             { op: Op.RET },
@@ -707,7 +712,7 @@ describe("VM -- local variables", () => {
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
     assert.equal(result.status, VmStatus.FAULT);
     if (result.status === VmStatus.FAULT) {
-      assert.equal(result.error.tag, ErrorCode.ScriptError);
+      assert.equal(result.error.code, ErrorCode.ScriptError);
     }
   });
 });
@@ -724,21 +729,25 @@ describe("VM -- malformed bytecode faults as ScriptError", () => {
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
     assert.equal(result.status, VmStatus.FAULT, "expected fiber to fault");
     if (result.status === VmStatus.FAULT) {
-      assert.equal(result.error.tag, ErrorCode.ScriptError);
+      assert.equal(result.error.code, ErrorCode.ScriptError);
     }
   }
 
   test("PUSH_CONST out-of-bounds constant index faults", () => {
-    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 99 }, { op: Op.RET }])], []));
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 99 }, { op: Op.RET }])], []));
   });
 
-  test("LOAD_VAR out-of-bounds name index faults", () => {
-    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.LOAD_VAR, a: 7 }, { op: Op.RET }])], [], []));
+  test("LOAD_VAR_SLOT out-of-bounds slot index faults", () => {
+    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.LOAD_VAR_SLOT, a: 7 }, { op: Op.RET }])], [], []));
   });
 
-  test("STORE_VAR out-of-bounds name index faults", () => {
+  test("STORE_VAR_SLOT out-of-bounds slot index faults", () => {
     expectScriptErrorFault(
-      mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.STORE_VAR, a: 7 }, { op: Op.RET }])], [NIL_VALUE], [])
+      mkProgram(
+        [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.STORE_VAR_SLOT, a: 7 }, { op: Op.RET }])],
+        [NIL_VALUE],
+        []
+      )
     );
   });
 
@@ -762,7 +771,7 @@ describe("VM -- malformed bytecode faults as ScriptError", () => {
   test("CALL_INDIRECT with bad funcId faults", () => {
     // Push a fabricated FunctionValue referencing a missing funcId, then CALL_INDIRECT with 0 args.
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }])],
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }])],
       [mkFunctionValue(99)]
     );
     expectScriptErrorFault(prog);
@@ -773,8 +782,8 @@ describe("VM -- malformed bytecode faults as ScriptError", () => {
       mkProgram(
         [
           mkFunc([
-            { op: Op.PUSH_CONST, a: 0 },
-            { op: Op.PUSH_CONST, a: 1 },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
             { op: Op.INSTANCE_OF, a: 1 },
             { op: Op.RET },
           ]),
@@ -795,7 +804,9 @@ describe("VM -- malformed bytecode faults as ScriptError", () => {
   });
 
   test("THROW of a non-error value faults as ScriptError", () => {
-    expectScriptErrorFault(mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.THROW }])], [mkNumberValue(1)]));
+    expectScriptErrorFault(
+      mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.THROW }])], [mkNumberValue(1)])
+    );
   });
 
   test("Unknown opcode faults", () => {
@@ -869,7 +880,7 @@ describe("VM -- malformed bytecode faults as ScriptError", () => {
       // (ScriptError for malformed bytecode; StackUnderflow when a POP-family
       // op runs on an empty stack; StackOverflow if a tight loop exceeds caps).
       if (result.status === VmStatus.FAULT) {
-        const tag = result.error.tag;
+        const tag = result.error.code;
         assert.ok(
           tag === ErrorCode.ScriptError || tag === ErrorCode.StackUnderflow || tag === ErrorCode.StackOverflow,
           `trial ${trial}: fault tag must be controlled, got ${errorCodeName(tag)}`
@@ -892,14 +903,14 @@ describe("VM -- callsite-persistent variables", () => {
     const prog = mkProgram(
       [
         {
-          code: List.from([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 9 }, { op: Op.RET }]),
+          code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 9 }, { op: Op.RET }]),
           numParams: 0,
           numLocals: 0,
           name: "root",
         },
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 1 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
             { op: Op.STORE_CALLSITE_VAR, a: 0 },
             { op: Op.LOAD_CALLSITE_VAR, a: 0 },
             { op: Op.RET },
@@ -965,14 +976,14 @@ describe("VM -- callsite-persistent variables", () => {
     const prog = mkProgram(
       [
         {
-          code: List.from([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 4 }, { op: Op.RET }]),
+          code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 4 }, { op: Op.RET }]),
           numParams: 0,
           numLocals: 0,
           name: "root",
         },
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 1 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
             { op: Op.STORE_CALLSITE_VAR, a: 0 },
             { op: Op.CALL, a: 2, b: 0 },
             { op: Op.RET },
@@ -1035,13 +1046,13 @@ describe("VM -- callsite-persistent variables", () => {
         [
           mkFunc(
             [
-              { op: Op.PUSH_CONST, a: 0 },
+              { op: Op.PUSH_CONST_VAL, a: 0 },
               { op: Op.ACTION_CALL, a: 0, c: 1 },
               { op: Op.POP },
-              { op: Op.PUSH_CONST, a: 0 },
+              { op: Op.PUSH_CONST_VAL, a: 0 },
               { op: Op.ACTION_CALL, a: 0, c: 2 },
               { op: Op.POP },
-              { op: Op.PUSH_CONST, a: 0 },
+              { op: Op.PUSH_CONST_VAL, a: 0 },
               { op: Op.ACTION_CALL, a: 0, c: 1 },
               { op: Op.RET },
             ],
@@ -1084,7 +1095,7 @@ describe("VM -- callsite-persistent variables", () => {
 
 describe("VM -- fiber state machine", () => {
   test("fiber starts in RUNNABLE state", () => {
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
@@ -1093,7 +1104,7 @@ describe("VM -- fiber state machine", () => {
   });
 
   test("fiber transitions to DONE on completion", () => {
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
@@ -1105,7 +1116,7 @@ describe("VM -- fiber state machine", () => {
   });
 
   test("fiber transitions to CANCELLED when cancelled", () => {
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
@@ -1120,7 +1131,7 @@ describe("VM -- fiber state machine", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 }, // 0: push nil
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 0: push nil
           { op: Op.POP }, // 1: pop
           { op: Op.JMP, a: -2 }, // 2: jump back to 0
         ]),
@@ -1162,7 +1173,10 @@ describe("VM -- action calls", () => {
 
     const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = {
-      ...mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 9 }, { op: Op.RET }])], [args]),
+      ...mkProgram(
+        [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 9 }, { op: Op.RET }])],
+        [args]
+      ),
       actions: List.from([action]),
     };
 
@@ -1183,7 +1197,10 @@ describe("VM -- action calls", () => {
   test("ACTION_CALL out-of-bounds slot faults as ScriptError", () => {
     const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = {
-      ...mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 1, c: 0 }, { op: Op.RET }])], [args]),
+      ...mkProgram(
+        [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 1, c: 0 }, { op: Op.RET }])],
+        [args]
+      ),
       actions: List.from([
         {
           binding: "host" as const,
@@ -1206,7 +1223,7 @@ describe("VM -- action calls", () => {
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
     assert.equal(result.status, VmStatus.FAULT);
     if (result.status === VmStatus.FAULT) {
-      assert.equal(result.error.tag, ErrorCode.ScriptError);
+      assert.equal(result.error.code, ErrorCode.ScriptError);
     }
   });
 
@@ -1223,7 +1240,7 @@ describe("VM -- action calls", () => {
       ...mkProgram(
         [
           mkFunc([
-            { op: Op.PUSH_CONST, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
             { op: Op.ACTION_CALL_ASYNC, a: 0, c: 7 },
             { op: Op.AWAIT },
             { op: Op.RET },
@@ -1256,7 +1273,7 @@ describe("VM -- action calls", () => {
 
   test("ACTION_CALL routes sync bytecode actions through the current fiber and caller TRY handlers", () => {
     const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
-    const errVal: Value = { t: "err", e: { tag: ErrorCode.ScriptError, message: "bytecode boom" } };
+    const errVal: Value = { t: "err", e: { code: ErrorCode.ScriptError, message: "bytecode boom" } };
     const descriptor = {
       key: "test-vm-action-call-bytecode-throw",
       kind: "actuator" as const,
@@ -1269,19 +1286,19 @@ describe("VM -- action calls", () => {
           mkFunc(
             [
               { op: Op.TRY, a: 6 },
-              { op: Op.PUSH_CONST, a: 0 },
+              { op: Op.PUSH_CONST_VAL, a: 0 },
               { op: Op.ACTION_CALL, a: 0, c: 5 },
               { op: Op.END_TRY },
-              { op: Op.PUSH_CONST, a: 2 },
+              { op: Op.PUSH_CONST_VAL, a: 2 },
               { op: Op.RET },
               { op: Op.POP },
-              { op: Op.PUSH_CONST, a: 1 },
+              { op: Op.PUSH_CONST_VAL, a: 1 },
               { op: Op.RET },
             ],
             0,
             "root"
           ),
-          mkFunc([{ op: Op.PUSH_CONST, a: 3 }, { op: Op.THROW }], 0, "action-entry"),
+          mkFunc([{ op: Op.PUSH_CONST_VAL, a: 3 }, { op: Op.THROW }], 0, "action-entry"),
         ],
         [args, mkNumberValue(77), mkNumberValue(999), errVal]
       ),
@@ -1334,9 +1351,9 @@ describe("VM -- action calls", () => {
     const prog = {
       ...mkProgram(
         [
-          mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 5 }, { op: Op.RET }], 0, "root"),
+          mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 5 }, { op: Op.RET }], 0, "root"),
           mkFunc(
-            [{ op: Op.PUSH_CONST, a: 0 }, { op: Op.HOST_CALL, a: hostFnEntry.id, c: 11 }, { op: Op.RET }],
+            [{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.HOST_CALL, a: hostFnEntry.id, c: 11 }, { op: Op.RET }],
             0,
             "action-entry"
           ),
@@ -1385,9 +1402,9 @@ describe("VM -- action calls", () => {
     const prog = {
       ...mkProgram(
         [
-          mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 4 }, { op: Op.RET }], 0, "root"),
-          mkFunc([{ op: Op.PUSH_CONST, a: 1 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }], 0, "action-entry"),
-          mkFunc([{ op: Op.YIELD }, { op: Op.PUSH_CONST, a: 2 }, { op: Op.RET }], 0, "indirect-helper"),
+          mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 4 }, { op: Op.RET }], 0, "root"),
+          mkFunc([{ op: Op.PUSH_CONST_VAL, a: 1 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }], 0, "action-entry"),
+          mkFunc([{ op: Op.YIELD }, { op: Op.PUSH_CONST_VAL, a: 2 }, { op: Op.RET }], 0, "indirect-helper"),
         ],
         [args, mkFunctionValue(2), mkNumberValue(5)]
       ),
@@ -1424,11 +1441,16 @@ describe("VM -- action calls", () => {
       ...mkProgram(
         [
           mkFunc(
-            [{ op: Op.PUSH_CONST, a: 0 }, { op: Op.ACTION_CALL_ASYNC, a: 0, c: 3 }, { op: Op.AWAIT }, { op: Op.RET }],
+            [
+              { op: Op.PUSH_CONST_VAL, a: 0 },
+              { op: Op.ACTION_CALL_ASYNC, a: 0, c: 3 },
+              { op: Op.AWAIT },
+              { op: Op.RET },
+            ],
             0,
             "root"
           ),
-          mkFunc([{ op: Op.PUSH_CONST, a: 1 }, { op: Op.YIELD }, { op: Op.RET }], 0, "action-entry"),
+          mkFunc([{ op: Op.PUSH_CONST_VAL, a: 1 }, { op: Op.YIELD }, { op: Op.RET }], 0, "action-entry"),
         ],
         [args, mkNumberValue(42)]
       ),
@@ -1481,7 +1503,10 @@ describe("VM -- async await/resume", () => {
 
     // Build program: push handle value, AWAIT, RET
     const handleValue: Value = { t: "handle" as const, id: hid };
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])], [handleValue]);
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
+      [handleValue]
+    );
     const vm = new VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
@@ -1505,7 +1530,10 @@ describe("VM -- async await/resume", () => {
     handles.resolve(hid, mkNumberValue(55));
 
     const handleValue: Value = { t: "handle" as const, id: hid };
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])], [handleValue]);
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
+      [handleValue]
+    );
     const vm = new VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
@@ -1523,7 +1551,10 @@ describe("VM -- async await/resume", () => {
     const hid = handles.createPending();
 
     const handleValue: Value = { t: "handle" as const, id: hid };
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])], [handleValue]);
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
+      [handleValue]
+    );
     const vm = new VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
@@ -1565,16 +1596,16 @@ describe("VM -- async await/resume", () => {
 describe("VM -- exception handling", () => {
   test("TRY/THROW catches and pushes error value", () => {
     // TRY (catch -> 4), PUSH err, THROW, [catch]: POP error, PUSH 1, RET
-    const errVal: Value = { t: "err", e: { tag: ErrorCode.ScriptError, message: "test" } };
+    const errVal: Value = { t: "err", e: { code: ErrorCode.ScriptError, message: "test" } };
     const prog = mkProgram(
       [
         mkFunc([
           { op: Op.TRY, a: 3 }, // 0: TRY, catch at pc 0+3 = 3
-          { op: Op.PUSH_CONST, a: 0 }, // 1: push error value
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 1: push error value
           { op: Op.THROW }, // 2: throw
           { op: Op.POP }, // 3: [catch] pop the error
           { op: Op.END_TRY }, // 4: exit try
-          { op: Op.PUSH_CONST, a: 1 }, // 5: push 1 (success)
+          { op: Op.PUSH_CONST_VAL, a: 1 }, // 5: push 1 (success)
           { op: Op.RET }, // 6
         ]),
       ],
@@ -1594,8 +1625,8 @@ describe("VM -- exception handling", () => {
   });
 
   test("uncaught THROW faults the fiber", () => {
-    const errVal: Value = { t: "err", e: { tag: ErrorCode.ScriptError, message: "uncaught" } };
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.THROW }])], [errVal]);
+    const errVal: Value = { t: "err", e: { code: ErrorCode.ScriptError, message: "uncaught" } };
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.THROW }])], [errVal]);
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
@@ -1625,9 +1656,9 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW }, // 0: push empty list
-          { op: Op.PUSH_CONST, a: 0 }, // 1: push 42
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 1: push 42
           { op: Op.LIST_PUSH }, // 2: list.push(42)
-          { op: Op.PUSH_CONST, a: 0 }, // 3: push 42 again
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 3: push 42 again
           { op: Op.LIST_PUSH }, // 4: list.push(42)
           { op: Op.LIST_LEN }, // 5: push list.length
           { op: Op.RET },
@@ -1652,13 +1683,13 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.PUSH_CONST_VAL, a: 3 },
           { op: Op.LIST_GET },
           { op: Op.RET },
         ]),
@@ -1682,9 +1713,9 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.LIST_GET },
           { op: Op.RET },
         ]),
@@ -1708,14 +1739,14 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 2 },
-          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 3 },
           { op: Op.LIST_SET },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.LIST_GET },
           { op: Op.RET },
         ]),
@@ -1739,11 +1770,11 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.LIST_PUSH },
           { op: Op.LIST_POP },
           { op: Op.RET },
@@ -1782,11 +1813,11 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.LIST_PUSH },
           { op: Op.LIST_SHIFT },
           { op: Op.RET },
@@ -1825,14 +1856,14 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.LIST_PUSH },
           { op: Op.DUP },
-          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.PUSH_CONST_VAL, a: 3 },
           { op: Op.LIST_REMOVE },
           { op: Op.RET },
         ]),
@@ -1856,15 +1887,15 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.LIST_PUSH },
           { op: Op.DUP },
-          { op: Op.PUSH_CONST, a: 2 },
-          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 3 },
           { op: Op.LIST_INSERT },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.LIST_GET },
           { op: Op.RET },
         ]),
@@ -1888,17 +1919,17 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.LIST_PUSH },
           { op: Op.DUP },
-          { op: Op.PUSH_CONST, a: 3 },
-          { op: Op.PUSH_CONST, a: 4 },
+          { op: Op.PUSH_CONST_VAL, a: 3 },
+          { op: Op.PUSH_CONST_VAL, a: 4 },
           { op: Op.LIST_SWAP },
-          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.PUSH_CONST_VAL, a: 3 },
           { op: Op.LIST_GET },
           { op: Op.RET },
         ]),
@@ -1922,13 +1953,13 @@ describe("VM -- list operations", () => {
       [
         mkFunc([
           { op: Op.LIST_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.LIST_PUSH },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.LIST_PUSH },
           { op: Op.DUP },
-          { op: Op.PUSH_CONST, a: 2 },
-          { op: Op.PUSH_CONST, a: 3 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 3 },
           { op: Op.LIST_SWAP },
           { op: Op.LIST_LEN },
           { op: Op.RET },
@@ -1957,10 +1988,10 @@ describe("VM -- map operations", () => {
       [
         mkFunc([
           { op: Op.MAP_NEW }, // 0: push empty map
-          { op: Op.PUSH_CONST, a: 0 }, // 1: push key "foo"
-          { op: Op.PUSH_CONST, a: 1 }, // 2: push value 99
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 1: push key "foo"
+          { op: Op.PUSH_CONST_VAL, a: 1 }, // 2: push value 99
           { op: Op.MAP_SET }, // 3: map.set("foo", 99)
-          { op: Op.PUSH_CONST, a: 0 }, // 4: push key "foo"
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 4: push key "foo"
           { op: Op.MAP_GET }, // 5: push map.get("foo")
           { op: Op.RET },
         ]),
@@ -1984,10 +2015,10 @@ describe("VM -- map operations", () => {
       [
         mkFunc([
           { op: Op.MAP_NEW },
-          { op: Op.PUSH_CONST, a: 0 },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.MAP_SET },
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.MAP_HAS },
           { op: Op.RET },
         ]),
@@ -2017,13 +2048,13 @@ describe("VM -- WHEN/DO boundaries", () => {
       [
         mkFunc([
           { op: Op.WHEN_START }, // 0
-          { op: Op.PUSH_CONST, a: 0 }, // 1: push false
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 1: push false
           { op: Op.WHEN_END, a: 5 }, // 2: if falsy, JMP to pc 2+5 = 7
           { op: Op.DO_START }, // 3
-          { op: Op.PUSH_CONST, a: 2 }, // 4: push 999 (should be skipped)
+          { op: Op.PUSH_CONST_VAL, a: 2 }, // 4: push 999 (should be skipped)
           { op: Op.POP }, // 5: pop 999
           { op: Op.DO_END }, // 6
-          { op: Op.PUSH_CONST, a: 1 }, // 7: push nil (end label)
+          { op: Op.PUSH_CONST_VAL, a: 1 }, // 7: push nil (end label)
           { op: Op.RET }, // 8
         ]),
       ],
@@ -2047,10 +2078,10 @@ describe("VM -- WHEN/DO boundaries", () => {
       [
         mkFunc([
           { op: Op.WHEN_START }, // 0
-          { op: Op.PUSH_CONST, a: 0 }, // 1: push true
+          { op: Op.PUSH_CONST_VAL, a: 0 }, // 1: push true
           { op: Op.WHEN_END, a: 5 }, // 2: if truthy, continue to 3
           { op: Op.DO_START }, // 3
-          { op: Op.PUSH_CONST, a: 1 }, // 4: push 42
+          { op: Op.PUSH_CONST_VAL, a: 1 }, // 4: push 42
           { op: Op.DO_END }, // 5
           // No POP needed -- 42 is on stack
           // Normally the compiler emits endLabel + pushConst NIL + RET
@@ -2078,7 +2109,7 @@ describe("VM -- WHEN/DO boundaries", () => {
 describe("VM -- type check", () => {
   test("TYPE_CHECK with NativeType.Number on NumberValue pushes TRUE_VALUE", () => {
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Number }, { op: Op.RET }])],
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Number }, { op: Op.RET }])],
       [mkNumberValue(42)]
     );
     const handles = new HandleTable(100);
@@ -2095,7 +2126,7 @@ describe("VM -- type check", () => {
 
   test("TYPE_CHECK with NativeType.Number on StringValue pushes FALSE_VALUE", () => {
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Number }, { op: Op.RET }])],
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Number }, { op: Op.RET }])],
       [mkStringValue("hello")]
     );
     const handles = new HandleTable(100);
@@ -2112,7 +2143,7 @@ describe("VM -- type check", () => {
 
   test("TYPE_CHECK with NativeType.Nil on NIL_VALUE pushes TRUE_VALUE", () => {
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Nil }, { op: Op.RET }])],
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Nil }, { op: Op.RET }])],
       [NIL_VALUE]
     );
     const handles = new HandleTable(100);
@@ -2129,7 +2160,7 @@ describe("VM -- type check", () => {
 
   test("TYPE_CHECK with NativeType.String on StringValue pushes TRUE_VALUE", () => {
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.String }, { op: Op.RET }])],
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.String }, { op: Op.RET }])],
       [mkStringValue("hello")]
     );
     const handles = new HandleTable(100);
@@ -2146,7 +2177,7 @@ describe("VM -- type check", () => {
 
   test("TYPE_CHECK with NativeType.Boolean on BooleanValue pushes TRUE_VALUE", () => {
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Boolean }, { op: Op.RET }])],
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Boolean }, { op: Op.RET }])],
       [TRUE_VALUE]
     );
     const handles = new HandleTable(100);
@@ -2163,7 +2194,7 @@ describe("VM -- type check", () => {
 
   test("TYPE_CHECK with NativeType.Boolean on NumberValue pushes FALSE_VALUE", () => {
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Boolean }, { op: Op.RET }])],
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Boolean }, { op: Op.RET }])],
       [mkNumberValue(1)]
     );
     const handles = new HandleTable(100);
@@ -2187,8 +2218,8 @@ describe("VM -- CALL_INDIRECT", () => {
     // func 1: push 42, RET
     const prog = mkProgram(
       [
-        mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }]),
-        mkFunc([{ op: Op.PUSH_CONST, a: 1 }, { op: Op.RET }]),
+        mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }]),
+        mkFunc([{ op: Op.PUSH_CONST_VAL, a: 1 }, { op: Op.RET }]),
       ],
       [mkFunctionValue(1), mkNumberValue(42)]
     );
@@ -2210,9 +2241,9 @@ describe("VM -- CALL_INDIRECT", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 },
-          { op: Op.PUSH_CONST, a: 1 },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.CALL_INDIRECT, a: 2 },
           { op: Op.RET },
         ]),
@@ -2239,7 +2270,7 @@ describe("VM -- CALL_INDIRECT", () => {
 
   test("CALL_INDIRECT with non-FunctionValue throws", () => {
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }])],
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }])],
       [mkNumberValue(42)]
     );
     const handles = new HandleTable(100);
@@ -2264,25 +2295,23 @@ describe("VM -- CALL_INDIRECT", () => {
   });
 
   test("deepCopyValue returns FunctionValue as-is", () => {
-    // FunctionValues are immutable; STORE_VAR deep-copies, so test that
-    // storing a FunctionValue via STORE_VAR and loading it back works
+    // FunctionValues are immutable; STORE_VAR_SLOT deep-copies, so test that
+    // storing a FunctionValue via STORE_VAR_SLOT and loading it back works
     const prog = mkProgram(
-      [mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.STORE_VAR, a: 0 }, { op: Op.LOAD_VAR, a: 0 }, { op: Op.RET }])],
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.STORE_VAR_SLOT, a: 0 },
+          { op: Op.LOAD_VAR_SLOT, a: 0 },
+          { op: Op.RET },
+        ]),
+      ],
       [mkFunctionValue(0)],
       ["myFunc"]
     );
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
-    const vars = new Map<string, Value>();
-    const fiber = vm.spawnFiber(
-      1,
-      0,
-      List.empty(),
-      mkCtx({
-        setVariable: (k, v) => vars.set(k, v),
-        getVariable: <T extends Value>(k: string) => vars.get(k) as T | undefined,
-      })
-    );
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
@@ -2303,9 +2332,9 @@ describe("VM -- CALL_INDIRECT_ARGS", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 },
-          { op: Op.PUSH_CONST, a: 1 },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.CALL_INDIRECT_ARGS, a: 2 },
           { op: Op.RET },
         ]),
@@ -2336,8 +2365,8 @@ describe("VM -- CALL_INDIRECT_ARGS", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.CALL_INDIRECT_ARGS, a: 1 },
           { op: Op.RET },
         ]),
@@ -2368,9 +2397,9 @@ describe("VM -- CALL_INDIRECT_ARGS", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 },
-          { op: Op.PUSH_CONST, a: 1 },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.CALL_INDIRECT_ARGS, a: 2 },
           { op: Op.RET },
         ]),
@@ -2404,8 +2433,8 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
     // The result should be a FunctionValue with captures
     const prog = mkProgram(
       [
-        mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.MAKE_CLOSURE, a: 1, b: 1 }, { op: Op.RET }]),
-        mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }]),
+        mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.MAKE_CLOSURE, a: 1, b: 1 }, { op: Op.RET }]),
+        mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }]),
       ],
       [mkNumberValue(42)]
     );
@@ -2432,7 +2461,7 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.MAKE_CLOSURE, a: 1, b: 1 },
           { op: Op.CALL_INDIRECT, a: 0 },
           { op: Op.RET },
@@ -2459,10 +2488,10 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 },
-          { op: Op.PUSH_CONST, a: 1 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 1 },
           { op: Op.MAKE_CLOSURE, a: 1, b: 2 },
-          { op: Op.PUSH_CONST, a: 2 },
+          { op: Op.PUSH_CONST_VAL, a: 2 },
           { op: Op.CALL_INDIRECT, a: 1 },
           { op: Op.RET },
         ]),
@@ -2496,11 +2525,11 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
       [
         {
           code: List.from([
-            { op: Op.PUSH_CONST, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
             { op: Op.STORE_LOCAL, a: 0 },
             { op: Op.LOAD_LOCAL, a: 0 },
             { op: Op.MAKE_CLOSURE, a: 1, b: 1 },
-            { op: Op.PUSH_CONST, a: 1 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
             { op: Op.STORE_LOCAL, a: 0 },
             { op: Op.CALL_INDIRECT, a: 0 },
             { op: Op.RET },
@@ -2549,7 +2578,7 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
 
 describe("FiberScheduler", () => {
   test("spawn creates a runnable fiber and tick executes it", () => {
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
     const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 10, defaultBudget: 1000, autoGcHandles: true });
@@ -2565,7 +2594,10 @@ describe("FiberScheduler", () => {
   });
 
   test("cancel transitions fiber to CANCELLED", () => {
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.POP }, { op: Op.JMP, a: -2 }])], [NIL_VALUE]);
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.POP }, { op: Op.JMP, a: -2 }])],
+      [NIL_VALUE]
+    );
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
     const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 10, defaultBudget: 1000, autoGcHandles: true });
@@ -2578,7 +2610,7 @@ describe("FiberScheduler", () => {
   });
 
   test("gc removes completed/faulted/cancelled fibers", () => {
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
     const handles = new HandleTable(100);
     const vm = new VM(services, prog, handles);
     const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 64, defaultBudget: 1000, autoGcHandles: true });
@@ -2602,7 +2634,10 @@ describe("FiberScheduler", () => {
     const hid = handles.createPending();
 
     const handleValue: Value = { t: "handle" as const, id: hid };
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])], [handleValue]);
+    const prog = mkProgram(
+      [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
+      [handleValue]
+    );
 
     const vm = new VM(services, prog, handles);
     const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 64, defaultBudget: 1000, autoGcHandles: true });
@@ -2643,7 +2678,7 @@ describe("HandleTable", () => {
     const table = new HandleTable(10);
     const id = table.createPending();
 
-    table.reject(id, { tag: ErrorCode.HostError, message: "fail" });
+    table.reject(id, { code: ErrorCode.HostError, message: "fail" });
     const h = table.get(id)!;
     assert.equal(h.state, HandleState.REJECTED);
     assert.equal(h.error!.message, "fail");
@@ -2673,33 +2708,9 @@ describe("HandleTable", () => {
   });
 });
 
-// ---- Error code pool ----
+// ---- Error code names ----
 
-describe("ErrorCode pool", () => {
-  test("pooledError returns identity-equal canonical instance per code", () => {
-    const a = pooledError(ErrorCode.ScriptError);
-    const b = pooledError(ErrorCode.ScriptError);
-    assert.equal(a, b);
-    assert.equal(a.tag, ErrorCode.ScriptError);
-    assert.equal(a.message, "");
-  });
-
-  test("pooledError returns distinct instances for distinct codes", () => {
-    const allCodes = [
-      ErrorCode.Timeout,
-      ErrorCode.Cancelled,
-      ErrorCode.HostError,
-      ErrorCode.ScriptError,
-      ErrorCode.StackOverflow,
-      ErrorCode.StackUnderflow,
-    ];
-    for (let i = 0; i < allCodes.length; i++) {
-      for (let j = i + 1; j < allCodes.length; j++) {
-        assert.notEqual(pooledError(allCodes[i]!), pooledError(allCodes[j]!));
-      }
-    }
-  });
-
+describe("ErrorCode", () => {
   test("errorCodeName matches the prior string-tag form", () => {
     assert.equal(errorCodeName(ErrorCode.Timeout), "Timeout");
     assert.equal(errorCodeName(ErrorCode.Cancelled), "Cancelled");
@@ -2707,53 +2718,6 @@ describe("ErrorCode pool", () => {
     assert.equal(errorCodeName(ErrorCode.ScriptError), "ScriptError");
     assert.equal(errorCodeName(ErrorCode.StackOverflow), "StackOverflow");
     assert.equal(errorCodeName(ErrorCode.StackUnderflow), "StackUnderflow");
-  });
-
-  test("uncaught THROW with richErrors=false returns the pooled instance to onFiberFault", () => {
-    const errVal: Value = { t: "err", e: { tag: ErrorCode.ScriptError, message: "uncaught" } };
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.THROW }])], [errVal]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles, { richErrors: false });
-    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
-    fiber.instrBudget = 100;
-
-    let observed: { tag: ErrorCode; message: string } | undefined;
-    const callbacks = {
-      ...mkSchedulerCallbacks(),
-      onFiberFault: (_fid: number, err: unknown) => {
-        observed = err as { tag: ErrorCode; message: string };
-      },
-    };
-
-    vm.runFiber(fiber, callbacks);
-
-    assert.ok(observed !== undefined);
-    assert.equal(observed!.tag, ErrorCode.ScriptError);
-    assert.equal(observed, errVal.e);
-  });
-
-  test("VM uses pooled instance when richErrors=false and fault originates in dispatch", () => {
-    // Build a program that triggers the Op.THROW path with a non-error value,
-    // forcing the VM to construct a fresh ScriptError. With richErrors=false
-    // the construction must return the pooled canonical singleton.
-    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.THROW }])], [mkNumberValue(1)]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles, { richErrors: false });
-    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
-    fiber.instrBudget = 100;
-
-    let observed: { tag: ErrorCode; message: string } | undefined;
-    const callbacks = {
-      ...mkSchedulerCallbacks(),
-      onFiberFault: (_fid: number, err: unknown) => {
-        observed = err as { tag: ErrorCode; message: string };
-      },
-    };
-
-    vm.runFiber(fiber, callbacks);
-
-    assert.ok(observed !== undefined);
-    assert.equal(observed, pooledError(ErrorCode.ScriptError));
   });
 });
 
@@ -2766,7 +2730,7 @@ describe("VM -- overflow faults", () => {
     const prog = mkProgram(
       [
         mkFunc([
-          { op: Op.PUSH_CONST, a: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
           { op: Op.JMP, a: -1 },
         ]),
       ],
@@ -2780,7 +2744,7 @@ describe("VM -- overflow faults", () => {
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
     assert.equal(result.status, VmStatus.FAULT);
     if (result.status === VmStatus.FAULT) {
-      assert.equal(result.error.tag, ErrorCode.StackOverflow);
+      assert.equal(result.error.code, ErrorCode.StackOverflow);
     }
   });
 
@@ -2795,7 +2759,7 @@ describe("VM -- overflow faults", () => {
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
     assert.equal(result.status, VmStatus.FAULT);
     if (result.status === VmStatus.FAULT) {
-      assert.equal(result.error.tag, ErrorCode.StackOverflow);
+      assert.equal(result.error.code, ErrorCode.StackOverflow);
     }
   });
 
@@ -2816,7 +2780,7 @@ describe("VM -- overflow faults", () => {
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
     assert.equal(result.status, VmStatus.FAULT);
     if (result.status === VmStatus.FAULT) {
-      assert.equal(result.error.tag, ErrorCode.StackOverflow);
+      assert.equal(result.error.code, ErrorCode.StackOverflow);
     }
   });
 
@@ -2870,12 +2834,12 @@ describe("VM -- overflow faults", () => {
     const result = vm.runFiber(fiber, mkSchedulerCallbacks());
     assert.equal(result.status, VmStatus.FAULT);
     if (result.status === VmStatus.FAULT) {
-      assert.equal(result.error.tag, ErrorCode.StackUnderflow);
+      assert.equal(result.error.code, ErrorCode.StackUnderflow);
     }
   });
 });
 
-// ---- Operator monomorphization audit (V1.4) ----
+// ---- Operator monomorphization ----
 
 /**
  * Build a BrainServices that wraps `services.types` with a Proxy that increments
@@ -2902,7 +2866,7 @@ function makeServicesWithTypeAccessCounter(base: BrainServices, counter: { n: nu
   });
 }
 
-describe("VM -- operator monomorphization (V1.4)", () => {
+describe("VM -- operator monomorphization", () => {
   test("primitive number arithmetic does not consult ITypeRegistry on the dispatch hot path", () => {
     const resolved = services.operatorOverloads.resolve(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
     assert.ok(resolved !== undefined, "add(number, number) overload must be registered");
@@ -2912,12 +2876,12 @@ describe("VM -- operator monomorphization (V1.4)", () => {
     const ITER = 1000;
     const code: Instr[] = [];
     for (let i = 0; i < ITER; i++) {
-      code.push({ op: Op.PUSH_CONST, a: 0 });
-      code.push({ op: Op.PUSH_CONST, a: 0 });
+      code.push({ op: Op.PUSH_CONST_VAL, a: 0 });
+      code.push({ op: Op.PUSH_CONST_VAL, a: 0 });
       code.push({ op: Op.HOST_CALL_ARGS, a: addFnId, b: 2, c: 0 });
       code.push({ op: Op.POP });
     }
-    code.push({ op: Op.PUSH_CONST, a: 0 });
+    code.push({ op: Op.PUSH_CONST_VAL, a: 0 });
     code.push({ op: Op.RET });
 
     const prog = mkProgram([mkFunc(code)], [mkNumberValue(1)]);
@@ -2941,5 +2905,61 @@ describe("VM -- operator monomorphization (V1.4)", () => {
     const countedServices = makeServicesWithTypeAccessCounter(services, counter);
     countedServices.types.get(CoreTypeIds.Number);
     assert.ok(counter.n > 0, "counter must observe registry access");
+  });
+});
+
+// ---- Slot-keyed variable dispatch ----
+
+describe("VM -- slot-keyed variable dispatch", () => {
+  test("LOAD_VAR_SLOT / STORE_VAR_SLOT do not call name-keyed getVariable / setVariable", () => {
+    const slots = List.empty<Value>();
+    const counter = { name: 0, slot: 0 };
+    const ctx: ExecutionContext = {
+      brain: undefined as never,
+      getVariable: () => {
+        counter.name++;
+        return undefined;
+      },
+      setVariable: () => {
+        counter.name++;
+      },
+      clearVariable: () => {
+        counter.name++;
+      },
+      getVariableBySlot: (slotId: number) => {
+        counter.slot++;
+        return slots.get(slotId) ?? NIL_VALUE;
+      },
+      setVariableBySlot: (slotId: number, value: Value) => {
+        counter.slot++;
+        while (slots.size() <= slotId) slots.push(NIL_VALUE);
+        slots.set(slotId, value);
+      },
+      time: 0,
+      dt: 0,
+      currentTick: 0,
+    };
+
+    const ITER = 200;
+    const code: Instr[] = [];
+    for (let i = 0; i < ITER; i++) {
+      code.push({ op: Op.PUSH_CONST_VAL, a: 0 });
+      code.push({ op: Op.STORE_VAR_SLOT, a: 0 });
+      code.push({ op: Op.LOAD_VAR_SLOT, a: 0 });
+      code.push({ op: Op.POP });
+    }
+    code.push({ op: Op.PUSH_CONST_VAL, a: 0 });
+    code.push({ op: Op.RET });
+
+    const prog = mkProgram([mkFunc(code)], [mkNumberValue(7)], ["x"]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
+    fiber.instrBudget = ITER * 5 + 10;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    assert.equal(counter.name, 0, `expected 0 name-keyed accesses during slot dispatch, got ${counter.name}`);
+    assert.equal(counter.slot, ITER * 2, "every LOAD_VAR_SLOT / STORE_VAR_SLOT should call the slot-keyed accessors");
   });
 });

@@ -53,19 +53,28 @@ describe("linkBrainProgram", () => {
           name: "user-entry",
         },
         {
-          code: List.from([{ op: Op.LOAD_VAR, a: 0 }, { op: Op.POP }, { op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }]),
+          code: List.from([
+            { op: Op.LOAD_VAR_SLOT, a: 0 },
+            { op: Op.POP },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.RET },
+          ]),
           numParams: 0,
           numLocals: 0,
           name: "user-helper",
         },
         {
-          code: List.from([{ op: Op.PUSH_CONST, a: 0 }, { op: Op.RET }]),
+          code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }]),
           numParams: 0,
           numLocals: 0,
           name: "user-activation",
         },
       ]),
-      constants: List.from([mkNumberValue(42)]),
+      constantPools: {
+        numbers: List.empty<number>(),
+        strings: List.empty<string>(),
+        values: List.from([mkNumberValue(42)]),
+      },
       variableNames: List.from(["artifactVar"]),
       key: action.key,
       kind: action.kind,
@@ -85,7 +94,7 @@ describe("linkBrainProgram", () => {
       variableNames: List.from(["brainVar"]),
     };
     const funcOffset = unlinked.functions.size();
-    const constOffset = unlinked.constants.size();
+    const constOffset = unlinked.constantPools.values.size();
     const variableOffset = unlinked.variableNames.size();
 
     const executable = linkBrainProgram(unlinked, brainDef, catalogs, {
@@ -103,7 +112,7 @@ describe("linkBrainProgram", () => {
 
     assert.equal(executable.actions.size(), 1);
     assert.equal(executable.functions.size(), funcOffset + artifact.functions.size());
-    assert.equal(executable.constants.size(), constOffset + artifact.constants.size());
+    assert.equal(executable.constantPools.values.size(), constOffset + artifact.constantPools.values.size());
     assert.equal(executable.variableNames.size(), variableOffset + artifact.variableNames.size());
 
     const linkedAction = executable.actions.get(0)!;
@@ -123,13 +132,13 @@ describe("linkBrainProgram", () => {
     assert.equal(entryCall.a, funcOffset + 1);
 
     const helperFn = executable.functions.get(funcOffset + 1)!;
-    assert.equal(helperFn.code.get(0)!.op, Op.LOAD_VAR);
+    assert.equal(helperFn.code.get(0)!.op, Op.LOAD_VAR_SLOT);
     assert.equal(helperFn.code.get(0)!.a, variableOffset);
-    assert.equal(helperFn.code.get(2)!.op, Op.PUSH_CONST);
+    assert.equal(helperFn.code.get(2)!.op, Op.PUSH_CONST_VAL);
     assert.equal(helperFn.code.get(2)!.a, constOffset);
 
     const activationFn = executable.functions.get(linkedAction.activationFuncId!)!;
-    assert.equal(activationFn.code.get(0)!.op, Op.PUSH_CONST);
+    assert.equal(activationFn.code.get(0)!.op, Op.PUSH_CONST_VAL);
     assert.equal(activationFn.code.get(0)!.a, constOffset);
   });
 });

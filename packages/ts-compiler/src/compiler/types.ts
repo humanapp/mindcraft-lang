@@ -1,4 +1,4 @@
-import type { BrainServices, UserActionArtifact } from "@mindcraft-lang/core/brain";
+import type { BrainServices, ConstantOffsets, UserActionArtifact } from "@mindcraft-lang/core/brain";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 
@@ -31,7 +31,7 @@ export interface UserAuthoredProgram extends UserActionArtifact {
 export interface LinkedUserProgram {
   program: UserAuthoredProgram;
   functionOffset: number;
-  constantOffset: number;
+  constantOffsets: ConstantOffsets;
   variableOffset: number;
   linkedDebugMetadata?: DebugMetadata;
 }

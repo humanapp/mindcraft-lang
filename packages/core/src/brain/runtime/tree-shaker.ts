@@ -4,6 +4,7 @@ import { logger } from "../../platform/logger";
 import { UniqueSet } from "../../platform/uniqueset";
 import type {
   BytecodeExecutableAction,
+  ConstantPools,
   ExecutableAction,
   ExecutableBrainProgram,
   FunctionBytecode,
@@ -67,8 +68,8 @@ function markReachableFunctions(program: ExecutableBrainProgram): UniqueSet<numb
           enqueue(ins.a);
         }
       }
-      if (ins.op === Op.PUSH_CONST && ins.a !== undefined) {
-        const constVal = program.constants.get(ins.a);
+      if (ins.op === Op.PUSH_CONST_VAL && ins.a !== undefined) {
+        const constVal = program.constantPools.values.get(ins.a);
         markFuncIdsInValue(constVal);
       }
     }
@@ -77,16 +78,36 @@ function markReachableFunctions(program: ExecutableBrainProgram): UniqueSet<numb
   return reachable;
 }
 
-function markReachableConstants(program: ExecutableBrainProgram, reachableFuncs: UniqueSet<number>): UniqueSet<number> {
-  const reachable = new UniqueSet<number>();
+interface ReachableConstSets {
+  values: UniqueSet<number>;
+  numbers: UniqueSet<number>;
+  strings: UniqueSet<number>;
+}
+
+function markReachableConstants(
+  program: ExecutableBrainProgram,
+  reachableFuncs: UniqueSet<number>
+): ReachableConstSets {
+  const values = new UniqueSet<number>();
+  const numbers = new UniqueSet<number>();
+  const strings = new UniqueSet<number>();
 
   for (let i = 0; i < program.functions.size(); i++) {
     if (!reachableFuncs.has(i)) continue;
     const fn = program.functions.get(i);
     for (let j = 0; j < fn.code.size(); j++) {
       const ins = fn.code.get(j);
-      if ((ins.op === Op.PUSH_CONST || ins.op === Op.INSTANCE_OF) && ins.a !== undefined) {
-        reachable.add(ins.a);
+      if (ins.op === Op.PUSH_CONST_VAL && ins.a !== undefined) {
+        values.add(ins.a);
+      }
+      if (ins.op === Op.PUSH_CONST_NUM && ins.a !== undefined) {
+        numbers.add(ins.a);
+      }
+      if (ins.op === Op.PUSH_CONST_STR && ins.a !== undefined) {
+        strings.add(ins.a);
+      }
+      if (ins.op === Op.INSTANCE_OF && ins.a !== undefined) {
+        strings.add(ins.a);
       }
       if (
         (ins.op === Op.LIST_NEW ||
@@ -95,12 +116,12 @@ function markReachableConstants(program: ExecutableBrainProgram, reachableFuncs:
           ins.op === Op.STRUCT_COPY_EXCEPT) &&
         ins.b !== undefined
       ) {
-        reachable.add(ins.b);
+        strings.add(ins.b);
       }
     }
   }
 
-  return reachable;
+  return { values, numbers, strings };
 }
 
 function markReachableVariableNames(
@@ -114,7 +135,7 @@ function markReachableVariableNames(
     const fn = program.functions.get(i);
     for (let j = 0; j < fn.code.size(); j++) {
       const ins = fn.code.get(j);
-      if ((ins.op === Op.LOAD_VAR || ins.op === Op.STORE_VAR) && ins.a !== undefined) {
+      if ((ins.op === Op.LOAD_VAR_SLOT || ins.op === Op.STORE_VAR_SLOT) && ins.a !== undefined) {
         reachable.add(ins.a);
       }
     }
@@ -148,10 +169,16 @@ function remapFuncIdInValue(v: Value, remap: Dict<number, number>): Value {
   return { ...v, funcId: newFuncId, captures };
 }
 
+interface ConstRemaps {
+  values: Dict<number, number>;
+  numbers: Dict<number, number>;
+  strings: Dict<number, number>;
+}
+
 function remapInstruction(
   ins: Instr,
   funcRemap: Dict<number, number>,
-  constRemap: Dict<number, number>,
+  consts: ConstRemaps,
   varRemap: Dict<number, number>
 ): Instr {
   const op = ins.op;
@@ -164,9 +191,25 @@ function remapInstruction(
     return ins;
   }
 
-  if (op === Op.PUSH_CONST || op === Op.INSTANCE_OF) {
+  if (op === Op.PUSH_CONST_VAL) {
     if (ins.a !== undefined) {
-      const newA = constRemap.get(ins.a) ?? ins.a;
+      const newA = consts.values.get(ins.a) ?? ins.a;
+      if (newA !== ins.a) return { ...ins, a: newA };
+    }
+    return ins;
+  }
+
+  if (op === Op.PUSH_CONST_NUM) {
+    if (ins.a !== undefined) {
+      const newA = consts.numbers.get(ins.a) ?? ins.a;
+      if (newA !== ins.a) return { ...ins, a: newA };
+    }
+    return ins;
+  }
+
+  if (op === Op.PUSH_CONST_STR || op === Op.INSTANCE_OF) {
+    if (ins.a !== undefined) {
+      const newA = consts.strings.get(ins.a) ?? ins.a;
       if (newA !== ins.a) return { ...ins, a: newA };
     }
     return ins;
@@ -174,13 +217,13 @@ function remapInstruction(
 
   if (op === Op.LIST_NEW || op === Op.MAP_NEW || op === Op.STRUCT_NEW || op === Op.STRUCT_COPY_EXCEPT) {
     if (ins.b !== undefined) {
-      const newB = constRemap.get(ins.b) ?? ins.b;
+      const newB = consts.strings.get(ins.b) ?? ins.b;
       if (newB !== ins.b) return { ...ins, b: newB };
     }
     return ins;
   }
 
-  if (op === Op.LOAD_VAR || op === Op.STORE_VAR) {
+  if (op === Op.LOAD_VAR_SLOT || op === Op.STORE_VAR_SLOT) {
     if (ins.a !== undefined) {
       const newA = varRemap.get(ins.a) ?? ins.a;
       if (newA !== ins.a) return { ...ins, a: newA };
@@ -226,34 +269,110 @@ function constantKey(v: Value): string | undefined {
   }
 }
 
-function deduplicateConstants(
-  functions: List<FunctionBytecode>,
-  constants: List<Value>
-): { functions: List<FunctionBytecode>; constants: List<Value> } | undefined {
-  const seen = Dict.empty<string, number>();
-  const dedupRemap = Dict.empty<number, number>();
-  const newConstants = List.empty<Value>();
-  let hasDuplicates = false;
+interface DedupResult {
+  functions: List<FunctionBytecode>;
+  constantPools: ConstantPools;
+}
 
+function dedupValues(constants: List<Value>): {
+  newConstants: List<Value>;
+  remap: Dict<number, number>;
+  changed: boolean;
+} {
+  const seen = Dict.empty<string, number>();
+  const remap = Dict.empty<number, number>();
+  const newConstants = List.empty<Value>();
+  let changed = false;
   for (let i = 0; i < constants.size(); i++) {
-    const key = constantKey(constants.get(i));
+    const v = constants.get(i);
+    const key = constantKey(v);
     if (key !== undefined) {
       const existing = seen.get(key);
       if (existing !== undefined) {
-        dedupRemap.set(i, existing);
-        hasDuplicates = true;
+        remap.set(i, existing);
+        changed = true;
         continue;
       }
       seen.set(key, newConstants.size());
     }
-    dedupRemap.set(i, newConstants.size());
-    newConstants.push(constants.get(i));
+    remap.set(i, newConstants.size());
+    newConstants.push(v);
+  }
+  return { newConstants, remap, changed };
+}
+
+function dedupNumbers(constants: List<number>): {
+  newConstants: List<number>;
+  remap: Dict<number, number>;
+  changed: boolean;
+} {
+  const seen = Dict.empty<number, number>();
+  const remap = Dict.empty<number, number>();
+  const newConstants = List.empty<number>();
+  let changed = false;
+  for (let i = 0; i < constants.size(); i++) {
+    const v = constants.get(i)!;
+    const existing = seen.get(v);
+    if (existing !== undefined) {
+      remap.set(i, existing);
+      changed = true;
+      continue;
+    }
+    seen.set(v, newConstants.size());
+    remap.set(i, newConstants.size());
+    newConstants.push(v);
+  }
+  return { newConstants, remap, changed };
+}
+
+function dedupStrings(constants: List<string>): {
+  newConstants: List<string>;
+  remap: Dict<number, number>;
+  changed: boolean;
+} {
+  const seen = Dict.empty<string, number>();
+  const remap = Dict.empty<number, number>();
+  const newConstants = List.empty<string>();
+  let changed = false;
+  for (let i = 0; i < constants.size(); i++) {
+    const v = constants.get(i)!;
+    const existing = seen.get(v);
+    if (existing !== undefined) {
+      remap.set(i, existing);
+      changed = true;
+      continue;
+    }
+    seen.set(v, newConstants.size());
+    remap.set(i, newConstants.size());
+    newConstants.push(v);
+  }
+  return { newConstants, remap, changed };
+}
+
+function deduplicateConstants(functions: List<FunctionBytecode>, pools: ConstantPools): DedupResult | undefined {
+  const r = dedupValues(pools.values);
+  const n = dedupNumbers(pools.numbers);
+  const s = dedupStrings(pools.strings);
+
+  if (!r.changed && !n.changed && !s.changed) return undefined;
+
+  if (r.changed) {
+    logger.debug(
+      `[tree-shaker] deduplicated ${pools.values.size() - r.newConstants.size()}/${pools.values.size()} constants`
+    );
+  }
+  if (n.changed) {
+    logger.debug(
+      `[tree-shaker] deduplicated ${pools.numbers.size() - n.newConstants.size()}/${pools.numbers.size()} number constants`
+    );
+  }
+  if (s.changed) {
+    logger.debug(
+      `[tree-shaker] deduplicated ${pools.strings.size() - s.newConstants.size()}/${pools.strings.size()} string constants`
+    );
   }
 
-  if (!hasDuplicates) return undefined;
-
-  const removed = constants.size() - newConstants.size();
-  logger.debug(`[tree-shaker] deduplicated ${removed}/${constants.size()} constants`);
+  const remaps: ConstRemaps = { values: r.remap, numbers: n.remap, strings: s.remap };
 
   const newFunctions = List.empty<FunctionBytecode>();
   for (let i = 0; i < functions.size(); i++) {
@@ -262,22 +381,45 @@ function deduplicateConstants(
     let changed = false;
     for (let j = 0; j < fn.code.size(); j++) {
       const ins = fn.code.get(j);
-      const remapped = remapInstructionConsts(ins, dedupRemap);
+      const remapped = remapInstructionForDedup(ins, remaps);
       if (remapped !== ins) changed = true;
       newCode.push(remapped);
     }
     newFunctions.push(changed ? { ...fn, code: newCode } : fn);
   }
 
-  return { functions: newFunctions, constants: newConstants };
+  return {
+    functions: newFunctions,
+    constantPools: {
+      numbers: n.newConstants,
+      strings: s.newConstants,
+      values: r.newConstants,
+    },
+  };
 }
 
-function remapInstructionConsts(ins: Instr, constRemap: Dict<number, number>): Instr {
+function remapInstructionForDedup(ins: Instr, consts: ConstRemaps): Instr {
   const op = ins.op;
 
-  if (op === Op.PUSH_CONST || op === Op.INSTANCE_OF) {
+  if (op === Op.PUSH_CONST_VAL) {
     if (ins.a !== undefined) {
-      const newA = constRemap.get(ins.a) ?? ins.a;
+      const newA = consts.values.get(ins.a) ?? ins.a;
+      if (newA !== ins.a) return { ...ins, a: newA };
+    }
+    return ins;
+  }
+
+  if (op === Op.PUSH_CONST_NUM) {
+    if (ins.a !== undefined) {
+      const newA = consts.numbers.get(ins.a) ?? ins.a;
+      if (newA !== ins.a) return { ...ins, a: newA };
+    }
+    return ins;
+  }
+
+  if (op === Op.PUSH_CONST_STR || op === Op.INSTANCE_OF) {
+    if (ins.a !== undefined) {
+      const newA = consts.strings.get(ins.a) ?? ins.a;
       if (newA !== ins.a) return { ...ins, a: newA };
     }
     return ins;
@@ -285,7 +427,7 @@ function remapInstructionConsts(ins: Instr, constRemap: Dict<number, number>): I
 
   if (op === Op.LIST_NEW || op === Op.MAP_NEW || op === Op.STRUCT_NEW || op === Op.STRUCT_COPY_EXCEPT) {
     if (ins.b !== undefined) {
-      const newB = constRemap.get(ins.b) ?? ins.b;
+      const newB = consts.strings.get(ins.b) ?? ins.b;
       if (newB !== ins.b) return { ...ins, b: newB };
     }
     return ins;
@@ -301,13 +443,19 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
   const reachableVars = markReachableVariableNames(program, reachableFuncs);
 
   const funcsDead = reachableFuncs.size() < program.functions.size();
-  const constsDead = reachableConsts.size() < program.constants.size();
+  const valuesDead = reachableConsts.values.size() < program.constantPools.values.size();
+  const numbersDead = reachableConsts.numbers.size() < program.constantPools.numbers.size();
+  const stringsDead = reachableConsts.strings.size() < program.constantPools.strings.size();
   const varsDead = reachableVars.size() < program.variableNames.size();
 
-  if (!funcsDead && !constsDead && !varsDead) {
-    const dedup = deduplicateConstants(program.functions, program.constants);
+  if (!funcsDead && !valuesDead && !numbersDead && !stringsDead && !varsDead) {
+    const dedup = deduplicateConstants(program.functions, program.constantPools);
     if (dedup) {
-      return { ...program, functions: dedup.functions, constants: dedup.constants };
+      return {
+        ...program,
+        functions: dedup.functions,
+        constantPools: dedup.constantPools,
+      };
     }
     return program;
   }
@@ -324,9 +472,17 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
     logger.debug(`[tree-shaker] removed ${removed}/${program.functions.size()} functions: ${shakenNames.join(", ")}`);
   }
 
-  if (constsDead) {
-    const removed = program.constants.size() - reachableConsts.size();
-    logger.debug(`[tree-shaker] removed ${removed}/${program.constants.size()} constants`);
+  if (valuesDead) {
+    const removed = program.constantPools.values.size() - reachableConsts.values.size();
+    logger.debug(`[tree-shaker] removed ${removed}/${program.constantPools.values.size()} constants`);
+  }
+  if (numbersDead) {
+    const removed = program.constantPools.numbers.size() - reachableConsts.numbers.size();
+    logger.debug(`[tree-shaker] removed ${removed}/${program.constantPools.numbers.size()} number constants`);
+  }
+  if (stringsDead) {
+    const removed = program.constantPools.strings.size() - reachableConsts.strings.size();
+    logger.debug(`[tree-shaker] removed ${removed}/${program.constantPools.strings.size()} string constants`);
   }
 
   if (varsDead) {
@@ -343,7 +499,11 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
   }
 
   const funcRemap = buildRemapTable(program.functions.size(), reachableFuncs);
-  const constRemap = buildRemapTable(program.constants.size(), reachableConsts);
+  const constRemap: ConstRemaps = {
+    values: buildRemapTable(program.constantPools.values.size(), reachableConsts.values),
+    numbers: buildRemapTable(program.constantPools.numbers.size(), reachableConsts.numbers),
+    strings: buildRemapTable(program.constantPools.strings.size(), reachableConsts.strings),
+  };
   const varRemap = buildRemapTable(program.variableNames.size(), reachableVars);
 
   const newFunctions = List.empty<FunctionBytecode>();
@@ -357,10 +517,22 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
     newFunctions.push({ ...fn, code: newCode });
   }
 
-  const newConstants = List.empty<Value>();
-  for (let i = 0; i < program.constants.size(); i++) {
-    if (!reachableConsts.has(i)) continue;
-    newConstants.push(remapFuncIdInValue(program.constants.get(i), funcRemap));
+  const newValues = List.empty<Value>();
+  for (let i = 0; i < program.constantPools.values.size(); i++) {
+    if (!reachableConsts.values.has(i)) continue;
+    newValues.push(remapFuncIdInValue(program.constantPools.values.get(i), funcRemap));
+  }
+
+  const newNumbers = List.empty<number>();
+  for (let i = 0; i < program.constantPools.numbers.size(); i++) {
+    if (!reachableConsts.numbers.has(i)) continue;
+    newNumbers.push(program.constantPools.numbers.get(i)!);
+  }
+
+  const newStrings = List.empty<string>();
+  for (let i = 0; i < program.constantPools.strings.size(); i++) {
+    if (!reachableConsts.strings.has(i)) continue;
+    newStrings.push(program.constantPools.strings.get(i)!);
   }
 
   const newVariableNames = List.empty<string>();
@@ -412,18 +584,22 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
   }
 
   let resultFunctions = newFunctions;
-  let resultConstants = newConstants;
+  let resultPools: ConstantPools = {
+    numbers: newNumbers,
+    strings: newStrings,
+    values: newValues,
+  };
 
-  const dedup = deduplicateConstants(newFunctions, newConstants);
+  const dedup = deduplicateConstants(newFunctions, resultPools);
   if (dedup) {
     resultFunctions = dedup.functions;
-    resultConstants = dedup.constants;
+    resultPools = dedup.constantPools;
   }
 
   return {
     version: program.version,
     functions: resultFunctions,
-    constants: resultConstants,
+    constantPools: resultPools,
     variableNames: newVariableNames,
     entryPoint: newEntryPoint,
     ruleIndex: newRuleIndex,

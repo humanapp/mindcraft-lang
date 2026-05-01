@@ -4,6 +4,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import type {
   ActionDescriptor,
   BytecodeExecutableAction,
+  ConstantOffsets,
   ExecutableAction,
   ExecutableBrainProgram,
   FunctionBytecode,
@@ -156,7 +157,12 @@ function remapValue(value: Value, funcOffset: number): Value {
   };
 }
 
-function remapInstruction(instr: Instr, funcOffset: number, constOffset: number, variableOffset: number): Instr {
+function remapInstruction(
+  instr: Instr,
+  funcOffset: number,
+  constOffsets: ConstantOffsets,
+  variableOffset: number
+): Instr {
   switch (instr.op) {
     case Op.CALL:
     case Op.MAKE_CLOSURE:
@@ -164,13 +170,28 @@ function remapInstruction(instr: Instr, funcOffset: number, constOffset: number,
         return { ...instr, a: instr.a + funcOffset };
       }
       return instr;
-    case Op.PUSH_CONST:
+    case Op.PUSH_CONST_VAL:
       if (instr.a !== undefined) {
-        return { ...instr, a: instr.a + constOffset };
+        return { ...instr, a: instr.a + constOffsets.values };
       }
       return instr;
-    case Op.LOAD_VAR:
-    case Op.STORE_VAR:
+    case Op.PUSH_CONST_NUM:
+      if (instr.a !== undefined) {
+        return { ...instr, a: instr.a + constOffsets.numbers };
+      }
+      return instr;
+    case Op.PUSH_CONST_STR:
+      if (instr.a !== undefined) {
+        return { ...instr, a: instr.a + constOffsets.strings };
+      }
+      return instr;
+    case Op.INSTANCE_OF:
+      if (instr.a !== undefined) {
+        return { ...instr, a: instr.a + constOffsets.strings };
+      }
+      return instr;
+    case Op.LOAD_VAR_SLOT:
+    case Op.STORE_VAR_SLOT:
       if (instr.a !== undefined) {
         return { ...instr, a: instr.a + variableOffset };
       }
@@ -180,7 +201,7 @@ function remapInstruction(instr: Instr, funcOffset: number, constOffset: number,
     case Op.STRUCT_NEW:
     case Op.STRUCT_COPY_EXCEPT:
       if (instr.b !== undefined) {
-        return { ...instr, b: instr.b + constOffset };
+        return { ...instr, b: instr.b + constOffsets.strings };
       }
       return instr;
     default:
@@ -191,31 +212,49 @@ function remapInstruction(instr: Instr, funcOffset: number, constOffset: number,
 function remapInstructions(
   code: ReadonlyList<Instr>,
   funcOffset: number,
-  constOffset: number,
+  constOffsets: ConstantOffsets,
   variableOffset: number
 ): List<Instr> {
   const remapped = List.empty<Instr>();
 
   for (let i = 0; i < code.size(); i++) {
-    remapped.push(remapInstruction(code.get(i)!, funcOffset, constOffset, variableOffset));
+    remapped.push(remapInstruction(code.get(i)!, funcOffset, constOffsets, variableOffset));
   }
 
   return remapped;
+}
+
+interface MutableConstantPools {
+  numbers: List<number>;
+  strings: List<string>;
+  values: List<Value>;
 }
 
 function appendArtifactTables(
   descriptor: ActionDescriptor,
   artifact: UserActionArtifact,
   functions: List<FunctionBytecode>,
-  constants: List<Value>,
+  pools: MutableConstantPools,
   variableNames: List<string>
 ): BytecodeExecutableAction {
   const funcOffset = functions.size();
-  const constOffset = constants.size();
+  const constOffsets: ConstantOffsets = {
+    numbers: pools.numbers.size(),
+    strings: pools.strings.size(),
+    values: pools.values.size(),
+  };
   const variableOffset = variableNames.size();
 
-  for (let i = 0; i < artifact.constants.size(); i++) {
-    constants.push(remapValue(artifact.constants.get(i)!, funcOffset));
+  for (let i = 0; i < artifact.constantPools.values.size(); i++) {
+    pools.values.push(remapValue(artifact.constantPools.values.get(i)!, funcOffset));
+  }
+
+  for (let i = 0; i < artifact.constantPools.numbers.size(); i++) {
+    pools.numbers.push(artifact.constantPools.numbers.get(i)!);
+  }
+
+  for (let i = 0; i < artifact.constantPools.strings.size(); i++) {
+    pools.strings.push(artifact.constantPools.strings.get(i)!);
   }
 
   for (let i = 0; i < artifact.variableNames.size(); i++) {
@@ -225,7 +264,7 @@ function appendArtifactTables(
   for (let i = 0; i < artifact.functions.size(); i++) {
     const fn = artifact.functions.get(i)!;
     functions.push({
-      code: remapInstructions(fn.code, funcOffset, constOffset, variableOffset),
+      code: remapInstructions(fn.code, funcOffset, constOffsets, variableOffset),
       numParams: fn.numParams,
       numLocals: fn.numLocals,
       name: fn.name,
@@ -246,14 +285,14 @@ function appendArtifactTables(
 function toExecutableAction(
   resolved: ResolvedAction,
   functions: List<FunctionBytecode>,
-  constants: List<Value>,
+  pools: MutableConstantPools,
   variableNames: List<string>
 ): ExecutableAction {
   if (resolved.binding === "host") {
     return resolved;
   }
 
-  return appendArtifactTables(resolved.descriptor, resolved.artifact, functions, constants, variableNames);
+  return appendArtifactTables(resolved.descriptor, resolved.artifact, functions, pools, variableNames);
 }
 
 /**
@@ -269,15 +308,25 @@ export function linkBrainProgram(
 ): ExecutableBrainProgram {
   const descriptorIndex = buildActionDescriptorIndex(brainDef, catalogs);
   const functions = List.empty<FunctionBytecode>();
-  const constants = List.empty<Value>();
+  const pools: MutableConstantPools = {
+    numbers: List.empty<number>(),
+    strings: List.empty<string>(),
+    values: List.empty<Value>(),
+  };
   const variableNames = List.empty<string>();
   const actions = List.empty<ExecutableAction>();
 
   for (let i = 0; i < program.functions.size(); i++) {
     functions.push(program.functions.get(i)!);
   }
-  for (let i = 0; i < program.constants.size(); i++) {
-    constants.push(program.constants.get(i)!);
+  for (let i = 0; i < program.constantPools.values.size(); i++) {
+    pools.values.push(program.constantPools.values.get(i)!);
+  }
+  for (let i = 0; i < program.constantPools.numbers.size(); i++) {
+    pools.numbers.push(program.constantPools.numbers.get(i)!);
+  }
+  for (let i = 0; i < program.constantPools.strings.size(); i++) {
+    pools.strings.push(program.constantPools.strings.get(i)!);
   }
   for (let i = 0; i < program.variableNames.size(); i++) {
     variableNames.push(program.variableNames.get(i)!);
@@ -296,13 +345,17 @@ export function linkBrainProgram(
     }
 
     validateResolvedAction(descriptor, resolved);
-    actions.push(toExecutableAction(resolved, functions, constants, variableNames));
+    actions.push(toExecutableAction(resolved, functions, pools, variableNames));
   }
 
   return {
     version: program.version,
     functions,
-    constants,
+    constantPools: {
+      numbers: pools.numbers,
+      strings: pools.strings,
+      values: pools.values,
+    },
     variableNames,
     entryPoint: program.entryPoint,
     ruleIndex: program.ruleIndex,

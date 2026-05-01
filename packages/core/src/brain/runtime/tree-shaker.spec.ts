@@ -70,6 +70,8 @@ function mkBytecodeAction(entryFuncId: number, activationFuncId?: number): Bytec
 function mkProgram(opts: {
   functions: FunctionBytecode[];
   constants?: Value[];
+  numberConstants?: number[];
+  stringConstants?: string[];
   variableNames?: string[];
   entryPoint?: number;
   pages?: PageMetadata[];
@@ -79,7 +81,11 @@ function mkProgram(opts: {
   return {
     version: BYTECODE_VERSION,
     functions: List.from(opts.functions),
-    constants: List.from(opts.constants ?? []),
+    constantPools: {
+      numbers: List.from(opts.numberConstants ?? []),
+      strings: List.from(opts.stringConstants ?? []),
+      values: List.from(opts.constants ?? []),
+    },
     variableNames: List.from(opts.variableNames ?? []),
     entryPoint: opts.entryPoint,
     ruleIndex: new Dict(opts.ruleIndex ?? []),
@@ -150,7 +156,7 @@ describe("treeshakeProgram", () => {
   test("FunctionValue constants have funcIds remapped", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "main"),
         mkFunc([mkInstr(Op.RET)], 0, "dead"),
         mkFunc([mkInstr(Op.RET)], 0, "const-ref"),
       ],
@@ -159,7 +165,7 @@ describe("treeshakeProgram", () => {
     });
     const result = treeshakeProgram(prog);
     assert.equal(result.functions.size(), 2);
-    const constVal = result.constants.get(0);
+    const constVal = result.constantPools.values.get(0);
     assert.ok(isFunctionValue(constVal));
     assert.equal(constVal.funcId, 1);
   });
@@ -169,7 +175,7 @@ describe("treeshakeProgram", () => {
     const outerConst = mkFunctionValue(2, List.from<Value>([innerCapture]));
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "main"),
         mkFunc([mkInstr(Op.RET)], 0, "dead"),
         mkFunc([mkInstr(Op.RET)], 0, "outer"),
         mkFunc([mkInstr(Op.RET)], 0, "inner"),
@@ -179,7 +185,7 @@ describe("treeshakeProgram", () => {
     });
     const result = treeshakeProgram(prog);
     assert.equal(result.functions.size(), 3);
-    const remappedConst = result.constants.get(0);
+    const remappedConst = result.constantPools.values.get(0);
     assert.ok(isFunctionValue(remappedConst));
     assert.equal(remappedConst.funcId, 1);
     assert.ok(remappedConst.captures);
@@ -250,7 +256,7 @@ describe("treeshakeProgram", () => {
   test("function reachable only through FunctionValue constant is retained", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "main"),
         mkFunc([mkInstr(Op.RET)], 0, "dead"),
         mkFunc([mkInstr(Op.RET)], 0, "only-via-const"),
       ],
@@ -268,7 +274,7 @@ describe("treeshakeProgram", () => {
     const midCapture = mkFunctionValue(2, List.from<Value>([deepCapture]));
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "main"),
         mkFunc([mkInstr(Op.RET)], 0, "dead"),
         mkFunc([mkInstr(Op.RET)], 0, "mid"),
         mkFunc([mkInstr(Op.RET)], 0, "deep"),
@@ -286,16 +292,16 @@ describe("treeshakeProgram", () => {
   test("non-FunctionValue constants are left untouched", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 0, "main"),
         mkFunc([mkInstr(Op.RET)], 0, "dead"),
       ],
       constants: [mkNumberValue(42), mkStringValue("hello")],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 2);
-    assert.equal(result.constants.get(0).t, NativeType.Number);
-    assert.equal(result.constants.get(1).t, NativeType.String);
+    assert.equal(result.constantPools.values.size(), 2);
+    assert.equal(result.constantPools.values.get(0).t, NativeType.Number);
+    assert.equal(result.constantPools.values.get(1).t, NativeType.String);
   });
 
   test("host actions are preserved as-is", () => {
@@ -342,23 +348,28 @@ describe("treeshakeProgram", () => {
   test("constants only referenced by dead functions are removed", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 0, "dead"),
       ],
       constants: [mkNumberValue(42), mkStringValue("dead-only")],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
     assert.equal(result.functions.size(), 1);
-    assert.equal(result.constants.size(), 1);
-    assert.equal((result.constants.get(0) as { v: number }).v, 42);
+    assert.equal(result.constantPools.values.size(), 1);
+    assert.equal((result.constantPools.values.get(0) as { v: number }).v, 42);
   });
 
   test("constants referenced by surviving functions are retained", () => {
     const prog = mkProgram({
       functions: [
         mkFunc(
-          [mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.PUSH_CONST, 2), mkInstr(Op.RET)],
+          [
+            mkInstr(Op.PUSH_CONST_VAL, 0),
+            mkInstr(Op.PUSH_CONST_VAL, 1),
+            mkInstr(Op.PUSH_CONST_VAL, 2),
+            mkInstr(Op.RET),
+          ],
           0,
           "main"
         ),
@@ -367,66 +378,66 @@ describe("treeshakeProgram", () => {
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 3);
+    assert.equal(result.constantPools.values.size(), 3);
   });
 
   test("typeId constants referenced via LIST_NEW b are retained", () => {
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.LIST_NEW, 0, 0), mkInstr(Op.RET)], 0, "main")],
-      constants: [mkStringValue("List<number>"), mkStringValue("unused-type")],
+      stringConstants: ["List<number>", "unused-type"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 1);
-    assert.equal((result.constants.get(0) as { v: string }).v, "List<number>");
+    assert.equal(result.constantPools.strings.size(), 1);
+    assert.equal(result.constantPools.strings.get(0), "List<number>");
   });
 
   test("typeId constants referenced via STRUCT_NEW b are retained", () => {
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.STRUCT_NEW, 2, 0), mkInstr(Op.RET)], 0, "main")],
-      constants: [mkStringValue("MyStruct"), mkStringValue("unused-type")],
+      stringConstants: ["MyStruct", "unused-type"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 1);
-    assert.equal((result.constants.get(0) as { v: string }).v, "MyStruct");
+    assert.equal(result.constantPools.strings.size(), 1);
+    assert.equal(result.constantPools.strings.get(0), "MyStruct");
   });
 
   test("typeId constants referenced via MAP_NEW b are retained", () => {
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.MAP_NEW, 0, 0), mkInstr(Op.RET)], 0, "main")],
-      constants: [mkStringValue("Map<string,number>"), mkStringValue("unused")],
+      stringConstants: ["Map<string,number>", "unused"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 1);
+    assert.equal(result.constantPools.strings.size(), 1);
   });
 
   test("typeId constants referenced via STRUCT_COPY_EXCEPT b are retained", () => {
     const prog = mkProgram({
       functions: [mkFunc([mkInstr(Op.STRUCT_COPY_EXCEPT, 1, 0), mkInstr(Op.RET)], 0, "main")],
-      constants: [mkStringValue("CopiedStruct"), mkStringValue("unused")],
+      stringConstants: ["CopiedStruct", "unused"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 1);
+    assert.equal(result.constantPools.strings.size(), 1);
   });
 
   test("PUSH_CONST operands are remapped after constant shaking", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 2), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 2), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 0, "dead"),
       ],
       constants: [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30)],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
     assert.equal(result.functions.size(), 1);
-    assert.equal(result.constants.size(), 1);
-    assert.equal((result.constants.get(0) as { v: number }).v, 30);
+    assert.equal(result.constantPools.values.size(), 1);
+    assert.equal((result.constantPools.values.get(0) as { v: number }).v, 30);
     const pushInstr = result.functions.get(0).code.get(0);
-    assert.equal(pushInstr.op, Op.PUSH_CONST);
+    assert.equal(pushInstr.op, Op.PUSH_CONST_VAL);
     assert.equal(pushInstr.a, 0);
   });
 
@@ -434,14 +445,14 @@ describe("treeshakeProgram", () => {
     const prog = mkProgram({
       functions: [
         mkFunc([mkInstr(Op.LIST_NEW, 0, 1), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.PUSH_CONST_STR, 0), mkInstr(Op.RET)], 0, "dead"),
       ],
-      constants: [mkStringValue("dead-type"), mkStringValue("List<number>")],
+      stringConstants: ["dead-type", "List<number>"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 1);
-    assert.equal((result.constants.get(0) as { v: string }).v, "List<number>");
+    assert.equal(result.constantPools.strings.size(), 1);
+    assert.equal(result.constantPools.strings.get(0), "List<number>");
     const listInstr = result.functions.get(0).code.get(0);
     assert.equal(listInstr.op, Op.LIST_NEW);
     assert.equal(listInstr.b, 0);
@@ -451,14 +462,14 @@ describe("treeshakeProgram", () => {
     const prog = mkProgram({
       functions: [
         mkFunc([mkInstr(Op.INSTANCE_OF, 1), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.PUSH_CONST_STR, 0), mkInstr(Op.RET)], 0, "dead"),
       ],
-      constants: [mkStringValue("dead-type"), mkStringValue("MyClass")],
+      stringConstants: ["dead-type", "MyClass"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 1);
-    assert.equal((result.constants.get(0) as { v: string }).v, "MyClass");
+    assert.equal(result.constantPools.strings.size(), 1);
+    assert.equal(result.constantPools.strings.get(0), "MyClass");
     const instOfInstr = result.functions.get(0).code.get(0);
     assert.equal(instOfInstr.op, Op.INSTANCE_OF);
     assert.equal(instOfInstr.a, 0);
@@ -467,8 +478,8 @@ describe("treeshakeProgram", () => {
   test("variable names only referenced by dead functions are removed", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.LOAD_VAR, 0), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.LOAD_VAR, 1), mkInstr(Op.STORE_VAR, 2), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.LOAD_VAR_SLOT, 0), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.LOAD_VAR_SLOT, 1), mkInstr(Op.STORE_VAR_SLOT, 2), mkInstr(Op.RET)], 0, "dead"),
       ],
       variableNames: ["x", "y", "z"],
       entryPoint: 0,
@@ -479,11 +490,11 @@ describe("treeshakeProgram", () => {
     assert.equal(result.variableNames.get(0), "x");
   });
 
-  test("LOAD_VAR / STORE_VAR operands are remapped", () => {
+  test("LOAD_VAR_SLOT / STORE_VAR_SLOT operands are remapped", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.LOAD_VAR, 2), mkInstr(Op.STORE_VAR, 2), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.LOAD_VAR, 0), mkInstr(Op.STORE_VAR, 1), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.LOAD_VAR_SLOT, 2), mkInstr(Op.STORE_VAR_SLOT, 2), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.LOAD_VAR_SLOT, 0), mkInstr(Op.STORE_VAR_SLOT, 1), mkInstr(Op.RET)], 0, "dead"),
       ],
       variableNames: ["a", "b", "c"],
       entryPoint: 0,
@@ -492,10 +503,10 @@ describe("treeshakeProgram", () => {
     assert.equal(result.variableNames.size(), 1);
     assert.equal(result.variableNames.get(0), "c");
     const loadInstr = result.functions.get(0).code.get(0);
-    assert.equal(loadInstr.op, Op.LOAD_VAR);
+    assert.equal(loadInstr.op, Op.LOAD_VAR_SLOT);
     assert.equal(loadInstr.a, 0);
     const storeInstr = result.functions.get(0).code.get(1);
-    assert.equal(storeInstr.op, Op.STORE_VAR);
+    assert.equal(storeInstr.op, Op.STORE_VAR_SLOT);
     assert.equal(storeInstr.a, 0);
   });
 
@@ -503,7 +514,7 @@ describe("treeshakeProgram", () => {
     const prog = mkProgram({
       functions: [
         mkFunc(
-          [mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.LOAD_VAR, 0), mkInstr(Op.STORE_VAR, 1), mkInstr(Op.RET)],
+          [mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.LOAD_VAR_SLOT, 0), mkInstr(Op.STORE_VAR_SLOT, 1), mkInstr(Op.RET)],
           0,
           "main"
         ),
@@ -518,14 +529,14 @@ describe("treeshakeProgram", () => {
 
   test("constants and variable names are shaken even when no functions are dead", () => {
     const prog = mkProgram({
-      functions: [mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.LOAD_VAR, 0), mkInstr(Op.RET)], 0, "main")],
+      functions: [mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.LOAD_VAR_SLOT, 0), mkInstr(Op.RET)], 0, "main")],
       constants: [mkNumberValue(1), mkNumberValue(2)],
       variableNames: ["used", "unused"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
     assert.equal(result.functions.size(), 1);
-    assert.equal(result.constants.size(), 1);
+    assert.equal(result.constantPools.values.size(), 1);
     assert.equal(result.variableNames.size(), 1);
     assert.equal(result.variableNames.get(0), "used");
   });
@@ -534,7 +545,12 @@ describe("treeshakeProgram", () => {
     const prog = mkProgram({
       functions: [
         mkFunc(
-          [mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.PUSH_CONST, 2), mkInstr(Op.RET)],
+          [
+            mkInstr(Op.PUSH_CONST_VAL, 0),
+            mkInstr(Op.PUSH_CONST_VAL, 1),
+            mkInstr(Op.PUSH_CONST_VAL, 2),
+            mkInstr(Op.RET),
+          ],
           0,
           "main"
         ),
@@ -543,9 +559,9 @@ describe("treeshakeProgram", () => {
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 2);
-    assert.equal((result.constants.get(0) as { v: number }).v, 42);
-    assert.equal((result.constants.get(1) as { v: number }).v, 99);
+    assert.equal(result.constantPools.values.size(), 2);
+    assert.equal((result.constantPools.values.get(0) as { v: number }).v, 42);
+    assert.equal((result.constantPools.values.get(1) as { v: number }).v, 99);
     const code = result.functions.get(0).code;
     assert.equal(code.get(0).a, 0);
     assert.equal(code.get(1).a, 0);
@@ -556,18 +572,18 @@ describe("treeshakeProgram", () => {
     const prog = mkProgram({
       functions: [
         mkFunc(
-          [mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.LIST_NEW, 0, 2), mkInstr(Op.RET)],
+          [mkInstr(Op.PUSH_CONST_STR, 0), mkInstr(Op.PUSH_CONST_STR, 1), mkInstr(Op.LIST_NEW, 0, 2), mkInstr(Op.RET)],
           0,
           "main"
         ),
       ],
-      constants: [mkStringValue("hello"), mkStringValue("hello"), mkStringValue("List<number>")],
+      stringConstants: ["hello", "hello", "List<number>"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 2);
-    assert.equal((result.constants.get(0) as { v: string }).v, "hello");
-    assert.equal((result.constants.get(1) as { v: string }).v, "List<number>");
+    assert.equal(result.constantPools.strings.size(), 2);
+    assert.equal(result.constantPools.strings.get(0), "hello");
+    assert.equal(result.constantPools.strings.get(1), "List<number>");
     const code = result.functions.get(0).code;
     assert.equal(code.get(0).a, 0);
     assert.equal(code.get(1).a, 0);
@@ -579,12 +595,12 @@ describe("treeshakeProgram", () => {
       functions: [
         mkFunc(
           [
-            mkInstr(Op.PUSH_CONST, 0),
-            mkInstr(Op.PUSH_CONST, 1),
-            mkInstr(Op.PUSH_CONST, 2),
-            mkInstr(Op.PUSH_CONST, 3),
-            mkInstr(Op.PUSH_CONST, 4),
-            mkInstr(Op.PUSH_CONST, 5),
+            mkInstr(Op.PUSH_CONST_VAL, 0),
+            mkInstr(Op.PUSH_CONST_VAL, 1),
+            mkInstr(Op.PUSH_CONST_VAL, 2),
+            mkInstr(Op.PUSH_CONST_VAL, 3),
+            mkInstr(Op.PUSH_CONST_VAL, 4),
+            mkInstr(Op.PUSH_CONST_VAL, 5),
             mkInstr(Op.RET),
           ],
           0,
@@ -595,10 +611,10 @@ describe("treeshakeProgram", () => {
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 3);
-    assert.equal(result.constants.get(0).t, NativeType.Nil);
-    assert.equal(result.constants.get(1).t, NativeType.Boolean);
-    assert.equal(result.constants.get(2).t, NativeType.Void);
+    assert.equal(result.constantPools.values.size(), 3);
+    assert.equal(result.constantPools.values.get(0).t, NativeType.Nil);
+    assert.equal(result.constantPools.values.get(1).t, NativeType.Boolean);
+    assert.equal(result.constantPools.values.get(2).t, NativeType.Void);
     const code = result.functions.get(0).code;
     assert.equal(code.get(0).a, 0);
     assert.equal(code.get(1).a, 0);
@@ -611,15 +627,15 @@ describe("treeshakeProgram", () => {
   test("duplicate FunctionValue constants with same funcId and no captures are collapsed", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 0, "main"),
         mkFunc([mkInstr(Op.RET)], 0, "target"),
       ],
       constants: [mkFunctionValue(1), mkFunctionValue(1)],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 1);
-    const fv = result.constants.get(0);
+    assert.equal(result.constantPools.values.size(), 1);
+    const fv = result.constantPools.values.get(0);
     assert.ok(isFunctionValue(fv));
     assert.equal(fv.funcId, 1);
     const code = result.functions.get(0).code;
@@ -639,12 +655,12 @@ describe("treeshakeProgram", () => {
       v: List.from<Value>([mkNumberValue(1)]),
     };
     const prog = mkProgram({
-      functions: [mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 0, "main")],
+      functions: [mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 0, "main")],
       constants: [listVal1, listVal2],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 2);
+    assert.equal(result.constantPools.values.size(), 2);
   });
 
   test("all instruction operands referencing deduplicated constant point to surviving entry", () => {
@@ -652,43 +668,44 @@ describe("treeshakeProgram", () => {
       functions: [
         mkFunc(
           [
-            mkInstr(Op.PUSH_CONST, 0),
-            mkInstr(Op.PUSH_CONST, 1),
-            mkInstr(Op.LIST_NEW, 0, 2),
-            mkInstr(Op.STRUCT_NEW, 2, 3),
-            mkInstr(Op.INSTANCE_OF, 4),
+            mkInstr(Op.PUSH_CONST_NUM, 0),
+            mkInstr(Op.PUSH_CONST_NUM, 1),
+            mkInstr(Op.LIST_NEW, 0, 0),
+            mkInstr(Op.STRUCT_NEW, 2, 1),
+            mkInstr(Op.INSTANCE_OF, 2),
             mkInstr(Op.RET),
           ],
           0,
           "main"
         ),
       ],
-      constants: [
-        mkNumberValue(42),
-        mkNumberValue(42),
-        mkStringValue("MyType"),
-        mkStringValue("MyType"),
-        mkStringValue("MyType"),
-      ],
+      numberConstants: [42, 42],
+      stringConstants: ["MyType", "MyType", "MyType"],
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 2);
-    assert.equal((result.constants.get(0) as { v: number }).v, 42);
-    assert.equal((result.constants.get(1) as { v: string }).v, "MyType");
+    assert.equal(result.constantPools.numbers.size(), 1);
+    assert.equal(result.constantPools.numbers.get(0), 42);
+    assert.equal(result.constantPools.strings.size(), 1);
+    assert.equal(result.constantPools.strings.get(0), "MyType");
     const code = result.functions.get(0).code;
     assert.equal(code.get(0).a, 0);
     assert.equal(code.get(1).a, 0);
-    assert.equal(code.get(2).b, 1);
-    assert.equal(code.get(3).b, 1);
-    assert.equal(code.get(4).a, 1);
+    assert.equal(code.get(2).b, 0);
+    assert.equal(code.get(3).b, 0);
+    assert.equal(code.get(4).a, 0);
   });
 
   test("program with no duplicate constants is unchanged", () => {
     const prog = mkProgram({
       functions: [
         mkFunc(
-          [mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.PUSH_CONST, 2), mkInstr(Op.RET)],
+          [
+            mkInstr(Op.PUSH_CONST_VAL, 0),
+            mkInstr(Op.PUSH_CONST_VAL, 1),
+            mkInstr(Op.PUSH_CONST_VAL, 2),
+            mkInstr(Op.RET),
+          ],
           0,
           "main"
         ),
@@ -697,7 +714,7 @@ describe("treeshakeProgram", () => {
       entryPoint: 0,
     });
     const result = treeshakeProgram(prog);
-    assert.equal(result.constants.size(), 3);
+    assert.equal(result.constantPools.values.size(), 3);
     assert.equal(result, prog);
   });
 });
@@ -711,11 +728,21 @@ before(() => {
 });
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
+  const slots = List.empty<Value | undefined>();
   return {
     brain: undefined as never,
     getVariable: () => undefined,
     setVariable: () => {},
     clearVariable: () => {},
+    getVariableBySlot: (slotId: number) => {
+      if (slotId < 0 || slotId >= slots.size()) return NIL_VALUE;
+      const v = slots.get(slotId);
+      return v === undefined ? NIL_VALUE : v;
+    },
+    setVariableBySlot: (slotId: number, value: Value) => {
+      while (slots.size() <= slotId) slots.push(undefined);
+      slots.set(slotId, value);
+    },
     time: 0,
     dt: 0,
     currentTick: 0,
@@ -744,17 +771,17 @@ describe("treeshakeProgram -- integration", () => {
   test("tree-shaken program with dead functions executes correctly", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.CALL, 2, 1), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 0, "dead-unused"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 2), mkInstr(Op.RET)], 1, "doubler"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 3), mkInstr(Op.RET)], 0, "dead-also-unused"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.CALL, 2, 1), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 0, "dead-unused"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 2), mkInstr(Op.RET)], 1, "doubler"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 3), mkInstr(Op.RET)], 0, "dead-also-unused"),
       ],
       constants: [mkNumberValue(5), mkNumberValue(999), mkNumberValue(42), mkStringValue("never-used")],
       entryPoint: 0,
     });
 
     assert.equal(prog.functions.size(), 4);
-    assert.equal(prog.constants.size(), 4);
+    assert.equal(prog.constantPools.values.size(), 4);
 
     const shaken = treeshakeProgram(prog);
 
@@ -762,7 +789,7 @@ describe("treeshakeProgram -- integration", () => {
     assert.equal(shaken.functions.get(0).name, "main");
     assert.equal(shaken.functions.get(1).name, "doubler");
 
-    assert.ok(shaken.constants.size() < prog.constants.size());
+    assert.ok(shaken.constantPools.values.size() < prog.constantPools.values.size());
 
     const result = runProgramToResult(shaken);
     assert.ok(result !== undefined);
@@ -773,8 +800,8 @@ describe("treeshakeProgram -- integration", () => {
   test("tree-shaken program with dead actions executes correctly via page roots", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "rule-root"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 0, "dead-action-entry"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "rule-root"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 0, "dead-action-entry"),
         mkFunc([mkInstr(Op.RET)], 0, "dead-action-activation"),
       ],
       constants: [mkNumberValue(7), mkNumberValue(100)],
@@ -798,8 +825,8 @@ describe("treeshakeProgram -- integration", () => {
     const prog = mkProgram({
       functions: [
         mkFunc([mkInstr(Op.MAKE_CLOSURE, 2, 0), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "dead"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 0, "closure-target"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 0, "closure-target"),
       ],
       constants: [mkNumberValue(111), mkNumberValue(77)],
       entryPoint: 0,
@@ -821,8 +848,8 @@ describe("treeshakeProgram -- integration", () => {
     const prog = mkProgram({
       functions: [
         mkFunc([mkInstr(Op.CALL, 2), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "dead"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.RET)], 0, "helper"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "dead"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.RET)], 0, "helper"),
       ],
       constants: [mkNumberValue(42)],
       entryPoint: 0,
@@ -848,16 +875,16 @@ describe("treeshakeProgram -- integration", () => {
       functions: [
         mkFunc(
           [
-            mkInstr(Op.PUSH_CONST, 0),
-            mkInstr(Op.STORE_VAR, 0),
-            mkInstr(Op.PUSH_CONST, 0),
+            mkInstr(Op.PUSH_CONST_VAL, 0),
+            mkInstr(Op.STORE_VAR_SLOT, 0),
+            mkInstr(Op.PUSH_CONST_VAL, 0),
             mkInstr(Op.CALL, 1, 1),
             mkInstr(Op.RET),
           ],
           0,
           "main"
         ),
-        mkFunc([mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 1, "helper"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 1, "helper"),
       ],
       constants: [mkNumberValue(10), mkNumberValue(99)],
       variableNames: ["x"],
@@ -867,7 +894,7 @@ describe("treeshakeProgram -- integration", () => {
     const shaken = treeshakeProgram(prog);
 
     assert.equal(shaken.functions.size(), prog.functions.size());
-    assert.equal(shaken.constants.size(), prog.constants.size());
+    assert.equal(shaken.constantPools.values.size(), prog.constantPools.values.size());
     assert.equal(shaken.variableNames.size(), prog.variableNames.size());
     assert.equal(shaken, prog);
 
@@ -883,10 +910,10 @@ describe("treeshakeProgram -- integration", () => {
   test("tree-shaking produces same execution result as unshaken program", () => {
     const prog = mkProgram({
       functions: [
-        mkFunc([mkInstr(Op.PUSH_CONST, 0), mkInstr(Op.CALL, 3, 1), mkInstr(Op.RET)], 0, "main"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 1), mkInstr(Op.RET)], 0, "unused-export-a"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 2), mkInstr(Op.RET)], 0, "unused-export-b"),
-        mkFunc([mkInstr(Op.PUSH_CONST, 3), mkInstr(Op.RET)], 1, "used-func"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 0), mkInstr(Op.CALL, 3, 1), mkInstr(Op.RET)], 0, "main"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 1), mkInstr(Op.RET)], 0, "unused-export-a"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 2), mkInstr(Op.RET)], 0, "unused-export-b"),
+        mkFunc([mkInstr(Op.PUSH_CONST_VAL, 3), mkInstr(Op.RET)], 1, "used-func"),
       ],
       constants: [mkNumberValue(5), mkNumberValue(100), mkStringValue("unused"), mkNumberValue(25)],
       entryPoint: 0,
@@ -897,7 +924,7 @@ describe("treeshakeProgram -- integration", () => {
     const shaken = treeshakeProgram(prog);
 
     assert.ok(shaken.functions.size() < prog.functions.size());
-    assert.ok(shaken.constants.size() < prog.constants.size());
+    assert.ok(shaken.constantPools.values.size() < prog.constantPools.values.size());
 
     const shakenResult = runProgramToResult(shaken);
 
