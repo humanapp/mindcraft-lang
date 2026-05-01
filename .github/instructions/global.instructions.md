@@ -2,7 +2,7 @@
 applyTo: "**"
 ---
 
-<!-- Last reviewed: 2026-03-09 -->
+<!-- Last reviewed: 2026-05-01 -->
 
 # GitHub Copilot Instructions
 
@@ -99,6 +99,22 @@ Common substitutions:
 ## After Making Code Changes
 
 After making any code changes in this workspace, always run `npm run typecheck` and `npm run check` in the package directory where the files were modified. This runs TypeScript (type checking) and Biome (linter/formatter) to ensure code validity and style consistency.
+
+### Zero-noise policy for `npm run check`
+
+The passing bar for `npm run check` is the summary line only:
+
+```
+Checked N files in Nms. No fixes applied.
+```
+
+Any output beyond that line -- errors, warnings, **or infos** -- means the check has failed. Infos are not acceptable noise; treat them identically to errors.
+
+**Write code that is clean from the first run.** Do not write code that triggers biome rules and then fix them reactively after seeing the output. Before writing new code, identify patterns that biome flags and avoid them proactively:
+
+- `findIndex((v) => v === x)` triggers `lint/complexity/useIndexOf`. When testing `findIndex` specifically, use a real predicate (`v > x`, `v.startsWith(...)`, etc.) rather than an equality check.
+- Arrow callbacks to `forEach` that return a value trigger `lint/suspicious/useIterableCallbackReturn`. Use a block body `{ stmt; }` instead of an expression arrow.
+- `biome check --write` only applies *safe* auto-fixes. Unsafe fixes are silently skipped and leave residual infos. Never rely on `--write` to clean up code you wrote.
 
 ## Broad View Before Acting
 
