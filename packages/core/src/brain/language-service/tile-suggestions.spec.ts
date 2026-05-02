@@ -34,7 +34,6 @@ import {
   mkParameterTileId,
   mkSensorTileId,
   mod,
-  NIL_VALUE,
   optional,
   param,
   RuleSide,
@@ -42,9 +41,6 @@ import {
   type SlotExpr,
   seq,
   TilePlacement,
-  TRUE_VALUE,
-  type Value,
-  VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type {
@@ -78,6 +74,7 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
+import { NIL_VALUE, TRUE_VALUE, type Value, VOID_VALUE } from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
 
 // ---- Initialize ----

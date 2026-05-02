@@ -14,31 +14,20 @@ import { before, describe, test } from "node:test";
 import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   type ActionDescriptor,
-  type BooleanValue,
   type BrainServices,
-  BYTECODE_VERSION,
   CoreSensorId,
   CoreTypeIds,
   type ExecutionContext,
-  extractBooleanValue,
-  extractNumberValue,
-  extractStringValue,
-  type HandleId,
   type HostAsyncFn,
   type IBrain,
   mkActionDescriptor,
   mkCallDef,
-  mkNumberValue,
   mkSensorTileId,
   mkVariableTileId,
   NativeType,
-  NIL_VALUE,
-  Op,
   param,
   TilePlacement,
   type UserActionArtifact,
-  type Value,
-  VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
@@ -51,6 +40,19 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
+import {
+  type BooleanValue,
+  BYTECODE_VERSION,
+  extractBooleanValue,
+  extractNumberValue,
+  extractStringValue,
+  type HandleId,
+  mkNumberValue,
+  NIL_VALUE,
+  Op,
+  type Value,
+  VOID_VALUE,
+} from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;
 let opAdd: BrainTileOperatorDef;

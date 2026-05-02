@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { compiler, type FunctionBytecode, Op, type Program, type Value } from "@mindcraft-lang/core/brain";
+import { compiler } from "@mindcraft-lang/core/brain";
+import { type FunctionBytecode, Op, type Program, type Value } from "@mindcraft-lang/core/runtime";
 
 describe("core brain imports", () => {
   test("Op enum is importable and has expected members", () => {

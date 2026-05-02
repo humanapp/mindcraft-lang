@@ -1,25 +1,24 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
+import type { ConstantOffsets, FunctionBytecode, Instr } from "../../runtime/bytecode";
+import { Op } from "../../runtime/bytecode";
+import type { Value } from "../../runtime/value";
+import { isFunctionValue } from "../../runtime/value";
 import type {
   ActionDescriptor,
   BytecodeExecutableAction,
-  ConstantOffsets,
   ExecutableAction,
   ExecutableBrainProgram,
-  FunctionBytecode,
   IBrainActionTileDef,
   IBrainDef,
   IBrainRuleDef,
   IBrainTileDef,
-  Instr,
   ITileCatalog,
   ResolvedAction,
   UnlinkedBrainProgram,
   UserActionArtifact,
-  Value,
 } from "../interfaces";
-import { isFunctionValue, Op } from "../interfaces";
 import type { BrainActionResolver } from "../interfaces/runtime";
 
 function isActionTileDef(tileDef: IBrainTileDef): tileDef is IBrainActionTileDef {

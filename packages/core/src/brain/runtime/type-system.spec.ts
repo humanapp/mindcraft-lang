@@ -3,7 +3,6 @@ import { before, describe, test } from "node:test";
 
 import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
-  type BooleanValue,
   type BrainServices,
   type BrainSyncFunctionEntry,
   CoreOpId,
@@ -17,14 +16,13 @@ import {
   type MapTypeDef,
   mkTypeId,
   NativeType,
-  NIL_VALUE,
   type NullableTypeDef,
   nativeTypeToString,
   type StructTypeDef,
   type UnionTypeDef,
-  type Value,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { type BooleanValue, NIL_VALUE, type Value } from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;
 

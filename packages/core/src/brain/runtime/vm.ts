@@ -6,42 +6,13 @@ import { MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
 import { Time } from "../../platform/time";
 import { UniqueSet } from "../../platform/uniqueset";
-import type {
-  ActionInstance,
-  ErrorValue,
-  ExecutableAction,
-  ExecutableBrainProgram,
-  ExecutionContext,
-  FunctionBytecode,
-  HandleId,
-  IFiberScheduler,
-  Instr,
-  ITypeRegistry,
-  IVM,
-  Program,
-  StructTypeDef,
-  TypeId,
-  Value,
-  VmConfig,
-} from "../interfaces";
+import type { FunctionBytecode, Instr } from "../../runtime/bytecode";
+import { Op } from "../../runtime/bytecode";
+import type { Program } from "../../runtime/program";
+import type { ErrorValue, HandleId, Value } from "../../runtime/value";
 import {
   ErrorCode,
-  getOrCreateActionInstance,
-  isOverflowError,
-  isUnderflowError,
-  NativeType,
-  throwOverflow,
-  throwUnderflow,
-  ValueDict,
-} from "../interfaces";
-import {
   FALSE_VALUE,
-  type Fiber,
-  FiberState,
-  type Frame,
-  type Handler,
-  HandleState,
-  type HandleTable,
   isBooleanValue,
   isEnumValue,
   isErrValue,
@@ -54,13 +25,41 @@ import {
   isStructValue,
   mkNativeStructValue,
   NIL_VALUE,
-  Op,
-  type Scheduler,
   TRUE_VALUE,
   UNKNOWN_VALUE,
+  ValueDict,
+  VOID_VALUE,
+} from "../../runtime/value";
+import type {
+  ActionInstance,
+  ExecutableAction,
+  ExecutableBrainProgram,
+  ExecutionContext,
+  IFiberScheduler,
+  ITypeRegistry,
+  IVM,
+  StructTypeDef,
+  TypeId,
+  VmConfig,
+} from "../interfaces";
+import {
+  getOrCreateActionInstance,
+  isOverflowError,
+  isUnderflowError,
+  NativeType,
+  throwOverflow,
+  throwUnderflow,
+} from "../interfaces";
+import {
+  type Fiber,
+  FiberState,
+  type Frame,
+  type Handler,
+  HandleState,
+  type HandleTable,
+  type Scheduler,
   type VmRunResult,
   VmStatus,
-  VOID_VALUE,
 } from "../interfaces/vm";
 import type { BrainServices } from "../services";
 

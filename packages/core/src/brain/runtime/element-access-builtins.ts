@@ -2,16 +2,14 @@ import type { ReadonlyList } from "../../platform/list";
 import { INFINITY, MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
 import {
-  type ExecutionContext,
   type ListValue,
-  mkCallDef,
   mkNumberValue,
   mkStringValue,
-  NativeType,
   NIL_VALUE,
   type StringValue,
   type Value,
-} from "../interfaces";
+} from "../../runtime/value";
+import { type ExecutionContext, mkCallDef, NativeType } from "../interfaces";
 import type { BrainServices } from "../services";
 
 const elementAccessCallDef = mkCallDef({ type: "bag", items: [] });

@@ -20,5 +20,5 @@
     "preserveSymlinks": true
   },
   "include": ["src"],
-  "exclude": ["**/*.rbx.ts", "**/*.spec.ts", "dist/**", "out/**"]
+  "exclude": ["**/*.rbx.ts", "**/*.spec.ts", "**/__fixtures__/**", "dist/**", "out/**"]
 }

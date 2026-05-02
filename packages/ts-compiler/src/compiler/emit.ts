@@ -1,11 +1,5 @@
-import {
-  compiler,
-  type FunctionBytecode,
-  type IFunctionRegistry,
-  mkFunctionValue,
-  NIL_VALUE,
-  type TypeId,
-} from "@mindcraft-lang/core/brain";
+import { compiler, type IFunctionRegistry, type TypeId } from "@mindcraft-lang/core/brain";
+import { type FunctionBytecode, mkFunctionValue, NIL_VALUE } from "@mindcraft-lang/core/runtime";
 import { EmitDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import type { LocalMetadata, ScopeMetadata } from "./scope.js";

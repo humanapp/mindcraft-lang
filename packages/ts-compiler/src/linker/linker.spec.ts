@@ -2,27 +2,29 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
-  type BooleanValue,
   type BrainProgram,
   type BrainServices,
-  BYTECODE_VERSION,
   type ExecutionContext,
-  type FunctionBytecode,
   HandleTable,
-  type MapValue,
-  mkNumberValue,
   NativeType,
-  NIL_VALUE,
-  type NumberValue,
-  Op,
   type PageMetadata,
   runtime,
   type Scheduler,
-  type Value,
-  ValueDict,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import {
+  type BooleanValue,
+  BYTECODE_VERSION,
+  type FunctionBytecode,
+  type MapValue,
+  mkNumberValue,
+  NIL_VALUE,
+  type NumberValue,
+  Op,
+  type Value,
+  ValueDict,
+} from "@mindcraft-lang/core/runtime";
 import { compileUserTile } from "../compiler/compile.js";
 import { linkUserPrograms } from "./linker.js";
 

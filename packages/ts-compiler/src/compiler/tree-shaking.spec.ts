@@ -9,17 +9,14 @@ import {
   type ExecutionContext,
   HandleTable,
   NativeType,
-  NIL_VALUE,
-  type NumberValue,
   type PageMetadata,
   runtime,
   type Scheduler,
-  type StringValue,
-  type Value,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { treeshakeProgram } from "@mindcraft-lang/core/brain/runtime";
+import { NIL_VALUE, type NumberValue, type StringValue, type Value } from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";

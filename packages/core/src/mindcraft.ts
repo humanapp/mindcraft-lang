@@ -10,7 +10,6 @@ import type {
   ExecutionContext,
   FunctionTypeDef,
   FunctionTypeShape,
-  HandleId,
   HostActionBinding,
   HostAsyncFn,
   HostFn,
@@ -36,9 +35,8 @@ import type {
   UnionTypeDef,
   UnionTypeShape,
   UserActionArtifact,
-  Value,
 } from "./brain/interfaces";
-import { CoreOpId, NativeType, NIL_VALUE } from "./brain/interfaces";
+import { CoreOpId, NativeType } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
 import { BrainDef, brainJsonFromPlain } from "./brain/model";
 import { Brain } from "./brain/runtime";
@@ -55,6 +53,8 @@ import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
 import { List, type ReadonlyList } from "./platform/list";
 import { TypeUtils } from "./platform/types";
+import type { HandleId, Value } from "./runtime/value";
+import { NIL_VALUE } from "./runtime/value";
 
 /** Tile definition value. Alias for {@link IBrainTileDef}. */
 export type TileDefinitionInput = IBrainTileDef;

@@ -7,16 +7,18 @@ import {
   type BrainSyncFunctionEntry,
   CoreSensorId,
   type ExecutionContext,
+  type HostSyncFn,
+  NativeType,
+} from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import {
   extractNumberValue,
   FALSE_VALUE,
-  type HostSyncFn,
   mkNumberValue,
-  NativeType,
   NIL_VALUE,
   TRUE_VALUE,
   type Value,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
 
 function mkCtx(
   overrides: Omit<Partial<ExecutionContext>, "callSiteState"> & { callSiteState?: Dict<number, unknown> } = {}

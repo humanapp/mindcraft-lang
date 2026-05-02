@@ -4,17 +4,14 @@ import {
   ContextTypeIds,
   CoreOpId,
   CoreTypeIds,
-  mkNumberValue,
-  mkStringValue,
   NativeType,
-  NIL_VALUE,
   type NullableTypeDef,
   runtime,
   type StructTypeDef,
   type TypeId,
   type UnionTypeDef,
-  type Value,
 } from "@mindcraft-lang/core/brain";
+import { mkNumberValue, mkStringValue, NIL_VALUE, type Value } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";

@@ -12,21 +12,23 @@ import {
   CoreParameterId,
   CoreTypeIds,
   type EnumSymbolDef,
-  type EnumValue,
   type ExecutionContext,
   mkActionDescriptor,
   mkCallDef,
   NativeType,
-  NIL_VALUE,
-  type NumberValue,
   param,
-  type StringValue,
-  type Value,
-  VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
 import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
+import {
+  type EnumValue,
+  NIL_VALUE,
+  type NumberValue,
+  type StringValue,
+  type Value,
+  VOID_VALUE,
+} from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;
 

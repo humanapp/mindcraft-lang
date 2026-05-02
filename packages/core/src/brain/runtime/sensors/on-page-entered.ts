@@ -1,3 +1,4 @@
+import { FALSE_VALUE, TRUE_VALUE, type Value } from "../../../runtime/value";
 import {
   type ActionDescriptor,
   type BrainActionCallDef,
@@ -5,14 +6,11 @@ import {
   CoreSensorId,
   CoreTypeIds,
   type ExecutionContext,
-  FALSE_VALUE,
   getCallSiteState,
   type HostActionBinding,
   mkCallDef,
   mkSensorTileId,
   setCallSiteState,
-  TRUE_VALUE,
-  type Value,
 } from "../../interfaces";
 
 const callSpec: BrainActionCallSpec = {

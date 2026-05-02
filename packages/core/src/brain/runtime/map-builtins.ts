@@ -1,16 +1,7 @@
 import { List, type ReadonlyList } from "../../platform/list";
 import { TypeUtils } from "../../platform/types";
-import {
-  CoreTypeIds,
-  type ExecutionContext,
-  type MapTypeDef,
-  type MapValue,
-  mkCallDef,
-  mkListValue,
-  mkNumberValue,
-  mkStringValue,
-  type Value,
-} from "../interfaces";
+import { type MapValue, mkListValue, mkNumberValue, mkStringValue, type Value } from "../../runtime/value";
+import { CoreTypeIds, type ExecutionContext, type MapTypeDef, mkCallDef } from "../interfaces";
 import type { BrainServices } from "../services";
 
 const mapCallDef = mkCallDef({ type: "bag", items: [] });

@@ -4,31 +4,33 @@ import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainServices,
-  BYTECODE_VERSION,
   type BytecodeExecutableAction,
   type ExecutableAction,
   type ExecutableBrainProgram,
   type ExecutionContext,
+  HandleTable,
+  NativeType,
+  type PageMetadata,
+  VmStatus,
+} from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { treeshakeProgram, VM } from "@mindcraft-lang/core/brain/runtime";
+import {
+  BYTECODE_VERSION,
   FALSE_VALUE,
   type FunctionBytecode,
-  HandleTable,
   type Instr,
   isFunctionValue,
   mkFunctionValue,
   mkNumberValue,
   mkStringValue,
-  NativeType,
   NIL_VALUE,
   Op,
-  type PageMetadata,
   TRUE_VALUE,
   UNKNOWN_VALUE,
   type Value,
-  VmStatus,
   VOID_VALUE,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { treeshakeProgram, VM } from "@mindcraft-lang/core/brain/runtime";
+} from "@mindcraft-lang/core/runtime";
 
 function mkInstr(op: Op, a?: number, b?: number, c?: number): Instr {
   const ins: Instr = { op };

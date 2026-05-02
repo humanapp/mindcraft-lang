@@ -86,26 +86,27 @@ export { mkTypeId, NativeType } from "../brain/interfaces";
 
 // -- Runtime values & helpers ---------------------------------------------------
 
-export type {
-  ExecutionContext,
-  ListValue,
-  MapValue,
-  NumberValue,
-  StructFieldGetterFn,
-  StructTypeDef,
-  StructValue,
-  Value,
-} from "../brain/interfaces";
+export type { ExecutionContext, StructFieldGetterFn, StructTypeDef } from "../brain/interfaces";
 export {
   APP_CAPABILITY_BIT_OFFSET,
   CoreCapabilityBits,
+  getCallSiteState,
+  getSlotId,
+  setCallSiteState,
+} from "../brain/interfaces";
+export type {
+  ListValue,
+  MapValue,
+  NumberValue,
+  StructValue,
+  Value,
+} from "../runtime/value";
+export {
   extractListValue,
   extractNumberValue,
   extractStringValue,
   FALSE_VALUE,
-  getCallSiteState,
   getClosedStructFieldByName,
-  getSlotId,
   isNilValue,
   isNumberValue,
   mkClosedStructValue,
@@ -114,10 +115,9 @@ export {
   mkNativeStructValue,
   mkNumberValue,
   NIL_VALUE,
-  setCallSiteState,
   TRUE_VALUE,
   VOID_VALUE,
-} from "../brain/interfaces";
+} from "../runtime/value";
 
 // -- Tile visual types (editor integration) -------------------------------------
 

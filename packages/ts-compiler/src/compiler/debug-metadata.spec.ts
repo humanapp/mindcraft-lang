@@ -1,17 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
-import {
-  type BrainProgram,
-  type BrainServices,
-  BYTECODE_VERSION,
-  type FunctionBytecode,
-  mkNumberValue,
-  Op,
-  type PageMetadata,
-  type Value,
-} from "@mindcraft-lang/core/brain";
+import type { BrainProgram, BrainServices, PageMetadata } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { BYTECODE_VERSION, type FunctionBytecode, mkNumberValue, Op, type Value } from "@mindcraft-lang/core/runtime";
 import { linkUserPrograms } from "../linker/linker.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";

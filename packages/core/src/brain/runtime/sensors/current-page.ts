@@ -1,3 +1,4 @@
+import type { Value } from "../../../runtime/value";
 import {
   type ActionDescriptor,
   type BrainActionCallDef,
@@ -9,7 +10,6 @@ import {
   mkCallDef,
   mkSensorTileId,
   NativeType,
-  type Value,
 } from "../../interfaces";
 
 const callSpec: BrainActionCallSpec = {

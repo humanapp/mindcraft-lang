@@ -7,18 +7,14 @@ import {
   CoreTypeIds,
   type ExecutionContext,
   HandleTable,
-  mkNumberValue,
   NativeType,
-  NIL_VALUE,
-  type NumberValue,
   runtime,
   type Scheduler,
-  type StringValue,
   type StructTypeDef,
-  type Value,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { mkNumberValue, NIL_VALUE, type NumberValue, type StringValue, type Value } from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";

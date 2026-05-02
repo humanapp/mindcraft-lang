@@ -1,17 +1,13 @@
 import { List, type ReadonlyList } from "../../platform/list";
 import {
-  CoreTypeIds,
-  type ExecutionContext,
-  mkCallDef,
   mkNativeStructValue,
   mkNumberValue,
-  mkTypeId,
-  NativeType,
   NIL_VALUE,
   type StringValue,
   type StructValue,
   type Value,
-} from "../interfaces";
+} from "../../runtime/value";
+import { CoreTypeIds, type ExecutionContext, mkCallDef, mkTypeId, NativeType } from "../interfaces";
 import type { BrainServices } from "../services";
 
 /** Stable type-system names for the built-in context structs. */

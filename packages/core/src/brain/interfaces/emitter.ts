@@ -1,5 +1,5 @@
 import type { List } from "../../platform/list";
-import type { Instr } from "./vm";
+import type { Instr } from "../../runtime/bytecode";
 
 /**
  * Interface for bytecode emitter that generates VM instructions.

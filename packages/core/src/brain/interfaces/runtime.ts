@@ -1,13 +1,14 @@
 import { Dict } from "../../platform/dict";
 import { List, type ReadonlyList } from "../../platform/list";
 import type { UniqueSet } from "../../platform/uniqueset";
+import type { Program } from "../../runtime/program";
+import type { HandleId, Value } from "../../runtime/value";
+import { NIL_VALUE } from "../../runtime/value";
 import type { EventEmitterConsumer } from "../../util";
 import type { ITileCatalog } from "./catalog";
 import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./functions";
 import type { TileId } from "./tiles";
 import type { TypeId } from "./type-system";
-import type { HandleId, Program, Value } from "./vm";
-import { NIL_VALUE } from "./vm";
 
 /** Reference to a registered action, by program-local slot and stable key. */
 export interface ActionRef {

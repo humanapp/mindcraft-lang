@@ -16,45 +16,47 @@ import { before, describe, test } from "node:test";
 import { Dict, List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   BrainServices,
-  BYTECODE_VERSION,
   ContextTypeIds,
   CoreOpId,
   CoreTypeIds,
-  ErrorCode,
   type ExecutionContext,
-  errorCodeName,
-  FALSE_VALUE,
   type Fiber,
   FiberState,
-  type FunctionBytecode,
-  type FunctionValue,
   getCallSiteState,
   HandleState,
   HandleTable,
   type IBrainRule,
+  isOverflowError,
+  mkCallDef,
+  mkTypeId,
+  NativeType,
+  setCallSiteState,
+  VmStatus,
+} from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { FiberScheduler, VM } from "@mindcraft-lang/core/brain/runtime";
+import {
+  BYTECODE_VERSION,
+  ErrorCode,
+  errorCodeName,
+  FALSE_VALUE,
+  type FunctionBytecode,
+  type FunctionValue,
   type Instr,
   isFunctionValue,
-  isOverflowError,
   mkBooleanValue,
-  mkCallDef,
   mkFunctionValue,
   mkNumberValue,
   mkStringValue,
-  mkTypeId,
-  NativeType,
   NIL_VALUE,
   type NumberValue,
   Op,
   type Program,
-  setCallSiteState,
   TRUE_VALUE,
   type Value,
   ValueDict,
-  VmStatus,
   VOID_VALUE,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { FiberScheduler, VM } from "@mindcraft-lang/core/brain/runtime";
+} from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;
 

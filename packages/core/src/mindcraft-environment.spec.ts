@@ -14,24 +14,20 @@ import {
 } from "@mindcraft-lang/core";
 import {
   type BrainServices,
-  BYTECODE_VERSION,
   CoreSensorId,
   CoreTypeIds,
   type ExecutionContext,
   type ITileCatalog,
   mkCallDef,
-  mkNumberValue,
   mkTypeId,
   mkVariableTileId,
   NativeType,
-  Op,
   type StructTypeDef,
   TilePlacement,
-  TRUE_VALUE,
-  type Value,
 } from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import { BYTECODE_VERSION, mkNumberValue, Op, TRUE_VALUE, type Value } from "@mindcraft-lang/core/runtime";
 
 const noopCodec = {
   encode(): void {},

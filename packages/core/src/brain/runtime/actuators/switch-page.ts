@@ -1,4 +1,5 @@
 import type { ReadonlyList } from "../../../platform/list";
+import { isNilValue, isNumberValue, isStringValue, type Value, VOID_VALUE } from "../../../runtime/value";
 import {
   type ActionDescriptor,
   CoreActuatorId,
@@ -7,14 +8,9 @@ import {
   type ExecutionContext,
   getSlotId,
   type HostActionBinding,
-  isNilValue,
-  isNumberValue,
-  isStringValue,
   mkActuatorTileId,
   mkCallDef,
   param,
-  type Value,
-  VOID_VALUE,
 } from "../../interfaces";
 
 const AnonNumber = param(CoreParameterId.AnonymousNumber, { anonymous: true });

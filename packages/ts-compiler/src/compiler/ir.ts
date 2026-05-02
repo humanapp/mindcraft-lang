@@ -1,4 +1,4 @@
-import type { Value } from "@mindcraft-lang/core/brain";
+import type { Value } from "@mindcraft-lang/core/runtime";
 
 /** 1-based source-position range carried on {@link IrNode} for debug span emission. */
 export interface IrSourceSpan {

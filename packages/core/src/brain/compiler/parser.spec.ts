@@ -27,7 +27,6 @@ import {
   optional,
   param,
   repeated,
-  VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
@@ -42,6 +41,7 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
+import { VOID_VALUE } from "@mindcraft-lang/core/runtime";
 
 // ---- Shared setup ----
 

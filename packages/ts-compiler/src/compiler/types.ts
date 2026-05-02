@@ -1,4 +1,5 @@
-import type { BrainServices, ConstantOffsets, UserActionArtifact } from "@mindcraft-lang/core/brain";
+import type { BrainServices, UserActionArtifact } from "@mindcraft-lang/core/brain";
+import type { ConstantOffsets } from "@mindcraft-lang/core/runtime";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 

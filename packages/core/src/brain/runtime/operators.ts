@@ -4,29 +4,31 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { MathOps } from "../../platform/math";
 import {
   type BooleanValue,
+  FALSE_VALUE,
+  mkBooleanValue,
+  mkNumberValue,
+  NIL_VALUE,
+  type NumberValue,
+  type StringValue,
+  type Value,
+} from "../../runtime/value";
+import {
   BrainFunctionEntry,
   CoreOpId,
   type ExecutionContext,
-  FALSE_VALUE,
   HostAsyncFn,
   type HostFn,
   type IFunctionRegistry,
   type IOperatorOverloads,
   type IOperatorTable,
   type IRegisteredOperator,
-  mkBooleanValue,
   mkCallDef,
-  mkNumberValue,
   NativeType,
-  NIL_VALUE,
-  type NumberValue,
   type OpId,
   type OpOverload,
   type OpParse,
   type OpSpec,
-  type StringValue,
   type TypeId,
-  type Value,
 } from "../interfaces";
 import { CoreTypeIds } from "../interfaces/core-types";
 import type { BrainServices } from "../services";

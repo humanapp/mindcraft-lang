@@ -1,3 +1,4 @@
+import { type Value, VOID_VALUE } from "../../../runtime/value";
 import {
   type ActionDescriptor,
   type BrainActionCallDef,
@@ -7,8 +8,6 @@ import {
   type ExecutionContext,
   type HostActionBinding,
   mkActuatorTileId,
-  type Value,
-  VOID_VALUE,
 } from "../../interfaces";
 
 const callSpec: BrainActionCallSpec = {

@@ -51,6 +51,7 @@ export { Vector3 } from "./platform/vector3";
 export * as primitives from "./primitives";
 // Primitive utilities
 export { fourCC, fromFourCC } from "./primitives";
+export * as runtime from "./runtime";
 export * as systems from "./systems";
 export * as util from "./util";
 export type { ReadonlyBitSet } from "./util/bitset";

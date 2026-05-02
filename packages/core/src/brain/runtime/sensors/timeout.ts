@@ -1,5 +1,6 @@
 import type { ReadonlyList } from "../../../platform/list";
 import { MathOps } from "../../../platform/math";
+import { FALSE_VALUE, isNilValue, isNumberValue, TRUE_VALUE, type Value } from "../../../runtime/value";
 import {
   type ActionDescriptor,
   type BrainActionCallDef,
@@ -8,19 +9,14 @@ import {
   CoreSensorId,
   CoreTypeIds,
   type ExecutionContext,
-  FALSE_VALUE,
   getCallSiteState,
   getSlotId,
   type HostActionBinding,
-  isNilValue,
-  isNumberValue,
   mkCallDef,
   mkSensorTileId,
   optional,
   param,
   setCallSiteState,
-  TRUE_VALUE,
-  type Value,
 } from "../../interfaces";
 
 const AnonNumber = param(CoreParameterId.AnonymousNumber, {

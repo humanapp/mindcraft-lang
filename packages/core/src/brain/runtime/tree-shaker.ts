@@ -2,17 +2,12 @@ import { Dict } from "../../platform/dict";
 import { List } from "../../platform/list";
 import { logger } from "../../platform/logger";
 import { UniqueSet } from "../../platform/uniqueset";
-import type {
-  BytecodeExecutableAction,
-  ConstantPools,
-  ExecutableAction,
-  ExecutableBrainProgram,
-  FunctionBytecode,
-  Instr,
-  PageMetadata,
-  Value,
-} from "../interfaces";
-import { isFunctionValue, NativeType, Op } from "../interfaces";
+import type { ConstantPools, FunctionBytecode, Instr } from "../../runtime/bytecode";
+import { Op } from "../../runtime/bytecode";
+import type { Value } from "../../runtime/value";
+import { isFunctionValue } from "../../runtime/value";
+import type { BytecodeExecutableAction, ExecutableAction, ExecutableBrainProgram, PageMetadata } from "../interfaces";
+import { NativeType } from "../interfaces";
 
 function markReachableFunctions(program: ExecutableBrainProgram): UniqueSet<number> {
   const reachable = new UniqueSet<number>();

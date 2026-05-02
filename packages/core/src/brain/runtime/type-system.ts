@@ -4,6 +4,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import { UniqueSet } from "../../platform/uniqueset";
+import { type EnumValue, mkBooleanValue, type Value } from "../../runtime/value";
 import {
   CoreOpId,
   CoreTypeIds,
@@ -12,7 +13,6 @@ import {
   type EnumSymbolDef,
   type EnumTypeDef,
   type EnumTypeShape,
-  type EnumValue,
   type ExecutionContext,
   type FunctionTypeDef,
   type FunctionTypeShape,
@@ -21,7 +21,6 @@ import {
   type ListTypeShape,
   type MapTypeDef,
   type MapTypeShape,
-  mkBooleanValue,
   mkTypeId,
   NativeType,
   type NullableTypeDef,
@@ -36,7 +35,6 @@ import {
   type TypeDef,
   type TypeId,
   type UnionTypeDef,
-  type Value,
 } from "../interfaces";
 import type { BrainServices } from "../services";
 import { registerEnumConversions } from "./conversions";

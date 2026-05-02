@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import {
-  type BooleanValue,
   type BrainActionCallArgSpec,
   type BrainActionCallBagSpec,
   type BrainActionCallChoiceSpec,
@@ -13,20 +12,23 @@ import {
   type BrainServices,
   type ExecutionContext,
   HandleTable,
-  type MapValue,
-  mkNumberValue,
-  mkStringValue,
   NativeType,
-  NIL_VALUE,
-  type NumberValue,
   runtime,
   type Scheduler,
-  type StringValue,
-  type Value,
-  ValueDict,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import {
+  type BooleanValue,
+  type MapValue,
+  mkNumberValue,
+  mkStringValue,
+  NIL_VALUE,
+  type NumberValue,
+  type StringValue,
+  type Value,
+  ValueDict,
+} from "@mindcraft-lang/core/runtime";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
 import { DescriptorDiagCode } from "./diag-codes.js";

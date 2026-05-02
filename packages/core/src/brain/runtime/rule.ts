@@ -1,6 +1,7 @@
 import { Dict } from "../../platform/dict";
 import { List } from "../../platform/list";
-import type { IBrainPage, IBrainRule, IBrainRuleDef, Value } from "../interfaces";
+import type { Value } from "../../runtime/value";
+import type { IBrainPage, IBrainRule, IBrainRuleDef } from "../interfaces";
 import type { BrainPage } from "./page";
 
 /**

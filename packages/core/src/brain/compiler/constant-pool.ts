@@ -1,8 +1,9 @@
 import { Dict } from "../../platform/dict";
 import { List } from "../../platform/list";
 import { MathOps } from "../../platform/math";
+import type { ConstantPools } from "../../runtime/bytecode";
+import type { Value } from "../../runtime/value";
 import { NativeType } from "../interfaces/type-system";
-import type { ConstantPools, Value } from "../interfaces/vm";
 
 /** Identifies which typed sub-pool a constant entry lives in. */
 export type ConstantPoolKind = "number" | "string" | "value";

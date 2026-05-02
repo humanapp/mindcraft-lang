@@ -5,22 +5,24 @@ import {
   type BrainServices,
   type ExecutionContext,
   HandleTable,
+  mkTypeId,
+  NativeType,
+  runtime,
+  type Scheduler,
+  VmStatus,
+} from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import {
   isStructValue,
   mkNativeStructValue,
   mkNumberValue,
   mkStringValue,
-  mkTypeId,
-  NativeType,
   NIL_VALUE,
   type NumberValue,
-  runtime,
-  type Scheduler,
   type StringValue,
   type StructValue,
   type Value,
-  VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 

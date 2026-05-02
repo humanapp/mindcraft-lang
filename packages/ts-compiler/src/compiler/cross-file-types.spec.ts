@@ -6,18 +6,20 @@ import {
   type BrainServices,
   CoreTypeIds,
   HandleTable,
-  isStructValue,
-  mkNumberValue,
   NativeType,
-  NIL_VALUE,
-  type NumberValue,
   runtime,
   type StructTypeDef,
-  type StructValue,
-  type Value,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import {
+  isStructValue,
+  mkNumberValue,
+  NIL_VALUE,
+  type NumberValue,
+  type StructValue,
+  type Value,
+} from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";

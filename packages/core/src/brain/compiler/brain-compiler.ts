@@ -3,24 +3,19 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { UniqueSet } from "../../platform/uniqueset";
-import {
-  type ActionCallSiteEntry,
-  type ActionRef,
-  BYTECODE_VERSION,
-  type FunctionBytecode,
-  type IBrainDef,
-  type IBrainPageDef,
-  type IBrainRuleDef,
-  type IConversionRegistry,
-  type Instr,
-  type ITileCatalog,
-  NIL_VALUE,
-  Op,
-  type PageMetadata,
-  type TileId,
-  TRUE_VALUE,
-  type UnlinkedBrainProgram,
-  Value,
+import { BYTECODE_VERSION, type FunctionBytecode, type Instr, Op } from "../../runtime/bytecode";
+import { NIL_VALUE, TRUE_VALUE, type Value } from "../../runtime/value";
+import type {
+  ActionCallSiteEntry,
+  ActionRef,
+  IBrainDef,
+  IBrainPageDef,
+  IBrainRuleDef,
+  IConversionRegistry,
+  ITileCatalog,
+  PageMetadata,
+  TileId,
+  UnlinkedBrainProgram,
 } from "../interfaces";
 import { ConstantPool } from "./constant-pool";
 import { BytecodeEmitter } from "./emitter";

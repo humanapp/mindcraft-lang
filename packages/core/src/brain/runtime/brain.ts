@@ -2,6 +2,7 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
 import { MathOps } from "../../platform/math";
+import { NIL_VALUE, type Value } from "../../runtime/value";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import { compileBrain } from "../compiler";
 import {
@@ -17,10 +18,8 @@ import {
   type IBrainDef,
   type IBrainPageDef,
   type IBrainRule,
-  NIL_VALUE,
   resetActionInstance,
   type UnlinkedBrainProgram,
-  type Value,
   VmStatus,
 } from "../interfaces";
 import type { BrainServices } from "../services";
