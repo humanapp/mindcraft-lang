@@ -410,7 +410,7 @@ export enum Op {
   HOST_CALL = 40,
   HOST_CALL_ASYNC,
 
-  // Action calls (pre-built MapValue on stack)
+  // Action calls (positional arg buffer on stack: vstack[top-argc+1 .. top])
   ACTION_CALL = 42,
   ACTION_CALL_ASYNC,
 

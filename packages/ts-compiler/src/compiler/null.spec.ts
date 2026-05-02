@@ -64,12 +64,16 @@ function mkScheduler(): Scheduler {
   };
 }
 
-function mkArgsMap(entries: Record<number, Value>): MapValue {
-  const dict = new ValueDict();
+function mkArgsList(entries: Record<number, Value>): List<Value> {
+  const args = List.empty<Value>();
   for (const [key, value] of Object.entries(entries)) {
-    dict.set(Number(key), value);
+    const idx = Number(key);
+    while (args.size() <= idx) {
+      args.push(NIL_VALUE);
+    }
+    args.set(idx, value);
   }
-  return { t: NativeType.Map, typeId: "map:<args>", v: dict };
+  return args;
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {
@@ -222,8 +226,8 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(services, prog, handles);
-    const args = mkArgsMap({ 0: mkNumberValue(5) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
+    const args = mkArgsList({ 0: mkNumberValue(5) });
+    const fiber = vm.spawnFiber(1, 0, args, mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -347,8 +351,8 @@ export default Sensor({
     const prog = result.program!;
     const handles = new HandleTable(100);
     const vm = new runtime.VM(services, prog, handles);
-    const args = mkArgsMap({ 0: mkNumberValue(5) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
+    const args = mkArgsList({ 0: mkNumberValue(5) });
+    const fiber = vm.spawnFiber(1, 0, args, mkCtx());
     fiber.instrBudget = 1000;
 
     const runResult2 = vm.runFiber(fiber, mkScheduler());

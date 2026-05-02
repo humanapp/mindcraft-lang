@@ -1,3 +1,4 @@
+import type { ReadonlyList } from "../../../platform/list";
 import { MathOps } from "../../../platform/math";
 import {
   type ActionDescriptor,
@@ -11,8 +12,8 @@ import {
   getCallSiteState,
   getSlotId,
   type HostActionBinding,
+  isNilValue,
   isNumberValue,
-  type MapValue,
   mkCallDef,
   mkSensorTileId,
   optional,
@@ -56,10 +57,10 @@ function onPageEntered(ctx: ExecutionContext) {
   setCallSiteState(ctx, state);
 }
 
-function execTimeout(ctx: ExecutionContext, args: MapValue): Value {
+function execTimeout(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   let delay = 1; // default 1 second
-  const anonNumberValue = args.v.get(kAnonymousNumberSlotId);
-  if (anonNumberValue !== undefined) {
+  const anonNumberValue = args.get(kAnonymousNumberSlotId);
+  if (anonNumberValue !== undefined && !isNilValue(anonNumberValue)) {
     // The user supplied a delay expression. If it failed to evaluate to a
     // valid finite number (e.g. nil from an unassigned variable, or a
     // NaN-poisoned arithmetic result), refuse to fire so the rule

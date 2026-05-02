@@ -6,7 +6,7 @@ import type { ITileCatalog } from "./catalog";
 import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./functions";
 import type { TileId } from "./tiles";
 import type { TypeId } from "./type-system";
-import type { HandleId, MapValue, Program, Value } from "./vm";
+import type { HandleId, Program, Value } from "./vm";
 import { NIL_VALUE } from "./vm";
 
 /** Reference to a registered action, by program-local slot and stable key. */
@@ -54,8 +54,8 @@ export interface HostActionBinding {
   binding: "host";
   descriptor: ActionDescriptor;
   onPageEntered?: (ctx: ExecutionContext) => void;
-  execSync?: (ctx: ExecutionContext, args: MapValue) => Value;
-  execAsync?: (ctx: ExecutionContext, args: MapValue, handleId: HandleId) => void;
+  execSync?: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
+  execAsync?: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
 }
 
 /** Compiled user-authored action: bytecode plus action metadata. */

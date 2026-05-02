@@ -95,4 +95,6 @@ lcov.info
 # it a place to put them that won't cause problems.)
 # ------------------------------------------------------------------
 generated-docs/
+docs/.archived/
+memories/
 .vscode-test-web

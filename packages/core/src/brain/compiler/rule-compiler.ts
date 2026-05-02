@@ -447,16 +447,14 @@ export class ExprCompiler implements ExprVisitor<void> {
     const actionSlot = this.getOrCreateActionSlot(action.key);
     const argSlots = action.callDef.argSlots;
 
-    // Emit arguments as a single Map value
-    // Map contains: { "slotId": value } for args, { "slotId": true } for modifiers
     this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
     const callSiteId = this.nextCallSiteId();
 
     if (action.isAsync) {
-      this.emitter.actionCallAsync(actionSlot, callSiteId);
+      this.emitter.actionCallAsync(actionSlot, argSlots.size(), callSiteId);
       this.emitter.await();
     } else {
-      this.emitter.actionCall(actionSlot, callSiteId);
+      this.emitter.actionCall(actionSlot, argSlots.size(), callSiteId);
     }
 
     // Actuator return value is now on the stack, but it is ignored, currently.
@@ -471,34 +469,23 @@ export class ExprCompiler implements ExprVisitor<void> {
     const actionSlot = this.getOrCreateActionSlot(action.key);
     const argSlots = action.callDef.argSlots;
 
-    // Emit arguments as a single Map value
-    // Map contains: { "slotId": value } for args, { "slotId": true } for modifiers
     this.emitActionArguments(argSlots, expr.anons, expr.parameters, expr.modifiers);
     const callSiteId = this.nextCallSiteId();
 
     if (action.isAsync) {
-      this.emitter.actionCallAsync(actionSlot, callSiteId);
+      this.emitter.actionCallAsync(actionSlot, argSlots.size(), callSiteId);
       this.emitter.await();
     } else {
-      this.emitter.actionCall(actionSlot, callSiteId);
+      this.emitter.actionCall(actionSlot, argSlots.size(), callSiteId);
     }
 
     // Result is now on the stack
   }
 
   /**
-   * Emit action arguments as a Map value keyed by slotId. This allows the host
-   * function to receive a single Map argument containing all provided
-   * arguments, making optional arguments natural to handle.
+   * Emit action arguments as a fixed-width positional arg buffer.
    *
-   * Stack effect: [] -> [Map<string, Value>]
-   *
-   * The map contains:
-   * - Anonymous args: { "slotId": value }
-   * - Named parameters: { "slotId": value }
-   * - Modifiers: { "slotId": true }
-   *
-   * Missing slots are simply absent from the map (not present as keys).
+   * Stack effect: [] -> [slot0, slot1, ..., slotN]
    */
   private emitActionArguments(
     argSlots: ReadonlyList<BrainActionArgSlot>,
@@ -506,31 +493,20 @@ export class ExprCompiler implements ExprVisitor<void> {
     parameters: ReadonlyList<SlotExpr>,
     modifiers: ReadonlyList<SlotExpr>
   ): number {
-    // Create a new empty map to hold all arguments
-    // MISSING: Need to determine proper typeId for argument maps
-    // For now, use 0 as a placeholder for a generic map type
-    const mapTypeId = 0;
-    this.emitter.mapNew(mapTypeId);
+    const argc = argSlots.size();
+    for (let i = 0; i < argc; i++) {
+      this.pushNil();
+    }
 
-    // Helper to emit a key-value pair into the map
-    // Stack effect: [map] -> [map] (mapSet pops map/key/value, pushes modified map)
-    const emitMapEntry = (slotId: number, emitValue: () => void) => {
-      // Stack: [map]
-
-      // Push the key (slotId as a number)
-      this.pushNumberConstant(slotId); // Stack: [map, key]
-
-      // Push the value
-      emitValue(); // Stack: [map, key, value]
-
-      // Set the entry: pops value, key, map; pushes modified map
-      this.emitter.mapSet(); // Stack: [map]
+    const emitSlotEntry = (slotId: number, emitValue: () => void) => {
+      emitValue();
+      this.emitter.stackSetRel(argc - 1 - slotId);
     };
 
     // Emit anonymous arguments
     for (let i = 0; i < anons.size(); i++) {
       const slot = anons.get(i);
-      emitMapEntry(slot.slotId, () => {
+      emitSlotEntry(slot.slotId, () => {
         acceptExprVisitor(slot.expr, this);
         this.emitConversionIfNeeded(slot.expr.nodeId);
       });
@@ -539,7 +515,7 @@ export class ExprCompiler implements ExprVisitor<void> {
     // Emit named parameters
     for (let i = 0; i < parameters.size(); i++) {
       const slot = parameters.get(i);
-      emitMapEntry(slot.slotId, () => {
+      emitSlotEntry(slot.slotId, () => {
         acceptExprVisitor(slot.expr, this);
         // The conversion is stored on the ParameterExpr node (same node
         // that validateActionCallSlot checks), not on the inner value node.
@@ -549,22 +525,20 @@ export class ExprCompiler implements ExprVisitor<void> {
 
     // Emit modifiers -- count occurrences per slotId so repeated modifiers
     // produce a numeric count value instead of a boolean flag.
-    // Single-occurrence modifiers emit 1, which is truthy and backward
-    // compatible with `args.v.has(slotId)` presence checks.
+    // Single-occurrence modifiers emit 1, which is truthy for positional
+    // presence checks against NIL.
     const modCounts = new Dict<number, number>();
     for (let i = 0; i < modifiers.size(); i++) {
       const sid = modifiers.get(i).slotId;
       modCounts.set(sid, (modCounts.get(sid) ?? 0) + 1);
     }
     modCounts.forEach((count, slotId) => {
-      emitMapEntry(slotId, () => {
+      emitSlotEntry(slotId, () => {
         this.pushNumberConstant(count);
       });
     });
 
-    // Map is now on the stack with all arguments
-    // Return 1 because we push a single Map value as the argument
-    return 1;
+    return argc;
   }
 
   // ==========================================

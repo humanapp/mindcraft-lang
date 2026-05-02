@@ -26,7 +26,6 @@ import {
   type HandleId,
   type HostAsyncFn,
   type IBrain,
-  type MapValue,
   mkActionDescriptor,
   mkCallDef,
   mkNumberValue,
@@ -371,9 +370,9 @@ describe("Brain behavioral -- sensors and actuators", () => {
     assert.equal(extractNumberValue(brain.getVariable(v.varName)), 77);
   });
 
-  test("sync actuator receives argument map and is called", () => {
+  test("sync actuator receives positional args and is called", () => {
     let called = false;
-    let receivedArgs: MapValue | undefined;
+    let receivedArg: Value | undefined;
 
     const actuatorId = "test-actuator-call";
     const callDef = mkCallDef({
@@ -394,9 +393,6 @@ describe("Brain behavioral -- sensors and actuators", () => {
       false,
       {
         exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
-          // Action dispatch goes through ActionRuntimeBinding.execSync
-          // (MapValue) per V4.1 scope; this HostSyncFn variant exists
-          // only to keep the function-registry registration well-typed.
           return VOID_VALUE;
         },
       },
@@ -408,9 +404,9 @@ describe("Brain behavioral -- sensors and actuators", () => {
     services.actions.register({
       binding: "host",
       descriptor: action,
-      execSync: (_ctx: ExecutionContext, args: MapValue) => {
+      execSync: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         called = true;
-        receivedArgs = args;
+        receivedArg = args.get(0);
         return VOID_VALUE;
       },
     });
@@ -421,7 +417,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
     const brain = runBrain(brainDef);
 
     assert.ok(called, "actuator should have been called");
-    assert.ok(receivedArgs !== undefined, "actuator should receive args");
+    assert.equal(extractNumberValue(receivedArg), 42);
   });
 });
 
@@ -1058,14 +1054,15 @@ describe("Brain behavioral -- timeout sensor", () => {
     );
   });
 
-  test("WHEN [timeout][unassignedVar + random] -> nil-poisoned delay never fires (rule evaluates false)", () => {
+  test("WHEN [timeout][unassignedVar + random] -> nil delay uses omitted-arg default", () => {
     const timeoutTile = getCoreSensor(CoreSensorId.Timeout);
     const randomTile = getCoreSensor(CoreSensorId.Random);
 
     // unassignedVar is NEVER written. At runtime its value is nil. The compiler
     // typed it as number based on its declared type, so the number+number Add
     // overload runs at runtime with one nil operand. Hardened math ops return
-    // NIL_VALUE; the timeout sensor sees a non-numeric delay and refuses to fire.
+    // NIL_VALUE; positional action args represent that the same way as an
+    // omitted optional slot, so timeout uses its default delay.
     const unassignedVar = mkVar("unassigned");
     const sentinelVar = mkVar("sentinel");
     const brainDef = buildBrain([timeoutTile, unassignedVar, opAdd, randomTile], [sentinelVar, opAssign, mkLiteral(1)]);
@@ -1074,14 +1071,14 @@ describe("Brain behavioral -- timeout sensor", () => {
     brain.initialize();
     brain.startup();
 
-    for (let t = 16; t <= 5000; t += 16) {
+    for (let t = 16; t <= 1500; t += 16) {
       brain.think(t);
     }
 
     assert.equal(
-      brain.getVariable(sentinelVar.varName),
-      undefined,
-      "DO should NEVER run when delay expression evaluates to nil/NaN"
+      extractNumberValue(brain.getVariable(sentinelVar.varName)),
+      1,
+      "DO should run after timeout treats nil as an omitted optional delay"
     );
   });
 });

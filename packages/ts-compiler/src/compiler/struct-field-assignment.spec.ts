@@ -232,10 +232,8 @@ export default Sensor({
     const ctx = mkCtx();
 
     const nativeWidget = mkNativeStructValue(mkTypeId(NativeType.Struct, "NativeWidget"), { value: 0, id: 7 });
-    const argsDict = new ValueDict();
-    argsDict.set(0, nativeWidget);
-    const argsMap: MapValue = { t: NativeType.Map, typeId: "map:<args>", v: argsDict };
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([argsMap]), ctx);
+    const args = List.from<Value>([nativeWidget]);
+    const fiber = vm.spawnFiber(1, 0, args, ctx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -533,12 +531,8 @@ export default Sensor({
     const ctx = mkCtx();
 
     const unitStruct = mkNativeStructValue(mkTypeId(NativeType.Struct, "Unit"), nativeState);
-    const argsDict = new ValueDict();
-    argsDict.set(0, unitStruct);
-    argsDict.set(1, mkNumberValue(60));
-    argsDict.set(2, mkNumberValue(4));
-    const argsMap: MapValue = { t: NativeType.Map, typeId: "map:<args>", v: argsDict };
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([argsMap]), ctx);
+    const args = List.from<Value>([unitStruct, mkNumberValue(60), mkNumberValue(4)]);
+    const fiber = vm.spawnFiber(1, 0, args, ctx);
     fiber.instrBudget = 2000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());

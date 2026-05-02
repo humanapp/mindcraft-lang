@@ -25,7 +25,6 @@ import type {
   ListTypeShape,
   MapTypeDef,
   MapTypeShape,
-  MapValue,
   NullableTypeDef,
   NullableTypeShape,
   OpSpec,
@@ -39,7 +38,7 @@ import type {
   UserActionArtifact,
   Value,
 } from "./brain/interfaces";
-import { CoreOpId, NativeType, NIL_VALUE, type ValueDict } from "./brain/interfaces";
+import { CoreOpId, NativeType, NIL_VALUE } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
 import { BrainDef, brainJsonFromPlain } from "./brain/model";
 import { Brain } from "./brain/runtime";
@@ -98,7 +97,6 @@ export interface HostFunctionDefinition {
 export interface HostSensorDefinition {
   readonly descriptor: ActionDescriptor;
   readonly function: HostFunctionDefinition;
-  /** Original MapValue-shaped exec used for action dispatch (V4.1 action ABI). */
   readonly actionFn: SyncHostActionFn | AsyncHostActionFn;
   readonly tile: IBrainActionTileDef;
 }
@@ -107,27 +105,20 @@ export interface HostSensorDefinition {
 export interface HostActuatorDefinition {
   readonly descriptor: ActionDescriptor;
   readonly function: HostFunctionDefinition;
-  /** Original MapValue-shaped exec used for action dispatch (V4.1 action ABI). */
   readonly actionFn: SyncHostActionFn | AsyncHostActionFn;
   readonly tile: IBrainActionTileDef;
 }
 
-/**
- * Sync action exec shape used by sensors and actuators registered
- * through {@link createHostSensor} / {@link createHostActuator}. Args
- * arrive as `MapValue` (action ABI, unchanged in V4.1); the runtime
- * adapts to the V4.1 host-fn `ReadonlyList<Value>` shape internally
- * before registering the function. Both shapes converge in V4.2.
- */
+/** Sync action exec shape used by sensors and actuators registered through {@link createHostSensor}. */
 export type SyncHostActionFn = {
   onPageEntered?: (ctx: ExecutionContext) => void;
-  exec: (ctx: ExecutionContext, args: MapValue) => Value;
+  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
 };
 
 /** Async action exec shape; see {@link SyncHostActionFn}. */
 export type AsyncHostActionFn = {
   onPageEntered?: (ctx: ExecutionContext) => void;
-  exec: (ctx: ExecutionContext, args: MapValue, handleId: HandleId) => void;
+  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
 };
 
 type HostActionOptionsBase = {
@@ -150,29 +141,15 @@ type AsyncHostActionOptions = HostActionOptionsBase & {
 function adaptSyncActionFn(fn: SyncHostActionFn): HostSyncFn {
   return {
     onPageEntered: fn.onPageEntered,
-    exec: (ctx, args) => fn.exec(ctx, readonlyListToMapValue(args)),
+    exec: fn.exec,
   };
 }
 
 function adaptAsyncActionFn(fn: AsyncHostActionFn): HostAsyncFn {
   return {
     onPageEntered: fn.onPageEntered,
-    exec: (ctx, args, handleId) => fn.exec(ctx, readonlyListToMapValue(args), handleId),
+    exec: fn.exec,
   };
-}
-
-function readonlyListToMapValue(listArgs: ReadonlyList<Value>): MapValue {
-  const dict = new Dict<string | number, Value>() as ValueDict;
-  // NIL fillers represent unsupplied slots; preserve "key absent"
-  // semantics (`args.v.get(i) === undefined`, `args.v.has(i) === false`)
-  // that the action ABI consumers expect.
-  for (let i = 0; i < listArgs.size(); i++) {
-    const v = listArgs.get(i);
-    if (v.t !== NativeType.Nil) {
-      dict.set(i, v);
-    }
-  }
-  return { t: NativeType.Map, typeId: "map:<args>", v: dict };
 }
 
 /** Options for {@link createHostSensor}. Sensors return a value of `outputType`. */
@@ -370,8 +347,6 @@ function buildHostActionBinding(
     onPageEntered: actionFn.onPageEntered,
   };
 
-  // ActionRuntimeBinding's MapValue exec is unchanged in V4.1 (the host
-  // action ABI is V4.2 territory); use the action fn directly.
   if (descriptor.isAsync) {
     binding.execAsync = (actionFn as AsyncHostActionFn).exec;
   } else {

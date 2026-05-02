@@ -1,6 +1,6 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
-import { List } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import { logger } from "../../platform/logger";
 import { MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
@@ -18,7 +18,6 @@ import type {
   Instr,
   ITypeRegistry,
   IVM,
-  MapValue,
   Program,
   StructTypeDef,
   TypeId,
@@ -962,12 +961,12 @@ export class VM implements IVM {
 
   private execActionCall(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const actionSlot = ins.a ?? 0;
+    const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
 
-    const args = this.pop(fiber);
-
-    if (args.t !== NativeType.Map) {
-      throw new Error(`ACTION_CALL: expected map arguments, got ${args.t}`);
+    const stackSize = fiber.vstack.size();
+    if (argc < 0 || argc > stackSize) {
+      throwUnderflow(`ACTION_CALL: argc ${argc} exceeds stack size ${stackSize}`);
     }
 
     const action = this.getExecutableAction(actionSlot, "ACTION_CALL");
@@ -984,13 +983,21 @@ export class VM implements IVM {
       const actionInstance = getOrCreateActionInstance(fiber.executionContext, callSiteId, 0);
       this.bindExecutionContext(fiber, frame, callSiteId, actionInstance);
 
+      const args = fiber.vstack.subview(stackSize - argc, argc);
       const result = action.execSync(fiber.executionContext, args);
+      for (let i = 0; i < argc; i++) {
+        fiber.vstack.pop();
+      }
       this.push(fiber, result);
       frame.pc++;
       this.syncExecutionContextFromTopFrame(fiber);
       return undefined;
     }
 
+    const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL");
+    for (let i = 0; i < argc; i++) {
+      fiber.vstack.pop();
+    }
     this.enterBytecodeActionFrame(fiber, frame, action, args, callSiteId);
     return undefined;
   }
@@ -999,12 +1006,12 @@ export class VM implements IVM {
     this.assertCanSuspend(fiber, Op.ACTION_CALL_ASYNC);
 
     const actionSlot = ins.a ?? 0;
+    const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
 
-    const args = this.pop(fiber);
-
-    if (args.t !== NativeType.Map) {
-      throw new Error(`ACTION_CALL_ASYNC: expected map arguments, got ${args.t}`);
+    const stackSize = fiber.vstack.size();
+    if (argc < 0 || argc > stackSize) {
+      throwUnderflow(`ACTION_CALL_ASYNC: argc ${argc} exceeds stack size ${stackSize}`);
     }
 
     const action = this.getExecutableAction(actionSlot, "ACTION_CALL_ASYNC");
@@ -1016,6 +1023,14 @@ export class VM implements IVM {
     if (action.binding === "host") {
       if (!action.execAsync) {
         throw new Error(`ACTION_CALL_ASYNC: host action ${actionKey} is missing execAsync`);
+      }
+
+      const args = List.empty<Value>();
+      for (let i = 0; i < argc; i++) {
+        args.push(fiber.vstack.get(stackSize - argc + i)!);
+      }
+      for (let i = 0; i < argc; i++) {
+        fiber.vstack.pop();
       }
 
       const hid = this.handles.createPending();
@@ -1030,6 +1045,10 @@ export class VM implements IVM {
       return undefined;
     }
 
+    const args = this.snapshotStackArgs(fiber, argc, "ACTION_CALL_ASYNC");
+    for (let i = 0; i < argc; i++) {
+      fiber.vstack.pop();
+    }
     const childFiber = this.spawnBytecodeActionFiber(fiber, action, args, callSiteId);
     if (!scheduler.addFiber) {
       throw new Error(`ACTION_CALL_ASYNC: scheduler cannot add child fibers for ${actionKey}`);
@@ -1536,11 +1555,10 @@ export class VM implements IVM {
 
   private prepareArgsForFunction(
     fn: FunctionBytecode,
-    args: List<Value>,
+    args: ReadonlyList<Value>,
     executionContext: ExecutionContext,
     label: string
-  ): List<Value> {
-    let effectiveArgs = args;
+  ): ReadonlyList<Value> {
     if (fn.injectCtxTypeId !== undefined) {
       const expectedArgs = fn.numParams - 1;
       if (args.size() !== expectedArgs) {
@@ -1550,7 +1568,7 @@ export class VM implements IVM {
       }
 
       const ctxStruct = mkNativeStructValue(fn.injectCtxTypeId, executionContext);
-      effectiveArgs = List.empty<Value>();
+      const effectiveArgs = List.empty<Value>();
       effectiveArgs.push(ctxStruct);
       for (let i = 0; i < args.size(); i++) {
         effectiveArgs.push(args.get(i)!);
@@ -1562,7 +1580,7 @@ export class VM implements IVM {
       throw new Error(`Argument count mismatch for ${label}: expected ${fn.numParams}, got ${args.size()}`);
     }
 
-    return effectiveArgs;
+    return args;
   }
 
   private resolveDirectRuleFuncId(executionContext: ExecutionContext, funcId: number): number | undefined {
@@ -1655,26 +1673,24 @@ export class VM implements IVM {
     }
   }
 
-  private getActionExplicitArgs(fn: FunctionBytecode, args: MapValue, opName: string, actionKey: string): List<Value> {
-    const explicitParamCount = fn.injectCtxTypeId !== undefined ? fn.numParams - 1 : fn.numParams;
-    if (explicitParamCount < 0 || explicitParamCount > 1) {
-      throw new Error(
-        `${opName}: bytecode action ${actionKey} requires 0 or 1 explicit args, got ${explicitParamCount}`
-      );
+  private snapshotStackArgs(fiber: Fiber, argc: number, opName: string): List<Value> {
+    const stackSize = fiber.vstack.size();
+    if (argc < 0 || argc > stackSize) {
+      throwUnderflow(`${opName}: argc ${argc} exceeds stack size ${stackSize}`);
     }
 
-    const explicitArgs = List.empty<Value>();
-    if (explicitParamCount === 1) {
-      explicitArgs.push(args);
+    const args = List.empty<Value>();
+    for (let i = 0; i < argc; i++) {
+      args.push(fiber.vstack.get(stackSize - argc + i)!);
     }
-    return explicitArgs;
+    return args;
   }
 
   private enterBytecodeActionFrame(
     fiber: Fiber,
     callerFrame: Frame,
     action: Extract<ExecutableAction, { binding: "bytecode" }>,
-    args: MapValue,
+    args: ReadonlyList<Value>,
     callSiteId: number
   ): void {
     if (fiber.frames.size() >= this.config.maxFrameDepth) {
@@ -1682,10 +1698,9 @@ export class VM implements IVM {
     }
 
     const fn = this.prog.functions.get(action.entryFuncId)!;
-    const explicitArgs = this.getActionExplicitArgs(fn, args, "ACTION_CALL", action.descriptor.key);
     const effectiveArgs = this.prepareArgsForFunction(
       fn,
-      explicitArgs,
+      args,
       fiber.executionContext,
       `ACTION_CALL:${action.descriptor.key}`
     );
@@ -1717,13 +1732,11 @@ export class VM implements IVM {
   private spawnBytecodeActionFiber(
     parentFiber: Fiber,
     action: Extract<ExecutableAction, { binding: "bytecode" }>,
-    args: MapValue,
+    args: List<Value>,
     callSiteId: number
   ): Fiber {
     const childContext: ExecutionContext = { ...parentFiber.executionContext };
-    const entryFn = this.prog.functions.get(action.entryFuncId)!;
-    const explicitArgs = this.getActionExplicitArgs(entryFn, args, "ACTION_CALL_ASYNC", action.descriptor.key);
-    const childFiber = this.spawnFiber(this.nextInternalFiberId--, action.entryFuncId, explicitArgs, childContext);
+    const childFiber = this.spawnFiber(this.nextInternalFiberId--, action.entryFuncId, args, childContext);
     const actionInstance = getOrCreateActionInstance(childContext, callSiteId, action.numStateSlots);
     const ruleFuncId = this.resolveFrameRuleFuncId(parentFiber.executionContext, this.topFrame(parentFiber));
     const childFrame = this.topFrame(childFiber)!;
@@ -1888,7 +1901,7 @@ export class VM implements IVM {
     fiber.vstack.push(v);
   }
 
-  private allocLocals(fn: FunctionBytecode, args: List<Value>): List<Value> {
+  private allocLocals(fn: FunctionBytecode, args: ReadonlyList<Value>): List<Value> {
     const numLocals = fn.numLocals ?? fn.numParams;
     const locals = List.empty<Value>();
     for (let i = 0; i < numLocals; i++) {

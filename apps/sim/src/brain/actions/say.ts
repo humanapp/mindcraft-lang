@@ -7,14 +7,15 @@ import {
   extractNumberValue,
   extractStringValue,
   getSlotId,
-  type MapValue,
   mkCallDef,
   optional,
   type ParameterTileInput,
   param,
+  type ReadonlyList,
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
+import { hasArg } from "@/brain/actions/utils";
 import { getSelf } from "@/brain/execution-context-types";
 import { TileIds } from "@/brain/tileids";
 
@@ -29,7 +30,7 @@ const callDef = mkCallDef(bag(optional(AnonString), optional(Duration)));
 const kAnonymousStringSlotId = getSlotId(callDef, AnonString);
 const kDurationSlotId = getSlotId(callDef, Duration);
 
-function execSay(ctx: ExecutionContext, args: MapValue): Value {
+function execSay(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   const self = getSelf(ctx);
 
   if (!self) {
@@ -38,13 +39,13 @@ function execSay(ctx: ExecutionContext, args: MapValue): Value {
   }
 
   let text: string | undefined;
-  const hasStringArg = args.v.has(kAnonymousStringSlotId);
+  const hasStringArg = hasArg(args, kAnonymousStringSlotId);
   if (hasStringArg) {
-    const stringValue = args.v.get(kAnonymousStringSlotId);
+    const stringValue = args.get(kAnonymousStringSlotId);
     text = extractStringValue(stringValue);
   }
 
-  const durationSecs = extractNumberValue(args.v.get(kDurationSlotId));
+  const durationSecs = extractNumberValue(args.get(kDurationSlotId));
   self.displayString(text, durationSecs);
 
   return VOID_VALUE;

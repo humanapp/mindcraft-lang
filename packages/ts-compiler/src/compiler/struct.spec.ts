@@ -69,12 +69,16 @@ function mkScheduler(): Scheduler {
   };
 }
 
-function mkArgsMap(entries: Record<number, Value>): MapValue {
-  const dict = new ValueDict();
+function mkArgsList(entries: Record<number, Value>): List<Value> {
+  const args = List.empty<Value>();
   for (const [key, value] of Object.entries(entries)) {
-    dict.set(Number(key), value);
+    const idx = Number(key);
+    while (args.size() <= idx) {
+      args.push(NIL_VALUE);
+    }
+    args.set(idx, value);
   }
-  return { t: NativeType.Map, typeId: "map:<args>", v: dict };
+  return args;
 }
 
 function findFunctionContainingOp(prog: UserAuthoredProgram, op: Op): FunctionBytecode {
@@ -730,8 +734,8 @@ export default Sensor({
     const vm = new runtime.VM(services, prog, handles);
     const execCtx = mkCtx();
 
-    const argsMap = mkArgsMap({ 0: mkNumberValue(25) });
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([argsMap]), execCtx);
+    const argsMap = mkArgsList({ 0: mkNumberValue(25) });
+    const fiber = vm.spawnFiber(1, 0, argsMap, execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1094,9 +1098,9 @@ export default Sensor({
 
     const widgetTypeId = mkTypeId(NativeType.Struct, "Widget");
     const widgetValue = mkNativeStructValue(widgetTypeId, { id: 7 });
-    const argsMap = mkArgsMap({ 0: widgetValue });
+    const argsMap = mkArgsList({ 0: widgetValue });
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([argsMap as Value]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, argsMap, execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1133,9 +1137,9 @@ export default Sensor({
 
     const widgetTypeId = mkTypeId(NativeType.Struct, "Widget");
     const widgetValue = mkNativeStructValue(widgetTypeId, { id: 1 });
-    const argsMap = mkArgsMap({ 0: widgetValue });
+    const argsMap = mkArgsList({ 0: widgetValue });
 
-    const fiber = vm.spawnFiber(1, 0, List.from<Value>([argsMap as Value]), execCtx);
+    const fiber = vm.spawnFiber(1, 0, argsMap, execCtx);
     fiber.instrBudget = 1000;
 
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1688,8 +1692,8 @@ export default Sensor({
     const vm = new runtime.VM(services, prog, handles);
 
     {
-      const args = mkArgsMap({ 0: { t: NativeType.Boolean, v: true } as BooleanValue });
-      const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
+      const args = mkArgsList({ 0: { t: NativeType.Boolean, v: true } as BooleanValue });
+      const fiber = vm.spawnFiber(1, 0, args, mkCtx());
       fiber.instrBudget = 1000;
       const runResult = vm.runFiber(fiber, mkScheduler());
       assert.equal(runResult.status, VmStatus.DONE);
@@ -1698,8 +1702,8 @@ export default Sensor({
       }
     }
     {
-      const args = mkArgsMap({ 0: { t: NativeType.Boolean, v: false } as BooleanValue });
-      const fiber = vm.spawnFiber(1, 0, List.from<Value>([args]), mkCtx());
+      const args = mkArgsList({ 0: { t: NativeType.Boolean, v: false } as BooleanValue });
+      const fiber = vm.spawnFiber(1, 0, args, mkCtx());
       fiber.instrBudget = 1000;
       const runResult = vm.runFiber(fiber, mkScheduler());
       assert.equal(runResult.status, VmStatus.DONE);

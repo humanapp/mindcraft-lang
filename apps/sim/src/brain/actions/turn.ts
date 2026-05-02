@@ -8,18 +8,18 @@ import {
   type ExecutionContext,
   extractNumberValue,
   getSlotId,
-  type MapValue,
   type ModifierTileInput,
   mkCallDef,
   mod,
   optional,
   type ParameterTileInput,
   param,
+  type ReadonlyList,
   repeated,
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
-import { resolveTargetPosition } from "@/brain/actions/utils";
+import { hasArg, resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { type Steering, turnAwayFrom, turnToAngle, turnToward } from "@/brain/movement";
@@ -99,17 +99,17 @@ const kQuicklyMultiplier = 0.5; // each Quickly increases speed by 50%
 const kSlowlyMultiplier = 1; // each Slowly decreases speed by 100% of base (50% of previous)
 
 /** Compute speed multiplier from quickly/slowly repeat counts. */
-function getSpeedMultiplier(args: MapValue): number {
-  const quicklyCount = extractNumberValue(args.v.get(kQuicklySlotId)) ?? 0;
-  const slowlyCount = extractNumberValue(args.v.get(kSlowlySlotId)) ?? 0;
+function getSpeedMultiplier(args: ReadonlyList<Value>): number {
+  const quicklyCount = extractNumberValue(args.get(kQuicklySlotId)) ?? 0;
+  const slowlyCount = extractNumberValue(args.get(kSlowlySlotId)) ?? 0;
   if (quicklyCount > 0) return 1 + quicklyCount * kQuicklyMultiplier; // 1.5x, 2x, 2.5x
   if (slowlyCount > 0) return 1 / (1 + slowlyCount * kSlowlyMultiplier); // ~0.5x, 0.33x, 0.25x
   return 1;
 }
 
 /** Extract priority weight (default 0.5). */
-function getWeight(args: MapValue): number {
-  return extractNumberValue(args.v.get(kPrioritySlotId)) ?? 0.5;
+function getWeight(args: ReadonlyList<Value>): number {
+  return extractNumberValue(args.get(kPrioritySlotId)) ?? 0.5;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,41 +125,41 @@ const ANGLE_WEST = Math.PI; // left
 // Steering computation
 // ---------------------------------------------------------------------------
 
-function computeSteering(ctx: ExecutionContext, args: MapValue, self: Actor): Steering | undefined {
+function computeSteering(ctx: ExecutionContext, args: ReadonlyList<Value>, self: Actor): Steering | undefined {
   const speedMultiplier = getSpeedMultiplier(args);
   const weight = getWeight(args);
 
-  if (args.v.has(kTowardSlotId)) {
+  if (hasArg(args, kTowardSlotId)) {
     const targetPos = resolveTargetPosition(ctx, args, kAnonActorRefSlotId);
     return targetPos ? turnToward(self, targetPos, weight, speedMultiplier) : undefined;
   }
 
-  if (args.v.has(kAwayFromSlotId)) {
+  if (hasArg(args, kAwayFromSlotId)) {
     const targetPos = resolveTargetPosition(ctx, args, kAnonActorRefSlotId);
     return targetPos ? turnAwayFrom(self, targetPos, weight, speedMultiplier) : undefined;
   }
 
-  if (args.v.has(kAroundSlotId)) {
+  if (hasArg(args, kAroundSlotId)) {
     // Turn 180 degrees from current facing
     const oppositeAngle = self.sprite.rotation + Math.PI;
     return turnToAngle(self, oppositeAngle, weight, speedMultiplier);
   }
 
-  if (args.v.has(kLeftSlotId)) {
+  if (hasArg(args, kLeftSlotId)) {
     // Pure left turn (counterclockwise): turn = -1, no forward
     return { turn: -1, forward: 0, weight, speedMultiplier, label: "turnLeft" };
   }
 
-  if (args.v.has(kRightSlotId)) {
+  if (hasArg(args, kRightSlotId)) {
     // Pure right turn (clockwise): turn = +1, no forward
     return { turn: 1, forward: 0, weight, speedMultiplier, label: "turnRight" };
   }
 
   // Compass directions
-  if (args.v.has(kNorthSlotId)) return turnToAngle(self, ANGLE_NORTH, weight, speedMultiplier);
-  if (args.v.has(kSouthSlotId)) return turnToAngle(self, ANGLE_SOUTH, weight, speedMultiplier);
-  if (args.v.has(kEastSlotId)) return turnToAngle(self, ANGLE_EAST, weight, speedMultiplier);
-  if (args.v.has(kWestSlotId)) return turnToAngle(self, ANGLE_WEST, weight, speedMultiplier);
+  if (hasArg(args, kNorthSlotId)) return turnToAngle(self, ANGLE_NORTH, weight, speedMultiplier);
+  if (hasArg(args, kSouthSlotId)) return turnToAngle(self, ANGLE_SOUTH, weight, speedMultiplier);
+  if (hasArg(args, kEastSlotId)) return turnToAngle(self, ANGLE_EAST, weight, speedMultiplier);
+  if (hasArg(args, kWestSlotId)) return turnToAngle(self, ANGLE_WEST, weight, speedMultiplier);
 
   // Default: spin in place continuously (clockwise)
   return { turn: 1, forward: 0, weight, speedMultiplier, label: "turnContinuous" };
@@ -169,7 +169,7 @@ function computeSteering(ctx: ExecutionContext, args: MapValue, self: Actor): St
 // Entry point
 // ---------------------------------------------------------------------------
 
-function execTurn(ctx: ExecutionContext, args: MapValue): Value {
+function execTurn(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   const self = getSelf(ctx);
   if (!self) return VOID_VALUE;
 

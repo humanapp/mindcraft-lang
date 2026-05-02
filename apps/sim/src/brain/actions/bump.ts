@@ -6,16 +6,17 @@ import {
   type ExecutionContext,
   FALSE_VALUE,
   getSlotId,
-  type MapValue,
   type ModifierTileInput,
   mkCallDef,
   mkNumberValue,
   mod,
   optional,
+  type ReadonlyList,
   TRUE_VALUE,
   type Value,
   Vector2,
 } from "@mindcraft-lang/core/app";
+import { hasArg } from "@/brain/actions/utils";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { TargetActorCapabilityBitSet, TileIds } from "@/brain/tileids";
@@ -30,7 +31,7 @@ const kActorKindCarnivoreSlotId = getSlotId(callDef, Carnivore);
 const kActorKindHerbivoreSlotId = getSlotId(callDef, Herbivore);
 const kActorKindPlantSlotId = getSlotId(callDef, Plant);
 
-function execBump(ctx: ExecutionContext, args: MapValue): Value {
+function execBump(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   // Get the Actor from the execution context (optional - sensor can work without it)
   const self = getSelf(ctx);
 
@@ -46,9 +47,9 @@ function execBump(ctx: ExecutionContext, args: MapValue): Value {
     return FALSE_VALUE;
   }
 
-  const bHasCarnivoreFilter = args.v.has(kActorKindCarnivoreSlotId);
-  const bHasHerbivoreFilter = args.v.has(kActorKindHerbivoreSlotId);
-  const bHasPlantFilter = args.v.has(kActorKindPlantSlotId);
+  const bHasCarnivoreFilter = hasArg(args, kActorKindCarnivoreSlotId);
+  const bHasHerbivoreFilter = hasArg(args, kActorKindHerbivoreSlotId);
+  const bHasPlantFilter = hasArg(args, kActorKindPlantSlotId);
 
   let filteredBumps: Iterable<number> = self.bumpQueue;
   let archetypeFilter: Archetype | undefined;

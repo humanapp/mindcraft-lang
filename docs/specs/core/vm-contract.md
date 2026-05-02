@@ -327,8 +327,26 @@ visible to the host's continuation.
 is responsible for the discipline around invoking VM operations
 synchronously inside its own `exec`.
 
-The action-call section (`ACTION_CALL` / `ACTION_CALL_ASYNC`) is
-filled in by V4.2.
+Action calls (`ACTION_CALL` / `ACTION_CALL_ASYNC`) use the same
+positional buffer shape as host calls. The compiler pushes one
+`NIL_VALUE` filler per declared action slot, lowers each supplied
+argument expression, and stores it into the slot with
+`STACK_SET_REL argc-1-slotId`. Operand `a` is the action slot,
+operand `b` is `argc`, and operand `c` is the call-site id.
+
+Host-bound sync actions receive a transient
+`ReadonlyList<Value>` stack view and host-bound async actions receive
+an owned snapshot, matching the host function lifetime contract
+above. Bytecode actions do not receive an args map or list object:
+their frame locals are laid out as `ctx` (when injected), then one
+local per action slot. `args.<name>` in user-authored action code
+lowers directly to that slot local. Reading the whole `args` object
+is unsupported.
+
+Sparse, optional, conditional, and repeated slots are represented by
+`NIL_VALUE` when absent. There is no per-call presence map, so user
+code that needs an omitted value to behave like a default must express
+that fallback explicitly, for example with `??`.
 
 ### Operator monomorphization
 

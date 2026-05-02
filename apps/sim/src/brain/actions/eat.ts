@@ -5,11 +5,11 @@ import {
   FALSE_VALUE,
   getCallSiteState,
   getSlotId,
-  type MapValue,
   mkCallDef,
   optional,
   type ParameterTileInput,
   param,
+  type ReadonlyList,
   setCallSiteState,
   TRUE_VALUE,
   type Value,
@@ -35,7 +35,7 @@ type EatState = {
   nextEatTime: number; // Timestamp when the Actor can eat again (cooldown)
 };
 
-export function execEat(ctx: ExecutionContext, args: MapValue): Value {
+export function execEat(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   const self = getSelf(ctx);
   if (!self) {
     //console.warn("Eat actuator called without Actor in execution context");

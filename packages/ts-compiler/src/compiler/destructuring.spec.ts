@@ -64,12 +64,16 @@ function mkScheduler(): Scheduler {
   };
 }
 
-function mkArgsMap(entries: Record<number, Value>): MapValue {
-  const dict = new ValueDict();
+function mkArgsList(entries: Record<number, Value>): List<Value> {
+  const args = List.empty<Value>();
   for (const [key, value] of Object.entries(entries)) {
-    dict.set(Number(key), value);
+    const idx = Number(key);
+    while (args.size() <= idx) {
+      args.push(NIL_VALUE);
+    }
+    args.set(idx, value);
   }
-  return { t: NativeType.Map, typeId: "map:<args>", v: dict };
+  return args;
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {

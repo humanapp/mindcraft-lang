@@ -1126,18 +1126,25 @@ function mkScheduler(): Scheduler {
   };
 }
 
-function mkArgsMap(entries: Record<number, Value>): MapValue {
-  const dict = new ValueDict();
+function mkArgsList(entries: Record<number, Value>): List<Value> {
+  const args = List.empty<Value>();
   for (const [key, value] of Object.entries(entries)) {
-    dict.set(Number(key), value);
+    const idx = Number(key);
+    while (args.size() <= idx) {
+      args.push(NIL_VALUE);
+    }
+    args.set(idx, value);
   }
-  return { t: NativeType.Map, typeId: "map:<args>", v: dict };
+  return args;
 }
 
-function execSensor(prog: UserAuthoredProgram, argsMap: MapValue): Value | undefined {
+function execSensor(prog: UserAuthoredProgram, argsMap: List<Value>): Value | undefined {
+  while (argsMap.size() < prog.callDef.argSlots.size()) {
+    argsMap.push(NIL_VALUE);
+  }
   const handles = new HandleTable(100);
   const vm = new runtime.VM(services, prog, handles);
-  const fiber = vm.spawnFiber(1, 0, List.from<Value>([argsMap]), mkCtx());
+  const fiber = vm.spawnFiber(1, 0, argsMap, mkCtx());
   fiber.instrBudget = 2000;
   const result = vm.runFiber(fiber, mkScheduler());
   assert.equal(result.status, VmStatus.DONE, "sensor fiber did not complete");
@@ -1165,7 +1172,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(7) }));
+    const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(7) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 14);
   });
@@ -1190,7 +1197,7 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(
       result.program!,
-      mkArgsMap({
+      mkArgsList({
         0: mkNumberValue(10),
         1: mkNumberValue(3),
         2: mkNumberValue(5),
@@ -1216,7 +1223,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({ 0: mkStringValue("hello") }));
+    const value = execSensor(result.program!, mkArgsList({ 0: mkStringValue("hello") }));
     assert.equal(value!.t, NativeType.String);
     assert.equal((value as StringValue).v, "hello!");
   });
@@ -1237,7 +1244,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(20) }));
+    const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(20) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 21);
   });
@@ -1263,7 +1270,7 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(
       result.program!,
-      mkArgsMap({
+      mkArgsList({
         0: mkNumberValue(3),
         1: mkNumberValue(10),
       })
@@ -1288,7 +1295,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(4) }));
+    const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(4) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 12);
   });
@@ -1314,7 +1321,7 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(
       result.program!,
-      mkArgsMap({
+      mkArgsList({
         0: mkNumberValue(100),
         1: mkNumberValue(37),
       })
@@ -1354,7 +1361,7 @@ export default Sensor({
     assert.deepStrictEqual(result.diagnostics, []);
     const value = execSensor(
       result.program!,
-      mkArgsMap({
+      mkArgsList({
         0: mkNumberValue(1),
         1: mkNumberValue(2),
         2: mkNumberValue(3),
@@ -1391,10 +1398,10 @@ export default Sensor({
     const boolTrue: Value = { t: NativeType.Boolean, v: true };
     const boolFalse: Value = { t: NativeType.Boolean, v: false };
 
-    const fast = execSensor(result.program!, mkArgsMap({ 0: boolTrue, 1: mkNumberValue(10) }));
+    const fast = execSensor(result.program!, mkArgsList({ 0: boolTrue, 1: mkNumberValue(10) }));
     assert.equal((fast as NumberValue).v, 20);
 
-    const slow = execSensor(result.program!, mkArgsMap({ 0: boolFalse, 1: mkNumberValue(10) }));
+    const slow = execSensor(result.program!, mkArgsList({ 0: boolFalse, 1: mkNumberValue(10) }));
     assert.equal((slow as NumberValue).v, 10);
   });
 
@@ -1415,7 +1422,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({ 1: mkNumberValue(42) }));
+    const value = execSensor(result.program!, mkArgsList({ 1: mkNumberValue(42) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 142);
   });
@@ -1430,18 +1437,18 @@ export default Sensor({
     repeated(modifier("boost", { label: "Boost" }), { min: 0, max: 5 }),
     param("base", { type: "number" }),
   ],
-  onExecute(ctx: Context, args: { boost: number; base: number }): number {
-    return args.base + args.boost * 10;
+  onExecute(ctx: Context, args: { boost: number | undefined; base: number }): number {
+    return args.base + (args.boost ?? 0) * 10;
   },
 });
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
 
-    const with3 = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(3), 1: mkNumberValue(5) }));
+    const with3 = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(3), 1: mkNumberValue(5) }));
     assert.equal((with3 as NumberValue).v, 35);
 
-    const with0 = execSensor(result.program!, mkArgsMap({ 1: mkNumberValue(5) }));
+    const with0 = execSensor(result.program!, mkArgsList({ 1: mkNumberValue(5) }));
     assert.equal((with0 as NumberValue).v, 5);
   });
 
@@ -1490,7 +1497,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({ 1: mkNumberValue(42) }));
+    const value = execSensor(result.program!, mkArgsList({ 1: mkNumberValue(42) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 42);
   });
@@ -1514,7 +1521,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(99) }));
+    const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(99) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 99);
   });
@@ -1536,7 +1543,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(1) }));
+    const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(1) }));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 1);
   });
@@ -1558,7 +1565,7 @@ export default Sensor({
 `;
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
-    const value = execSensor(result.program!, mkArgsMap({}));
+    const value = execSensor(result.program!, mkArgsList({}));
     assert.equal(value!.t, NativeType.Number);
     assert.equal((value as NumberValue).v, 0);
   });
@@ -1584,10 +1591,10 @@ export default Sensor({
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
 
-    const withMod = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(1) }));
+    const withMod = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(1) }));
     assert.equal((withMod as NumberValue).v, 99);
 
-    const withParam = execSensor(result.program!, mkArgsMap({ 1: mkNumberValue(55) }));
+    const withParam = execSensor(result.program!, mkArgsList({ 1: mkNumberValue(55) }));
     assert.equal((withParam as NumberValue).v, 55);
   });
 
@@ -1612,7 +1619,7 @@ export default Sensor({
     const mod = result.descriptor.args[0] as ExtractedModifier;
     assert.equal(mod.id, "modifier.distance.nearby");
 
-    const value = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(1) }));
+    const value = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(1) }));
     assert.equal((value as NumberValue).v, 1);
   });
 
@@ -1638,16 +1645,16 @@ export default Sensor({
     const result = compileUserTile(source, { services });
     assert.deepStrictEqual(result.diagnostics, []);
 
-    const neitherMod = execSensor(result.program!, mkArgsMap({ 2: mkNumberValue(5) }));
+    const neitherMod = execSensor(result.program!, mkArgsList({ 2: mkNumberValue(5) }));
     assert.equal((neitherMod as NumberValue).v, 5);
 
     const bothMods = execSensor(
       result.program!,
-      mkArgsMap({ 0: mkNumberValue(1), 1: mkNumberValue(1), 2: mkNumberValue(5) })
+      mkArgsList({ 0: mkNumberValue(1), 1: mkNumberValue(1), 2: mkNumberValue(5) })
     );
     assert.equal((bothMods as NumberValue).v, 35);
 
-    const alphaOnly = execSensor(result.program!, mkArgsMap({ 0: mkNumberValue(1), 2: mkNumberValue(5) }));
+    const alphaOnly = execSensor(result.program!, mkArgsList({ 0: mkNumberValue(1), 2: mkNumberValue(5) }));
     assert.equal((alphaOnly as NumberValue).v, 15);
   });
 });

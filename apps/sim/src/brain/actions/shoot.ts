@@ -8,13 +8,13 @@ import {
   getCallSiteState,
   getSlotId,
   isNumberValue,
-  type MapValue,
   mkCallDef,
   mod,
   type NumberValue,
   optional,
   type ParameterTileInput,
   param,
+  type ReadonlyList,
   setCallSiteState,
   TRUE_VALUE,
   type Value,
@@ -55,7 +55,7 @@ type ShootState = {
   nextShootTime: number;
 };
 
-export function execShoot(ctx: ExecutionContext, args: MapValue): Value {
+export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   const self = getSelf(ctx);
   if (!self) return VOID_VALUE;
 
@@ -69,7 +69,7 @@ export function execShoot(ctx: ExecutionContext, args: MapValue): Value {
   if (now < state.nextShootTime) return FALSE_VALUE;
 
   let cooldown = 1000 / DEFAULT_SHOOT_RATE; // Default cooldown in ms
-  const rateValue = args.v.get(kRateSlotId) as NumberValue | undefined;
+  const rateValue = args.get(kRateSlotId) as NumberValue | undefined;
   if (rateValue && isNumberValue(rateValue)) {
     const rate = Math.max(MIN_SHOOT_RATE, Math.min(MAX_SHOOT_RATE, rateValue.v));
     cooldown = 1000 / rate;

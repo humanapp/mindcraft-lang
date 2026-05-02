@@ -1,3 +1,4 @@
+import type { ReadonlyList } from "../../../platform/list";
 import {
   type ActionDescriptor,
   CoreActuatorId,
@@ -6,9 +7,9 @@ import {
   type ExecutionContext,
   getSlotId,
   type HostActionBinding,
+  isNilValue,
   isNumberValue,
   isStringValue,
-  type MapValue,
   mkActuatorTileId,
   mkCallDef,
   param,
@@ -31,14 +32,14 @@ const descriptor: ActionDescriptor = {
 const kAnonymousNumberSlotId = getSlotId(callDef, AnonNumber);
 const kAnonymousStringSlotId = getSlotId(callDef, AnonString);
 
-function fnSwitchPage(ctx: ExecutionContext, args: MapValue): Value {
-  const numberArg = args.v.get(kAnonymousNumberSlotId);
-  const stringArg = args.v.get(kAnonymousStringSlotId);
+function fnSwitchPage(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
+  const numberArg = args.get(kAnonymousNumberSlotId);
+  const stringArg = args.get(kAnonymousStringSlotId);
 
-  if (numberArg && isNumberValue(numberArg)) {
+  if (numberArg !== undefined && !isNilValue(numberArg) && isNumberValue(numberArg)) {
     const pageNumber = numberArg.v - 1; // Convert 1-based to 0-based index
     ctx.brain.requestPageChange(pageNumber);
-  } else if (stringArg && isStringValue(stringArg)) {
+  } else if (stringArg !== undefined && !isNilValue(stringArg) && isStringValue(stringArg)) {
     // Try stable pageId first (from BrainTilePageDef), then fall back to
     // page name lookup so brain code can compute page names at runtime.
     ctx.brain.requestPageChangeByPageId(stringArg.v);

@@ -6,7 +6,6 @@ import {
   CoreTypeIds,
   type ExecutionContext,
   type HostActionBinding,
-  type MapValue,
   mkCallDef,
   mkSensorTileId,
   NativeType,
@@ -28,7 +27,7 @@ const descriptor: ActionDescriptor = {
   outputType: CoreTypeIds.Number,
 };
 
-function fnRandom(ctx: ExecutionContext, _args: MapValue): Value {
+function fnRandom(ctx: ExecutionContext): Value {
   return { t: NativeType.Number, v: ctx.brain.rng() };
 }
 

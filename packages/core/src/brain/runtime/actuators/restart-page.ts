@@ -6,9 +6,7 @@ import {
   callSpecToArgSlots,
   type ExecutionContext,
   type HostActionBinding,
-  type MapValue,
   mkActuatorTileId,
-  mkParameterTileId,
   type Value,
   VOID_VALUE,
 } from "../../interfaces";
@@ -32,7 +30,7 @@ const descriptor: ActionDescriptor = {
   isAsync: false,
 };
 
-function fnRestartPage(ctx: ExecutionContext, _args: MapValue): Value {
+function fnRestartPage(ctx: ExecutionContext): Value {
   ctx.brain.requestPageRestart();
   return VOID_VALUE;
 }

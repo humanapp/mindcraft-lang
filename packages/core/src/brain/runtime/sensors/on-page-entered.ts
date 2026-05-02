@@ -8,7 +8,6 @@ import {
   FALSE_VALUE,
   getCallSiteState,
   type HostActionBinding,
-  type MapValue,
   mkCallDef,
   mkSensorTileId,
   setCallSiteState,
@@ -43,7 +42,7 @@ function onPageEntered(ctx: ExecutionContext) {
   setCallSiteState(ctx, state);
 }
 
-function fnOnPageEntered(ctx: ExecutionContext, _args: MapValue): Value {
+function fnOnPageEntered(ctx: ExecutionContext): Value {
   const state = getCallSiteState<TimeoutState>(ctx)!;
   if (!state?.fired) {
     state.fired = true;

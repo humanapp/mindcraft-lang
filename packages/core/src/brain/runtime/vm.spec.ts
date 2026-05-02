@@ -17,6 +17,7 @@ import { Dict, List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   BrainServices,
   BYTECODE_VERSION,
+  ContextTypeIds,
   CoreOpId,
   CoreTypeIds,
   ErrorCode,
@@ -34,7 +35,6 @@ import {
   type Instr,
   isFunctionValue,
   isOverflowError,
-  type MapValue,
   mkBooleanValue,
   mkCallDef,
   mkFunctionValue,
@@ -899,11 +899,10 @@ describe("VM -- malformed bytecode faults as ScriptError", () => {
 
 describe("VM -- callsite-persistent variables", () => {
   test("LOAD_CALLSITE_VAR and STORE_CALLSITE_VAR read/write current action state slots", () => {
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = mkProgram(
       [
         {
-          code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 9 }, { op: Op.RET }]),
+          code: List.from([{ op: Op.ACTION_CALL, a: 0, b: 0, c: 9 }, { op: Op.RET }]),
           numParams: 0,
           numLocals: 0,
           name: "root",
@@ -920,7 +919,7 @@ describe("VM -- callsite-persistent variables", () => {
           name: "action-entry",
         },
       ],
-      [args, mkNumberValue(42)]
+      [NIL_VALUE, mkNumberValue(42)]
     );
     const handles = new HandleTable(100);
     const vm = new VM(
@@ -972,11 +971,10 @@ describe("VM -- callsite-persistent variables", () => {
   });
 
   test("action state slots persist across helper CALLs within the same action", () => {
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = mkProgram(
       [
         {
-          code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 4 }, { op: Op.RET }]),
+          code: List.from([{ op: Op.ACTION_CALL, a: 0, b: 0, c: 4 }, { op: Op.RET }]),
           numParams: 0,
           numLocals: 0,
           name: "root",
@@ -999,7 +997,7 @@ describe("VM -- callsite-persistent variables", () => {
           name: "action-helper",
         },
       ],
-      [args, mkNumberValue(100)]
+      [NIL_VALUE, mkNumberValue(100)]
     );
     const handles = new HandleTable(100);
     const vm = new VM(
@@ -1034,7 +1032,6 @@ describe("VM -- callsite-persistent variables", () => {
 
   test("distinct action callsites in the same rule fiber keep independent host-backed state", () => {
     const seenValues: number[] = [];
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const descriptor = {
       key: "test-vm-host-action-state-isolation",
       kind: "actuator" as const,
@@ -1046,21 +1043,18 @@ describe("VM -- callsite-persistent variables", () => {
         [
           mkFunc(
             [
-              { op: Op.PUSH_CONST_VAL, a: 0 },
-              { op: Op.ACTION_CALL, a: 0, c: 1 },
+              { op: Op.ACTION_CALL, a: 0, b: 0, c: 1 },
               { op: Op.POP },
-              { op: Op.PUSH_CONST_VAL, a: 0 },
-              { op: Op.ACTION_CALL, a: 0, c: 2 },
+              { op: Op.ACTION_CALL, a: 0, b: 0, c: 2 },
               { op: Op.POP },
-              { op: Op.PUSH_CONST_VAL, a: 0 },
-              { op: Op.ACTION_CALL, a: 0, c: 1 },
+              { op: Op.ACTION_CALL, a: 0, b: 0, c: 1 },
               { op: Op.RET },
             ],
             0,
             "root"
           ),
         ],
-        [args]
+        [NIL_VALUE]
       ),
       actions: List.from([
         {
@@ -1171,12 +1165,8 @@ describe("VM -- action calls", () => {
       },
     };
 
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const prog = {
-      ...mkProgram(
-        [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 9 }, { op: Op.RET }])],
-        [args]
-      ),
+      ...mkProgram([mkFunc([{ op: Op.ACTION_CALL, a: 0, b: 0, c: 9 }, { op: Op.RET }])], [NIL_VALUE]),
       actions: List.from([action]),
     };
 
@@ -1194,13 +1184,71 @@ describe("VM -- action calls", () => {
     assert.equal(seenCallSiteId, 9);
   });
 
-  test("ACTION_CALL out-of-bounds slot faults as ScriptError", () => {
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
+  test("ACTION_CALL passes host-bound action args as positional stack values", () => {
+    let observed: List<Value> | undefined;
+    const descriptor = {
+      key: "test-vm-action-call-positional-host",
+      kind: "sensor" as const,
+      callDef: mkCallDef({
+        type: "seq",
+        items: [
+          { type: "arg", tileId: "action.arg.a", name: "a", required: true },
+          { type: "arg", tileId: "action.arg.b", name: "b", required: true },
+        ],
+      }),
+      isAsync: false,
+    };
+    const action = {
+      binding: "host" as const,
+      descriptor,
+      execSync: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const snap = List.empty<Value>();
+        for (let i = 0; i < args.size(); i++) snap.push(args.get(i));
+        observed = snap;
+        const a = args.get(0) as NumberValue;
+        const b = args.get(1) as NumberValue;
+        return mkNumberValue(a.v + b.v);
+      },
+    };
+
     const prog = {
       ...mkProgram(
-        [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 1, c: 0 }, { op: Op.RET }])],
-        [args]
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST_VAL, a: 2 },
+            { op: Op.PUSH_CONST_VAL, a: 2 },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.STACK_SET_REL, a: 1 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
+            { op: Op.STACK_SET_REL, a: 0 },
+            { op: Op.ACTION_CALL, a: 0, b: 2, c: 12 },
+            { op: Op.RET },
+          ]),
+        ],
+        [mkNumberValue(7), mkNumberValue(11), NIL_VALUE]
       ),
+      actions: List.from([action]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 18);
+    }
+    assert.ok(observed, "action should have observed positional args");
+    assert.equal((observed!.get(0) as NumberValue).v, 7);
+    assert.equal((observed!.get(1) as NumberValue).v, 11);
+  });
+
+  test("ACTION_CALL out-of-bounds slot faults as ScriptError", () => {
+    const prog = {
+      ...mkProgram([mkFunc([{ op: Op.ACTION_CALL, a: 1, b: 0, c: 0 }, { op: Op.RET }])], [NIL_VALUE]),
       actions: List.from([
         {
           binding: "host" as const,
@@ -1229,7 +1277,6 @@ describe("VM -- action calls", () => {
 
   test("ACTION_CALL_ASYNC preserves host-backed handle behavior", () => {
     const handles = new HandleTable(100);
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const descriptor = {
       key: "test-vm-action-call-async-host",
       kind: "actuator" as const,
@@ -1238,21 +1285,14 @@ describe("VM -- action calls", () => {
     };
     const prog = {
       ...mkProgram(
-        [
-          mkFunc([
-            { op: Op.PUSH_CONST_VAL, a: 0 },
-            { op: Op.ACTION_CALL_ASYNC, a: 0, c: 7 },
-            { op: Op.AWAIT },
-            { op: Op.RET },
-          ]),
-        ],
-        [args]
+        [mkFunc([{ op: Op.ACTION_CALL_ASYNC, a: 0, b: 0, c: 7 }, { op: Op.AWAIT }, { op: Op.RET }])],
+        [NIL_VALUE]
       ),
       actions: List.from([
         {
           binding: "host" as const,
           descriptor,
-          execAsync: (_ctx: ExecutionContext, _args: MapValue, handleId: number) => {
+          execAsync: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, handleId: number) => {
             handles.resolve(handleId, mkNumberValue(654));
           },
         },
@@ -1271,8 +1311,68 @@ describe("VM -- action calls", () => {
     }
   });
 
+  test("ACTION_CALL_ASYNC passes host-bound action args as an owned snapshot", () => {
+    let captured: ReadonlyList<Value> | undefined;
+    const descriptor = {
+      key: "test-vm-action-call-async-positional-host",
+      kind: "actuator" as const,
+      callDef: mkCallDef({
+        type: "seq",
+        items: [
+          { type: "arg", tileId: "action.async.a", name: "a", required: true },
+          { type: "arg", tileId: "action.async.b", name: "b", required: true },
+        ],
+      }),
+      isAsync: true,
+    };
+    const prog = {
+      ...mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST_VAL, a: 2 },
+            { op: Op.PUSH_CONST_VAL, a: 2 },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.STACK_SET_REL, a: 1 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
+            { op: Op.STACK_SET_REL, a: 0 },
+            { op: Op.ACTION_CALL_ASYNC, a: 0, b: 2, c: 13 },
+            { op: Op.POP },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
+            { op: Op.POP },
+            { op: Op.POP },
+            { op: Op.PUSH_CONST_VAL, a: 2 },
+            { op: Op.RET },
+          ]),
+        ],
+        [mkNumberValue(23), mkNumberValue(29), NIL_VALUE]
+      ),
+      actions: List.from([
+        {
+          binding: "host" as const,
+          descriptor,
+          execAsync: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+            captured = args;
+          },
+        },
+      ]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    assert.ok(captured, "async action should capture args");
+    assert.equal(captured!.size(), 2);
+    assert.equal((captured!.get(0) as NumberValue).v, 23);
+    assert.equal((captured!.get(1) as NumberValue).v, 29);
+  });
+
   test("ACTION_CALL routes sync bytecode actions through the current fiber and caller TRY handlers", () => {
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const errVal: Value = { t: "err", e: { code: ErrorCode.ScriptError, message: "bytecode boom" } };
     const descriptor = {
       key: "test-vm-action-call-bytecode-throw",
@@ -1286,8 +1386,7 @@ describe("VM -- action calls", () => {
           mkFunc(
             [
               { op: Op.TRY, a: 6 },
-              { op: Op.PUSH_CONST_VAL, a: 0 },
-              { op: Op.ACTION_CALL, a: 0, c: 5 },
+              { op: Op.ACTION_CALL, a: 0, b: 0, c: 5 },
               { op: Op.END_TRY },
               { op: Op.PUSH_CONST_VAL, a: 2 },
               { op: Op.RET },
@@ -1300,7 +1399,7 @@ describe("VM -- action calls", () => {
           ),
           mkFunc([{ op: Op.PUSH_CONST_VAL, a: 3 }, { op: Op.THROW }], 0, "action-entry"),
         ],
-        [args, mkNumberValue(77), mkNumberValue(999), errVal]
+        [NIL_VALUE, mkNumberValue(77), mkNumberValue(999), errVal]
       ),
       actions: List.from([
         {
@@ -1325,8 +1424,66 @@ describe("VM -- action calls", () => {
     }
   });
 
+  test("ACTION_CALL seeds bytecode action args as positional locals after injected ctx", () => {
+    const descriptor = {
+      key: "test-vm-action-call-bytecode-positional-locals",
+      kind: "sensor" as const,
+      callDef: mkCallDef({
+        type: "seq",
+        items: [
+          { type: "arg", tileId: "bytecode.action.a", name: "a", required: true },
+          { type: "arg", tileId: "bytecode.action.b", name: "b", required: true },
+        ],
+      }),
+      isAsync: false,
+    };
+    const prog = {
+      ...mkProgram(
+        [
+          mkFunc([
+            { op: Op.PUSH_CONST_VAL, a: 2 },
+            { op: Op.PUSH_CONST_VAL, a: 2 },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.STACK_SET_REL, a: 1 },
+            { op: Op.PUSH_CONST_VAL, a: 1 },
+            { op: Op.STACK_SET_REL, a: 0 },
+            { op: Op.ACTION_CALL, a: 0, b: 2, c: 14 },
+            { op: Op.RET },
+          ]),
+          {
+            code: List.from([{ op: Op.LOAD_LOCAL, a: 2 }, { op: Op.RET }]),
+            numParams: 3,
+            numLocals: 5,
+            injectCtxTypeId: ContextTypeIds.Context,
+            name: "action-entry",
+          },
+        ],
+        [mkNumberValue(31), mkNumberValue(37), NIL_VALUE]
+      ),
+      actions: List.from([
+        {
+          binding: "bytecode" as const,
+          descriptor,
+          entryFuncId: 1,
+          numStateSlots: 0,
+        },
+      ]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 37);
+    }
+  });
+
   test("ACTION_CALL bytecode actions preserve the caller rule for host calls", () => {
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const fakeRule = { name: "caller-rule" } as unknown as IBrainRule;
     let seenRule: unknown;
 
@@ -1351,14 +1508,10 @@ describe("VM -- action calls", () => {
     const prog = {
       ...mkProgram(
         [
-          mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 5 }, { op: Op.RET }], 0, "root"),
-          mkFunc(
-            [{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.HOST_CALL, a: hostFnEntry.id, c: 11 }, { op: Op.RET }],
-            0,
-            "action-entry"
-          ),
+          mkFunc([{ op: Op.ACTION_CALL, a: 0, b: 0, c: 5 }, { op: Op.RET }], 0, "root"),
+          mkFunc([{ op: Op.HOST_CALL, a: hostFnEntry.id, b: 0, c: 11 }, { op: Op.RET }], 0, "action-entry"),
         ],
-        [args]
+        [NIL_VALUE]
       ),
       actions: List.from([
         {
@@ -1392,7 +1545,6 @@ describe("VM -- action calls", () => {
   });
 
   test("sync bytecode actions fault if an indirect call reaches a suspension point at runtime", () => {
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const descriptor = {
       key: "test-vm-action-sync-indirect-yield",
       kind: "actuator" as const,
@@ -1402,11 +1554,11 @@ describe("VM -- action calls", () => {
     const prog = {
       ...mkProgram(
         [
-          mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.ACTION_CALL, a: 0, c: 4 }, { op: Op.RET }], 0, "root"),
+          mkFunc([{ op: Op.ACTION_CALL, a: 0, b: 0, c: 4 }, { op: Op.RET }], 0, "root"),
           mkFunc([{ op: Op.PUSH_CONST_VAL, a: 1 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }], 0, "action-entry"),
           mkFunc([{ op: Op.YIELD }, { op: Op.PUSH_CONST_VAL, a: 2 }, { op: Op.RET }], 0, "indirect-helper"),
         ],
-        [args, mkFunctionValue(2), mkNumberValue(5)]
+        [NIL_VALUE, mkFunctionValue(2), mkNumberValue(5)]
       ),
       actions: List.from([
         {
@@ -1430,7 +1582,6 @@ describe("VM -- action calls", () => {
   });
 
   test("ACTION_CALL_ASYNC runs bytecode actions on child fibers and resolves the returned handle", () => {
-    const args: Value = { t: NativeType.Map, typeId: "map:test", v: new ValueDict() };
     const descriptor = {
       key: "test-vm-action-call-async-bytecode",
       kind: "actuator" as const,
@@ -1440,19 +1591,10 @@ describe("VM -- action calls", () => {
     const prog = {
       ...mkProgram(
         [
-          mkFunc(
-            [
-              { op: Op.PUSH_CONST_VAL, a: 0 },
-              { op: Op.ACTION_CALL_ASYNC, a: 0, c: 3 },
-              { op: Op.AWAIT },
-              { op: Op.RET },
-            ],
-            0,
-            "root"
-          ),
+          mkFunc([{ op: Op.ACTION_CALL_ASYNC, a: 0, b: 0, c: 3 }, { op: Op.AWAIT }, { op: Op.RET }], 0, "root"),
           mkFunc([{ op: Op.PUSH_CONST_VAL, a: 1 }, { op: Op.YIELD }, { op: Op.RET }], 0, "action-entry"),
         ],
-        [args, mkNumberValue(42)]
+        [NIL_VALUE, mkNumberValue(42)]
       ),
       actions: List.from([
         {

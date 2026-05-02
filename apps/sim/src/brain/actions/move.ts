@@ -12,13 +12,13 @@ import {
   getSlotId,
   type List,
   type ListValue,
-  type MapValue,
   type ModifierTileInput,
   mkCallDef,
   mod,
   optional,
   type ParameterTileInput,
   param,
+  type ReadonlyList,
   repeated,
   type StructValue,
   setCallSiteState,
@@ -26,7 +26,7 @@ import {
   Vector2,
   VOID_VALUE,
 } from "@mindcraft-lang/core/app";
-import { resolveTargetPosition } from "@/brain/actions/utils";
+import { hasArg, resolveTargetPosition } from "@/brain/actions/utils";
 import type { Actor } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { type Steering, steerAvoid, steerAwayFrom, steerForward, steerToward } from "@/brain/movement";
@@ -101,17 +101,17 @@ const kQuicklyMultiplier = 0.5; // each Quickly increases speed by 50%
 const kSlowlyMultiplier = 1; // each Slowly decreases speed by 100% of base (50% of previous)
 
 /** Compute speed multiplier from quickly/slowly repeat counts. */
-function getSpeedMultiplier(args: MapValue): number {
-  const quicklyCount = extractNumberValue(args.v.get(kQuicklySlotId)) ?? 0;
-  const slowlyCount = extractNumberValue(args.v.get(kSlowlySlotId)) ?? 0;
+function getSpeedMultiplier(args: ReadonlyList<Value>): number {
+  const quicklyCount = extractNumberValue(args.get(kQuicklySlotId)) ?? 0;
+  const slowlyCount = extractNumberValue(args.get(kSlowlySlotId)) ?? 0;
   if (quicklyCount > 0) return 1 + quicklyCount * kQuicklyMultiplier; // 1.5x, 2x, 2.5x
   if (slowlyCount > 0) return 1 / (1 + slowlyCount * kSlowlyMultiplier); // ~0.5x, 0.33x, 0.25x
   return 1;
 }
 
 /** Extract priority weight (default 0.5). */
-function getWeight(args: MapValue): number {
-  return extractNumberValue(args.v.get(kPrioritySlotId)) ?? 0.5;
+function getWeight(args: ReadonlyList<Value>): number {
+  return extractNumberValue(args.get(kPrioritySlotId)) ?? 0.5;
 }
 
 /**
@@ -121,9 +121,9 @@ function getWeight(args: MapValue): number {
  * `targetPositions` list variable (computing center of mass of up to 2
  * positions) over a single target position.
  */
-function resolveAwayFromTarget(ctx: ExecutionContext, args: MapValue): Vector2 | undefined {
+function resolveAwayFromTarget(ctx: ExecutionContext, args: ReadonlyList<Value>): Vector2 | undefined {
   // If an explicit actor-ref was provided, use it directly
-  if (args.v.has(kAnonActorRefSlotId)) {
+  if (hasArg(args, kAnonActorRefSlotId)) {
     return resolveTargetPosition(ctx, args, kAnonActorRefSlotId);
   }
 
@@ -191,25 +191,25 @@ function computeWanderSteering(ctx: ExecutionContext, self: Actor, weight: numbe
   return steerToward(self, targetPos, weight, speedMultiplier);
 }
 
-function computeSteering(ctx: ExecutionContext, args: MapValue, self: Actor): Steering | undefined {
+function computeSteering(ctx: ExecutionContext, args: ReadonlyList<Value>, self: Actor): Steering | undefined {
   const speedMultiplier = getSpeedMultiplier(args);
   const weight = getWeight(args);
 
-  if (args.v.has(kWanderSlotId)) {
+  if (hasArg(args, kWanderSlotId)) {
     return computeWanderSteering(ctx, self, weight, speedMultiplier);
   }
 
-  if (args.v.has(kTowardSlotId)) {
+  if (hasArg(args, kTowardSlotId)) {
     const targetPos = resolveTargetPosition(ctx, args, kAnonActorRefSlotId);
     return targetPos ? steerToward(self, targetPos, weight, speedMultiplier) : undefined;
   }
 
-  if (args.v.has(kAwayFromSlotId)) {
+  if (hasArg(args, kAwayFromSlotId)) {
     const targetPos = resolveAwayFromTarget(ctx, args);
     return targetPos ? steerAwayFrom(self, targetPos, weight, speedMultiplier) : undefined;
   }
 
-  if (args.v.has(kAvoidSlotId)) {
+  if (hasArg(args, kAvoidSlotId)) {
     const targetPos = resolveTargetPosition(ctx, args, kAnonActorRefSlotId);
     return targetPos ? steerAvoid(self, targetPos, weight, speedMultiplier) : undefined;
   }
@@ -222,7 +222,7 @@ function computeSteering(ctx: ExecutionContext, args: MapValue, self: Actor): St
 // Entry point
 // ---------------------------------------------------------------------------
 
-function execMove(ctx: ExecutionContext, args: MapValue): Value {
+function execMove(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   const self = getSelf(ctx);
   if (!self) {
     //console.warn("Move actuator called without Actor in execution context");

@@ -158,19 +158,21 @@ export interface IBytecodeEmitter {
 
   /**
    * Call an action synchronously through a program-local action slot.
-   * Expects a single pre-built MapValue on the stack.
+   * Consumes `argc` positional values from the operand stack.
    * @param actionSlot - The action slot index in BrainProgram.actionRefs
+   * @param argc - Width of the arg buffer on the stack
    * @param callSiteId - Unique ID for this call site (for per-call-site state)
    */
-  actionCall(actionSlot: number, callSiteId: number): void;
+  actionCall(actionSlot: number, argc: number, callSiteId: number): void;
 
   /**
    * Call an action asynchronously through a program-local action slot.
-   * Expects a single pre-built MapValue on the stack.
+   * Consumes `argc` positional values from the operand stack.
    * @param actionSlot - The action slot index in BrainProgram.actionRefs
+   * @param argc - Width of the arg buffer on the stack
    * @param callSiteId - Unique ID for this call site (for per-call-site state)
    */
-  actionCallAsync(actionSlot: number, callSiteId: number): void;
+  actionCallAsync(actionSlot: number, argc: number, callSiteId: number): void;
 
   // ==========================================
   // Async operations

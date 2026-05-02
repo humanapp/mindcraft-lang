@@ -6,9 +6,7 @@ import {
   callSpecToArgSlots,
   type ExecutionContext,
   type HostActionBinding,
-  type MapValue,
   mkActuatorTileId,
-  mkParameterTileId,
   type Value,
   VOID_VALUE,
 } from "../../interfaces";
@@ -32,8 +30,7 @@ const descriptor: ActionDescriptor = {
   isAsync: false,
 };
 
-function fnYield(ctx: ExecutionContext, _args: MapValue): Value {
-  // TODO: Implement
+function fnYield(_ctx: ExecutionContext): Value {
   return VOID_VALUE;
 }
 

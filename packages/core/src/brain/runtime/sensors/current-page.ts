@@ -6,7 +6,6 @@ import {
   CoreTypeIds,
   type ExecutionContext,
   type HostActionBinding,
-  type MapValue,
   mkCallDef,
   mkSensorTileId,
   NativeType,
@@ -28,7 +27,7 @@ const descriptor: ActionDescriptor = {
   outputType: CoreTypeIds.String,
 };
 
-function fnCurrentPage(ctx: ExecutionContext, _args: MapValue): Value {
+function fnCurrentPage(ctx: ExecutionContext): Value {
   return { t: NativeType.String, v: ctx.brain.getCurrentPageId() };
 }
 

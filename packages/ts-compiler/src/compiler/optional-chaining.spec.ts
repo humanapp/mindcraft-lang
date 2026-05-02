@@ -18,7 +18,6 @@ import {
   type StringValue,
   type StructValue,
   type Value,
-  ValueDict,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
@@ -50,15 +49,7 @@ function mkScheduler(): Scheduler {
   };
 }
 
-function mkArgsMap(entries: Record<number, Value>): Value {
-  const dict = new ValueDict();
-  for (const [key, value] of Object.entries(entries)) {
-    dict.set(Number(key), value);
-  }
-  return { t: NativeType.Map, typeId: "map:<args>", v: dict };
-}
-
-function runSensor(source: string, args?: Value): { result: Value | undefined } {
+function runSensor(source: string, args?: List<Value>): { result: Value | undefined } {
   const ambientSource = buildAmbientDeclarations(services.types);
   const result = compileUserTile(source, { ambientSource, services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
@@ -68,7 +59,7 @@ function runSensor(source: string, args?: Value): { result: Value | undefined } 
   const handles = new HandleTable(100);
   const vm = new runtime.VM(services, prog, handles);
   const ctx = mkCtx();
-  const fiberArgs = args ? List.from<Value>([args]) : List.empty<Value>();
+  const fiberArgs = args ? args : List.empty<Value>();
   const fiber = vm.spawnFiber(1, 0, fiberArgs, ctx);
   fiber.instrBudget = 1000;
 

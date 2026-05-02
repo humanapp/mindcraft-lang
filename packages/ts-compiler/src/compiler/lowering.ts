@@ -1354,10 +1354,8 @@ function lowerOnExecuteBody(
   }
 
   // Local 0 is always the injected context struct. When the tile has args,
-  // local 1 holds the args as a Map<slotId, Value> (integer-keyed by slot index).
-  // The loop below unpacks each param/modifier into its own local so user code
-  // can reference them by name via normal LoadLocal instructions.
-  let nextLocal = hasArgs ? 2 : 1;
+  // locals 1..N hold the positional action arguments.
+  const nextLocal = 1 + argSlots.length;
 
   const ctxParam = funcNode.parameters[0];
   if (ctxParam && ts.isIdentifier(ctxParam.name)) {
@@ -1365,7 +1363,7 @@ function lowerOnExecuteBody(
   }
 
   let paramsSymbol: ts.Symbol | undefined;
-  let nextLabelId = 0;
+  const nextLabelId = 0;
   if (hasArgs) {
     const paramsParam = funcNode.parameters.length >= 2 ? funcNode.parameters[1] : undefined;
     if (paramsParam) {
@@ -1374,29 +1372,8 @@ function lowerOnExecuteBody(
 
     for (const slot of argSlots) {
       const name = argSlotPropertyName(slot);
-      const localIdx = nextLocal++;
+      const localIdx = 1 + slot.slotId;
       paramLocals.set(name, localIdx);
-
-      ir.push({ kind: "LoadLocal", index: 1 });
-      ir.push({ kind: "PushConst", value: mkNumberValue(slot.slotId) });
-      if (slot.spec.kind === "modifier" && !slot.repeated) {
-        ir.push({ kind: "MapHas" });
-      } else {
-        ir.push({ kind: "MapGet" });
-      }
-      if (slot.repeated) {
-        const keepLabel = nextLabelId++;
-        const endLabel = nextLabelId++;
-        ir.push({ kind: "Dup" });
-        ir.push({ kind: "TypeCheck", nativeType: NativeType.Nil });
-        ir.push({ kind: "JumpIfFalse", labelId: keepLabel });
-        ir.push({ kind: "Pop" });
-        ir.push({ kind: "PushConst", value: mkNumberValue(0) });
-        ir.push({ kind: "Jump", labelId: endLabel });
-        ir.push({ kind: "Label", labelId: keepLabel });
-        ir.push({ kind: "Label", labelId: endLabel });
-      }
-      ir.push({ kind: "StoreLocal", index: localIdx });
     }
   }
 
@@ -1446,7 +1423,7 @@ function lowerOnExecuteBody(
     scopeStack.finalizeFunctionScope(ir.length);
     return {
       ir,
-      numParams: hasArgs ? 2 : 1,
+      numParams: 1 + argSlots.length,
       numLocals: scopeStack.nextLocal,
       name: `${descriptor.name}.onExecute`,
       injectCtxTypeId: ContextTypeIds.Context,
@@ -1466,7 +1443,7 @@ function lowerOnExecuteBody(
   scopeStack.finalizeFunctionScope(ir.length);
   return {
     ir,
-    numParams: hasArgs ? 2 : 1,
+    numParams: 1 + argSlots.length,
     numLocals: scopeStack.nextLocal,
     name: `${descriptor.name}.onExecute`,
     injectCtxTypeId: ContextTypeIds.Context,
@@ -2855,6 +2832,14 @@ function lowerIdentifier(expr: ts.Identifier, ctx: LowerContext): void {
   const paramLocal = ctx.paramLocals.get(expr.text);
   if (paramLocal !== undefined) {
     ctx.ir.push({ kind: "LoadLocal", index: paramLocal });
+    return;
+  }
+
+  if (ctx.paramsSymbol && ctx.checker.getSymbolAtLocation(expr) === ctx.paramsSymbol) {
+    ctx.diagnostics.push(
+      makeDiag(LoweringDiagCode.UnsupportedPropertyAccess, "Action args must be accessed by field", expr)
+    );
+    ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
     return;
   }
 

@@ -1,8 +1,14 @@
-import type { ExecutionContext, MapValue, NumberValue, StructValue } from "@mindcraft-lang/core/app";
-import { Vector2 } from "@mindcraft-lang/core/app";
+import type { ExecutionContext, NumberValue, StructValue } from "@mindcraft-lang/core/app";
+import { isNilValue, type ReadonlyList, type Value, Vector2 } from "@mindcraft-lang/core/app";
 import type { Actor } from "@/brain/actor";
 import { getActor } from "@/brain/execution-context-types";
 import { extractVector2, resolveActor } from "@/brain/type-system";
+
+/** True when a positional action arg slot contains a non-nil value. */
+export function hasArg(args: ReadonlyList<Value>, slotId: number): boolean {
+  const value = args.get(slotId);
+  return value !== undefined && !isNilValue(value);
+}
 
 /**
  * Resolve a target position from (in order of precedence):
@@ -15,14 +21,14 @@ import { extractVector2, resolveActor } from "@/brain/type-system";
  */
 export function resolveTargetPosition(
   ctx: ExecutionContext,
-  args: MapValue,
+  args: ReadonlyList<Value>,
   actorRefSlotId?: number
 ): Vector2 | undefined {
   // 1. Explicit anonymous actor-ref argument
   if (actorRefSlotId !== undefined) {
-    const targetActorValue = args.v.get(actorRefSlotId) as StructValue | undefined;
-    if (targetActorValue) {
-      const targetActor = resolveActor(targetActorValue, ctx);
+    const targetActorValue = args.get(actorRefSlotId);
+    if (targetActorValue !== undefined && !isNilValue(targetActorValue)) {
+      const targetActor = resolveActor(targetActorValue as StructValue, ctx);
       if (targetActor) {
         return new Vector2(targetActor.sprite.x, targetActor.sprite.y);
       }
@@ -51,12 +57,16 @@ export function resolveTargetPosition(
  * Useful for any actuator that needs to determine a target actor from
  * call arguments or the current rule context.
  */
-export function resolveTargetActor(ctx: ExecutionContext, args: MapValue, actorRefSlotId?: number): Actor | undefined {
+export function resolveTargetActor(
+  ctx: ExecutionContext,
+  args: ReadonlyList<Value>,
+  actorRefSlotId?: number
+): Actor | undefined {
   // 1. Explicit anonymous actor-ref argument
   if (actorRefSlotId !== undefined) {
-    const targetActorValue = args.v.get(actorRefSlotId) as StructValue | undefined;
-    if (targetActorValue) {
-      return resolveActor(targetActorValue, ctx);
+    const targetActorValue = args.get(actorRefSlotId);
+    if (targetActorValue !== undefined && !isNilValue(targetActorValue)) {
+      return resolveActor(targetActorValue as StructValue, ctx);
     }
   }
 

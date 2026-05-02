@@ -9,7 +9,6 @@ import {
   getCallSiteState,
   getSlotId,
   List,
-  type MapValue,
   type ModifierTileInput,
   mkCallDef,
   mkListValue,
@@ -17,6 +16,7 @@ import {
   mod,
   type NumberValue,
   optional,
+  type ReadonlyList,
   repeated,
   type StructValue,
   setCallSiteState,
@@ -24,6 +24,7 @@ import {
   type Value,
   Vector2,
 } from "@mindcraft-lang/core/app";
+import { hasArg } from "@/brain/actions/utils";
 import type { Archetype } from "@/brain/actor";
 import { getSelf } from "@/brain/execution-context-types";
 import { TargetActorCapabilityBitSet, TileIds } from "@/brain/tileids";
@@ -58,7 +59,7 @@ type SeeState = {
   memoryExpiration: number; // Timestamp when the remembered actor ID should be forgotten
 };
 
-function execSee(ctx: ExecutionContext, args: MapValue): Value {
+function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   // Get the Actor from the execution context (optional - sensor can work without it)
   const self = getSelf(ctx);
 
@@ -122,13 +123,13 @@ function execSee(ctx: ExecutionContext, args: MapValue): Value {
   }
   */
 
-  const bHasCarnivoreFilter = args.v.has(kActorKindCarnivoreSlotId);
-  const bHasHerbivoreFilter = args.v.has(kActorKindHerbivoreSlotId);
-  const bHasPlantFilter = args.v.has(kActorKindPlantSlotId);
+  const bHasCarnivoreFilter = hasArg(args, kActorKindCarnivoreSlotId);
+  const bHasHerbivoreFilter = hasArg(args, kActorKindHerbivoreSlotId);
+  const bHasPlantFilter = hasArg(args, kActorKindPlantSlotId);
   let nearbyThresholdSq = kNearbyDistanceThresholdSq;
   let farAwayThresholdSq = kFarAwayDistanceThresholdSq;
-  const nearbyCount = extractNumberValue(args.v.get(kDistanceNearbySlotId)) ?? 0;
-  const farAwayCount = extractNumberValue(args.v.get(kDistanceFarAwaySlotId)) ?? 0;
+  const nearbyCount = extractNumberValue(args.get(kDistanceNearbySlotId)) ?? 0;
+  const farAwayCount = extractNumberValue(args.get(kDistanceFarAwaySlotId)) ?? 0;
   if (nearbyCount > 0) {
     // decrease nearby threshold for each additional nearby modifier (e.g., "see herbivore nearby nearby" is more restrictive than "see herbivore nearby")
     nearbyThresholdSq = kNearbyDistanceThresholdSq / nearbyCount;

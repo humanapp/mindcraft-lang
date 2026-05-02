@@ -104,6 +104,7 @@ export {
   FALSE_VALUE,
   getCallSiteState,
   getSlotId,
+  isNilValue,
   isNumberValue,
   mkListValue,
   mkNativeStructValue,
