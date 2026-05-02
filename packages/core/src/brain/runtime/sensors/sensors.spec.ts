@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { Dict } from "@mindcraft-lang/core";
+import { Dict, List } from "@mindcraft-lang/core";
 import {
   type BrainServices,
   type BrainSyncFunctionEntry,
@@ -10,11 +10,11 @@ import {
   extractNumberValue,
   FALSE_VALUE,
   type HostSyncFn,
-  type MapValue,
   mkNumberValue,
   NativeType,
+  NIL_VALUE,
   TRUE_VALUE,
-  ValueDict,
+  type Value,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 
@@ -34,8 +34,10 @@ function mkCtx(
   } as ExecutionContext;
 }
 
-function mkArgs(): MapValue {
-  return { t: NativeType.Map, typeId: "", v: new ValueDict() };
+function mkArgs(size = 1): List<Value> {
+  const list = List.empty<Value>();
+  for (let i = 0; i < size; i++) list.push(NIL_VALUE);
+  return list;
 }
 
 let services: BrainServices;
@@ -89,7 +91,7 @@ describe("timeout sensor", () => {
   test("fires with custom delay", () => {
     const ctx = setupCtx();
     const args = mkArgs();
-    args.v.set(0, mkNumberValue(3));
+    args.set(0, mkNumberValue(3));
 
     // First tick initializes fireTime = 100 + 3000 = 3100
     ctx.time = 100;
@@ -108,7 +110,7 @@ describe("timeout sensor", () => {
   test("auto-resets after firing (periodic behavior)", () => {
     const ctx = setupCtx();
     const args = mkArgs();
-    args.v.set(0, mkNumberValue(1));
+    args.set(0, mkNumberValue(1));
 
     // First tick initializes fireTime = 0 + 1000 = 1000
     ctx.time = 0;
@@ -163,7 +165,7 @@ describe("timeout sensor", () => {
   test("tick skip resets timer", () => {
     const ctx = setupCtx();
     const args = mkArgs();
-    args.v.set(0, mkNumberValue(2));
+    args.set(0, mkNumberValue(2));
 
     // First tick initializes fireTime = 100 + 2000 = 2100
     ctx.time = 100;

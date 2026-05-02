@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
+import { List } from "@mindcraft-lang/core";
 import {
   type BrainServices,
   type BrainSyncFunctionEntry,
@@ -9,13 +10,11 @@ import {
   type ExecutionContext,
   getSlotId,
   type HostSyncFn,
-  type MapValue,
   mkNumberValue,
   mkParameterTileId,
   mkStringValue,
-  NativeType,
   NIL_VALUE,
-  ValueDict,
+  type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
@@ -35,8 +34,10 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   };
 }
 
-function mkArgs(): MapValue {
-  return { t: NativeType.Map, typeId: "", v: new ValueDict() };
+function mkArgs(size = 4): List<Value> {
+  const list = List.empty<Value>();
+  for (let i = 0; i < size; i++) list.push(NIL_VALUE);
+  return list;
 }
 
 let services: BrainServices;
@@ -76,7 +77,7 @@ describe("switch-page actuator", () => {
       } as never,
     });
     const args = mkArgs();
-    args.v.set(numberSlotId, mkNumberValue(3));
+    args.set(numberSlotId, mkNumberValue(3));
 
     const result = fn.exec(ctx, args);
 
@@ -94,7 +95,7 @@ describe("switch-page actuator", () => {
       } as never,
     });
     const args = mkArgs();
-    args.v.set(stringSlotId, mkStringValue("my-page"));
+    args.set(stringSlotId, mkStringValue("my-page"));
 
     const result = fn.exec(ctx, args);
 

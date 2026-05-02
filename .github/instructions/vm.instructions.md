@@ -30,11 +30,12 @@ The brain VM (`packages/core/src/brain/runtime/`) is a stack-based bytecode virt
 
 | Range   | Category   | Opcodes                                                                                              |
 | ------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| 0-5     | Stack      | `PUSH_CONST_VAL`, `POP`, `DUP`, `SWAP`, `PUSH_CONST_NUM`, `PUSH_CONST_STR`                          |
+| 0-6     | Stack      | `PUSH_CONST_VAL`, `POP`, `DUP`, `SWAP`, `PUSH_CONST_NUM`, `PUSH_CONST_STR`, `STACK_SET_REL`         |
 | 10-11   | Variables  | `LOAD_VAR_SLOT`, `STORE_VAR_SLOT`                                                                    |
 | 20-22   | Control    | `JMP`, `JMP_IF_FALSE`, `JMP_IF_TRUE`                                                                 |
 | 30-31   | Calls      | `CALL`, `RET`                                                                                        |
-| 40-43   | Host       | `HOST_CALL`, `HOST_CALL_ASYNC`, `HOST_CALL_ARGS`, `HOST_CALL_ARGS_ASYNC`                             |
+| 40-41   | Host       | `HOST_CALL`, `HOST_CALL_ASYNC`                                                                       |
+| 42-43   | Action     | `ACTION_CALL`, `ACTION_CALL_ASYNC`                                                                   |
 | 50-51   | Async      | `AWAIT`, `YIELD`                                                                                     |
 | 60-62   | Exceptions | `TRY`, `END_TRY`, `THROW`                                                                            |
 | 70-73   | Boundaries | `WHEN_START`, `WHEN_END`, `DO_START`, `DO_END`                                                       |
@@ -48,20 +49,22 @@ The brain VM (`packages/core/src/brain/runtime/`) is a stack-based bytecode virt
 | 160-161 | Indirect   | `CALL_INDIRECT`, `CALL_INDIRECT_ARGS`                                                                |
 | 170-171 | Closures   | `MAKE_CLOSURE`, `LOAD_CAPTURE`                                                                       |
 
-### Host Call Variants
+### Host Calls
 
-There are four host call opcodes. `HOST_CALL`/`HOST_CALL_ASYNC` expect the compiler to have pre-built a `MapValue` on the stack. `HOST_CALL_ARGS`/`HOST_CALL_ARGS_ASYNC` let the compiler push raw values; the VM wraps them into a `MapValue` with 0-indexed keys via `collectArgsToMap`.
+Host functions registered through `IFunctionRegistry` are invoked via the
+positional `HOST_CALL` / `HOST_CALL_ASYNC` pair. The compiler emits an
+`argc`-wide arg buffer on the operand stack; the dispatcher reads slot
+`i` as `args.get(i)`. Sync hosts receive a `Sublist` view; async hosts
+receive an owned snapshot.
 
-| Opcode               | a      | b     | c           | Stack input       | Stack output | Sync? |
-| -------------------- | ------ | ----- | ----------- | ----------------- | ------------ | ----- |
-| `HOST_CALL`          | fnId   | -     | callSiteId  | MapValue on TOS   | result Value | sync  |
-| `HOST_CALL_ASYNC`    | fnId   | -     | callSiteId  | MapValue on TOS   | handle Value | async |
-| `HOST_CALL_ARGS`     | fnId   | argc  | callSiteId  | b raw values      | result Value | sync  |
-| `HOST_CALL_ARGS_ASYNC` | fnId | argc  | callSiteId  | b raw values      | handle Value | async |
+| Opcode            | a    | b    | c          | Stack input               | Stack output | Sync? |
+| ----------------- | ---- | ---- | ---------- | ------------------------- | ------------ | ----- |
+| `HOST_CALL`       | fnId | argc | callSiteId | `argc` positional values  | result Value | sync  |
+| `HOST_CALL_ASYNC` | fnId | argc | callSiteId | `argc` positional values  | handle Value | async |
 
 Async variants push a handle; the VM must then execute `AWAIT` to suspend the fiber and retrieve the result when the handle resolves.
 
-Before every host call, the VM sets `fiber.executionContext.currentCallSiteId = callSiteId`.
+Before every host call, the VM sets `fiber.executionContext.currentCallSiteId = callSiteId`. See the "Calling convention" section of `docs/specs/core/vm-contract.md` for the full arg-buffer layout (NIL fillers + `STACK_SET_REL` per supplied slot).
 
 ### STRUCT_COPY_EXCEPT (113)
 

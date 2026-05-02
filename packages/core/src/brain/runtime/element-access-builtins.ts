@@ -1,9 +1,9 @@
+import type { ReadonlyList } from "../../platform/list";
 import { INFINITY, MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
 import {
   type ExecutionContext,
   type ListValue,
-  type MapValue,
   mkCallDef,
   mkNumberValue,
   mkStringValue,
@@ -93,12 +93,12 @@ export function registerElementAccessBuiltins(services: BrainServices) {
     "$$list_get_js",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const list = args.v.get(0);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const list = args.get(0);
         if (!list || list.t !== NativeType.List) {
           return NIL_VALUE;
         }
-        return listGetJs(list as ListValue, args.v.get(1));
+        return listGetJs(list as ListValue, args.get(1));
       },
     },
     elementAccessCallDef
@@ -108,12 +108,12 @@ export function registerElementAccessBuiltins(services: BrainServices) {
     "$$str_get_js",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const source = args.v.get(0);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const source = args.get(0);
         if (!source || source.t !== NativeType.String) {
           return NIL_VALUE;
         }
-        return stringGetJs((source as StringValue).v, args.v.get(1));
+        return stringGetJs((source as StringValue).v, args.get(1));
       },
     },
     elementAccessCallDef

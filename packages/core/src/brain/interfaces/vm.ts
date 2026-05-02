@@ -1,6 +1,6 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
-import type { List } from "../../platform/list";
+import type { List, ReadonlyList } from "../../platform/list";
 import { Time } from "../../platform/time";
 import { UniqueSet } from "../../platform/uniqueset";
 import { EventEmitter } from "../../util/event-emitter";
@@ -384,6 +384,14 @@ export enum Op {
   PUSH_CONST_NUM = 4,
   /** Pushes `Program.constantPools.strings[a]` as a StringValue. */
   PUSH_CONST_STR = 5,
+  /**
+   * Pops one value off the operand stack, then writes it to
+   * `vstack[top - a]` where `top` is the index of the topmost element
+   * AFTER the pop. `STACK_SET_REL 0` writes the popped value to the
+   * new topmost slot. Faults `ScriptError` if `a` exceeds the
+   * post-pop top index.
+   */
+  STACK_SET_REL = 6,
 
   // Variables (stored in the brain by slot index from the program's variableNames pool)
   LOAD_VAR_SLOT = 10,
@@ -398,15 +406,12 @@ export enum Op {
   CALL = 30,
   RET,
 
-  // Host calls (pre-built MapValue on stack)
+  // Host calls (positional arg buffer on stack: vstack[top-argc+1 .. top])
   HOST_CALL = 40,
   HOST_CALL_ASYNC,
-  // Host calls (raw args on stack -- VM auto-wraps into MapValue with 0-indexed keys)
-  HOST_CALL_ARGS,
-  HOST_CALL_ARGS_ASYNC,
 
   // Action calls (pre-built MapValue on stack)
-  ACTION_CALL = 44,
+  ACTION_CALL = 42,
   ACTION_CALL_ASYNC,
 
   // Async operations and cooperative scheduling
@@ -554,25 +559,43 @@ export interface Program {
 /**
  * Synchronous host function signature.
  *
+ * `args` is a positional read-only view (`Sublist`) over the operand
+ * stack of size `callDef.argSlots.size()`. Read by `slotId` --
+ * `args.get(getSlotId(callDef, ...))` -- not by name. Unsupplied
+ * slots are filled with `NIL_VALUE`; check via `isNilValue`.
+ *
+ * **Lifetime:** the wrapper is ephemeral. Do not retain `args` past
+ * the call. Read what you need into locals and return. Individual
+ * `Value` heap objects returned by `args.get(i)` are safe to retain.
+ *
  * @param ctx - Execution context providing access to variables, rule, etc.
- * @param args - Map of argument values passed from the VM, mapped by slotId from call spec
+ * @param args - Positional view of arguments, indexed by slotId.
  * @returns The result value to push onto the stack
  */
 export type HostSyncFn = {
   onPageEntered?: (ctx: ExecutionContext) => void;
-  exec: (ctx: ExecutionContext, args: MapValue) => Value;
+  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
 };
 
 /**
  * Asynchronous host function signature.
  *
+ * `args` is an owned positional snapshot (a freshly-allocated
+ * `List<Value>`) of size `callDef.argSlots.size()`. Read by `slotId`
+ * -- `args.get(getSlotId(callDef, ...))` -- not by name. Unsupplied
+ * slots are filled with `NIL_VALUE`; check via `isNilValue`.
+ *
+ * **Lifetime:** the wrapper is owned. Free to retain `args` and
+ * close over individual values across the async boundary; resolve or
+ * reject the handle whenever the async work completes.
+ *
  * @param ctx - Execution context providing access to variables, rule, etc.
- * @param args - Map of argument values passed from the VM, mapped by slotId from call spec
+ * @param args - Positional snapshot of arguments, indexed by slotId.
  * @param handleId - Handle ID for resolving the async operation
  */
 export type HostAsyncFn = {
   onPageEntered?: (ctx: ExecutionContext) => void;
-  exec: (ctx: ExecutionContext, args: MapValue, handleId: HandleId) => void;
+  exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
 };
 
 /**

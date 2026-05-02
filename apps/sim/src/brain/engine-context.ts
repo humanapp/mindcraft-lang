@@ -5,12 +5,12 @@ import {
   extractNumberValue,
   extractStringValue,
   List,
-  type MapValue,
   type MindcraftModuleApi,
   mkCallDef,
   mkListValue,
   mkNativeStructValue,
   NIL_VALUE,
+  type ReadonlyList,
   type Value,
 } from "@mindcraft-lang/core/app";
 import type { Archetype } from "./actor";
@@ -46,10 +46,10 @@ export function registerEngineContext(api: MindcraftModuleApi) {
     "EngineContext.getActorsByArchetype",
     false,
     {
-      exec: (ctx: ExecutionContext, args: MapValue): Value => {
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
         const self = getSelf(ctx);
         if (!self) return mkListValue(actorRefListTypeId, List.empty());
-        const archetypeStr = extractStringValue(args.v.get(1));
+        const archetypeStr = extractStringValue(args.get(1));
         if (!archetypeStr || !VALID_ARCHETYPES.has(archetypeStr)) {
           return mkListValue(actorRefListTypeId, List.empty());
         }
@@ -65,10 +65,10 @@ export function registerEngineContext(api: MindcraftModuleApi) {
     "EngineContext.getActorById",
     false,
     {
-      exec: (ctx: ExecutionContext, args: MapValue): Value => {
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
         const self = getSelf(ctx);
         if (!self) return NIL_VALUE;
-        const id = extractNumberValue(args.v.get(1));
+        const id = extractNumberValue(args.get(1));
         if (id === undefined) return NIL_VALUE;
         const actor = self.engine.getActorById(id);
         if (!actor) return NIL_VALUE;

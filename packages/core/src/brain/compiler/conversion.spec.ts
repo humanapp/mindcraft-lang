@@ -21,7 +21,7 @@ import {
   type NumberValue,
   param,
   type StringValue,
-  ValueDict,
+  type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
@@ -62,10 +62,7 @@ function execEnumConversion(fromType: string, toType: string, input: EnumValue) 
   const conversion = services.conversions.get(fromType, toType);
   assert.ok(conversion, `Expected conversion ${fromType} -> ${toType}`);
 
-  const args = new ValueDict();
-  args.set(0, input);
-
-  return conversion.fn.exec(mkCtx(), { t: NativeType.Map, typeId: "", v: args });
+  return conversion.fn.exec(mkCtx(), List.from([input as Value]));
 }
 
 function testConversion(

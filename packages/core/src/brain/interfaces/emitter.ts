@@ -62,6 +62,18 @@ export interface IBytecodeEmitter {
    */
   swap(): void;
 
+  /**
+   * Pop the top value, then write it to `vstack[top - d]` where `top`
+   * is the index of the topmost element after the pop. `d = 0` writes
+   * the popped value to the new topmost slot.
+   *
+   * Used to populate a fixed-width arg buffer at host/action call
+   * sites: the compiler pushes one `NIL_VALUE` per slot, then for each
+   * supplied slot lowers the user expression and emits
+   * `stackSetRel(d)` with `d = N - 1 - slotId`.
+   */
+  stackSetRel(d: number): void;
+
   // ==========================================
   // Variables (slot-indexed; slot id is a position in the program's variableNames pool)
   // ==========================================
@@ -122,19 +134,24 @@ export interface IBytecodeEmitter {
   // ==========================================
 
   /**
-   * Call a host (native) function synchronously.
-   * Expects a single pre-built MapValue on the stack.
+   * Call a host (native) function synchronously. Expects an `argc`-wide
+   * positional arg buffer on the operand stack
+   * (`vstack[top - argc + 1 .. top]`); the host reads each slot via
+   * `args.get(slotId)`.
+   *
    * @param hostId - The host function ID from FunctionRegistry
-   * @param argc - Number of arguments on the stack
+   * @param argc - Width of the arg buffer on the stack (== `callDef.argSlots.size()`)
    * @param callSiteId - Unique ID for this call site (for per-call-site state)
    */
   hostCall(hostId: number, argc: number, callSiteId: number): void;
 
   /**
-   * Call a host (native) function asynchronously.
-   * Expects a single pre-built MapValue on the stack.
+   * Call a host (native) function asynchronously. Same arg layout as
+   * {@link hostCall}; the dispatcher copies the buffer into a fresh
+   * `List<Value>` before invoking the host.
+   *
    * @param hostId - The host function ID from FunctionRegistry
-   * @param argc - Number of arguments on the stack
+   * @param argc - Width of the arg buffer on the stack (== `callDef.argSlots.size()`)
    * @param callSiteId - Unique ID for this call site (for per-call-site state)
    */
   hostCallAsync(hostId: number, argc: number, callSiteId: number): void;
@@ -154,25 +171,6 @@ export interface IBytecodeEmitter {
    * @param callSiteId - Unique ID for this call site (for per-call-site state)
    */
   actionCallAsync(actionSlot: number, callSiteId: number): void;
-
-  /**
-   * Call a host function synchronously with raw values on the stack.
-   * The VM pops `argc` values and auto-wraps them into a MapValue with 0-indexed keys.
-   * More efficient than building a map in bytecode for fixed-arity calls (operators, conversions).
-   * @param hostId - The host function ID from FunctionRegistry
-   * @param argc - Number of raw argument values on the stack
-   * @param callSiteId - Unique ID for this call site (for per-call-site state)
-   */
-  hostCallArgs(hostId: number, argc: number, callSiteId: number): void;
-
-  /**
-   * Call a host function asynchronously with raw values on the stack.
-   * The VM pops `argc` values and auto-wraps them into a MapValue with 0-indexed keys.
-   * @param hostId - The host function ID from FunctionRegistry
-   * @param argc - Number of raw argument values on the stack
-   * @param callSiteId - Unique ID for this call site (for per-call-site state)
-   */
-  hostCallArgsAsync(hostId: number, argc: number, callSiteId: number): void;
 
   // ==========================================
   // Async operations

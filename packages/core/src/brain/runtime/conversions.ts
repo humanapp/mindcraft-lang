@@ -1,6 +1,6 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
-import { List } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import { INFINITY, MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
@@ -11,12 +11,11 @@ import {
   type EnumTypeDef,
   type EnumValue,
   type ExecutionContext,
-  type MapValue,
   mkCallDef,
   NativeType,
   type NumberValue,
   type StringValue,
-  Value,
+  type Value,
 } from "../interfaces";
 import type { Conversion, IConversionRegistry } from "../interfaces/conversions";
 import type { IFunctionRegistry } from "../interfaces/functions";
@@ -186,7 +185,7 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
       toType: CoreTypeIds.String,
       cost: stringCost,
       fn: {
-        exec: (_ctx: ExecutionContext, args: MapValue) => {
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
           const value = resolveEnumPrimitiveValue(typeId, args, services);
           return {
             t: NativeType.String,
@@ -203,7 +202,7 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
       toType: CoreTypeIds.Number,
       cost: 1,
       fn: {
-        exec: (_ctx: ExecutionContext, args: MapValue) => {
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
           const value = resolveEnumPrimitiveValue(typeId, args, services);
           if (!TypeUtils.isNumber(value)) {
             throw new Error(`Enum conversion ${typeId} -> ${CoreTypeIds.Number} expected a numeric value`);
@@ -218,8 +217,12 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
   }
 }
 
-function resolveEnumPrimitiveValue(typeId: TypeId, args: MapValue, services: BrainServices): string | number {
-  const enumValue = args.v.get(0) as EnumValue;
+function resolveEnumPrimitiveValue(
+  typeId: TypeId,
+  args: ReadonlyList<Value>,
+  services: BrainServices
+): string | number {
+  const enumValue = args.get(0) as EnumValue;
   if (enumValue.t !== NativeType.Enum || enumValue.typeId !== typeId) {
     throw new Error(`Enum conversion expected value of type ${typeId}`);
   }
@@ -241,8 +244,8 @@ export function registerCoreConversions(services: BrainServices) {
     toType: CoreTypeIds.String,
     cost: 2,
     fn: {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const numVal = args.v.get(0) as NumberValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const numVal = args.get(0) as NumberValue;
         return {
           t: NativeType.String,
           v: SU.toString(numVal.v),
@@ -256,8 +259,8 @@ export function registerCoreConversions(services: BrainServices) {
     toType: CoreTypeIds.Number,
     cost: 2,
     fn: {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const strVal = args.v.get(0) as StringValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const strVal = args.get(0) as StringValue;
         const num = MathOps.parseFloat(strVal.v);
         return {
           t: NativeType.Number,
@@ -272,8 +275,8 @@ export function registerCoreConversions(services: BrainServices) {
     toType: CoreTypeIds.Boolean,
     cost: 1,
     fn: {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const numVal = args.v.get(0) as NumberValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const numVal = args.get(0) as NumberValue;
         return {
           t: NativeType.Boolean,
           v: numVal.v !== 0,
@@ -287,8 +290,8 @@ export function registerCoreConversions(services: BrainServices) {
     toType: CoreTypeIds.Number,
     cost: 1,
     fn: {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const boolVal = args.v.get(0) as BooleanValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const boolVal = args.get(0) as BooleanValue;
         return {
           t: NativeType.Number,
           v: boolVal.v ? 1 : 0,
@@ -302,8 +305,8 @@ export function registerCoreConversions(services: BrainServices) {
     toType: CoreTypeIds.Boolean,
     cost: 2,
     fn: {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const strVal = args.v.get(0) as StringValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const strVal = args.get(0) as StringValue;
         return {
           t: NativeType.Boolean,
           v: SU.length(SU.trim(strVal.v)) > 0,
@@ -317,8 +320,8 @@ export function registerCoreConversions(services: BrainServices) {
     toType: CoreTypeIds.String,
     cost: 1,
     fn: {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const boolVal = args.v.get(0) as BooleanValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const boolVal = args.get(0) as BooleanValue;
         return {
           t: NativeType.String,
           v: boolVal.v ? "true" : "false",

@@ -31,8 +31,9 @@ export type IrNode =
   | IrPushFunctionRef
   | IrMakeClosure
   | IrLoadCapture
-  | IrHostCallArgs
-  | IrHostCallArgsAsync
+  | IrHostCall
+  | IrHostCallAsync
+  | IrStackSetRel
   | IrAwait
   | IrGetField
   | IrGetFieldDynamic
@@ -119,18 +120,46 @@ export interface IrCall extends IrNodeBase {
   argc: number;
 }
 
-/** Synchronous call to a host-registered function `fnName` with `argc` arguments. */
-export interface IrHostCallArgs extends IrNodeBase {
-  kind: "HostCallArgs";
+/**
+ * Synchronous call to a host-registered function `fnName` with an `argc`
+ * fixed-width positional argument buffer consumed by HOST_CALL.
+ */
+export interface IrHostCall extends IrNodeBase {
+  kind: "HostCall";
   fnName: string;
+  /** Fixed arg-buffer width consumed by HOST_CALL. */
   argc: number;
+  /**
+   * Optional supplied-slot ids for raw values produced immediately before
+   * this call. The emit normalizer moves those values into a fixed-width
+   * NIL + STACK_SET_REL arg buffer without allocating hidden spill locals.
+   * Omitted means the raw values already form a dense in-order positional
+   * buffer for slots `0..argc-1`.
+   */
+  argSlotIds?: readonly number[];
 }
 
-/** Asynchronous call to a host-registered function `fnName` with `argc` arguments. */
-export interface IrHostCallArgsAsync extends IrNodeBase {
-  kind: "HostCallArgsAsync";
+/**
+ * Asynchronous host call. Uses the same stack-only arg-buffer contract
+ * as {@link IrHostCall}, then emits HOST_CALL_ASYNC.
+ */
+export interface IrHostCallAsync extends IrNodeBase {
+  kind: "HostCallAsync";
   fnName: string;
+  /** Fixed arg-buffer width consumed by HOST_CALL_ASYNC. */
   argc: number;
+  /** Optional supplied-slot ids; omitted means dense in-order slots `0..argc-1`. */
+  argSlotIds?: readonly number[];
+}
+
+/**
+ * Pop the top of the operand stack and write it to `vstack[top - d]`,
+ * where `top` is the index of the topmost element after the pop.
+ * Used to populate fixed-width arg buffers at host/action call sites.
+ */
+export interface IrStackSetRel extends IrNodeBase {
+  kind: "StackSetRel";
+  d: number;
 }
 
 /** Suspend the current fiber until the awaited host call resolves. */

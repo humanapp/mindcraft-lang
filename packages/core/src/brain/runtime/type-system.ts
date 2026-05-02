@@ -1,6 +1,6 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
-import { List } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import { UniqueSet } from "../../platform/uniqueset";
@@ -21,7 +21,6 @@ import {
   type ListTypeShape,
   type MapTypeDef,
   type MapTypeShape,
-  type MapValue,
   mkBooleanValue,
   mkTypeId,
   NativeType,
@@ -37,6 +36,7 @@ import {
   type TypeDef,
   type TypeId,
   type UnionTypeDef,
+  type Value,
 } from "../interfaces";
 import type { BrainServices } from "../services";
 import { registerEnumConversions } from "./conversions";
@@ -204,9 +204,9 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       CoreTypeIds.Boolean,
       {
-        exec: (_ctx: ExecutionContext, args: MapValue) => {
-          const a = args.v.get(0) as EnumValue;
-          const b = args.v.get(1) as EnumValue;
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+          const a = args.get(0) as EnumValue;
+          const b = args.get(1) as EnumValue;
           if (a.typeId !== typeId || b.typeId !== typeId) {
             return mkBooleanValue(false);
           }
@@ -226,9 +226,9 @@ export class TypeRegistry implements ITypeRegistry {
       typeId,
       CoreTypeIds.Boolean,
       {
-        exec: (_ctx: ExecutionContext, args: MapValue) => {
-          const a = args.v.get(0) as EnumValue;
-          const b = args.v.get(1) as EnumValue;
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+          const a = args.get(0) as EnumValue;
+          const b = args.get(1) as EnumValue;
           if (a.typeId !== typeId || b.typeId !== typeId) {
             return mkBooleanValue(false);
           }

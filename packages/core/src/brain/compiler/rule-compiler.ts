@@ -130,23 +130,26 @@ export class ExprCompiler implements ExprVisitor<void> {
       return;
     }
 
-    // Push left, convert if needed, push right, convert if needed,
-    // then HOST_CALL_ARGS pops both and auto-wraps into a MapValue.
+    // Open the binary host-call buffer (slot 0 = lhs, slot 1 = rhs):
+    // push two NIL fillers, lower each operand into its slot via
+    // STACK_SET_REL, then HOST_CALL.
+    this.pushNil();
+    this.pushNil();
     acceptExprVisitor(expr.left, this);
     this.emitConversionIfNeeded(expr.left.nodeId);
+    this.emitter.stackSetRel(1);
     acceptExprVisitor(expr.right, this);
     this.emitConversionIfNeeded(expr.right.nodeId);
+    this.emitter.stackSetRel(0);
     this.emitBinaryOp(typeInfo);
   }
 
   /**
-   * Emit type conversion HOST_CALL_ARGS if the node's TypeInfo has a
-   * conversion. The value to convert must already be on top of the stack.
-   *
-   * For conversions, HOST_CALL_ARGS pops 1 raw value and auto-wraps it into a
-   * MapValue with key 0.
-   *
-   * Stack effect: [value] -> [converted_value]
+   * Emit a type-conversion host call if the node's TypeInfo has a
+   * conversion. The value to convert must already be on top of the
+   * stack: that single value is the conversion's slot-0 buffer, so the
+   * compiler emits `HOST_CALL convFnId, 1, csId` directly. Stack
+   * effect: `[value] -> [converted_value]`.
    */
   private emitConversionIfNeeded(nodeId: number): void {
     const typeInfo = this.context.typeEnv.get(nodeId);
@@ -155,7 +158,13 @@ export class ExprCompiler implements ExprVisitor<void> {
     }
 
     const conversion = typeInfo.conversion;
-    this.emitter.hostCallArgs(conversion.id, 1, this.nextCallSiteId());
+    this.emitter.hostCall(conversion.id, 1, this.nextCallSiteId());
+  }
+
+  /** Push a `NIL_VALUE` constant -- used as filler in host-call arg buffers. */
+  private pushNil(): void {
+    const idx = this.context.constantPool.addOther(NIL_VALUE);
+    this.emitter.pushConst(idx);
   }
 
   private emitShortCircuitAnd(expr: BinaryOpExpr): void {
@@ -197,23 +206,26 @@ export class ExprCompiler implements ExprVisitor<void> {
   }
 
   private emitBinaryOp(typeInfo: TypeInfo): void {
-    // Call the operator's host function implementation via HOST_CALL_ARGS. The
-    // VM pops 2 raw values and wraps them into a MapValue with keys 0, 1.
+    // The 2-slot arg buffer is already in place on the stack. Emit
+    // HOST_CALL (or HOST_CALL_ASYNC + AWAIT) to consume it.
     if (typeInfo.overload) {
       if (typeInfo.overload.fnEntry.isAsync) {
-        this.emitter.hostCallArgsAsync(typeInfo.overload.fnEntry.id, 2, this.nextCallSiteId());
+        this.emitter.hostCallAsync(typeInfo.overload.fnEntry.id, 2, this.nextCallSiteId());
         // Automatically await async operators so their result can be used by
         // subsequent operations This makes async operators work correctly in
         // multi-step operator chains
         this.emitter.await();
         return;
       }
-      this.emitter.hostCallArgs(typeInfo.overload.fnEntry.id, 2, this.nextCallSiteId());
+      this.emitter.hostCall(typeInfo.overload.fnEntry.id, 2, this.nextCallSiteId());
     } else {
       // This should have been caught during type inference, but handle
       // gracefully The diagnostic is tracked against the operator's nodeId,
-      // which we don't have here So we emit a nil placeholder to maintain stack
-      // balance
+      // which we don't have here. The caller already pushed two NIL
+      // fillers as the buffer; pop them and push a NIL placeholder to
+      // restore stack balance.
+      this.emitter.pop();
+      this.emitter.pop();
       this.pushNilPlaceholder();
     }
   }
@@ -235,9 +247,12 @@ export class ExprCompiler implements ExprVisitor<void> {
       return;
     }
 
-    // Push operand, convert if needed, then HOST_CALL_ARGS auto-wraps.
+    // Open the unary host-call buffer (slot 0 = operand): push one NIL
+    // filler, lower the operand, STACK_SET_REL 0 to overwrite the filler.
+    this.pushNil();
     acceptExprVisitor(expr.operand, this);
     this.emitConversionIfNeeded(expr.operand.nodeId);
+    this.emitter.stackSetRel(0);
     this.emitUnaryOp(typeInfo);
   }
 
@@ -245,19 +260,20 @@ export class ExprCompiler implements ExprVisitor<void> {
     const overload = typeInfo.overload;
     if (overload) {
       if (overload.fnEntry.isAsync) {
-        this.emitter.hostCallArgsAsync(overload.fnEntry.id, 1, this.nextCallSiteId());
+        this.emitter.hostCallAsync(overload.fnEntry.id, 1, this.nextCallSiteId());
         // Automatically await async operators so their result can be used by
         // subsequent operations This makes async operators work correctly in
         // multi-step operator chains
         this.emitter.await();
         return;
       }
-      this.emitter.hostCallArgs(overload.fnEntry.id, 1, this.nextCallSiteId());
+      this.emitter.hostCall(overload.fnEntry.id, 1, this.nextCallSiteId());
     } else {
       // This should have been caught during type inference, but handle
       // gracefully The diagnostic is tracked against the operator's nodeId,
-      // which we don't have here So we emit a nil placeholder to maintain stack
-      // balance
+      // which we don't have here. Pop the 1-slot buffer and push a NIL
+      // placeholder to maintain stack balance.
+      this.emitter.pop();
       this.pushNilPlaceholder();
     }
   }

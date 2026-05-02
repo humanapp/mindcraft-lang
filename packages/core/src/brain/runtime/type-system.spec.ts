@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
+import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   type BooleanValue,
   type BrainServices,
@@ -15,7 +15,6 @@ import {
   type FunctionTypeDef,
   type ListTypeDef,
   type MapTypeDef,
-  type MapValue,
   mkTypeId,
   NativeType,
   NIL_VALUE,
@@ -23,7 +22,7 @@ import {
   nativeTypeToString,
   type StructTypeDef,
   type UnionTypeDef,
-  ValueDict,
+  type Value,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 
@@ -56,11 +55,8 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
 function mkBinaryArgs(
   left: { t: NativeType.Enum; typeId: string; v: string },
   right: { t: NativeType.Enum; typeId: string; v: string }
-): MapValue {
-  const values = new ValueDict();
-  values.set(0, left);
-  values.set(1, right);
-  return { t: NativeType.Map, typeId: "", v: values };
+): ReadonlyList<Value> {
+  return List.from([left as Value, right as Value]);
 }
 
 function callEnumEqualityOperator(opId: string, typeId: string, leftKey: string, rightKey: string): boolean {

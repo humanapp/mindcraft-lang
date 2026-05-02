@@ -14,7 +14,6 @@ import {
   type IOperatorOverloads,
   type IOperatorTable,
   type IRegisteredOperator,
-  type MapValue,
   mkBooleanValue,
   mkCallDef,
   mkNumberValue,
@@ -310,9 +309,9 @@ export function asValidString(v: Value | undefined): string | undefined {
 }
 
 /** Apply a binary numeric op to slot 0 and slot 1 of `args`. Returns nil on bad operands or NaN result. */
-export function safeNumBinary(args: MapValue, op: (a: number, b: number) => number): Value {
-  const a = asValidNumber(args.v.get(0));
-  const b = asValidNumber(args.v.get(1));
+export function safeNumBinary(args: ReadonlyList<Value>, op: (a: number, b: number) => number): Value {
+  const a = asValidNumber(args.get(0));
+  const b = asValidNumber(args.get(1));
   if (a === undefined || b === undefined) {
     return NIL_VALUE;
   }
@@ -324,8 +323,8 @@ export function safeNumBinary(args: MapValue, op: (a: number, b: number) => numb
 }
 
 /** Apply a unary numeric op to slot 0 of `args`. Returns nil on bad operand or NaN result. */
-export function safeNumUnary(args: MapValue, op: (a: number) => number): Value {
-  const a = asValidNumber(args.v.get(0));
+export function safeNumUnary(args: ReadonlyList<Value>, op: (a: number) => number): Value {
+  const a = asValidNumber(args.get(0));
   if (a === undefined) {
     return NIL_VALUE;
   }
@@ -337,9 +336,9 @@ export function safeNumUnary(args: MapValue, op: (a: number) => number): Value {
 }
 
 /** Apply a numeric comparison to slots 0 and 1 of `args`. Returns false on bad operands. */
-export function safeNumCompare(args: MapValue, cmp: (a: number, b: number) => boolean): Value {
-  const a = asValidNumber(args.v.get(0));
-  const b = asValidNumber(args.v.get(1));
+export function safeNumCompare(args: ReadonlyList<Value>, cmp: (a: number, b: number) => boolean): Value {
+  const a = asValidNumber(args.get(0));
+  const b = asValidNumber(args.get(1));
   if (a === undefined || b === undefined) {
     return FALSE_VALUE;
   }
@@ -347,9 +346,9 @@ export function safeNumCompare(args: MapValue, cmp: (a: number, b: number) => bo
 }
 
 /** Concatenate slot 0 and slot 1 of `args` as strings. Returns nil on bad operands. */
-export function safeStrConcat(args: MapValue): Value {
-  const a = asValidString(args.v.get(0));
-  const b = asValidString(args.v.get(1));
+export function safeStrConcat(args: ReadonlyList<Value>): Value {
+  const a = asValidString(args.get(0));
+  const b = asValidString(args.get(1));
   if (a === undefined || b === undefined) {
     return NIL_VALUE;
   }
@@ -357,9 +356,9 @@ export function safeStrConcat(args: MapValue): Value {
 }
 
 /** Apply a string comparison to slots 0 and 1 of `args`. Returns false on bad operands. */
-export function safeStrCompare(args: MapValue, cmp: (a: string, b: string) => boolean): Value {
-  const a = asValidString(args.v.get(0));
-  const b = asValidString(args.v.get(1));
+export function safeStrCompare(args: ReadonlyList<Value>, cmp: (a: string, b: string) => boolean): Value {
+  const a = asValidString(args.get(0));
+  const b = asValidString(args.get(1));
   if (a === undefined || b === undefined) {
     return FALSE_VALUE;
   }
@@ -415,9 +414,9 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as BooleanValue;
-        const b = args.v.get(1) as BooleanValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const a = args.get(0) as BooleanValue;
+        const b = args.get(1) as BooleanValue;
         return mkBooleanValue(a.v && b.v);
       },
     },
@@ -429,9 +428,9 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as BooleanValue;
-        const b = args.v.get(1) as BooleanValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const a = args.get(0) as BooleanValue;
+        const b = args.get(1) as BooleanValue;
         return mkBooleanValue(a.v || b.v);
       },
     },
@@ -442,8 +441,8 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as BooleanValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const a = args.get(0) as BooleanValue;
         return mkBooleanValue(!a.v);
       },
     },
@@ -455,7 +454,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => a + b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => a + b) },
     false
   );
   operatorOverloads.binary(
@@ -463,7 +462,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => a - b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => a - b) },
     false
   );
   operatorOverloads.binary(
@@ -471,7 +470,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => a * b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => a * b) },
     false
   );
   operatorOverloads.binary(
@@ -480,7 +479,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) =>
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
         safeNumBinary(args, (a, b) => {
           // Division by zero yields NIL_VALUE rather than faulting; safeNumBinary
           // catches both 0/0 (NaN result) and finite/0 (Infinity result is rejected by NaN check on subsequent ops).
@@ -498,7 +497,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) =>
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
         safeNumBinary(args, (a, b) => {
           if (b === 0) {
             return 0 / 0;
@@ -513,14 +512,14 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.pow(a, b)) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.pow(a, b)) },
     false
   );
   operatorOverloads.unary(
     CoreOpId.Negate,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumUnary(args, (a) => -a) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumUnary(args, (a) => -a) },
     false
   );
 
@@ -529,7 +528,9 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.bitAnd(a, b)) },
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.bitAnd(a, b)),
+    },
     false
   );
   operatorOverloads.binary(
@@ -537,7 +538,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.bitOr(a, b)) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.bitOr(a, b)) },
     false
   );
   operatorOverloads.binary(
@@ -545,14 +546,16 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.bitXor(a, b)) },
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumBinary(args, (a, b) => MathOps.bitXor(a, b)),
+    },
     false
   );
   operatorOverloads.unary(
     CoreOpId.BitwiseNot,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumUnary(args, (a) => MathOps.bitNot(a)) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumUnary(args, (a) => MathOps.bitNot(a)) },
     false
   );
   operatorOverloads.binary(
@@ -560,7 +563,10 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.leftShift(a, b)) },
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
+        safeNumBinary(args, (a, b) => MathOps.leftShift(a, b)),
+    },
     false
   );
   operatorOverloads.binary(
@@ -568,7 +574,10 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Number,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumBinary(args, (a, b) => MathOps.rightShift(a, b)) },
+    {
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) =>
+        safeNumBinary(args, (a, b) => MathOps.rightShift(a, b)),
+    },
     false
   );
 
@@ -578,9 +587,9 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as BooleanValue;
-        const b = args.v.get(1) as BooleanValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const a = args.get(0) as BooleanValue;
+        const b = args.get(1) as BooleanValue;
         return mkBooleanValue(a.v === b.v);
       },
     },
@@ -592,9 +601,9 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const a = args.v.get(0) as BooleanValue;
-        const b = args.v.get(1) as BooleanValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const a = args.get(0) as BooleanValue;
+        const b = args.get(1) as BooleanValue;
         return mkBooleanValue(a.v !== b.v);
       },
     },
@@ -606,7 +615,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Boolean,
     CoreTypeIds.Boolean,
     {
-      exec: (_ctx: ExecutionContext, _args: MapValue) => {
+      exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
         return NIL_VALUE; // Assignment is special-cased in the compiler; this is a no-op at runtime.
       },
     },
@@ -618,7 +627,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a === b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a === b) },
     false
   );
   operatorOverloads.binary(
@@ -626,7 +635,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a !== b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a !== b) },
     false
   );
   operatorOverloads.binary(
@@ -634,7 +643,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a < b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a < b) },
     false
   );
   operatorOverloads.binary(
@@ -642,7 +651,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a <= b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a <= b) },
     false
   );
   operatorOverloads.binary(
@@ -650,7 +659,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a > b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a > b) },
     false
   );
   operatorOverloads.binary(
@@ -658,7 +667,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     CoreTypeIds.Boolean,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeNumCompare(args, (a, b) => a >= b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeNumCompare(args, (a, b) => a >= b) },
     false
   );
   operatorOverloads.binary(
@@ -667,7 +676,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.Number,
     CoreTypeIds.Number,
     {
-      exec: (_ctx: ExecutionContext, _args: MapValue) => {
+      exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
         return NIL_VALUE; // Assignment is special-cased in the compiler; this is a no-op at runtime.
       },
     },
@@ -679,7 +688,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.String,
     CoreTypeIds.String,
     CoreTypeIds.String,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeStrConcat(args) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeStrConcat(args) },
     false
   );
   operatorOverloads.binary(
@@ -687,7 +696,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.String,
     CoreTypeIds.String,
     CoreTypeIds.Boolean,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeStrCompare(args, (a, b) => a === b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeStrCompare(args, (a, b) => a === b) },
     false
   );
   operatorOverloads.binary(
@@ -695,7 +704,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.String,
     CoreTypeIds.String,
     CoreTypeIds.Boolean,
-    { exec: (_ctx: ExecutionContext, args: MapValue) => safeStrCompare(args, (a, b) => a !== b) },
+    { exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => safeStrCompare(args, (a, b) => a !== b) },
     false
   );
   operatorOverloads.binary(
@@ -704,7 +713,7 @@ export function registerCoreOperators(services: BrainServices) {
     CoreTypeIds.String,
     CoreTypeIds.String,
     {
-      exec: (_ctx: ExecutionContext, _args: MapValue) => {
+      exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
         return NIL_VALUE; // Assignment is special-cased in the compiler; this is a no-op at runtime.
       },
     },
@@ -744,8 +753,8 @@ export function registerCoreOperators(services: BrainServices) {
       CoreTypeIds.Nil,
       CoreTypeIds.Boolean,
       {
-        exec: (_ctx: ExecutionContext, args: MapValue) => {
-          const a = args.v.get(0) as Value;
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+          const a = args.get(0) as Value;
           return mkBooleanValue(a.t === NativeType.Nil);
         },
       },
@@ -757,8 +766,8 @@ export function registerCoreOperators(services: BrainServices) {
       typeId,
       CoreTypeIds.Boolean,
       {
-        exec: (_ctx: ExecutionContext, args: MapValue) => {
-          const b = args.v.get(1) as Value;
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+          const b = args.get(1) as Value;
           return mkBooleanValue(b.t === NativeType.Nil);
         },
       },
@@ -770,8 +779,8 @@ export function registerCoreOperators(services: BrainServices) {
       CoreTypeIds.Nil,
       CoreTypeIds.Boolean,
       {
-        exec: (_ctx: ExecutionContext, args: MapValue) => {
-          const a = args.v.get(0) as Value;
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+          const a = args.get(0) as Value;
           return mkBooleanValue(a.t !== NativeType.Nil);
         },
       },
@@ -783,8 +792,8 @@ export function registerCoreOperators(services: BrainServices) {
       typeId,
       CoreTypeIds.Boolean,
       {
-        exec: (_ctx: ExecutionContext, args: MapValue) => {
-          const b = args.v.get(1) as Value;
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+          const b = args.get(1) as Value;
           return mkBooleanValue(b.t !== NativeType.Nil);
         },
       },

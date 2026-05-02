@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   type BooleanValue,
   type BrainServices,
   ContextTypeIds,
   CoreTypeIds,
+  compiler,
   type EnumValue,
   type ExecutionContext,
+  type FunctionBytecode,
   HandleTable,
+  type Instr,
   isEnumValue,
   isListValue,
   isMapValue,
@@ -37,6 +40,8 @@ import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
+import { emitFunction } from "./emit.js";
+import type { IrNode } from "./ir.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
@@ -72,6 +77,132 @@ function mkArgsMap(entries: Record<number, Value>): MapValue {
   return { t: NativeType.Map, typeId: "map:<args>", v: dict };
 }
 
+function findFunctionContainingOp(prog: UserAuthoredProgram, op: Op): FunctionBytecode {
+  for (let i = 0; i < prog.functions.size(); i++) {
+    const fn = prog.functions.get(i)!;
+    if (fn.code.some((instr) => instr.op === op)) return fn;
+  }
+  assert.fail(`Expected function containing ${Op[op]}`);
+}
+
+function assertHostCallBuffer(
+  fn: FunctionBytecode,
+  op: Op.HOST_CALL | Op.HOST_CALL_ASYNC,
+  argc: number,
+  argSlotIds?: readonly number[]
+): void {
+  const code = fn.code;
+  const callIdx = code.findIndex((instr) => instr.op === op);
+  assert.ok(callIdx >= 0, `Expected ${Op[op]} in function`);
+  assert.ok(
+    !code.some((instr) => instr.op === Op.STORE_LOCAL),
+    "host-call arg-buffer emission must not spill args into locals"
+  );
+  const rawArgc = argSlotIds?.length ?? argc;
+  const start = callIdx - (argc + rawArgc * 2);
+  assert.ok(start >= 0, `${Op[op]} should have a ${argc}-slot V4.1 arg-buffer prefix`);
+
+  const at = (idx: number): Instr => code.get(idx)!;
+  for (let i = 0; i < argc; i++) {
+    assert.equal(at(start + i).op, Op.PUSH_CONST_VAL, `slot ${i} should start as NIL_VALUE filler`);
+  }
+  for (let i = 0; i < rawArgc; i++) {
+    const slotId = argSlotIds ? argSlotIds[i] : i;
+    const valueIdx = start + argc + i * 2;
+    const setIdx = valueIdx + 1;
+    assert.notEqual(at(valueIdx).op, Op.LOAD_LOCAL, `arg ${i} should not be reloaded from a hidden spill local`);
+    assert.equal(at(setIdx).op, Op.STACK_SET_REL, `slot ${i} should be written with STACK_SET_REL`);
+    assert.equal(at(setIdx).a, argc - 1 - slotId, `slot ${slotId} should use d = argc - 1 - slotId`);
+  }
+  assert.equal(at(callIdx).b, argc, `${Op[op]} should consume the full arg-buffer width`);
+  assert.equal(fn.numLocals ?? 0, 0, "host-call arg-buffer emission must not add hidden spill locals");
+}
+
+function assertDenseHostCallBuffer(fn: FunctionBytecode, op: Op.HOST_CALL | Op.HOST_CALL_ASYNC, argc: number): void {
+  const code = fn.code;
+  const callIdx = code.findIndex((instr) => instr.op === op);
+  assert.ok(callIdx >= 0, `Expected ${Op[op]} in function`);
+  assert.equal(code.get(callIdx)!.b, argc, `${Op[op]} should consume the full arg-buffer width`);
+  if (argc === 0) return;
+
+  if (code.get(callIdx - 1)!.op !== Op.STACK_SET_REL) return;
+
+  const writes: Array<number | undefined> = [];
+  for (let i = 0; i < callIdx; i++) {
+    const instr = code.get(i)!;
+    if (instr.op === Op.STACK_SET_REL) writes.push(instr.a);
+  }
+  const tailWrites = writes.slice(-argc);
+  assert.deepStrictEqual(
+    tailWrites,
+    Array.from({ length: argc }, (_unused, idx) => argc - 1 - idx),
+    `${Op[op]} should fill dense slots in source order`
+  );
+}
+
+function assertDenseDirectHostCallBuffer(
+  fn: FunctionBytecode,
+  op: Op.HOST_CALL | Op.HOST_CALL_ASYNC,
+  argc: number
+): void {
+  const code = fn.code;
+  const callIdx = code.findIndex((instr) => instr.op === op);
+  assert.ok(callIdx >= 0, `Expected ${Op[op]} in function`);
+  assert.equal(code.get(callIdx)!.b, argc, `${Op[op]} should consume the full arg-buffer width`);
+  assert.ok(
+    !code.some((instr) => instr.op === Op.STORE_LOCAL),
+    "host-call arg-buffer emission must not spill args into locals"
+  );
+  for (let i = 0; i < argc; i++) {
+    assert.ok(isPushConstOp(code.get(callIdx - argc + i)!.op), `dense arg ${i} should remain directly below ${Op[op]}`);
+  }
+  assert.equal(fn.numLocals ?? 0, 0, "dense host-call arg emission must not add hidden spill locals");
+}
+
+function isPushConstOp(op: Op): boolean {
+  return op === Op.PUSH_CONST_VAL || op === Op.PUSH_CONST_NUM || op === Op.PUSH_CONST_STR;
+}
+
+function emitSyntheticHostCallBuffer(
+  argc: number,
+  argSlotIds?: readonly number[],
+  op: Op.HOST_CALL | Op.HOST_CALL_ASYNC = Op.HOST_CALL
+): FunctionBytecode {
+  const localServices = __test__createBrainServices();
+  localServices.functions.register(
+    "$$emit_host_call_matrix",
+    op === Op.HOST_CALL_ASYNC,
+    op === Op.HOST_CALL_ASYNC ? { exec: () => {} } : { exec: () => NIL_VALUE },
+    buildCallDef("emit-host-call-matrix", [])
+  );
+
+  const rawArgc = argSlotIds?.length ?? argc;
+  const ir: IrNode[] = [];
+  for (let i = 0; i < rawArgc; i++) {
+    ir.push({ kind: "PushConst", value: mkNumberValue(i + 1) });
+  }
+  ir.push(
+    op === Op.HOST_CALL_ASYNC
+      ? { kind: "HostCallAsync", fnName: "$$emit_host_call_matrix", argc, argSlotIds }
+      : { kind: "HostCall", fnName: "$$emit_host_call_matrix", argc, argSlotIds }
+  );
+
+  const result = emitFunction(
+    ir,
+    0,
+    0,
+    "host-call-matrix",
+    new compiler.ConstantPool(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    localServices.functions
+  );
+  assert.deepStrictEqual(result.diagnostics, []);
+  return result.bytecode;
+}
+
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {
   if (prog.activationFuncId === undefined) {
     return;
@@ -87,6 +218,37 @@ function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsite
   const result = vm.runFiber(fiber, mkScheduler());
   assert.equal(result.status, VmStatus.DONE);
 }
+
+describe("host-call arg-buffer emission", () => {
+  test("emits zero-width buffer for zero-arg host calls", () => {
+    const fn = emitSyntheticHostCallBuffer(0);
+    assertHostCallBuffer(fn, Op.HOST_CALL, 0);
+  });
+
+  test("keeps dense in-order args as a direct positional buffer", () => {
+    const fn = emitSyntheticHostCallBuffer(4);
+    assertDenseDirectHostCallBuffer(fn, Op.HOST_CALL, 4);
+  });
+
+  test("emits NIL + STACK_SET_REL when an explicit slot map is supplied in order", () => {
+    const suppliedSlots = [0, 1, 2, 3];
+    const fn = emitSyntheticHostCallBuffer(4, suppliedSlots);
+    assertHostCallBuffer(fn, Op.HOST_CALL, 4, suppliedSlots);
+  });
+
+  test("emits slot-relative writes for all slots supplied out of order", () => {
+    const suppliedSlots = [3, 0, 2, 1];
+    const fn = emitSyntheticHostCallBuffer(4, suppliedSlots);
+    assertHostCallBuffer(fn, Op.HOST_CALL, 4, suppliedSlots);
+  });
+
+  test("leaves unsupplied sparse slots as NIL fillers", () => {
+    const suppliedSlots = [0, 3];
+    const fn = emitSyntheticHostCallBuffer(4, suppliedSlots);
+    assertHostCallBuffer(fn, Op.HOST_CALL, 4, suppliedSlots);
+  });
+});
+
 describe("struct literal compilation", () => {
   before(async () => {
     services = __test__createBrainServices();
@@ -782,9 +944,9 @@ describe("struct method calls", () => {
         "Widget.getValue",
         false,
         {
-          exec: (_ctx: ExecutionContext, args: MapValue) => {
-            const widget = (args.v.get(0) as StructValue).native as { id: number };
-            const key = (args.v.get(1) as StringValue).v;
+          exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+            const widget = (args.get(0) as StructValue).native as { id: number };
+            const key = (args.get(1) as StringValue).v;
             if (key === "score") return mkNumberValue(widget.id * 10);
             return mkNumberValue(0);
           },
@@ -802,9 +964,9 @@ describe("struct method calls", () => {
         "Widget.add",
         false,
         {
-          exec: (_ctx: ExecutionContext, args: MapValue) => {
-            const a = (args.v.get(1) as NumberValue).v;
-            const b = (args.v.get(2) as NumberValue).v;
+          exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+            const a = (args.get(1) as NumberValue).v;
+            const b = (args.get(2) as NumberValue).v;
             return mkNumberValue(a + b);
           },
         },
@@ -816,13 +978,13 @@ describe("struct method calls", () => {
       fns.register(
         "Widget.fetchData",
         true,
-        { exec: (_ctx: ExecutionContext, _args: MapValue, _handleId: number) => {} },
+        { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handleId: number) => {} },
         emptyCallDef
       );
     }
   });
 
-  test("struct method with one arg compiles to HostCallArgs with argc 2", () => {
+  test("struct method with one arg compiles to HostCall with argc 2", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
@@ -842,7 +1004,7 @@ export default Sensor({
     assert.ok(result.program);
   });
 
-  test("struct method with no args compiles to HostCallArgs with argc 1", () => {
+  test("struct method with no args compiles to HostCall with argc 1", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
@@ -999,7 +1161,7 @@ export default Sensor({
     );
   });
 
-  test("calling async host function emits HOST_CALL_ARGS_ASYNC", () => {
+  test("calling async host function emits HOST_CALL_ASYNC", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
@@ -1020,14 +1182,15 @@ export default Sensor({
     assert.ok(result.program);
 
     const prog = result.program!;
-    const hasAsyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ARGS_ASYNC));
-    assert.ok(hasAsyncCall, "Expected HOST_CALL_ARGS_ASYNC opcode in bytecode");
+    const hasAsyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ASYNC));
+    assert.ok(hasAsyncCall, "Expected HOST_CALL_ASYNC opcode in bytecode");
+    assertDenseHostCallBuffer(findFunctionContainingOp(prog, Op.HOST_CALL_ASYNC), Op.HOST_CALL_ASYNC, 2);
 
-    const hasSyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ARGS));
-    assert.ok(!hasSyncCall, "Expected no HOST_CALL_ARGS opcode for async method");
+    const hasSyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL));
+    assert.ok(!hasSyncCall, "Expected no HOST_CALL opcode for async method");
   });
 
-  test("calling sync host function emits HOST_CALL_ARGS (not HOST_CALL_ARGS_ASYNC)", () => {
+  test("calling sync host function emits HOST_CALL (not HOST_CALL_ASYNC)", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
@@ -1047,11 +1210,12 @@ export default Sensor({
     assert.ok(result.program);
 
     const prog = result.program!;
-    const hasSyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ARGS));
-    assert.ok(hasSyncCall, "Expected HOST_CALL_ARGS opcode for sync method");
+    const hasSyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL));
+    assert.ok(hasSyncCall, "Expected HOST_CALL opcode for sync method");
+    assertDenseHostCallBuffer(findFunctionContainingOp(prog, Op.HOST_CALL), Op.HOST_CALL, 2);
 
-    const hasAsyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ARGS_ASYNC));
-    assert.ok(!hasAsyncCall, "Expected no HOST_CALL_ARGS_ASYNC opcode for sync method");
+    const hasAsyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ASYNC));
+    assert.ok(!hasAsyncCall, "Expected no HOST_CALL_ASYNC opcode for sync method");
   });
 
   test(".pop() removes and returns last element", () => {

@@ -110,6 +110,10 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.SWAP });
   }
 
+  stackSetRel(d: number): void {
+    this.emit({ op: Op.STACK_SET_REL, a: d });
+  }
+
   // ==========================================
   // Variables (slot-indexed; slot id is a position in the program's variableNames pool)
   // ==========================================
@@ -195,14 +199,6 @@ export class BytecodeEmitter implements IBytecodeEmitter {
 
   actionCallAsync(actionSlot: number, callSiteId: number): void {
     this.emit({ op: Op.ACTION_CALL_ASYNC, a: actionSlot, c: callSiteId });
-  }
-
-  hostCallArgs(hostId: number, argc: number, callSiteId: number): void {
-    this.emit({ op: Op.HOST_CALL_ARGS, a: hostId, b: argc, c: callSiteId });
-  }
-
-  hostCallArgsAsync(hostId: number, argc: number, callSiteId: number): void {
-    this.emit({ op: Op.HOST_CALL_ARGS_ASYNC, a: hostId, b: argc, c: callSiteId });
   }
 
   // ==========================================

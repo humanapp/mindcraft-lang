@@ -1,0 +1,65 @@
+<!-- Last reviewed: 2026-02-22 -->
+<!-- Sync: Multi-Target Core rules duplicated in .github/instructions/core.instructions.md -->
+
+# Copilot Instructions
+
+Before working in any area of the codebase, list `.github/instructions/` and read `global.instructions.md` plus any files whose name matches the area you are working in.
+
+These instructions apply to all Copilot features, including inline tab completions.
+
+## Command Approvals
+
+- When requesting escalated command approval, always include a narrow `prefix_rule` when
+  safe and allowed so repeated commands can be approved persistently.
+- Do not include a `prefix_rule` for destructive commands, heredocs, or overly broad
+  command prefixes.
+
+## Code Quality
+
+- Never emit placeholder code. Do not use `TODO`, `FIXME`, `...`, `/* implementation */`,
+  `throw new Error("Not implemented")`, or any other stub pattern unless the user has
+  explicitly written a stub and is asking to fill it in.
+- Never produce non-production statements such as `console.log("test")`,
+  `console.log("here")`, hardcoded magic strings used only for debugging, or temporary
+  workarounds presented as real code.
+- Complete functions fully. If a complete implementation cannot be inferred from context,
+  suggest the minimal correct skeleton rather than a placeholder body.
+- Do not add comments that just restate what the code does. Only include comments that
+  explain non-obvious intent, invariants, or constraints.
+- Do not suggest comments in new code blocks that say things like "// no implementation yet, but could add things like `this` or `that`...". This is not helpful. It is better to leave it blank or with a minimal concrete code suggestion.
+- Do not use phrases like "TODO: implement this function" or "implementation goes here" in comments. If the user is asking for a function implementation, just provide the implementation without any placeholder comments, or leave it blank if you cannot infer the implementation. Do not add comments that explain what code should be written rather than writing the code itself.
+
+## Import Style
+
+- Never use inline `import()` type expressions (e.g., `import("./foo").Bar`) in `.ts` or
+  `.tsx` files. Always use a top-level `import type` statement instead.
+  - Exception: `.d.ts` ambient declaration files and Roblox `.rbx.ts` platform shims where
+    top-level imports would break the ambient module context.
+
+## Project-Specific Rules
+
+### Multi-Target Core (`packages/core`)
+
+- Avoid Node.js-only or browser-only APIs in shared code under `packages/core/src`.
+- Prefer `List` and `Dict` from `packages/core/src/platform` over native `Array` and `Map`.
+- Use `unknown` or specific types instead of `any`.
+- Do not use the global `Error` class in shared code; import `Error` from
+  `../../platform/error` (or the equivalent relative path).
+- Do not use `typeof x === "string"` etc.; use `TypeUtils.isString()`,
+  `TypeUtils.isNumber()`, `TypeUtils.isBoolean()` from `platform/types.ts`.
+- Do not use Luau reserved words as identifiers: `and`, `break`, `do`, `else`, `elseif`,
+  `end`, `false`, `for`, `function`, `if`, `in`, `local`, `nil`, `not`, `or`, `repeat`,
+  `return`, `then`, `true`, `until`, `while`.
+- Do not use `globalThis` in shared code; it is only allowed in `.node.ts` platform files.
+
+### Shared UI (`packages/ui`)
+
+- This is a **source-only** package -- no build step. Consuming apps resolve the source
+  directly via Vite aliases and tsconfig paths.
+- Use **relative imports** within the package (no path aliases). Consuming apps map
+  `@mindcraft-lang/ui` to the source directory.
+- All shadcn/ui primitives live here. Do not duplicate them in app directories.
+- The brain editor is decoupled from app-specific concepts via `BrainEditorProvider`
+  context. App-specific tile visuals, data type icons, and custom literal types are
+  injected through the config, not imported directly.
+- Do not add app-specific types (e.g., Archetype, Actor) to this package.

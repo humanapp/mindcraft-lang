@@ -3,12 +3,18 @@ import {
   type FunctionBytecode,
   type IFunctionRegistry,
   mkFunctionValue,
+  NIL_VALUE,
   type TypeId,
 } from "@mindcraft-lang/core/brain";
 import { EmitDiagCode } from "./diag-codes.js";
 import type { IrNode, IrSourceSpan } from "./ir.js";
 import type { LocalMetadata, ScopeMetadata } from "./scope.js";
 import type { CallSiteInfo, CompileDiagnostic, DebugSpan, LocalInfo, ScopeInfo, SuspendSiteInfo } from "./types.js";
+
+interface EmittableIrNode {
+  node: IrNode;
+  originalIndex: number | undefined;
+}
 
 /** Result of {@link emitFunction}: bytecode plus debug-span and per-PC metadata. */
 export interface EmitResult {
@@ -53,6 +59,7 @@ export function emitFunction(
   const callSites: CallSiteInfo[] = [];
   const suspendSites: SuspendSiteInfo[] = [];
   let nextCallSiteId = 0;
+  const emittableIr = normalizeHostCallArgBuffers(ir);
 
   function getOrCreateSpanIndex(irSpan: IrSourceSpan, isStatementBoundary: boolean): number {
     const key = `${irSpan.startLine}:${irSpan.startColumn}:${irSpan.endLine}:${irSpan.endColumn}:${isStatementBoundary ? 1 : 0}`;
@@ -80,15 +87,28 @@ export function emitFunction(
     return emitterLabelId;
   }
 
+  function emitNil(): void {
+    const ref = pool.addValue(NIL_VALUE);
+    if (ref.kind === "number") {
+      emitter.pushConstNum(ref.idx);
+    } else if (ref.kind === "string") {
+      emitter.pushConstStr(ref.idx);
+    } else {
+      emitter.pushConst(ref.idx);
+    }
+  }
+
   const irIndexToPc: number[] = [];
 
-  for (let irIdx = 0; irIdx < ir.length; irIdx++) {
-    const node = ir[irIdx];
+  for (let emittableIdx = 0; emittableIdx < emittableIr.length; emittableIdx++) {
+    const { node, originalIndex } = emittableIr[emittableIdx]!;
     if (node.span) {
       currentSpanIndex = getOrCreateSpanIndex(node.span, node.isStatementBoundary ?? false);
     }
     const pcBefore = emitter.pos();
-    irIndexToPc[irIdx] = pcBefore;
+    if (originalIndex !== undefined) {
+      irIndexToPc[originalIndex] = pcBefore;
+    }
 
     switch (node.kind) {
       case "PushConst": {
@@ -129,9 +149,9 @@ export function emitFunction(
       case "Call":
         emitter.call(node.funcIndex, node.argc);
         break;
-      case "HostCallArgs": {
-        const fnId = fns.get(node.fnName)?.id;
-        if (fnId === undefined) {
+      case "HostCall": {
+        const fnEntry = fns.get(node.fnName);
+        if (fnEntry === undefined) {
           diagnostics.push({
             code: EmitDiagCode.CannotResolveHostFunction,
             message: `Cannot resolve host function: ${node.fnName}`,
@@ -149,13 +169,14 @@ export function emitFunction(
           };
         }
         const csId = nextCallSiteId++;
-        emitter.hostCallArgs(fnId, node.argc, csId);
-        callSites.push({ pc: pcBefore, callSiteId: csId, targetDebugFunctionId: null, isAsync: false });
+        const callPc = emitter.pos();
+        emitter.hostCall(fnEntry.id, node.argc, csId);
+        callSites.push({ pc: callPc, callSiteId: csId, targetDebugFunctionId: null, isAsync: false });
         break;
       }
-      case "HostCallArgsAsync": {
-        const fnId = fns.get(node.fnName)?.id;
-        if (fnId === undefined) {
+      case "HostCallAsync": {
+        const fnEntry = fns.get(node.fnName);
+        if (fnEntry === undefined) {
           diagnostics.push({
             code: EmitDiagCode.CannotResolveHostFunction,
             message: `Cannot resolve host function: ${node.fnName}`,
@@ -173,10 +194,14 @@ export function emitFunction(
           };
         }
         const csId = nextCallSiteId++;
-        emitter.hostCallArgsAsync(fnId, node.argc, csId);
-        callSites.push({ pc: pcBefore, callSiteId: csId, targetDebugFunctionId: null, isAsync: true });
+        const callPc = emitter.pos();
+        emitter.hostCallAsync(fnEntry.id, node.argc, csId);
+        callSites.push({ pc: callPc, callSiteId: csId, targetDebugFunctionId: null, isAsync: true });
         break;
       }
+      case "StackSetRel":
+        emitter.stackSetRel(node.d);
+        break;
       case "Await": {
         emitter.await();
         if (node.span) {
@@ -416,6 +441,181 @@ function mapLocalMetadata(
     lifetimeEndPc: scopeEndMap.get(l.scopeId) ?? finalPc,
     typeHint: l.typeHint,
   }));
+}
+
+function normalizeHostCallArgBuffers(ir: readonly IrNode[]): EmittableIrNode[] {
+  const output: EmittableIrNode[] = [];
+
+  for (let i = 0; i < ir.length; i++) {
+    const node = ir[i]!;
+    if (node.kind !== "HostCall" && node.kind !== "HostCallAsync") {
+      output.push({ node, originalIndex: i });
+      continue;
+    }
+
+    if (!node.argSlotIds) {
+      output.push({ node, originalIndex: i });
+      continue;
+    }
+
+    const rawArgc = node.argSlotIds?.length ?? node.argc;
+    const argSlices: EmittableIrNode[][] = [];
+    for (let argIdx = rawArgc - 1; argIdx >= 0; argIdx--) {
+      argSlices[argIdx] = takeLastValueProducingSlice(output, node.kind);
+    }
+
+    for (let slotIdx = 0; slotIdx < node.argc; slotIdx++) {
+      output.push({ node: { kind: "PushConst", value: NIL_VALUE, span: node.span }, originalIndex: undefined });
+    }
+
+    for (let argIdx = 0; argIdx < rawArgc; argIdx++) {
+      const slotId = node.argSlotIds ? node.argSlotIds[argIdx]! : argIdx;
+      output.push(...argSlices[argIdx]!);
+      output.push({
+        node: { kind: "StackSetRel", d: node.argc - 1 - slotId, span: node.span },
+        originalIndex: undefined,
+      });
+    }
+
+    output.push({ node, originalIndex: i });
+  }
+
+  return output;
+}
+
+function takeLastValueProducingSlice(
+  nodes: EmittableIrNode[],
+  callKind: "HostCall" | "HostCallAsync"
+): EmittableIrNode[] {
+  let neededValues = 1;
+
+  for (let i = nodes.length - 1; i >= 0; i--) {
+    const node = nodes[i]!.node;
+    if (isControlFlowBoundary(node)) {
+      throw new Error(`${callKind}: unable to rewrite non-linear argument producer for stack-only arg-buffer emission`);
+    }
+    const effect = stackEffect(node);
+    neededValues = Math.max(0, neededValues - effect.pushes) + effect.pops;
+    if (neededValues === 0) {
+      const slice = nodes.slice(i);
+      if (netStackDelta(slice) !== 1) {
+        throw new Error(
+          `${callKind}: argument producer must leave exactly one value for stack-only arg-buffer emission`
+        );
+      }
+      return nodes.splice(i);
+    }
+  }
+
+  const tail = nodes
+    .slice(-12)
+    .map(({ node }) => node.kind)
+    .join(", ");
+  throw new Error(
+    `${callKind}: unable to identify argument producer for stack-only arg-buffer emission after [${tail}]`
+  );
+}
+
+function netStackDelta(nodes: readonly EmittableIrNode[]): number {
+  let net = 0;
+  for (const { node } of nodes) {
+    const effect = stackEffect(node);
+    net += effect.pushes - effect.pops;
+  }
+  return net;
+}
+
+function isControlFlowBoundary(node: IrNode): boolean {
+  switch (node.kind) {
+    case "Label":
+    case "Jump":
+    case "JumpIfFalse":
+    case "JumpIfTrue":
+    case "Return":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function stackEffect(node: IrNode): { pops: number; pushes: number } {
+  switch (node.kind) {
+    case "PushConst":
+    case "LoadLocal":
+    case "LoadCallsiteVar":
+    case "PushFunctionRef":
+    case "LoadCapture":
+    case "MapNew":
+    case "StructNew":
+    case "ListNew":
+      return { pops: 0, pushes: 1 };
+
+    case "StoreLocal":
+    case "StoreCallsiteVar":
+    case "Pop":
+    case "JumpIfFalse":
+    case "JumpIfTrue":
+      return { pops: 1, pushes: 0 };
+
+    case "Dup":
+      return { pops: 1, pushes: 2 };
+
+    case "Swap":
+      return { pops: 2, pushes: 2 };
+
+    case "Call":
+    case "HostCall":
+    case "HostCallAsync":
+      return { pops: node.argc, pushes: 1 };
+
+    case "CallIndirect":
+    case "CallIndirectArgs":
+      return { pops: node.argc + 1, pushes: 1 };
+
+    case "MakeClosure":
+      return { pops: node.captureCount, pushes: 1 };
+
+    case "StackSetRel":
+      return { pops: 1, pushes: 0 };
+
+    case "Await":
+    case "TypeCheck":
+    case "InstanceOf":
+    case "GetField":
+    case "ListLen":
+    case "ListPop":
+    case "ListShift":
+      return { pops: 1, pushes: 1 };
+
+    case "GetFieldDynamic":
+    case "MapGet":
+    case "MapHas":
+    case "MapDelete":
+    case "ListPush":
+    case "ListGet":
+    case "ListRemove":
+      return { pops: 2, pushes: 1 };
+
+    case "SetField":
+    case "MapSet":
+    case "StructSet":
+    case "ListSet":
+      return { pops: 3, pushes: 1 };
+
+    case "ListInsert":
+    case "ListSwap":
+      return { pops: 3, pushes: 0 };
+
+    case "StructCopyExcept":
+      return { pops: node.numExclude + 1, pushes: 1 };
+
+    case "Return":
+      return { pops: 1, pushes: 0 };
+
+    case "Label":
+    case "Jump":
+      return { pops: 0, pushes: 0 };
+  }
 }
 
 function makeEmptyBytecode(numParams: number, numLocals: number, name: string): FunctionBytecode {

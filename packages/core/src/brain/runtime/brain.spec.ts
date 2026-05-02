@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List } from "@mindcraft-lang/core";
+import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   type ActionDescriptor,
   type BooleanValue,
@@ -357,7 +357,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
     services.actions.register({
       binding: "host",
       descriptor: action,
-      execSync: fnEntry.fn.exec,
+      execSync: () => ({ t: NativeType.Number, v: 77 }),
     });
 
     const sensor = new BrainTileSensorDef(sensorId, action, {
@@ -393,9 +393,10 @@ describe("Brain behavioral -- sensors and actuators", () => {
       actuatorId,
       false,
       {
-        exec: (_ctx: ExecutionContext, args: MapValue) => {
-          called = true;
-          receivedArgs = args;
+        exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
+          // Action dispatch goes through ActionRuntimeBinding.execSync
+          // (MapValue) per V4.1 scope; this HostSyncFn variant exists
+          // only to keep the function-registry registration well-typed.
           return VOID_VALUE;
         },
       },
@@ -407,7 +408,11 @@ describe("Brain behavioral -- sensors and actuators", () => {
     services.actions.register({
       binding: "host",
       descriptor: action,
-      execSync: fnEntry.fn.exec,
+      execSync: (_ctx: ExecutionContext, args: MapValue) => {
+        called = true;
+        receivedArgs = args;
+        return VOID_VALUE;
+      },
     });
 
     const actuator = new BrainTileActuatorDef(actuatorId, action);
@@ -709,7 +714,7 @@ describe("Brain behavioral -- action state", () => {
         },
         {
           code: List.from([
-            { op: Op.HOST_CALL_ARGS, a: activationFnEntry.id, b: 0, c: 0 },
+            { op: Op.HOST_CALL, a: activationFnEntry.id, b: 0, c: 0 },
             { op: Op.STORE_CALLSITE_VAR, a: 0 },
             { op: Op.PUSH_CONST_VAL, a: 0 },
             { op: Op.RET },

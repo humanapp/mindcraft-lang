@@ -13,7 +13,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { Dict, List } from "@mindcraft-lang/core";
+import { Dict, List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   BrainServices,
   BYTECODE_VERSION,
@@ -2872,13 +2872,13 @@ describe("VM -- operator monomorphization", () => {
     assert.ok(resolved !== undefined, "add(number, number) overload must be registered");
     const addFnId = resolved!.overload.fnEntry.id;
 
-    // Tight number-heavy loop: 1000 iterations of `1 + 1` via HOST_CALL_ARGS.
+    // Tight number-heavy loop: 1000 iterations of `1 + 1` via HOST_CALL.
     const ITER = 1000;
     const code: Instr[] = [];
     for (let i = 0; i < ITER; i++) {
       code.push({ op: Op.PUSH_CONST_VAL, a: 0 });
       code.push({ op: Op.PUSH_CONST_VAL, a: 0 });
-      code.push({ op: Op.HOST_CALL_ARGS, a: addFnId, b: 2, c: 0 });
+      code.push({ op: Op.HOST_CALL, a: addFnId, b: 2, c: 0 });
       code.push({ op: Op.POP });
     }
     code.push({ op: Op.PUSH_CONST_VAL, a: 0 });
@@ -2961,5 +2961,248 @@ describe("VM -- slot-keyed variable dispatch", () => {
     assert.equal(result.status, VmStatus.DONE);
     assert.equal(counter.name, 0, `expected 0 name-keyed accesses during slot dispatch, got ${counter.name}`);
     assert.equal(counter.slot, ITER * 2, "every LOAD_VAR_SLOT / STORE_VAR_SLOT should call the slot-keyed accessors");
+  });
+});
+
+// ---- V4.1: New host-call ABI ----
+
+describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () => {
+  test("HOST_CALL allocates no MapValue / ValueDict across N synchronous host calls", () => {
+    // Register a sync host that reads slot 0 / slot 1 and returns slot0 + slot1.
+    const callDef = mkCallDef({
+      type: "seq",
+      items: [
+        { type: "arg", tileId: "addArgs.lhs", name: "lhs", required: true },
+        { type: "arg", tileId: "addArgs.rhs", name: "rhs", required: true },
+      ],
+    });
+    const fnEntry = services.functions.register(
+      "$$test_v4_1_add",
+      false,
+      {
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+          const a = args.get(0) as NumberValue;
+          const b = args.get(1) as NumberValue;
+          return mkNumberValue(a.v + b.v);
+        },
+      },
+      callDef
+    );
+
+    // Spy on MapValue/ValueDict construction by patching ValueDict's
+    // prototype constructor via a counter wrapper.
+    const allocCounts = { dict: 0 };
+    const origCtor = ValueDict.prototype.constructor;
+    function PatchedValueDict(this: ValueDict) {
+      allocCounts.dict++;
+      // Forward to the original constructor.
+      Reflect.apply(origCtor, this, []);
+    }
+    Object.setPrototypeOf(PatchedValueDict.prototype, ValueDict.prototype);
+
+    const ITER = 100;
+    const code: Instr[] = [];
+    // Push N=2 NIL fillers, fill slot 0 and slot 1, HOST_CALL, POP result.
+    for (let i = 0; i < ITER; i++) {
+      code.push({ op: Op.PUSH_CONST_VAL, a: 1 }); // NIL filler slot 0
+      code.push({ op: Op.PUSH_CONST_VAL, a: 1 }); // NIL filler slot 1
+      code.push({ op: Op.PUSH_CONST_VAL, a: 0 }); // operand for slot 0
+      code.push({ op: Op.STACK_SET_REL, a: 1 });
+      code.push({ op: Op.PUSH_CONST_VAL, a: 0 }); // operand for slot 1
+      code.push({ op: Op.STACK_SET_REL, a: 0 });
+      code.push({ op: Op.HOST_CALL, a: fnEntry.id, b: 2, c: 0 });
+      code.push({ op: Op.POP });
+    }
+    code.push({ op: Op.PUSH_CONST_VAL, a: 0 });
+    code.push({ op: Op.RET });
+
+    const prog = mkProgram([mkFunc(code)], [mkNumberValue(3), NIL_VALUE]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = ITER * 8 + 10;
+
+    // Reset counter and install the patched ValueDict for the run.
+    allocCounts.dict = 0;
+    const beforeProto = ValueDict.prototype.constructor;
+    ValueDict.prototype.constructor = PatchedValueDict as never;
+
+    let result: ReturnType<typeof vm.runFiber>;
+    try {
+      result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    } finally {
+      ValueDict.prototype.constructor = beforeProto;
+      services.functions.unregister("$$test_v4_1_add");
+    }
+
+    assert.equal(result.status, VmStatus.DONE);
+    assert.equal(
+      allocCounts.dict,
+      0,
+      `expected 0 ValueDict allocations across ${ITER} sync host calls, got ${allocCounts.dict}`
+    );
+  });
+
+  test("HostAsyncFn receives an owned snapshot that survives operand-stack reuse", () => {
+    let captured: { args: ReadonlyList<Value>; handleId: number } | undefined;
+    const callDef = mkCallDef({
+      type: "seq",
+      items: [
+        { type: "arg", tileId: "asyncCapture.a", name: "a", required: true },
+        { type: "arg", tileId: "asyncCapture.b", name: "b", required: true },
+      ],
+    });
+    const fnEntry = services.functions.register(
+      "$$test_v4_1_async_capture",
+      true,
+      {
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: number) => {
+          captured = { args, handleId };
+        },
+      },
+      callDef
+    );
+
+    const code: Instr[] = [
+      // Open 2-wide buffer for HOST_CALL_ASYNC, fill with 7 and 11.
+      { op: Op.PUSH_CONST_VAL, a: 1 }, // NIL filler
+      { op: Op.PUSH_CONST_VAL, a: 1 }, // NIL filler
+      { op: Op.PUSH_CONST_VAL, a: 0 }, // 7
+      { op: Op.STACK_SET_REL, a: 1 },
+      { op: Op.PUSH_CONST_VAL, a: 2 }, // 11
+      { op: Op.STACK_SET_REL, a: 0 },
+      { op: Op.HOST_CALL_ASYNC, a: fnEntry.id, b: 2, c: 0 },
+      // After the host call returns, scribble on the operand stack to
+      // ensure the async snapshot does not alias the live vstack.
+      { op: Op.POP }, // discard the handle pushed by HOST_CALL_ASYNC
+      { op: Op.PUSH_CONST_VAL, a: 0 },
+      { op: Op.PUSH_CONST_VAL, a: 0 },
+      { op: Op.POP },
+      { op: Op.POP },
+      { op: Op.PUSH_CONST_VAL, a: 1 },
+      { op: Op.RET },
+    ];
+
+    const prog = mkProgram([mkFunc(code)], [mkNumberValue(7), NIL_VALUE, mkNumberValue(11)]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 50;
+
+    let result: ReturnType<typeof vm.runFiber>;
+    try {
+      result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    } finally {
+      services.functions.unregister("$$test_v4_1_async_capture");
+    }
+
+    assert.equal(result.status, VmStatus.DONE);
+    assert.ok(captured, "async host should have been invoked");
+    // Even after the operand stack has been reused, the captured args
+    // still report the original values.
+    assert.equal(captured!.args.size(), 2);
+    assert.equal((captured!.args.get(0) as NumberValue).v, 7);
+    assert.equal((captured!.args.get(1) as NumberValue).v, 11);
+  });
+
+  test("STACK_SET_REL writes pop-then-set to vstack[top - d]", () => {
+    // Stack: [10, 20, 30, 40] (deepest..top). After
+    // STACK_SET_REL 2: pop 40, write to vstack[top - 2] = vstack[0].
+    // Result: [40, 20, 30].
+    const code: Instr[] = [
+      { op: Op.PUSH_CONST_VAL, a: 0 }, // 10
+      { op: Op.PUSH_CONST_VAL, a: 1 }, // 20
+      { op: Op.PUSH_CONST_VAL, a: 2 }, // 30
+      { op: Op.PUSH_CONST_VAL, a: 3 }, // 40
+      { op: Op.STACK_SET_REL, a: 2 },
+      // Stack: [40, 20, 30]. Pop the top three to confirm.
+      { op: Op.POP }, // 30
+      { op: Op.POP }, // 20
+      { op: Op.RET }, // returns 40
+    ];
+
+    const prog = mkProgram(
+      [mkFunc(code)],
+      [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30), mkNumberValue(40)]
+    );
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 50;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 40);
+    }
+  });
+
+  test("slot-keyed access: supplied vs unsupplied slots resolve correctly", () => {
+    // 4-slot host fn: tiles "spy.s0".."spy.s3". Test sparse supply
+    // (slot 0 and slot 3 only).
+    const callDef = mkCallDef({
+      type: "seq",
+      items: [
+        { type: "arg", tileId: "spy.s0", name: "s0" },
+        { type: "arg", tileId: "spy.s1", name: "s1" },
+        { type: "arg", tileId: "spy.s2", name: "s2" },
+        { type: "arg", tileId: "spy.s3", name: "s3" },
+      ],
+    });
+    let observed: List<Value> | undefined;
+    const fnEntry = services.functions.register(
+      "$$test_v4_1_spy",
+      false,
+      {
+        // Sync hosts must read into locals before returning -- the
+        // sublist view aliases the operand stack which is popped on the
+        // way back out. Snapshot here so the test can assert post-call.
+        exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+          const snap = List.empty<Value>();
+          for (let i = 0; i < args.size(); i++) snap.push(args.get(i));
+          observed = snap;
+          return NIL_VALUE;
+        },
+      },
+      callDef
+    );
+
+    // Buffer width N=4. Supply slot 0 = 100, slot 3 = 300; slots 1, 2 stay NIL.
+    const code: Instr[] = [
+      { op: Op.PUSH_CONST_VAL, a: 1 }, // NIL slot 0
+      { op: Op.PUSH_CONST_VAL, a: 1 }, // NIL slot 1
+      { op: Op.PUSH_CONST_VAL, a: 1 }, // NIL slot 2
+      { op: Op.PUSH_CONST_VAL, a: 1 }, // NIL slot 3
+      // Slot 0 (s0): d = N-1-0 = 3
+      { op: Op.PUSH_CONST_VAL, a: 0 }, // 100
+      { op: Op.STACK_SET_REL, a: 3 },
+      // Slot 3 (s3): d = N-1-3 = 0
+      { op: Op.PUSH_CONST_VAL, a: 2 }, // 300
+      { op: Op.STACK_SET_REL, a: 0 },
+      { op: Op.HOST_CALL, a: fnEntry.id, b: 4, c: 0 },
+      { op: Op.RET },
+    ];
+
+    const prog = mkProgram([mkFunc(code)], [mkNumberValue(100), NIL_VALUE, mkNumberValue(300)]);
+    const handles = new HandleTable(100);
+    const vm = new VM(services, prog, handles);
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 50;
+
+    let result: ReturnType<typeof vm.runFiber>;
+    try {
+      result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    } finally {
+      services.functions.unregister("$$test_v4_1_spy");
+    }
+    assert.equal(result.status, VmStatus.DONE);
+    assert.ok(observed);
+
+    // Slot 0 supplied -> 100; slot 3 supplied -> 300; slots 1,2 NIL.
+    assert.equal(observed!.size(), 4);
+    assert.equal((observed!.get(0) as NumberValue).v, 100);
+    assert.equal(observed!.get(1).t, NativeType.Nil, "slot 1 must be NIL");
+    assert.equal(observed!.get(2).t, NativeType.Nil, "slot 2 must be NIL");
+    assert.equal((observed!.get(3) as NumberValue).v, 300);
   });
 });

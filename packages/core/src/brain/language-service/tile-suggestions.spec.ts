@@ -8,7 +8,7 @@
 
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   type BrainServices,
   bag,
@@ -24,7 +24,6 @@ import {
   type IBrainTileDef,
   type IConversionRegistry,
   type ITileCatalog,
-  type MapValue,
   mkAccessorTileId,
   mkActionDescriptor,
   mkActuatorTileId,
@@ -44,6 +43,7 @@ import {
   seq,
   TilePlacement,
   TRUE_VALUE,
+  type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
@@ -1604,7 +1604,7 @@ describe("Accessor / struct field suggestions", () => {
       posStructTypeId,
       posStructTypeId,
       posStructTypeId,
-      { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
+      { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => NIL_VALUE },
       false
     );
   });
@@ -2284,7 +2284,7 @@ describe("Struct-specific operator and accessor behavior", () => {
       posStructTypeId,
       posStructTypeId,
       posStructTypeId,
-      { exec: (_ctx: ExecutionContext, _args: MapValue) => NIL_VALUE },
+      { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => NIL_VALUE },
       false
     );
   });

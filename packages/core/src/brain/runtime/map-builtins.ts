@@ -1,4 +1,4 @@
-import { List } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import { TypeUtils } from "../../platform/types";
 import {
   CoreTypeIds,
@@ -23,8 +23,8 @@ export function registerMapBuiltins(services: BrainServices) {
     "$$map_keys",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const map = args.v.get(0) as MapValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const map = args.get(0) as MapValue;
         const mapDef = types.get(map.typeId) as MapTypeDef | undefined;
         const keyTypeId = mapDef?.keyTypeId ?? CoreTypeIds.String;
         const keyListTypeId = types.instantiate("List", List.from([keyTypeId]));
@@ -50,8 +50,8 @@ export function registerMapBuiltins(services: BrainServices) {
     "$$map_values",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const map = args.v.get(0) as MapValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const map = args.get(0) as MapValue;
         const valueListTypeId = types.instantiate("List", List.from([CoreTypeIds.Any]));
         const items = new List<Value>();
         const values = map.v.values();
@@ -70,8 +70,8 @@ export function registerMapBuiltins(services: BrainServices) {
     "$$map_size",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const map = args.v.get(0) as MapValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const map = args.get(0) as MapValue;
         return mkNumberValue(map.v.size());
       },
     },
@@ -82,8 +82,8 @@ export function registerMapBuiltins(services: BrainServices) {
     "$$map_clear",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const map = args.v.get(0) as MapValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const map = args.get(0) as MapValue;
         map.v.clear();
         return map;
       },

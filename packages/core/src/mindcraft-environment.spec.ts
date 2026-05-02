@@ -10,6 +10,7 @@ import {
   List,
   type MindcraftEnvironment,
   type MindcraftModule,
+  type ReadonlyList,
 } from "@mindcraft-lang/core";
 import {
   type BrainServices,
@@ -18,7 +19,6 @@ import {
   CoreTypeIds,
   type ExecutionContext,
   type ITileCatalog,
-  type MapValue,
   mkCallDef,
   mkNumberValue,
   mkTypeId,
@@ -28,6 +28,7 @@ import {
   type StructTypeDef,
   TilePlacement,
   TRUE_VALUE,
+  type Value,
 } from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
@@ -95,7 +96,7 @@ function createAlphaModule(capture: {
         name: "alpha.helper",
         isAsync: false,
         fn: {
-          exec: (_ctx: ExecutionContext, _args: MapValue) => mkNumberValue(7),
+          exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => mkNumberValue(7),
         },
         callDef: helperCallDef,
       });
@@ -140,6 +141,7 @@ function createAlphaModule(capture: {
           },
           callDef: sensorCallDef,
         },
+        actionFn: { exec: () => TRUE_VALUE },
         tile: capture.sensorTile,
       });
     },
@@ -178,6 +180,7 @@ function createHostSensorModule(
             },
             callDef: sensorCallDef,
           },
+          actionFn: { exec: () => TRUE_VALUE },
           tile,
         });
       },

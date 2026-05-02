@@ -443,10 +443,8 @@ export class VM implements IVM {
           return this.execActionCall(fiber, ins, frame);
         case Op.ACTION_CALL_ASYNC:
           return this.execActionCallAsync(fiber, ins, frame, scheduler);
-        case Op.HOST_CALL_ARGS:
-          return this.execHostCallArgs(fiber, ins, frame);
-        case Op.HOST_CALL_ARGS_ASYNC:
-          return this.execHostCallArgsAsync(fiber, ins, frame, scheduler);
+        case Op.STACK_SET_REL:
+          return this.execStackSetRel(fiber, ins, frame);
         case Op.AWAIT:
           return this.execAwait(fiber, frame, scheduler);
         case Op.YIELD:
@@ -877,41 +875,54 @@ export class VM implements IVM {
 
   private execHostCall(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const fnId = ins.a ?? 0;
+    const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
-
-    const args = this.pop(fiber);
-
-    if (args.t !== NativeType.Map) {
-      throw new Error(`HOST_CALL: expected map arguments, got ${args.t}`);
-    }
 
     if (fnId < 0 || fnId >= this.fns.size()) {
       throw new Error(`HOST_CALL: function index ${fnId} out of bounds`);
     }
 
+    const stackSize = fiber.vstack.size();
+    if (argc < 0 || argc > stackSize) {
+      throwUnderflow(`HOST_CALL: argc ${argc} exceeds stack size ${stackSize}`);
+    }
+
     this.bindExecutionContext(fiber, frame, callSiteId);
 
+    const args = fiber.vstack.subview(stackSize - argc, argc);
     const result = this.fns.getSyncById(fnId)!.fn.exec(fiber.executionContext, args);
+
+    for (let i = 0; i < argc; i++) {
+      fiber.vstack.pop();
+    }
     this.push(fiber, result);
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;
   }
 
-  private execHostCallAsync(fiber: Fiber, ins: Instr, frame: Frame, scheduler: Scheduler): VmRunResult | undefined {
+  private execHostCallAsync(fiber: Fiber, ins: Instr, frame: Frame, _scheduler: Scheduler): VmRunResult | undefined {
     this.assertCanSuspend(fiber, Op.HOST_CALL_ASYNC);
 
     const fnId = ins.a ?? 0;
+    const argc = ins.b ?? 0;
     const callSiteId = ins.c ?? 0;
-
-    const args = this.pop(fiber);
-
-    if (args.t !== NativeType.Map) {
-      throw new Error(`HOST_CALL_ASYNC: expected map arguments, got ${args.t}`);
-    }
 
     if (fnId < 0 || fnId >= this.fns.size()) {
       throw new Error(`HOST_CALL_ASYNC: function index ${fnId} out of bounds`);
+    }
+
+    const stackSize = fiber.vstack.size();
+    if (argc < 0 || argc > stackSize) {
+      throwUnderflow(`HOST_CALL_ASYNC: argc ${argc} exceeds stack size ${stackSize}`);
+    }
+
+    const args = List.empty<Value>();
+    for (let i = 0; i < argc; i++) {
+      args.push(fiber.vstack.get(stackSize - argc + i)!);
+    }
+    for (let i = 0; i < argc; i++) {
+      fiber.vstack.pop();
     }
 
     const hid = this.handles.createPending();
@@ -922,6 +933,18 @@ export class VM implements IVM {
     this.fns.getAsyncById(fnId)!.fn.exec(fiber.executionContext, args, hid);
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
+    return undefined;
+  }
+
+  private execStackSetRel(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const d = ins.a ?? 0;
+    const v = this.pop(fiber);
+    const newTop = fiber.vstack.size() - 1;
+    if (d < 0 || d > newTop) {
+      throw new Error(`STACK_SET_REL: offset ${d} out of bounds [0, ${newTop}]`);
+    }
+    fiber.vstack.set(newTop - d, v);
+    frame.pc++;
     return undefined;
   }
 
@@ -1024,67 +1047,6 @@ export class VM implements IVM {
 
     this.push(fiber, V.handle(hid));
     this.bindExecutionContext(fiber, frame, callSiteId);
-    frame.pc++;
-    this.syncExecutionContextFromTopFrame(fiber);
-    return undefined;
-  }
-
-  /**
-   * Pop `argc` raw values from the stack and wrap them into a MapValue
-   * with 0-indexed numeric keys. Used by HOST_CALL_ARGS and HOST_CALL_ARGS_ASYNC
-   * to avoid compiler-side map construction for operators and conversions.
-   *
-   * Pop order is reversed so that the first-pushed value (left operand)
-   * ends up at key 0 in the resulting map.
-   */
-  private collectArgsToMap(fiber: Fiber, argc: number): MapValue {
-    const dict = new ValueDict();
-    // Pop in reverse order so slot 0 = first pushed (left operand)
-    for (let i = argc - 1; i >= 0; i--) {
-      dict.set(i, this.pop(fiber));
-    }
-    return { t: NativeType.Map, typeId: "map:<args>", v: dict } as MapValue;
-  }
-
-  private execHostCallArgs(fiber: Fiber, ins: Instr, frame: Frame): undefined {
-    const fnId = ins.a ?? 0;
-    const argc = ins.b ?? 0;
-    const callSiteId = ins.c ?? 0;
-
-    const args = this.collectArgsToMap(fiber, argc);
-
-    if (fnId < 0 || fnId >= this.fns.size()) {
-      throw new Error(`HOST_CALL_ARGS: function index ${fnId} out of bounds`);
-    }
-
-    this.bindExecutionContext(fiber, frame, callSiteId);
-
-    const result = this.fns.getSyncById(fnId)!.fn.exec(fiber.executionContext, args);
-    this.push(fiber, result);
-    frame.pc++;
-    this.syncExecutionContextFromTopFrame(fiber);
-    return undefined;
-  }
-
-  private execHostCallArgsAsync(fiber: Fiber, ins: Instr, frame: Frame, scheduler: Scheduler): VmRunResult | undefined {
-    this.assertCanSuspend(fiber, Op.HOST_CALL_ARGS_ASYNC);
-
-    const fnId = ins.a ?? 0;
-    const argc = ins.b ?? 0;
-    const callSiteId = ins.c ?? 0;
-
-    const args = this.collectArgsToMap(fiber, argc);
-
-    if (fnId < 0 || fnId >= this.fns.size()) {
-      throw new Error(`HOST_CALL_ARGS_ASYNC: function index ${fnId} out of bounds`);
-    }
-
-    const hid = this.handles.createPending();
-    this.push(fiber, V.handle(hid));
-
-    this.bindExecutionContext(fiber, frame, callSiteId);
-
-    this.fns.getAsyncById(fnId)!.fn.exec(fiber.executionContext, args, hid);
     frame.pc++;
     this.syncExecutionContextFromTopFrame(fiber);
     return undefined;

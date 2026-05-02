@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   type BooleanValue,
   type BrainServices,
@@ -131,7 +131,7 @@ describe("await expression", () => {
       fns.register(
         "Widget.fetchData",
         true,
-        { exec: (_ctx: ExecutionContext, _args: MapValue, _handleId: number) => {} },
+        { exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>, _handleId: number) => {} },
         emptyCallDef
       );
     }
@@ -141,7 +141,7 @@ describe("await expression", () => {
         "Widget.getValue",
         false,
         {
-          exec: (_ctx: ExecutionContext, _args: MapValue) => {
+          exec: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
             return mkNumberValue(42);
           },
         },
@@ -175,8 +175,8 @@ export default Sensor({
     assert.ok(result.program);
 
     const prog = result.program!;
-    const hasAsyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ARGS_ASYNC));
-    assert.ok(hasAsyncCall, "Expected HOST_CALL_ARGS_ASYNC opcode");
+    const hasAsyncCall = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.HOST_CALL_ASYNC));
+    assert.ok(hasAsyncCall, "Expected HOST_CALL_ASYNC opcode");
 
     const hasAwait = prog.functions.some((fn) => fn.code.some((instr) => instr.op === Op.AWAIT));
     assert.ok(hasAwait, "Expected AWAIT opcode");

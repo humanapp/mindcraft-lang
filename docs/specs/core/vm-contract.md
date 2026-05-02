@@ -165,6 +165,19 @@ every conforming VM must be able to execute any of them:
 One row per opcode: mnemonic, numeric code, operand widths, stack
 effect, side effects, fault conditions.
 
+### Stack manipulation
+
+| Mnemonic        | Numeric | Operands       | Stack effect    | Faults                                                                       |
+| --------------- | ------- | -------------- | --------------- | ---------------------------------------------------------------------------- |
+| `STACK_SET_REL` | 6       | `d: u16` (`a`) | `[value] -> []` | `ScriptError` if `d` exceeds the post-pop top index (out-of-bounds write).   |
+
+`STACK_SET_REL` pops one value off the operand stack, then writes
+it to `vstack[top - d]` where `top` is the index of the topmost
+element after the pop. `d = 0` writes the popped value to the new
+topmost slot (a meaningful instruction under the top-element
+convention -- not a no-op). Used to populate fixed-width arg
+buffers at call sites; see [Calling convention](#calling-convention).
+
 ### Variable access
 
 | Mnemonic         | Numeric | Operands            | Stack effect    | Faults                                                     |
@@ -239,17 +252,96 @@ carried as a `ConstantOffsets` aggregate.
 
 ## Calling convention
 
+### Host-call layout
+
+Host functions registered through `IFunctionRegistry` are invoked
+via the opcode pair:
+
+| Mnemonic          | Numeric | Operands                                            | Stack effect                                            |
+| ----------------- | ------- | --------------------------------------------------- | ------------------------------------------------------- |
+| `HOST_CALL`       | 40      | `fnId: u16` (`a`), `argc: u16` (`b`), `csId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [result]`                  |
+| `HOST_CALL_ASYNC` | 41      | `fnId: u16` (`a`), `argc: u16` (`b`), `csId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`                  |
+
+Operands:
+
+- `fnId` is the function id assigned at registration time by
+  `IFunctionRegistry`.
+- `argc` is the **arg buffer width**. The dispatcher trusts `argc`
+  to be the width on the operand stack;
+  `argc == fnEntry.callDef.argSlots.size()` is true by construction
+  for compiler-emitted call sites. Carried as an operand to avoid the
+  registry indirection on the hot dispatch path.
+- `csId` is the unique call-site id used by the host to key
+  per-call-site state (e.g. timer carry, accumulator state).
+
+Before invoking the host, the dispatcher sets
+`fiber.executionContext.currentCallSiteId = csId`.
+
+**Arg buffer.** The compiler reserves `argc` operand-stack slots
+immediately preceding the call by emitting `argc` `PUSH_CONST_VAL`
+of `NIL_VALUE` followed, for each user-supplied slot, by a
+`STACK_SET_REL d` that overwrites the right filler. Slot ids are
+indices into `callDef.argSlots`. The host reads slot `i` as
+`args.get(i)`. Unsupplied slots are observed as `NIL_VALUE`; check
+via `isNilValue(args.get(i))`. There is no `args.has(i)` distinct
+from this -- "missing" and "explicitly nil" are not separable in
+this ABI.
+
+**Emit-side `d` formula.** Let `N = argc`. After pushing the `N`
+NIL fillers the stack top is at the position of the last filler.
+For target slot `s` in `0..N-1`, after pushing the user expression
+the new top sits one slot above the buffer; after the implicit pop
+in `STACK_SET_REL`, the new top is at the position of the last
+filler. The d that addresses slot `s` from that new top is:
+
+```
+d = (N - 1) - s
+```
+
+Slot `0` therefore emits `STACK_SET_REL N-1` (deepest fill); slot
+`N-1` emits `STACK_SET_REL 0` (overwrites the topmost filler with
+the popped expression -- not a no-op under the top-element
+convention). The compiler emits the same
+`lower expr; STACK_SET_REL d` pair for every supplied slot
+regardless of order; the formula is independent of emission order.
+
+**Sync vs async.** Sync and async hosts share the slot layout but
+have different lifetime contracts:
+
+- `HostSyncFn.exec(ctx, args: ReadonlyList<Value>): Value` --
+  `args` is a `Sublist` view over the operand stack. The wrapper is
+  ephemeral; the sync host must read what it needs into locals and
+  return. Individual `Value` heap objects retrieved through
+  `args.get(i)` are always safe to retain.
+- `HostAsyncFn.exec(ctx, args: ReadonlyList<Value>, handleId)` --
+  `args` is an owned snapshot allocated by the dispatcher (a fresh
+  `List<Value>`). The async host may close over the wrapper and
+  individual values across the async boundary, then resolve or
+  reject the handle whenever the work completes.
+
+The dispatcher pops the buffer (or, for async, copies it then
+pops) before the host call returns, so the buffer is no longer
+visible to the host's continuation.
+
+**Re-entry.** The TS VM is not single-entry by contract. The host
+is responsible for the discipline around invoking VM operations
+synchronously inside its own `exec`.
+
+The action-call section (`ACTION_CALL` / `ACTION_CALL_ASYNC`) is
+filled in by V4.2.
+
 ### Operator monomorphization
 
 Arithmetic on primitive `NumberValue` (and other primitive) operands
 is monomorphic on the dispatch hot path. Operator overload resolution
 happens at compile time: the compiler resolves each operator use to a
-concrete `BrainFunctionEntry` and emits `HOST_CALL_ARGS <fnId>`. The
-runtime's dispatch loop never consults `IOperatorTable`,
-`IOperatorOverloads`, or `ITypeRegistry` to dispatch a primitive
-arithmetic instruction. The dispatch loop only consults
-`ITypeRegistry` for struct-shaped opcodes (e.g. `GET_FIELD`,
-`SET_FIELD`, `STORE_VAR_SLOT` when deep-copying a struct value).
+concrete `BrainFunctionEntry` and emits `HOST_CALL <fnId>` over the
+prescribed NIL+STACK_SET_REL arg-buffer pattern (above). The runtime's
+dispatch loop never consults `IOperatorTable`, `IOperatorOverloads`,
+or `ITypeRegistry` to dispatch a primitive arithmetic instruction.
+The dispatch loop only consults `ITypeRegistry` for struct-shaped
+opcodes (e.g. `GET_FIELD`, `SET_FIELD`, `STORE_VAR_SLOT` when
+deep-copying a struct value).
 
 This invariant is regression-guarded by the
 `VM -- operator monomorphization` test in

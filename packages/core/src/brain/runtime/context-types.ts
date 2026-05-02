@@ -1,8 +1,7 @@
-import { List } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import {
   CoreTypeIds,
   type ExecutionContext,
-  type MapValue,
   mkCallDef,
   mkNativeStructValue,
   mkNumberValue,
@@ -118,8 +117,8 @@ export function registerContextTypes(services: BrainServices) {
     "BrainContext.getVariable",
     false,
     {
-      exec: (ctx: ExecutionContext, args: MapValue) => {
-        const name = (args.v.get(1) as StringValue).v;
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const name = (args.get(1) as StringValue).v;
         return ctx.getVariable(name) ?? NIL_VALUE;
       },
     },
@@ -130,9 +129,9 @@ export function registerContextTypes(services: BrainServices) {
     "BrainContext.setVariable",
     false,
     {
-      exec: (ctx: ExecutionContext, args: MapValue) => {
-        const name = (args.v.get(1) as StringValue).v;
-        const value = args.v.get(2) as Value;
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const name = (args.get(1) as StringValue).v;
+        const value = args.get(2) as Value;
         ctx.setVariable(name, value);
         return NIL_VALUE;
       },
@@ -144,8 +143,8 @@ export function registerContextTypes(services: BrainServices) {
     "RuleContext.getVariable",
     false,
     {
-      exec: (ctx: ExecutionContext, args: MapValue) => {
-        const name = (args.v.get(1) as StringValue).v;
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const name = (args.get(1) as StringValue).v;
         return ctx.rule?.getVariable(name) ?? NIL_VALUE;
       },
     },
@@ -156,9 +155,9 @@ export function registerContextTypes(services: BrainServices) {
     "RuleContext.setVariable",
     false,
     {
-      exec: (ctx: ExecutionContext, args: MapValue) => {
-        const name = (args.v.get(1) as StringValue).v;
-        const value = args.v.get(2) as Value;
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const name = (args.get(1) as StringValue).v;
+        const value = args.get(2) as Value;
         ctx.rule?.setVariable(name, value);
         return NIL_VALUE;
       },

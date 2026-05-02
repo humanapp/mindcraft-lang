@@ -156,7 +156,7 @@ export interface StructTypeShape {
    * Returns the resolved native value to store in the copy.
    */
   snapshotNative?: StructSnapshotNativeFn;
-  /** If provided, struct methods callable via HOST_CALL_ARGS on instances of this type. */
+  /** If provided, struct methods callable via HOST_CALL on instances of this type. */
   methods?: List<StructMethodDecl>;
 }
 

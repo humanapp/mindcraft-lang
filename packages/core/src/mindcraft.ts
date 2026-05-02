@@ -7,8 +7,10 @@ import type {
   Conversion,
   EnumTypeDef,
   EnumTypeShape,
+  ExecutionContext,
   FunctionTypeDef,
   FunctionTypeShape,
+  HandleId,
   HostActionBinding,
   HostAsyncFn,
   HostFn,
@@ -23,6 +25,7 @@ import type {
   ListTypeShape,
   MapTypeDef,
   MapTypeShape,
+  MapValue,
   NullableTypeDef,
   NullableTypeShape,
   OpSpec,
@@ -34,8 +37,9 @@ import type {
   UnionTypeDef,
   UnionTypeShape,
   UserActionArtifact,
+  Value,
 } from "./brain/interfaces";
-import { CoreOpId, NativeType, NIL_VALUE } from "./brain/interfaces";
+import { CoreOpId, NativeType, NIL_VALUE, type ValueDict } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
 import { BrainDef, brainJsonFromPlain } from "./brain/model";
 import { Brain } from "./brain/runtime";
@@ -50,7 +54,7 @@ import { BrainTileSensorDef } from "./brain/tiles/sensors";
 import { registerVariableFactoryTileDef } from "./brain/tiles/variables";
 import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
-import { List } from "./platform/list";
+import { List, type ReadonlyList } from "./platform/list";
 import { TypeUtils } from "./platform/types";
 
 /** Tile definition value. Alias for {@link IBrainTileDef}. */
@@ -90,19 +94,41 @@ export interface HostFunctionDefinition {
   readonly callDef: BrainActionCallDef;
 }
 
-/** A host-implemented sensor: descriptor + function + sensor tile. Build with {@link createHostSensor}. */
+/** A host-implemented sensor: descriptor + function + action exec + sensor tile. Build with {@link createHostSensor}. */
 export interface HostSensorDefinition {
   readonly descriptor: ActionDescriptor;
   readonly function: HostFunctionDefinition;
+  /** Original MapValue-shaped exec used for action dispatch (V4.1 action ABI). */
+  readonly actionFn: SyncHostActionFn | AsyncHostActionFn;
   readonly tile: IBrainActionTileDef;
 }
 
-/** A host-implemented actuator: descriptor + function + actuator tile. Build with {@link createHostActuator}. */
+/** A host-implemented actuator: descriptor + function + action exec + actuator tile. Build with {@link createHostActuator}. */
 export interface HostActuatorDefinition {
   readonly descriptor: ActionDescriptor;
   readonly function: HostFunctionDefinition;
+  /** Original MapValue-shaped exec used for action dispatch (V4.1 action ABI). */
+  readonly actionFn: SyncHostActionFn | AsyncHostActionFn;
   readonly tile: IBrainActionTileDef;
 }
+
+/**
+ * Sync action exec shape used by sensors and actuators registered
+ * through {@link createHostSensor} / {@link createHostActuator}. Args
+ * arrive as `MapValue` (action ABI, unchanged in V4.1); the runtime
+ * adapts to the V4.1 host-fn `ReadonlyList<Value>` shape internally
+ * before registering the function. Both shapes converge in V4.2.
+ */
+export type SyncHostActionFn = {
+  onPageEntered?: (ctx: ExecutionContext) => void;
+  exec: (ctx: ExecutionContext, args: MapValue) => Value;
+};
+
+/** Async action exec shape; see {@link SyncHostActionFn}. */
+export type AsyncHostActionFn = {
+  onPageEntered?: (ctx: ExecutionContext) => void;
+  exec: (ctx: ExecutionContext, args: MapValue, handleId: HandleId) => void;
+};
 
 type HostActionOptionsBase = {
   readonly key: string;
@@ -112,14 +138,42 @@ type HostActionOptionsBase = {
 };
 
 type SyncHostActionOptions = HostActionOptionsBase & {
-  readonly fn: HostSyncFn;
+  readonly fn: SyncHostActionFn;
   readonly isAsync?: false;
 };
 
 type AsyncHostActionOptions = HostActionOptionsBase & {
-  readonly fn: HostAsyncFn;
+  readonly fn: AsyncHostActionFn;
   readonly isAsync: true;
 };
+
+function adaptSyncActionFn(fn: SyncHostActionFn): HostSyncFn {
+  return {
+    onPageEntered: fn.onPageEntered,
+    exec: (ctx, args) => fn.exec(ctx, readonlyListToMapValue(args)),
+  };
+}
+
+function adaptAsyncActionFn(fn: AsyncHostActionFn): HostAsyncFn {
+  return {
+    onPageEntered: fn.onPageEntered,
+    exec: (ctx, args, handleId) => fn.exec(ctx, readonlyListToMapValue(args), handleId),
+  };
+}
+
+function readonlyListToMapValue(listArgs: ReadonlyList<Value>): MapValue {
+  const dict = new Dict<string | number, Value>() as ValueDict;
+  // NIL fillers represent unsupplied slots; preserve "key absent"
+  // semantics (`args.v.get(i) === undefined`, `args.v.has(i) === false`)
+  // that the action ABI consumers expect.
+  for (let i = 0; i < listArgs.size(); i++) {
+    const v = listArgs.get(i);
+    if (v.t !== NativeType.Nil) {
+      dict.set(i, v);
+    }
+  }
+  return { t: NativeType.Map, typeId: "map:<args>", v: dict };
+}
 
 /** Options for {@link createHostSensor}. Sensors return a value of `outputType`. */
 export type CreateHostSensorOptions = (SyncHostActionOptions | AsyncHostActionOptions) & {
@@ -139,9 +193,13 @@ export function createHostSensor(options: CreateHostSensorOptions): HostSensorDe
     isAsync,
     outputType: options.outputType,
   };
+  const hostFn: HostFn = options.isAsync
+    ? adaptAsyncActionFn(options.fn)
+    : adaptSyncActionFn(options.fn as SyncHostActionFn);
   return {
     descriptor,
-    function: { name: options.key, isAsync, fn: options.fn, callDef: options.callDef },
+    function: { name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
+    actionFn: options.fn,
     tile: new BrainTileSensorDef(options.key, descriptor, {
       metadata: options.metadata,
       capabilities: options.capabilities,
@@ -158,9 +216,13 @@ export function createHostActuator(options: CreateHostActuatorOptions): HostActu
     callDef: options.callDef,
     isAsync,
   };
+  const hostFn: HostFn = options.isAsync
+    ? adaptAsyncActionFn(options.fn)
+    : adaptSyncActionFn(options.fn as SyncHostActionFn);
   return {
     descriptor,
-    function: { name: options.key, isAsync, fn: options.fn, callDef: options.callDef },
+    function: { name: options.key, isAsync, fn: hostFn, callDef: options.callDef },
+    actionFn: options.fn,
     tile: new BrainTileActuatorDef(options.key, descriptor, {
       metadata: options.metadata,
       capabilities: options.capabilities,
@@ -298,24 +360,22 @@ type CreateMindcraftEnvironmentOptions = {
   readonly modules?: readonly MindcraftModule[];
 };
 
-function buildHostActionBinding(descriptor: ActionDescriptor, definition: HostFunctionDefinition): HostActionBinding {
-  if (descriptor.key !== definition.name) {
-    throw new Error(`Action descriptor key '${descriptor.key}' must match function name '${definition.name}'`);
-  }
-  if (descriptor.isAsync !== definition.isAsync) {
-    throw new Error(`Action descriptor async flag mismatch for '${descriptor.key}'`);
-  }
-
+function buildHostActionBinding(
+  descriptor: ActionDescriptor,
+  actionFn: SyncHostActionFn | AsyncHostActionFn
+): HostActionBinding {
   const binding: HostActionBinding = {
     binding: "host",
     descriptor,
-    onPageEntered: definition.fn.onPageEntered,
+    onPageEntered: actionFn.onPageEntered,
   };
 
-  if (definition.isAsync) {
-    binding.execAsync = (definition.fn as HostAsyncFn).exec;
+  // ActionRuntimeBinding's MapValue exec is unchanged in V4.1 (the host
+  // action ABI is V4.2 territory); use the action fn directly.
+  if (descriptor.isAsync) {
+    binding.execAsync = (actionFn as AsyncHostActionFn).exec;
   } else {
-    binding.execSync = (definition.fn as HostSyncFn).exec;
+    binding.execSync = (actionFn as SyncHostActionFn).exec;
   }
 
   return binding;
@@ -621,7 +681,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
     }
 
     ensureFunctionRegistered(this.brainServices, def.function);
-    this.brainServices.actions.register(buildHostActionBinding(def.descriptor, def.function));
+    this.brainServices.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
     this.brainServices.tiles.registerTileDef(def.tile);
   }
 
@@ -631,7 +691,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
     }
 
     ensureFunctionRegistered(this.brainServices, def.function);
-    this.brainServices.actions.register(buildHostActionBinding(def.descriptor, def.function));
+    this.brainServices.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
     this.brainServices.tiles.registerTileDef(def.tile);
   }
 

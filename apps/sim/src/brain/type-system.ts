@@ -5,7 +5,6 @@ import {
   type ExecutionContext,
   extractNumberValue,
   List,
-  type MapValue,
   type MindcraftModuleApi,
   mkCallDef,
   mkNativeStructValue,
@@ -14,6 +13,7 @@ import {
   mkTypeId,
   NativeType,
   type NumberValue,
+  type ReadonlyList,
   type StructValue,
   TypeUtils,
   type Value,
@@ -193,8 +193,8 @@ export function registerTypes(api: MindcraftModuleApi) {
     toType: CoreTypeIds.Number,
     cost: 2,
     fn: {
-      exec: (ctx: ExecutionContext, args: MapValue) => {
-        const value = args.v.get(0) as StructValue;
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const value = args.get(0) as StructValue;
         const actor = resolveActor(value, ctx);
         return mkNumberValue(actor ? actor.actorId : 0);
       },
@@ -205,8 +205,8 @@ export function registerTypes(api: MindcraftModuleApi) {
     toType: SimTypeIds.Vector2,
     cost: 2,
     fn: {
-      exec: (ctx: ExecutionContext, args: MapValue) => {
-        const value = args.v.get(0) as StructValue;
+      exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const value = args.get(0) as StructValue;
         const actor = resolveActor(value, ctx);
         if (actor) {
           return mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y));
@@ -220,8 +220,8 @@ export function registerTypes(api: MindcraftModuleApi) {
     toType: CoreTypeIds.String,
     cost: 3,
     fn: {
-      exec: (_ctx: ExecutionContext, args: MapValue) => {
-        const value = args.v.get(0) as StructValue;
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
+        const value = args.get(0) as StructValue;
         const vec = extractVector2(value);
         return {
           t: NativeType.String,
@@ -311,9 +311,9 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.add",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const other = extractVector2(args.v.get(1) as StructValue);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const other = extractVector2(args.get(1) as StructValue);
         if (!self || !other) return VOID_VALUE;
         return mkVector2Value(self.add(other));
       },
@@ -325,9 +325,9 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.sub",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const other = extractVector2(args.v.get(1) as StructValue);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const other = extractVector2(args.get(1) as StructValue);
         if (!self || !other) return VOID_VALUE;
         return mkVector2Value(self.sub(other));
       },
@@ -339,9 +339,9 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.mul",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const scalar = extractNumberValue(args.v.get(1));
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const scalar = extractNumberValue(args.get(1));
         if (!self || scalar === undefined) return VOID_VALUE;
         return mkVector2Value(self.mul(scalar));
       },
@@ -353,9 +353,9 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.div",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const scalar = extractNumberValue(args.v.get(1));
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const scalar = extractNumberValue(args.get(1));
         if (!self || scalar === undefined) return VOID_VALUE;
         return mkVector2Value(self.div(scalar));
       },
@@ -367,9 +367,9 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.dot",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const other = extractVector2(args.v.get(1) as StructValue);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const other = extractVector2(args.get(1) as StructValue);
         if (!self || !other) return VOID_VALUE;
         return mkNumberValue(self.Dot(other));
       },
@@ -381,9 +381,9 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.cross",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const other = extractVector2(args.v.get(1) as StructValue);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const other = extractVector2(args.get(1) as StructValue);
         if (!self || !other) return VOID_VALUE;
         return mkNumberValue(self.Cross(other));
       },
@@ -395,8 +395,8 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.magnitude",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
         if (!self) return VOID_VALUE;
         return mkNumberValue(self.Magnitude);
       },
@@ -408,8 +408,8 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.normalize",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
         if (!self) return VOID_VALUE;
         return mkVector2Value(self.Unit);
       },
@@ -421,9 +421,9 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.distance",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const other = extractVector2(args.v.get(1) as StructValue);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const other = extractVector2(args.get(1) as StructValue);
         if (!self || !other) return VOID_VALUE;
         return mkNumberValue(self.sub(other).Magnitude);
       },
@@ -435,10 +435,10 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.lerp",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const goal = extractVector2(args.v.get(1) as StructValue);
-        const alpha = extractNumberValue(args.v.get(2));
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const goal = extractVector2(args.get(1) as StructValue);
+        const alpha = extractNumberValue(args.get(2));
         if (!self || !goal || alpha === undefined) return VOID_VALUE;
         return mkVector2Value(self.Lerp(goal, alpha));
       },
@@ -450,9 +450,9 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.angle",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const other = extractVector2(args.v.get(1) as StructValue);
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const other = extractVector2(args.get(1) as StructValue);
         if (!self || !other) return VOID_VALUE;
         return mkNumberValue(self.Angle(other));
       },
@@ -464,9 +464,9 @@ export function registerTypes(api: MindcraftModuleApi) {
     "Vector2.rotate",
     false,
     {
-      exec: (_ctx: ExecutionContext, args: MapValue): Value => {
-        const self = extractVector2(args.v.get(0) as StructValue);
-        const angle = extractNumberValue(args.v.get(1));
+      exec: (_ctx: ExecutionContext, args: ReadonlyList<Value>): Value => {
+        const self = extractVector2(args.get(0) as StructValue);
+        const angle = extractNumberValue(args.get(1));
         if (!self || angle === undefined) return VOID_VALUE;
         return mkVector2Value(self.rotate(angle));
       },

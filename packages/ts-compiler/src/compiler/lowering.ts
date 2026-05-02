@@ -385,7 +385,7 @@ function resolveSingleStepConversion(
 }
 
 function emitSingleStepConversion(fnName: string, ctx: LowerContext): void {
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+  ctx.ir.push({ kind: "HostCall", fnName, argc: 1 });
 }
 
 function resolveExpandedTargetTypeIds(expectedTypeId: TypeId, services: BrainServices): TypeId[] {
@@ -766,7 +766,7 @@ function emitBinaryOperatorForNodes(
 
   const directResolution = resolveOperatorWithExpansion(opId, [lhsTypeId, rhsTypeId], ctx.services);
   if (directResolution) {
-    ctx.ir.push({ kind: "HostCallArgs", fnName: directResolution, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName: directResolution, argc: 2 });
     return true;
   }
 
@@ -800,7 +800,7 @@ function emitBinaryOperatorForNodes(
     emitOperandConversion(resolved.conversion, ctx);
   }
 
-  ctx.ir.push({ kind: "HostCallArgs", fnName: resolved.operatorFnName, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: resolved.operatorFnName, argc: 2 });
   return true;
 }
 
@@ -2234,7 +2234,7 @@ function lowerArrayRestElement(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: endLocal });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
@@ -2246,7 +2246,7 @@ function lowerArrayRestElement(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -2407,7 +2407,7 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
       bindingName,
       () => {
         lowerExpression(stmt.expression, ctx);
-        ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_keys", argc: 1 });
+        ctx.ir.push({ kind: "HostCall", fnName: "$$map_keys", argc: 1 });
       },
       ctx
     );
@@ -2474,12 +2474,12 @@ function lowerForInOverList(stmt: ts.ForInStatement, bindingName: string, ctx: L
     popLoopContext(ctx);
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
   ctx.ir.push({
-    kind: "HostCallArgs",
+    kind: "HostCall",
     fnName: runtime.conversionFnName(CoreTypeIds.Number, CoreTypeIds.String),
     argc: 1,
   });
@@ -2500,7 +2500,7 @@ function lowerForInOverList(stmt: ts.ForInStatement, bindingName: string, ctx: L
     popLoopContext(ctx);
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: indexLocal });
 
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
@@ -2544,7 +2544,7 @@ function lowerForInOverKeyList(
     popLoopContext(ctx);
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: keyListLocal });
@@ -2567,7 +2567,7 @@ function lowerForInOverKeyList(
     popLoopContext(ctx);
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: indexLocal });
 
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
@@ -2643,7 +2643,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
     ctx.scopeStack.popScope(ctx.ir.length);
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: listLocal });
@@ -2668,7 +2668,7 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, ctx: LowerContext): void {
     ctx.scopeStack.popScope(ctx.ir.length);
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: indexLocal });
 
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
@@ -2920,7 +2920,7 @@ function lowerAwaitExpression(expr: ts.AwaitExpression, ctx: LowerContext): void
   const irLenBefore = ctx.ir.length;
   lowerExpression(expr.expression, ctx);
   const lastNode = ctx.ir.length > irLenBefore ? ctx.ir[ctx.ir.length - 1] : undefined;
-  if (!lastNode || lastNode.kind !== "HostCallArgsAsync") {
+  if (!lastNode || lastNode.kind !== "HostCallAsync") {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.AwaitOnNonAsyncHostCall, "`await` is only supported on async host function calls", expr)
     );
@@ -3266,9 +3266,9 @@ function lowerStructMethodCall(
   lowerExpression(propAccess.expression, ctx);
   const argc = lowerCallArgumentsWithTargetTypes(expr, ctx) + 1;
   if (fnEntry.isAsync) {
-    ctx.ir.push({ kind: "HostCallArgsAsync", fnName, argc });
+    ctx.ir.push({ kind: "HostCallAsync", fnName, argc });
   } else {
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc });
+    ctx.ir.push({ kind: "HostCall", fnName, argc });
   }
   return true;
 }
@@ -3687,7 +3687,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
             ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
             ctx.ir.push({ kind: "Call", funcIndex: getterFuncId, argc: 1 });
             lowerExpression(expr.right, ctx);
-            ctx.ir.push({ kind: "HostCallArgs", fnName: opFnName, argc: 2 });
+            ctx.ir.push({ kind: "HostCall", fnName: opFnName, argc: 2 });
             ctx.ir.push({ kind: "Dup" });
             ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
             ctx.ir.push({ kind: "Swap" });
@@ -3772,7 +3772,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
         ctx.ir.push({ kind: "LoadLocal", index: tempObj });
         ctx.ir.push({ kind: "GetField", fieldName: fName });
         lowerExpression(expr.right, ctx);
-        ctx.ir.push({ kind: "HostCallArgs", fnName: opFnName, argc: 2 });
+        ctx.ir.push({ kind: "HostCall", fnName: opFnName, argc: 2 });
         ctx.ir.push({ kind: "SetField" });
         return;
       }
@@ -3848,7 +3848,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
       ctx.ir.push({ kind: "LoadLocal", index: tempObj });
       ctx.ir.push({ kind: "GetField", fieldName: fName2 });
       lowerExpression(expr.right, ctx);
-      ctx.ir.push({ kind: "HostCallArgs", fnName: opFnName, argc: 2 });
+      ctx.ir.push({ kind: "HostCall", fnName: opFnName, argc: 2 });
       ctx.ir.push({ kind: "SetField" });
       return;
     }
@@ -3935,7 +3935,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
       );
       return;
     }
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
   }
 
   ctx.ir.push({ kind: "Dup" });
@@ -4018,7 +4018,7 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
           ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
           ctx.ir.push({ kind: "Call", funcIndex: getterFuncId, argc: 1 });
           lowerExpression(expr.right, ctx);
-          ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+          ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
           ctx.ir.push({ kind: "Dup" });
           ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
           ctx.ir.push({ kind: "Swap" });
@@ -4087,7 +4087,7 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
     ctx.ir.push({ kind: "GetField", fieldName });
     lowerExpression(expr.right, ctx);
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
     ctx.ir.push({ kind: "StructSet" });
     ctx.ir.push({ kind: "Dup" });
     ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
@@ -4181,7 +4181,7 @@ function lowerStaticFieldAssignment(
         if (getterFuncId !== undefined && setterFuncId !== undefined) {
           ctx.ir.push({ kind: "Call", funcIndex: getterFuncId, argc: 0 });
           lowerExpression(expr.right, ctx);
-          ctx.ir.push({ kind: "HostCallArgs", fnName: opFnName, argc: 2 });
+          ctx.ir.push({ kind: "HostCall", fnName: opFnName, argc: 2 });
           ctx.ir.push({ kind: "Dup" });
           ctx.ir.push({ kind: "Call", funcIndex: setterFuncId, argc: 1 });
           ctx.ir.push({ kind: "Pop" });
@@ -4301,7 +4301,7 @@ function lowerStaticFieldAssignment(
 
     ctx.ir.push({ kind: "LoadCallsiteVar", index: slot });
     lowerExpression(expr.right, ctx);
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
   }
 
   ctx.ir.push({ kind: "Dup" });
@@ -4348,7 +4348,7 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
         ctx.diagnostics.push(makeDiag(LoweringDiagCode.NoOperatorOverload, "No operator overload for negation", expr));
         return;
       }
-      ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName, argc: 1 });
     }
   } else if (expr.operator === ts.SyntaxKind.ExclamationToken) {
     lowerExpression(expr.operand, ctx);
@@ -4367,7 +4367,7 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
       );
       return;
     }
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 1 });
   } else if (expr.operator === ts.SyntaxKind.PlusPlusToken || expr.operator === ts.SyntaxKind.MinusMinusToken) {
     lowerPrefixIncDec(expr, ctx);
   } else if (expr.operator === ts.SyntaxKind.TildeToken) {
@@ -4377,7 +4377,7 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, ctx: LowerContext): vo
       ctx.diagnostics.push(makeDiag(LoweringDiagCode.NoOperatorOverload, "No operator overload for bitwise NOT", expr));
       return;
     }
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 1 });
   } else {
     ctx.diagnostics.push(
       makeDiag(
@@ -4447,7 +4447,7 @@ function lowerPrefixIncDecStaticGetterSetter(
   }
   ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 0 });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
   ctx.ir.push({ kind: "Dup" });
   ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 1 });
   ctx.ir.push({ kind: "Pop" });
@@ -4482,7 +4482,7 @@ function lowerPostfixIncDecStaticGetterSetter(
   ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 0 });
   ctx.ir.push({ kind: "Dup" });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
   ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 1 });
   ctx.ir.push({ kind: "Pop" });
 }
@@ -4537,7 +4537,7 @@ function lowerPrefixIncDecInstanceGetterSetter(
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
     ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 1 });
     ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
     ctx.ir.push({ kind: "Dup" });
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
     ctx.ir.push({ kind: "Swap" });
@@ -4550,7 +4550,7 @@ function lowerPrefixIncDecInstanceGetterSetter(
     ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
     ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 1 });
     ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
     ctx.ir.push({ kind: "Dup" });
     ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
     ctx.ir.push({ kind: "Swap" });
@@ -4591,7 +4591,7 @@ function lowerPostfixIncDecInstanceGetterSetter(
     ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 1 });
     ctx.ir.push({ kind: "Dup" });
     ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
     ctx.ir.push({ kind: "Swap" });
     ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 2 });
@@ -4604,7 +4604,7 @@ function lowerPostfixIncDecInstanceGetterSetter(
     ctx.ir.push({ kind: "Call", funcIndex: pair.getterFuncId, argc: 1 });
     ctx.ir.push({ kind: "Dup" });
     ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
     ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
     ctx.ir.push({ kind: "Swap" });
     ctx.ir.push({ kind: "Call", funcIndex: pair.setterFuncId, argc: 2 });
@@ -4692,7 +4692,7 @@ function lowerPrefixIncDec(expr: ts.PrefixUnaryExpression, ctx: LowerContext): v
 
   loadEmit();
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
   // Dup after arithmetic: leaves the new value on the stack as the expression result.
   ctx.ir.push({ kind: "Dup" });
   storeEmit();
@@ -4780,7 +4780,7 @@ function lowerPostfixIncDec(expr: ts.PostfixUnaryExpression, ctx: LowerContext):
   // result while the new value is computed and stored over it.
   ctx.ir.push({ kind: "Dup" });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
   storeEmit();
 }
 
@@ -4881,14 +4881,14 @@ function lowerTemplateLiteral(expr: ts.TemplateExpression, ctx: LowerContext): v
     emitToStringIfNeeded(span.expression, ctx);
 
     if (hasAccumulator) {
-      ctx.ir.push({ kind: "HostCallArgs", fnName: addFnName, argc: 2 });
+      ctx.ir.push({ kind: "HostCall", fnName: addFnName, argc: 2 });
     }
     hasAccumulator = true;
 
     const literalText = span.literal.text;
     if (literalText !== "") {
       ctx.ir.push({ kind: "PushConst", value: mkStringValue(literalText) });
-      ctx.ir.push({ kind: "HostCallArgs", fnName: addFnName, argc: 2 });
+      ctx.ir.push({ kind: "HostCall", fnName: addFnName, argc: 2 });
     }
   }
 
@@ -4966,7 +4966,7 @@ function lowerTypeofComparison(expr: ts.BinaryExpression, ctx: LowerContext): bo
       ctx.diagnostics.push(makeDiag(LoweringDiagCode.NoOperatorOverload, "No operator overload for !(boolean)", expr));
       return true;
     }
-    ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 1 });
+    ctx.ir.push({ kind: "HostCall", fnName, argc: 1 });
   }
 
   return true;
@@ -5019,7 +5019,7 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
     lowerExpression(expr.expression, ctx);
     const guard = isOptChain ? emitNilGuard(ctx) : undefined;
     lowerExpression(expr.argumentExpression, ctx);
-    ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_get_js", argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName: "$$str_get_js", argc: 2 });
     if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
@@ -5053,7 +5053,7 @@ function lowerElementAccess(expr: ts.ElementAccessExpression, ctx: LowerContext)
   lowerExpression(expr.expression, ctx);
   const guard = isOptChain ? emitNilGuard(ctx) : undefined;
   lowerExpression(expr.argumentExpression, ctx);
-  ctx.ir.push({ kind: "HostCallArgs", fnName: "$$list_get_js", argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: "$$list_get_js", argc: 2 });
   if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
 }
 
@@ -5171,7 +5171,7 @@ function lowerCompoundElementAccessAssignment(
   ctx.ir.push({ kind: getKind });
 
   lowerExpression(expr.right, ctx);
-  ctx.ir.push({ kind: "HostCallArgs", fnName, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
 
   ctx.ir.push({ kind: "LoadLocal", index: containerLocal });
   ctx.ir.push({ kind: "Swap" });
@@ -5209,7 +5209,7 @@ function lowerStringMethodCall(
       }
       lowerExpression(propAccess.expression, ctx);
       lowerExpression(expr.arguments[0], ctx);
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_charAt", argc: 2 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_charAt", argc: 2 });
       return true;
     }
     case "charCodeAt": {
@@ -5221,7 +5221,7 @@ function lowerStringMethodCall(
       }
       lowerExpression(propAccess.expression, ctx);
       lowerExpression(expr.arguments[0], ctx);
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_charCodeAt", argc: 2 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_charCodeAt", argc: 2 });
       return true;
     }
     case "indexOf": {
@@ -5238,7 +5238,7 @@ function lowerStringMethodCall(
       } else {
         ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
       }
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_indexOf", argc: 3 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_indexOf", argc: 3 });
       return true;
     }
     case "lastIndexOf": {
@@ -5255,7 +5255,7 @@ function lowerStringMethodCall(
       } else {
         ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
       }
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_lastIndexOf", argc: 3 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_lastIndexOf", argc: 3 });
       return true;
     }
     case "slice": {
@@ -5276,7 +5276,7 @@ function lowerStringMethodCall(
       } else {
         ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
       }
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_slice", argc: 3 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_slice", argc: 3 });
       return true;
     }
     case "substring": {
@@ -5293,7 +5293,7 @@ function lowerStringMethodCall(
       } else {
         ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
       }
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_substring", argc: 3 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_substring", argc: 3 });
       return true;
     }
     case "toLowerCase": {
@@ -5304,7 +5304,7 @@ function lowerStringMethodCall(
         return true;
       }
       lowerExpression(propAccess.expression, ctx);
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_toLowerCase", argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_toLowerCase", argc: 1 });
       return true;
     }
     case "toUpperCase": {
@@ -5315,7 +5315,7 @@ function lowerStringMethodCall(
         return true;
       }
       lowerExpression(propAccess.expression, ctx);
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_toUpperCase", argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_toUpperCase", argc: 1 });
       return true;
     }
     case "trim": {
@@ -5324,7 +5324,7 @@ function lowerStringMethodCall(
         return true;
       }
       lowerExpression(propAccess.expression, ctx);
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_trim", argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_trim", argc: 1 });
       return true;
     }
     case "split": {
@@ -5341,7 +5341,7 @@ function lowerStringMethodCall(
       } else {
         ctx.ir.push({ kind: "PushConst", value: NIL_VALUE });
       }
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_split", argc: 3 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_split", argc: 3 });
       return true;
     }
     case "concat": {
@@ -5353,7 +5353,7 @@ function lowerStringMethodCall(
       for (const arg of expr.arguments) {
         lowerExpression(arg, ctx);
       }
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_concat", argc: expr.arguments.length + 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_concat", argc: expr.arguments.length + 1 });
       return true;
     }
     case "toString":
@@ -5441,7 +5441,7 @@ function lowerMapMethodCall(
         return true;
       }
       lowerExpression(propAccess.expression, ctx);
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_keys", argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$map_keys", argc: 1 });
       return true;
     }
     case "values": {
@@ -5450,7 +5450,7 @@ function lowerMapMethodCall(
         return true;
       }
       lowerExpression(propAccess.expression, ctx);
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_values", argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$map_values", argc: 1 });
       return true;
     }
     case "clear": {
@@ -5459,7 +5459,7 @@ function lowerMapMethodCall(
         return true;
       }
       lowerExpression(propAccess.expression, ctx);
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_clear", argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$map_clear", argc: 1 });
       return true;
     }
     case "forEach": {
@@ -5494,7 +5494,7 @@ function lowerMapForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccessE
   ctx.ir.push({ kind: "StoreLocal", index: mapLocal });
 
   ctx.ir.push({ kind: "LoadLocal", index: mapLocal });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_keys", argc: 1 });
+  ctx.ir.push({ kind: "HostCall", fnName: "$$map_keys", argc: 1 });
   ctx.ir.push({ kind: "StoreLocal", index: keysLocal });
 
   lowerExpression(expr.arguments[0], ctx);
@@ -5522,7 +5522,7 @@ function lowerMapForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccessE
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
@@ -5553,7 +5553,7 @@ function lowerMapForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccessE
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -5750,7 +5750,7 @@ function lowerListSplice(
       );
       return;
     }
-    ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName: subFn, argc: 2 });
   }
   ctx.ir.push({ kind: "StoreLocal", index: countLocal });
 
@@ -5772,7 +5772,7 @@ function lowerListSplice(
 
   ctx.ir.push({ kind: "LoadLocal", index: iLocal });
   ctx.ir.push({ kind: "LoadLocal", index: countLocal });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
@@ -5791,7 +5791,7 @@ function lowerListSplice(
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: iLocal });
 
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
@@ -5805,7 +5805,7 @@ function lowerListSplice(
 
     ctx.ir.push({ kind: "LoadLocal", index: startLocal });
     ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-    ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
     ctx.ir.push({ kind: "StoreLocal", index: startLocal });
   }
 
@@ -5893,7 +5893,7 @@ function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   // if (!(i < len)) goto END
   ctx.ir.push({ kind: "LoadLocal", index: iLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopOuterEnd });
 
   // j = i
@@ -5906,7 +5906,7 @@ function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   // if (j <= 0) goto INNER_END
   ctx.ir.push({ kind: "LoadLocal", index: jLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: leFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: leFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfTrue", labelId: loopInnerEnd });
 
   // cmp = callback(arr[j-1], arr[j])
@@ -5917,7 +5917,7 @@ function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
   ctx.ir.push({ kind: "LoadLocal", index: jLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: subFn, argc: 2 });
   ctx.ir.push({ kind: "ListGet" });
 
   // arg1: arr[j]
@@ -5929,21 +5929,21 @@ function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
 
   // if (cmp <= 0) goto INNER_END
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: leFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: leFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfTrue", labelId: loopInnerEnd });
 
   // LIST_SWAP(arr, j - 1, j)
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
   ctx.ir.push({ kind: "LoadLocal", index: jLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: subFn, argc: 2 });
   ctx.ir.push({ kind: "LoadLocal", index: jLocal });
   ctx.ir.push({ kind: "ListSwap" });
 
   // j = j - 1
   ctx.ir.push({ kind: "LoadLocal", index: jLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: subFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: jLocal });
 
   ctx.ir.push({ kind: "Jump", labelId: loopInner });
@@ -5954,7 +5954,7 @@ function lowerListSort(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
   // i = i + 1
   ctx.ir.push({ kind: "LoadLocal", index: iLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: iLocal });
 
   ctx.ir.push({ kind: "Jump", labelId: loopOuter });
@@ -6015,7 +6015,7 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: listLocal });
@@ -6032,7 +6032,7 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: eqFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: eqFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfTrue", labelId: foundLabel });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
@@ -6044,7 +6044,7 @@ function lowerListIndexOf(expr: ts.CallExpression, propAccess: ts.PropertyAccess
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6118,7 +6118,7 @@ function lowerListFilter(
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
@@ -6155,7 +6155,7 @@ function lowerListFilter(
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6225,7 +6225,7 @@ function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
@@ -6249,7 +6249,7 @@ function lowerListMap(expr: ts.CallExpression, propAccess: ts.PropertyAccessExpr
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6302,7 +6302,7 @@ function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccess
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
@@ -6322,7 +6322,7 @@ function lowerListForEach(expr: ts.CallExpression, propAccess: ts.PropertyAccess
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6377,7 +6377,7 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: listLocal });
@@ -6398,7 +6398,7 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: eqFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: eqFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfTrue", labelId: foundLabel });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
@@ -6410,7 +6410,7 @@ function lowerListIncludes(expr: ts.CallExpression, propAccess: ts.PropertyAcces
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6470,7 +6470,7 @@ function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
@@ -6490,7 +6490,7 @@ function lowerListSome(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6550,7 +6550,7 @@ function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
@@ -6570,7 +6570,7 @@ function lowerListEvery(expr: ts.CallExpression, propAccess: ts.PropertyAccessEx
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6633,7 +6633,7 @@ function lowerListFind(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: srcListLocal });
@@ -6656,7 +6656,7 @@ function lowerListFind(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6729,7 +6729,7 @@ function emitPushAllFromList(srcExpr: ts.Expression, resultLocal: number, ctx: L
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
@@ -6752,7 +6752,7 @@ function emitPushAllFromList(srcExpr: ts.Expression, resultLocal: number, ctx: L
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6845,17 +6845,17 @@ function lowerListJoinWithSeparator(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: eqFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: eqFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfTrue", labelId: skipSepLabel });
 
   ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
   ctx.ir.push({ kind: "LoadLocal", index: sepLocal });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFnName, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFnName, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: resultLocal });
 
   ctx.ir.push({ kind: "Label", labelId: skipSepLabel });
@@ -6868,12 +6868,12 @@ function lowerListJoinWithSeparator(
 
   ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
   ctx.ir.push({ kind: "Swap" });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFnName, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFnName, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: resultLocal });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addNumFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addNumFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -6937,7 +6937,7 @@ function lowerListReverse(
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: subFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
 
   const geqFn = resolveOperator(CoreOpId.GreaterThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
@@ -6952,7 +6952,7 @@ function lowerListReverse(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: geqFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: geqFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
@@ -6964,7 +6964,7 @@ function lowerListReverse(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: subFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -7041,7 +7041,7 @@ function lowerListSlice(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: endLocal });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: resultLocal });
@@ -7053,7 +7053,7 @@ function lowerListSlice(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -7101,7 +7101,7 @@ function lowerListLastIndexOf(
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: subFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
 
   const geFn = resolveOperator(CoreOpId.GreaterThanOrEqualTo, [CoreTypeIds.Number, CoreTypeIds.Number], ctx.services);
@@ -7120,7 +7120,7 @@ function lowerListLastIndexOf(
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(0) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: geFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: geFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: listLocal });
@@ -7141,12 +7141,12 @@ function lowerListLastIndexOf(
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: eqFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: eqFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfTrue", labelId: foundLabel });
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: subFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: subFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -7202,7 +7202,7 @@ function lowerListFindIndex(expr: ts.CallExpression, propAccess: ts.PropertyAcce
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
@@ -7222,7 +7222,7 @@ function lowerListFindIndex(expr: ts.CallExpression, propAccess: ts.PropertyAcce
     );
     return;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -7299,7 +7299,7 @@ function lowerListReduce(expr: ts.CallExpression, propAccess: ts.PropertyAccessE
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "LoadLocal", index: lenLocal });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   ctx.ir.push({ kind: "LoadLocal", index: callbackLocal });
@@ -7313,7 +7313,7 @@ function lowerListReduce(expr: ts.CallExpression, propAccess: ts.PropertyAccessE
 
   ctx.ir.push({ kind: "LoadLocal", index: idxLocal });
   ctx.ir.push({ kind: "PushConst", value: mkNumberValue(1) });
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -7360,7 +7360,7 @@ function lowerNullableNilComparison(expr: ts.BinaryExpression, opId: string, ctx
   if (opId === CoreOpId.NotEqualTo) {
     const notFn = resolveOperator(CoreOpId.Not, [CoreTypeIds.Boolean], ctx.services);
     if (notFn) {
-      ctx.ir.push({ kind: "HostCallArgs", fnName: notFn, argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: notFn, argc: 1 });
     } else {
       ctx.diagnostics.push(
         makeDiag(LoweringDiagCode.UnsupportedOperator, "Missing not() operator for !== nil comparison", expr)
@@ -7570,7 +7570,7 @@ function lowerArrayFromCall(
     );
     return true;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: ltFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: ltFn, argc: 2 });
   ctx.ir.push({ kind: "JumpIfFalse", labelId: loopEnd });
 
   if (hasMapFn) {
@@ -7600,7 +7600,7 @@ function lowerArrayFromCall(
     );
     return true;
   }
-  ctx.ir.push({ kind: "HostCallArgs", fnName: addFn, argc: 2 });
+  ctx.ir.push({ kind: "HostCall", fnName: addFn, argc: 2 });
   ctx.ir.push({ kind: "StoreLocal", index: idxLocal });
   ctx.ir.push({ kind: "Jump", labelId: loopStart });
 
@@ -7621,7 +7621,7 @@ function lowerMathCall(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
       );
       return true;
     }
-    ctx.ir.push({ kind: "HostCallArgs", fnName: "$$math_random", argc: 0 });
+    ctx.ir.push({ kind: "HostCall", fnName: "$$math_random", argc: 0 });
     return true;
   }
 
@@ -7634,7 +7634,7 @@ function lowerMathCall(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
       return true;
     }
     lowerExpression(expr.arguments[0], ctx);
-    ctx.ir.push({ kind: "HostCallArgs", fnName: unaryFn, argc: 1 });
+    ctx.ir.push({ kind: "HostCall", fnName: unaryFn, argc: 1 });
     return true;
   }
 
@@ -7648,7 +7648,7 @@ function lowerMathCall(expr: ts.CallExpression, propAccess: ts.PropertyAccessExp
     }
     lowerExpression(expr.arguments[0], ctx);
     lowerExpression(expr.arguments[1], ctx);
-    ctx.ir.push({ kind: "HostCallArgs", fnName: binaryFn, argc: 2 });
+    ctx.ir.push({ kind: "HostCall", fnName: binaryFn, argc: 2 });
     return true;
   }
 
@@ -7760,7 +7760,7 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     if (isStringType(objType)) {
       lowerExpression(expr.expression, ctx);
       const guard = isOptChain ? emitNilGuard(ctx) : undefined;
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$str_length", argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$str_length", argc: 1 });
       if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
       return;
     }
@@ -7779,7 +7779,7 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     if (mapTypeId) {
       lowerExpression(expr.expression, ctx);
       const guard = isOptChain ? emitNilGuard(ctx) : undefined;
-      ctx.ir.push({ kind: "HostCallArgs", fnName: "$$map_size", argc: 1 });
+      ctx.ir.push({ kind: "HostCall", fnName: "$$map_size", argc: 1 });
       if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
       return;
     }
