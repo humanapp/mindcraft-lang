@@ -2,13 +2,17 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
-import { type ActionDescriptor, type BrainServices, mkCallDef } from "@mindcraft-lang/core/brain";
+import {
+  type ActionDescriptor,
+  type BrainServices,
+  mkCallDef,
+  type UserActionArtifact,
+} from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { linkBrainProgram } from "@mindcraft-lang/core/brain/runtime";
 import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
-import type { UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import { BYTECODE_VERSION, mkNumberValue, Op } from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;
@@ -91,25 +95,32 @@ describe("linkBrainProgram", () => {
     const constOffset = unlinked.constantPools.values.size();
     const variableOffset = unlinked.variableNames.size();
 
-    const executable = linkBrainProgram(unlinked, brainDef, catalogs, {
+    const linked = linkBrainProgram(unlinked, brainDef, catalogs, {
       resolveAction(candidate) {
         if (candidate.key === action.key) {
           return {
             binding: "bytecode" as const,
             descriptor: action,
             artifact,
+            metadata: {
+              key: artifact.key,
+              kind: artifact.kind,
+              callDef: artifact.callDef,
+              outputType: artifact.outputType,
+            },
           };
         }
         return undefined;
       },
     });
+    const executable = linked.program;
 
-    assert.equal(executable.actions.size(), 1);
+    assert.equal(executable.actions!.size(), 1);
     assert.equal(executable.functions.size(), funcOffset + artifact.functions.size());
     assert.equal(executable.constantPools.values.size(), constOffset + artifact.constantPools.values.size());
     assert.equal(executable.variableNames.size(), variableOffset + artifact.variableNames.size());
 
-    const linkedAction = executable.actions.get(0)!;
+    const linkedAction = executable.actions!.get(0)!;
     assert.equal(linkedAction.binding, "bytecode");
     if (linkedAction.binding !== "bytecode") {
       assert.fail("expected bytecode executable action");

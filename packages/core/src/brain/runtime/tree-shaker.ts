@@ -1,16 +1,26 @@
 import { Dict } from "../../platform/dict";
+import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
 import { logger } from "../../platform/logger";
 import { UniqueSet } from "../../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode, Instr } from "../../runtime/bytecode";
 import { Op } from "../../runtime/bytecode";
 import type { BytecodeExecutableAction, ExecutableAction } from "../../runtime/context";
+import type { Program } from "../../runtime/program";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
-import type { ExecutableBrainProgram, PageMetadata } from "../interfaces";
+import type { LinkedBrainProgram, PageMetadata } from "../interfaces";
 import { NativeType } from "../interfaces";
 
-function markReachableFunctions(program: ExecutableBrainProgram): UniqueSet<number> {
+function requireActions(program: Program): List<ExecutableAction> {
+  const actions = program.actions;
+  if (!actions) {
+    throw new Error("treeshakeProgram: program has no linked actions");
+  }
+  return actions;
+}
+
+function markReachableFunctions(program: Program, pages: List<PageMetadata>): UniqueSet<number> {
   const reachable = new UniqueSet<number>();
   const worklist = List.empty<number>();
 
@@ -25,15 +35,16 @@ function markReachableFunctions(program: ExecutableBrainProgram): UniqueSet<numb
     enqueue(program.entryPoint);
   }
 
-  for (let p = 0; p < program.pages.size(); p++) {
-    const page = program.pages.get(p);
+  for (let p = 0; p < pages.size(); p++) {
+    const page = pages.get(p);
     for (let r = 0; r < page.rootRuleFuncIds.size(); r++) {
       enqueue(page.rootRuleFuncIds.get(r));
     }
   }
 
-  for (let a = 0; a < program.actions.size(); a++) {
-    const action = program.actions.get(a);
+  const actions = requireActions(program);
+  for (let a = 0; a < actions.size(); a++) {
+    const action = actions.get(a);
     if (action.binding === "bytecode") {
       enqueue(action.entryFuncId);
       if (action.activationFuncId !== undefined) {
@@ -80,10 +91,7 @@ interface ReachableConstSets {
   strings: UniqueSet<number>;
 }
 
-function markReachableConstants(
-  program: ExecutableBrainProgram,
-  reachableFuncs: UniqueSet<number>
-): ReachableConstSets {
+function markReachableConstants(program: Program, reachableFuncs: UniqueSet<number>): ReachableConstSets {
   const values = new UniqueSet<number>();
   const numbers = new UniqueSet<number>();
   const strings = new UniqueSet<number>();
@@ -120,10 +128,7 @@ function markReachableConstants(
   return { values, numbers, strings };
 }
 
-function markReachableVariableNames(
-  program: ExecutableBrainProgram,
-  reachableFuncs: UniqueSet<number>
-): UniqueSet<number> {
+function markReachableVariableNames(program: Program, reachableFuncs: UniqueSet<number>): UniqueSet<number> {
   const reachable = new UniqueSet<number>();
 
   for (let i = 0; i < program.functions.size(); i++) {
@@ -432,9 +437,10 @@ function remapInstructionForDedup(ins: Instr, consts: ConstRemaps): Instr {
   return ins;
 }
 
-/** Strip unreachable functions, constants, and variable names from `program` and dedupe constants. */
-export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBrainProgram {
-  const reachableFuncs = markReachableFunctions(program);
+/** Strip unreachable functions, constants, and variable names from `linked` and dedupe constants. */
+export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram {
+  const program = linked.program;
+  const reachableFuncs = markReachableFunctions(program, linked.pages);
   const reachableConsts = markReachableConstants(program, reachableFuncs);
   const reachableVars = markReachableVariableNames(program, reachableFuncs);
 
@@ -448,12 +454,16 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
     const dedup = deduplicateConstants(program.functions, program.constantPools);
     if (dedup) {
       return {
-        ...program,
-        functions: dedup.functions,
-        constantPools: dedup.constantPools,
+        program: {
+          ...program,
+          functions: dedup.functions,
+          constantPools: dedup.constantPools,
+        },
+        ruleIndex: linked.ruleIndex,
+        pages: linked.pages,
       };
     }
-    return program;
+    return linked;
   }
 
   if (funcsDead) {
@@ -540,7 +550,7 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
   const newEntryPoint = program.entryPoint !== undefined ? funcRemap.get(program.entryPoint) : undefined;
 
   const newRuleIndex = Dict.empty<string, number>();
-  program.ruleIndex.forEach((funcId, key) => {
+  linked.ruleIndex.forEach((funcId, key) => {
     const newId = funcRemap.get(funcId);
     if (newId !== undefined) {
       newRuleIndex.set(key, newId);
@@ -548,8 +558,8 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
   });
 
   const newPages = List.empty<PageMetadata>();
-  for (let p = 0; p < program.pages.size(); p++) {
-    const page = program.pages.get(p);
+  for (let p = 0; p < linked.pages.size(); p++) {
+    const page = linked.pages.get(p);
     const newRootRuleFuncIds = List.empty<number>();
     for (let r = 0; r < page.rootRuleFuncIds.size(); r++) {
       const newId = funcRemap.get(page.rootRuleFuncIds.get(r));
@@ -560,9 +570,10 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
     newPages.push({ ...page, rootRuleFuncIds: newRootRuleFuncIds });
   }
 
+  const sourceActions = requireActions(program);
   const newActions = List.empty<ExecutableAction>();
-  for (let a = 0; a < program.actions.size(); a++) {
-    const action = program.actions.get(a);
+  for (let a = 0; a < sourceActions.size(); a++) {
+    const action = sourceActions.get(a);
     if (action.binding !== "bytecode") {
       newActions.push(action);
       continue;
@@ -593,13 +604,15 @@ export function treeshakeProgram(program: ExecutableBrainProgram): ExecutableBra
   }
 
   return {
-    version: program.version,
-    functions: resultFunctions,
-    constantPools: resultPools,
-    variableNames: newVariableNames,
-    entryPoint: newEntryPoint,
+    program: {
+      version: program.version,
+      functions: resultFunctions,
+      constantPools: resultPools,
+      variableNames: newVariableNames,
+      entryPoint: newEntryPoint,
+      actions: newActions,
+    },
     ruleIndex: newRuleIndex,
     pages: newPages,
-    actions: newActions,
   };
 }

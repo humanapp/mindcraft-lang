@@ -1,5 +1,5 @@
 import { List } from "@mindcraft-lang/core";
-import type { BrainProgram } from "@mindcraft-lang/core/brain";
+import type { UnlinkedBrainProgram } from "@mindcraft-lang/core/brain";
 import { NativeType } from "@mindcraft-lang/core/brain";
 import type { ConstantOffsets, FunctionBytecode, Instr } from "@mindcraft-lang/core/runtime";
 import { isFunctionValue, Op, type Value } from "@mindcraft-lang/core/runtime";
@@ -7,12 +7,12 @@ import type { DebugMetadata, LinkedUserProgram, UserAuthoredProgram } from "../c
 
 /** Output of {@link linkUserPrograms}: the merged brain program and per-program offset metadata. */
 export interface LinkResult {
-  linkedProgram: BrainProgram;
+  linkedProgram: UnlinkedBrainProgram;
   linkedArtifacts: LinkedUserProgram[];
 }
 
 /** Append each user program's bytecode, constants, and variable names to a base brain program, fixing up cross-table indices. */
-export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserAuthoredProgram[]): LinkResult {
+export function linkUserPrograms(brainProgram: UnlinkedBrainProgram, userPrograms: UserAuthoredProgram[]): LinkResult {
   const linkedFunctions: FunctionBytecode[] = brainProgram.functions.toArray();
   const linkedValues: Value[] = brainProgram.constantPools.values.toArray();
   const linkedNumbers: number[] = brainProgram.constantPools.numbers.toArray();
@@ -72,7 +72,7 @@ export function linkUserPrograms(brainProgram: BrainProgram, userPrograms: UserA
     });
   }
 
-  const linkedProgram: BrainProgram = {
+  const linkedProgram: UnlinkedBrainProgram = {
     version: brainProgram.version,
     functions: List.from(linkedFunctions),
     constantPools: {

@@ -1,5 +1,4 @@
-import type { BrainServices } from "@mindcraft-lang/core/brain";
-import type { BytecodeResolvedAction } from "@mindcraft-lang/core/runtime";
+import type { BrainServices, BytecodeResolvedAction } from "@mindcraft-lang/core/brain";
 import type { UserAuthoredProgram } from "../compiler/types.js";
 import { buildUserTileMetadata } from "./user-tile-metadata.js";
 
@@ -23,6 +22,12 @@ export function registerUserTile(program: UserAuthoredProgram, services: BrainSe
     binding: "bytecode",
     descriptor: actionDescriptor,
     artifact: program,
+    metadata: {
+      key: program.key,
+      kind: program.kind,
+      callDef: program.callDef,
+      outputType: program.outputType,
+    },
   };
 
   for (const parameterTile of parameterTiles) {

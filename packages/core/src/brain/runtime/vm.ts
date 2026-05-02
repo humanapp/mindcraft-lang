@@ -32,15 +32,7 @@ import {
   ValueDict,
   VOID_VALUE,
 } from "../../runtime/value";
-import type {
-  ExecutableBrainProgram,
-  IFiberScheduler,
-  ITypeRegistry,
-  IVM,
-  StructTypeDef,
-  TypeId,
-  VmConfig,
-} from "../interfaces";
+import type { IFiberScheduler, ITypeRegistry, IVM, StructTypeDef, TypeId, VmConfig } from "../interfaces";
 import { isOverflowError, isUnderflowError, NativeType, throwOverflow, throwUnderflow } from "../interfaces";
 import {
   type Fiber,
@@ -936,7 +928,7 @@ export class VM implements IVM {
   }
 
   private getExecutableAction(actionSlot: number, opName: string): ExecutableAction {
-    const actions = (this.prog as ExecutableBrainProgram).actions;
+    const actions = this.prog.actions;
     if (!actions) {
       throw new Error(`${opName}: program does not define executable actions`);
     }

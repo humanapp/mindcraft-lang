@@ -192,9 +192,7 @@ export class Actor {
   }
 
   pageActivated = ({ pageIndex }: { pageIndex: number }) => {
-    const program = this.brain.getProgram();
-    if (!program) return;
-    const pageMeta = program.pages.get(pageIndex);
+    const pageMeta = this.brain.getPages().get(pageIndex);
     if (!pageMeta) return;
     const sensors = pageMeta.sensors;
     if (sensors.has(mkSensorTileId(TileIds.Sensor.See))) {

@@ -1,9 +1,7 @@
-import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "../brain/interfaces/functions";
+import type { ActionDescriptor } from "../brain/interfaces/functions";
 import type { IBrain, IBrainRule } from "../brain/interfaces/runtime";
-import type { TypeId } from "../brain/interfaces/type-system";
 import { Dict } from "../platform/dict";
 import { List, type ReadonlyList } from "../platform/list";
-import type { Program } from "./program";
 import { type HandleId, NIL_VALUE, type Value } from "./value";
 
 /** Action binding implemented by a host (sync or async) function. */
@@ -14,29 +12,6 @@ export interface HostActionBinding {
   execSync?: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
   execAsync?: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
 }
-
-/** Compiled user-authored action: bytecode plus action metadata. */
-export interface UserActionArtifact extends Program {
-  key: ActionKey;
-  kind: ActionKind;
-  callDef: BrainActionCallDef;
-  outputType?: TypeId;
-  isAsync: boolean;
-  numStateSlots: number;
-  entryFuncId: number;
-  activationFuncId?: number;
-  revisionId: string;
-}
-
-/** Action binding implemented by a compiled bytecode artifact. */
-export interface BytecodeResolvedAction {
-  binding: "bytecode";
-  descriptor: ActionDescriptor;
-  artifact: UserActionArtifact;
-}
-
-/** Tagged-union of action bindings: host function or compiled bytecode. */
-export type ResolvedAction = HostActionBinding | BytecodeResolvedAction;
 
 /** Bytecode-backed action ready for VM execution: entry function id and state-slot count. */
 export interface BytecodeExecutableAction {

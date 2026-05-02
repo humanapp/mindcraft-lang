@@ -3,8 +3,8 @@ import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainServices,
-  type ExecutableBrainProgram,
   HandleTable,
+  type LinkedBrainProgram,
   NativeType,
   type PageMetadata,
   runtime,
@@ -12,7 +12,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { treeshakeProgram } from "@mindcraft-lang/core/brain/runtime";
+import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/runtime";
 import type { BytecodeExecutableAction, ExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
 import { NIL_VALUE, type NumberValue, type StringValue, type Value } from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
@@ -55,7 +55,7 @@ function compileProject(files: Record<string, string>) {
   return project.compileAll();
 }
 
-function wrapAsExecutable(prog: UserAuthoredProgram): ExecutableBrainProgram {
+function wrapAsExecutable(prog: UserAuthoredProgram): FlatExecutable {
   const page: PageMetadata = {
     pageIndex: 0,
     pageId: "page-0",
@@ -86,6 +86,49 @@ function wrapAsExecutable(prog: UserAuthoredProgram): ExecutableBrainProgram {
   };
 }
 
+/**
+ * Flat view combining `Program` fields with `LinkedBrainProgram` side tables.
+ * Used by these tests for ergonomic field access; production code uses the
+ * split shape returned by `treeshakeProgram`.
+ */
+interface FlatExecutable {
+  version: number;
+  functions: UserAuthoredProgram["functions"];
+  constantPools: UserAuthoredProgram["constantPools"];
+  variableNames: UserAuthoredProgram["variableNames"];
+  entryPoint?: number;
+  ruleIndex: Dict<string, number>;
+  pages: List<PageMetadata>;
+  actions: List<ExecutableAction>;
+}
+
+function treeshakeProgram(flat: FlatExecutable): FlatExecutable {
+  const linked: LinkedBrainProgram = {
+    program: {
+      version: flat.version,
+      functions: flat.functions,
+      constantPools: flat.constantPools,
+      variableNames: flat.variableNames,
+      entryPoint: flat.entryPoint,
+      actions: flat.actions,
+    },
+    ruleIndex: flat.ruleIndex,
+    pages: flat.pages,
+  };
+  const out = treeshakeLinked(linked);
+  if (out === linked) return flat;
+  return {
+    version: out.program.version,
+    functions: out.program.functions,
+    constantPools: out.program.constantPools,
+    variableNames: out.program.variableNames,
+    entryPoint: out.program.entryPoint,
+    actions: out.program.actions ?? List.empty<ExecutableAction>(),
+    ruleIndex: out.ruleIndex,
+    pages: out.pages,
+  };
+}
+
 function runProgram(prog: UserAuthoredProgram): Value | undefined {
   const handles = new HandleTable(100);
   const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
@@ -111,7 +154,7 @@ function runProgram(prog: UserAuthoredProgram): Value | undefined {
   return undefined;
 }
 
-function runExecutable(prog: ExecutableBrainProgram): Value | undefined {
+function runExecutable(prog: FlatExecutable): Value | undefined {
   const handles = new HandleTable(100);
   const action = prog.actions.size() > 0 ? prog.actions.get(0) : undefined;
   const numSlots = action?.binding === "bytecode" ? action.numStateSlots : 0;

@@ -1,13 +1,14 @@
 import type { Dict } from "../../platform/dict";
 import type { List, ReadonlyList } from "../../platform/list";
 import type { UniqueSet } from "../../platform/uniqueset";
-import type { ExecutableAction, ResolvedAction } from "../../runtime/context";
-import type { Program } from "../../runtime/program";
+import type { HostActionBinding } from "../../runtime/context";
+import type { Program, ProgramArtifact } from "../../runtime/program";
 import type { Value } from "../../runtime/value";
 import type { EventEmitterConsumer } from "../../util";
 import type { ITileCatalog } from "./catalog";
-import type { ActionDescriptor, ActionKey } from "./functions";
+import type { ActionDescriptor, ActionKey, ActionKind, BrainActionCallDef } from "./functions";
 import type { TileId } from "./tiles";
+import type { TypeId } from "./type-system";
 
 /** Reference to a registered action, by program-local slot and stable key. */
 export interface ActionRef {
@@ -46,14 +47,42 @@ export interface UnlinkedBrainProgram extends Program {
   pages: List<PageMetadata>;
 }
 
-/** Compiled brain program prior to action linking. Alias for {@link UnlinkedBrainProgram}. */
-export type BrainProgram = UnlinkedBrainProgram;
+/** Brain-side action metadata associated with a compiled bytecode action artifact. */
+export interface BrainActionMetadata {
+  key: ActionKey;
+  kind: ActionKind;
+  callDef: BrainActionCallDef;
+  outputType?: TypeId;
+}
 
-/** Linked brain program ready for VM execution: program-local action slots resolved to executable bindings. */
-export interface ExecutableBrainProgram extends Program {
+/**
+ * Compiled user-authored action: bytecode-relevant {@link ProgramArtifact}
+ * fields combined with the brain-side action metadata that names and shapes
+ * the action call site.
+ */
+export interface UserActionArtifact extends ProgramArtifact, BrainActionMetadata {}
+
+/** Action binding implemented by a compiled bytecode artifact. */
+export interface BytecodeResolvedAction {
+  binding: "bytecode";
+  descriptor: ActionDescriptor;
+  artifact: ProgramArtifact;
+  metadata: BrainActionMetadata;
+}
+
+/** Tagged-union of action bindings: host function or compiled bytecode. */
+export type ResolvedAction = HostActionBinding | BytecodeResolvedAction;
+
+/**
+ * Output of {@link linkBrainProgram}: an executable {@link Program} (with its
+ * `actions` slot populated) plus the brain-side rule-to-function mapping and
+ * per-page metadata that the brain runtime consumes for page activation and
+ * call-site dispatch.
+ */
+export interface LinkedBrainProgram {
+  program: Program;
   ruleIndex: Dict<string, number>;
   pages: List<PageMetadata>;
-  actions: List<ExecutableAction>;
 }
 
 /** Resolves action descriptors to concrete bindings during brain linking. */
@@ -122,8 +151,12 @@ export interface IBrain {
   startup(): void;
   shutdown(): void;
   think(currentTime: number): void;
-  getProgram(): ExecutableBrainProgram | undefined;
+  /** Linked executable program currently loaded into the brain's VM. */
+  getProgram(): Program | undefined;
+  /** Compiler output prior to action linking. */
   getCompiledProgram(): UnlinkedBrainProgram | undefined;
+  /** Per-page metadata for the loaded program (page activation, call sites, sensors, actuators). */
+  getPages(): List<PageMetadata>;
   rng(): number; // Returns a random number between 0 and 1.
   requestPageChange(pageIndex: number): void;
   requestPageChangeByPageId(pageId: string): void;

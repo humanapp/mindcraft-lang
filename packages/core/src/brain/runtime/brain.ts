@@ -8,19 +8,20 @@ import {
   type ExecutionContext,
   resetActionInstance,
 } from "../../runtime/context";
+import type { Program } from "../../runtime/program";
 import { NIL_VALUE, type Value } from "../../runtime/value";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import { compileBrain } from "../compiler";
 import {
   type BrainEvents,
   type BrainLinkEnvironment,
-  type ExecutableBrainProgram,
   FiberState,
   HandleTable,
   type IBrain,
   type IBrainDef,
   type IBrainPageDef,
   type IBrainRule,
+  type PageMetadata,
   type UnlinkedBrainProgram,
   VmStatus,
 } from "../interfaces";
@@ -88,7 +89,20 @@ export class Brain implements IBrain {
   /**
    * Linked executable program used by the VM.
    */
-  private program: ExecutableBrainProgram | undefined;
+  private program: Program | undefined;
+
+  /**
+   * Brain-side rule-to-function-id mapping for the loaded program.
+   * Built by {@link linkBrainProgram} and updated by {@link treeshakeProgram}
+   * when functions are compacted.
+   */
+  private ruleIndex: Dict<string, number> | undefined;
+
+  /**
+   * Per-page metadata for the loaded program (page activation, call sites,
+   * sensors, actuators).
+   */
+  private pageMetadata: List<PageMetadata> | undefined;
 
   /**
    * Single VM instance for executing all rules.
@@ -152,7 +166,7 @@ export class Brain implements IBrain {
 
     // Compile the entire brain into an unlinked program, then link actions.
     this.compiledProgram = compileBrain(this.brainDef, linkEnvironment.catalogs, this.services.conversions);
-    this.program = linkBrainProgram(
+    let linked = linkBrainProgram(
       this.compiledProgram,
       this.brainDef,
       linkEnvironment.catalogs,
@@ -160,7 +174,10 @@ export class Brain implements IBrain {
     );
 
     // Tree-shake unreachable functions, constants, and variable names.
-    this.program = treeshakeProgram(this.program);
+    linked = treeshakeProgram(linked);
+    this.program = linked.program;
+    this.ruleIndex = linked.ruleIndex;
+    this.pageMetadata = linked.pages;
 
     // Wire the brain-level variable storage to the loaded program's variableNames pool.
     this.installVariableTable(this.program.variableNames);
@@ -179,15 +196,15 @@ export class Brain implements IBrain {
     const funcIdToRule = new Dict<number, IBrainRule>();
     for (let pageIdx = 0; pageIdx < this.pages.size(); pageIdx++) {
       const page = this.pages.get(pageIdx)!;
-      page.assignFuncIds(this.program.ruleIndex, pageIdx);
+      page.assignFuncIds(this.ruleIndex, pageIdx);
       this.collectFuncIdToRuleMapping(page.children(), funcIdToRule);
     }
 
     // Build page lookup indices for O(1) resolution in requestPageChangeByPageId / requestPageChangeByName
     this.pageIdToIndex = new Dict();
     this.pageNameToIndex = new Dict();
-    for (let i = 0; i < this.program.pages.size(); i++) {
-      const meta = this.program.pages.get(i);
+    for (let i = 0; i < this.pageMetadata.size(); i++) {
+      const meta = this.pageMetadata.get(i);
       if (meta) {
         this.pageIdToIndex.set(meta.pageId, i);
         this.pageNameToIndex.set(meta.pageName, i);
@@ -234,12 +251,16 @@ export class Brain implements IBrain {
   /**
    * Get the linked executable program (for debugging/inspection).
    */
-  getProgram(): ExecutableBrainProgram | undefined {
+  getProgram(): Program | undefined {
     return this.program;
   }
 
   getCompiledProgram(): UnlinkedBrainProgram | undefined {
     return this.compiledProgram;
+  }
+
+  getPages(): List<PageMetadata> {
+    return this.pageMetadata ?? List.empty<PageMetadata>();
   }
 
   /**
@@ -425,16 +446,16 @@ export class Brain implements IBrain {
   }
 
   getCurrentPageId(): string {
-    if (!this.program || !this.isValidPageIndex(this.currentPageIndex)) return "";
-    const meta = this.program.pages.get(this.currentPageIndex);
+    if (!this.pageMetadata || !this.isValidPageIndex(this.currentPageIndex)) return "";
+    const meta = this.pageMetadata.get(this.currentPageIndex);
     return meta ? meta.pageId : "";
   }
 
   getPreviousPageId(): string {
-    if (!this.program || !this.isValidPageIndex(this.previousPageIndex)) {
+    if (!this.pageMetadata || !this.isValidPageIndex(this.previousPageIndex)) {
       return this.getCurrentPageId();
     }
-    const meta = this.program.pages.get(this.previousPageIndex);
+    const meta = this.pageMetadata.get(this.previousPageIndex);
     return meta ? meta.pageId : this.getCurrentPageId();
   }
 
@@ -504,9 +525,9 @@ export class Brain implements IBrain {
    * Activate a page by spawning fibers for its root rules.
    */
   private activatePage(pageIndex: number): void {
-    if (!this.program || !this.scheduler || !this.executionContext || !this.vm) return;
+    if (!this.program || !this.scheduler || !this.executionContext || !this.vm || !this.pageMetadata) return;
 
-    const pageMetadata = this.program.pages.get(pageIndex);
+    const pageMetadata = this.pageMetadata.get(pageIndex);
     if (!pageMetadata) return;
 
     // Clear any existing tracked fibers
@@ -515,7 +536,8 @@ export class Brain implements IBrain {
     // Reset and activate each action callsite once for this page activation.
     for (let i = 0; i < pageMetadata.actionCallSites.size(); i++) {
       const site = pageMetadata.actionCallSites.get(i)!;
-      const action = this.program.actions.get(site.actionSlot);
+      const actions = this.program.actions;
+      const action = actions ? actions.get(site.actionSlot) : undefined;
       if (!action) {
         continue;
       }

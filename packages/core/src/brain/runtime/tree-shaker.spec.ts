@@ -4,15 +4,20 @@ import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainServices,
-  type ExecutableBrainProgram,
   HandleTable,
+  type LinkedBrainProgram,
   NativeType,
   type PageMetadata,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { treeshakeProgram, VM } from "@mindcraft-lang/core/brain/runtime";
-import type { BytecodeExecutableAction, ExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
+import { treeshakeProgram as treeshakeLinked, VM } from "@mindcraft-lang/core/brain/runtime";
+import type {
+  BytecodeExecutableAction,
+  ConstantPools,
+  ExecutableAction,
+  ExecutionContext,
+} from "@mindcraft-lang/core/runtime";
 import {
   BYTECODE_VERSION,
   FALSE_VALUE,
@@ -77,7 +82,7 @@ function mkProgram(opts: {
   pages?: PageMetadata[];
   actions?: ExecutableAction[];
   ruleIndex?: [string, number][];
-}): ExecutableBrainProgram {
+}): FlatProgram {
   return {
     version: BYTECODE_VERSION,
     functions: List.from(opts.functions),
@@ -92,6 +97,56 @@ function mkProgram(opts: {
     pages: List.from(opts.pages ?? []),
     actions: List.from(opts.actions ?? []),
   };
+}
+
+/**
+ * Flat view that combines `Program` fields with the `LinkedBrainProgram`
+ * side tables (`pages`, `ruleIndex`). Used only by these tests for ergonomic
+ * access; production code uses the split shape.
+ */
+interface FlatProgram {
+  version: number;
+  functions: List<FunctionBytecode>;
+  constantPools: ConstantPools;
+  variableNames: List<string>;
+  entryPoint?: number;
+  ruleIndex: Dict<string, number>;
+  pages: List<PageMetadata>;
+  actions: List<ExecutableAction>;
+}
+
+function toLinked(flat: FlatProgram): LinkedBrainProgram {
+  return {
+    program: {
+      version: flat.version,
+      functions: flat.functions,
+      constantPools: flat.constantPools,
+      variableNames: flat.variableNames,
+      entryPoint: flat.entryPoint,
+      actions: flat.actions,
+    },
+    ruleIndex: flat.ruleIndex,
+    pages: flat.pages,
+  };
+}
+
+function flatten(linked: LinkedBrainProgram): FlatProgram {
+  return {
+    version: linked.program.version,
+    functions: linked.program.functions,
+    constantPools: linked.program.constantPools,
+    variableNames: linked.program.variableNames,
+    entryPoint: linked.program.entryPoint,
+    actions: linked.program.actions ?? List.empty<ExecutableAction>(),
+    ruleIndex: linked.ruleIndex,
+    pages: linked.pages,
+  };
+}
+
+function treeshakeProgram(flat: FlatProgram): FlatProgram {
+  const linked = toLinked(flat);
+  const out = treeshakeLinked(linked);
+  return out === linked ? flat : flatten(out);
 }
 
 describe("treeshakeProgram", () => {
@@ -750,7 +805,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   };
 }
 
-function runProgramToResult(prog: ExecutableBrainProgram): Value | undefined {
+function runProgramToResult(prog: FlatProgram): Value | undefined {
   const handles = new HandleTable(100);
   const vm = new VM(services, prog, handles);
   const fiber = vm.spawnFiber(1, prog.entryPoint ?? 0, List.empty(), mkCtx());

@@ -33,6 +33,7 @@ import type {
   UnionTypeShape,
 } from "./brain/interfaces";
 import { CoreOpId, NativeType } from "./brain/interfaces";
+import type { ResolvedAction, UserActionArtifact } from "./brain/interfaces/runtime";
 import type { BrainJson } from "./brain/model";
 import { BrainDef, brainJsonFromPlain } from "./brain/model";
 import { Brain } from "./brain/runtime";
@@ -49,7 +50,7 @@ import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
 import { List, type ReadonlyList } from "./platform/list";
 import { TypeUtils } from "./platform/types";
-import type { ExecutionContext, HostActionBinding, ResolvedAction, UserActionArtifact } from "./runtime/context";
+import type { ExecutionContext, HostActionBinding } from "./runtime/context";
 import type { HandleId, Value } from "./runtime/value";
 import { NIL_VALUE } from "./runtime/value";
 
@@ -864,6 +865,12 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
         binding: "bytecode",
         descriptor: descriptorFromArtifact(bundleArtifact),
         artifact: bundleArtifact,
+        metadata: {
+          key: bundleArtifact.key,
+          kind: bundleArtifact.kind,
+          callDef: bundleArtifact.callDef,
+          outputType: bundleArtifact.outputType,
+        },
       };
     }
 
@@ -1095,6 +1102,9 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
     }
 
     const actions = program.actions;
+    if (!actions) {
+      return;
+    }
     for (let i = 0; i < actions.size(); i++) {
       const action = actions.get(i)!;
       if (action.binding !== "bytecode") {

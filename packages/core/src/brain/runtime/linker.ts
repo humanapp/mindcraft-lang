@@ -3,25 +3,21 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import type { ConstantOffsets, FunctionBytecode, Instr } from "../../runtime/bytecode";
 import { Op } from "../../runtime/bytecode";
-import type {
-  BytecodeExecutableAction,
-  ExecutableAction,
-  ResolvedAction,
-  UserActionArtifact,
-} from "../../runtime/context";
+import type { BytecodeExecutableAction, ExecutableAction } from "../../runtime/context";
+import type { ProgramArtifact } from "../../runtime/program";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
 import type {
   ActionDescriptor,
-  ExecutableBrainProgram,
   IBrainActionTileDef,
   IBrainDef,
   IBrainRuleDef,
   IBrainTileDef,
   ITileCatalog,
+  LinkedBrainProgram,
   UnlinkedBrainProgram,
 } from "../interfaces";
-import type { BrainActionResolver } from "../interfaces/runtime";
+import type { BrainActionResolver, ResolvedAction } from "../interfaces/runtime";
 
 function isActionTileDef(tileDef: IBrainTileDef): tileDef is IBrainActionTileDef {
   return tileDef.kind === "sensor" || tileDef.kind === "actuator";
@@ -112,10 +108,11 @@ function validateResolvedAction(descriptor: ActionDescriptor, resolved: Resolved
   }
 
   const artifact = resolved.artifact;
-  if (artifact.key !== descriptor.key) {
+  const metadata = resolved.metadata;
+  if (metadata.key !== descriptor.key) {
     throw new Error(`linkBrainProgram: bytecode artifact key mismatch for '${descriptor.key}'`);
   }
-  if (artifact.kind !== descriptor.kind) {
+  if (metadata.kind !== descriptor.kind) {
     throw new Error(`linkBrainProgram: bytecode artifact kind mismatch for '${descriptor.key}'`);
   }
   if (artifact.isAsync !== descriptor.isAsync) {
@@ -233,7 +230,7 @@ interface MutableConstantPools {
 
 function appendArtifactTables(
   descriptor: ActionDescriptor,
-  artifact: UserActionArtifact,
+  artifact: ProgramArtifact,
   functions: List<FunctionBytecode>,
   pools: MutableConstantPools,
   variableNames: List<string>
@@ -297,16 +294,18 @@ function toExecutableAction(
 }
 
 /**
- * Link an {@link UnlinkedBrainProgram} into an {@link ExecutableBrainProgram} by
+ * Link an {@link UnlinkedBrainProgram} into a {@link LinkedBrainProgram} by
  * resolving every action reference through `resolver` and inlining bytecode-backed
- * action artifacts into the program's function/constant/variable tables.
+ * action artifacts into the program's function/constant/variable tables. The
+ * returned program carries the executable action bindings on `Program.actions`;
+ * brain-side rule-to-function and page metadata are returned alongside.
  */
 export function linkBrainProgram(
   program: UnlinkedBrainProgram,
   brainDef: IBrainDef,
   catalogs: ReadonlyList<ITileCatalog>,
   resolver: BrainActionResolver
-): ExecutableBrainProgram {
+): LinkedBrainProgram {
   const descriptorIndex = buildActionDescriptorIndex(brainDef, catalogs);
   const functions = List.empty<FunctionBytecode>();
   const pools: MutableConstantPools = {
@@ -350,17 +349,19 @@ export function linkBrainProgram(
   }
 
   return {
-    version: program.version,
-    functions,
-    constantPools: {
-      numbers: pools.numbers,
-      strings: pools.strings,
-      values: pools.values,
+    program: {
+      version: program.version,
+      functions,
+      constantPools: {
+        numbers: pools.numbers,
+        strings: pools.strings,
+        values: pools.values,
+      },
+      variableNames,
+      entryPoint: program.entryPoint,
+      actions,
     },
-    variableNames,
-    entryPoint: program.entryPoint,
     ruleIndex: program.ruleIndex,
     pages: program.pages,
-    actions,
   };
 }

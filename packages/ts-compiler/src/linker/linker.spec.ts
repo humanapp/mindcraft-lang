@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
-  type BrainProgram,
   type BrainServices,
   HandleTable,
   NativeType,
   type PageMetadata,
   runtime,
   type Scheduler,
+  type UnlinkedBrainProgram,
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
@@ -65,7 +65,7 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
   return args;
 }
 
-function mkEmptyBrainProgram(): BrainProgram {
+function mkEmptyBrainProgram(): UnlinkedBrainProgram {
   const emptyPage: PageMetadata = {
     pageIndex: 0,
     pageId: "page-0",
@@ -91,7 +91,7 @@ function mkEmptyBrainProgram(): BrainProgram {
   };
 }
 
-function mkBrainProgramWithStubFunction(): BrainProgram {
+function mkBrainProgramWithStubFunction(): UnlinkedBrainProgram {
   const stubFn: FunctionBytecode = {
     code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }]),
     numParams: 0,

@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List, type ReadonlyList } from "@mindcraft-lang/core";
+import type { UserActionArtifact } from "@mindcraft-lang/core/brain";
 import {
   type ActionDescriptor,
   type BrainServices,
@@ -38,7 +39,7 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
-import type { ExecutionContext, UserActionArtifact } from "@mindcraft-lang/core/runtime";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
   BYTECODE_VERSION,
@@ -479,7 +480,7 @@ describe("Brain behavioral -- page sensors", () => {
 
     const program = brain.getProgram();
     assert.ok(program);
-    const expectedPageId = program!.pages.get(0)!.pageId;
+    const expectedPageId = brain.getPages().get(0)!.pageId;
 
     const val = brain.getVariable(v.varName);
     assert.ok(val !== undefined);
@@ -504,7 +505,7 @@ describe("Brain behavioral -- page sensors", () => {
 
     const program = brain.getProgram();
     assert.ok(program);
-    const currentPageId = program!.pages.get(0)!.pageId;
+    const currentPageId = brain.getPages().get(0)!.pageId;
 
     const val = brain.getVariable(v.varName);
     assert.ok(val !== undefined);
@@ -544,7 +545,7 @@ describe("Brain behavioral -- page sensors", () => {
 
     const program = brain.getProgram();
     assert.ok(program);
-    const page0Id = program!.pages.get(0)!.pageId;
+    const page0Id = brain.getPages().get(0)!.pageId;
 
     // Tick on page 0
     brain.think(16);
@@ -595,8 +596,8 @@ describe("Brain behavioral -- page sensors", () => {
 
     const program = brain.getProgram();
     assert.ok(program);
-    const page0Id = program!.pages.get(0)!.pageId;
-    const page1Id = program!.pages.get(1)!.pageId;
+    const page0Id = brain.getPages().get(0)!.pageId;
+    const page1Id = brain.getPages().get(1)!.pageId;
 
     // Tick on page 0 -- previous is current (no switch yet)
     brain.think(16);
@@ -747,6 +748,12 @@ describe("Brain behavioral -- action state", () => {
               binding: "bytecode" as const,
               descriptor: actionDescriptor,
               artifact,
+              metadata: {
+                key: artifact.key,
+                kind: artifact.kind,
+                callDef: artifact.callDef,
+                outputType: artifact.outputType,
+              },
             };
           }
           return undefined;
@@ -849,7 +856,7 @@ describe("Brain behavioral -- compiled program structure", () => {
     assert.ok(program !== undefined, "program should exist after initialize");
     assert.equal(program!.version, 1, "bytecode version should be 1");
     assert.ok(program!.functions.size() > 0, "should have at least one function");
-    assert.ok(program!.pages.size() > 0, "should have at least one page");
+    assert.ok(brain.getPages().size() > 0, "should have at least one page");
     assert.ok(program!.constantPools.values.size() > 0, "should have constants");
   });
 
@@ -904,9 +911,10 @@ describe("Brain behavioral -- compiled program structure", () => {
 
     const program = brain.getProgram();
     assert.ok(program, "linked program should exist after initialize");
-    assert.equal(program!.actions.size(), 1);
-    assert.equal(program!.actions.get(0)!.binding, "host");
-    assert.equal(program!.actions.get(0)!.descriptor.key, CoreSensorId.CurrentPage);
+    const actions = program!.actions!;
+    assert.equal(actions.size(), 1);
+    assert.equal(actions.get(0)!.binding, "host");
+    assert.equal(actions.get(0)!.descriptor.key, CoreSensorId.CurrentPage);
   });
 });
 

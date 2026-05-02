@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
-import type { BrainProgram, BrainServices, PageMetadata } from "@mindcraft-lang/core/brain";
+import type { BrainServices, PageMetadata, UnlinkedBrainProgram } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BYTECODE_VERSION, type FunctionBytecode, mkNumberValue, Op, type Value } from "@mindcraft-lang/core/runtime";
 import { linkUserPrograms } from "../linker/linker.js";
@@ -18,7 +18,7 @@ function compileProject(files: Record<string, string>) {
   return project.compileAll();
 }
 
-function mkEmptyBrainProgram(): BrainProgram {
+function mkEmptyBrainProgram(): UnlinkedBrainProgram {
   const emptyPage: PageMetadata = {
     pageIndex: 0,
     pageId: "page-0",
@@ -262,7 +262,7 @@ export default Sensor({
       numLocals: 0,
       name: "brain-stub",
     };
-    const brainWithStub: BrainProgram = {
+    const brainWithStub: UnlinkedBrainProgram = {
       ...brainProgram,
       functions: List.from([stubFn, stubFn, stubFn]),
       constantPools: {
