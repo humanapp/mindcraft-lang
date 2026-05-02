@@ -81,6 +81,24 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
   return args;
 }
 
+function getStructField(source: StructValue, fieldName: string): Value | undefined {
+  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const fieldIndex = def?.fieldIndexByName.get(fieldName);
+  return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
+}
+
+function assertNumberField(source: StructValue, fieldName: string, expected: number): void {
+  const value = getStructField(source, fieldName);
+  assert.ok(value && value.t === NativeType.Number, `expected numeric field '${fieldName}'`);
+  assert.equal((value as NumberValue).v, expected);
+}
+
+function assertStringField(source: StructValue, fieldName: string, expected: string): void {
+  const value = getStructField(source, fieldName);
+  assert.ok(value && value.t === NativeType.String, `expected string field '${fieldName}'`);
+  assert.equal((value as StringValue).v, expected);
+}
+
 function findFunctionContainingOp(prog: UserAuthoredProgram, op: Op): FunctionBytecode {
   for (let i = 0; i < prog.functions.size(); i++) {
     const fn = prog.functions.get(i)!;
@@ -303,6 +321,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
+    findFunctionContainingOp(result.program, Op.STRUCT_SET_FIELD);
 
     const prog = result.program!;
     const handles = new HandleTable(100);
@@ -319,8 +338,8 @@ export default Sensor({
       assert.ok(isStructValue(runResult.result!), "expected struct value");
       const struct = runResult.result as StructValue;
       assert.equal(struct.typeId, mkTypeId(NativeType.Struct, "Vector2"));
-      assert.equal((struct.v?.get("x") as NumberValue).v, 10);
-      assert.equal((struct.v?.get("y") as NumberValue).v, 20);
+      assertNumberField(struct, "x", 10);
+      assertNumberField(struct, "y", 20);
     }
   });
 
@@ -354,8 +373,8 @@ export default Sensor({
       assert.ok(runResult.result);
       assert.ok(isStructValue(runResult.result!));
       const struct = runResult.result as StructValue;
-      assert.equal((struct.v?.get("x") as NumberValue).v, 3);
-      assert.equal((struct.v?.get("y") as NumberValue).v, 7);
+      assertNumberField(struct, "x", 3);
+      assertNumberField(struct, "y", 7);
     }
   });
 
@@ -390,11 +409,11 @@ export default Sensor({
       assert.ok(runResult.result);
       assert.ok(isStructValue(runResult.result!));
       const entity = runResult.result as StructValue;
-      assert.equal((entity.v?.get("name") as StringValue).v, "hero");
-      const pos = entity.v?.get("position") as StructValue;
+      assertStringField(entity, "name", "hero");
+      const pos = getStructField(entity, "position") as StructValue;
       assert.ok(isStructValue(pos));
-      assert.equal((pos.v?.get("x") as NumberValue).v, 5);
-      assert.equal((pos.v?.get("y") as NumberValue).v, 15);
+      assertNumberField(pos, "x", 5);
+      assertNumberField(pos, "y", 15);
     }
   });
 
@@ -493,7 +512,7 @@ describe("property access chains + host calls", () => {
     }
   });
 
-  test("struct property access compiles to GET_FIELD", () => {
+  test("closed struct property access compiles to STRUCT_GET_FIELD", () => {
     const ambientSource = buildAmbientDeclarations(services.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
@@ -509,6 +528,9 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
+    const fn = findFunctionContainingOp(result.program, Op.STRUCT_GET_FIELD);
+    const getField = fn.code.find((instr) => instr.op === Op.STRUCT_GET_FIELD);
+    assert.equal(getField?.a, 0);
 
     const prog = result.program!;
     const handles = new HandleTable(100);
@@ -779,7 +801,7 @@ export default Sensor({
     }
   });
 
-  test("native-backed struct field access uses GET_FIELD (same bytecode)", () => {
+  test("native-backed struct field access uses GET_FIELD", () => {
     const types = services.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const nativeActorId = mkTypeId(NativeType.Struct, "NativeActor");
@@ -810,6 +832,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
+    findFunctionContainingOp(result.program, Op.GET_FIELD);
   });
 
   test("unknown struct field produces compile error (caught by TS checker)", () => {

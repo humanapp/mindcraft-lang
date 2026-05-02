@@ -64,6 +64,18 @@ function mkScheduler(): Scheduler {
   };
 }
 
+function getStructField(source: StructValue, fieldName: string): Value | undefined {
+  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const fieldIndex = def?.fieldIndexByName.get(fieldName);
+  return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
+}
+
+function assertNumberField(source: StructValue, fieldName: string, expected: number): void {
+  const value = getStructField(source, fieldName);
+  assert.ok(value && value.t === NativeType.Number, `expected numeric field '${fieldName}'`);
+  assert.equal((value as NumberValue).v, expected);
+}
+
 function mkArgsList(entries: Record<number, Value>): List<Value> {
   const args = List.empty<Value>();
   for (const [key, value] of Object.entries(entries)) {
@@ -271,12 +283,12 @@ export default Sensor({
       assert.equal(list.v.size(), 2);
       const first = list.v.get(0) as StructValue;
       assert.ok(isStructValue(first));
-      assert.equal((first.v?.get("x") as NumberValue).v, 1);
-      assert.equal((first.v?.get("y") as NumberValue).v, 2);
+      assertNumberField(first, "x", 1);
+      assertNumberField(first, "y", 2);
       const second = list.v.get(1) as StructValue;
       assert.ok(isStructValue(second));
-      assert.equal((second.v?.get("x") as NumberValue).v, 3);
-      assert.equal((second.v?.get("y") as NumberValue).v, 4);
+      assertNumberField(second, "x", 3);
+      assertNumberField(second, "y", 4);
     }
   });
 });

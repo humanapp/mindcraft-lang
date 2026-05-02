@@ -57,6 +57,14 @@ function assignFieldIndices(inputs: List<StructFieldInput>, baseIndex: number): 
   );
 }
 
+function buildFieldIndexByName(fields: List<StructFieldDef>): Dict<string, number> {
+  const fieldIndexByName = new Dict<string, number>();
+  fields.forEach((field) => {
+    fieldIndexByName.set(field.name, field.fieldIndex);
+  });
+  return fieldIndexByName;
+}
+
 /** Concrete {@link ITypeRegistry}: in-memory type table with constructor-based parameterized types and structural-compatibility caching. */
 export class TypeRegistry implements ITypeRegistry {
   private defs = new Dict<TypeId, TypeDef>();
@@ -320,12 +328,14 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
 
+    const indexedFields = assignFieldIndices(shape.fields, 0);
     const structTypeDef: StructTypeDef = {
       coreType: NativeType.Struct,
       typeId,
       codec: new StructCodec(fieldCodecs),
       name,
-      fields: assignFieldIndices(shape.fields, 0),
+      fields: indexedFields,
+      fieldIndexByName: buildFieldIndexByName(indexedFields),
       nominal: shape.nominal,
       fieldGetter: shape.fieldGetter,
       fieldSetter: shape.fieldSetter,
@@ -346,6 +356,7 @@ export class TypeRegistry implements ITypeRegistry {
       codec: new StructCodec(new Dict<string, TypeCodec>()),
       name,
       fields: List.empty<StructFieldDef>(),
+      fieldIndexByName: new Dict<string, number>(),
     };
     this.add(placeholder);
     return typeId;
@@ -375,7 +386,9 @@ export class TypeRegistry implements ITypeRegistry {
       fieldCodecs.set(field.name, fieldTypeDef.codec);
     });
     const structDef = existing as StructTypeDef;
-    structDef.fields = assignFieldIndices(shape.fields, 0);
+    const indexedFields = assignFieldIndices(shape.fields, 0);
+    structDef.fields = indexedFields;
+    structDef.fieldIndexByName = buildFieldIndexByName(indexedFields);
     structDef.codec = new StructCodec(fieldCodecs);
     if (shape.nominal !== undefined) structDef.nominal = shape.nominal;
     if (shape.fieldGetter) structDef.fieldGetter = shape.fieldGetter;
@@ -432,6 +445,7 @@ export class TypeRegistry implements ITypeRegistry {
 
     const baseIndex = structDef.fields.size();
     structDef.fields = structDef.fields.concat(assignFieldIndices(fields, baseIndex));
+    structDef.fieldIndexByName = buildFieldIndexByName(structDef.fields);
     structDef.codec = new StructCodec(fieldCodecs);
 
     if (fieldGetter) {
@@ -706,19 +720,20 @@ export class TypeRegistry implements ITypeRegistry {
     let compatible = true;
     targetStruct.fields.forEach((targetField) => {
       if (!compatible) return;
-      let found = false;
-      sourceStruct.fields.forEach((sourceField) => {
-        if (sourceField.name === targetField.name) {
-          found = true;
-          if (sourceField.typeId !== targetField.typeId) {
-            if (!this.isStructurallyCompatible(sourceField.typeId, targetField.typeId)) {
-              compatible = false;
-            }
-          }
-        }
-      });
-      if (!found) {
+      const sourceFieldIndex = sourceStruct.fieldIndexByName.get(targetField.name);
+      if (sourceFieldIndex === undefined) {
         compatible = false;
+        return;
+      }
+      const sourceField = sourceStruct.fields.get(sourceFieldIndex);
+      if (!sourceField) {
+        compatible = false;
+        return;
+      }
+      if (sourceField.typeId !== targetField.typeId) {
+        if (!this.isStructurallyCompatible(sourceField.typeId, targetField.typeId)) {
+          compatible = false;
+        }
       }
     });
 

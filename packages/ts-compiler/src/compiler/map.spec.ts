@@ -64,6 +64,18 @@ function mkScheduler(): Scheduler {
   };
 }
 
+function getStructField(source: StructValue, fieldName: string): Value | undefined {
+  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const fieldIndex = def?.fieldIndexByName.get(fieldName);
+  return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
+}
+
+function assertNumberField(source: StructValue, fieldName: string, expected: number): void {
+  const value = getStructField(source, fieldName);
+  assert.ok(value && value.t === NativeType.Number, `expected numeric field '${fieldName}'`);
+  assert.equal((value as NumberValue).v, expected);
+}
+
 function mkArgsList(entries: Record<number, Value>): List<Value> {
   const args = List.empty<Value>();
   for (const [key, value] of Object.entries(entries)) {
@@ -308,8 +320,8 @@ export default Sensor({
       assert.ok(isStructValue(runResult.result!), "expected struct value, not map");
       const struct = runResult.result as StructValue;
       assert.equal(struct.typeId, mkTypeId(NativeType.Struct, "Vector2"));
-      assert.equal((struct.v?.get("x") as NumberValue).v, 5);
-      assert.equal((struct.v?.get("y") as NumberValue).v, 10);
+      assertNumberField(struct, "x", 5);
+      assertNumberField(struct, "y", 10);
     }
   });
 });

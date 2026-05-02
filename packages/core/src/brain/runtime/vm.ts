@@ -150,7 +150,7 @@ const V = {
   map(entries: ValueDict, typeId: TypeId): Value {
     return { t: NativeType.Map, typeId, v: entries };
   },
-  struct(fields: Dict<string, Value>, typeId: TypeId): Value {
+  struct(fields: List<Value>, typeId: TypeId): Value {
     return { t: NativeType.Struct, typeId, v: fields };
   },
   func(funcId: number, captures?: List<Value>): Value {
@@ -171,8 +171,7 @@ const V = {
 /**
  * Deep-copy a Value for assignment semantics.
  * Primitives (boolean, number, string, enum, nil, void, unknown) are immutable and returned as-is.
- * Struct values are recursively deep-copied: a new StructValue is created with a cloned Dict
- * of fields (each field value is itself deep-copied).
+ * Struct values are recursively deep-copied: a new StructValue is created with a cloned field list.
  * For native structs, if a `snapshotNative` hook is registered on the type, it is called to
  * materialize the native handle (e.g., resolve a lazy resolver to a concrete value).
  * Otherwise the native handle is copied by reference.
@@ -196,19 +195,13 @@ function deepCopyValue(v: Value, types: ITypeRegistry, ctx: ExecutionContext, vi
   }
   visited.push(v);
 
-  // Deep-copy the fields Dict
+  // Deep-copy the field list.
   const oldFields = v.v;
-  let newFields: Dict<string, Value>;
+  const newFields = List.empty<Value>();
   if (oldFields && oldFields.size() > 0) {
-    const entries = oldFields.entries();
-    const copied: Array<readonly [string, Value]> = [];
-    for (let i = 0; i < entries.size(); i++) {
-      const entry = entries.get(i)!;
-      copied.push([entry[0], deepCopyValue(entry[1], types, ctx, visited)]);
+    for (let i = 0; i < oldFields.size(); i++) {
+      newFields.push(deepCopyValue(oldFields.get(i), types, ctx, visited));
     }
-    newFields = new Dict<string, Value>(copied);
-  } else {
-    newFields = new Dict<string, Value>();
   }
 
   // Snapshot the native handle if the type has a snapshotNative hook
@@ -502,6 +495,10 @@ export class VM implements IVM {
           return this.execStructSet(fiber, ins, frame);
         case Op.STRUCT_COPY_EXCEPT:
           return this.execStructCopyExcept(fiber, ins, frame);
+        case Op.STRUCT_GET_FIELD:
+          return this.execStructGetField(fiber, ins, frame);
+        case Op.STRUCT_SET_FIELD:
+          return this.execStructSetField(fiber, ins, frame);
         case Op.GET_FIELD:
           return this.execGetField(fiber, frame);
         case Op.SET_FIELD:
@@ -1406,9 +1403,29 @@ export class VM implements IVM {
   }
 
   // Struct operations
+  private findStructField(typeId: TypeId, fieldName: string): number | undefined {
+    const typeDef = this.services.types.get(typeId) as StructTypeDef | undefined;
+    return typeDef?.fieldIndexByName.get(fieldName);
+  }
+
+  private makeStructFields(typeId: TypeId): List<Value> {
+    const fields = List.empty<Value>();
+    const typeDef = this.services.types.get(typeId) as StructTypeDef | undefined;
+    const fieldCount = typeDef?.fields.size() ?? 0;
+    for (let i = 0; i < fieldCount; i++) {
+      fields.push(NIL_VALUE);
+    }
+    return fields;
+  }
+
   private execStructNew(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const numFields = ins.a ?? 0;
-    const fields = new Dict<string, Value>();
+    let typeId = "struct:<anonymous>";
+    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
+      typeId = this.prog.constantPools.strings.get(ins.b)!;
+    }
+
+    const fields = this.makeStructFields(typeId);
 
     for (let i = 0; i < numFields; i++) {
       const value = this.pop(fiber);
@@ -1416,13 +1433,10 @@ export class VM implements IVM {
       if (!isStringValue(fieldName)) {
         throw new Error("STRUCT_NEW: field name must be string");
       }
-      fields.set(fieldName.v, value);
-    }
-
-    // Use string-constant index b for typeId if provided, otherwise generic
-    let typeId = "struct:<anonymous>";
-    if (ins.b !== undefined && ins.b >= 0 && ins.b < this.prog.constantPools.strings.size()) {
-      typeId = this.prog.constantPools.strings.get(ins.b)!;
+      const fieldIndex = this.findStructField(typeId, fieldName.v);
+      if (fieldIndex !== undefined) {
+        fields.set(fieldIndex, value);
+      }
     }
 
     this.push(fiber, V.struct(fields, typeId));
@@ -1439,7 +1453,8 @@ export class VM implements IVM {
     if (!isStringValue(fieldName)) {
       throw new Error("STRUCT_GET: field name must be string");
     }
-    const value = struct.v?.get(fieldName.v);
+    const fieldIndex = this.findStructField(struct.typeId, fieldName.v);
+    const value = fieldIndex !== undefined ? struct.v?.get(fieldIndex) : undefined;
     this.push(fiber, value ?? V.nil());
     frame.pc++;
     return undefined;
@@ -1455,8 +1470,33 @@ export class VM implements IVM {
     if (!isStringValue(fieldName)) {
       throw new Error("STRUCT_SET: field name must be string");
     }
-    // Mutate in place for performance
-    struct.v?.set(fieldName.v, value);
+    const fieldIndex = this.findStructField(struct.typeId, fieldName.v);
+    if (fieldIndex !== undefined) {
+      struct.v?.set(fieldIndex, value);
+    }
+    this.push(fiber, struct);
+    frame.pc++;
+    return undefined;
+  }
+
+  private execStructGetField(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const fieldIndex = ins.a ?? 0;
+    const struct = this.pop(fiber);
+    if (!isStructValue(struct)) {
+      throw new Error("STRUCT_GET_FIELD: requires struct");
+    }
+    this.push(fiber, struct.v?.get(fieldIndex) ?? V.nil());
+    frame.pc++;
+    return undefined;
+  }
+
+  private execStructSetField(fiber: Fiber, ins: Instr, frame: Frame): undefined {
+    const value = this.pop(fiber);
+    const struct = this.pop(fiber);
+    if (!isStructValue(struct)) {
+      throw new Error("STRUCT_SET_FIELD: requires struct");
+    }
+    struct.v?.set(ins.a ?? 0, value);
     this.push(fiber, struct);
     frame.pc++;
     return undefined;
@@ -1482,16 +1522,33 @@ export class VM implements IVM {
       typeId = this.prog.constantPools.strings.get(ins.b)!;
     }
 
-    const fields = new Dict<string, Value>();
-    if (source.v) {
-      source.v.forEach((val, key) => {
-        if (!exclude.has(key)) {
-          fields.set(key, val);
+    let resultTypeId = typeId;
+    let fields = this.makeStructFields(resultTypeId);
+    const sourceDef = this.services.types.get(source.typeId) as StructTypeDef | undefined;
+    if (source.v && sourceDef && fields.size() === 0) {
+      resultTypeId = source.typeId;
+      fields = List.empty<Value>();
+      for (let i = 0; i < source.v.size(); i++) {
+        fields.push(source.v.get(i));
+      }
+    }
+    if (source.v && sourceDef) {
+      for (let i = 0; i < sourceDef.fields.size(); i++) {
+        const field = sourceDef.fields.get(i);
+        if (exclude.has(field.name)) {
+          if (resultTypeId === source.typeId) {
+            fields.set(field.fieldIndex, NIL_VALUE);
+          }
+        } else {
+          const targetFieldIndex = this.findStructField(resultTypeId, field.name);
+          if (targetFieldIndex !== undefined) {
+            fields.set(targetFieldIndex, source.v.get(field.fieldIndex));
+          }
         }
-      });
+      }
     }
 
-    this.push(fiber, V.struct(fields, typeId));
+    this.push(fiber, V.struct(fields, resultTypeId));
     frame.pc++;
     return undefined;
   }
@@ -1512,7 +1569,8 @@ export class VM implements IVM {
       if (typeDef?.fieldGetter) {
         result = typeDef.fieldGetter(source, fieldName.v, fiber.executionContext);
       } else {
-        result = source.v?.get(fieldName.v);
+        const fieldIndex = this.findStructField(source.typeId, fieldName.v);
+        result = fieldIndex !== undefined ? source.v?.get(fieldIndex) : undefined;
       }
     } else {
       result = NIL_VALUE;
@@ -1541,8 +1599,10 @@ export class VM implements IVM {
           throw new Error(`SET_FIELD: cannot set field '${fieldName.v}' on type ${source.typeId}`);
         }
       } else {
-        // Mutate in place for performance
-        source.v?.set(fieldName.v, value);
+        const fieldIndex = this.findStructField(source.typeId, fieldName.v);
+        if (fieldIndex !== undefined) {
+          source.v?.set(fieldIndex, value);
+        }
       }
       this.push(fiber, source);
     } else {

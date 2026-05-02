@@ -64,6 +64,18 @@ function mkScheduler(): Scheduler {
   };
 }
 
+function getStructField(source: StructValue, fieldName: string): Value | undefined {
+  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const fieldIndex = def?.fieldIndexByName.get(fieldName);
+  return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
+}
+
+function assertNumberField(source: StructValue, fieldName: string, expected: number, message?: string): void {
+  const value = getStructField(source, fieldName);
+  assert.ok(value && value.t === NativeType.Number, message ?? `expected numeric field '${fieldName}'`);
+  assert.equal((value as NumberValue).v, expected, message);
+}
+
 function mkArgsList(entries: Record<number, Value>): List<Value> {
   const args = List.empty<Value>();
   for (const [key, value] of Object.entries(entries)) {
@@ -498,8 +510,8 @@ export default Sensor({
       assert.ok(runResult.result);
       assert.ok(isStructValue(runResult.result), "expected struct value for rest");
       const rest = runResult.result as StructValue;
-      assert.equal((rest.v?.get("y") as NumberValue).v, 7, "rest should contain y=7");
-      assert.equal(rest.v?.get("x"), undefined, "rest should not contain x");
+      assertNumberField(rest, "y", 7, "rest should contain y=7");
+      assert.equal(getStructField(rest, "x"), NIL_VALUE, "rest should not contain x");
     }
   });
 
@@ -590,10 +602,10 @@ export default Sensor({
       assert.ok(runResult.result);
       assert.ok(isStructValue(runResult.result), "expected struct for rest");
       const rest = runResult.result as StructValue;
-      assert.equal(rest.v?.get("name"), undefined, "rest should not contain name");
-      const pos = rest.v?.get("pos");
+      assert.equal(getStructField(rest, "name"), NIL_VALUE, "rest should not contain name");
+      const pos = getStructField(rest, "pos");
       assert.ok(pos && isStructValue(pos), "rest should contain pos as struct");
-      assert.equal((rest.v?.get("health") as NumberValue).v, 100, "rest should contain health=100");
+      assertNumberField(rest, "health", 100, "rest should contain health=100");
     }
   });
 

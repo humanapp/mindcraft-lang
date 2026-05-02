@@ -313,6 +313,16 @@ export interface IBytecodeEmitter {
    */
   structSet(): void;
 
+  /**
+   * Get field from a closed struct by `StructFieldDef.fieldIndex`.
+   */
+  structGetField(fieldIndex: number): void;
+
+  /**
+   * Set field on a closed struct by `StructFieldDef.fieldIndex`.
+   */
+  structSetField(fieldIndex: number): void;
+
   // ==========================================
   // Generic field access
   // ==========================================

@@ -1,3 +1,4 @@
+import type { Dict } from "../../platform/dict";
 import type { List } from "../../platform/list";
 import type { StructFieldGetterFn, StructFieldSetterFn, StructSnapshotNativeFn } from "./vm";
 
@@ -145,9 +146,9 @@ export interface StructTypeShape {
   fields: List<StructFieldInput>;
   /** If true, the struct requires exact TypeId match (no structural subtyping). */
   nominal?: boolean;
-  /** If provided, GET_FIELD delegates to this instead of Dict lookup. */
+  /** If provided, GET_FIELD delegates to this instead of indexed field lookup. */
   fieldGetter?: StructFieldGetterFn;
-  /** If provided, SET_FIELD delegates to this instead of Dict mutation. */
+  /** If provided, SET_FIELD delegates to this instead of indexed field mutation. */
   fieldSetter?: StructFieldSetterFn;
   /**
    * If provided, called during deep-copy (assignment) to materialize the `native` handle.
@@ -166,6 +167,8 @@ export interface StructTypeShape {
  */
 export interface StructTypeDef extends TypeDef, Omit<StructTypeShape, "fields"> {
   fields: List<StructFieldDef>;
+  /** Maps field names to their {@link StructFieldDef.fieldIndex} for name-based access to indexed storage. */
+  fieldIndexByName: Dict<string, number>;
 }
 
 /** Shape fields specific to nullable types. */

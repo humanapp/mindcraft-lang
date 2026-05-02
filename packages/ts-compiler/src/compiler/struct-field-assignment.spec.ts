@@ -14,6 +14,7 @@ import {
   NIL_VALUE,
   type NumberValue,
   runtime,
+  type StructTypeDef,
   type StructValue,
   type Value,
   ValueDict,
@@ -46,6 +47,18 @@ function mkScheduler(): Scheduler {
     enqueueRunnable: () => {},
     getFiber: () => undefined,
   };
+}
+
+function getStructField(source: StructValue, fieldName: string): Value | undefined {
+  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const fieldIndex = def?.fieldIndexByName.get(fieldName);
+  return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
+}
+
+function assertNumberField(source: StructValue, fieldName: string, expected: number): void {
+  const value = getStructField(source, fieldName);
+  assert.ok(value && value.t === NativeType.Number, `expected numeric field '${fieldName}'`);
+  assert.equal((value as NumberValue).v, expected);
 }
 
 describe("struct field assignment", () => {
@@ -165,8 +178,8 @@ export default Sensor({
     assert.ok(runResult.result);
     assert.ok(isStructValue(runResult.result!));
     const pos = runResult.result as StructValue;
-    assert.equal((pos.v?.get("x") as NumberValue).v, 30);
-    assert.equal((pos.v?.get("y") as NumberValue).v, 40);
+    assertNumberField(pos, "x", 30);
+    assertNumberField(pos, "y", 40);
   });
 });
 
@@ -550,7 +563,7 @@ export default Sensor({
     // returned Vector2 should match final position
     assert.ok(isStructValue(runResult.result!));
     const pos = runResult.result as StructValue;
-    assert.equal((pos.v?.get("x") as NumberValue).v, 12);
-    assert.equal((pos.v?.get("y") as NumberValue).v, 8);
+    assertNumberField(pos, "x", 12);
+    assertNumberField(pos, "y", 8);
   });
 });

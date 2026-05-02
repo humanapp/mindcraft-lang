@@ -237,7 +237,11 @@ export function emitFunction(
         break;
       }
       case "StructSet":
-        emitter.structSet();
+        if (node.fieldIndex !== undefined) {
+          emitter.structSetField(node.fieldIndex);
+        } else {
+          emitter.structSet();
+        }
         break;
       case "StructCopyExcept": {
         const typeIdIdx = pool.addString(node.typeId);
@@ -277,16 +281,24 @@ export function emitFunction(
         emitter.listSwap();
         break;
       case "GetField": {
-        const fieldIdx = pool.addString(node.fieldName);
-        emitter.pushConstStr(fieldIdx);
-        emitter.getField();
+        if (node.fieldIndex !== undefined) {
+          emitter.structGetField(node.fieldIndex);
+        } else {
+          const fieldIdx = pool.addString(node.fieldName);
+          emitter.pushConstStr(fieldIdx);
+          emitter.getField();
+        }
         break;
       }
       case "GetFieldDynamic":
         emitter.getField();
         break;
       case "SetField":
-        emitter.setField();
+        if (node.fieldIndex !== undefined) {
+          emitter.structSetField(node.fieldIndex);
+        } else {
+          emitter.setField();
+        }
         break;
       case "TypeCheck":
         emitter.typeCheck(node.nativeType);
@@ -597,8 +609,12 @@ function stackEffect(node: IrNode): { pops: number; pushes: number } {
       return { pops: 2, pushes: 1 };
 
     case "SetField":
-    case "MapSet":
+      return { pops: node.fieldIndex !== undefined ? 2 : 3, pushes: 1 };
+
     case "StructSet":
+      return { pops: node.fieldIndex !== undefined ? 2 : 3, pushes: 1 };
+
+    case "MapSet":
     case "ListSet":
       return { pops: 3, pushes: 1 };
 

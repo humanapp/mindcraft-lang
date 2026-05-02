@@ -3694,7 +3694,7 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
         }
       }
 
-      const field = lhsStruct.fields.find((f) => f.name === fName);
+      const field = findStructField(lhsStruct, fName);
       if (field?.readOnly) {
         ctx.diagnostics.push(
           makeDiag(LoweringDiagCode.ReadOnlyFieldAssignment, `Cannot assign to read-only field '${fName}'`, expr.left)
@@ -3704,9 +3704,13 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
       if (field) {
         if (expr.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
           lowerExpression(expr.left.expression, ctx);
-          ctx.ir.push({ kind: "PushConst", value: mkStringValue(fName) });
+          if (!isIndexedStruct(lhsStruct)) {
+            ctx.ir.push({ kind: "PushConst", value: mkStringValue(fName) });
+          }
           lowerExpression(expr.right, ctx);
-          ctx.ir.push({ kind: "SetField" });
+          ctx.ir.push(
+            isIndexedStruct(lhsStruct) ? { kind: "SetField", fieldIndex: field.fieldIndex } : { kind: "SetField" }
+          );
           return;
         }
 
@@ -3753,12 +3757,20 @@ function lowerAssignment(expr: ts.BinaryExpression, ctx: LowerContext): void {
         lowerExpression(expr.left.expression, ctx);
         ctx.ir.push({ kind: "StoreLocal", index: tempObj });
         ctx.ir.push({ kind: "LoadLocal", index: tempObj });
-        ctx.ir.push({ kind: "PushConst", value: mkStringValue(fName) });
+        if (!isIndexedStruct(lhsStruct)) {
+          ctx.ir.push({ kind: "PushConst", value: mkStringValue(fName) });
+        }
         ctx.ir.push({ kind: "LoadLocal", index: tempObj });
-        ctx.ir.push({ kind: "GetField", fieldName: fName });
+        ctx.ir.push(
+          isIndexedStruct(lhsStruct)
+            ? { kind: "GetField", fieldName: fName, fieldIndex: field.fieldIndex }
+            : { kind: "GetField", fieldName: fName }
+        );
         lowerExpression(expr.right, ctx);
         ctx.ir.push({ kind: "HostCall", fnName: opFnName, argc: 2 });
-        ctx.ir.push({ kind: "SetField" });
+        ctx.ir.push(
+          isIndexedStruct(lhsStruct) ? { kind: "SetField", fieldIndex: field.fieldIndex } : { kind: "SetField" }
+        );
         return;
       }
 
@@ -4026,6 +4038,9 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
     }
   }
 
+  const field = structDef ? findStructField(structDef, fieldName) : undefined;
+  const fieldIndex = field && structDef && isIndexedStruct(structDef) ? field.fieldIndex : undefined;
+
   if (expr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) {
     const opId = compoundAssignmentToOpId(expr.operatorToken.kind);
     if (!opId) {
@@ -4068,21 +4083,27 @@ function lowerThisFieldAssignment(expr: ts.BinaryExpression, ctx: LowerContext):
     }
 
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
-    ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    if (fieldIndex === undefined) {
+      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    }
     ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
-    ctx.ir.push({ kind: "GetField", fieldName });
+    ctx.ir.push(
+      fieldIndex !== undefined ? { kind: "GetField", fieldName, fieldIndex } : { kind: "GetField", fieldName }
+    );
     lowerExpression(expr.right, ctx);
     ctx.ir.push({ kind: "HostCall", fnName, argc: 2 });
-    ctx.ir.push({ kind: "StructSet" });
+    ctx.ir.push(fieldIndex !== undefined ? { kind: "StructSet", fieldIndex } : { kind: "StructSet" });
     ctx.ir.push({ kind: "Dup" });
     ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
     return;
   }
 
   ctx.ir.push({ kind: "LoadLocal", index: ctx.thisLocalIndex });
-  ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+  if (fieldIndex === undefined) {
+    ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+  }
   lowerExpression(expr.right, ctx);
-  ctx.ir.push({ kind: "StructSet" });
+  ctx.ir.push(fieldIndex !== undefined ? { kind: "StructSet", fieldIndex } : { kind: "StructSet" });
   ctx.ir.push({ kind: "Dup" });
   ctx.ir.push({ kind: "StoreLocal", index: ctx.thisLocalIndex });
 }
@@ -7786,8 +7807,8 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
         return;
       }
     }
-    const hasField = structDef.fields.toArray().some((f) => f.name === fieldName);
-    if (!hasField) {
+    const field = findStructField(structDef, fieldName);
+    if (!field) {
       ctx.diagnostics.push(
         makeDiag(
           LoweringDiagCode.PropertyNotOnStruct,
@@ -7799,7 +7820,11 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, ctx: LowerContex
     }
     lowerExpression(expr.expression, ctx);
     const guard = isOptChain ? emitNilGuard(ctx) : undefined;
-    ctx.ir.push({ kind: "GetField", fieldName });
+    ctx.ir.push(
+      isIndexedStruct(structDef)
+        ? { kind: "GetField", fieldName, fieldIndex: field.fieldIndex }
+        : { kind: "GetField", fieldName }
+    );
     if (guard) ctx.ir.push({ kind: "Label", labelId: guard.endLabel });
     return;
   }
@@ -8104,6 +8129,15 @@ function isNativeBackedStruct(def: StructTypeDef): boolean {
   return def.fieldGetter !== undefined || def.fieldSetter !== undefined || def.snapshotNative !== undefined;
 }
 
+function findStructField(def: StructTypeDef, fieldName: string) {
+  const fieldIndex = def.fieldIndexByName.get(fieldName);
+  return fieldIndex !== undefined ? def.fields.get(fieldIndex) : undefined;
+}
+
+function isIndexedStruct(def: StructTypeDef): boolean {
+  return !isNativeBackedStruct(def);
+}
+
 function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, ctx: LowerContext): void {
   const contextualType = ctx.checker.getContextualType(expr);
   const resolvedType = contextualType ?? ctx.checker.getTypeAtLocation(expr);
@@ -8213,16 +8247,30 @@ function lowerObjectLiteralAsStruct(
         );
         return;
       }
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      const field = findStructField(structDef, fieldName);
+      if (!field || !isIndexedStruct(structDef)) {
+        ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      }
       lowerClosureExpression(prop, ctx);
-      ctx.ir.push({ kind: "StructSet" });
+      ctx.ir.push(
+        field && isIndexedStruct(structDef)
+          ? { kind: "StructSet", fieldIndex: field.fieldIndex }
+          : { kind: "StructSet" }
+      );
       continue;
     }
     if (ts.isShorthandPropertyAssignment(prop)) {
       const fieldName = prop.name.text;
-      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      const field = findStructField(structDef, fieldName);
+      if (!field || !isIndexedStruct(structDef)) {
+        ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+      }
       lowerExpression(prop.name, ctx);
-      ctx.ir.push({ kind: "StructSet" });
+      ctx.ir.push(
+        field && isIndexedStruct(structDef)
+          ? { kind: "StructSet", fieldIndex: field.fieldIndex }
+          : { kind: "StructSet" }
+      );
       continue;
     }
     if (ts.isSpreadAssignment(prop)) {
@@ -8237,11 +8285,24 @@ function lowerObjectLiteralAsStruct(
       lowerExpression(prop.expression, ctx);
       const tempLocal = ctx.scopeStack.allocLocal();
       ctx.ir.push({ kind: "StoreLocal", index: tempLocal });
+      const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.checker);
       for (const sym of properties) {
-        ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
+        const targetField = findStructField(structDef, sym.name);
+        if (!targetField || !isIndexedStruct(structDef)) {
+          ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
+        }
         ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
-        ctx.ir.push({ kind: "GetField", fieldName: sym.name });
-        ctx.ir.push({ kind: "StructSet" });
+        const sourceField = sourceStruct ? findStructField(sourceStruct, sym.name) : undefined;
+        ctx.ir.push(
+          sourceStruct && sourceField && isIndexedStruct(sourceStruct)
+            ? { kind: "GetField", fieldName: sym.name, fieldIndex: sourceField.fieldIndex }
+            : { kind: "GetField", fieldName: sym.name }
+        );
+        ctx.ir.push(
+          targetField && isIndexedStruct(structDef)
+            ? { kind: "StructSet", fieldIndex: targetField.fieldIndex }
+            : { kind: "StructSet" }
+        );
       }
       continue;
     }
@@ -8270,9 +8331,14 @@ function lowerObjectLiteralAsStruct(
       );
       return;
     }
-    ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    const field = findStructField(structDef, fieldName);
+    if (!field || !isIndexedStruct(structDef)) {
+      ctx.ir.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    }
     lowerExpression(prop.initializer, ctx);
-    ctx.ir.push({ kind: "StructSet" });
+    ctx.ir.push(
+      field && isIndexedStruct(structDef) ? { kind: "StructSet", fieldIndex: field.fieldIndex } : { kind: "StructSet" }
+    );
   }
 }
 
@@ -8304,7 +8370,13 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
         ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
         ctx.ir.push({ kind: "LoadLocal", index: tempLocal });
         if (sourceIsStruct) {
-          ctx.ir.push({ kind: "GetField", fieldName: sym.name });
+          const sourceStruct = resolveStructType(spreadType, ctx.services, ctx.checker);
+          const sourceField = sourceStruct ? findStructField(sourceStruct, sym.name) : undefined;
+          ctx.ir.push(
+            sourceStruct && sourceField && isIndexedStruct(sourceStruct)
+              ? { kind: "GetField", fieldName: sym.name, fieldIndex: sourceField.fieldIndex }
+              : { kind: "GetField", fieldName: sym.name }
+          );
         } else {
           ctx.ir.push({ kind: "PushConst", value: mkStringValue(sym.name) });
           ctx.ir.push({ kind: "MapGet" });
@@ -9242,10 +9314,15 @@ function lowerClassDeclaration(
     if (!member.initializer) continue;
 
     const fieldName = member.name.text;
+    const structDef = typeId ? (services.types.get(typeId) as StructTypeDef | undefined) : undefined;
+    const field = structDef ? findStructField(structDef, fieldName) : undefined;
+    const fieldIndex = field && structDef && isIndexedStruct(structDef) ? field.fieldIndex : undefined;
     ctorIr.push({ kind: "LoadLocal", index: thisLocal });
-    ctorIr.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    if (fieldIndex === undefined) {
+      ctorIr.push({ kind: "PushConst", value: mkStringValue(fieldName) });
+    }
     lowerExpression(member.initializer, ctorCtx);
-    ctorIr.push({ kind: "StructSet" });
+    ctorIr.push(fieldIndex !== undefined ? { kind: "StructSet", fieldIndex } : { kind: "StructSet" });
     ctorIr.push({ kind: "StoreLocal", index: thisLocal });
   }
 

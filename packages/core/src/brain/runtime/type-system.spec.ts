@@ -851,6 +851,9 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     for (let i = 0; i < def.fields.size(); i++) {
       assert.equal(def.fields.get(i).fieldIndex, i, `field ${i} fieldIndex mismatch`);
     }
+    assert.equal(def.fieldIndexByName.get("x"), 0);
+    assert.equal(def.fieldIndexByName.get("y"), 1);
+    assert.equal(def.fieldIndexByName.get("label"), 2);
   });
 
   test("finalizeStructType assigns sequential fieldIndex on the reserved type", () => {
@@ -866,6 +869,8 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     for (let i = 0; i < def.fields.size(); i++) {
       assert.equal(def.fields.get(i).fieldIndex, i);
     }
+    assert.equal(def.fieldIndexByName.get("a"), 0);
+    assert.equal(def.fieldIndexByName.get("b"), 1);
   });
 
   test("addStructFields continues fieldIndex from existing tail", () => {
@@ -888,6 +893,9 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
     assert.equal(def.fields.get(0).name, "first");
     assert.equal(def.fields.get(1).name, "second");
     assert.equal(def.fields.get(2).name, "third");
+    assert.equal(def.fieldIndexByName.get("first"), 0);
+    assert.equal(def.fieldIndexByName.get("second"), 1);
+    assert.equal(def.fieldIndexByName.get("third"), 2);
   });
 
   test("forEach iteration order matches fieldIndex", () => {

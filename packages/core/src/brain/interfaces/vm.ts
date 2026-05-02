@@ -1,11 +1,11 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
-import type { List, ReadonlyList } from "../../platform/list";
+import { List, type ReadonlyList } from "../../platform/list";
 import { Time } from "../../platform/time";
 import { UniqueSet } from "../../platform/uniqueset";
 import { EventEmitter } from "../../util/event-emitter";
 import type { ActionInstance, ExecutionContext } from "./runtime";
-import { NativeType, type TypeId } from "./type-system";
+import { NativeType, type StructTypeDef, type TypeId } from "./type-system";
 
 ///////////////////////////
 // Capacity-violation signaling
@@ -217,8 +217,8 @@ export type EnumValue = { t: NativeType.Enum; typeId: TypeId; v: string };
 export type ListValue = { t: NativeType.List; typeId: TypeId; v: List<Value> };
 /** Brain runtime map value. */
 export type MapValue = { t: NativeType.Map; typeId: TypeId; v: ValueDict };
-/** Brain runtime struct value. `v` holds field values; `native` holds an optional host-backing object. */
-export type StructValue = { t: NativeType.Struct; typeId: TypeId; v?: Dict<string, Value>; native?: unknown };
+/** Brain runtime struct value. `v` holds closed-struct field values indexed by `fieldIndex`. */
+export type StructValue = { t: NativeType.Struct; typeId: TypeId; v?: List<Value>; native?: unknown };
 /** Brain runtime function value: function id plus optional captured upvalues. */
 export type FunctionValue = { t: NativeType.Function; funcId: number; captures?: List<Value> };
 
@@ -261,13 +261,37 @@ export function mkNumberValue(n: number): NumberValue {
 export function mkStringValue(str: string): StringValue {
   return { t: NativeType.String, v: str };
 }
-/** Build a {@link StructValue} with explicit fields and optional `native` backing. */
-export function mkStructValue(typeId: TypeId, fields: Dict<string, Value>, native?: unknown): StructValue {
-  return { t: NativeType.Struct, typeId, v: fields, native };
+/** Build a closed {@link StructValue} with fields ordered by `StructFieldDef.fieldIndex`. */
+export function mkClosedStructValue(typeId: TypeId, fieldsByIndex: List<Value>): StructValue {
+  return { t: NativeType.Struct, typeId, v: fieldsByIndex };
+}
+/** Build a closed {@link StructValue} by resolving field names through a registered struct definition. */
+export function mkClosedStructValueByName(typeDef: StructTypeDef, fieldsByName: Dict<string, Value>): StructValue {
+  const fieldsByIndex = List.empty<Value>();
+  for (let i = 0; i < typeDef.fields.size(); i++) {
+    fieldsByIndex.push(NIL_VALUE);
+  }
+  fieldsByName.forEach((value, fieldName) => {
+    const fieldIndex = typeDef.fieldIndexByName.get(fieldName);
+    if (fieldIndex === undefined) {
+      throw new Error(`Unknown field '${fieldName}' on struct type ${typeDef.typeId}`);
+    }
+    fieldsByIndex.set(fieldIndex, value);
+  });
+  return mkClosedStructValue(typeDef.typeId, fieldsByIndex);
+}
+/** Read a closed {@link StructValue} field by name through a registered struct definition. */
+export function getClosedStructFieldByName(
+  typeDef: StructTypeDef,
+  source: StructValue,
+  fieldName: string
+): Value | undefined {
+  const fieldIndex = typeDef.fieldIndexByName.get(fieldName);
+  return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
 }
 /** Build a native-backed {@link StructValue} with no field map. */
 export function mkNativeStructValue(typeId: TypeId, native: unknown): StructValue {
-  return { t: NativeType.Struct, typeId, v: new Dict<string, Value>(), native };
+  return { t: NativeType.Struct, typeId, v: List.empty<Value>(), native };
 }
 /** Build a {@link ListValue}. */
 export function mkListValue(typeId: TypeId, items: List<Value>): ListValue {
@@ -453,6 +477,8 @@ export enum Op {
   STRUCT_GET,
   STRUCT_SET,
   STRUCT_COPY_EXCEPT,
+  STRUCT_GET_FIELD,
+  STRUCT_SET_FIELD,
 
   // Generic field access (works with Struct, extensible for custom types)
   GET_FIELD = 120,
@@ -516,8 +542,7 @@ export interface ConstantPools {
   /**
    * Raw `string` values pushed by `PUSH_CONST_STR`, and used directly
    * (without `Value` wrapping) as the typeId payload for `INSTANCE_OF.a`,
-   * `LIST_NEW.b`, `MAP_NEW.b`, `STRUCT_NEW.b`, `STRUCT_COPY_EXCEPT.b`,
-   * and as the field-name payload for `GET_FIELD.a` / `SET_FIELD.a`.
+   * `LIST_NEW.b`, `MAP_NEW.b`, `STRUCT_NEW.b`, and `STRUCT_COPY_EXCEPT.b`.
    */
   strings: List<string>;
   /**

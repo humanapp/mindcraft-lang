@@ -208,6 +208,28 @@ not addressable from bytecode (no `LOAD_VAR_SLOT` operand can
 target it) and is dropped on the next `installVariableTable` (i.e.
 hot-reload).
 
+### Struct field access
+
+| Mnemonic           | Numeric | Operands              | Stack effect              | Faults                                      |
+| ------------------ | ------- | --------------------- | ------------------------- | ------------------------------------------- |
+| `STRUCT_GET_FIELD` | 114     | `fieldIndex: u16` (`a`) | `[struct] -> [value]`     | `ScriptError` if the source is not struct.  |
+| `STRUCT_SET_FIELD` | 115     | `fieldIndex: u16` (`a`) | `[struct, value] -> [struct]` | `ScriptError` if the source is not struct. |
+| `GET_FIELD`        | 120     | none                  | `[source, fieldName] -> [value]` | `ScriptError` if `fieldName` is not string. |
+| `SET_FIELD`        | 121     | none                  | `[source, fieldName, value] -> [source]` | `ScriptError` if `fieldName` is not string or the source rejects the write. |
+
+Closed structs store field values in `StructValue.v: List<Value>`,
+indexed by `StructFieldDef.fieldIndex`. Compilers emit
+`STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` when type information proves
+the source is a closed struct. Missing list entries read as `nil`.
+
+Native-backed and open structs use the name-keyed `GET_FIELD` /
+`SET_FIELD` family. For native-backed structs, the VM delegates to
+the registered `fieldGetter` / `fieldSetter` hooks. Name-keyed access
+to a closed struct is still defined by looking up the field name in
+`StructTypeDef.fieldIndexByName` and then indexing `StructValue.v`; this is
+for dynamic field-name paths and compatibility within the opcode set,
+not the preferred static lowering.
+
 ---
 
 ## Value model
@@ -222,10 +244,10 @@ reserved type, and `addStructFields` extending an existing type), and
 field iteration order matches `fieldIndex` order.
 
 `fieldIndex` is the field's stable, zero-based id within its struct
-type. Future indexed-field opcodes (`STRUCT_GET_FIELD <idx>` /
-`STRUCT_SET_FIELD <idx>`) take a `fieldIndex` directly as their
-operand. Consumers that need a stable per-field id should use
-`fieldIndex` rather than the field's name string.
+type. `STRUCT_GET_FIELD <idx>` / `STRUCT_SET_FIELD <idx>` take a
+`fieldIndex` directly as their operand. Consumers that need a stable
+per-field id should use `fieldIndex` rather than the field's name
+string.
 
 ### Constant pool layout
 
@@ -237,8 +259,7 @@ parallel sub-pools each have an independent index space:
 - `constantPools.strings: List<string>` -- raw `string` values pushed by
   `PUSH_CONST_STR`. Also used directly (without wrapping) as the
   typeId payload for `INSTANCE_OF.a`, `LIST_NEW.b`, `MAP_NEW.b`,
-  `STRUCT_NEW.b`, and `STRUCT_COPY_EXCEPT.b`, and as the field-name
-  payload for `GET_FIELD.a` / `SET_FIELD.a`.
+  `STRUCT_NEW.b`, and `STRUCT_COPY_EXCEPT.b`.
 - `constantPools.values: List<Value>` -- residual pool for tagged values
   that do not fit the typed pools (e.g. `BoolValue`, `NilValue`,
   `FunctionValue`, `StructValue`). Pushed by `PUSH_CONST_VAL`.

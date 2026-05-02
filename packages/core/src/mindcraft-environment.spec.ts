@@ -88,6 +88,7 @@ function createAlphaModule(capture: {
         codec: noopCodec,
         name: "AlphaThing",
         fields: List.empty(),
+        fieldIndexByName: new Dict<string, number>(),
       };
       capture.typeId = api.defineType(alphaDef);
 

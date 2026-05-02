@@ -4,16 +4,18 @@ import {
   Dict,
   type ExecutionContext,
   extractNumberValue,
+  getClosedStructFieldByName,
   List,
   type MindcraftModuleApi,
   mkCallDef,
+  mkClosedStructValueByName,
   mkNativeStructValue,
   mkNumberValue,
-  mkStructValue,
   mkTypeId,
   NativeType,
   type NumberValue,
   type ReadonlyList,
+  type StructTypeDef,
   type StructValue,
   TypeUtils,
   type Value,
@@ -33,13 +35,28 @@ export const SimTypeIds = {
   Vector2: mkTypeId(NativeType.Struct, SimTypeNames.Vector2),
 };
 
+const Vector2Fields = List.from([
+  { name: "x", typeId: CoreTypeIds.Number },
+  { name: "y", typeId: CoreTypeIds.Number },
+]);
+
+let vector2TypeDef: StructTypeDef | undefined;
+
+function requireVector2TypeDef(): StructTypeDef {
+  if (!vector2TypeDef) {
+    throw new Error("Vector2 type is not registered");
+  }
+  return vector2TypeDef;
+}
+
 // -------------------------------------------------------
 // Vector2 helpers
 // -------------------------------------------------------
 
 export function mkVector2Value(v: Vector2) {
-  return mkStructValue(
-    SimTypeIds.Vector2,
+  const typeDef = requireVector2TypeDef();
+  return mkClosedStructValueByName(
+    typeDef,
     new Dict([
       ["x", mkNumberValue(v.X)],
       ["y", mkNumberValue(v.Y)],
@@ -51,8 +68,11 @@ export function extractVector2(value: StructValue): Vector2 | undefined {
   if (value.t !== NativeType.Struct || value.typeId !== SimTypeIds.Vector2) {
     return undefined;
   }
-  const xField = value.v?.get("x") as NumberValue | undefined;
-  const yField = value.v?.get("y") as NumberValue | undefined;
+  if (!vector2TypeDef) {
+    return undefined;
+  }
+  const xField = getClosedStructFieldByName(vector2TypeDef, value, "x") as NumberValue | undefined;
+  const yField = getClosedStructFieldByName(vector2TypeDef, value, "y") as NumberValue | undefined;
   if (xField && yField && xField.t === NativeType.Number && yField.t === NativeType.Number) {
     return new Vector2(xField.v, yField.v);
   }
@@ -146,7 +166,7 @@ function actorRefFieldSetter(source: StructValue, fieldName: string, value: Valu
  * Example: `mkActorRefResolver(getSelf)` for the [me] tile.
  */
 export function mkActorRefResolver(resolver: (ctx: ExecutionContext) => Actor | undefined): StructValue {
-  return mkStructValue(SimTypeIds.ActorRef, new Dict(), resolver);
+  return mkNativeStructValue(SimTypeIds.ActorRef, resolver);
 }
 
 /**
@@ -154,7 +174,7 @@ export function mkActorRefResolver(resolver: (ctx: ExecutionContext) => Actor | 
  * Use this for literal actor tiles where the user picked a specific actor.
  */
 export function mkActorRefDirect(actor: Actor): StructValue {
-  return mkStructValue(SimTypeIds.ActorRef, new Dict(), actor);
+  return mkNativeStructValue(SimTypeIds.ActorRef, actor);
 }
 
 export function registerTypes(api: MindcraftModuleApi) {
@@ -162,13 +182,14 @@ export function registerTypes(api: MindcraftModuleApi) {
     coreType: NativeType.Struct,
     typeId: SimTypeIds.Vector2,
     name: SimTypeNames.Vector2,
-    fields: List.from([
-      { name: "x", typeId: CoreTypeIds.Number },
-      { name: "y", typeId: CoreTypeIds.Number },
-    ]),
+    fields: Vector2Fields,
     accessors: true,
     variableFactory: true,
   });
+  vector2TypeDef = api.brainServices.types.get(SimTypeIds.Vector2) as StructTypeDef | undefined;
+  if (!vector2TypeDef) {
+    throw new Error("Vector2 type registration failed");
+  }
 
   api.defineType({
     coreType: NativeType.Struct,

@@ -40,7 +40,7 @@ import {
   mkFunctionValue,
   mkNumberValue,
   mkStringValue,
-  mkStructValue,
+  mkTypeId,
   NativeType,
   NIL_VALUE,
   type NumberValue,
@@ -114,6 +114,86 @@ function mkSchedulerCallbacks() {
 }
 
 // ---- Stack operations ----
+
+describe("VM -- closed struct field opcodes", () => {
+  test("STRUCT_SET_FIELD and STRUCT_GET_FIELD use fieldIndex slots", () => {
+    const typeId = mkTypeId(NativeType.Struct, "IndexedPair");
+    if (!services.types.get(typeId)) {
+      services.types.addStructType("IndexedPair", {
+        fields: List.from([
+          { name: "left", typeId: CoreTypeIds.Number },
+          { name: "right", typeId: CoreTypeIds.Number },
+        ]),
+      });
+    }
+    const prog: Program = {
+      version: BYTECODE_VERSION,
+      functions: List.from([
+        mkFunc([
+          { op: Op.STRUCT_NEW, b: 0 },
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.STRUCT_SET_FIELD, a: 1 },
+          { op: Op.STRUCT_GET_FIELD, a: 1 },
+          { op: Op.RET },
+        ]),
+      ]),
+      constantPools: {
+        numbers: List.empty<number>(),
+        strings: List.from([typeId]),
+        values: List.from([mkNumberValue(42)]),
+      },
+      variableNames: List.empty<string>(),
+      entryPoint: 0,
+    };
+    const vm = new VM(services, prog, new HandleTable(100));
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 42);
+    }
+  });
+
+  test("GET_FIELD remains name-keyed for native-backed structs", () => {
+    const typeId = mkTypeId(NativeType.Struct, "V33NativePoint");
+    if (!services.types.get(typeId)) {
+      services.types.addStructType("V33NativePoint", {
+        fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
+        fieldGetter: (source, fieldName) => {
+          if (fieldName === "x") {
+            return mkNumberValue((source.native as { x: number }).x);
+          }
+          return undefined;
+        },
+      });
+    }
+    const prog = mkProgram(
+      [
+        mkFunc([
+          { op: Op.PUSH_CONST_VAL, a: 0 },
+          { op: Op.PUSH_CONST_STR, a: 0 },
+          { op: Op.GET_FIELD },
+          { op: Op.RET },
+        ]),
+      ],
+      [{ t: NativeType.Struct, typeId, native: { x: 77 }, v: List.empty<Value>() }]
+    );
+    prog.constantPools.strings.push("x");
+    const vm = new VM(services, prog, new HandleTable(100));
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+
+    assert.equal(result.status, VmStatus.DONE);
+    if (result.status === VmStatus.DONE) {
+      assert.equal((result.result as NumberValue).v, 77);
+    }
+  });
+});
 
 describe("VM -- stack operations", () => {
   test("PUSH_CONST pushes constant onto stack", () => {

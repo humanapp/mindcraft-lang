@@ -375,6 +375,16 @@ export class BytecodeEmitter implements IBytecodeEmitter {
     this.emit({ op: Op.STRUCT_COPY_EXCEPT, a: numExclude, b: typeIdConstIdx });
   }
 
+  /** Get a closed-struct field by field index. */
+  structGetField(fieldIndex: number): void {
+    this.emit({ op: Op.STRUCT_GET_FIELD, a: fieldIndex });
+  }
+
+  /** Set a closed-struct field by field index. */
+  structSetField(fieldIndex: number): void {
+    this.emit({ op: Op.STRUCT_SET_FIELD, a: fieldIndex });
+  }
+
   // ==========================================
   // Generic field access
   // ==========================================

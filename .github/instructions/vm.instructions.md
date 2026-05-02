@@ -41,7 +41,7 @@ The brain VM (`packages/core/src/brain/runtime/`) is a stack-based bytecode virt
 | 70-73   | Boundaries | `WHEN_START`, `WHEN_END`, `DO_START`, `DO_END`                                                       |
 | 90-99   | Lists      | `LIST_NEW`, `LIST_PUSH`, `LIST_GET`, `LIST_SET`, `LIST_LEN`, `LIST_POP`, `LIST_SHIFT`, `LIST_REMOVE`, `LIST_INSERT`, `LIST_SWAP` |
 | 100-104 | Maps       | `MAP_NEW`, `MAP_SET`, `MAP_GET`, `MAP_HAS`, `MAP_DELETE`                                             |
-| 110-113 | Structs    | `STRUCT_NEW`, `STRUCT_GET`, `STRUCT_SET`, `STRUCT_COPY_EXCEPT`                                       |
+| 110-115 | Structs    | `STRUCT_NEW`, `STRUCT_GET`, `STRUCT_SET`, `STRUCT_COPY_EXCEPT`, `STRUCT_GET_FIELD`, `STRUCT_SET_FIELD` |
 | 120-121 | Fields     | `GET_FIELD`, `SET_FIELD`                                                                             |
 | 130-131 | Locals     | `LOAD_LOCAL`, `STORE_LOCAL`                                                                          |
 | 140-141 | Callsite   | `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR`                                                            |
@@ -141,8 +141,8 @@ Singletons: `UNKNOWN_VALUE`, `VOID_VALUE`, `NIL_VALUE`, `TRUE_VALUE`, `FALSE_VAL
 
 ### StructValue and Field Hooks
 
-`STRUCT_GET`/`STRUCT_SET` access `struct.v` (the raw `Dict<string, Value>`) directly.
-`GET_FIELD`/`SET_FIELD` go through `fieldGetter`/`fieldSetter` hooks registered on the `StructTypeDef`, enabling native-backed struct types.
+`STRUCT_GET`/`STRUCT_SET` resolve field names through `StructTypeDef.fieldIndexByName` and then access `struct.v` (the indexed `List<Value>`).
+`GET_FIELD`/`SET_FIELD` go through `fieldGetter`/`fieldSetter` hooks registered on the `StructTypeDef` when present, enabling native-backed struct types; otherwise they use `fieldIndexByName`.
 
 ## Fiber Lifecycle
 

@@ -226,6 +226,7 @@ export interface IrStructNew extends IrNodeBase {
 /** Set a field on a struct: pop value, field name, and struct. */
 export interface IrStructSet extends IrNodeBase {
   kind: "StructSet";
+  fieldIndex?: number;
 }
 
 /** Copy a struct of type `typeId` while excluding the top `numExclude` field names from the stack. */
@@ -333,6 +334,7 @@ export interface IrLoadCapture extends IrNodeBase {
 export interface IrGetField extends IrNodeBase {
   kind: "GetField";
   fieldName: string;
+  fieldIndex?: number;
 }
 
 /** Pop a field-name string and a struct, push the field's value. */
@@ -343,4 +345,5 @@ export interface IrGetFieldDynamic extends IrNodeBase {
 /** Pop a value, a field-name string, and a struct, then store the value. */
 export interface IrSetField extends IrNodeBase {
   kind: "SetField";
+  fieldIndex?: number;
 }

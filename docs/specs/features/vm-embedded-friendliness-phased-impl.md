@@ -1,6 +1,6 @@
 # VM Embedded-Friendliness -- Phased Implementation Plan
 
-**Status:** In progress (V0.1 + V1.1 + V1.2 + V1.3 + V1.4 + V2.0 + V2.1 + V2.2 + V3.1 + V3.2 + V4.1 + V4.2 complete)
+**Status:** In progress (V0.1 + V1.1 + V1.2 + V1.3 + V1.4 + V2.0 + V2.1 + V2.2 + V3.1 + V3.2 + V3.3 + V4.1 + V4.2 complete)
 **Created:** 2026-04-28
 **Related:**
 
@@ -412,7 +412,6 @@ Next: V3.2 (stable `fieldIndex` on `StructTypeDef`).
 **Risks discovered in V3.2, propagated forward:**
 
 - The `fieldIndex === position` invariant is preserved by registration discipline, not by structural enforcement. Any future code path that mutates `StructTypeDef.fields` out-of-band (removal, reordering, splicing) will silently break the indexed opcodes V3.3 is about to introduce. New mutation entry points must go through a registry helper that re-runs index assignment, or must be rejected by review.
-- `StructValue.v` is still `Dict<string, Value>` for closed structs; the V3.2 invariant only covers the type-system side. V3.3 owes the corresponding value-side change (`List<Value>` indexed by `fieldIndex`) plus the factory rename. Until V3.3 lands, `fieldIndex` has no runtime effect -- do not assume any opcode reads it yet.
 - Workflow gap caught during V3.2: agent-introduced drift in `*.spec.ts` mocks (missing `getVariableBySlot` / `setVariableBySlot` after V2.1, stale `visual` tile option after a separate rename) was invisible to `npm run typecheck` because the Node tsconfig excludes spec files and `tsx` test runs do not type-check. Fixed by chaining `tsc --noEmit -p tsconfig.spec.json` into the `typecheck` script of every package that has one (`packages/core`, `packages/app-host`; the others already had it). Future units must keep this chain in place.
 
 Next: V4.1 (new host-call ABI).
@@ -459,7 +458,30 @@ Next: V4.1 (new host-call ABI).
   or compiler surface that needs clear-vs-unset semantics must add
   an explicit presence signal instead of inferring it from args.
 
-Next: V3.3 (`STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` indexed opcodes).
+**V3.3 -- `STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` indexed opcodes:** complete.
+
+- Closed struct values now store fields as `List<Value>` indexed by
+  `StructFieldDef.fieldIndex`; static closed-struct access lowers to
+  `STRUCT_GET_FIELD` / `STRUCT_SET_FIELD`.
+- `StructTypeDef.fieldIndexByName` is the name-to-index boundary for
+  dynamic VM paths and system TypeScript helpers.
+- `vm-contract.md` opcode reference documents indexed struct ops and
+  name-keyed `GET_FIELD` / `SET_FIELD`; Value model documents the
+  indexed closed-struct representation.
+- Verification: full gate green (1650/1650 tests).
+
+**Risks discovered in V3.3, propagated forward:**
+
+- Closed-struct object rest currently preserves the source type/layout
+  and writes excluded fields as `NIL_VALUE` when no distinct rest type
+  is registered. Future binary/runtime work must preserve this
+  observable behavior or introduce an explicit rest-shape contract.
+- System code can still bypass name-based helpers and read
+  `StructValue.v` by numeric slot. Future native/system helpers should
+  use `StructTypeDef.fieldIndexByName`, `mkClosedStructValueByName`, or
+  `getClosedStructFieldByName`; review new direct struct-slot reads.
+
+Next: V5.1 (operand-width audit).
 
 ---
 
