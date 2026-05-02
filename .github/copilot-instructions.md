@@ -59,6 +59,11 @@ These instructions apply to all Copilot features, including inline tab completio
   `end`, `false`, `for`, `function`, `if`, `in`, `local`, `nil`, `not`, `or`, `repeat`,
   `return`, `then`, `true`, `until`, `while`.
 - Do not use `globalThis` in shared code; it is only allowed in `.node.ts` platform files.
+- Do not introduce value-level circular imports between modules. Two modules may not
+  form an import cycle unless every import in the cycle is type-only (`import type` /
+  `export type`). Roblox-ts emits Luau `require` for value imports, and value cycles
+  are unsafe at module-init time on Luau. To break a value cycle, extract the shared
+  symbols into a third module.
 
 ### Shared UI (`packages/ui`)
 
