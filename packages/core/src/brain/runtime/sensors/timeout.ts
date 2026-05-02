@@ -1,5 +1,7 @@
 import type { ReadonlyList } from "../../../platform/list";
 import { MathOps } from "../../../platform/math";
+import type { ExecutionContext, HostActionBinding } from "../../../runtime/context";
+import { getCallSiteState, setCallSiteState } from "../../../runtime/context";
 import { FALSE_VALUE, isNilValue, isNumberValue, TRUE_VALUE, type Value } from "../../../runtime/value";
 import {
   type ActionDescriptor,
@@ -8,15 +10,11 @@ import {
   CoreParameterId,
   CoreSensorId,
   CoreTypeIds,
-  type ExecutionContext,
-  getCallSiteState,
   getSlotId,
-  type HostActionBinding,
   mkCallDef,
   mkSensorTileId,
   optional,
   param,
-  setCallSiteState,
 } from "../../interfaces";
 
 const AnonNumber = param(CoreParameterId.AnonymousNumber, {

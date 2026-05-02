@@ -1,7 +1,8 @@
 import { List, type ReadonlyList } from "../../platform/list";
 import { TypeUtils } from "../../platform/types";
+import type { ExecutionContext } from "../../runtime/context";
 import { type MapValue, mkListValue, mkNumberValue, mkStringValue, type Value } from "../../runtime/value";
-import { CoreTypeIds, type ExecutionContext, type MapTypeDef, mkCallDef } from "../interfaces";
+import { CoreTypeIds, type MapTypeDef, mkCallDef } from "../interfaces";
 import type { BrainServices } from "../services";
 
 const mapCallDef = mkCallDef({ type: "bag", items: [] });

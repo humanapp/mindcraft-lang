@@ -1,4 +1,5 @@
-import type { BrainServices, BytecodeResolvedAction } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type { BytecodeResolvedAction } from "@mindcraft-lang/core/runtime";
 import type { UserAuthoredProgram } from "../compiler/types.js";
 import { buildUserTileMetadata } from "./user-tile-metadata.js";
 

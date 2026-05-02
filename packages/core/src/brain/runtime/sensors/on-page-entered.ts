@@ -1,3 +1,5 @@
+import type { ExecutionContext, HostActionBinding } from "../../../runtime/context";
+import { getCallSiteState, setCallSiteState } from "../../../runtime/context";
 import { FALSE_VALUE, TRUE_VALUE, type Value } from "../../../runtime/value";
 import {
   type ActionDescriptor,
@@ -5,12 +7,8 @@ import {
   type BrainActionCallSpec,
   CoreSensorId,
   CoreTypeIds,
-  type ExecutionContext,
-  getCallSiteState,
-  type HostActionBinding,
   mkCallDef,
   mkSensorTileId,
-  setCallSiteState,
 } from "../../interfaces";
 
 const callSpec: BrainActionCallSpec = {

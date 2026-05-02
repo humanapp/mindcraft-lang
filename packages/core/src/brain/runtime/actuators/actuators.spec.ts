@@ -7,13 +7,19 @@ import {
   type BrainSyncFunctionEntry,
   CoreActuatorId,
   CoreParameterId,
-  type ExecutionContext,
   getSlotId,
   type HostSyncFn,
   mkParameterTileId,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { mkNumberValue, mkStringValue, NIL_VALUE, type Value, VOID_VALUE } from "@mindcraft-lang/core/runtime";
+import {
+  type ExecutionContext,
+  mkNumberValue,
+  mkStringValue,
+  NIL_VALUE,
+  type Value,
+  VOID_VALUE,
+} from "@mindcraft-lang/core/runtime";
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {

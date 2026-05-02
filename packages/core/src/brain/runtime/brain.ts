@@ -2,23 +2,25 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
 import { MathOps } from "../../platform/math";
+import {
+  type ActionInstance,
+  type BytecodeExecutableAction,
+  type ExecutionContext,
+  resetActionInstance,
+} from "../../runtime/context";
 import { NIL_VALUE, type Value } from "../../runtime/value";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import { compileBrain } from "../compiler";
 import {
-  type ActionInstance,
   type BrainEvents,
   type BrainLinkEnvironment,
-  type BytecodeExecutableAction,
   type ExecutableBrainProgram,
-  type ExecutionContext,
   FiberState,
   HandleTable,
   type IBrain,
   type IBrainDef,
   type IBrainPageDef,
   type IBrainRule,
-  resetActionInstance,
   type UnlinkedBrainProgram,
   VmStatus,
 } from "../interfaces";

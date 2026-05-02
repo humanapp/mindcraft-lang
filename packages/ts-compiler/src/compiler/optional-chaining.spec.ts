@@ -3,7 +3,6 @@ import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import {
   type BrainServices,
-  type ExecutionContext,
   HandleTable,
   mkTypeId,
   NativeType,
@@ -12,6 +11,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   isStructValue,
   mkNativeStructValue,

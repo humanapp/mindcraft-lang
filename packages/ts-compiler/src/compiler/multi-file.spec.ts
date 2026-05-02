@@ -5,7 +5,6 @@ import {
   type BrainServices,
   CoreOpId,
   CoreTypeIds,
-  type ExecutionContext,
   HandleTable,
   NativeType,
   runtime,
@@ -14,6 +13,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import { mkNumberValue, NIL_VALUE, type NumberValue, type StringValue, type Value } from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";

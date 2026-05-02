@@ -8,6 +8,8 @@ import { Time } from "../../platform/time";
 import { UniqueSet } from "../../platform/uniqueset";
 import type { FunctionBytecode, Instr } from "../../runtime/bytecode";
 import { Op } from "../../runtime/bytecode";
+import type { ActionInstance, ExecutableAction, ExecutionContext } from "../../runtime/context";
+import { getOrCreateActionInstance } from "../../runtime/context";
 import type { Program } from "../../runtime/program";
 import type { ErrorValue, HandleId, Value } from "../../runtime/value";
 import {
@@ -31,10 +33,7 @@ import {
   VOID_VALUE,
 } from "../../runtime/value";
 import type {
-  ActionInstance,
-  ExecutableAction,
   ExecutableBrainProgram,
-  ExecutionContext,
   IFiberScheduler,
   ITypeRegistry,
   IVM,
@@ -42,14 +41,7 @@ import type {
   TypeId,
   VmConfig,
 } from "../interfaces";
-import {
-  getOrCreateActionInstance,
-  isOverflowError,
-  isUnderflowError,
-  NativeType,
-  throwOverflow,
-  throwUnderflow,
-} from "../interfaces";
+import { isOverflowError, isUnderflowError, NativeType, throwOverflow, throwUnderflow } from "../interfaces";
 import {
   type Fiber,
   FiberState,

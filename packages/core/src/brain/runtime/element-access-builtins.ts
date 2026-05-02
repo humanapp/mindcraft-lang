@@ -1,6 +1,7 @@
 import type { ReadonlyList } from "../../platform/list";
 import { INFINITY, MathOps } from "../../platform/math";
 import { StringUtils as SU } from "../../platform/string";
+import type { ExecutionContext } from "../../runtime/context";
 import {
   type ListValue,
   mkNumberValue,
@@ -9,7 +10,7 @@ import {
   type StringValue,
   type Value,
 } from "../../runtime/value";
-import { type ExecutionContext, mkCallDef, NativeType } from "../interfaces";
+import { mkCallDef, NativeType } from "../interfaces";
 import type { BrainServices } from "../services";
 
 const elementAccessCallDef = mkCallDef({ type: "bag", items: [] });

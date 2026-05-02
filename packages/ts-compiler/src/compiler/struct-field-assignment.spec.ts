@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/brain";
+import type { Scheduler } from "@mindcraft-lang/core/brain";
 import {
   type BrainServices,
   HandleTable,
@@ -12,6 +12,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   isStructValue,
   type MapValue,

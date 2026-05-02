@@ -4,10 +4,7 @@ import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainServices,
-  type BytecodeExecutableAction,
-  type ExecutableAction,
   type ExecutableBrainProgram,
-  type ExecutionContext,
   HandleTable,
   NativeType,
   type PageMetadata,
@@ -15,6 +12,7 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { treeshakeProgram, VM } from "@mindcraft-lang/core/brain/runtime";
+import type { BytecodeExecutableAction, ExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   BYTECODE_VERSION,
   FALSE_VALUE,

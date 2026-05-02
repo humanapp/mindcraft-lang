@@ -4,6 +4,7 @@ import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { TypeUtils } from "../../platform/types";
 import { UniqueSet } from "../../platform/uniqueset";
+import type { ExecutionContext } from "../../runtime/context";
 import { type EnumValue, mkBooleanValue, type Value } from "../../runtime/value";
 import {
   CoreOpId,
@@ -13,7 +14,6 @@ import {
   type EnumSymbolDef,
   type EnumTypeDef,
   type EnumTypeShape,
-  type ExecutionContext,
   type FunctionTypeDef,
   type FunctionTypeShape,
   type ITypeRegistry,

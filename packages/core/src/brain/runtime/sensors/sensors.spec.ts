@@ -6,12 +6,12 @@ import {
   type BrainServices,
   type BrainSyncFunctionEntry,
   CoreSensorId,
-  type ExecutionContext,
   type HostSyncFn,
   NativeType,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
+  type ExecutionContext,
   extractNumberValue,
   FALSE_VALUE,
   mkNumberValue,

@@ -2,17 +2,13 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
-import {
-  type ActionDescriptor,
-  type BrainServices,
-  mkCallDef,
-  type UserActionArtifact,
-} from "@mindcraft-lang/core/brain";
+import { type ActionDescriptor, type BrainServices, mkCallDef } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { linkBrainProgram } from "@mindcraft-lang/core/brain/runtime";
 import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
+import type { UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import { BYTECODE_VERSION, mkNumberValue, Op } from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;

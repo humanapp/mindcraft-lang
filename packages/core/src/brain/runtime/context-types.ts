@@ -1,4 +1,5 @@
 import { List, type ReadonlyList } from "../../platform/list";
+import type { ExecutionContext } from "../../runtime/context";
 import {
   mkNativeStructValue,
   mkNumberValue,
@@ -7,7 +8,7 @@ import {
   type StructValue,
   type Value,
 } from "../../runtime/value";
-import { CoreTypeIds, type ExecutionContext, mkCallDef, mkTypeId, NativeType } from "../interfaces";
+import { CoreTypeIds, mkCallDef, mkTypeId, NativeType } from "../interfaces";
 import type { BrainServices } from "../services";
 
 /** Stable type-system names for the built-in context structs. */

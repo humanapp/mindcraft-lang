@@ -4,7 +4,6 @@ import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainProgram,
   type BrainServices,
-  type ExecutionContext,
   HandleTable,
   NativeType,
   type PageMetadata,
@@ -13,6 +12,7 @@ import {
   VmStatus,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
   BYTECODE_VERSION,

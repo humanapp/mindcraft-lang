@@ -1,3 +1,4 @@
+import type { ExecutionContext, HostActionBinding } from "../../../runtime/context";
 import { type Value, VOID_VALUE } from "../../../runtime/value";
 import {
   type ActionDescriptor,
@@ -5,8 +6,6 @@ import {
   type BrainActionCallSpec,
   CoreActuatorId,
   callSpecToArgSlots,
-  type ExecutionContext,
-  type HostActionBinding,
   mkActuatorTileId,
 } from "../../interfaces";
 

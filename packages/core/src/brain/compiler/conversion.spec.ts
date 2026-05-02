@@ -12,7 +12,6 @@ import {
   CoreParameterId,
   CoreTypeIds,
   type EnumSymbolDef,
-  type ExecutionContext,
   mkActionDescriptor,
   mkCallDef,
   NativeType,
@@ -23,6 +22,7 @@ import { parseRule } from "@mindcraft-lang/core/brain/compiler";
 import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import {
   type EnumValue,
+  type ExecutionContext,
   NIL_VALUE,
   type NumberValue,
   type StringValue,

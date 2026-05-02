@@ -7,10 +7,8 @@ import type {
   Conversion,
   EnumTypeDef,
   EnumTypeShape,
-  ExecutionContext,
   FunctionTypeDef,
   FunctionTypeShape,
-  HostActionBinding,
   HostAsyncFn,
   HostFn,
   HostSyncFn,
@@ -27,14 +25,12 @@ import type {
   NullableTypeDef,
   NullableTypeShape,
   OpSpec,
-  ResolvedAction,
   StructTypeDef,
   StructTypeShape,
   TypeDef,
   TypeId,
   UnionTypeDef,
   UnionTypeShape,
-  UserActionArtifact,
 } from "./brain/interfaces";
 import { CoreOpId, NativeType } from "./brain/interfaces";
 import type { BrainJson } from "./brain/model";
@@ -53,6 +49,7 @@ import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
 import { List, type ReadonlyList } from "./platform/list";
 import { TypeUtils } from "./platform/types";
+import type { ExecutionContext, HostActionBinding, ResolvedAction, UserActionArtifact } from "./runtime/context";
 import type { HandleId, Value } from "./runtime/value";
 import { NIL_VALUE } from "./runtime/value";
 

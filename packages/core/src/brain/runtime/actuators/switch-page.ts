@@ -1,13 +1,12 @@
 import type { ReadonlyList } from "../../../platform/list";
+import type { ExecutionContext, HostActionBinding } from "../../../runtime/context";
 import { isNilValue, isNumberValue, isStringValue, type Value, VOID_VALUE } from "../../../runtime/value";
 import {
   type ActionDescriptor,
   CoreActuatorId,
   CoreParameterId,
   choice,
-  type ExecutionContext,
   getSlotId,
-  type HostActionBinding,
   mkActuatorTileId,
   mkCallDef,
   param,

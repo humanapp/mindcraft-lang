@@ -4,9 +4,10 @@ import { logger } from "../../platform/logger";
 import { UniqueSet } from "../../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode, Instr } from "../../runtime/bytecode";
 import { Op } from "../../runtime/bytecode";
+import type { BytecodeExecutableAction, ExecutableAction } from "../../runtime/context";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
-import type { BytecodeExecutableAction, ExecutableAction, ExecutableBrainProgram, PageMetadata } from "../interfaces";
+import type { ExecutableBrainProgram, PageMetadata } from "../interfaces";
 import { NativeType } from "../interfaces";
 
 function markReachableFunctions(program: ExecutableBrainProgram): UniqueSet<number> {

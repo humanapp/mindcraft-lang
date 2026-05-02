@@ -86,14 +86,10 @@ export { mkTypeId, NativeType } from "../brain/interfaces";
 
 // -- Runtime values & helpers ---------------------------------------------------
 
-export type { ExecutionContext, StructFieldGetterFn, StructTypeDef } from "../brain/interfaces";
-export {
-  APP_CAPABILITY_BIT_OFFSET,
-  CoreCapabilityBits,
-  getCallSiteState,
-  getSlotId,
-  setCallSiteState,
-} from "../brain/interfaces";
+export type { StructFieldGetterFn, StructTypeDef } from "../brain/interfaces";
+export { APP_CAPABILITY_BIT_OFFSET, CoreCapabilityBits, getSlotId } from "../brain/interfaces";
+export type { ExecutionContext } from "../runtime/context";
+export { getCallSiteState, setCallSiteState } from "../runtime/context";
 export type {
   ListValue,
   MapValue,

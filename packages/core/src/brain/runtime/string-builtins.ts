@@ -1,5 +1,6 @@
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
+import type { ExecutionContext } from "../../runtime/context";
 import {
   mkListValue,
   mkNumberValue,
@@ -8,7 +9,7 @@ import {
   type StringValue,
   type Value,
 } from "../../runtime/value";
-import { CoreTypeIds, type ExecutionContext, mkCallDef, NativeType } from "../interfaces";
+import { CoreTypeIds, mkCallDef, NativeType } from "../interfaces";
 import type { BrainServices } from "../services";
 
 const strCallDef = mkCallDef({ type: "bag", items: [] });

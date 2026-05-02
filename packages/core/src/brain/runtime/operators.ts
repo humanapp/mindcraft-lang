@@ -2,6 +2,7 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { MathOps } from "../../platform/math";
+import type { ExecutionContext } from "../../runtime/context";
 import {
   type BooleanValue,
   FALSE_VALUE,
@@ -15,7 +16,6 @@ import {
 import {
   BrainFunctionEntry,
   CoreOpId,
-  type ExecutionContext,
   HostAsyncFn,
   type HostFn,
   type IFunctionRegistry,

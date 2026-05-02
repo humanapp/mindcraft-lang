@@ -17,7 +17,6 @@ import {
   type BrainServices,
   CoreSensorId,
   CoreTypeIds,
-  type ExecutionContext,
   type HostAsyncFn,
   type IBrain,
   mkActionDescriptor,
@@ -27,7 +26,6 @@ import {
   NativeType,
   param,
   TilePlacement,
-  type UserActionArtifact,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
@@ -40,6 +38,7 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
+import type { ExecutionContext, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
   BYTECODE_VERSION,

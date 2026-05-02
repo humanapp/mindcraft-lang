@@ -16,7 +16,6 @@ import {
   type BrainServices,
   CoreSensorId,
   CoreTypeIds,
-  type ExecutionContext,
   type ITileCatalog,
   mkCallDef,
   mkTypeId,
@@ -27,7 +26,14 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
-import { BYTECODE_VERSION, mkNumberValue, Op, TRUE_VALUE, type Value } from "@mindcraft-lang/core/runtime";
+import {
+  BYTECODE_VERSION,
+  type ExecutionContext,
+  mkNumberValue,
+  Op,
+  TRUE_VALUE,
+  type Value,
+} from "@mindcraft-lang/core/runtime";
 
 const noopCodec = {
   encode(): void {},

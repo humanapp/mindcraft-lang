@@ -3,21 +3,23 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import type { ConstantOffsets, FunctionBytecode, Instr } from "../../runtime/bytecode";
 import { Op } from "../../runtime/bytecode";
+import type {
+  BytecodeExecutableAction,
+  ExecutableAction,
+  ResolvedAction,
+  UserActionArtifact,
+} from "../../runtime/context";
 import type { Value } from "../../runtime/value";
 import { isFunctionValue } from "../../runtime/value";
 import type {
   ActionDescriptor,
-  BytecodeExecutableAction,
-  ExecutableAction,
   ExecutableBrainProgram,
   IBrainActionTileDef,
   IBrainDef,
   IBrainRuleDef,
   IBrainTileDef,
   ITileCatalog,
-  ResolvedAction,
   UnlinkedBrainProgram,
-  UserActionArtifact,
 } from "../interfaces";
 import type { BrainActionResolver } from "../interfaces/runtime";
 

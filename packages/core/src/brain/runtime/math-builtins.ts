@@ -1,7 +1,8 @@
 import type { ReadonlyList } from "../../platform/list";
 import { MathOps } from "../../platform/math";
+import type { ExecutionContext } from "../../runtime/context";
 import { mkNumberValue, type NumberValue, type Value } from "../../runtime/value";
-import { CoreTypeIds, type ExecutionContext, mkCallDef } from "../interfaces";
+import { CoreTypeIds, mkCallDef } from "../interfaces";
 import type { BrainServices } from "../services";
 
 const mathCallDef = mkCallDef({ type: "bag", items: [] });

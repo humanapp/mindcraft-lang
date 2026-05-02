@@ -10,7 +10,6 @@ import {
   CoreTypeNames,
   type EnumSymbolDef,
   type EnumTypeDef,
-  type ExecutionContext,
   type FunctionTypeDef,
   type ListTypeDef,
   type MapTypeDef,
@@ -22,7 +21,7 @@ import {
   type UnionTypeDef,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { type BooleanValue, NIL_VALUE, type Value } from "@mindcraft-lang/core/runtime";
+import { type BooleanValue, type ExecutionContext, NIL_VALUE, type Value } from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;
 

@@ -3,10 +3,7 @@ import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import {
   type BrainServices,
-  type BytecodeExecutableAction,
-  type ExecutableAction,
   type ExecutableBrainProgram,
-  type ExecutionContext,
   HandleTable,
   NativeType,
   type PageMetadata,
@@ -16,6 +13,7 @@ import {
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { treeshakeProgram } from "@mindcraft-lang/core/brain/runtime";
+import type { BytecodeExecutableAction, ExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
 import { NIL_VALUE, type NumberValue, type StringValue, type Value } from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";

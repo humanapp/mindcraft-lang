@@ -1,3 +1,4 @@
+import type { ExecutionContext, HostActionBinding } from "../../../runtime/context";
 import type { Value } from "../../../runtime/value";
 import {
   type ActionDescriptor,
@@ -5,8 +6,6 @@ import {
   type BrainActionCallSpec,
   CoreSensorId,
   CoreTypeIds,
-  type ExecutionContext,
-  type HostActionBinding,
   mkCallDef,
   mkSensorTileId,
   NativeType,

@@ -3,9 +3,9 @@ import { Error } from "../../platform/error";
 import type { List, ReadonlyList } from "../../platform/list";
 import { Time } from "../../platform/time";
 import { UniqueSet } from "../../platform/uniqueset";
+import type { ActionInstance, ExecutionContext } from "../../runtime/context";
 import { ErrorCode, type ErrorValue, type HandleId, type StructValue, type Value } from "../../runtime/value";
 import { EventEmitter } from "../../util/event-emitter";
-import type { ActionInstance, ExecutionContext } from "./runtime";
 
 ///////////////////////////
 // Capacity-violation signaling

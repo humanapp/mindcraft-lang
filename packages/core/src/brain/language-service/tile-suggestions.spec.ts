@@ -20,7 +20,6 @@ import {
   CoreTypeIds,
   choice,
   conditional,
-  type ExecutionContext,
   type IBrainTileDef,
   type IConversionRegistry,
   type ITileCatalog,
@@ -74,6 +73,7 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import { NIL_VALUE, TRUE_VALUE, type Value, VOID_VALUE } from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
 
