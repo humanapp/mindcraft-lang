@@ -352,8 +352,63 @@ Each unit must:
 
 ## Current State
 
-Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4.
-Next up: M2.
+Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2.
+Next up: M3.1.
+
+### M2.2 -- VM Construction Flipped To PlatformServices
+
+VM constructor signature is now `(prog: Program, services: PlatformServices, ...)`;
+all construction sites in core and ts-compiler updated. `VM.shutdown()` added
+to encapsulate handle teardown (not in spec; Brain.shutdown no longer reaches
+into vm.handles directly).
+
+Verification: full gate green (681/681 core tests, 972/972 ts-compiler tests).
+
+### Risks (M2.2)
+
+- **`VM.shutdown()` is unspecified.** The method was added to plug an
+  encapsulation hole discovered during review. M3 or a follow-up should
+  confirm whether this method belongs in the vm-contract.md surface or
+  should be removed in favour of a lifecycle pattern introduced by M3.
+- **`apps/sim` and `apps/vscode-extension` had no VM construction sites.**
+  The spec listed them as required update targets but they construct the VM
+  only transitively through `Brain`. If either app ever constructs a VM
+  directly, the new argument order must be used.
+- **HandleTable injection overload preserved.** The 3-argument overload
+  `(prog, services, handles)` was kept for test harnesses that inject
+  pre-populated handles. M3+ must not add a 4th positional argument;
+  new optional parameters should trail as named config.
+
+### M2.1 -- PlatformServices Interface Introduced
+
+`PlatformServices` interface (`functions`, `types`) added to
+`runtime/services.ts` and barrel-exported from `runtime/index.ts`.
+
+Verification: full gate green (681/681 core tests).
+
+### Risks (M2.1)
+
+- **No consumers yet.** `PlatformServices` is declared but nothing
+  constructs it at value level until M2.2. If M2.2 is reverted or
+  delayed, the interface is dead code; the firewall will not catch this.
+
+### M2.0 -- PlatformServices decision tables pinned
+
+M2.0 pinned PlatformServices to runtime registries consumed by VM execution.
+New spec section: Phase M2 Decisions.
+New contract surface: PlatformServices member-set decision (`functions`, `types`).
+Verification: full gate green (docs-only unit, no tests run).
+
+### Risks (M2.0)
+
+- **Decision-table drift before M2.1 lands.** If VM execution paths
+  gain new registry reads before M2.1, the pinned member set can go
+  stale. Re-run the M2.0 inventory immediately before cutting
+  `runtime/services.ts`.
+- **Program-action path dependency remains implicit.** M2.0 excludes
+  action/conversion/operator registries because VM executes through
+  program-local artifacts today. If M2.1 or M2.2 redirects execution
+  back through registries, this decision must be re-opened.
 
 ### M1.4 -- Runtime-execution interface files promoted into runtime/
 
@@ -693,6 +748,32 @@ M0 closure analysis (see Table 1 closure failures).
 | `actions` | `List<ExecutableAction>` | `runtime-Program` | merged onto `Program` (or a thin runtime extension thereof) at `packages/core/src/runtime/program.ts`; `ExecutableAction` already lives at `packages/core/src/runtime/context.ts` |
 | `ruleIndex` | `Dict<string, number>` | `runtime-side-table` | brain-side artifact attached to the brain runtime container `packages/core/src/brain/runtime/brain.ts` (consumed by `Brain` page-activation paths; never read by vm.ts) |
 | `pages` | `List<PageMetadata>` | `runtime-side-table` | same brain-side artifact as `ruleIndex`; `PageMetadata` is brain-shaped and stays in `brain/interfaces/runtime.ts` |
+
+---
+
+## Phase M2 Decisions
+
+### Table 1 -- Runtime registry inventory
+
+Source of evidence: `packages/core/src/runtime/vm.ts` constructor and execution paths, plus transitive registry surface on `packages/core/src/brain/services.ts`.
+
+| registry symbol | source file | execution-time call site | include in PlatformServices? | rationale |
+| --- | --- | --- | --- | --- |
+| `services.functions` (`IFunctionRegistry`) | `packages/core/src/brain/services.ts` | `VM.execHostCall` and `VM.execHostCallAsync` in `packages/core/src/runtime/vm.ts` (`this.fns.size()`, `getSyncById(...).fn.exec`, `getAsyncById(...).fn.exec`) | yes | |
+| `services.types` (`ITypeRegistry`) | `packages/core/src/brain/services.ts` | `deepCopyValue(..., this.services.types, ...)` and struct field access in `packages/core/src/runtime/vm.ts` (`findStructField`, `makeStructFields`, `execStructCopyExcept`, `execGetField`, `execSetField`) | yes | |
+| `services.conversions` (`IConversionRegistry`) | `packages/core/src/brain/services.ts` | none in `packages/core/src/runtime/vm.ts` | no | consumed by registration/linking paths, not by VM execution dispatch in current runtime |
+| `services.operatorTable` (`IOperatorTable`) | `packages/core/src/brain/services.ts` | none in `packages/core/src/runtime/vm.ts` | no | consumed by registration/linking paths, not by VM execution dispatch in current runtime |
+| `services.operatorOverloads` (`IOperatorOverloads`) | `packages/core/src/brain/services.ts` | none in `packages/core/src/runtime/vm.ts` | no | consumed by registration/linking paths, not by VM execution dispatch in current runtime |
+| `services.actions` (`IBrainActionRegistry`) | `packages/core/src/brain/services.ts` | none in `packages/core/src/runtime/vm.ts` (`VM` reads `program.actions`, not action registry) | no | execution-time action resolution is program-local (`Program.actions`) and registry resolution is link-time |
+
+### Table 2 -- Registry-interface relocation plan
+
+Rows include every table 1 symbol marked `yes`.
+
+| interface | current file | relocate in M2.1? | target file |
+| --- | --- | --- | --- |
+| `IFunctionRegistry` | `packages/core/src/runtime/function-defs.ts` | no | `packages/core/src/runtime/function-defs.ts` |
+| `ITypeRegistry` | `packages/core/src/runtime/type-defs.ts` | no | `packages/core/src/runtime/type-defs.ts` |
 
 ---
 

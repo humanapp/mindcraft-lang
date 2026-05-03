@@ -80,7 +80,7 @@ function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsite
     return;
   }
 
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, services, handles);
   const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
   if (callsiteVars) {
     fiber.callsiteVars = callsiteVars;
@@ -130,7 +130,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -164,7 +164,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -245,7 +245,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -305,7 +305,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -340,7 +340,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -376,7 +376,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 

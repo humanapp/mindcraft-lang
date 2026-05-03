@@ -55,7 +55,7 @@ function compileProject(files: Record<string, string>) {
 
 function runAndGetResult(prog: UserAuthoredProgram): Value {
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, services, handles);
   const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
   fiber.instrBudget = 5000;
   const result = vm.runFiber(fiber, mkScheduler());

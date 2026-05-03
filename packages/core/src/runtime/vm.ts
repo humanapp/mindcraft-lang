@@ -1,4 +1,3 @@
-import type { BrainServices } from "../brain/services";
 import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { List, type ReadonlyList } from "../platform/list";
@@ -12,6 +11,7 @@ import { Op } from "./bytecode";
 import type { ActionInstance, ExecutableAction, ExecutionContext } from "./context";
 import { getOrCreateActionInstance } from "./context";
 import type { Program } from "./program";
+import type { PlatformServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
 import type { ErrorValue, HandleId, Value } from "./value";
@@ -41,7 +41,7 @@ import {
   type Frame,
   type Handler,
   HandleState,
-  type HandleTable,
+  HandleTable,
   type IFiberScheduler,
   type IVM,
   isOverflowError,
@@ -261,19 +261,25 @@ const VALID_TRANSITIONS: Record<FiberState, UniqueSet<FiberState>> = {
  */
 export class VM implements IVM {
   private config: VmConfig;
-  private services: BrainServices;
-  private fns: BrainServices["functions"];
+  private services: PlatformServices;
+  private fns: PlatformServices["functions"];
   private nextInternalFiberId = -1;
+  public handles: HandleTable;
 
+  constructor(prog: Program, services: PlatformServices, config?: Partial<VmConfig>);
+  constructor(prog: Program, services: PlatformServices, handles: HandleTable, config?: Partial<VmConfig>);
   constructor(
-    services: BrainServices,
     private prog: Program,
-    public handles: HandleTable,
-    config?: Partial<VmConfig>
+    services: PlatformServices,
+    handlesOrConfig?: HandleTable | Partial<VmConfig>,
+    configOverride?: Partial<VmConfig>
   ) {
     this.services = services;
     this.fns = services.functions;
+    const injectedHandles = handlesOrConfig instanceof HandleTable ? handlesOrConfig : undefined;
+    const config = injectedHandles ? configOverride : handlesOrConfig;
     this.config = { ...DEFAULT_VM_CONFIG, ...config };
+    this.handles = injectedHandles ?? new HandleTable(this.config.maxHandles);
 
     // Wire HandleTable events to forward to VM consumers
     // This allows external components to listen to handle completion via VM
@@ -281,6 +287,14 @@ export class VM implements IVM {
       // Handle completion is managed internally by onHandleCompleted callback
       // from scheduler when it subscribes to handle events
     });
+  }
+
+  /**
+   * Release VM-owned transient runtime state.
+   * Safe to call more than once.
+   */
+  shutdown(): void {
+    this.handles.clear();
   }
 
   spawnFiber(fiberId: number, funcId: number, args: List<Value>, executionContext: ExecutionContext): Fiber {

@@ -218,7 +218,7 @@ export default Sensor({
 
     const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], result.program!.entryFuncId);
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, services, handles);
 
     const fiber = vm.spawnFiber(1, linkedEntryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
@@ -259,7 +259,7 @@ export default Sensor({
 
     const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], result.program!.entryFuncId);
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, services, handles);
 
     const args = mkArgsList({ 0: mkNumberValue(7) });
     const fiber = vm.spawnFiber(1, linkedEntryFuncId, args, mkCtx());
@@ -312,7 +312,7 @@ export default Sensor({
     );
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, services, handles);
 
     const fiber1 = vm.spawnFiber(
       1,
@@ -397,7 +397,7 @@ export default Sensor({
     assert.equal(originalFn.code.get(0).a, 0);
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -458,7 +458,7 @@ export default Sensor({
 
     const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], userProg.entryFuncId);
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, services, handles);
     const args = mkArgsList({ 0: mkNumberValue(5) });
     const fiber = vm.spawnFiber(1, linkedEntryFuncId, args, mkCtx());
     fiber.instrBudget = 1000;

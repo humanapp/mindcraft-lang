@@ -1142,7 +1142,7 @@ function execSensor(prog: UserAuthoredProgram, argsMap: List<Value>): Value | un
     argsMap.push(NIL_VALUE);
   }
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, services, handles);
   const fiber = vm.spawnFiber(1, 0, argsMap, mkCtx());
   fiber.instrBudget = 2000;
   const result = vm.runFiber(fiber, mkScheduler());

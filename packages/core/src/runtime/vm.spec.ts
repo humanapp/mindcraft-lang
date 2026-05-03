@@ -146,7 +146,7 @@ describe("VM -- closed struct field opcodes", () => {
       variableNames: List.empty<string>(),
       entryPoint: 0,
     };
-    const vm = new VM(services, prog, new HandleTable(100));
+    const vm = new VM(prog, services, { maxHandles: 100 });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -183,7 +183,7 @@ describe("VM -- closed struct field opcodes", () => {
       [{ t: NativeType.Struct, typeId, native: { x: 77 }, v: List.empty<Value>() }]
     );
     prog.constantPools.strings.push("x");
-    const vm = new VM(services, prog, new HandleTable(100));
+    const vm = new VM(prog, services, { maxHandles: 100 });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -199,8 +199,7 @@ describe("VM -- closed struct field opcodes", () => {
 describe("VM -- stack operations", () => {
   test("PUSH_CONST pushes constant onto stack", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [mkNumberValue(42)]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const ctx = mkCtx();
     const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
     fiber.instrBudget = 100;
@@ -222,8 +221,7 @@ describe("VM -- stack operations", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.DUP }, { op: Op.POP }, { op: Op.RET }])],
       [mkNumberValue(10)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -250,8 +248,7 @@ describe("VM -- stack operations", () => {
       ],
       [mkNumberValue(1), mkNumberValue(2)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -281,8 +278,7 @@ describe("VM -- variable operations", () => {
       [mkNumberValue(99)],
       ["x"]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
     fiber.instrBudget = 100;
 
@@ -297,8 +293,7 @@ describe("VM -- variable operations", () => {
     const ctx = mkCtx();
 
     const prog = mkProgram([mkFunc([{ op: Op.LOAD_VAR_SLOT, a: 0 }, { op: Op.RET }])], [], ["unset"]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
     fiber.instrBudget = 100;
 
@@ -328,8 +323,7 @@ describe("VM -- control flow", () => {
       ],
       [mkNumberValue(42), mkNumberValue(999)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -354,8 +348,7 @@ describe("VM -- control flow", () => {
       ],
       [FALSE_VALUE, TRUE_VALUE, mkNumberValue(999), mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -380,8 +373,7 @@ describe("VM -- control flow", () => {
       ],
       [TRUE_VALUE, mkNumberValue(999), mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -412,8 +404,7 @@ describe("VM -- function calls", () => {
       ],
       [mkNumberValue(42)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -445,8 +436,7 @@ describe("VM -- function calls", () => {
       ],
       [mkNumberValue(10), mkNumberValue(20)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -479,8 +469,7 @@ describe("VM -- function calls", () => {
       ],
       [mkStringValue("first"), mkStringValue("second")]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -504,8 +493,7 @@ describe("VM -- function calls", () => {
       ],
       [mkNumberValue(99)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -544,8 +532,7 @@ describe("VM -- function calls", () => {
       ],
       [mkNumberValue(111), mkNumberValue(222), mkNumberValue(333)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -579,8 +566,7 @@ describe("VM -- function calls", () => {
       ],
       [mkNumberValue(5), mkNumberValue(10)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -625,8 +611,7 @@ describe("VM -- function calls", () => {
       ],
       [mkNumberValue(7), mkNumberValue(3)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -661,8 +646,7 @@ describe("VM -- function calls", () => {
       ],
       [mkNumberValue(50), mkNumberValue(999)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -699,8 +683,7 @@ describe("VM -- local variables", () => {
       ],
       [mkNumberValue(5), mkNumberValue(10)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -744,8 +727,7 @@ describe("VM -- local variables", () => {
       ],
       [mkNumberValue(99), mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -761,8 +743,7 @@ describe("VM -- local variables", () => {
       [{ code: List.from([{ op: Op.LOAD_LOCAL, a: 0 }, { op: Op.RET }]), numParams: 1, numLocals: 1, name: "entry" }],
       [mkNumberValue(77)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.from([mkNumberValue(77)]), mkCtx());
     fiber.instrBudget = 100;
 
@@ -785,8 +766,7 @@ describe("VM -- local variables", () => {
         name: "test",
       },
     ]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -802,8 +782,7 @@ describe("VM -- local variables", () => {
 
 describe("VM -- malformed bytecode faults as ScriptError", () => {
   function expectScriptErrorFault(prog: Program): void {
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -944,8 +923,7 @@ describe("VM -- malformed bytecode faults as ScriptError", () => {
       code.push({ op: Op.RET });
 
       const prog = mkProgram([mkFunc(code, 0, `fuzz-${trial}`)], constants, ["x", "y"]);
-      const handles = new HandleTable(100);
-      const vm = new VM(services, prog, handles);
+      const vm = new VM(prog, services);
       const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
       fiber.instrBudget = 200;
 
@@ -1004,14 +982,13 @@ describe("VM -- callsite-persistent variables", () => {
     );
     const handles = new HandleTable(100);
     const vm = new VM(
-      services,
       {
         ...prog,
         actions: List.from([
           {
             binding: "bytecode" as const,
             descriptor: {
-              key: "test-vm-action-state-slots",
+              key: "test-vm-action-state-helper-call",
               kind: "actuator" as const,
               callDef: mkCallDef({ type: "bag", items: [] }),
               isAsync: false,
@@ -1021,6 +998,7 @@ describe("VM -- callsite-persistent variables", () => {
           },
         ]),
       } as Program,
+      services,
       handles
     );
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
@@ -1042,8 +1020,7 @@ describe("VM -- callsite-persistent variables", () => {
         name: "test",
       },
     ]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1082,14 +1059,13 @@ describe("VM -- callsite-persistent variables", () => {
     );
     const handles = new HandleTable(100);
     const vm = new VM(
-      services,
       {
         ...prog,
         actions: List.from([
           {
             binding: "bytecode" as const,
             descriptor: {
-              key: "test-vm-action-state-helper-call",
+              key: "test-vm-action-state-slots",
               kind: "actuator" as const,
               callDef: mkCallDef({ type: "bag", items: [] }),
               isAsync: false,
@@ -1099,6 +1075,7 @@ describe("VM -- callsite-persistent variables", () => {
           },
         ]),
       } as Program,
+      services,
       handles
     );
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
@@ -1151,8 +1128,7 @@ describe("VM -- callsite-persistent variables", () => {
       ]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1171,8 +1147,7 @@ describe("VM -- callsite-persistent variables", () => {
 describe("VM -- fiber state machine", () => {
   test("fiber starts in RUNNABLE state", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
 
     assert.equal(fiber.state, FiberState.RUNNABLE);
@@ -1180,8 +1155,7 @@ describe("VM -- fiber state machine", () => {
 
   test("fiber transitions to DONE on completion", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1192,8 +1166,7 @@ describe("VM -- fiber state machine", () => {
 
   test("fiber transitions to CANCELLED when cancelled", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
 
     vm.cancelFiber(fiber, mkSchedulerCallbacks());
@@ -1213,8 +1186,7 @@ describe("VM -- fiber state machine", () => {
       ],
       [NIL_VALUE]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 5;
 
@@ -1251,8 +1223,7 @@ describe("VM -- action calls", () => {
       actions: List.from([action]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1311,8 +1282,7 @@ describe("VM -- action calls", () => {
       actions: List.from([action]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1344,8 +1314,7 @@ describe("VM -- action calls", () => {
       ]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1357,7 +1326,6 @@ describe("VM -- action calls", () => {
   });
 
   test("ACTION_CALL_ASYNC preserves host-backed handle behavior", () => {
-    const handles = new HandleTable(100);
     const descriptor = {
       key: "test-vm-action-call-async-host",
       kind: "actuator" as const,
@@ -1380,7 +1348,8 @@ describe("VM -- action calls", () => {
       ]),
     };
 
-    const vm = new VM(services, prog, handles);
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1439,8 +1408,7 @@ describe("VM -- action calls", () => {
       ]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1492,8 +1460,7 @@ describe("VM -- action calls", () => {
       ]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1551,8 +1518,7 @@ describe("VM -- action calls", () => {
       ]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1604,8 +1570,7 @@ describe("VM -- action calls", () => {
       ]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(
       1,
       0,
@@ -1651,8 +1616,7 @@ describe("VM -- action calls", () => {
       ]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1687,8 +1651,7 @@ describe("VM -- action calls", () => {
       ]),
     };
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const scheduler = new FiberScheduler(vm, {
       maxFibersPerTick: 64,
       defaultBudget: 100,
@@ -1730,7 +1693,7 @@ describe("VM -- async await/resume", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
       [handleValue]
     );
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1757,7 +1720,7 @@ describe("VM -- async await/resume", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
       [handleValue]
     );
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1778,7 +1741,7 @@ describe("VM -- async await/resume", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
       [handleValue]
     );
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1834,8 +1797,7 @@ describe("VM -- exception handling", () => {
       ],
       [errVal, mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1850,8 +1812,7 @@ describe("VM -- exception handling", () => {
   test("uncaught THROW faults the fiber", () => {
     const errVal: Value = { t: "err", e: { code: ErrorCode.ScriptError, message: "uncaught" } };
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.THROW }])], [errVal]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1889,8 +1850,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(42)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1919,8 +1879,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30), mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1945,8 +1904,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(10), mkNumberValue(99)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1976,8 +1934,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(10), mkNumberValue(20), mkNumberValue(0), mkNumberValue(99)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2005,8 +1962,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2019,8 +1975,7 @@ describe("VM -- list operations", () => {
 
   test("LIST_POP on empty list returns nil", () => {
     const prog = mkProgram([mkFunc([{ op: Op.LIST_NEW }, { op: Op.LIST_POP }, { op: Op.RET }])], []);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2048,8 +2003,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2062,8 +2016,7 @@ describe("VM -- list operations", () => {
 
   test("LIST_SHIFT on empty list returns nil", () => {
     const prog = mkProgram([mkFunc([{ op: Op.LIST_NEW }, { op: Op.LIST_SHIFT }, { op: Op.RET }])], []);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2093,8 +2046,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30), mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2125,8 +2077,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(10), mkNumberValue(30), mkNumberValue(1), mkNumberValue(20)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2159,8 +2110,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30), mkNumberValue(0), mkNumberValue(2)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2190,8 +2140,7 @@ describe("VM -- list operations", () => {
       ],
       [mkNumberValue(10), mkNumberValue(20), mkNumberValue(0), mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2221,8 +2170,7 @@ describe("VM -- map operations", () => {
       ],
       [mkStringValue("foo"), mkNumberValue(99)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2248,8 +2196,7 @@ describe("VM -- map operations", () => {
       ],
       [mkStringValue("key"), mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2283,8 +2230,7 @@ describe("VM -- WHEN/DO boundaries", () => {
       ],
       [FALSE_VALUE, NIL_VALUE, mkNumberValue(999)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2314,8 +2260,7 @@ describe("VM -- WHEN/DO boundaries", () => {
       ],
       [TRUE_VALUE, mkNumberValue(42)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2335,8 +2280,7 @@ describe("VM -- type check", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Number }, { op: Op.RET }])],
       [mkNumberValue(42)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2352,8 +2296,7 @@ describe("VM -- type check", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Number }, { op: Op.RET }])],
       [mkStringValue("hello")]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2369,8 +2312,7 @@ describe("VM -- type check", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Nil }, { op: Op.RET }])],
       [NIL_VALUE]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2386,8 +2328,7 @@ describe("VM -- type check", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.String }, { op: Op.RET }])],
       [mkStringValue("hello")]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2403,8 +2344,7 @@ describe("VM -- type check", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Boolean }, { op: Op.RET }])],
       [TRUE_VALUE]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2420,8 +2360,7 @@ describe("VM -- type check", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.TYPE_CHECK, a: NativeType.Boolean }, { op: Op.RET }])],
       [mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2446,8 +2385,7 @@ describe("VM -- CALL_INDIRECT", () => {
       ],
       [mkFunctionValue(1), mkNumberValue(42)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2479,8 +2417,7 @@ describe("VM -- CALL_INDIRECT", () => {
       ],
       [mkFunctionValue(1), mkNumberValue(10), mkNumberValue(20)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2496,8 +2433,7 @@ describe("VM -- CALL_INDIRECT", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.CALL_INDIRECT, a: 0 }, { op: Op.RET }])],
       [mkNumberValue(42)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2532,8 +2468,7 @@ describe("VM -- CALL_INDIRECT", () => {
       [mkFunctionValue(0)],
       ["myFunc"]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2570,8 +2505,7 @@ describe("VM -- CALL_INDIRECT_ARGS", () => {
       ],
       [mkFunctionValue(1), mkNumberValue(10), mkNumberValue(20)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2602,8 +2536,7 @@ describe("VM -- CALL_INDIRECT_ARGS", () => {
       ],
       [mkFunctionValue(1), mkNumberValue(10)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2635,8 +2568,7 @@ describe("VM -- CALL_INDIRECT_ARGS", () => {
       ],
       [mkFunctionValue(1), mkNumberValue(10), mkNumberValue(20)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2661,8 +2593,7 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
       ],
       [mkNumberValue(42)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2693,8 +2624,7 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
       ],
       [mkNumberValue(99)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2727,8 +2657,7 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
       ],
       [mkNumberValue(10), mkNumberValue(20), mkNumberValue(5)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2765,8 +2694,7 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
       ],
       [mkNumberValue(100), mkNumberValue(200)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2787,8 +2715,7 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
       ],
       []
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2802,8 +2729,7 @@ describe("VM -- MAKE_CLOSURE and LOAD_CAPTURE", () => {
 describe("FiberScheduler", () => {
   test("spawn creates a runnable fiber and tick executes it", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 10, defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
@@ -2821,8 +2747,7 @@ describe("FiberScheduler", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.POP }, { op: Op.JMP, a: -2 }])],
       [NIL_VALUE]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 10, defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
@@ -2834,8 +2759,7 @@ describe("FiberScheduler", () => {
 
   test("gc removes completed/faulted/cancelled fibers", () => {
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [NIL_VALUE]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 64, defaultBudget: 1000, autoGcHandles: true });
 
     scheduler.spawn(0, List.empty(), mkCtx());
@@ -2862,7 +2786,7 @@ describe("FiberScheduler", () => {
       [handleValue]
     );
 
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services, handles);
     const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 64, defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
@@ -2959,8 +2883,7 @@ describe("VM -- overflow faults", () => {
       ],
       [mkNumberValue(1)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles, { maxStackSize: 8 });
+    const vm = new VM(prog, services, { maxStackSize: 8 });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -2974,8 +2897,7 @@ describe("VM -- overflow faults", () => {
   test("frame depth overflow surfaces as ErrorCode.StackOverflow", () => {
     // Function 0 recurses into itself unconditionally, exhausting maxFrameDepth.
     const prog = mkProgram([mkFunc([{ op: Op.CALL, a: 0, b: 0 }, { op: Op.RET }])]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles, { maxFrameDepth: 8, maxStackSize: 1024 });
+    const vm = new VM(prog, services, { maxFrameDepth: 8, maxStackSize: 1024 });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -2995,8 +2917,7 @@ describe("VM -- overflow faults", () => {
         { op: Op.JMP, a: -1 },
       ]),
     ]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles, { maxHandlers: 8 });
+    const vm = new VM(prog, services, { maxHandlers: 8 });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -3023,8 +2944,7 @@ describe("VM -- overflow faults", () => {
   test("FiberScheduler.spawn throws OverflowError when fiber pool is full", () => {
     // Long-running program (infinite loop) so fibers stay RUNNABLE and occupy slots.
     const prog = mkProgram([mkFunc([{ op: Op.JMP, a: 0 }])]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const scheduler = new FiberScheduler(vm, {
       maxFibersPerTick: 1,
       defaultBudget: 1,
@@ -3049,8 +2969,7 @@ describe("VM -- overflow faults", () => {
     // POP on an empty operand stack: malformed bytecode that hits the
     // pop() underflow guard.
     const prog = mkProgram([mkFunc([{ op: Op.POP }, { op: Op.RET }])]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -3108,11 +3027,10 @@ describe("VM -- operator monomorphization", () => {
     code.push({ op: Op.RET });
 
     const prog = mkProgram([mkFunc(code)], [mkNumberValue(1)]);
-    const handles = new HandleTable(100);
 
     const counter = { n: 0 };
     const countedServices = makeServicesWithTypeAccessCounter(services, counter);
-    const vm = new VM(countedServices, prog, handles);
+    const vm = new VM(prog, countedServices);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = ITER * 4 + 10;
 
@@ -3175,8 +3093,7 @@ describe("VM -- slot-keyed variable dispatch", () => {
     code.push({ op: Op.RET });
 
     const prog = mkProgram([mkFunc(code)], [mkNumberValue(7)], ["x"]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
     fiber.instrBudget = ITER * 5 + 10;
 
@@ -3240,8 +3157,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
     code.push({ op: Op.RET });
 
     const prog = mkProgram([mkFunc(code)], [mkNumberValue(3), NIL_VALUE]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = ITER * 8 + 10;
 
@@ -3307,8 +3223,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
     ];
 
     const prog = mkProgram([mkFunc(code)], [mkNumberValue(7), NIL_VALUE, mkNumberValue(11)]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 50;
 
@@ -3348,8 +3263,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
       [mkFunc(code)],
       [mkNumberValue(10), mkNumberValue(20), mkNumberValue(30), mkNumberValue(40)]
     );
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 50;
 
@@ -3407,8 +3321,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
     ];
 
     const prog = mkProgram([mkFunc(code)], [mkNumberValue(100), NIL_VALUE, mkNumberValue(300)]);
-    const handles = new HandleTable(100);
-    const vm = new VM(services, prog, handles);
+    const vm = new VM(prog, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 50;
 

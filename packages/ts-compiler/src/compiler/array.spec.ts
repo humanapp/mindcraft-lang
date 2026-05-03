@@ -122,7 +122,7 @@ function compileAndRun(source: string): Value {
 
   const prog = result.program!;
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, services, handles);
   const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
   fiber.instrBudget = 10_000;
 
@@ -1105,7 +1105,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1135,7 +1135,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1216,7 +1216,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(structServices, result.program!, handles);
+    const vm = new runtime.VM(result.program!, structServices, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1246,7 +1246,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(structServices, result.program!, handles);
+    const vm = new runtime.VM(result.program!, structServices, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1281,7 +1281,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1310,7 +1310,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1349,7 +1349,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1378,7 +1378,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1415,7 +1415,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1447,7 +1447,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1480,7 +1480,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1521,7 +1521,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(mapServices, result.program!, handles);
+    const vm = new runtime.VM(result.program!, mapServices, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1552,7 +1552,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(mapServices, result.program!, handles);
+    const vm = new runtime.VM(result.program!, mapServices, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1589,7 +1589,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -1767,7 +1767,7 @@ export default Sensor({
     assert.ok(result.program, "expected program");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, services, handles);
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10_000;
     const runResult = vm.runFiber(fiber, mkScheduler());

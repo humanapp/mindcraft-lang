@@ -6,7 +6,6 @@ import {
   type BrainEvents,
   type BrainLinkEnvironment,
   FiberState,
-  HandleTable,
   type IBrain,
   type IBrainRule,
   type PageMetadata,
@@ -114,11 +113,6 @@ export class Brain implements IBrain {
   private scheduler: FiberScheduler | undefined;
 
   /**
-   * Handle table for async operations.
-   */
-  private handles: HandleTable;
-
-  /**
    * Persistent execution context for the brain.
    * Shared across all fibers, provides variable access.
    */
@@ -143,8 +137,6 @@ export class Brain implements IBrain {
     private readonly services: BrainServices,
     private readonly linkEnvironment?: BrainLinkEnvironment
   ) {
-    this.handles = new HandleTable(100000);
-
     // Create runtime page instances
     brainDef.pages().forEach((pageDef: IBrainPageDef) => {
       const page = new BrainPage(this, pageDef);
@@ -182,7 +174,7 @@ export class Brain implements IBrain {
     this.installVariableTable(this.program.variableNames);
 
     // Create VM with the linked executable program.
-    this.vm = new VM(this.services, this.program, this.handles);
+    this.vm = new VM(this.program, this.services);
 
     // Create scheduler
     this.scheduler = new FiberScheduler(this.vm, {
@@ -475,8 +467,8 @@ export class Brain implements IBrain {
     // Cancel all active fibers
     this.deactivateCurrentPage();
 
-    // Clear handles
-    this.handles.clear();
+    // Release VM-owned transient runtime state.
+    this.vm?.shutdown();
 
     // Clear variables
     this.clearVariables();

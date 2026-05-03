@@ -60,7 +60,7 @@ function compileAndRun(source: string): Value {
 
   const prog = result.program!;
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, services, handles);
   const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
   fiber.instrBudget = 1000;
 

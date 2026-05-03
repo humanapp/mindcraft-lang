@@ -805,8 +805,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
 }
 
 function runProgramToResult(prog: FlatProgram): Value | undefined {
-  const handles = new HandleTable(100);
-  const vm = new VM(services, prog, handles);
+  const vm = new VM(prog, services);
   const fiber = vm.spawnFiber(1, prog.entryPoint ?? 0, List.empty(), mkCtx());
   fiber.instrBudget = 10000;
   const result = vm.runFiber(fiber, {
@@ -911,8 +910,7 @@ describe("treeshakeProgram -- integration", () => {
 
     const shaken = treeshakeProgram(prog);
 
-    const handles = new HandleTable(100);
-    const vm = new VM(services, shaken, handles);
+    const vm = new VM(shaken, services);
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
