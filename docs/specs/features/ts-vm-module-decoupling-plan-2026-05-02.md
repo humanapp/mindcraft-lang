@@ -352,8 +352,29 @@ Each unit must:
 
 ## Current State
 
-Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2, M3.3, M4.1.
-Next up: M4.2.
+Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2, M3.3, M4.1, M4.2.
+Next up: M4.3.
+
+### M4.2 -- Runtime-Only VM Scenario Specs
+
+Six runtime-only scenario specs added: sync host call, variable slot
+round-trip, bytecode callee, budget exhaustion, async handle resolved
+synchronously, and fault on THROW of a non-error value. No `brain/`
+imports in any of the new files.
+
+Verification: full gate green (689/689 tests).
+
+### Risks (M4.2)
+
+- **Budget check in `vm-yield.spec.ts` is asserted post-run.** The
+  assertion `fiber.instrBudget === 0` relies on `instrBudget` being a
+  readable public field. If `instrBudget` ever becomes private, this
+  test will fail to compile.
+- **`assertCanSuspend` blocks `HOST_CALL_ASYNC` / `AWAIT` inside a
+  bytecode action marked sync.** The async scenario test runs at
+  top-level (no action binding), so `assertCanSuspend` passes. Any
+  future test that wraps an async call inside a sync bytecode action
+  will fault at the `assertCanSuspend` call, not at the AWAIT.
 
 ### M4.1 -- Expand `__test__createPlatformServices()`
 
