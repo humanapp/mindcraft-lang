@@ -1,7 +1,7 @@
 # TS VM Dense Runtime State Plan
 
 Date: 2026-05-02
-Status: Phased implementation plan.
+Status: In progress.
 
 ## Purpose
 
@@ -69,10 +69,10 @@ Out of scope:
 - Any reduced bytecode subset; the TS VM remains the full semantic
   reference.
 - **Brain code split (BrainRuntime / BrainCompiler separation).**
-  Module decoupling (M0-M5) moved the *type boundaries* so
+  Module decoupling (M0-M5) moved the _type boundaries_ so
   `runtime/` no longer value-imports authoring types; the dense
-  refactor (D0-D7) moves the *runtime-visible storage* off the
-  authoring object graph. Neither plan moves the *code* -- the
+  refactor (D0-D7) moves the _runtime-visible storage_ off the
+  authoring object graph. Neither plan moves the _code_ -- the
   `Brain` class still physically holds compile-time concerns
   (authoring graph, compile/link/treeshake pipeline) alongside
   runtime concerns (variable storage, VM/scheduler ownership,
@@ -146,7 +146,7 @@ and host functions registered by the app see the extended
 shape. Core's job is to keep its own surface id/slot-keyed and
 free of authoring-graph references; what an app layers on top
 is the app's contract, not core's. D0 table 1 is closed-set
-over the *core* `ExecutionContext` interface only (per the
+over the _core_ `ExecutionContext` interface only (per the
 D0 source-paths note that `ActorExecutionContext.data` is
 not a table 1 row); D7's contract section documents the
 core surface and names the extension seam in one sentence,
@@ -284,11 +284,11 @@ Each unit follows this loop:
 3. The user reviews, requests changes or approves.
 4. Only after the user declares the unit complete does the post-mortem
    happen.
-5. Post-mortem updates Status, Current State, propagates new risks to
+5. Post-mortem updates Current State, Phase Log, propagates new risks to
    future phases, and writes any useful repo memory notes
    (`/memories/repo/vm-dense-D<N>.md`).
 
-Do NOT amend Current State, propagate risks, or create repo memory
+Do NOT amend Current State, Phase Log, propagate risks, or create repo memory
 notes during implementation.
 
 D2, D3, and D4 are the behavior-sensitive migrations. **Those three
@@ -306,7 +306,7 @@ length budgets.**
 The post-mortem is a forward-looking artifact for future-phase
 agents, not a changelog and not a recap of the work for the user.
 The user already saw the work. The future agent has the unit's spec
-section above the Current State entry and does not need it
+section above the Phase Log entry and does not need it
 restated. Be ruthlessly minimal.
 
 **Why this rule keeps getting violated.** Agents finish
@@ -320,7 +320,7 @@ post-mortem reads like a shorter version of the implementation
 summary, you are doing it wrong; throw it away and start from the
 checklist below.
 
-**Mandatory pre-write checklist.** Before writing the Current State
+**Mandatory pre-write checklist.** Before writing the Phase Log
 entry, answer each of these out loud (in the chat, not in the doc):
 
 1. What is the one-sentence summary?
@@ -335,7 +335,7 @@ If you skip the checklist or answer in your head instead of in the
 doc, you will violate the rules. This has happened in every prior
 session where these rules were not enforced this way.
 
-**Current State entry for the unit (HARD CAP: 15 lines, including
+**Phase Log entry for the unit (HARD CAP: 15 lines, including
 the heading and the verification line; target 5-10).** Include
 ONLY:
 
@@ -356,7 +356,7 @@ mode observed in prior post-mortems:
 - Before/after diffs, "previously X, now Y."
 - Restatement of deliverables already in the unit's spec section
   above. The future agent reads the spec section first; the
-  Current State entry is a delta on top.
+  Phase Log entry is a delta on top.
 - Justification of why the implementation looks the way it does.
 - Cross-references to the implementation summary you gave the user.
 
@@ -394,7 +394,7 @@ work that a future agent must respect. Content categories:
 
 The memory note is also subject to the "Do NOT include" list above.
 It is not a place to dump implementation details that did not earn
-their way into the Current State entry.
+their way into the Phase Log entry.
 
 Each unit must:
 
@@ -425,10 +425,157 @@ Each unit must:
 
 ## Current State
 
-Phase D0 not yet started. The runtime contract prerequisites
-(`Program`, `PlatformServices`, `VmEvents`, the import firewall) are
-in place per `vm-contract.md`. This section is populated by
-post-mortems as units complete; do not amend during implementation.
+Completed: D0
+Next up: D1
+
+---
+
+## Phase Log
+
+### D0
+
+**Status**
+
+Decision tables 1-6 appended as `## Phase D0 Decisions`
+(inspection commit `9edc6f1`). D2-D4 procedures concretized: variable
+accessors use `services.{brainVars,ruleVars}.{getByName,setByName}`,
+callsite host state uses `services.callSite.{getHostState,setHostState}`,
+action state slots use `services.action.{ensureCallsite,getStateSlot,setStateSlot}`.
+`dense-shims.ts` is deleted at end of D4. `Brain` row in Table 5 is
+deferred to D5.
+Verification: acceptance #11 grep returns only matches inside D0's own procedure docs.
+
+**Risks** (D0 -> future phases)
+
+- **D2 must verify `RuleId` sentinel `0` is unused by the compiler.**
+  Table 6 picks `0` as the no-rule sentinel; if any compile path
+  assigns funcId `0` to a rule, `services.program.getRuleFuncIdForFunc`
+  cannot distinguish "no rule" from "rule 0." D2 step 2 adds the
+  guard.
+- **`services.callSite` host-state must not clear on action reset.**
+  Today `resetActionInstance` deliberately preserves `existingHostState`
+  across slot resets so cooldowns survive action restart. The D3
+  adapter's map is keyed only by `callSiteId` and is independent of
+  action-instance lifetime. D3's behavior tests for `move` cooldown
+  and `eat` consumption window catch a regression.
+- **`currentActionInstance` deletion gated on D3 grep cleanliness.**
+  Table 1 dispositions `delete` the field as dead-after-D3. D3
+  acceptance #1/#2 are the gate; if either grep is non-empty, D4
+  cannot proceed to step 7 without reopening D3.
+- **`Brain` row deferred to D5.** D2-D4 must not hardcode any
+  particular `Brain` fate (thin id-only orchestrator vs split).
+  Activation-hook signatures (D4 step 6) drop the `ActionInstance`
+  parameter but stay inside `Brain`; D5 decides relocation.
+
+---
+
+## Phase D0 Decisions
+
+Inspection commit: `9edc6f1207cd384768502fd0a422716799c2f9f8` (HEAD at
+the start of D0 work; update on D0-merge if rebased).
+
+### Table 1: `ExecutionContext` field disposition
+
+| field                   | type                                   | disposition       | replacement                                                                                                                                                                                                                                                                                                                                                                                                                                              | phase   | justification                                                                                                                                        |
+| ----------------------- | -------------------------------------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `brain`                 | `IBrain`                               | `move-to-service` | `services.brainVars` adapter for variables; `services.brainPages` adapter for page state and lifecycle (`getCurrentPageId`, `getPreviousPageId`, `requestPageChange`, `requestPageChangeByPageId`, `requestPageRestart`); `services.rng.next()` for the random stream.                                                                                                                                                                                   | D2      | tiebreaker 1: shipped host functions reach `ctx.brain.rng()`, `ctx.brain.getCurrentPageId()`, `ctx.brain.requestPageChange(...)`.                    |
+| `getVariable`           | `<T>(varId: string) => T \| undefined` | `move-to-service` | `services.brainVars.getByName(name: string): Value`                                                                                                                                                                                                                                                                                                                                                                                                      | D2      | tiebreaker 1: object-graph reach into Brain variable storage; tiebreaker 3: read-only ABI.                                                           |
+| `setVariable`           | `(varId: string, v: Value) => void`    | `move-to-service` | `services.brainVars.setByName(name: string, value: Value): void`                                                                                                                                                                                                                                                                                                                                                                                         | D2      | tiebreaker 1: object-graph reach into Brain variable storage.                                                                                        |
+| `clearVariable`         | `(varId: string) => void`              | `move-to-service` | `services.brainVars.clearByName(name: string): void`                                                                                                                                                                                                                                                                                                                                                                                                     | D2      | tiebreaker 1: object-graph reach into Brain variable storage.                                                                                        |
+| `getVariableBySlot`     | `(slotId: number) => Value`            | `keep-portable`   | unchanged; already slot-keyed indexer                                                                                                                                                                                                                                                                                                                                                                                                                    | n/a     | already dense (slot-indexed scalar accessor).                                                                                                        |
+| `setVariableBySlot`     | `(slotId: number, v: Value) => void`   | `keep-portable`   | unchanged; already slot-keyed indexer                                                                                                                                                                                                                                                                                                                                                                                                                    | n/a     | already dense (slot-indexed scalar accessor).                                                                                                        |
+| `data`                  | `unknown`                              | `keep-portable`   | unchanged; opaque host-injected payload                                                                                                                                                                                                                                                                                                                                                                                                                  | n/a     | scalar / opaque pointer; no base-shape reach-through (sim's `getSelf` etc. are extension-side helpers).                                              |
+| `callSiteState`         | `CallSiteStateMap`                     | `move-to-service` | host-state branch: `services.callSite.getHostState(callSiteId: number): unknown` / `services.callSite.setHostState(callSiteId: number, state: unknown): void` (D3); action-state-slot branch: `services.action.ensureCallsite(callSiteId: number, numStateSlots: number): void` / `services.action.getStateSlot(callSiteId: number, slotIdx: number): Value` / `services.action.setStateSlot(callSiteId: number, slotIdx: number, v: Value): void` (D4). | D3 / D4 | tiebreaker 1: name-keyed map of `ActionInstance` objects with object-graph reach (`hostState`, `stateSlots`).                                        |
+| `currentActionInstance` | `ActionInstance \| undefined`          | `delete`          | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                      | n/a     | `grep -nE 'currentActionInstance' apps/sim packages/core/src` shows zero shipped-host reads after the D3 host-state retirement; field is dead state. |
+| `currentCallSiteId`     | `number \| undefined`                  | `keep-portable`   | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                | n/a     | already dense (scalar number set by `bindExecutionContext`).                                                                                         |
+| `rule`                  | `IBrainRule \| undefined`              | `replace-with-id` | `currentRuleFuncId: number \| undefined` (`RuleId`, table 6); sentinel `0` (no rule). Lookup of rule-scoped data goes through `services.ruleVars.getByName(ruleFuncId, name): Value` / `setByName(ruleFuncId, name, value): void`.                                                                                                                                                                                                                       | D2      | tiebreaker 1: shipped host functions reach `ctx.rule.getVariable(name)` / `ctx.rule.setVariable(name, v)`.                                           |
+| `funcIdToRule`          | `Dict<number, IBrainRule>`             | `move-to-service` | `services.program.getRuleFuncIdForFunc(funcId: number): number \| undefined`                                                                                                                                                                                                                                                                                                                                                                             | D2      | tiebreaker 1: name-keyed object map; tiebreaker 3: VM-only read on host-call entry.                                                                  |
+| `time`                  | `number`                               | `keep-portable`   | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                | n/a     | scalar.                                                                                                                                              |
+| `dt`                    | `number`                               | `keep-portable`   | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                | n/a     | scalar.                                                                                                                                              |
+| `currentTick`           | `number`                               | `keep-portable`   | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                | n/a     | scalar.                                                                                                                                              |
+
+### Table 2: App-shipped host function complexity-probe
+
+| function                             | file                                 | ctx-fields-touched                                   | services-used                                                                      | gap            | resolution                                                                                                                                                                                                                                                                        |
+| ------------------------------------ | ------------------------------------ | ---------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Vector2.add`                        | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.sub`                        | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.mul`                        | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.div`                        | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.dot`                        | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.cross`                      | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.magnitude`                  | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.normalize`                  | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.distance`                   | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.lerp`                       | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.angle`                      | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `Vector2.rotate`                     | apps/sim/src/brain/type-system.ts    | (none)                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `BrainContext.getTargetActor`        | apps/sim/src/brain/brain-context.ts  | `rule`                                               | (none)                                                                             | `host-rewrite` | reads target-actor variable via `services.ruleVars.getByName(ctx.currentRuleFuncId, "targetActor")` after D2.                                                                                                                                                                     |
+| `BrainContext.getTargetPosition`     | apps/sim/src/brain/brain-context.ts  | `rule`, `data`                                       | (none)                                                                             | `host-rewrite` | reads `targetPos` / `targetActor` via `services.ruleVars.getByName(ctx.currentRuleFuncId, ...)`; resolves actor through extension-side `getActor(ctx, ...)` over `data`.                                                                                                          |
+| `EngineContext.getActorsByArchetype` | apps/sim/src/brain/engine-context.ts | `data`                                               | (none -- extension-side `getSelf(ctx)` over `data` reaches the host engine handle) | `none`         |                                                                                                                                                                                                                                                                                   |
+| `EngineContext.getActorById`         | apps/sim/src/brain/engine-context.ts | `data`                                               | (none -- extension-side `getSelf(ctx)` over `data` reaches the host engine handle) | `none`         |                                                                                                                                                                                                                                                                                   |
+| `bump` (sensor)                      | apps/sim/src/brain/actions/bump.ts   | `currentCallSiteId`, `callSiteState`, `rule`, `data` | (none)                                                                             | `host-rewrite` | replaces `getCallSiteState` / `setCallSiteState` with `services.callSite.getHostState(ctx.currentCallSiteId)` / `setHostState(...)` (D3); replaces `ctx.rule.setVariable("bumpedActor", ...)` with `services.ruleVars.setByName(ctx.currentRuleFuncId, "bumpedActor", ...)` (D2). |
+| `see` (sensor)                       | apps/sim/src/brain/actions/see.ts    | `currentCallSiteId`, `callSiteState`, `rule`, `data` | (none)                                                                             | `host-rewrite` | same shape as `bump`: callsite host state via `services.callSite.*` (D3); rule-variable writes via `services.ruleVars.setByName(...)` (D2).                                                                                                                                       |
+| `eat` (actuator)                     | apps/sim/src/brain/actions/eat.ts    | `currentCallSiteId`, `callSiteState`, `data`         | (none)                                                                             | `host-rewrite` | callsite host state via `services.callSite.*` (D3); `resolveTargetActor(ctx, args, slotId)` reads target-actor rule variable via `services.ruleVars.getByName(...)` (D2).                                                                                                         |
+| `move` (actuator)                    | apps/sim/src/brain/actions/move.ts   | `currentCallSiteId`, `callSiteState`, `rule`, `data` | (none)                                                                             | `host-rewrite` | callsite host state via `services.callSite.*` (D3); `resolveTargetPosition` reads rule variables via `services.ruleVars.getByName(...)` (D2); `ctx.brain.rng()` becomes `services.rng.next()` (D2).                                                                               |
+| `say` (actuator)                     | apps/sim/src/brain/actions/say.ts    | `data`                                               | (none)                                                                             | `none`         |                                                                                                                                                                                                                                                                                   |
+| `shoot` (actuator)                   | apps/sim/src/brain/actions/shoot.ts  | `currentCallSiteId`, `callSiteState`, `data`         | (none)                                                                             | `host-rewrite` | callsite host state via `services.callSite.*` (D3); `resolveTargetActor` reads target-actor rule variable via `services.ruleVars.getByName(...)` (D2).                                                                                                                            |
+| `turn` (actuator)                    | apps/sim/src/brain/actions/turn.ts   | `currentCallSiteId`, `callSiteState`, `rule`, `data` | (none)                                                                             | `host-rewrite` | same shape as `move`: callsite host state via `services.callSite.*` (D3); rule-variable reads via `services.ruleVars.getByName(...)` (D2); `ctx.brain.rng()` becomes `services.rng.next()` (D2).                                                                                  |
+
+### Table 3: Core-shipped host function complexity-probe
+
+| function                                         | file                                                 | ctx-fields-touched                   | services-used                                      | gap            | resolution                                                                                                                                          |
+| ------------------------------------------------ | ---------------------------------------------------- | ------------------------------------ | -------------------------------------------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `$$math_abs` ... `$$math_sqrt` (18 total)        | packages/core/src/runtime/math-builtins.ts           | (none)                               | (none)                                             | `none`         |                                                                                                                                                     |
+| `$$str_length` ... `$$str_startsWith` (11 total) | packages/core/src/runtime/string-builtins.ts         | (none)                               | (none)                                             | `none`         |                                                                                                                                                     |
+| `$$map_keys`                                     | packages/core/src/runtime/map-builtins.ts            | (none)                               | `services.types.instantiate`, `services.types.get` | `none`         |                                                                                                                                                     |
+| `$$map_values`                                   | packages/core/src/runtime/map-builtins.ts            | (none)                               | `services.types.instantiate`                       | `none`         |                                                                                                                                                     |
+| `$$map_get`                                      | packages/core/src/runtime/map-builtins.ts            | (none)                               | (none)                                             | `none`         |                                                                                                                                                     |
+| `$$map_set`                                      | packages/core/src/runtime/map-builtins.ts            | (none)                               | (none)                                             | `none`         |                                                                                                                                                     |
+| `$$get_element`                                  | packages/core/src/runtime/element-access-builtins.ts | (none)                               | (none)                                             | `none`         |                                                                                                                                                     |
+| `$$set_element`                                  | packages/core/src/runtime/element-access-builtins.ts | (none)                               | (none)                                             | `none`         |                                                                                                                                                     |
+| `BrainContext.getVariable`                       | packages/core/src/runtime/context-types.ts           | (delegates to `getVariable`)         | (none)                                             | `host-rewrite` | calls `services.brainVars.getByName(name): Value` per Table 1 disposition for `getVariable` (D2).                                                   |
+| `BrainContext.setVariable`                       | packages/core/src/runtime/context-types.ts           | (delegates to `setVariable`)         | (none)                                             | `host-rewrite` | calls `services.brainVars.setByName(name, value): void` (D2).                                                                                       |
+| `RuleContext.getVariable`                        | packages/core/src/runtime/context-types.ts           | `rule`                               | (none)                                             | `host-rewrite` | calls `services.ruleVars.getByName(ctx.currentRuleFuncId, name): Value` (D2); returns `NIL_VALUE` when `currentRuleFuncId` is the no-rule sentinel. |
+| `RuleContext.setVariable`                        | packages/core/src/runtime/context-types.ts           | `rule`                               | (none)                                             | `host-rewrite` | calls `services.ruleVars.setByName(ctx.currentRuleFuncId, name, value): void` (D2); no-op when sentinel.                                            |
+| `random` (CoreSensorId.Random)                   | packages/core/src/runtime/sensors/random.ts          | `brain`                              | (none)                                             | `host-rewrite` | calls `services.rng.next(): number` (D2).                                                                                                           |
+| `onPageEntered` (CoreSensorId.OnPageEntered)     | packages/core/src/runtime/sensors/on-page-entered.ts | `currentCallSiteId`, `callSiteState` | (none)                                             | `host-rewrite` | callsite host state via `services.callSite.getHostState` / `setHostState` (D3).                                                                     |
+| `timeout` (CoreSensorId.Timeout)                 | packages/core/src/runtime/sensors/timeout.ts         | `currentCallSiteId`, `callSiteState` | (none)                                             | `host-rewrite` | callsite host state via `services.callSite.getHostState` / `setHostState` (D3).                                                                     |
+| `currentPage` (CoreSensorId.CurrentPage)         | packages/core/src/runtime/sensors/current-page.ts    | `brain`                              | (none)                                             | `host-rewrite` | calls `services.brainPages.getCurrentPageId(): number` (D2).                                                                                        |
+| `previousPage` (CoreSensorId.PreviousPage)       | packages/core/src/runtime/sensors/previous-page.ts   | `brain`                              | (none)                                             | `host-rewrite` | calls `services.brainPages.getPreviousPageId(): number` (D2).                                                                                       |
+| `switchPage` (CoreActuatorId.SwitchPage)         | packages/core/src/runtime/actuators/switch-page.ts   | `brain`                              | (none)                                             | `host-rewrite` | calls `services.brainPages.requestPageChange(name)` / `requestPageChangeByPageId(id)` / `requestPageRestart()` (D2).                                |
+| `restartPage` (CoreActuatorId.RestartPage)       | packages/core/src/runtime/actuators/restart-page.ts  | `brain`                              | (none)                                             | `host-rewrite` | calls `services.brainPages.requestPageRestart(): void` (D2).                                                                                        |
+| `yield` (CoreActuatorId.Yield)                   | packages/core/src/runtime/actuators/yield.ts         | (none)                               | (none)                                             | `none`         |                                                                                                                                                     |
+
+### Table 4: Lowered-call surface
+
+| source-expression                       | example-file                               | lowered-operation | ctx-fields-touched | services-used                                                     | gap                | resolution                                                                                                                                            |
+| --------------------------------------- | ------------------------------------------ | ----------------- | ------------------ | ----------------------------------------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ctx.engine.getActorsByArchetype(arch)` | apps/sim/src/examples/Detect/detect.ts     | `HOST_CALL`       | `data`             | (delegates to extension-side handle on `data`)                    | `none`             |                                                                                                                                                       |
+| `ctx.self.id`                           | apps/sim/src/examples/Detect/detect.ts     | `HOST_CALL`       | `data`             | (extension-side struct accessor on `data`)                        | `none`             |                                                                                                                                                       |
+| `ctx.self.position`                     | apps/sim/src/examples/Detect/detect.ts     | `HOST_CALL`       | `data`             | (extension-side struct accessor on `data`)                        | `none`             |                                                                                                                                                       |
+| `ctx.rule.setVariable(name, value)`     | apps/sim/src/examples/Detect/detect.ts     | `HOST_CALL`       | `rule`             | `services.ruleVars.setByName(ctx.currentRuleFuncId, name, value)` | `lowering-rewrite` | `RuleContext.setVariable` host fn migrates per Table 3 row; lowering of `ctx.rule.setVariable` continues to emit a `HOST_CALL` to that registered fn. |
+| `ctx.self.position = value`             | apps/sim/src/examples/Teleport/teleport.ts | `HOST_CALL`       | `data`             | (extension-side struct accessor on `data`)                        | `none`             |                                                                                                                                                       |
+| `ctx.brain.getTargetPosition()`         | apps/sim/src/examples/Teleport/teleport.ts | `HOST_CALL`       | `rule`, `data`     | (delegates to `BrainContext.getTargetPosition`, see Table 2)      | `none`             |                                                                                                                                                       |
+
+### Table 5: Object-model retirement
+
+| type             | defining-file                        | retire-phase | replacement                                                                                                       | survives-outside-runtime | survival-location        |
+| ---------------- | ------------------------------------ | ------------ | ----------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------ |
+| `Brain`          | packages/core/src/brain/brain.ts     | D5           | decided in D5 (thin id-only orchestrator or named replacement)                                                    | tbd                      | tbd                      |
+| `BrainPage`      | packages/core/src/brain/page.ts      | D5           | `PageId` (table 6); page state side-table on the Brain orchestrator, accessed via `services.brainPages` adapter   | yes                      | packages/core/src/brain/ |
+| `BrainRule`      | packages/core/src/brain/rule.ts      | D2           | `RuleId` (table 6); rule-variable storage in side-table keyed by ruleFuncId, accessed via `services.ruleVars`     | yes                      | packages/core/src/brain/ |
+| `ActionInstance` | packages/core/src/runtime/context.ts | D4           | `CallSiteId` (table 6); state slots and host state in `services.action` / `services.callSite` adapter side-tables | no                       | n/a                      |
+| `RuleSet`        | n/a                                  | n/a          | no longer present                                                                                                 | no                       | n/a                      |
+
+### Table 6: Rule and action id-space
+
+| id-space     | representation | allocation-site | sentinel | slot-space                                                                                                                                                                                                      | reload-stability        |
+| ------------ | -------------- | --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `RuleId`     | `number`       | compiler        | `0`      | rule variables, allocated by compiler from rule's local var declarations                                                                                                                                        | `regenerated-on-reload` |
+| `ActionId`   | `number`       | compiler        | `0`      | n/a                                                                                                                                                                                                             | `regenerated-on-reload` |
+| `CallSiteId` | `number`       | compiler        | `0`      | per-callsite host-state cell plus per-callsite action-state-slot list, allocated by compiler at action-call lowering (page-activation-scoped lifetime; `services.action.ensureCallsite` overwrites on re-entry) | `regenerated-on-reload` |
+| `PageId`     | `number`       | compiler        | `0`      | n/a                                                                                                                                                                                                             | `regenerated-on-reload` |
 
 ---
 
@@ -439,7 +586,7 @@ depends on, before any code moves.
 
 **Deliverable.** Four tables, appended to this plan under a single
 new section `## Phase D0 Decisions` placed directly below
-`## Current State`. The section header records the git commit hash
+`## Phase Log`. The section header records the git commit hash
 of the D0-merge commit; until D0 lands, use HEAD at the start of D0
 work and update the hash at merge.
 
@@ -476,10 +623,11 @@ work and update the hash at merge.
   table 2 rows record `currentCallSiteId` and `callSiteState`
   in `ctx-fields-touched`.
 
-  Bytecode action *opcodes* (`ACTION_CALL_SYNC`,
+  Bytecode action _opcodes_ (`ACTION_CALL_SYNC`,
   `ACTION_CALL_ASYNC`) are not registrations; they are emitted
   by lowering and dispatch through these registered host
   functions. The lowered-call surface is the next bullet.
+
 - **Sim `ExecutionContext` extension:**
   `apps/sim/src/brain/execution-context-types.ts` defines
   `ActorExecutionContext` and the `getSelf` / `getActor` /
@@ -507,10 +655,10 @@ work and update the hash at merge.
   - `runtime/math-builtins.ts`, `runtime/map-builtins.ts`,
     `runtime/string-builtins.ts`, and any other `*-builtins.ts`
     that registers an `exec` reading or writing `ctx.*`.
-  Builtins that touch only `args` (not `ctx`) get a single
-  table 3 row each with `ctx-fields-touched = (none)` and
-  `gap = none` -- their presence is recorded so the table is
-  closed-set.
+    Builtins that touch only `args` (not `ctx`) get a single
+    table 3 row each with `ctx-fields-touched = (none)` and
+    `gap = none` -- their presence is recorded so the table is
+    closed-set.
 - **Other shipped TS host functions:** none at D0-merge. The only
   non-sim, non-core consumers of `ExecutionContext` in this repo
   are `packages/ts-compiler/src/compiler/*.spec.ts` (test
@@ -619,10 +767,10 @@ work and update the hash at merge.
        branch chosen for each. This is the audit trail
        linking D0's table dispositions to the now-frozen
        D2-D6 procedures.
-    The unit gate for D0 is that **no downstream procedure
-    contains a D0-contingent branch after this step.** A
-    procedure that still says "or per D0" has not been
-    concretized; D0 has not shipped.
+       The unit gate for D0 is that **no downstream procedure
+       contains a D0-contingent branch after this step.** A
+       procedure that still says "or per D0" has not been
+       concretized; D0 has not shipped.
 12. Run the validation checklist (Acceptance section). Every
     item must pass before D0 ships.
 
@@ -654,14 +802,14 @@ work and update the hash at merge.
 `ExecutionContext` interface in `packages/core/src/runtime/context.ts`
 at the inspection commit. Columns, in order:
 
-| col             | meaning                                                                                             |
-| --------------- | --------------------------------------------------------------------------------------------------- |
-| `field`         | TypeScript field name                                                                               |
-| `type`          | TypeScript type at the inspection commit                                                            |
-| `disposition`   | one of `keep-portable`, `replace-with-id`, `replace-with-slot`, `move-to-service`, `delete`, `tbd`  |
-| `replacement`   | new surface (id type + lookup op, slot indexer, service method, or `n/a`)                           |
-| `phase`         | D-phase that performs the migration: `D1`, `D2`, `D3`, `D4`, `D6`, or `n/a` (for `delete` rows) |
-| `justification` | one sentence, or `"see tiebreaker N"`                                                               |
+| col             | meaning                                                                                            |
+| --------------- | -------------------------------------------------------------------------------------------------- |
+| `field`         | TypeScript field name                                                                              |
+| `type`          | TypeScript type at the inspection commit                                                           |
+| `disposition`   | one of `keep-portable`, `replace-with-id`, `replace-with-slot`, `move-to-service`, `delete`, `tbd` |
+| `replacement`   | new surface (id type + lookup op, slot indexer, service method, or `n/a`)                          |
+| `phase`         | D-phase that performs the migration: `D1`, `D2`, `D3`, `D4`, `D6`, or `n/a` (for `delete` rows)    |
+| `justification` | one sentence, or `"see tiebreaker N"`                                                              |
 
 Use GitHub-flavored Markdown table syntax with the columns in the
 order shown.
@@ -814,14 +962,14 @@ If a required type is absent at the inspection commit, the row
 records `retire-phase = n/a` and
 `replacement = "no longer present"`. Columns, in order:
 
-| col                        | meaning                                                                      |
-| -------------------------- | ---------------------------------------------------------------------------- |
-| `type`                     | legacy class / interface name                                                |
-| `defining-file`            | path under `packages/core/src/brain/` or `packages/core/src/runtime/`        |
+| col                        | meaning                                                                  |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `type`                     | legacy class / interface name                                            |
+| `defining-file`            | path under `packages/core/src/brain/` or `packages/core/src/runtime/`    |
 | `retire-phase`             | D-phase that removes its runtime role (`D2`, `D4`, `D5`, `D6`, or `n/a`) |
-| `replacement`              | id type, slot space, side table, or `"no runtime equivalent"`                |
-| `survives-outside-runtime` | `yes` / `no`                                                                 |
-| `survival-location`        | module path (e.g. `core/src/brain/editor/`), or `n/a`                        |
+| `replacement`              | id type, slot space, side table, or `"no runtime equivalent"`            |
+| `survives-outside-runtime` | `yes` / `no`                                                             |
+| `survival-location`        | module path (e.g. `core/src/brain/editor/`), or `n/a`                    |
 
 **Tiebreakers.**
 
@@ -992,7 +1140,7 @@ new surface.
   (at the inspection commit: `type-system.ts`,
   `brain-context.ts`, `engine-context.ts`). Cite D0 table 2
   for the full row list. Action calls produced by the lowering
-  process at runtime are *not* in this list -- they are emitted
+  process at runtime are _not_ in this list -- they are emitted
   by `packages/ts-compiler` lowering rules into contracted
   opcodes (`ACTION_CALL` / `ACTION_CALL_ASYNC`) whose runtime
   interpretation D1 changes via the vm.ts redirect (step 4).
@@ -1056,8 +1204,8 @@ new surface.
    - host-state-side: per-callsite host-state get/set
      reads/writes `ActionInstance.hostState` via
      `getOrCreateActionInstance` (D3 retires this branch).
-   The shim is the only place under `runtime/` allowed to
-   value-import `IBrain` / `IBrainRule` after D1 ships.
+     The shim is the only place under `runtime/` allowed to
+     value-import `IBrain` / `IBrainRule` after D1 ships.
 3. **Wire the shim at the construction site.** In
    `packages/core/src/brain/brain.ts` (the
    `activationContext` construction), call
@@ -1208,7 +1356,7 @@ silently widen the new surface.
   `packages/core/src/brain/brain.ts` -- `funcIdToRule` field
   (line 187), `collectFuncIdToRuleMapping` (line 734). These
   may continue to exist for non-runtime consumers; the
-  *runtime* simply stops reading them after D2.
+  _runtime_ simply stops reading them after D2.
   `Brain`'s overall fate is decided in D5.
 - **Compiler-side allocation (informational):**
   `packages/core/src/brain/compiler/brain-compiler.ts` --
@@ -1261,15 +1409,16 @@ the exact field name from D0; for review purposes, treat it as
    instance instead.
 6. **Migrate the core variable-accessor host functions.** In
    `runtime/context-types.ts`, replace the
-   `BrainContext.getVariable` / `setVariable` and
-   `RuleContext.getVariable` / `setVariable` implementations
-   per their rows in D0 table 3 (and the corresponding
-   table 1 dispositions). Two likely shapes (D0 picks one):
-   - rewrite to use the slot-keyed path (the host function
-     receives a slot id at compile time); or
-   - call a new `services.rule.getVariableByName(ruleId, name)`
-     / `setVariableByName(ruleId, name, value)` op (and the
-     `BrainContext` analog).
+   `BrainContext.getVariable` / `setVariable` implementations
+   with calls to `services.brainVars.getByName(name): Value` /
+   `services.brainVars.setByName(name, value): void`, and
+   replace `RuleContext.getVariable` / `setVariable` with
+   calls to
+   `services.ruleVars.getByName(ctx.currentRuleFuncId, name): Value`
+   / `services.ruleVars.setByName(ctx.currentRuleFuncId, name, value): void`.
+   `RuleContext.getVariable` returns `NIL_VALUE` when
+   `currentRuleFuncId` is the no-rule sentinel (`0`);
+   `RuleContext.setVariable` is a no-op in that case.
 7. **Confirm shim removal.** No file under
    `packages/core/src/runtime/` other than `host-bindings.ts`
    value- or type-imports `IBrainRule` from anywhere except
@@ -1343,7 +1492,7 @@ per-callsite host-state surface. Removes the D1 shim's
 host-state branch and decouples host-side persistent state
 from the `ActionInstance` object.
 
-**Scope.** Per-callsite *host* state for **every** host-bound
+**Scope.** Per-callsite _host_ state for **every** host-bound
 call path -- the value read/written by
 `getCallSiteState<T>(ctx)` / `setCallSiteState(ctx, T)`.
 Three call paths reach this surface today and all three
@@ -1358,13 +1507,13 @@ migrate in D3:
 - `ACTION_CALL` host branch -- host-backed actuators
   (registered via `registerHostActuator`, e.g. `move`,
   `shoot`, `eat`). The legacy `getOrCreateActionInstance(ctx,
-  callSiteId, 0)` calls at `vm.ts:999` and `vm.ts:1055`
+callSiteId, 0)` calls at `vm.ts:999` and `vm.ts:1055`
   pre-populate `currentActionInstance` for this path so the
   helper's fast path hits.
 - `ACTION_CALL_ASYNC` host branch -- async host-backed
   actuators. Same shape as the sync host-action path.
 
-The per-callsite *VM* state slots
+The per-callsite _VM_ state slots
 (`ActionInstance.stateSlots` consumed by action bytecode
 opcodes) and the action dispatch machinery itself
 (`getOrCreateActionInstance`, `resetActionInstance`,
@@ -1373,7 +1522,7 @@ through D3.
 
 The scalar `ExecutionContext.currentCallSiteId` and the binding
 mechanism (`bindExecutionContext` /
-`syncExecutionContextFromTopFrame` in `vm.ts`) are *not*
+`syncExecutionContextFromTopFrame` in `vm.ts`) are _not_
 migrated; both are already dense (a `number` and a frame
 walk). D3 leaves them untouched and only changes what the host
 function reads through them.
@@ -1400,7 +1549,7 @@ absent, escalate per the Workflow Convention and reopen D0.
   `ActionInstanceMap` aliases (lines 33-44). The field stays
   through D3 because D4's action path still reads it through
   `getActionInstance` / `getOrCreateActionInstance`; D3 only
-  removes the *host-state* branch of its content.
+  removes the _host-state_ branch of its content.
 - **Host-state branch in legacy storage:**
   `runtime/context.ts:195-249` (`getActionInstance`,
   `getOrCreateActionInstance`, `resetActionInstance`). The
@@ -1424,8 +1573,8 @@ absent, escalate per the Workflow Convention and reopen D0.
   - `actions/shoot.ts:63, 66` (`ShootState`);
   - `actions/eat.ts:49, 54` (`EatState`);
   - `actions/see.ts:66, 73, 96, 115, 200` (`SeeState`).
-  Cite the table 2 rows for the exact migration shape per
-  function.
+    Cite the table 2 rows for the exact migration shape per
+    function.
 - **Shim file:** `packages/core/src/runtime/dense-shims.ts`.
   The host-state branch of the shim (the implementation that
   satisfied the new per-callsite host-state lookup by reading
@@ -1448,23 +1597,19 @@ absent, escalate per the Workflow Convention and reopen D0.
   searching for `getCallSiteState` / `setCallSiteState` under
   `apps/sim/`.
 
-### New surface (pin one shape per D0)
+### New surface
 
-Per D0 table 1's disposition for `callSiteState` (and the
-host-side helpers it backs), the contract for per-callsite host
-state is one of:
+Per D0 table 1's disposition for `callSiteState` (host-state
+branch), the contract for per-callsite host state is a
+`PlatformServices` adapter pair:
 
-- a `PlatformServices` adapter pair --
-  `services.callSite.getHostState<T>(callSiteId): T | undefined`
-  and `services.callSite.setHostState(callSiteId, T): void`, or
-- an `ExecutionContext` slot -- a `hostStateSlots` indexer keyed
-  by `callSiteId` (kept on the context because it is
-  page-activation-scoped, like `callSiteState` today).
+- `services.callSite.getHostState(callSiteId: number): unknown`,
+- `services.callSite.setHostState(callSiteId: number, state: unknown): void`.
 
-The agent reads the exact field name, signature, and storage
-owner from D0; for review purposes, treat it as the services
-adapter form. Either way, the new surface does not expose
-`ActionInstance` to host code.
+The backing store is page-activation-scoped (matching today's
+`callSiteState` lifetime) and is owned by the adapter
+implementation, not the context. The new surface does not
+expose `ActionInstance` to host code.
 
 ### Procedure (execute in order; the tree should compile after each step)
 
@@ -1503,16 +1648,15 @@ adapter form. Either way, the new surface does not expose
 6. **Delete the host-state branch of the shim.** In
    `dense-shims.ts`, remove the get/set delegation that read
    from / wrote to `ActionInstance.hostState`. The new
-   surface's implementation now lives in whichever module D0
-   pinned (a `PlatformServices` adapter implementation, or
-   the `ExecutionContext` slot's runtime backing). The shim
-   file may still hold the rule-side branch (already gone in
-   D2) and the action-side branch (still present until D4).
+   surface's implementation lives in the `services.callSite`
+   adapter module under `runtime/`. The shim file may still
+   hold the rule-side branch (already gone in D2) and the
+   action-side branch (still present until D4).
 7. **Update test fixtures.** `sensors.spec.ts:66, 236` and
    `vm.spec.ts:1214` switch from constructing
    `callSiteState: new Dict<number, unknown>()` to
-   constructing whatever holds the new host-state surface
-   (test-local services adapter or context slot store). The
+   constructing a test-local `services.callSite` adapter that
+   holds host state for the asserted call sites. The
    `currentCallSiteId` assignment is unchanged. Sim-side test
    sweeps for cooldown behavior assert through the new
    surface.
@@ -1542,19 +1686,19 @@ adapter form. Either way, the new surface does not expose
   `resetActionInstance` (`runtime/context.ts:236-249`)
   preserves `existingHostState` across slot resets so
   cooldown state survives an action restart. After D3 the
-  `hostState` field is gone; the new surface must preserve
-  the same semantics, which means the new storage is
-  *not* cleared by action reset. D0 table 1's disposition for
-  the new surface must say so explicitly; if it does not,
-  escalate.
+  `hostState` field is gone; the new `services.callSite`
+  storage preserves the same semantics by _not_ being cleared
+  on action reset (the adapter's host-state map is keyed by
+  `callSiteId` and lives for the page activation, independent
+  of action-instance lifetime).
 - **Child-fiber visibility.** The child fiber spawned at
   `vm.ts:1820-1825` inherits the parent's
-  `currentCallSiteId` and `currentActionInstance`. If the new
-  host-state storage lives on the context, child-fiber spawn
-  must continue to share it (page-activation-scoped today).
-  Verify the new shape preserves this; if D0 picked a
-  per-fiber storage instead, escalate -- that is a behavior
-  change, not a shape change.
+  `currentCallSiteId` and `currentActionInstance`. Because
+  the new host-state storage lives in the
+  `services.callSite` adapter (page-activation-scoped, not
+  per-fiber), child fibers transparently see the same map as
+  the parent -- identical to today's
+  `Dict<callSiteId, ActionInstance>` behavior.
 
 ### Acceptance (validation checklist)
 
@@ -1572,10 +1716,11 @@ D3 ships only when every item passes:
    `getOrCreateActionInstance` / `resetActionInstance` if
    still present, and any internal map). The host-state
    branch is gone.
-4. The new per-callsite host-state surface (op or slot
-   indexer per D0) exists, is wired to a real backing store,
-   and is consumed by every shipped actuator / sensor host
-   function listed in D0 table 2.
+4. The new per-callsite host-state surface
+   (`services.callSite.getHostState` / `setHostState`) exists,
+   is wired to a real backing store, and is consumed by every
+   shipped actuator / sensor host function listed in D0
+   table 2.
 5. `runtime/vm.ts` is unchanged in this phase
    (`git diff packages/core/src/runtime/vm.ts` empty for D3).
 6. The dense-shims.ts host-state branch is gone; the file
@@ -1585,7 +1730,7 @@ D3 ships only when every item passes:
    `npm run typecheck && npm run check && npm test && npm run build`
    pass with the project's zero-noise standard.
 8. From `apps/sim`, `npm run typecheck && npm run check &&
-   npm test && npm run build` pass.
+npm test && npm run build` pass.
 9. No behavior changes: cooldown-sensitive sim behavior tests
    (move cooldown, shoot recharge, eat consumption window)
    pass without modification beyond the surface rename in
@@ -1604,15 +1749,15 @@ entirely. Removes the action-state-slot branch of the D1 shim.
 
 **Scope.** All `ACTION_CALL` and `ACTION_CALL_ASYNC` state-slot
 machinery -- both sync and async -- and the page-activation reset
-that initializes those slots. The async path's *fiber and handle
-wiring* (child fiber spawn, handle creation, scheduler entry) is
+that initializes those slots. The async path's _fiber and handle
+wiring_ (child fiber spawn, handle creation, scheduler entry) is
 D6's scope and is untouched here. The state-slot allocation /
 lookup is identical sync vs async, so splitting it across phases
 would leave a stub call site that helps no one.
 
 The scalar `ExecutionContext.currentCallSiteId` and the binder
 (`bindExecutionContext` / `syncExecutionContextFromTopFrame`) are
-unchanged: D4 removes only the *action-instance* arm of those
+unchanged: D4 removes only the _action-instance_ arm of those
 helpers (per Finding 3 below, that arm writes a field nobody
 reads after D3).
 
@@ -1627,9 +1772,9 @@ pinned `gap`:
 - table 5 row for `ActionInstance` (expected: retired in favor
   of a dense state-slot store);
 - table 6 row for the new per-callsite state-slot surface
-  (expected: pinned shape -- service adapter or context slot
-  indexer, with page-activation-scoped lifetime and explicit
-  reset semantics).
+  (expected: `services.action` adapter trio, with
+  page-activation-scoped lifetime and explicit reset
+  semantics on `ensureCallsite`).
 
 If any row is unresolved, escalate per the Workflow Convention
 and reopen D0.
@@ -1650,7 +1795,7 @@ and reopen D0.
   - `ExecutionContext.currentActionInstance` field (~line 138)
     -- dead after D3 (no reader; see Finding 3 in the D4
     review).
-  All of these are deleted by the end of D4.
+    All of these are deleted by the end of D4.
 - **VM dispatch to update:** `packages/core/src/runtime/vm.ts`.
   - Value-import of `getOrCreateActionInstance` at line 12 --
     deleted.
@@ -1673,7 +1818,7 @@ and reopen D0.
     list through the new surface keyed by the current frame's
     `actionBinding.callSiteId` (the frame walk in
     `getCurrentActionBinding` at line 1721 stays -- it
-    identifies the *callsite*, not the instance).
+    identifies the _callsite_, not the instance).
   - `enterBytecodeActionFrame` (~line 1768):
     `getOrCreateActionInstance(..., action.numStateSlots)` at
     line 1786 replaced with the new surface's "ensure
@@ -1734,29 +1879,25 @@ and reopen D0.
     `apps/sim/**/*.spec.ts` for `currentActionInstance` or
     `ActionInstance`).
 
-### New surface (pin one shape per D0 table 6)
+### New surface
 
-For per-callsite bytecode action state slots, the contract is
-one of:
+Per D0 table 6 (and table 1's disposition for `callSiteState`),
+the contract for per-callsite bytecode action state slots is a
+`PlatformServices` adapter trio:
 
-- a `PlatformServices` adapter trio --
-  `services.action.ensureCallsite(callSiteId, numStateSlots): void`,
-  `services.action.getStateSlot(callSiteId, slotIdx): Value`,
-  `services.action.setStateSlot(callSiteId, slotIdx, v): void`;
-- an `ExecutionContext` indexer -- a
-  `actionStateSlots: ActionStateSlotStore` field whose
-  implementation owns the page-activation-scoped storage and
-  exposes the same three operations.
+- `services.action.ensureCallsite(callSiteId: number, numStateSlots: number): void`,
+- `services.action.getStateSlot(callSiteId: number, slotIdx: number): Value`,
+- `services.action.setStateSlot(callSiteId: number, slotIdx: number, v: Value): void`.
 
-Either way:
+The surface:
 
-- the surface does not expose `ActionInstance`;
-- "ensure" is page-activation-scoped: it is the only
+- does not expose `ActionInstance`;
+- `ensureCallsite` is page-activation-scoped: it is the only
   operation that allocates / resets the slot list for a
   callsite; once allocated, the slot list lives until
   page deactivation (matches today's
   `Dict<callSiteId, ActionInstance>` lifetime exactly);
-- "ensure" overwrites existing slots (matches
+- `ensureCallsite` overwrites existing slots (matches
   `resetActionInstance` semantics: a fresh slot list on
   every page activation).
 
@@ -1774,8 +1915,9 @@ relocate them as part of pinning Brain's fate.
 ### Procedure (execute in order; the tree should compile after each step)
 
 1. **Add the new surface as additions only.** Per D0 table 6,
-   add the service op trio or context-slot indexer. The legacy
-   `ActionInstance` graph, `callSiteState` field,
+   add the `services.action` adapter trio
+   (`ensureCallsite` / `getStateSlot` / `setStateSlot`). The
+   legacy `ActionInstance` graph, `callSiteState` field,
    `currentActionInstance` field, and three context.ts
    helpers all stay through steps 2-6.
 2. **Wire the dense-shims action branch through the new
@@ -1804,7 +1946,7 @@ relocate them as part of pinning Brain's fate.
 5. **Migrate vm.ts host-action call sites.** Delete the
    `getOrCreateActionInstance(ctx, callSiteId, 0)` calls at
    vm.ts:999 and vm.ts:1055. Host actions never needed
-   per-callsite *state slots*; their secondary purpose was
+   per-callsite _state slots_; their secondary purpose was
    pre-populating `currentActionInstance` so the legacy
    `getCallSiteState` fast path hit. D3 retired that helper
    in favor of a `callSiteId`-keyed surface, so these calls
@@ -1845,10 +1987,11 @@ relocate them as part of pinning Brain's fate.
    `app/index.ts` (D3 already removed `getCallSiteState` /
    `setCallSiteState`; this drops the action-side helpers).
 9. **Bind the new surface to its real owner.** Replace the
-   shim's delegation with the real backing the D0-pinned
-   shape requires (a real services adapter, or a real
-   page-activation-scoped store on the context).
-   `dense-shims.ts` is now empty and is deleted.
+   shim's delegation with the real `services.action` adapter
+   implementation under `runtime/`, owning the
+   page-activation-scoped state-slot store keyed by
+   `callSiteId`. `dense-shims.ts` is now empty and is
+   deleted.
 10. **Sweep tests.** Update every fixture that constructs
     `callSiteState`, `currentActionInstance`, or
     `ActionInstance` to construct the new surface's
@@ -1876,21 +2019,17 @@ relocate them as part of pinning Brain's fate.
 - **Lifetime semantics change.** Today the slot list is
   freshly allocated on every page activation
   (`resetActionInstance`) and survives the page activation
-  intact. The new surface's `ensure` op must preserve
-  exactly this: page-activation-scoped, overwrite on
-  re-activation, no per-fiber clone. Mitigation: D0 table 6
-  must say so explicitly; if the disposition is silent,
-  escalate before D4 starts.
+  intact. The new `services.action.ensureCallsite` op
+  preserves exactly this per D0 table 6:
+  page-activation-scoped, overwrite on re-activation, no
+  per-fiber clone.
 - **Child-fiber visibility.** `spawnBytecodeActionFiber`
-  shallow-clones the parent's `ExecutionContext`. If the new
-  surface is a context-slot indexer, the child must share
-  (not clone) the slot store -- bytecode actions store
-  cooperative state across the parent / child boundary.
-  Mitigation: the indexer's storage is a single object
-  shared by the shallow clone, identical to today's
-  `Dict<callSiteId, ActionInstance>` behavior. If D0 picked
-  per-fiber storage, that is a behavior change, not a shape
-  change; escalate.
+  shallow-clones the parent's `ExecutionContext`. The
+  `services.action` adapter's slot store is owned by the
+  adapter (one map keyed by `callSiteId`, page-activation
+  scoped), not the context, so child fibers and parents see
+  the same store -- identical to today's
+  `Dict<callSiteId, ActionInstance>` behavior.
 - **Activation-hook parameter churn.** Removing
   `ActionInstance` from `runHostActivationHook` /
   `runBytecodeActivationHook` is a signature change inside
@@ -1921,13 +2060,14 @@ D4 ships only when every item passes:
    retires the field itself).
 5. `grep -n 'getOrCreateActionInstance' packages/core/src/runtime/vm.ts`
    returns zero matches; the value-import at line 12 is gone.
-6. The new per-callsite state-slot surface (op trio or slot
-   indexer per D0 table 6) is wired to a real backing store,
-   exercised by `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`
-   and by `Brain.activatePage`.
-7. `dense-shims.ts` is deleted (or, if D0 chose the services
-   shape and the agent kept a thin module under a different
-   name, `dense-shims.ts` itself no longer exists). The
+6. The new per-callsite state-slot surface
+   (`services.action.ensureCallsite` / `getStateSlot` /
+   `setStateSlot` per D0 table 6) is wired to a real backing
+   store, exercised by `LOAD_CALLSITE_VAR` /
+   `STORE_CALLSITE_VAR` and by `Brain.activatePage`.
+7. `dense-shims.ts` is deleted; the real `services.callSite`
+   and `services.action` adapter modules under `runtime/`
+   own their respective backing stores. The
    `installDenseShims` call in `Brain.activationContext` is
    removed.
 8. From `packages/core`, all four of
@@ -2010,12 +2150,12 @@ The `runtime/` directory has zero value-imports of `IBrainRule`,
     `onHandleCompleted(handleId)`).
   - `SchedulerConfig` interface (~line 2132) and
     `DEFAULT_SCHEDULER_CONFIG` (~line 2141).
-  D5 does not modify any of this; the section below pins the
-  surface and the acceptance grep re-asserts it.
+    D5 does not modify any of this; the section below pins the
+    surface and the acceptance grep re-asserts it.
 - **Brain<->scheduler interface (pinned this phase):**
   `packages/core/src/brain/brain.ts` --
   - `activeRuleFiberIds: List<{ funcId: number; fiberId:
-    number | undefined }>` field (line 125). This is **the**
+number | undefined }>` field (line 125). This is **the**
     Brain<->scheduler interface object; D5 pins it.
   - `scheduler.spawn(funcId, ..., this.executionContext)`
     call sites (lines 561 and 627),
@@ -2036,7 +2176,7 @@ The `runtime/` directory has zero value-imports of `IBrainRule`,
     body to just the `currentCallSiteId` save/restore (D3 and
     D4 already retired the `currentActionInstance` arm).
   - `runBytecodeActivationHook` (line 677): the `rule:
-    undefined` field in the `activationContext` object
+undefined` field in the `activationContext` object
     literal (line 685) is gone after D2; the `actionInstance`
     field on `actionBinding` (line 695) is gone after D4.
     The whole helper may simplify or merge with the host
@@ -2123,8 +2263,7 @@ gates are:
   pins it via G1 / G3 / G4 / acceptance grep.
 - **Brain still mixes compile-time and runtime concerns.**
   After D5, Brain holds all eight concerns listed above. The
-  physical split into `BrainRuntime` (concerns 3, 4, 5, 6, 7,
-  8) and `BrainCompiler` (concerns 1, 2) is a follow-on plan
+  physical split into `BrainRuntime` (concerns 3, 4, 5, 6, 7, 8) and `BrainCompiler` (concerns 1, 2) is a follow-on plan
   (see Out of Scope at the top of this spec). D5 makes that
   split mechanical by ensuring the Brain-side surface that
   the future `BrainRuntime` will own is already free of
@@ -2203,7 +2342,7 @@ that survived D2-D5** because it is async-specific:
   `spawnBytecodeActionFiber`;
 - the host-async branch's leftover dead binds
   (`getOrCreateActionInstance`, `bindExecutionContext(...,
-  actionInstance)`);
+actionInstance)`);
 - the async result handle lifecycle (`asyncResultHandleId`,
   `resolveAsyncActionHandle`, `rejectAsyncActionHandle`,
   `cancelAsyncActionHandle`, the
@@ -2230,50 +2369,43 @@ cleanup).
 ### Source paths (the agent edits / inspects these)
 
 - `packages/core/src/runtime/vm.ts`:
-  - `execActionCallAsync` (line ~1021). Both branches:
-    - host branch (lines ~1043-1063): `getOrCreateActionInstance`
-      (line ~1054) and `bindExecutionContext(fiber, frame,
-      callSiteId, actionInstance)` (line ~1055). After D4, the
-      action-instance carry is dead; the bind reduces to
-      `bindExecutionContext(fiber, frame, callSiteId)` (no
-      fourth argument).
-    - bytecode branch (lines ~1064-1085): `spawnBytecodeActionFiber`
-      call (line ~1068), `Scheduler.addFiber(childFiber)`
-      (line ~1077), `bindExecutionContext(fiber, frame,
-      callSiteId)` (line ~1082). The scheduler call already
-      hands a `Fiber` runtime struct (not an authoring
-      object); that is the contracted shape.
-  - `spawnBytecodeActionFiber` (line ~1811):
-    - line ~1825: `childContext.currentActionInstance =
-      actionInstance;` -- D4 retires `currentActionInstance`;
-      delete this line.
-    - line ~1826: `childContext.rule = ruleFuncId !== undefined
-      ? childContext.funcIdToRule?.get(ruleFuncId) :
-      undefined;` -- D2 retires both `ctx.rule` and
-      `funcIdToRule`; delete this line.
-    - lines ~1827-1832: `childFrame.actionBinding = { ...,
-      actionInstance };` -- D4 retires
-      `actionBinding.actionInstance`; remove the field from
-      the literal (the binding stays, with `actionKey`,
-      `callSiteId`, `isAsync: true`, and any other
-      post-D4-surviving fields).
-    - The `getOrCreateActionInstance(childContext, callSiteId,
-      action.numStateSlots)` call (line ~1820) is dead post-D4:
-      state-slot allocation moves to D4's contracted op. The
-      call deletes; if a state-slot reset is still needed at
-      child-fiber spawn, it issues through the D4 op (the agent
-      audits and the procedure step records the choice).
-    - The `resolveFrameRuleFuncId` call (line ~1821) and the
-      `ruleFuncId` storage on `childFrame` survive only if a
-      surviving consumer reads `childFrame.ruleFuncId`. The
-      agent greps for consumers; if zero, both lines delete.
+  - `execActionCallAsync` (line ~1021). Both branches: - host branch (lines ~1043-1063): `getOrCreateActionInstance`
+    (line ~1054) and `bindExecutionContext(fiber, frame,
+callSiteId, actionInstance)` (line ~1055). After D4, the
+    action-instance carry is dead; the bind reduces to
+    `bindExecutionContext(fiber, frame, callSiteId)` (no
+    fourth argument). - bytecode branch (lines ~1064-1085): `spawnBytecodeActionFiber`
+    call (line ~1068), `Scheduler.addFiber(childFiber)`
+    (line ~1077), `bindExecutionContext(fiber, frame,
+callSiteId)` (line ~1082). The scheduler call already
+    hands a `Fiber` runtime struct (not an authoring
+    object); that is the contracted shape.
+  - `spawnBytecodeActionFiber` (line ~1811): - line ~1825: `childContext.currentActionInstance =
+actionInstance;` -- D4 retires `currentActionInstance`;
+    delete this line. - line ~1826: `childContext.rule = ruleFuncId !== undefined
+? childContext.funcIdToRule?.get(ruleFuncId) :
+undefined;` -- D2 retires both `ctx.rule` and
+    `funcIdToRule`; delete this line. - lines ~1827-1832: `childFrame.actionBinding = { ...,
+actionInstance };` -- D4 retires
+    `actionBinding.actionInstance`; remove the field from
+    the literal (the binding stays, with `actionKey`,
+    `callSiteId`, `isAsync: true`, and any other
+    post-D4-surviving fields). - The `getOrCreateActionInstance(childContext, callSiteId,
+action.numStateSlots)` call (line ~1820) is dead post-D4:
+    state-slot allocation moves to D4's contracted op. The
+    call deletes; if a state-slot reset is still needed at
+    child-fiber spawn, it issues through the D4 op (the agent
+    audits and the procedure step records the choice). - The `resolveFrameRuleFuncId` call (line ~1821) and the
+    `ruleFuncId` storage on `childFrame` survive only if a
+    surviving consumer reads `childFrame.ruleFuncId`. The
+    agent greps for consumers; if zero, both lines delete.
   - `resolveAsyncActionHandle` (line ~1841),
     `rejectAsyncActionHandle` (line ~1856),
     `cancelAsyncActionHandle` (line ~1871). Read-only here:
     these are id-keyed already; G2 verifies.
   - `FiberScheduler.constructor` handle subscription
     (line ~2160: `this.vm.handles.events.on("completed",
-    (handleId) => this.onHandleCompleted(handleId));`).
+(handleId) => this.onHandleCompleted(handleId));`).
     Read-only here: id-keyed already; G3 verifies.
   - `FiberScheduler.onHandleCompleted` (line ~2197).
     Read-only here: id-keyed already; G3 verifies.
@@ -2335,17 +2467,17 @@ JSDoc; the gates are:
    - `childContext.currentActionInstance = ...` line,
    - `childContext.rule = ...` line,
    - `getOrCreateActionInstance(childContext, callSiteId,
-     action.numStateSlots)` call (route any surviving
+action.numStateSlots)` call (route any surviving
      state-slot reset through the D4 op),
    - `resolveFrameRuleFuncId` call + `childFrame.ruleFuncId =
-     ruleFuncId` if no consumer remains.
-   Run G4 after each delete; expect the count to drop by one.
+ruleFuncId` if no consumer remains.
+     Run G4 after each delete; expect the count to drop by one.
 3. **Sweep dead binds in host branch of
    `execActionCallAsync`.** Delete the
    `getOrCreateActionInstance` line and reduce
    `bindExecutionContext(fiber, frame, callSiteId,
-   actionInstance)` to `bindExecutionContext(fiber, frame,
-   callSiteId)`. Run G4 + G5.
+actionInstance)` to `bindExecutionContext(fiber, frame,
+callSiteId)`. Run G4 + G5.
 4. **Pin `Fiber.asyncResultHandleId` JSDoc.** Add field-level
    JSDoc in `vm-types.ts`: this field holds the `HandleId` of
    the pending async-action result handle for a child fiber
@@ -2370,7 +2502,7 @@ JSDoc; the gates are:
    the gate is the read.
 7. **Standard verification.** From `packages/core`, run
    `npm run typecheck && npm run check && npm test &&
-   npm run build`. From `apps/sim`, the same four. All pass
+npm run build`. From `apps/sim`, the same four. All pass
    with the project's zero-noise standard.
 
 ### Notes (not work items)
@@ -2392,7 +2524,7 @@ JSDoc; the gates are:
   internally constructs a `Fiber` struct and hands it to the
   scheduler for storage.
 - **Internal child-fiber id space.** `nextInternalFiberId =
-  -1` (line ~276) issues negative ids for child fibers
+-1` (line ~276) issues negative ids for child fibers
   spawned by `ACTION_CALL_ASYNC`. D6 does not change this;
   D0 table 6 records it. If a future phase consolidates
   fiber id allocation under the scheduler, that work is
@@ -2407,7 +2539,7 @@ JSDoc; the gates are:
   belongs in a follow-on plan.
 - **State-slot reset on async child-fiber spawn.** When the
   agent deletes `getOrCreateActionInstance(childContext,
-  callSiteId, action.numStateSlots)` from
+callSiteId, action.numStateSlots)` from
   `spawnBytecodeActionFiber`, the child fiber must still see
   an initialized state-slot region for the child action's
   call site. Either D4's contracted reset op is invoked at
@@ -2422,7 +2554,7 @@ JSDoc; the gates are:
   `action.execAsync`. If `execAsync` throws synchronously,
   the handle is orphaned. The bytecode branch handles this
   via `try { scheduler.addFiber(childFiber); } catch { ...
-  this.handles.delete(hid); throw error; }`. D6 verifies the
+this.handles.delete(hid); throw error; }`. D6 verifies the
   host branch has the symmetric guard; if it does not, the
   agent adds it as part of the cleanup (this is a
   pre-existing latent bug that this phase surfaces, not a new
@@ -2546,7 +2678,7 @@ lines); the whole section stays within the <=120-line target.
 
 1. **`ExecutionContext` shape.** The portable runtime context
    struct: per-rule variable arrays addressed by `(ruleId,
-   slot)`, callsite host state addressed by `callSiteId`,
+slot)`, callsite host state addressed by `callSiteId`,
    action state slots addressed by `(callSiteId, slotIndex)`,
    the current-id fields (`currentCallSiteId`, current rule
    id, current fiber id), and the per-tick scalar anchors
@@ -2584,7 +2716,7 @@ lines); the whole section stays within the <=120-line target.
    - sync `ACTION_CALL` and async `ACTION_CALL_ASYNC` both
      route per-callsite action state through the
      state-slots side table keyed by `(callSiteId,
-     slotIndex)`;
+slotIndex)`;
    - state slots reset on page activation;
    - `ACTION_CALL_ASYNC` allocates a `HandleId` from the VM
      handle table, spawns a child fiber (bytecode branch)
@@ -2619,7 +2751,7 @@ lines); the whole section stays within the <=120-line target.
    `PlatformServices` members (`functions`, `types`,
    conversions, operators) and the `VmEvents` aggregate are
    covered by the existing `## Construction and services
-   boundary` section. The dense additions enumerated in
+boundary` section. The dense additions enumerated in
    sub-section 2 extend that aggregate; they do not redefine
    the registry surface.
 8. **Maintenance rule.** Any subsequent spec that adds or
@@ -2657,10 +2789,10 @@ new section:
   table 6 (id-space). It refers to them by name and links
   to this plan.
 - **G4 -- <=120 lines.** `awk 'NR>=START && NR<=END' vm-contract.md
-  | wc -l` for the new section returns <=120 (preferred:
+| wc -l` for the new section returns <=120 (preferred:
   <=100). If between 120 and 150, the agent reviews each
   paragraph for derivation content and deletes; if still
-  >150, escalate.
+  exceeds 150, escalate.
 - **G5 -- Forward references resolve.** Every
   parenthetical "(D0 table N)" / "(per D5)" / "(per D6)"
   / "(see ts-brain-runtime-split-plan-2026-05-03.md)"
@@ -2671,15 +2803,15 @@ new section:
 1. **Run the precondition greps.** If either returns
    matches, stop and escalate.
 2. **Re-read the existing `## Construction and services
-   boundary` section** end-to-end. The new section must
+boundary` section** end-to-end. The new section must
    match its tone, length per sub-section, and discipline
    (contract statements, not derivations).
 3. **Draft the new section** following the eight
    sub-sections enumerated under "Section content."
    Insert immediately after `## Construction and services
-   boundary` and before `## Opcode completeness`.
+boundary` and before `## Opcode completeness`.
 4. **Update the existing `### Out of scope for this
-   boundary` paragraph** (line ~221) to point at the new
+boundary` paragraph** (line ~221) to point at the new
    dense-state section as the durable answer for runtime
    state shape, instead of pointing at this plan as a
    forward reference.
@@ -2701,7 +2833,7 @@ new section:
    manually that every link in the new section resolves.
    D7 introduces no code, so the per-package
    `npm run typecheck && npm run check && npm test &&
-   npm run build` gates are not required by D7's content
+npm run build` gates are not required by D7's content
    change. They are still run if any incidental code
    touch happens (e.g. fixing a stale path comment
    discovered during the read-passes), and must pass with
@@ -2738,7 +2870,7 @@ new section:
   paragraph belongs in this plan's history, not the
   contract.
 - **Duplication of `## Construction and services
-  boundary`.** The dense `PlatformServices` members
+boundary`.** The dense `PlatformServices` members
   enumerated in sub-section 2 must not re-state the
   registry-shaped members (`functions`, `types`)
   documented in the existing section. Cross-link instead.
@@ -2771,7 +2903,7 @@ D7 ships only when every item passes:
 9. No code changes shipped under D7 unless an incidental
    touch was required; if any, the per-package gates
    pass with zero noise.
-10. This plan's "Current State" line is updated by the
+10. This plan's "Phase Log" is updated by the
     post-mortem unit (not D7 itself) to reflect that the
     plan is historical and the durable contract lives in
     `vm-contract.md`.
