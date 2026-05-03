@@ -377,7 +377,7 @@ export class VM implements IVM {
         if (!caught) {
           this.transitionState(fiber, FiberState.FAULT);
           this.rejectAsyncActionHandle(fiber, err);
-          scheduler.onFiberFault?.(fiber.id, err);
+          this.events?.onFiberFault?.({ fiberId: fiber.id, err });
           return { status: VmStatus.FAULT, error: err };
         }
         continue;
@@ -882,7 +882,7 @@ export class VM implements IVM {
     if (done) {
       this.transitionState(fiber, FiberState.DONE);
       this.resolveAsyncActionHandle(fiber, retv);
-      scheduler.onFiberDone?.(fiber.id, retv);
+      this.events?.onFiberDone?.({ fiberId: fiber.id, retv });
       return { status: VmStatus.DONE, result: retv };
     }
     return undefined;
@@ -1112,7 +1112,7 @@ export class VM implements IVM {
       if (!caught) {
         this.transitionState(fiber, FiberState.FAULT);
         this.rejectAsyncActionHandle(fiber, err);
-        scheduler.onFiberFault?.(fiber.id, err);
+        this.events?.onFiberFault?.({ fiberId: fiber.id, err });
         return { status: VmStatus.FAULT, error: err };
       }
       return undefined;
@@ -1127,7 +1127,7 @@ export class VM implements IVM {
     };
 
     h.waiters.add(fiber.id);
-    scheduler.onFiberWaiting?.(fiber.id, hv.id);
+    this.events?.onFiberWaiting?.({ fiberId: fiber.id, handleId: hv.id });
 
     return { status: VmStatus.WAITING, handleId: hv.id };
   }
@@ -1169,7 +1169,7 @@ export class VM implements IVM {
     if (!caught) {
       this.transitionState(fiber, FiberState.FAULT);
       this.rejectAsyncActionHandle(fiber, err);
-      scheduler.onFiberFault?.(fiber.id, err);
+      this.events?.onFiberFault?.({ fiberId: fiber.id, err });
       return { status: VmStatus.FAULT, error: err };
     }
     return undefined;
@@ -1950,7 +1950,7 @@ export class VM implements IVM {
     this.transitionState(fiber, FiberState.CANCELLED);
     fiber.lastError = this.makeError(ErrorCode.Cancelled, "Fiber cancelled");
     this.cancelAsyncActionHandle(fiber);
-    scheduler.onFiberCancelled?.(fiber.id);
+    this.events?.onFiberCancelled?.({ fiberId: fiber.id });
   }
 
   private topFrame(fiber: Fiber): Frame | undefined {
@@ -2105,7 +2105,7 @@ export class VM implements IVM {
     fiber.lastError = err;
     this.transitionState(fiber, FiberState.FAULT);
     this.rejectAsyncActionHandle(fiber, err);
-    scheduler.onFiberFault?.(fiber.id, err);
+    this.events?.onFiberFault?.({ fiberId: fiber.id, err });
   }
 
   /**
@@ -2215,22 +2215,6 @@ export class FiberScheduler implements IFiberScheduler {
     if (this.config.autoGcHandles && h.state !== HandleState.PENDING) {
       this.vm.handles.delete(handleId);
     }
-  };
-
-  onFiberWaiting = (fiberId: number, handleId: HandleId): void => {
-    // Fiber removed from runnable set by state transition
-  };
-
-  onFiberDone = (fiberId: number, result?: Value): void => {
-    // Fiber can be removed or kept for result inspection
-  };
-
-  onFiberFault = (fiberId: number, err: ErrorValue): void => {
-    // Fiber faulted - log or inspect as needed
-  };
-
-  onFiberCancelled = (fiberId: number): void => {
-    // Fiber cancelled
   };
 
   cancel(fiberId: number): void {

@@ -383,10 +383,6 @@ export class HandleTable {
 /** Minimal scheduler hooks the VM uses to enqueue, complete, and look up fibers. */
 export interface Scheduler {
   onHandleCompleted: (handleId: HandleId) => void;
-  onFiberWaiting?: (fiberId: number, handleId: HandleId) => void;
-  onFiberFault?: (fiberId: number, error: ErrorValue) => void;
-  onFiberDone?: (fiberId: number, result?: Value) => void;
-  onFiberCancelled?: (fiberId: number) => void;
   enqueueRunnable: (fiberId: number) => void;
   getFiber: (fiberId: number) => Fiber | undefined;
   addFiber?: (fiber: Fiber) => void;

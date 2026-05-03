@@ -352,8 +352,30 @@ Each unit must:
 
 ## Current State
 
-Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1.
-Next up: M3.2.
+Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2.
+Next up: M3.3.
+
+### M3.2 -- Convert `passive-event` Emit Sites To Observer Calls
+
+All seven `scheduler.onFiberX?.(...)` emit sites in `vm.ts` replaced with
+`this.events?.onFiberX?.(payload)` calls; the four fiber-lifecycle hooks
+removed from `Scheduler`; `FiberScheduler`'s corresponding no-op methods
+removed. Passivity test added to `vm.spec.ts`.
+
+Verification: full gate green (682/682 tests).
+
+### Risks (M3.2)
+
+- **`Scheduler` interface no longer carries fiber-lifecycle hooks.** Any
+  future code that adds a `Scheduler` implementation and relies on
+  `onFiberFault` etc. will get a compile error. The correct place for
+  those hooks is `VmEvents`.
+- **`FiberScheduler` no longer has `onFiberDone` / `onFiberFault` /
+  `onFiberWaiting` / `onFiberCancelled` public methods.** The one test
+  that previously monkey-patched `scheduler.onFiberDone` was updated to
+  inject a `VM events:` observer instead. Any test authored after M3.1
+  that still monkey-patches `FiberScheduler` methods will fail to compile;
+  use `VmOptions.events` instead.
 
 ### M3.1 -- VMEvents Scaffold And Constructor Slot
 

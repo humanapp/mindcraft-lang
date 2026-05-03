@@ -26,6 +26,8 @@ import {
   errorCodeName,
   FALSE_VALUE,
   type Fiber,
+  type FiberDoneEvent,
+  type FiberFaultEvent,
   FiberScheduler,
   FiberState,
   type FunctionBytecode,
@@ -107,10 +109,6 @@ function mkSchedulerCallbacks() {
     onHandleCompleted: () => {},
     enqueueRunnable: () => {},
     getFiber: () => undefined,
-    onFiberWaiting: undefined as ((fid: number, hid: number) => void) | undefined,
-    onFiberFault: undefined as ((fid: number, err: unknown) => void) | undefined,
-    onFiberDone: undefined as ((fid: number, result?: Value) => void) | undefined,
-    onFiberCancelled: undefined as ((fid: number) => void) | undefined,
   };
 }
 
@@ -1651,22 +1649,21 @@ describe("VM -- action calls", () => {
       ]),
     };
 
-    const vm = new VM(prog, services);
+    let rootFiberId = -1;
+    let rootResult: Value | undefined;
+    const vm = new VM(prog, services, {
+      events: {
+        onFiberDone: (payload) => {
+          if (payload.fiberId === rootFiberId) rootResult = payload.retv;
+        },
+      },
+    });
     const scheduler = new FiberScheduler(vm, {
       maxFibersPerTick: 64,
       defaultBudget: 100,
       autoGcHandles: true,
     });
-    const rootFiberId = scheduler.spawn(0, List.empty(), mkCtx());
-
-    let rootResult: Value | undefined;
-    const previousOnFiberDone = scheduler.onFiberDone;
-    scheduler.onFiberDone = (fiberId: number, result?: Value) => {
-      previousOnFiberDone(fiberId, result);
-      if (fiberId === rootFiberId) {
-        rootResult = result;
-      }
-    };
+    rootFiberId = scheduler.spawn(0, List.empty(), mkCtx());
 
     scheduler.tick();
 
@@ -1693,17 +1690,19 @@ describe("VM -- async await/resume", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
       [handleValue]
     );
-    const vm = new VM(prog, services, { handles });
+    let waitingFiberId: number | undefined;
+    const vm = new VM(prog, services, {
+      handles,
+      events: {
+        onFiberWaiting: (payload) => {
+          waitingFiberId = payload.fiberId;
+        },
+      },
+    });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
-    const callbacks = mkSchedulerCallbacks();
-    let waitingFiberId: number | undefined;
-    callbacks.onFiberWaiting = (fid) => {
-      waitingFiberId = fid;
-    };
-
-    const result = vm.runFiber(fiber, callbacks);
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
 
     assert.equal(result.status, VmStatus.WAITING);
     assert.equal(fiber.state, FiberState.WAITING);
@@ -1812,19 +1811,18 @@ describe("VM -- exception handling", () => {
   test("uncaught THROW faults the fiber", () => {
     const errVal: Value = { t: "err", e: { code: ErrorCode.ScriptError, message: "uncaught" } };
     const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.THROW }])], [errVal]);
-    const vm = new VM(prog, services);
+    let faultedId: number | undefined;
+    const vm = new VM(prog, services, {
+      events: {
+        onFiberFault: (payload) => {
+          faultedId = payload.fiberId;
+        },
+      },
+    });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
-    let faultedId: number | undefined;
-    const callbacks = {
-      ...mkSchedulerCallbacks(),
-      onFiberFault: (fid: number) => {
-        faultedId = fid;
-      },
-    };
-
-    const result = vm.runFiber(fiber, callbacks);
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
 
     assert.equal(result.status, VmStatus.FAULT);
     assert.equal(fiber.state, FiberState.FAULT);
@@ -3340,5 +3338,44 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
     assert.equal(observed!.get(1).t, NativeType.Nil, "slot 1 must be NIL");
     assert.equal(observed!.get(2).t, NativeType.Nil, "slot 2 must be NIL");
     assert.equal((observed!.get(3) as NumberValue).v, 300);
+  });
+});
+
+// ---- VMEvents passivity ----
+
+describe("VM -- VMEvents passivity", () => {
+  test("event observer does not affect fiber execution outcome", () => {
+    const prog = mkProgram([mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }])], [mkNumberValue(42)]);
+
+    // Run without observer
+    const vm1 = new VM(prog, services);
+    const fiber1 = vm1.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber1.instrBudget = 100;
+    const result1 = vm1.runFiber(fiber1, mkSchedulerCallbacks());
+
+    // Run with observer that records every call
+    const donePayloads: FiberDoneEvent[] = [];
+    const faultPayloads: FiberFaultEvent[] = [];
+    const vm2 = new VM(prog, services, {
+      events: {
+        onFiberDone: (payload) => {
+          donePayloads.push(payload);
+        },
+        onFiberFault: (payload) => {
+          faultPayloads.push(payload);
+        },
+      },
+    });
+    const fiber2 = vm2.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber2.instrBudget = 100;
+    const result2 = vm2.runFiber(fiber2, mkSchedulerCallbacks());
+
+    // Final execution state must be identical
+    assert.deepEqual(result1, result2);
+    // Observer fired once for completion
+    assert.equal(donePayloads.length, 1);
+    assert.equal(donePayloads[0].fiberId, 1);
+    assert.equal((donePayloads[0].retv as NumberValue).v, 42);
+    assert.equal(faultPayloads.length, 0);
   });
 });
