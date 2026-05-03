@@ -132,6 +132,109 @@ contract -- a narrowly-scoped re-entrant entry point distinct from
 `brain.think()`, plus an explicit materialize/copy step for any
 ephemeral views the host holds. Ad-hoc loopholes are not permitted.
 
+## Construction and services boundary
+
+This section pins the VM's external surface: the constructor, the
+service aggregate it consumes, the passive event aggregate it emits
+through, and the import firewall that holds them in place.
+
+### Construction signature
+
+The VM is constructed as
+`new VM(program: Program, services: PlatformServices, options?: VmOptions)`.
+`options.events?: VmEvents` is the passive observer slot; omitting
+`options` (or omitting `options.events`) must yield identical
+program execution and identical host-visible side effects. The
+remaining `VmOptions` fields (`handles?`, plus `Partial<VmConfig>`
+overrides) tune resource shapes and do not change the boundary.
+
+### `PlatformServices` responsibilities
+
+`PlatformServices` is the single aggregate the VM accepts at
+construction. Its members are:
+
+- `functions: IFunctionRegistry` -- resolved by `HOST_CALL` and
+  `HOST_CALL_ASYNC` dispatch to obtain the host function record
+  for a given function id.
+- `types: ITypeRegistry` -- consulted by VM value copying and
+  struct field access paths to look up type definitions, native
+  snapshot functions, and field getters/setters.
+
+Scope rule (binding on every future addition): `PlatformServices`
+covers only the runtime registries enumerated in the M2.0 tables of
+[ts-vm-module-decoupling-plan-2026-05-02.md](../features/ts-vm-module-decoupling-plan-2026-05-02.md).
+The VM does **not** receive a program verifier (the TS VM trusts
+its in-process compiler; verification is reserved for a future
+MCU-targeted port and lives in a separate spec). The VM also does
+**not** receive action resolution, rule state, platform entity
+access, or RNG through `PlatformServices`; those belong to the
+runtime-state surface defined by the dense-runtime-state spec.
+
+### `VmEvents` permissions and prohibitions
+
+`VmEvents` is the optional passive observer aggregate. Its methods
+are:
+
+- `onFiberFault?(payload: FiberFaultEvent)` -- a fiber faulted;
+  payload is `{ fiberId, err }`.
+- `onFiberDone?(payload: FiberDoneEvent)` -- a fiber completed
+  normally; payload is `{ fiberId, retv }`.
+- `onFiberCancelled?(payload: FiberCancelledEvent)` -- a fiber was
+  cancelled; payload is `{ fiberId }`.
+- `onFiberWaiting?(payload: FiberWaitingEvent)` -- a fiber
+  transitioned to waiting on a handle; payload is
+  `{ fiberId, handleId }`.
+
+**Passivity property.** An event observer is *passive* iff:
+
+1. `vm.ts` never reads from `events` to make a control-flow
+   decision (no branches, no return values consumed).
+2. Final `Program` state and any host-visible side effects are
+   identical for any two executions of the same program that
+   differ only in their `VMEvents` argument (including
+   `undefined`).
+
+**Event-payload content rule.** Each event payload contains only
+values already locally available at the emit site. Nothing is
+computed, looked up, or allocated solely to satisfy an event.
+Payloads carry only IDs and primitive values that will survive the
+dense-runtime-state spec rewrite. Payloads do **not** carry
+references to today's object-shaped `Brain`, `BrainPage`,
+`BrainRule`, or `ActionInstance` instances.
+
+Both rules bind every future event method added to `VmEvents` by
+any downstream spec.
+
+### Import-firewall rule
+
+Every file under `packages/core/src/runtime/` may value-import only
+from `runtime/` and `platform/`. The transitive value-import
+closure is what is constrained; `import type` and other type-only
+positions are excluded. The allow-list is mechanized as the
+`runtime-allow-list` rule in
+`packages/core/.dependency-cruiser.cjs`, which is the source of
+truth for permitted edges (any narrowly-justified shim must be
+added there). The rule is enforced as a hard zero-violation gate by
+`packages/core/src/runtime/__firewall__.spec.ts`, which runs under
+`npm test`.
+
+### Out of scope for this boundary
+
+This section does not cover runtime state shape (`Brain`,
+`BrainPage`, `BrainRule`, `ActionInstance`, dense
+`ExecutionContext`) or host ABI portability. Both are addressed by
+[ts-vm-dense-runtime-state-plan-2026-05-02.md](../features/ts-vm-dense-runtime-state-plan-2026-05-02.md),
+which builds on this boundary.
+
+### Maintenance rule
+
+Any subsequent spec that modifies the VM constructor signature,
+adds or removes a `PlatformServices` field, adds or removes a
+`VmEvents` method, or changes the firewall rule **must update this
+section in lock-step** with the code change. Per the workflow
+convention, update `docs/specs/core/vm-contract.md` as part of the
+same unit when the change is contract-shaping.
+
 ## Opcode completeness
 
 Every conforming VM implementation -- the TypeScript reference VM

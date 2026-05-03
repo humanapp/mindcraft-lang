@@ -352,8 +352,40 @@ Each unit must:
 
 ## Current State
 
-Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2, M3.3, M4.1, M4.2, M4.3.
-Next up: M5.
+Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2, M3.3, M4.1, M4.2, M4.3, M5.
+Spec complete.
+
+### M5 -- Document The Module/Service Boundary
+
+`vm-contract.md` gains a single new top-level section
+`## Construction and services boundary` (placed after
+`## Single-entry guarantee`) covering construction signature,
+`PlatformServices` responsibilities, `VmEvents` permissions and
+prohibitions (passivity property + event-payload content rule
+verbatim), import-firewall rule, out-of-scope statement, and a
+maintenance rule. Dense-state spec's prerequisite paragraph cites
+the new section by anchor.
+
+Verification: docs-only unit; manual links-and-anchors check
+passed; section length 103 lines (<=120 cap).
+
+### Risks (M5)
+
+- **Documented constructor signature is `(program, services,
+  options?: VmOptions)`, not the `(program, services, events?:
+  VMEvents)` shape the M5 spec subsection 1 prescribed.** The code
+  uses an options bag (per M3.1's recorded deviation); the contract
+  was written to match the code. If a later spec restores the
+  positional `events?` form, this subsection must change with it.
+- **Maintenance rule is the only mechanism keeping the contract in
+  sync with the VM surface.** No automated gate checks that a
+  constructor / `PlatformServices` / `VmEvents` / firewall change
+  also touches `vm-contract.md`. Reviewers of dense-state, WODAL,
+  and CODAL units must enforce it manually.
+- **Cross-spec anchor link is title-coupled.** The dense-state
+  spec links to `vm-contract.md#construction-and-services-boundary`.
+  Any rename of the new section header silently breaks that link;
+  rename must update both files.
 
 ### M4.3 -- Firewall Hardened To Zero
 
@@ -1982,7 +2014,7 @@ uses these `###` subsections, in this order. Each subsection is
    state / platform entity access / RNG (those belong to the
    dense-runtime-state spec). This bound prevents the aggregate
    from widening downstream.
-3. **`VMEvents` permissions and prohibitions.** One line per
+3. **`VmEvents` permissions and prohibitions.** One line per
    method on the M3.1 interface, naming the method and what it
    observes. Then state the **passivity property** verbatim from
    Phase M3 (both clauses) and the **event-payload content rule**
