@@ -10,6 +10,7 @@ import type { FunctionBytecode, Instr } from "./bytecode";
 import { Op } from "./bytecode";
 import type { ActionInstance, ExecutableAction, ExecutionContext } from "./context";
 import { getOrCreateActionInstance } from "./context";
+import type { VmEvents } from "./events";
 import type { Program } from "./program";
 import type { PlatformServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
@@ -53,6 +54,14 @@ import {
   type VmRunResult,
   VmStatus,
 } from "./vm-types";
+
+/** Construction options for the VM. All fields are optional. */
+export interface VmOptions extends Partial<VmConfig> {
+  /** Passive observer for VM runtime lifecycle events. */
+  events?: VmEvents;
+  /** Pre-populated handle table to inject. When omitted, the VM creates its own. */
+  handles?: HandleTable;
+}
 
 /**
  * Stack-based bytecode VM
@@ -263,23 +272,29 @@ export class VM implements IVM {
   private config: VmConfig;
   private services: PlatformServices;
   private fns: PlatformServices["functions"];
+  private events?: VmEvents;
   private nextInternalFiberId = -1;
   public handles: HandleTable;
 
-  constructor(prog: Program, services: PlatformServices, config?: Partial<VmConfig>);
-  constructor(prog: Program, services: PlatformServices, handles: HandleTable, config?: Partial<VmConfig>);
   constructor(
     private prog: Program,
     services: PlatformServices,
-    handlesOrConfig?: HandleTable | Partial<VmConfig>,
-    configOverride?: Partial<VmConfig>
+    options?: VmOptions
   ) {
     this.services = services;
     this.fns = services.functions;
-    const injectedHandles = handlesOrConfig instanceof HandleTable ? handlesOrConfig : undefined;
-    const config = injectedHandles ? configOverride : handlesOrConfig;
-    this.config = { ...DEFAULT_VM_CONFIG, ...config };
+    const events = options?.events;
+    const injectedHandles = options?.handles;
+    const configOverrides: Partial<VmConfig> = {};
+    if (options?.maxFrameDepth !== undefined) configOverrides.maxFrameDepth = options.maxFrameDepth;
+    if (options?.maxStackSize !== undefined) configOverrides.maxStackSize = options.maxStackSize;
+    if (options?.maxHandlers !== undefined) configOverrides.maxHandlers = options.maxHandlers;
+    if (options?.maxHandles !== undefined) configOverrides.maxHandles = options.maxHandles;
+    if (options?.defaultBudget !== undefined) configOverrides.defaultBudget = options.defaultBudget;
+    if (options?.debugStackChecks !== undefined) configOverrides.debugStackChecks = options.debugStackChecks;
+    this.config = { ...DEFAULT_VM_CONFIG, ...configOverrides };
     this.handles = injectedHandles ?? new HandleTable(this.config.maxHandles);
+    this.events = events;
 
     // Wire HandleTable events to forward to VM consumers
     // This allows external components to listen to handle completion via VM

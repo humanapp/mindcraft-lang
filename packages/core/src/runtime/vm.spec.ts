@@ -146,7 +146,7 @@ describe("VM -- closed struct field opcodes", () => {
       variableNames: List.empty<string>(),
       entryPoint: 0,
     };
-    const vm = new VM(prog, services, { maxHandles: 100 });
+    const vm = new VM(prog, services, { handles: new HandleTable(100) });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -183,7 +183,7 @@ describe("VM -- closed struct field opcodes", () => {
       [{ t: NativeType.Struct, typeId, native: { x: 77 }, v: List.empty<Value>() }]
     );
     prog.constantPools.strings.push("x");
-    const vm = new VM(prog, services, { maxHandles: 100 });
+    const vm = new VM(prog, services, { handles: new HandleTable(100) });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -999,7 +999,7 @@ describe("VM -- callsite-persistent variables", () => {
         ]),
       } as Program,
       services,
-      handles
+      { handles }
     );
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
@@ -1076,7 +1076,7 @@ describe("VM -- callsite-persistent variables", () => {
         ]),
       } as Program,
       services,
-      handles
+      { handles }
     );
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
@@ -1349,7 +1349,7 @@ describe("VM -- action calls", () => {
     };
 
     const handles = new HandleTable(100);
-    const vm = new VM(prog, services, handles);
+    const vm = new VM(prog, services, { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1693,7 +1693,7 @@ describe("VM -- async await/resume", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
       [handleValue]
     );
-    const vm = new VM(prog, services, handles);
+    const vm = new VM(prog, services, { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1720,7 +1720,7 @@ describe("VM -- async await/resume", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
       [handleValue]
     );
-    const vm = new VM(prog, services, handles);
+    const vm = new VM(prog, services, { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -1741,7 +1741,7 @@ describe("VM -- async await/resume", () => {
       [mkFunc([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.AWAIT }, { op: Op.RET }])],
       [handleValue]
     );
-    const vm = new VM(prog, services, handles);
+    const vm = new VM(prog, services, { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 
@@ -2786,7 +2786,7 @@ describe("FiberScheduler", () => {
       [handleValue]
     );
 
-    const vm = new VM(prog, services, handles);
+    const vm = new VM(prog, services, { handles });
     const scheduler = new FiberScheduler(vm, { maxFibersPerTick: 64, defaultBudget: 1000, autoGcHandles: true });
 
     const fiberId = scheduler.spawn(0, List.empty(), mkCtx());
@@ -2883,7 +2883,7 @@ describe("VM -- overflow faults", () => {
       ],
       [mkNumberValue(1)]
     );
-    const vm = new VM(prog, services, { maxStackSize: 8 });
+    const vm = new VM(prog, services, { handles: new HandleTable(100), maxStackSize: 8 });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -2897,7 +2897,7 @@ describe("VM -- overflow faults", () => {
   test("frame depth overflow surfaces as ErrorCode.StackOverflow", () => {
     // Function 0 recurses into itself unconditionally, exhausting maxFrameDepth.
     const prog = mkProgram([mkFunc([{ op: Op.CALL, a: 0, b: 0 }, { op: Op.RET }])]);
-    const vm = new VM(prog, services, { maxFrameDepth: 8, maxStackSize: 1024 });
+    const vm = new VM(prog, services, { handles: new HandleTable(100), maxFrameDepth: 8, maxStackSize: 1024 });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -2917,7 +2917,7 @@ describe("VM -- overflow faults", () => {
         { op: Op.JMP, a: -1 },
       ]),
     ]);
-    const vm = new VM(prog, services, { maxHandlers: 8 });
+    const vm = new VM(prog, services, { handles: new HandleTable(100), maxHandlers: 8 });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
 

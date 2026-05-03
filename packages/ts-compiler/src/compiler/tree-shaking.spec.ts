@@ -136,7 +136,7 @@ function runProgram(prog: UserAuthoredProgram): Value | undefined {
   const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
   if (prog.activationFuncId !== undefined) {
-    const vm = new runtime.VM(prog, services, handles);
+    const vm = new runtime.VM(prog, services, { handles });
     const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -144,7 +144,7 @@ function runProgram(prog: UserAuthoredProgram): Value | undefined {
     assert.equal(r.status, VmStatus.DONE);
   }
 
-  const vm = new runtime.VM(prog, services, handles);
+  const vm = new runtime.VM(prog, services, { handles });
   const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
   fiber.callsiteVars = callsiteVars;
   fiber.instrBudget = 10000;
@@ -163,7 +163,7 @@ function runExecutable(prog: FlatExecutable): Value | undefined {
   const callsiteVars = List.from<Value>(Array.from({ length: numSlots }, () => NIL_VALUE));
 
   if (action?.binding === "bytecode" && action.activationFuncId !== undefined) {
-    const vm = new runtime.VM(prog, services, handles);
+    const vm = new runtime.VM(prog, services, { handles });
     const fiber = vm.spawnFiber(1, action.activationFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -172,7 +172,7 @@ function runExecutable(prog: FlatExecutable): Value | undefined {
   }
 
   const entryFuncId = action?.binding === "bytecode" ? action.entryFuncId : (prog.entryPoint ?? 0);
-  const vm = new runtime.VM(prog, services, handles);
+  const vm = new runtime.VM(prog, services, { handles });
   const fiber = vm.spawnFiber(1, entryFuncId, List.empty<Value>(), mkCtx());
   fiber.callsiteVars = callsiteVars;
   fiber.instrBudget = 10000;

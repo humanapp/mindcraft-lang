@@ -352,8 +352,29 @@ Each unit must:
 
 ## Current State
 
-Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2.
-Next up: M3.1.
+Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1.
+Next up: M3.2.
+
+### M3.1 -- VMEvents Scaffold And Constructor Slot
+
+`VmEvents` interface and four payload types added to `runtime/events.ts` and
+barrel-exported from `runtime/index.ts`. `VmOptions` options bag introduced on
+the VM constructor, carrying `events?`, `handles?`, and all `VmConfig` fields;
+constructor stores `events` on the instance without calling it.
+
+Verification: full gate green (681/681 tests).
+
+### Risks (M3.1)
+
+- **`VmOptions` is not in the spec.** The spec described multiple constructor
+  overloads; the user replaced them with an options bag. M3.2 must wire emit
+  sites through `this.events` (not `scheduler.on*`); confirm `this.events` is
+  the correct reference before editing call sites.
+- **`handles` injection moved into `VmOptions`.** Test sites that previously
+  passed a bare `HandleTable` as the third positional argument must use
+  `{ handles: ... }` instead. Any test added after M2.2 using the old
+  positional form will fail to compile; M3.2 should verify no such test
+  was added between M2.2 and M3.2.
 
 ### M2.2 -- VM Construction Flipped To PlatformServices
 

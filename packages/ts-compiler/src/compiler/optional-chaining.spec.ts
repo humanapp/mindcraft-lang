@@ -56,7 +56,7 @@ function runSensor(source: string, args?: List<Value>): { result: Value | undefi
 
   const prog = result.program!;
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(prog, services, handles);
+  const vm = new runtime.VM(prog, services, { handles });
   const ctx = mkCtx();
   const fiberArgs = args ? args : List.empty<Value>();
   const fiber = vm.spawnFiber(1, 0, fiberArgs, ctx);

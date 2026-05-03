@@ -7,6 +7,7 @@ export * from "./conversion-defs";
 export * from "./conversions";
 export * from "./core-types";
 export * from "./element-access-builtins";
+export * from "./events";
 export * from "./function-defs";
 export * from "./functions";
 export * from "./host-bindings";

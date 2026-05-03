@@ -80,7 +80,7 @@ function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsite
     return;
   }
 
-  const vm = new runtime.VM(prog, services, handles);
+  const vm = new runtime.VM(prog, services, { handles });
   const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
   if (callsiteVars) {
     fiber.callsiteVars = callsiteVars;
@@ -185,7 +185,7 @@ export default Sensor({
     assert.ok(hasAwait, "Expected AWAIT opcode");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, services, handles);
+    const vm = new runtime.VM(prog, services, { handles });
     const args = mkArgsList({ 0: mkNativeStructValue("Widget", { id: 1 }) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
     fiber.instrBudget = 1000;
@@ -235,7 +235,7 @@ export default Sensor({
     assert.equal(awaitCount, 2, "Expected exactly 2 AWAIT instructions");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, services, handles);
+    const vm = new runtime.VM(prog, services, { handles });
     const args = mkArgsList({ 0: mkNativeStructValue("Widget", { id: 1 }) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
     fiber.instrBudget = 1000;
@@ -283,7 +283,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(prog, services, handles);
+    const vm = new runtime.VM(prog, services, { handles });
     const args = mkArgsList({ 0: mkNativeStructValue("Widget", { id: 1 }) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
     fiber.instrBudget = 1000;
