@@ -1,4 +1,4 @@
-import { CoreTypeNames } from "../interfaces";
+import { CoreTypeNames } from "../../runtime";
 import type {
   ActuatorExpr,
   AssignmentExpr,

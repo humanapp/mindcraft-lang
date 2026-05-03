@@ -1,17 +1,20 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
-import type { Scheduler } from "@mindcraft-lang/core/brain";
-import { type BrainServices, HandleTable, NativeType, runtime, VmStatus } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import * as runtime from "@mindcraft-lang/core/runtime";
 import {
+  HandleTable,
   isListValue,
   mkNumberValue,
+  NativeType,
   NIL_VALUE,
   type NumberValue,
   type StringValue,
   type Value,
+  VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { compileUserTile } from "./compile.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";

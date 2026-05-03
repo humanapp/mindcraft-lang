@@ -11,34 +11,14 @@ import { before, describe, test } from "node:test";
 import { List, type ReadonlyList } from "@mindcraft-lang/core";
 import {
   type BrainServices,
-  bag,
-  CoreActuatorId,
   CoreControlFlowId,
-  CoreOpId,
-  CoreParameterId,
-  CoreSensorId,
-  CoreTypeIds,
-  choice,
-  conditional,
   type IBrainTileDef,
-  type IConversionRegistry,
   type ITileCatalog,
   mkAccessorTileId,
-  mkActionDescriptor,
-  mkActuatorTileId,
-  mkCallDef,
   mkControlFlowTileId,
-  mkModifierTileId,
   mkOperatorTileId,
-  mkParameterTileId,
-  mkSensorTileId,
-  mod,
-  optional,
-  param,
   RuleSide,
-  repeated,
   type SlotExpr,
-  seq,
   TilePlacement,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
@@ -74,7 +54,32 @@ import {
   BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
-import { NIL_VALUE, TRUE_VALUE, type Value, VOID_VALUE } from "@mindcraft-lang/core/runtime";
+import {
+  bag,
+  CoreActuatorId,
+  CoreOpId,
+  CoreParameterId,
+  CoreSensorId,
+  CoreTypeIds,
+  choice,
+  conditional,
+  type IConversionRegistry,
+  mkActionDescriptor,
+  mkActuatorTileId,
+  mkCallDef,
+  mkModifierTileId,
+  mkParameterTileId,
+  mkSensorTileId,
+  mod,
+  NIL_VALUE,
+  optional,
+  param,
+  repeated,
+  seq,
+  TRUE_VALUE,
+  type Value,
+  VOID_VALUE,
+} from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
 
 // ---- Initialize ----

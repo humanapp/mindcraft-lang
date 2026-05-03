@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import * as runtime from "@mindcraft-lang/core/runtime";
 import {
+  type BooleanValue,
   type BrainActionCallArgSpec,
   type BrainActionCallBagSpec,
   type BrainActionCallChoiceSpec,
@@ -9,25 +14,18 @@ import {
   type BrainActionCallOptionalSpec,
   type BrainActionCallRepeatSpec,
   type BrainActionCallSeqSpec,
-  type BrainServices,
   HandleTable,
-  NativeType,
-  runtime,
-  type Scheduler,
-  VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
-import {
-  type BooleanValue,
   type MapValue,
   mkNumberValue,
   mkStringValue,
+  NativeType,
   NIL_VALUE,
   type NumberValue,
+  type Scheduler,
   type StringValue,
   type Value,
   ValueDict,
+  VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";

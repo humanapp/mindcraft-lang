@@ -10,10 +10,11 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
-import { type BrainServices, CoreTypeIds, mkPageTileId, mkVariableTileId } from "@mindcraft-lang/core/brain";
+import { type BrainServices, mkPageTileId, mkVariableTileId } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef, type BrainJson, BrainRuleDef, type PageJson, type RuleJson } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, BrainTileVariableDef, type CatalogTileJson } from "@mindcraft-lang/core/brain/tiles";
+import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;
 

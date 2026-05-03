@@ -1,20 +1,24 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import * as runtime from "@mindcraft-lang/core/runtime";
 import {
-  type BrainServices,
   CoreOpId,
   CoreTypeIds,
   HandleTable,
+  mkNumberValue,
   NativeType,
-  runtime,
+  NIL_VALUE,
+  type NumberValue,
   type Scheduler,
+  type StringValue,
   type StructTypeDef,
+  type Value,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
-import { mkNumberValue, NIL_VALUE, type NumberValue, type StringValue, type Value } from "@mindcraft-lang/core/runtime";
+} from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";

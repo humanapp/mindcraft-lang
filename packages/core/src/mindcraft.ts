@@ -1,42 +1,14 @@
-import { installCoreBrainComponents } from "./brain";
+import { Brain, installCoreBrainComponents } from "./brain";
 import type {
-  ActionDescriptor,
-  BrainActionCallDef,
-  BrainActionResolver,
   BrainTileDefCreateOptions,
-  Conversion,
-  EnumTypeDef,
-  EnumTypeShape,
-  FunctionTypeDef,
-  FunctionTypeShape,
-  HostAsyncFn,
-  HostFn,
-  HostSyncFn,
-  IBrain,
   IBrainActionTileDef,
   IBrainDef,
   IBrainTileDef,
   ITileCatalog,
   ITileMetadata,
-  ListTypeDef,
-  ListTypeShape,
-  MapTypeDef,
-  MapTypeShape,
-  NullableTypeDef,
-  NullableTypeShape,
-  OpSpec,
-  StructTypeDef,
-  StructTypeShape,
-  TypeDef,
-  TypeId,
-  UnionTypeDef,
-  UnionTypeShape,
 } from "./brain/interfaces";
-import { CoreOpId, NativeType } from "./brain/interfaces";
-import type { ResolvedAction, UserActionArtifact } from "./brain/interfaces/runtime";
 import type { BrainJson } from "./brain/model";
 import { BrainDef, brainJsonFromPlain } from "./brain/model";
-import { Brain } from "./brain/runtime";
 import type { BrainServices } from "./brain/services";
 import { createBrainServices } from "./brain/services-factory";
 import { registerAccessorTileDef } from "./brain/tiles/accessors";
@@ -50,6 +22,36 @@ import { Dict } from "./platform/dict";
 import { Error } from "./platform/error";
 import { List, type ReadonlyList } from "./platform/list";
 import { TypeUtils } from "./platform/types";
+import type {
+  ActionDescriptor,
+  BrainActionCallDef,
+  BrainActionResolver,
+  Conversion,
+  EnumTypeDef,
+  EnumTypeShape,
+  FunctionTypeDef,
+  FunctionTypeShape,
+  HostAsyncFn,
+  HostFn,
+  HostSyncFn,
+  IBrain,
+  ListTypeDef,
+  ListTypeShape,
+  MapTypeDef,
+  MapTypeShape,
+  NullableTypeDef,
+  NullableTypeShape,
+  OpSpec,
+  ResolvedAction,
+  StructTypeDef,
+  StructTypeShape,
+  TypeDef,
+  TypeId,
+  UnionTypeDef,
+  UnionTypeShape,
+  UserActionArtifact,
+} from "./runtime";
+import { CoreOpId, NativeType } from "./runtime";
 import type { ExecutionContext, HostActionBinding } from "./runtime/context";
 import type { HandleId, Value } from "./runtime/value";
 import { NIL_VALUE } from "./runtime/value";

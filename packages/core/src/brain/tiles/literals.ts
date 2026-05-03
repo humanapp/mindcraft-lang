@@ -1,19 +1,15 @@
 import { Error } from "../../platform/error";
+import { CoreTypeIds, NativeType, type TypeCodec, type TypeDef, type TypeId } from "../../runtime";
 import {
   type BrainTileDefCreateOptions,
   type BrainTileLiteralDefOptions,
   CoreLiteralFactoryId,
-  CoreTypeIds,
   type ITileCatalog,
   type LiteralDisplayFormat,
   LiteralDisplayFormats,
   mkLiteralFactoryTileId,
   mkLiteralTileId,
-  NativeType,
   TilePlacement,
-  type TypeCodec,
-  type TypeDef,
-  type TypeId,
 } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 

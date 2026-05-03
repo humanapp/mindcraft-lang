@@ -1,7 +1,7 @@
-import { NativeType, type StructTypeDef, type TypeId } from "../brain/interfaces/type-system";
 import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { List } from "../platform/list";
+import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
 
 ///////////////////////////
 // Async handle identifiers

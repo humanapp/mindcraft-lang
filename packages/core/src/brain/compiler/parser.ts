@@ -10,12 +10,10 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { UniqueSet } from "../../platform/uniqueset";
+import { type BrainActionCallArgSpec, type BrainActionCallSpec, CoreOpId } from "../../runtime";
 import {
-  type BrainActionCallArgSpec,
-  type BrainActionCallSpec,
   type BrainTileKind,
   CoreControlFlowId,
-  CoreOpId,
   type IBrainActionTileDef,
   type IBrainTileDef,
   parseTileId,

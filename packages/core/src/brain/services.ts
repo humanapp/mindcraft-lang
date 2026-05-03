@@ -1,13 +1,12 @@
 import type {
   IBrainActionRegistry,
-  IBrainTileDefBuilder,
   IConversionRegistry,
   IFunctionRegistry,
   IOperatorOverloads,
   IOperatorTable,
-  ITileCatalog,
   ITypeRegistry,
-} from "./interfaces";
+} from "../runtime";
+import type { IBrainTileDefBuilder, ITileCatalog } from "./interfaces";
 /** Container holding the registry instances that make up a brain runtime: tile catalog, action/type/function/conversion registries, operator tables, and the tileDef builder. */
 export class BrainServices {
   public readonly tiles: ITileCatalog;

@@ -9,24 +9,10 @@ import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
 import {
-  type BrainActionCallSpec,
   type BrainServices,
-  bag,
   CoreControlFlowId,
-  CoreTypeIds,
-  choice,
   type IBrainTileDef,
-  mkActionDescriptor,
-  mkCallDef,
-  mkModifierTileId,
-  mkParameterTileId,
-  mkTypeId,
   mkVariableTileId,
-  mod,
-  NativeType,
-  optional,
-  param,
-  repeated,
 } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
@@ -41,7 +27,23 @@ import {
   BrainTileSensorDef,
   BrainTileVariableDef,
 } from "@mindcraft-lang/core/brain/tiles";
-import { VOID_VALUE } from "@mindcraft-lang/core/runtime";
+import {
+  type BrainActionCallSpec,
+  bag,
+  CoreTypeIds,
+  choice,
+  mkActionDescriptor,
+  mkCallDef,
+  mkModifierTileId,
+  mkParameterTileId,
+  mkTypeId,
+  mod,
+  NativeType,
+  optional,
+  param,
+  repeated,
+  VOID_VALUE,
+} from "@mindcraft-lang/core/runtime";
 
 // ---- Shared setup ----
 

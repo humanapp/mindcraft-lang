@@ -1,15 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, type HydratedTileMetadataSnapshot } from "@mindcraft-lang/core";
-import {
-  type BrainServices,
-  CoreTypeIds,
-  mkActuatorTileId,
-  mkParameterTileId,
-  mkSensorTileId,
-} from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { CoreTypeIds, mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import { UserTileProject } from "../compiler/compile.js";
 import type { ExtractedParam } from "../compiler/types.js";
 import { buildCompiledActionBundle } from "./action-bundle.js";

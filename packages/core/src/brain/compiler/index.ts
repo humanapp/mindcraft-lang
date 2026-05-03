@@ -25,9 +25,10 @@ export { acceptExprVisitor } from "./types";
 
 import { Dict } from "../../platform/dict";
 import { List, type ReadonlyList } from "../../platform/list";
+import type { IConversionRegistry } from "../../runtime";
 import type { Instr } from "../../runtime/bytecode";
 import type { Value } from "../../runtime/value";
-import type { IBrainTileDef, IConversionRegistry, ITileCatalog } from "../interfaces";
+import type { IBrainTileDef, ITileCatalog } from "../interfaces";
 import { computeExpectedTypes } from "./expected-types";
 import { mapExprs } from "./expr-mapper";
 import { computeInferredTypes } from "./inferred-types";

@@ -16,6 +16,7 @@ import {
   type MindcraftEnvironment,
   type MindcraftModule,
   type MindcraftModuleApi,
+  runtime,
 } from "@mindcraft-lang/core";
 
 type RootContracts = [
@@ -58,7 +59,7 @@ test("exports mindcraft public contracts from the root package", () => {
   void bundle;
   void options;
   assert.ok(brain.compiler);
-  assert.ok(brain.runtime);
+  assert.ok(runtime);
   assert.ok(brain.tiles);
   assert.equal(typeof createMindcraftEnvironment, "function");
   assert.equal(typeof coreModule, "function");

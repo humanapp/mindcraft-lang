@@ -12,25 +12,20 @@ import {
   type MindcraftModule,
   type ReadonlyList,
 } from "@mindcraft-lang/core";
-import {
-  type BrainServices,
-  CoreSensorId,
-  CoreTypeIds,
-  type ITileCatalog,
-  mkCallDef,
-  mkTypeId,
-  mkVariableTileId,
-  NativeType,
-  type StructTypeDef,
-  TilePlacement,
-} from "@mindcraft-lang/core/brain";
+import { type BrainServices, type ITileCatalog, mkVariableTileId, TilePlacement } from "@mindcraft-lang/core/brain";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileParameterDef, BrainTileSensorDef, BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
 import {
   BYTECODE_VERSION,
+  CoreSensorId,
+  CoreTypeIds,
   type ExecutionContext,
+  mkCallDef,
   mkNumberValue,
+  mkTypeId,
+  NativeType,
   Op,
+  type StructTypeDef,
   TRUE_VALUE,
   type Value,
 } from "@mindcraft-lang/core/runtime";

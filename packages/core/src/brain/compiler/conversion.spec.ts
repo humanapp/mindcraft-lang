@@ -7,24 +7,22 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
-import {
-  type BrainServices,
-  CoreParameterId,
-  CoreTypeIds,
-  type EnumSymbolDef,
-  mkActionDescriptor,
-  mkCallDef,
-  NativeType,
-  param,
-} from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { parseRule } from "@mindcraft-lang/core/brain/compiler";
 import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import {
+  CoreParameterId,
+  CoreTypeIds,
+  type EnumSymbolDef,
   type EnumValue,
   type ExecutionContext,
+  mkActionDescriptor,
+  mkCallDef,
+  NativeType,
   NIL_VALUE,
   type NumberValue,
+  param,
   type StringValue,
   type Value,
   VOID_VALUE,

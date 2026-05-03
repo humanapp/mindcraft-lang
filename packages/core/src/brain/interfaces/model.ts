@@ -1,9 +1,9 @@
 import type { List, ReadonlyList } from "../../platform/list";
+import type { IConversionRegistry } from "../../runtime/conversion-defs";
+import type { IBrain } from "../../runtime/host-bindings";
 import type { EventEmitterConsumer } from "../../util/event-emitter";
 import type { OpResult } from "../../util/op-result";
 import type { ITileCatalog } from "./catalog";
-import type { IConversionRegistry } from "./conversions";
-import type { IBrain } from "./runtime";
 import type { IBrainTileDef, RuleSide } from "./tiles";
 
 // ----------------------------------------------------

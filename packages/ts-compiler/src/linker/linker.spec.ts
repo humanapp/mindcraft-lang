@@ -1,29 +1,27 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
-import {
-  type BrainServices,
-  HandleTable,
-  NativeType,
-  type PageMetadata,
-  runtime,
-  type Scheduler,
-  type UnlinkedBrainProgram,
-  VmStatus,
-} from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import * as runtime from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
   BYTECODE_VERSION,
   type FunctionBytecode,
+  HandleTable,
   type MapValue,
   mkNumberValue,
+  NativeType,
   NIL_VALUE,
   type NumberValue,
   Op,
+  type PageMetadata,
+  type Scheduler,
+  type UnlinkedBrainProgram,
   type Value,
   ValueDict,
+  VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { compileUserTile } from "../compiler/compile.js";
 import { linkUserPrograms } from "./linker.js";

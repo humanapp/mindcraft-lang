@@ -1,6 +1,6 @@
 import { List } from "@mindcraft-lang/core";
-import type { ITypeRegistry } from "@mindcraft-lang/core/brain";
 import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
+import type { ITypeRegistry } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";

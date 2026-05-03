@@ -1,8 +1,6 @@
 import { List } from "@mindcraft-lang/core";
-import type { UnlinkedBrainProgram } from "@mindcraft-lang/core/brain";
-import { NativeType } from "@mindcraft-lang/core/brain";
-import type { ConstantOffsets, FunctionBytecode, Instr } from "@mindcraft-lang/core/runtime";
-import { isFunctionValue, Op, type Value } from "@mindcraft-lang/core/runtime";
+import type { ConstantOffsets, FunctionBytecode, Instr, UnlinkedBrainProgram } from "@mindcraft-lang/core/runtime";
+import { isFunctionValue, NativeType, Op, type Value } from "@mindcraft-lang/core/runtime";
 import type { DebugMetadata, LinkedUserProgram, UserAuthoredProgram } from "../compiler/types.js";
 
 /** Output of {@link linkUserPrograms}: the merged brain program and per-program offset metadata. */

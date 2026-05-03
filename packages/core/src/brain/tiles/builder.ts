@@ -1,11 +1,11 @@
 import { Error } from "../../platform/error";
+import type { TypeId } from "../../runtime";
 import type {
   BrainTileDefCreateOptions,
   BrainTileLiteralDefOptions,
   IBrainTileDef,
   IBrainTileDefBuilder,
   TileId,
-  TypeId,
 } from "../interfaces";
 import type { BrainServices } from "../services";
 import { BrainTileControlFlowDef } from "./controlflow";

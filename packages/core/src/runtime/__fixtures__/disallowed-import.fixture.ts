@@ -13,9 +13,9 @@
  * `tsconfig.spec.json`.
  */
 
-import { CoreTypeIds } from "../../brain/interfaces/core-types";
+import { CoreCapabilityBits } from "../../brain/interfaces/tiles";
 
-/** Value-import probe. Re-exporting keeps `CoreTypeIds` from being
+/** Value-import probe. Re-exporting keeps `CoreCapabilityBits` from being
  * elided, so dependency-cruiser observes a real value-import edge
  * from `runtime/` to `brain/`. */
-export const firewallFixtureProbe = CoreTypeIds;
+export const firewallFixtureProbe = CoreCapabilityBits;

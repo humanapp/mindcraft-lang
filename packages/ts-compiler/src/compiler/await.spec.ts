@@ -1,23 +1,16 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List, type ReadonlyList } from "@mindcraft-lang/core";
-import {
-  type BrainServices,
-  ContextTypeIds,
-  CoreTypeIds,
-  HandleTable,
-  mkTypeId,
-  NativeType,
-  runtime,
-  type Scheduler,
-  type StructTypeDef,
-  VmStatus,
-} from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import * as runtime from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
+  ContextTypeIds,
+  CoreTypeIds,
   type EnumValue,
+  HandleTable,
   isEnumValue,
   isListValue,
   isMapValue,
@@ -27,13 +20,18 @@ import {
   mkNativeStructValue,
   mkNumberValue,
   mkStringValue,
+  mkTypeId,
+  NativeType,
   NIL_VALUE,
   type NumberValue,
   Op,
+  type Scheduler,
   type StringValue,
+  type StructTypeDef,
   type StructValue,
   type Value,
   ValueDict,
+  VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";

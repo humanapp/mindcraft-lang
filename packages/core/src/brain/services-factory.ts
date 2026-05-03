@@ -1,18 +1,17 @@
 import type {
   IBrainActionRegistry,
-  IBrainTileDefBuilder,
   IConversionRegistry,
   IFunctionRegistry,
   IOperatorOverloads,
   IOperatorTable,
-  ITileCatalog,
   ITypeRegistry,
-} from "./interfaces";
-import { BrainActionRegistry } from "./runtime/action-registry";
-import { ConversionRegistry } from "./runtime/conversions";
-import { FunctionRegistry } from "./runtime/functions";
-import { OperatorOverloads, OperatorTable } from "./runtime/operators";
-import { TypeRegistry } from "./runtime/type-system";
+} from "../runtime";
+import { BrainActionRegistry } from "../runtime/action-registry";
+import { ConversionRegistry } from "../runtime/conversions";
+import { FunctionRegistry } from "../runtime/functions";
+import { OperatorOverloads, OperatorTable } from "../runtime/operators";
+import { TypeRegistry } from "../runtime/type-system";
+import type { IBrainTileDefBuilder, ITileCatalog } from "./interfaces";
 import { BrainServices } from "./services";
 import { BrainTileDefBuilder } from "./tiles/builder";
 import { TileCatalog } from "./tiles/catalog";

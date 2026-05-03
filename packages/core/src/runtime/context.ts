@@ -1,7 +1,7 @@
-import type { ActionDescriptor } from "../brain/interfaces/functions";
-import type { IBrain, IBrainRule } from "../brain/interfaces/runtime";
 import { Dict } from "../platform/dict";
 import { List, type ReadonlyList } from "../platform/list";
+import type { ActionDescriptor } from "./function-defs";
+import type { IBrain, IBrainRule } from "./host-bindings";
 import { type HandleId, NIL_VALUE, type Value } from "./value";
 
 /** Action binding implemented by a host (sync or async) function. */

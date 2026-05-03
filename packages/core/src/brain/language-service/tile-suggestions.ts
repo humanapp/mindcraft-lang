@@ -1,26 +1,29 @@
 import { List, type ReadonlyList } from "../../platform/list";
 import { UniqueSet } from "../../platform/uniqueset";
+import {
+  type BrainActionArgSlot,
+  type BrainActionCallSpec,
+  CoreOpId,
+  CoreTypeIds,
+  type IConversionRegistry,
+  type IOperatorOverloads,
+  type ITypeRegistry,
+  NativeType,
+  type StructTypeDef,
+  type TypeId,
+} from "../../runtime";
 import type { ReadonlyBitSet } from "../../util/bitset";
 import { parseBrainTiles } from "../compiler/parser";
 import type { ActuatorExpr, Expr, FieldAccessExpr, SensorExpr, Span } from "../compiler/types";
 import {
   CoreControlFlowId,
-  CoreOpId,
-  CoreTypeIds,
   type IBrainTileDef,
-  type IConversionRegistry,
-  type IOperatorOverloads,
   type ITileCatalog,
-  type ITypeRegistry,
   mkControlFlowTileId,
-  NativeType,
   type RuleSide,
   type TileId,
   TilePlacement,
-  type TypeId,
 } from "../interfaces";
-import type { BrainActionArgSlot, BrainActionCallSpec } from "../interfaces/functions";
-import type { StructTypeDef } from "../interfaces/type-system";
 import type { BrainServices } from "../services";
 import type { BrainTileAccessorDef } from "../tiles/accessors";
 import { BrainTileActuatorDef } from "../tiles/actuators";

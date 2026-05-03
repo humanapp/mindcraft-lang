@@ -1,28 +1,25 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
-import type { Scheduler } from "@mindcraft-lang/core/brain";
-import {
-  type BrainServices,
-  HandleTable,
-  mkTypeId,
-  NativeType,
-  runtime,
-  type StructTypeDef,
-  VmStatus,
-} from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
+import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
+import * as runtime from "@mindcraft-lang/core/runtime";
 import {
+  HandleTable,
   isStructValue,
   type MapValue,
   mkNativeStructValue,
   mkNumberValue,
+  mkTypeId,
+  NativeType,
   NIL_VALUE,
   type NumberValue,
+  type StructTypeDef,
   type StructValue,
   type Value,
   ValueDict,
+  VmStatus,
 } from "@mindcraft-lang/core/runtime";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";

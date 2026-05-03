@@ -1,11 +1,6 @@
-import {
-  type ActionDescriptor,
-  CoreCapabilityBits,
-  type ITileMetadata,
-  mkParameterTileId,
-  type TypeId,
-} from "@mindcraft-lang/core/brain";
+import { CoreCapabilityBits, type ITileMetadata } from "@mindcraft-lang/core/brain";
 import { BrainTileActuatorDef, BrainTileParameterDef, BrainTileSensorDef } from "@mindcraft-lang/core/brain/tiles";
+import { type ActionDescriptor, mkParameterTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import { BitSet } from "@mindcraft-lang/core/util";
 import { collectParams } from "../compiler/arg-spec-utils.js";
 import type { ExtractedParam, UserAuthoredProgram } from "../compiler/types.js";

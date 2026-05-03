@@ -3,6 +3,7 @@ import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
 import { task, type thread } from "../../platform/task";
+import type { IConversionRegistry } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util";
 import { parseRule } from "../compiler";
 import {
@@ -11,7 +12,6 @@ import {
   type IBrainPageDef,
   type IBrainRuleDef,
   type IBrainTileSet,
-  type IConversionRegistry,
   type ITileCatalog,
   RuleSide,
 } from "../interfaces";

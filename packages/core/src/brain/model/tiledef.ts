@@ -1,12 +1,11 @@
+import type { ActionDescriptor, TileId } from "../../runtime";
 import { BitSet, type ReadonlyBitSet } from "../../util/bitset";
 import type {
-  ActionDescriptor,
   BrainTileDefCreateOptions,
   BrainTileKind,
   IBrainActionTileDef,
   IBrainTileDef,
   ITileMetadata,
-  TileId,
   TilePlacement,
 } from "../interfaces";
 

@@ -2,20 +2,19 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
+import type { IBrain, IConversionRegistry } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util/event-emitter";
 import { type OpResult, opFailure, opSuccess } from "../../util/op-result";
+import { Brain } from "..";
 import {
   type BrainDefEvents,
   getPageIdFromTileId,
-  type IBrain,
   type IBrainDef,
   type IBrainPageDef,
-  type IConversionRegistry,
   type ITileCatalog,
   isPageTileId,
   mkPageTileId,
 } from "../interfaces";
-import { Brain } from "../runtime";
 import type { BrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";

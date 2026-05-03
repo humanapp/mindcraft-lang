@@ -202,27 +202,6 @@
       },
       "default": "./dist/rbx/brain/compiler/init.luau"
     },
-    "./brain/runtime": {
-      "node": {
-        "import": {
-          "types": "./dist/node/brain/runtime/index.d.ts",
-          "default": "./dist/node/brain/runtime/index.js"
-        },
-        "require": {
-          "types": "./dist/node/brain/runtime/index.d.ts",
-          "default": "./dist/node/brain/runtime/index.js"
-        }
-      },
-      "browser": {
-        "types": "./dist/esm/brain/runtime/index.d.ts",
-        "default": "./dist/esm/brain/runtime/index.js"
-      },
-      "import": {
-        "types": "./dist/esm/brain/runtime/index.d.ts",
-        "default": "./dist/esm/brain/runtime/index.js"
-      },
-      "default": "./dist/rbx/brain/runtime/init.luau"
-    },
     "./brain/language-service": {
       "node": {
         "import": {

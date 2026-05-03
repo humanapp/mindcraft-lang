@@ -8,8 +8,8 @@ import type {
   StructTypeDef,
   TypeDef,
   UnionTypeDef,
-} from "@mindcraft-lang/core/brain";
-import { NativeType } from "@mindcraft-lang/core/brain";
+} from "@mindcraft-lang/core/runtime";
+import { NativeType } from "@mindcraft-lang/core/runtime";
 
 const AMBIENT_HEADER = `/// <reference no-default-lib="true"/>
 

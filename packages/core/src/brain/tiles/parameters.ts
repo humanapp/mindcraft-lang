@@ -1,11 +1,5 @@
-import {
-  type BrainTileDefCreateOptions,
-  CoreParameterId,
-  CoreTypeIds,
-  mkParameterTileId,
-  TilePlacement,
-  type TypeId,
-} from "../interfaces";
+import { CoreParameterId, CoreTypeIds, mkParameterTileId, type TypeId } from "../../runtime";
+import { type BrainTileDefCreateOptions, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 import type { BrainServices } from "../services";
 

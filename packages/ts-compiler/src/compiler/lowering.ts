@@ -1,17 +1,20 @@
 import { List } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import {
-  type BrainServices,
   ContextTypeIds,
   CoreOpId,
   CoreTypeIds,
+  conversionFnName,
+  mkNumberValue,
+  mkStringValue,
   NativeType,
+  NIL_VALUE,
   type NullableTypeDef,
-  runtime,
   type StructTypeDef,
   type TypeId,
   type UnionTypeDef,
-} from "@mindcraft-lang/core/brain";
-import { mkNumberValue, mkStringValue, NIL_VALUE, type Value } from "@mindcraft-lang/core/runtime";
+  type Value,
+} from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
@@ -377,7 +380,7 @@ function resolveSingleStepConversion(
   return {
     fromTypeId: conversion.fromType,
     toTypeId: conversion.toType,
-    fnName: runtime.conversionFnName(conversion.fromType, conversion.toType),
+    fnName: conversionFnName(conversion.fromType, conversion.toType),
   };
 }
 
@@ -2454,7 +2457,7 @@ function lowerForInOverList(stmt: ts.ForInStatement, bindingName: string, ctx: L
   ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
   ctx.ir.push({
     kind: "HostCall",
-    fnName: runtime.conversionFnName(CoreTypeIds.Number, CoreTypeIds.String),
+    fnName: conversionFnName(CoreTypeIds.Number, CoreTypeIds.String),
     argc: 1,
   });
   ctx.ir.push({ kind: "StoreLocal", index: bindingLocal });

@@ -1,5 +1,5 @@
 import type { LiteralDisplayFormat } from "@mindcraft-lang/core/brain";
-import { CoreTypeIds } from "@mindcraft-lang/core/brain";
+import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { applyDisplayFormat } from "@mindcraft-lang/core/brain/tiles";
 
 /**

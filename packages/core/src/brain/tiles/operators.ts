@@ -1,11 +1,6 @@
 import { Error } from "../../platform/error";
-import {
-  type BrainTileDefCreateOptions,
-  CoreOpId,
-  type IReadOnlyRegisteredOperator,
-  mkOperatorTileId,
-  TilePlacement,
-} from "../interfaces";
+import { CoreOpId, type IReadOnlyRegisteredOperator } from "../../runtime";
+import { type BrainTileDefCreateOptions, mkOperatorTileId, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 import type { BrainServices } from "../services";
 

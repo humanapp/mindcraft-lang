@@ -1,15 +1,10 @@
-// Central export point for all brain interfaces
-// Export in dependency order: types first, then type-system, then tiles, then catalog, then brain
+// Central export point for the remaining brain-side interfaces.
+// Runtime-execution contracts (type system, vm, call-spec, functions, operators,
+// conversions, host bindings, core type ids, tile-id helpers, core sensor /
+// actuator / parameter ids) now live under `../../runtime/` and are exported
+// through `@mindcraft-lang/core/runtime`.
 
-export * from "./call-spec";
 export * from "./catalog";
-export * from "./conversions";
-export * from "./core-types";
 export * from "./emitter";
-export * from "./functions";
 export * from "./model";
-export * from "./operators";
-export * from "./runtime";
 export * from "./tiles";
-export * from "./type-system";
-export * from "./vm";

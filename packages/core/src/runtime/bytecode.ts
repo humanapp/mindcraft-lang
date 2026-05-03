@@ -1,5 +1,5 @@
-import type { TypeId } from "../brain/interfaces/type-system";
 import type { List } from "../platform/list";
+import type { TypeId } from "./type-defs";
 import type { Value } from "./value";
 
 ///////////////////////////

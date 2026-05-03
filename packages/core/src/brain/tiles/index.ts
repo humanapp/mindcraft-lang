@@ -1,4 +1,4 @@
-export * from "../runtime/type-system";
+export * from "../../runtime/type-system";
 export * from "./accessors";
 export * from "./actuators";
 export * from "./builder";
