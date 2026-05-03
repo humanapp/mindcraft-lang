@@ -1,16 +1,28 @@
+import type { IFunctionRegistry } from "./function-defs";
 import { FunctionRegistry } from "./functions";
 import type { PlatformServices } from "./services";
+import type { ITypeRegistry } from "./type-defs";
 import { TypeRegistry } from "./type-system";
 
 /**
- * TEST-ONLY. Creates a minimal {@link PlatformServices} backed by empty
- * runtime-only registries. Providers import only from `runtime/` and
- * `packages/core/src/platform/`. M4 expands this helper with richer stubs
- * for scenario-specific overrides.
+ * TEST-ONLY. Per-provider overrides for {@link __test__createPlatformServices}.
+ * Each field is optional; omitted fields fall back to empty runtime-only defaults.
  */
-export function __test__createPlatformServices(): PlatformServices {
+export interface __test__PlatformServicesOptions {
+  /** Override the function registry. */
+  functions?: IFunctionRegistry;
+  /** Override the type registry. */
+  types?: ITypeRegistry;
+}
+
+/**
+ * TEST-ONLY. Creates a {@link PlatformServices} backed by runtime-only registries.
+ * Pass an {@link __test__PlatformServicesOptions} to override individual providers
+ * without rebuilding the whole aggregate.
+ */
+export function __test__createPlatformServices(options?: __test__PlatformServicesOptions): PlatformServices {
   return {
-    functions: new FunctionRegistry(),
-    types: new TypeRegistry(),
+    functions: options?.functions ?? new FunctionRegistry(),
+    types: options?.types ?? new TypeRegistry(),
   };
 }

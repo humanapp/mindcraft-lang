@@ -352,8 +352,24 @@ Each unit must:
 
 ## Current State
 
-Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2, M3.3.
-Next up: M4.1.
+Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2, M3.3, M4.1.
+Next up: M4.2.
+
+### M4.1 -- Expand `__test__createPlatformServices()`
+
+`__test__createPlatformServices()` extended with an optional
+`__test__PlatformServicesOptions` parameter; individual providers can now be
+overridden per-scenario without rebuilding the whole aggregate.
+New exported type: `__test__PlatformServicesOptions` on `@mindcraft-lang/core/runtime/__test__`.
+
+Verification: full gate green (683/683 tests).
+
+### Risks (M4.1)
+
+- **No risks beyond what M3.3 already noted.** M4.2 can now author each
+  of the six scenarios using `__test__createPlatformServices({ functions: ... })`
+  overrides; if a scenario requires a provider not currently in `PlatformServices`,
+  that is a blocker for M4.2, not M4.1.
 
 ### M3.3 -- Runtime-Only VM Smoke Test
 
