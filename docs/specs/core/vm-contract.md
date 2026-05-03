@@ -191,7 +191,7 @@ are:
    decision (no branches, no return values consumed).
 2. Final `Program` state and any host-visible side effects are
    identical for any two executions of the same program that
-   differ only in their `VMEvents` argument (including
+   differ only in their `VmEvents` argument (including
    `undefined`).
 
 **Event-payload content rule.** Each event payload contains only
