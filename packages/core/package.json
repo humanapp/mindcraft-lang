@@ -307,6 +307,22 @@
       },
       "default": "./dist/rbx/runtime/init.luau"
     },
+    "./runtime/__test__": {
+      "node": {
+        "import": {
+          "types": "./dist/node/runtime/test-only-runtime-services-factory.d.ts",
+          "default": "./dist/node/runtime/test-only-runtime-services-factory.js"
+        },
+        "require": {
+          "types": "./dist/node/runtime/test-only-runtime-services-factory.d.ts",
+          "default": "./dist/node/runtime/test-only-runtime-services-factory.js"
+        }
+      },
+      "import": {
+        "types": "./dist/esm/runtime/test-only-runtime-services-factory.d.ts",
+        "default": "./dist/esm/runtime/test-only-runtime-services-factory.js"
+      }
+    },
     "./util": {
       "node": {
         "import": {

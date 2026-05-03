@@ -352,8 +352,31 @@ Each unit must:
 
 ## Current State
 
-Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2.
-Next up: M3.3.
+Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2, M3.3.
+Next up: M4.1.
+
+### M3.3 -- Runtime-Only VM Smoke Test
+
+`__test__createPlatformServices()` helper and a collocated runtime-only
+smoke test added, proving the VM constructs and terminates from a hand-authored
+`Program` with `runtime/`- and `platform/`-only imports and no event observer.
+New public subpath: `@mindcraft-lang/core/runtime/__test__` exporting
+`__test__createPlatformServices()`.
+
+Verification: full gate green (683/683 tests).
+
+### Risks (M3.3)
+
+- **`__test__createPlatformServices()` returns empty registries.** Any
+  M4.2 scenario that calls a host function will need to register it first.
+  M4.1 must expand the helper (with an `Options` override parameter per the
+  spec) before the six-scenario suite is authored; the current helper is
+  deliberately minimal.
+- **The `brain/` import barrier in the smoke test is verified by inspection
+  only until M4.3.** If a future edit adds a `brain/` import to
+  `test-only-runtime-services-factory.ts`, no gate will catch it until the
+  firewall is hardened. M4.1 expands the helper; each expansion must keep the
+  import list clean.
 
 ### M3.2 -- Convert `passive-event` Emit Sites To Observer Calls
 
