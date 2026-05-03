@@ -352,8 +352,24 @@ Each unit must:
 
 ## Current State
 
-Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2, M3.3, M4.1, M4.2.
-Next up: M4.3.
+Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4, M2.0, M2.1, M2.2, M3.1, M3.2, M3.3, M4.1, M4.2, M4.3.
+Next up: M5.
+
+### M4.3 -- Firewall Hardened To Zero
+
+`EventEmitter` promoted from `util/` to `platform/` (no non-platform
+dependencies), removing the last `runtime/` -> `util/` value-import
+violation. Firewall spec hardened from a baseline-count assertion to a
+strict-zero gate.
+
+Verification: full gate green (689/689 tests).
+
+### Risks (M4.3)
+
+- **`util/event-emitter.ts` is now a re-export barrel.** The source of
+  truth is `platform/event-emitter.ts`. Any future edit that adds
+  implementation directly to `util/event-emitter.ts` will be silently
+  ignored; changes must go to `platform/event-emitter.ts`.
 
 ### M4.2 -- Runtime-Only VM Scenario Specs
 

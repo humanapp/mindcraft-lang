@@ -42,14 +42,6 @@ const FIXTURE_PATH = "src/runtime/__fixtures__/disallowed-import.fixture.ts";
 const RULE_NAME = "runtime-allow-list";
 const SELF_TEST_RULE_NAME = "runtime-allow-list-selftest";
 
-/**
- * Expected count of `runtime-allow-list` violations. Any change in
- * imports under `src/runtime/` must update this constant in the same
- * commit; an unexplained delta -- in either direction -- is a test
- * failure.
- */
-const BASELINE_VIOLATIONS = 1;
-
 interface ConfigShape {
   forbidden: IForbiddenRuleType[];
   options: ICruiseOptions;
@@ -147,19 +139,18 @@ async function runCruise(
 }
 
 describe("runtime allow-list firewall", () => {
-  test(`violation count equals baseline (${BASELINE_VIOLATIONS})`, async () => {
+  test("violation count is zero", async () => {
     const config = loadConfig();
     const violations = (await runCruise(["src"], { forbidden: config.forbidden }, config.options)).filter(
       (v) => v.rule.name === RULE_NAME
     );
 
-    if (violations.length !== BASELINE_VIOLATIONS) {
+    if (violations.length > 0) {
       const lines = violations.map(formatViolation).join("\n");
-      assert.fail(
-        `firewall: expected ${BASELINE_VIOLATIONS} ${RULE_NAME} violations, got ${violations.length}\n${lines}`
-      );
+      assert.fail(`firewall: ${violations.length} ${RULE_NAME} violations:\n${lines}`);
     }
-    console.log(`firewall: ${violations.length} baseline violations`);
+    assert.strictEqual(violations.length, 0);
+    console.log("firewall: clean (0 violations)");
   });
 
   test("self-test: rule fires on disallowed-import fixture", async () => {

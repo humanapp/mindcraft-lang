@@ -1,9 +1,9 @@
 import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
+import { EventEmitter } from "../platform/event-emitter";
 import type { List, ReadonlyList } from "../platform/list";
 import { Time } from "../platform/time";
 import { UniqueSet } from "../platform/uniqueset";
-import { EventEmitter } from "../util/event-emitter";
 import type { ActionInstance, ExecutionContext } from "./context";
 import { ErrorCode, type ErrorValue, type HandleId, type StructValue, type Value } from "./value";
 
