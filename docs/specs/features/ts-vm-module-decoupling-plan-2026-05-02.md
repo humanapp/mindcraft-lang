@@ -352,8 +352,39 @@ Each unit must:
 
 ## Current State
 
-Work units completed: M0.5, M1.1, M1.2, M1.3.
-Next up: M1.4.
+Work units completed: M0.5, M1.1, M1.2, M1.3, M1.4.
+Next up: M2.
+
+### M1.4 -- Runtime-execution interface files promoted into runtime/
+
+All runtime-execution interface files relocated from `brain/interfaces/`
+into `packages/core/src/runtime/`; `brain/` barrels no longer re-export
+any runtime symbol. New module in runtime: `tile-ids.ts` (`TileId`,
+tile-id helpers, `CoreActuatorId`, `CoreSensorId`, `CoreParameterId`).
+`brain/interfaces/` now contains only `catalog`, `emitter`, `model`,
+`tiles`.
+
+Verification: full gate green (681/681 core, 972/972 ts-compiler).
+
+### Risks (M1.4)
+
+- **`vm-types.ts` still value-imports `EventEmitter` from
+  `../util/event-emitter`.** This is the single remaining firewall
+  violation (`BASELINE_VIOLATIONS = 1`). The options are: move
+  `EventEmitter` into `runtime/` or `platform/`, extract the
+  `HandleTable` events surface behind a plain callback aggregate in
+  `runtime/`, or extend the allow-list to include `util/`. M4.3
+  deletes `BASELINE_VIOLATIONS`; this must be resolved before then.
+- **`brain/` barrels no longer re-export runtime symbols.** Any
+  consumer that previously reached runtime symbols via
+  `@mindcraft-lang/core/brain` will fail to type-check. In-tree
+  consumers were updated in this unit; out-of-tree tooling or examples
+  that pinned the brain subpath will break silently at runtime if not
+  recompiled.
+- **`runtime/context.ts -> brain/interfaces/runtime` for `IBrain` /
+  `IBrainRule` remains type-only.** M0 table 1 closure failure (a) is
+  still open. M2 must split those interfaces before any value-edge
+  appears, or the firewall ratchet stalls.
 
 ### M1.3 -- Extender disposition applied
 

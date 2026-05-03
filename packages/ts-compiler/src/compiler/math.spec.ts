@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, runtime } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
-import * as runtime from "@mindcraft-lang/core/runtime";
 import {
   HandleTable,
   mkNumberValue,

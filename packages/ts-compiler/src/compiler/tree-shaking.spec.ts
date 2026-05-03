@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List, runtime, UniqueSet } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import type { BytecodeExecutableAction, ExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
-import * as runtime from "@mindcraft-lang/core/runtime";
 import {
   HandleTable,
   type LinkedBrainProgram,

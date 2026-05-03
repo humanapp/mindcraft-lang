@@ -91,5 +91,5 @@ test("coreModule installs through MindcraftModuleApi with brainServices", () => 
   assert.ok(services.functions.get(brain.CoreSensorId.CurrentPage));
   assert.ok(services.actions.getByKey(brain.CoreSensorId.CurrentPage));
   assert.ok(services.tiles.get(brain.mkSensorTileId(brain.CoreSensorId.CurrentPage)));
-  assert.ok(services.operatorTable.get(brain.CoreOpId.Add));
+  assert.ok(services.operatorTable.get(runtime.CoreOpId.Add));
 });
