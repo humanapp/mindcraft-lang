@@ -63,11 +63,14 @@ Out of scope:
 
 - The dense-state surface migration itself (D2 / D3 / D4 of
   the dense-state plan). This spec is its precondition.
-- User-language syntax for declaring `onPageEntered` /
-  `onPageExited` handlers in actions. The language has no
-  such syntax today, so the compiler-side work in this spec
-  is limited to the initializer move. The runtime contract
-  is wired and ready for emission whenever the syntax lands.
+- User-language syntax additions beyond what the action
+  descriptor already parses. The descriptor recognizes
+  `onPageEntered` today; L2 preserves its emission into
+  `activationFuncId`, and L3 adds the symmetric
+  `onPageExited` parse + emission into
+  `deactivationFuncId`. Any further hook surface (e.g.
+  tile-level `onPageExited` sensors, async-aware exit
+  handlers) is a separate language-design question.
 - The relationship to the existing `OnPageEntered` *sensor*
   ([`packages/core/src/runtime/sensors/on-page-entered.ts`](../../../packages/core/src/runtime/sensors/on-page-entered.ts)).
   The sensor uses `HostActionBinding.onPageEntered` to reset
@@ -214,13 +217,13 @@ undefined)` call.
 
 ## Current State
 
-Completed: L1
-Next up: L2
+Completed: L1, L2
+Next up: L3
 
-L1 risks (callsite storage is lazy-allocate-on-first-write; VM
-no longer calls `ensureCallsite`; `numStateSlots` is no longer
-read by runtime services) propagate into L2 -- compiler emission
-into `initializerFuncId` must respect the lazy-write surface.
+L1 risks (lazy callsite storage; VM no longer calls `ensureCallsite`;
+`numStateSlots` is no longer read by runtime services) carried
+through L2 unchanged. L2 surfaced an asymmetry between bytecode
+hook fields and user-language syntax that is now scheduled as L3.
 
 ---
 
@@ -242,6 +245,27 @@ New surfaces: `BytecodeExecutableAction.initializerFuncId` /
 `ProgramArtifact.initializerFuncId` / `.deactivationFuncId`.
 
 Verification: full gate green (722/722 tests).
+
+### L2 -- Compiler Emission Of Initializer Func Id + Doc Update
+
+Compiler now emits user-language module-scope `let` / `const`
+initializers into `initializerFuncId`; `activationFuncId` is
+allocated only when the action descriptor declares
+`onPageEntered`. `vm-contract.md` documents the bytecode + host
+hook surface.
+
+New surfaces: `ProgramLoweringResult.initializerFuncId` (and the
+matching field on `UserAuthoredProgram`); `vm-contract.md` "Page
+lifecycle hooks" section.
+
+Risks: L2's review surfaced that the action descriptor parses
+`onPageEntered` today but has no `onPageExited` counterpart, so
+`deactivationFuncId` is permanently `undefined` until syntax is
+added; this gap is now scheduled as L3 and the Out of Scope
+bullet has been narrowed accordingly.
+
+Verification: full gate green (ts-compiler 973/973, core 722/722,
+sim typecheck/check/build).
 
 ---
 
@@ -503,3 +527,157 @@ emission patch is sufficient.
 4. Dense-state plan cross-references are correct.
 5. All four gates pass from `packages/ts-compiler`,
    `packages/core`, and `apps/sim`.
+
+---
+
+## Phase L3 -- Compiler Emission Of Deactivation Func Id (`onPageExited` Syntax)
+
+**Purpose.** Close the lifecycle-hook parity gap between
+bytecode and host actions by surfacing the
+`onPageExited` handler in the action descriptor and
+emitting its body into `deactivationFuncId`. After L3,
+every bytecode hook field documented in the Lifetime
+Contract has a user-language counterpart.
+
+**Scope.** ts-compiler only. The runtime contract for
+`deactivationFuncId` is already in place from L1, and
+the `onPageEntered` parse + activation-func emission is
+already in place from before L2. L3 adds the symmetric
+parse + emission for `onPageExited`. No runtime, sim, or
+docs change is required beyond a one-line note in
+`vm-contract.md`'s "Page lifecycle hooks" section to
+reflect that `deactivationFuncId` now has a user-syntax
+counterpart.
+
+**Precondition.** L2 has shipped. The descriptor
+extractor and `lowering.ts`'s `lowerOnPageEnteredBody` /
+`generateActivationFunction` pair are the patterns to
+mirror.
+
+### Source paths
+
+- `packages/ts-compiler/src/compiler/descriptor.ts` --
+  add `onPageExitedNode` parsing alongside the existing
+  `onPageEnteredNode` parsing. Parses both the property-
+  assignment form (`onPageExited: function(...) {...}` /
+  `onPageExited: (ctx) => {...}`) and the method-shorthand
+  form (`onPageExited(ctx) {...}`), with a matching
+  `OnPageExitedMustBeFunction` diag for non-function
+  initializers. Adds `onPageExitedNode` to the descriptor
+  payload.
+- `packages/ts-compiler/src/compiler/lowering.ts` --
+  add a `lowerOnPageExitedBody` helper (parallel to
+  `lowerOnPageEnteredBody`) and an emission path that
+  sets `BytecodeExecutableAction.deactivationFuncId` to
+  the lowered function's id when the descriptor has an
+  `onPageExitedNode`. Diag code
+  `OnPageExitedHasNoBody` mirrors the existing
+  `OnPageEnteredHasNoBody`.
+- `packages/ts-compiler/src/compiler/project.ts` --
+  pass `deactivationFuncId` through from
+  `ProgramLoweringResult` to `UserAuthoredProgram`,
+  symmetric to L2's `initializerFuncId` pass-through.
+- `packages/ts-compiler/src/compiler/control-flow.spec.ts`
+  (or a new `lifecycle-hooks.spec.ts`) -- end-to-end
+  tests covering the new emission path.
+- `apps/sim/src/examples/mindcraft.d.ts` -- add the
+  optional `onPageExited?(ctx: Context): void;` member
+  to the action descriptor type so user examples can
+  declare the handler.
+- `docs/specs/core/vm-contract.md` -- update the "Page
+  lifecycle hooks" section so `deactivationFuncId`'s row
+  reads "in-action `onPageExited` handler" instead of
+  "reserved for the symmetric in-action `onPageExited`
+  handler."
+
+### Procedure
+
+1. Extend `descriptor.ts` to recognize `onPageExited` in
+   both the property-assignment branch and the method-
+   shorthand branch. Add `OnPageExitedMustBeFunction` to
+   the `DescriptorDiagCode` enum. Capture the parsed node
+   into `onPageExitedNode` on the descriptor payload.
+2. Add a unit test for the descriptor extractor covering:
+   missing handler (no diag, node `null`), method-shorthand
+   form, arrow-function form, function-expression form,
+   and the must-be-function diag for a non-function value.
+3. Add `lowerOnPageExitedBody` to `lowering.ts` mirroring
+   `lowerOnPageEnteredBody`. The lowered body opens a
+   function scope named `${descriptor.name}.onPageExited`
+   and emits a final `RET`. Add `OnPageExitedHasNoBody` to
+   `LoweringDiagCode`.
+4. In `lowerProgram` (the same site that allocates
+   `userOnPageEnteredFuncId`), allocate a parallel
+   `deactivationFuncId` from the func-id counter when
+   `descriptor.onPageExitedNode` is set. Store it on the
+   `ProgramLoweringResult`.
+5. In `project.ts`, forward `deactivationFuncId` from
+   `ProgramLoweringResult` onto `UserAuthoredProgram`
+   alongside `initializerFuncId` and `activationFuncId`.
+6. Add the `onPageExited?(ctx: Context): void;` member to
+   the action-descriptor types in
+   `apps/sim/src/examples/mindcraft.d.ts` so the example
+   programs typecheck.
+7. Add end-to-end tests:
+   - `onPageExited` body is lowered and
+     `deactivationFuncId` is set; `activationFuncId` and
+     `initializerFuncId` are independent.
+   - Compiling a program with both `onPageEntered` and
+     `onPageExited` produces three distinct func ids
+     (entry, activation, deactivation).
+   - A round-trip integration test that compiles a program
+     with `let count = 0;` plus an `onPageExited` handler
+     that calls `setStateSlot` (or equivalent) to mutate
+     `count`, drives the brain through one page exit, and
+     asserts the deactivation handler's mutation is
+     observed on the next activation (callsite storage is
+     brain-instance-scoped, so the mutation persists).
+8. Update the `vm-contract.md` "Page lifecycle hooks"
+   section so the `deactivationFuncId` description matches
+   `activationFuncId`'s phrasing now that user syntax
+   exists for both.
+9. Run the full gate from `packages/ts-compiler`,
+   `packages/core`, and `apps/sim` (typecheck, check,
+   test, build).
+
+### Risks
+
+- **Parser drift.** The two descriptor branches (property-
+  assignment vs. method-shorthand) must both recognize
+  `onPageExited` or programs using one form will silently
+  fail to emit the hook. Mirror the existing
+  `onPageEntered` switch arms exactly; a unit test covering
+  both forms is the gate.
+- **Func-id ordering.** L2 already relies on stable
+  func-id assignment for `initializerFuncId` /
+  `activationFuncId`; inserting a `deactivationFuncId`
+  allocation must not perturb those ids in programs that
+  do not declare `onPageExited`. The allocation is gated
+  on `descriptor.onPageExitedNode` being non-null, so a
+  program without the handler sees identical func-id
+  layout to today.
+- **Diag-code numeric stability.** Adding
+  `OnPageExitedMustBeFunction` and
+  `OnPageExitedHasNoBody` to the existing diag enums must
+  append, not insert, to preserve the numeric values of
+  existing codes.
+
+### Acceptance
+
+1. The action descriptor recognizes `onPageExited` in both
+   property-assignment and method-shorthand forms; the
+   must-be-function diag fires for non-function values.
+2. `lowering.ts` emits the handler body into a dedicated
+   function and sets `BytecodeExecutableAction.deactivationFuncId`
+   to its id. Programs without the handler leave the field
+   unset and have unchanged func-id layout.
+3. The end-to-end "exit-handler mutation persists" test
+   passes.
+4. After L3, every row of the bytecode column in the
+   Lifetime Contract table has a user-language counterpart
+   (no more "future" / "no syntax" entries).
+5. `vm-contract.md` no longer describes
+   `deactivationFuncId` as "reserved."
+6. All four gates pass from `packages/ts-compiler`,
+   `packages/core`, and `apps/sim`.
+

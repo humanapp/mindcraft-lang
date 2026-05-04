@@ -128,6 +128,19 @@ function isUserSourceDecl(decl: ts.Declaration): boolean {
 export interface ProgramLoweringResult {
   functions: FunctionEntry[];
   entryFuncId: number;
+  /**
+   * Func id of the module-scope initializer body. Runs once per
+   * `(brainInstance, callSiteId)`, on the first allocation of the action's
+   * callsite, before any activation hook. Set when the action contains
+   * top-level `let`/`const` initializers, imported initializers, or static
+   * class fields.
+   */
+  initializerFuncId?: number;
+  /**
+   * Func id of the per-page-activation entry hook. Runs every time the
+   * owning page is activated. Set when the action declares an
+   * `onPageEntered` handler.
+   */
   activationFuncId?: number;
   numStateSlots: number;
   functionTable: Map<string, number>;
@@ -1047,14 +1060,13 @@ export function lowerProgram(
   const hasInitializers = hasTopLevelInitializers(sourceFile);
   const hasImportedInitializers = importedVariables?.some((iv) => iv.initializer) ?? false;
   const hasStaticFields = classInfos.some((ci) => ci.staticFieldSlots.size > 0);
-  let initFuncId: number | undefined;
+  let initializerFuncId: number | undefined;
   if (hasInitializers || hasImportedInitializers || hasStaticFields) {
-    initFuncId = funcIdCounter.value++;
+    initializerFuncId = funcIdCounter.value++;
   }
 
-  const needsActivation = initFuncId !== undefined || userOnPageEnteredFuncId !== undefined;
   let activationFuncId: number | undefined;
-  if (needsActivation) {
+  if (userOnPageEnteredFuncId !== undefined) {
     activationFuncId = funcIdCounter.value++;
   }
 
@@ -1144,7 +1156,7 @@ export function lowerProgram(
     functions.push(entry);
   }
 
-  if (initFuncId !== undefined) {
+  if (initializerFuncId !== undefined) {
     const initEntry = generateModuleInitWithImports(
       sourceFile,
       checker,
@@ -1162,7 +1174,7 @@ export function lowerProgram(
   }
 
   if (activationFuncId !== undefined) {
-    const activationEntry = generateActivationFunction(descriptor.name, initFuncId, userOnPageEnteredFuncId);
+    const activationEntry = generateActivationFunction(descriptor.name, userOnPageEnteredFuncId);
     functions.push(activationEntry);
   }
 
@@ -1174,6 +1186,7 @@ export function lowerProgram(
   return {
     functions,
     entryFuncId,
+    initializerFuncId,
     activationFuncId,
     numStateSlots: nextCallsiteVar,
     functionTable,
@@ -1268,17 +1281,8 @@ function lowerOnPageEnteredBody(
   };
 }
 
-function generateActivationFunction(
-  name: string,
-  initFuncId: number | undefined,
-  userOnPageEnteredFuncId: number | undefined
-): FunctionEntry {
+function generateActivationFunction(name: string, userOnPageEnteredFuncId: number | undefined): FunctionEntry {
   const ir: IrNode[] = [];
-
-  if (initFuncId !== undefined) {
-    ir.push({ kind: "Call", funcIndex: initFuncId, argc: 0 });
-    ir.push({ kind: "Pop" });
-  }
 
   if (userOnPageEnteredFuncId !== undefined) {
     ir.push({ kind: "LoadLocal", index: 0 });

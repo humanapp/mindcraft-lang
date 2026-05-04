@@ -90,19 +90,22 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {
-  if (prog.activationFuncId === undefined) {
-    return;
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+    if (callsiteVars) {
+      fiber.callsiteVars = callsiteVars;
+    }
+    fiber.instrBudget = 1000;
+    const result = vm.runFiber(fiber, mkScheduler());
+    assert.equal(result.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
   }
-
-  const vm = new runtime.VM(prog, toVmServices(services), { handles });
-  const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
-  if (callsiteVars) {
-    fiber.callsiteVars = callsiteVars;
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
   }
-  fiber.instrBudget = 1000;
-
-  const result = vm.runFiber(fiber, mkScheduler());
-  assert.equal(result.status, VmStatus.DONE);
 }
 describe("Map compilation", () => {
   before(async () => {

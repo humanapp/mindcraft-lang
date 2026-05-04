@@ -78,19 +78,22 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {
-  if (prog.activationFuncId === undefined) {
-    return;
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+    if (callsiteVars) {
+      fiber.callsiteVars = callsiteVars;
+    }
+    fiber.instrBudget = 1000;
+    const result = vm.runFiber(fiber, mkScheduler());
+    assert.equal(result.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
   }
-
-  const vm = new runtime.VM(prog, toVmServices(services), { handles });
-  const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
-  if (callsiteVars) {
-    fiber.callsiteVars = callsiteVars;
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
   }
-  fiber.instrBudget = 1000;
-
-  const result = vm.runFiber(fiber, mkScheduler());
-  assert.equal(result.status, VmStatus.DONE);
 }
 describe("control flow + local variables", () => {
   before(() => {
@@ -1027,7 +1030,7 @@ export default Sensor({
 
     const prog = result.program!;
     assert.ok(prog.numStateSlots > 0, "expected numStateSlots > 0");
-    assert.ok(prog.activationFuncId !== undefined, "expected activationFuncId to be set");
+    assert.ok(prog.initializerFuncId !== undefined, "expected initializerFuncId to be set");
 
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
@@ -1081,7 +1084,7 @@ export default Sensor({
 
     const prog = result.program!;
     assert.equal(prog.numStateSlots, 2);
-    assert.ok(prog.activationFuncId !== undefined);
+    assert.ok(prog.initializerFuncId !== undefined);
 
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
@@ -1214,7 +1217,7 @@ export default Sensor({
     }
   });
 
-  test("no top-level vars produces numStateSlots=0 and no activationFuncId", () => {
+  test("no top-level vars produces numStateSlots=0 and no initializer or activation func", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1230,6 +1233,7 @@ export default Sensor({
     assert.ok(result.program);
 
     assert.equal(result.program!.numStateSlots, 0);
+    assert.equal(result.program!.initializerFuncId, undefined);
     assert.equal(result.program!.activationFuncId, undefined);
   });
 
@@ -1414,7 +1418,7 @@ export default Sensor({
     }
   });
 
-  test("source without onPageEntered still emits activation that runs init", () => {
+  test("source without onPageEntered emits initializer but no activation func", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1433,7 +1437,8 @@ export default Sensor({
     assert.ok(result.program);
 
     const prog = result.program!;
-    assert.ok(prog.activationFuncId !== undefined, "activation should be generated when state exists");
+    assert.ok(prog.initializerFuncId !== undefined, "initializer should be generated when state exists");
+    assert.equal(prog.activationFuncId, undefined, "no activation expected without onPageEntered");
 
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
@@ -1506,7 +1511,7 @@ export default Sensor({
     }
   });
 
-  test("no activation function is emitted with no callsite vars and no onPageEntered", () => {
+  test("no activation or initializer function is emitted with no callsite vars and no onPageEntered", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1523,6 +1528,7 @@ export default Sensor({
 
     const prog = result.program!;
     assert.equal(prog.numStateSlots, 0);
+    assert.equal(prog.initializerFuncId, undefined);
     assert.equal(prog.activationFuncId, undefined);
   });
 
@@ -1566,5 +1572,67 @@ export default Sensor({
       assert.equal(r.status, VmStatus.DONE);
       if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 66);
     }
+  });
+
+  test("module-scope initializer runs exactly once across multiple page activations", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let x = 0;
+
+export default Sensor({
+  name: "init-once",
+  onExecute(ctx: Context): number {
+    x += 1;
+    return x;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.initializerFuncId !== undefined, "module-scope let should produce an initializerFuncId");
+    assert.equal(prog.activationFuncId, undefined, "no onPageEntered handler -- activationFuncId should be unset");
+
+    const handles = new HandleTable(100);
+    // Brain-instance-scoped callsite storage: allocated on first page activation
+    // and reused across subsequent activations of the same instance.
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+
+    const dispatchInitializer = (): void => {
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
+      const fiber = vm.spawnFiber(1, prog.initializerFuncId!, List.empty<Value>(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+    };
+
+    const dispatchExec = (): number => {
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      return r.status === VmStatus.DONE ? (r.result as NumberValue).v : Number.NaN;
+    };
+
+    // First page activation: callsite is freshly allocated -> initializer fires.
+    dispatchInitializer();
+    assert.equal(dispatchExec(), 1);
+    assert.equal(dispatchExec(), 2);
+
+    // Page exit + re-enter (round-trip 1): callsite is preserved at the brain
+    // instance scope, so the runtime would skip the initializer dispatch.
+    assert.equal(dispatchExec(), 3);
+    assert.equal(dispatchExec(), 4);
+
+    // Page exit + re-enter (round-trip 2): same -- counter keeps incrementing,
+    // proving x was only initialized to 0 a single time.
+    assert.equal(dispatchExec(), 5);
+    assert.equal(dispatchExec(), 6);
   });
 });

@@ -493,6 +493,94 @@ running a number-heavy arithmetic loop.
 
 ---
 
+## Page lifecycle hooks
+
+Every `BytecodeExecutableAction` declares up to three optional
+hook function ids that the brain runtime dispatches at well-defined
+points in a page's life. Every host-bound action declares up to two
+optional host hook callbacks that the brain runtime dispatches at
+the same points. These hooks own all per-callsite state setup,
+re-setup on respawn, and teardown.
+
+### Bytecode hook fields
+
+`BytecodeExecutableAction` carries:
+
+- `initializerFuncId?: number` -- runs at most once per
+  `(brainInstance, callSiteId)` pair, the first time that callsite
+  is activated. The compiler emits module-scope `let` / `const`
+  initializers (and equivalent static-field initializers) into this
+  function. After the first run, the callsite's storage is
+  considered initialized and the function is not invoked again for
+  the same brain instance, even across page exits and re-entries,
+  until the brain itself is shut down.
+- `activationFuncId?: number` -- runs every time the page
+  containing this callsite becomes active. The compiler reserves
+  this slot for an in-action `onPageEntered` handler; without that
+  source-level construct, user programs leave it unset.
+- `deactivationFuncId?: number` -- runs every time the page
+  containing this callsite becomes inactive. Reserved for the
+  symmetric in-action `onPageExited` handler.
+
+### Host hook fields
+
+Host-bound actions carry:
+
+- `onPageEntered?: (...) => void` -- runs every time the page
+  containing this callsite becomes active.
+- `onPageExited?: (...) => void` -- runs every time the page
+  containing this callsite becomes inactive.
+
+Host hooks have no separate "initializer" slot: the host owns
+allocation directly and may key any one-shot setup off `onPageEntered`
+combined with its own per-instance bookkeeping.
+
+### Brain-instance-scoped lifetime
+
+All callsite storage -- bytecode state slots and host state -- is
+scoped to a single brain instance. The runtime contract is:
+
+- Storage is allocated **lazily** on first write
+  (`setStateSlot`, `setHostState`) or on the first
+  `services.action.ensureCallsite(callSiteId)` call for actions
+  that declare an `initializerFuncId`.
+- `services.action.ensureCallsite(callSiteId)` returns `true` on
+  the first call for a callsite (newly allocated) and `false`
+  thereafter. The brain runtime uses this result to dispatch
+  `initializerFuncId` exactly once per allocation.
+- Storage **persists** across page exits and re-entries within the
+  same brain instance. Returning to a page does not reset its
+  callsite state.
+
+### Explicit reset primitives
+
+The runtime exposes two primitives for callers (host code and the
+brain runtime itself) to discard callsite state explicitly:
+
+- `services.action.resetCallsite(callSiteId)` -- deallocates the
+  bytecode state slot block for the callsite. The next
+  `ensureCallsite` for the same id returns `true` and the next
+  page activation re-runs the `initializerFuncId` for that
+  callsite.
+- `services.action.clearHostState(callSiteId)` -- clears the
+  host-side state map entry for the callsite without affecting
+  bytecode state slots.
+
+These primitives are the only sanctioned way to force a re-init
+short of tearing down the whole brain.
+
+### `Brain.shutdown()` teardown contract
+
+`Brain.shutdown()` is the brain-wide teardown counterpart to
+allocation. It is required to release every callsite's storage so
+that a subsequent `Brain.startup()` on the same instance behaves
+identically to a fresh brain: every `initializerFuncId` runs again
+on first activation, and every host hook re-binds against freshly
+allocated host state. Implementations must not leak callsite state
+across a shutdown / startup boundary.
+
+---
+
 ## Feature flags
 
 None, by design. See [Opcode completeness](#opcode-completeness)

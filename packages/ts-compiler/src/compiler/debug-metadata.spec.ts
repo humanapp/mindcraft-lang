@@ -127,8 +127,7 @@ export default Sensor({
     assert.equal(initFn!.isGenerated, true, "module-init should be generated");
 
     const activationFn = dm.functions.find((f) => f.debugFunctionId.endsWith("/<activation>"));
-    assert.ok(activationFn, "expected activation function");
-    assert.equal(activationFn!.isGenerated, true, "activation function should be generated");
+    assert.equal(activationFn, undefined, "no activation function expected without onPageEntered");
   });
 
   test("user-authored functions have isGenerated false", () => {

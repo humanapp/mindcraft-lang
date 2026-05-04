@@ -444,6 +444,7 @@ export class UserTileProject {
       isAsync: descriptor.execIsAsync,
       numStateSlots: programResult.numStateSlots,
       entryFuncId: programResult.entryFuncId,
+      initializerFuncId: programResult.initializerFuncId,
       activationFuncId: programResult.activationFuncId,
       revisionId: generateRevisionId(),
       args: qualifiedArgs,

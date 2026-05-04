@@ -78,6 +78,9 @@ function wrapAsExecutable(prog: UserAuthoredProgram): FlatExecutable {
   if (prog.activationFuncId !== undefined) {
     action.activationFuncId = prog.activationFuncId;
   }
+  if (prog.initializerFuncId !== undefined) {
+    action.initializerFuncId = prog.initializerFuncId;
+  }
   return {
     version: prog.version,
     functions: prog.functions,
@@ -137,13 +140,19 @@ function runProgram(prog: UserAuthoredProgram): Value | undefined {
   const handles = new HandleTable(100);
   const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-  if (prog.activationFuncId !== undefined) {
+  const runFn = (funcId: number): void => {
     const vm = new runtime.VM(prog, toVmServices(services), { handles });
-    const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
     const r = vm.runFiber(fiber, mkScheduler());
     assert.equal(r.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
+  }
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
   }
 
   const vm = new runtime.VM(prog, toVmServices(services), { handles });
@@ -164,13 +173,19 @@ function runExecutable(prog: FlatExecutable): Value | undefined {
   const numSlots = action?.binding === "bytecode" ? action.numStateSlots : 0;
   const callsiteVars = List.from<Value>(Array.from({ length: numSlots }, () => NIL_VALUE));
 
-  if (action?.binding === "bytecode" && action.activationFuncId !== undefined) {
+  const runFn = (funcId: number): void => {
     const vm = new runtime.VM(prog, toVmServices(services), { handles });
-    const fiber = vm.spawnFiber(1, action.activationFuncId, List.empty<Value>(), mkCtx());
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
     const r = vm.runFiber(fiber, mkScheduler());
     assert.equal(r.status, VmStatus.DONE);
+  };
+  if (action?.binding === "bytecode" && action.initializerFuncId !== undefined) {
+    runFn(action.initializerFuncId);
+  }
+  if (action?.binding === "bytecode" && action.activationFuncId !== undefined) {
+    runFn(action.activationFuncId);
   }
 
   const entryFuncId = action?.binding === "bytecode" ? action.entryFuncId : (prog.entryPoint ?? 0);
