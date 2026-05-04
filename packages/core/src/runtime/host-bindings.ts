@@ -152,6 +152,10 @@ export interface IBrainRuntime {
   setVariable(varId: string, value: Value): void;
   clearVariable(varId: string): void;
   clearVariables(): void;
+  /** Linked executable program currently loaded into the brain's VM. */
+  getProgram(): Program | undefined;
+  /** Per-page metadata for the loaded program (page activation, call sites, sensors, actuators). */
+  getPages(): List<PageMetadata>;
 }
 
 export interface IBrain extends IBrainRuntime {
@@ -167,12 +171,8 @@ export interface IBrain extends IBrainRuntime {
   startup(): void;
   shutdown(): void;
   think(currentTime: number): void;
-  /** Linked executable program currently loaded into the brain's VM. */
-  getProgram(): Program | undefined;
   /** Compiler output prior to action linking. */
   getCompiledProgram(): UnlinkedBrainProgram | undefined;
-  /** Per-page metadata for the loaded program (page activation, call sites, sensors, actuators). */
-  getPages(): List<PageMetadata>;
   requestPageChange(pageIndex: number): void;
   requestPageChangeByPageId(pageId: string): void;
   requestPageChangeByName(name: string): void;

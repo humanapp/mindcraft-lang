@@ -487,8 +487,8 @@ Each unit must:
 
 ## Current State
 
-Completed: A0, B0, B1, B2
-Next up: B3
+Completed: A0, B0, B1, B2, B3
+Next up: B4
 
 ---
 
@@ -560,6 +560,39 @@ Verification: full gate green (752/752 tests).
   variable storage -- in practice it is only called immediately before
   dropping the old runtime, so this is not a hazard today, but B3 must
   not introduce a path where the snapshot is held across a write.
+
+### B3 -- Move VM/scheduler/context and wire BrainRuntime into initialize()
+
+VM, scheduler, executionContext, callsiteStore, ruleVariableStores,
+activeRuleFiberIds, and nextInlineFiberId moved from Brain to BrainRuntime.
+Brain.initialize() rewritten to assemble PlatformServices locally and pass
+it to new BrainRuntime(...). BrainRuntime gains events() (backed by its own
+emitter_) so Brain.initialize() can subscribe the page-bridge callbacks;
+the emitter is transitional and becomes authoritative in B5.
+
+New transitional surface on BrainRuntime (removed in B5): _vm(),
+_scheduler(), _executionContext(), _callsiteStore(), _ruleVariableStores(),
+_getActiveRuleFiberIds(), _setActiveRuleFiberIds(), _consumeNextInlineFiberId().
+
+Verification: full gate green (752/752 tests).
+
+#### Risks
+
+- BrainRuntime.events() exists but nothing emits to it until B5. Brain still
+  owns emitter_ and fires page_activated / page_deactivated from activatePage /
+  deactivateCurrentPage. The page-bridge subscription in initialize() is wired
+  but silently inert. B5 must move the emit sites to BrainRuntime and delete
+  Brain.emitter_ in the same diff or page callbacks will double-fire or drop.
+- Transitional accessors use plain-method syntax (_vm(), _scheduler(), etc.)
+  rather than get/set because rbxtsc forbids getters/setters on classes.
+  B4 and B5 must respect this constraint when adding any new transitional
+  surface on BrainRuntime.
+- BrainRuntime constructor accepts full PlatformServices (not
+  Omit<PlatformServices, "brain">). The spec's Desired End State says the
+  final ctor takes hostServices: Omit<PlatformServices, "brain"> and builds
+  the brain tier internally. That narrowing is deferred to B5 when the
+  brain tier construction moves into BrainRuntime. Until then, Brain passes
+  the fully assembled PlatformServices and BrainRuntime trusts it.
 
 ---
 

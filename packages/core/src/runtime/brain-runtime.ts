@@ -1,9 +1,14 @@
 import { Dict } from "../platform/dict";
+import { EventEmitter, type EventEmitterConsumer } from "../platform/event-emitter";
 import { List } from "../platform/list";
-import type { IBrainRuntime, PageMetadata } from "./host-bindings";
+import type { ICallsiteStore } from "./callsite-store";
+import type { ExecutionContext } from "./context";
+import type { BrainEvents, IBrainRuntime, PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
+import type { RuleVariableStores } from "./rule-services";
 import type { PlatformServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
+import { FiberScheduler, VM } from "./vm";
 
 /**
  * Runtime entry point for a compiled Mindcraft brain. Owns the VM, the fiber
@@ -40,6 +45,63 @@ export class BrainRuntime implements IBrainRuntime {
   private varSlotByName: Dict<string, number> = new Dict<string, number>();
 
   /**
+   * The linked program loaded into the VM.
+   */
+  private readonly program: Program;
+
+  /**
+   * Per-page metadata produced by the linker (root rule funcIds, action call
+   * sites, sensors, actuators).
+   */
+  private readonly pageMetadata: List<PageMetadata>;
+
+  /**
+   * Single VM instance for executing all rules.
+   */
+  private readonly vm: VM;
+
+  /**
+   * Single scheduler for managing all fibers.
+   */
+  private readonly scheduler: FiberScheduler;
+
+  /**
+   * Persistent execution context shared across all fibers. Provides variable
+   * access and services to host functions and the VM dispatch loop.
+   */
+  private readonly executionContext: ExecutionContext;
+
+  /**
+   * Brain-instance-scoped owner of per-callsite state. Backs
+   * `services.brain.callsite`; cleared on shutdown.
+   */
+  private readonly callsiteStore: ICallsiteStore;
+
+  /**
+   * Per-rule variable storage keyed by rule funcId, then by variable name.
+   * Backs `services.brain.ruleVars`. Allocated lazily per rule on first write.
+   */
+  private readonly ruleVariableStores: RuleVariableStores;
+
+  /**
+   * The canonical brain-scheduler interface. Each entry holds the program
+   * funcId and the scheduler-assigned fiberId for an active root rule.
+   */
+  private activeRuleFiberIds: List<{ funcId: number; fiberId: number | undefined }> = List.empty();
+
+  private nextInlineFiberId: number = -1000000;
+
+  /**
+   * Event emitter for brain lifecycle events. Held here so Brain can
+   * subscribe in B3; becomes the authoritative emitter once B5 moves
+   * the page FSM into this class.
+   *
+   * @deprecated transitional; remove `@deprecated` tag in B5 when this
+   *   becomes the canonical emitter.
+   */
+  private readonly emitter_: EventEmitter<BrainEvents> = new EventEmitter<BrainEvents>();
+
+  /**
    * Construct a fully ready-to-`startup()` runtime around a linked,
    * treeshaken {@link Program}.
    *
@@ -47,29 +109,121 @@ export class BrainRuntime implements IBrainRuntime {
    *   slot binding is read from `program.variableNames`.
    * @param pageMetadata - Per-page metadata produced by the linker
    *   (root rule funcIds, action call sites, sensors, actuators).
-   * @param hostServices - The three host- and module-supplied tiers of
-   *   {@link PlatformServices} (`runtime`, `shared`, `app`). The runtime
-   *   builds the `brain` tier internally and composes the full nested
-   *   aggregate before handing it to the VM.
+   * @param services - Fully assembled {@link PlatformServices} including
+   *   the `brain` tier, built by the authoring-side facade.
    * @param contextData - Application-specific data attached to the
-   *   brain's `ExecutionContext`. Host functions read this via
-   *   `ctx.data`.
+   *   brain's `ExecutionContext`. Host functions read this via `ctx.data`.
    * @param previousVariables - Optional snapshot of the prior runtime's
-   *   variable storage, used by the authoring-side facade to carry
-   *   variable values across a re-initialization (hot reload). Each
-   *   variable whose name exists in both the old and new
-   *   `program.variableNames` keeps its value; variables only in the old
-   *   program are dropped; variables new to the new program start
-   *   unwritten.
+   *   variable storage, used to carry variable values across a
+   *   re-initialization (hot reload).
    */
   constructor(
-    protected readonly program: Program,
-    protected readonly pageMetadata: List<PageMetadata>,
-    protected readonly hostServices: Omit<PlatformServices, "brain">,
-    protected readonly contextData: unknown = undefined,
+    program: Program,
+    pageMetadata: List<PageMetadata>,
+    services: PlatformServices,
+    contextData: unknown = undefined,
     previousVariables?: VariableSnapshot
   ) {
+    this.program = program;
+    this.pageMetadata = pageMetadata;
+    this.callsiteStore = services.brain.callsite as ICallsiteStore;
+    this.ruleVariableStores = new Dict();
+
     this.installVariableTable(program.variableNames, previousVariables);
+
+    this.vm = new VM(program, services);
+    this.scheduler = new FiberScheduler(this.vm, {
+      maxFibersPerTick: 64,
+      defaultBudget: 1000,
+      autoGcHandles: true,
+    });
+
+    const runtime = this;
+    this.executionContext = {
+      services,
+      getVariableBySlot(slotId: number): Value {
+        return runtime.getVariableBySlot(slotId);
+      },
+      setVariableBySlot(slotId: number, value: Value): void {
+        runtime.setVariableBySlot(slotId, value);
+      },
+      time: 0,
+      dt: 0,
+      currentTick: 0,
+      data: contextData,
+    };
+  }
+
+  /**
+   * Linked executable program loaded into the VM.
+   */
+  getProgram(): Program | undefined {
+    return this.program;
+  }
+
+  /**
+   * Per-page metadata for the loaded program.
+   */
+  getPages(): List<PageMetadata> {
+    return this.pageMetadata;
+  }
+
+  /**
+   * Event stream for brain lifecycle notifications.
+   */
+  events(): EventEmitterConsumer<BrainEvents> {
+    return this.emitter_.consumer();
+  }
+
+  // -------------------------------------------------------------------------
+  // Transitional accessors -- expose private fields to Brain's FSM during
+  // B3-B4 while the page lifecycle methods still live in brain.ts.
+  // Removed in B5 when the FSM moves into this class.
+  // -------------------------------------------------------------------------
+
+  /** @deprecated transitional; removed in B5 */
+  _vm(): VM {
+    return this.vm;
+  }
+
+  /** @deprecated transitional; removed in B5 */
+  _scheduler(): FiberScheduler {
+    return this.scheduler;
+  }
+
+  /** @deprecated transitional; removed in B5 */
+  _executionContext(): ExecutionContext {
+    return this.executionContext;
+  }
+
+  /** @deprecated transitional; removed in B5 */
+  _callsiteStore(): ICallsiteStore {
+    return this.callsiteStore;
+  }
+
+  /** @deprecated transitional; removed in B5 */
+  _ruleVariableStores(): RuleVariableStores {
+    return this.ruleVariableStores;
+  }
+
+  /** @deprecated transitional; removed in B5 */
+  _getActiveRuleFiberIds(): List<{ funcId: number; fiberId: number | undefined }> {
+    return this.activeRuleFiberIds;
+  }
+
+  /** @deprecated transitional; removed in B5 */
+  _setActiveRuleFiberIds(value: List<{ funcId: number; fiberId: number | undefined }>): void {
+    this.activeRuleFiberIds = value;
+  }
+
+  /** @deprecated transitional; removed in B5 */
+  _getNextInlineFiberId(): number {
+    return this.nextInlineFiberId;
+  }
+
+  /** @deprecated transitional; removed in B5 */
+  _consumeNextInlineFiberId(): number {
+    return this.nextInlineFiberId--;
   }
 
   /**
