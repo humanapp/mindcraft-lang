@@ -147,14 +147,15 @@ export type BrainEvents = {
  * method added here must be implementable on `BrainRuntime` without
  * crossing that boundary.
  */
-export type IBrainRuntime = {};
-
-export interface IBrain extends IBrainRuntime {
-  events(): EventEmitterConsumer<BrainEvents>;
+export interface IBrainRuntime {
   getVariable(varId: string): Value | undefined;
   setVariable(varId: string, value: Value): void;
   clearVariable(varId: string): void;
   clearVariables(): void;
+}
+
+export interface IBrain extends IBrainRuntime {
+  events(): EventEmitterConsumer<BrainEvents>;
 
   /**
    * Initialize the brain and set context data. Must be called before startup().

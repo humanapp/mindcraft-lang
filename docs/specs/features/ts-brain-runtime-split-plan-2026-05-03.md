@@ -487,8 +487,8 @@ Each unit must:
 
 ## Current State
 
-Completed: A0, B0, B1
-Next up: B2
+Completed: A0, B0, B1, B2
+Next up: B3
 
 ---
 
@@ -537,6 +537,29 @@ Verification: full gate green (752/752 core).
 - The firewall invariant on `IBrainRuntime` is vacuous until B2 adds the
   first method. Reviewers of B2 should re-check the firewall report
   explicitly rather than relying on a green pass that proves nothing.
+
+### B2 -- Move Variable Storage
+
+Variable storage moved from `Brain` to `BrainRuntime`; `Brain` delegates the
+six public variable methods; hot-reload carry-forward threads through
+`snapshotVariables()` and the `previousVariables` constructor parameter.
+
+New contract surface: `IBrainRuntime` gains the four name-keyed variable
+accessor signatures; `BrainRuntime.snapshotVariables()`.
+
+Verification: full gate green (752/752 tests).
+
+#### Risks
+
+- B1 stored `previousVariables` as `protected readonly` on `BrainRuntime`.
+  B2 changed it to a plain constructor parameter consumed in-place by
+  `installVariableTable` and not stored. B3 and later must not assume
+  `this.previousVariables` exists on the runtime instance.
+- `BrainRuntime.snapshotVariables()` returns live references (no copy).
+  Callers must consume the snapshot before any write to the old runtime's
+  variable storage -- in practice it is only called immediately before
+  dropping the old runtime, so this is not a hazard today, but B3 must
+  not introduce a path where the snapshot is held across a write.
 
 ---
 

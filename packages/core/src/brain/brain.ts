@@ -4,6 +4,7 @@ import { List } from "../platform/list";
 import {
   type BrainEvents,
   type BrainLinkEnvironment,
+  BrainRuntime,
   FiberState,
   type IBrain,
   type PageMetadata,
@@ -59,22 +60,8 @@ export class Brain implements IBrain {
   /** Runtime page instances */
   pages: List<BrainPage> = new List<BrainPage>();
 
-  /**
-   * Variable storage at the Brain level, indexed by compiler-assigned slot id.
-   * Slot ids correspond to positions in the loaded program's variableNames pool;
-   * they are the operand of LOAD_VAR_SLOT / STORE_VAR_SLOT. A slot value of
-   * `undefined` means the slot has never been written; bytecode reads of such
-   * slots observe `NIL_VALUE`.
-   */
-  private variables: List<Value | undefined> = List.empty();
-
-  /**
-   * Map from variable name to slot id. Populated from `Program.variableNames`
-   * at program load. Names not in the program may be lazily added by host
-   * functions calling the name-keyed `setVariable` API; such slots are addressable
-   * by name only (no bytecode operand can target them).
-   */
-  private varSlotByName: Dict<string, number> = new Dict<string, number>();
+  /** `BrainRuntime` instance constructed by {@link initialize}. */
+  private runtime: BrainRuntime | undefined;
 
   /**
    * Unlinked program emitted by the brain compiler.
@@ -183,8 +170,16 @@ export class Brain implements IBrain {
     this.ruleIndex = linked.ruleIndex;
     this.pageMetadata = linked.pages;
 
-    // Wire the brain-level variable storage to the loaded program's variableNames pool.
-    this.installVariableTable(this.program.variableNames);
+    // Snapshot previous variable values for hot-reload carry-forward, then construct a
+    // fresh BrainRuntime with the new program and variable state.
+    const previousVariables = this.runtime?.snapshotVariables();
+    this.runtime = new BrainRuntime(
+      this.program,
+      this.pageMetadata,
+      { runtime: this.services.runtime, shared: this.services.shared, app: this.services.app },
+      contextData,
+      previousVariables
+    );
 
     // Assign function IDs to runtime rule objects
     for (let pageIdx = 0; pageIdx < this.pages.size(); pageIdx++) {
@@ -281,10 +276,7 @@ export class Brain implements IBrain {
    * @returns The variable's current value, or undefined if not found
    */
   getVariable<T extends Value>(varId: string): T | undefined {
-    const slotId = this.varSlotByName.get(varId);
-    if (slotId === undefined) return undefined;
-    if (slotId >= this.variables.size()) return undefined;
-    return this.variables.get(slotId) as T | undefined;
+    return this.runtime?.getVariable<T>(varId);
   }
 
   /**
@@ -298,14 +290,7 @@ export class Brain implements IBrain {
    * @param value - The value to store
    */
   setVariable(varId: string, value: Value): void {
-    const existingSlot = this.varSlotByName.get(varId);
-    if (existingSlot !== undefined) {
-      this.variables.set(existingSlot, value);
-      return;
-    }
-    const newSlot = this.variables.size();
-    this.variables.push(value);
-    this.varSlotByName.set(varId, newSlot);
+    this.runtime?.setVariable(varId, value);
   }
 
   /**
@@ -316,11 +301,7 @@ export class Brain implements IBrain {
    * @param varId - Variable name
    */
   clearVariable(varId: string): void {
-    const slotId = this.varSlotByName.get(varId);
-    if (slotId === undefined) return;
-    if (slotId < this.variables.size()) {
-      this.variables.set(slotId, undefined);
-    }
+    this.runtime?.clearVariable(varId);
   }
 
   /**
@@ -329,9 +310,7 @@ export class Brain implements IBrain {
    * remain stable).
    */
   clearVariables(): void {
-    for (let i = 0; i < this.variables.size(); i++) {
-      this.variables.set(i, undefined);
-    }
+    this.runtime?.clearVariables();
   }
 
   /**
@@ -340,9 +319,7 @@ export class Brain implements IBrain {
    * VM dispatch loop on every `LOAD_VAR_SLOT`.
    */
   getVariableBySlot(slotId: number): Value {
-    if (slotId < 0 || slotId >= this.variables.size()) return NIL_VALUE;
-    const v = this.variables.get(slotId);
-    return v === undefined ? NIL_VALUE : v;
+    return this.runtime?.getVariableBySlot(slotId) ?? NIL_VALUE;
   }
 
   /**
@@ -352,43 +329,7 @@ export class Brain implements IBrain {
    * `program.variableNames.size()` before calling this.
    */
   setVariableBySlot(slotId: number, value: Value): void {
-    if (slotId < 0) return;
-    while (this.variables.size() <= slotId) {
-      this.variables.push(undefined);
-    }
-    this.variables.set(slotId, value);
-  }
-
-  /**
-   * Wire the brain's variable storage to a program's `variableNames` pool.
-   * Allocates a fresh slot list of size `programVariableNames.size()`
-   * with the never-written sentinel, builds a fresh name->slot map, and
-   * copies any previously-set values forward by name -- preserving values
-   * for variables that exist in both the previous and the new program.
-   * Variables present only in the previous program are dropped; variables
-   * new to the program start unwritten (read as `NIL_VALUE` from bytecode,
-   * `undefined` from the name-keyed `getVariable`).
-   */
-  private installVariableTable(programVariableNames: List<string>): void {
-    const previousValues = this.variables;
-    const previousSlots = this.varSlotByName;
-
-    const newSize = programVariableNames.size();
-    const newValues = List.empty<Value | undefined>();
-    const newSlots = new Dict<string, number>();
-    for (let i = 0; i < newSize; i++) {
-      const name = programVariableNames.get(i)!;
-      newSlots.set(name, i);
-      const oldSlot = previousSlots.get(name);
-      if (oldSlot !== undefined && oldSlot < previousValues.size()) {
-        newValues.push(previousValues.get(oldSlot));
-      } else {
-        newValues.push(undefined);
-      }
-    }
-
-    this.variables = newValues;
-    this.varSlotByName = newSlots;
+    this.runtime?.setVariableBySlot(slotId, value);
   }
 
   setEnabled(enabled: boolean) {
