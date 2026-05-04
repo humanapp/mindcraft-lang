@@ -7,7 +7,6 @@ import {
   type BrainLinkEnvironment,
   FiberState,
   type IBrain,
-  type IBrainRule,
   type PageMetadata,
   type UnlinkedBrainProgram,
   VmStatus,
@@ -124,9 +123,6 @@ export class Brain implements IBrain {
    */
   private readonly callsiteStore: ICallsiteStore = createCallsiteStore();
 
-  /** Mapping from rule function ids to their owning {@link IBrainRule}; backs the dense shim's program/ruleVars services. */
-  private funcIdToRule: Dict<number, IBrainRule> = new Dict();
-
   /**
    * Per-rule variable storage keyed by rule funcId, then by variable name.
    * Backs {@link PlatformServices.ruleVars}; reads walk the ancestor chain
@@ -136,8 +132,9 @@ export class Brain implements IBrain {
   private ruleVariableStores: RuleVariableStores = new Dict();
 
   /**
-   * Fiber IDs for the currently active page's root rules.
-   * Tracked for respawning when they complete.
+   * The canonical Brain<->scheduler interface object. Each entry holds
+   * `funcId` (program-resolved rule function id) and `fiberId`
+   * (scheduler-issued fiber id).
    */
   private activeRuleFiberIds: List<{ funcId: number; fiberId: number | undefined }> = List.empty();
 
@@ -190,12 +187,10 @@ export class Brain implements IBrain {
     // Wire the brain-level variable storage to the loaded program's variableNames pool.
     this.installVariableTable(this.program.variableNames);
 
-    // Assign function IDs to runtime rule objects and build funcId->rule mapping
-    this.funcIdToRule = new Dict<number, IBrainRule>();
+    // Assign function IDs to runtime rule objects
     for (let pageIdx = 0; pageIdx < this.pages.size(); pageIdx++) {
       const page = this.pages.get(pageIdx)!;
       page.assignFuncIds(this.ruleIndex, pageIdx);
-      this.collectFuncIdToRuleMapping(page.children(), this.funcIdToRule);
     }
 
     // Allocate the brain-instance side-table that backs services.ruleVars.
@@ -829,19 +824,5 @@ export class Brain implements IBrain {
       catalogs: List.from([this.services.tiles]),
       actionResolver: this.services.actions,
     };
-  }
-
-  /**
-   * Recursively collect funcId -> BrainRule mappings from rules and their children.
-   */
-  private collectFuncIdToRuleMapping(rules: List<BrainRule>, mapping: Dict<number, IBrainRule>): void {
-    for (let i = 0; i < rules.size(); i++) {
-      const rule = rules.get(i)!;
-      const funcId = rule.getFuncId();
-      if (funcId !== undefined) {
-        mapping.set(funcId, rule);
-      }
-      this.collectFuncIdToRuleMapping(rule.children(), mapping);
-    }
   }
 }

@@ -454,15 +454,36 @@ Each unit must:
 
 ## Current State
 
-Completed: D0, D1, D2, D3, D4; lifecycle-hooks precondition L1 / L2 / L3
+Completed: D0, D1, D2, D3, D4, D5; lifecycle-hooks precondition L1 / L2 / L3
 landed (see
 [`ts-vm-page-lifecycle-hooks-2026-05-03.md`](./ts-vm-page-lifecycle-hooks-2026-05-03.md)).
 
-Next up: D5
+Next up: D6
 
 ---
 
 ## Phase Log
+
+### D5
+
+**Status**
+
+Deleted `funcIdToRule` field, its two `initialize()` assignments,
+`collectFuncIdToRuleMapping`, and the now-unused `IBrainRule` import from
+`brain/brain.ts`. Added field-level JSDoc on `activeRuleFiberIds` naming it
+the canonical Brain<->scheduler interface and forbidding authoring-graph
+references in its entries. G1-G5 greps all pass; zero `runtime/` edits.
+Verification: full gate green (750/750 tests).
+
+**Risks** (D5 -> D6)
+
+- G1-G5 are currently only verified manually at D5 runtime. A future
+  refactor inside `brain/` could silently re-introduce a value import of
+  `IBrainRule` or add a `BrainRule`-typed field to `activeRuleFiberIds`.
+  D6 or the follow-on Brain-runtime split should encode these greps as
+  standing CI checks so the lock-in survives.
+
+---
 
 ### D4
 
