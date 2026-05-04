@@ -111,13 +111,17 @@ export interface HostActuatorDefinition {
 
 /** Sync action exec shape used by sensors and actuators registered through {@link createHostSensor}. */
 export type SyncHostActionFn = {
+  onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
+  onPageExited?: (ctx: ExecutionContext) => void;
   exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
 };
 
 /** Async action exec shape; see {@link SyncHostActionFn}. */
 export type AsyncHostActionFn = {
+  onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
+  onPageExited?: (ctx: ExecutionContext) => void;
   exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
 };
 
@@ -140,14 +144,18 @@ type AsyncHostActionOptions = HostActionOptionsBase & {
 
 function adaptSyncActionFn(fn: SyncHostActionFn): HostSyncFn {
   return {
+    onInitialized: fn.onInitialized,
     onPageEntered: fn.onPageEntered,
+    onPageExited: fn.onPageExited,
     exec: fn.exec,
   };
 }
 
 function adaptAsyncActionFn(fn: AsyncHostActionFn): HostAsyncFn {
   return {
+    onInitialized: fn.onInitialized,
     onPageEntered: fn.onPageEntered,
+    onPageExited: fn.onPageExited,
     exec: fn.exec,
   };
 }
@@ -344,7 +352,9 @@ function buildHostActionBinding(
   const binding: HostActionBinding = {
     binding: "host",
     descriptor,
+    onInitialized: actionFn.onInitialized,
     onPageEntered: actionFn.onPageEntered,
+    onPageExited: actionFn.onPageExited,
   };
 
   if (descriptor.isAsync) {

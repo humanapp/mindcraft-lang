@@ -109,6 +109,7 @@ export interface VmConfig {
 export type HostSyncFn = {
   onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
+  onPageExited?: (ctx: ExecutionContext) => void;
   exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
 };
 
@@ -131,6 +132,7 @@ export type HostSyncFn = {
 export type HostAsyncFn = {
   onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
+  onPageExited?: (ctx: ExecutionContext) => void;
   exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
 };
 

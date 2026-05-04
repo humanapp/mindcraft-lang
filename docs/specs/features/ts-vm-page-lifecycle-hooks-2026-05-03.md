@@ -232,11 +232,10 @@ L1 risks (lazy callsite storage; VM no longer calls `ensureCallsite`;
 through L2-L4 unchanged. After L4, the host action surface
 exposes the same three lifecycle stages as the bytecode surface
 (initialize once, activate per page entry, deactivate per page
-exit). Pre-existing public-API gap: `mindcraft.ts` `SyncHostActionFn`
-/ `AsyncHostActionFn` mirror `onPageEntered` only; neither
-`onPageExited` (L3) nor `onInitialized` (L4) is forwarded through
-the `createHostSensor` / `createHostActuator` adapter. Plumbing
-that through is a separate follow-up outside this spec.
+exit), and the public `mindcraft.ts` adapter
+(`SyncHostActionFn` / `AsyncHostActionFn` / `buildHostActionBinding`)
+forwards `onInitialized` and `onPageExited` end-to-end into
+`HostActionBinding`.
 
 ---
 

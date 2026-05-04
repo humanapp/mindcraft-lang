@@ -35,6 +35,10 @@ type EatState = {
   nextEatTime: number; // Timestamp when the Actor can eat again (cooldown)
 };
 
+function initEat(ctx: ExecutionContext): void {
+  setCallSiteState(ctx, { nextEatTime: 0 } satisfies EatState);
+}
+
 export function execEat(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   const self = getSelf(ctx);
   if (!self) {
@@ -46,13 +50,7 @@ export function execEat(ctx: ExecutionContext, args: ReadonlyList<Value>): Value
   if (!animalComp) return VOID_VALUE; // only animals eat
 
   const now = self.engine.simTime;
-  let state = getCallSiteState<EatState>(ctx);
-  if (!state) {
-    state = {
-      nextEatTime: 0,
-    } satisfies EatState;
-    setCallSiteState(ctx, state);
-  }
+  const state = getCallSiteState<EatState>(ctx)!;
 
   // Check cooldown
   if (now < state.nextEatTime) {
@@ -84,7 +82,7 @@ export function execEat(ctx: ExecutionContext, args: ReadonlyList<Value>): Value
 export default {
   key: TileIds.Actuator.Eat,
   callDef,
-  fn: { exec: execEat },
+  fn: { onInitialized: initEat, exec: execEat },
   isAsync: false,
   metadata: { label: "eat", iconUrl: "/assets/brain/icons/eat.svg" },
 } satisfies CreateHostActuatorOptions;

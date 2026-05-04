@@ -60,19 +60,19 @@ type SeeState = {
   memoryExpiration: number; // Timestamp when the remembered actor ID should be forgotten
 };
 
+function initSee(ctx: ExecutionContext): void {
+  setCallSiteState(ctx, {
+    rememberedActorId: undefined,
+    rememberedPos: undefined,
+    memoryExpiration: 0,
+  } satisfies SeeState);
+}
+
 function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   // Get the Actor from the execution context (optional - sensor can work without it)
   const self = getSelf(ctx);
 
-  let state = getCallSiteState<SeeState>(ctx);
-  if (!state) {
-    state = {
-      rememberedActorId: undefined,
-      rememberedPos: undefined,
-      memoryExpiration: 0,
-    } satisfies SeeState;
-    setCallSiteState(ctx, state);
-  }
+  let state = getCallSiteState<SeeState>(ctx)!;
 
   if (!self) {
     console.warn("See sensor invoked without an actor in context");
@@ -195,6 +195,7 @@ export default {
   key: TileIds.Sensor.See,
   callDef,
   fn: {
+    onInitialized: initSee,
     exec: execSee,
   },
   isAsync: false,
