@@ -3113,13 +3113,29 @@ earlier phases.
 **Precondition.** D6 ships and passes its acceptance. The
 following greps return zero matches across `packages/core/src/`:
 
-- `\\b(IBrain|IBrainRule|IBrainPage|BrainPage|BrainRule|ActionInstance)\\b`
-  outside of `packages/core/src/brain/`.
-- `\\b(currentActionInstance|funcIdToRule|getOrCreateActionInstance|resetActionInstance|getCallSiteState|setCallSiteState)\\b`
-  inside `packages/core/src/runtime/`.
+- `\\b(BrainPage|BrainRule|ActionInstance)\\b` outside of
+  `packages/core/src/brain/`. The concrete authoring-graph
+  classes and the retired `ActionInstance` / `ActionInstanceMap`
+  types must not appear in `runtime/`. The interface forms
+  `IBrain` / `IBrainPage` / `IBrainRule` are intentionally
+  defined in `runtime/host-bindings.ts` and consumed by
+  `runtime/runtime-services.ts` as the brain-side adapter seam
+  for `PlatformServices`; they are id-keyed contracts, not
+  authoring-graph references, and are out of scope for this
+  grep.
+- `\\b(currentActionInstance|funcIdToRule|getOrCreateActionInstance|resetActionInstance)\\b`
+  anywhere under `packages/core/src/`. These are the legacy
+  symbol names retired by D2-D5; the contract documents their
+  replacements and the names must not survive in code.
 
 If either grep returns matches, D7 stops -- a precondition is
 violated, escalate to D2-D6 post-mortem.
+
+Note: `getCallSiteState` / `setCallSiteState` / `clearCallSiteState`
+are exported public helpers on `runtime/context.ts` (per D3) and
+are intentionally consumed by `runtime/sensors/`. They are part of
+the contracted dense-state surface and **not** subjects of the
+precondition grep.
 
 ### Source paths (the agent edits / inspects these)
 
@@ -3137,23 +3153,45 @@ violated, escalate to D2-D6 post-mortem.
 - **Inspection-only references** (the contract section
   describes these surfaces but does not edit them):
   - `packages/core/src/runtime/context.ts` --
-    `ExecutionContext` field declarations as they exist
-    post-D6.
-  - `packages/core/src/runtime/platform-services.ts` (or the
-    file the firewall identifies as the
-    `PlatformServices` aggregate) -- the dense additions D2,
-    D3, D4 land in their respective phases.
+    `ExecutionContext` field declarations and the exported
+    helpers `getCallSiteState` / `setCallSiteState` /
+    `clearCallSiteState` / `getRuleVariable` /
+    `setRuleVariable` as they exist post-D6.
+  - `packages/core/src/runtime/services.ts` -- the
+    `PlatformServices` aggregate and the per-member
+    interfaces (`IProgramServices`, `IBrainVariableServices`,
+    `IRuleVariableServices`, `IBrainPageServices`,
+    `IRngServices`, `ICallsiteServices`).
+  - `packages/core/src/runtime/runtime-services.ts` --
+    `createRuntimeServices(brain, callsiteStore)`, the
+    brain-backed factory that produces the dense
+    `IRuntimeServices` aggregate consumed by `Brain` when it
+    constructs the VM.
+  - `packages/core/src/runtime/host-bindings.ts` -- the
+    `IBrain` / `IBrainPage` / `IBrainRule` interfaces (the
+    runtime-side adapter seam; the only `runtime/`-resident
+    reference to brain-shaped types).
+  - `packages/core/src/runtime/callsite-store.ts` --
+    `ICallsiteStore` (extends `ICallsiteServices`) and the
+    factory `createCallsiteStore()` that backs
+    `services.callsite` directly.
   - `packages/core/src/runtime/vm-types.ts` --
     `Scheduler` interface, `Fiber.asyncResultHandleId`
     (pinned by D6).
   - `packages/core/src/runtime/vm.ts` -- callsite-id binding
-    discipline in `execHostCall*` and `execActionCall*`
-    (the contract states the discipline; the agent reads
-    these to verify the prose matches reality).
+    discipline in `execHostCall` / `execHostCallAsync` /
+    `execActionCall` / `execActionCallAsync`; the
+    `nextInternalFiberId` allocator on `VM` (negative ids for
+    `ACTION_CALL_ASYNC` child fibers); the concrete
+    `FiberScheduler` class and its `nextFiberId` allocator
+    (positive ids for top-level fibers); and the
+    `handles.events.on("completed", ...)` wiring.
   - `packages/core/src/brain/brain.ts` -- Brain's surviving
     runtime surface (concerns 3-8 from D5's eight-concern
-    audit), referenced only to support the Brain-fate
-    one-liner in the new section.
+    audit, including the `activeRuleFiberIds` field that is
+    the canonical Brain<->scheduler interface), referenced
+    only to support the Brain-fate one-liner in the new
+    section.
 
 ### Section content (what the new section must contain)
 
@@ -3163,94 +3201,165 @@ sub-section is one or two short paragraphs (typically 5-15
 lines); the whole section stays within the <=120-line target.
 
 1. **`ExecutionContext` shape.** The portable runtime context
-   struct: per-rule variable arrays addressed by `(ruleId,
-slot)`, callsite host state addressed by `callSiteId`,
-   action state slots addressed by `(callSiteId, slotIndex)`,
-   the current-id fields (`currentCallSiteId`, current rule
-   id, current fiber id), and the per-tick scalar anchors
-   (`time`, `dt`, `currentTick`). State the closure
-   property: every field is either a scalar id, a slot
-   index, a primitive, or a side-table reference -- no
-   field holds an authoring-graph object. Name the
-   extension seam in one sentence: applications subclass
-   `ExecutionContext` to add app-shaped fields (sim's
-   `ActorExecutionContext.data` is the canonical example);
-   what an app layers on top is the app's contract, not
-   core's.
-2. **Dense additions to `PlatformServices`.** Enumerate the
-   members the dense plan added (rule lookup, action
-   resolution / activation, callsite-state side table,
-   action state-slot side table). For each, state the
-   id-keyed signature shape in one line. State the closure
-   property: every dense member operates on ids and
-   primitives only. Note that core ships an `IRngServices`
-   member on `PlatformServices` to back the core `random`
-   sensor's brain-scoped random stream, but does not ship
-   time, clock, or platform-entity / world-access services;
-   applications layer those in at the application level via
-   their own host functions and platform-side service
-   objects if needed.
-3. **`HOST_CALL` / `HOST_CALL_ASYNC` callsite-id binding
-   contract.** State the discipline pinned in D3:
-   `currentCallSiteId` is bound on entry to a host call,
-   restored on return, and saved/restored across nested
-   host calls. State the host function signature contract:
-   host functions read and write callsite host state through
-   the contracted `PlatformServices` op, never through
-   pointer dereference of a `Brain` / `BrainRule` /
+   struct: the `services: PlatformServices` aggregate; the
+   compiler-assigned variable-slot accessors
+   `getVariableBySlot(slotId)` / `setVariableBySlot(slotId, value)`
+   that back the `LOAD_VAR_SLOT` / `STORE_VAR_SLOT` opcodes;
+   the current-id fields (`currentCallSiteId`,
+   `currentRuleFuncId`); and the per-tick scalar anchors
+   (`time`, `dt`, `currentTick`). State the closure property:
+   every field is either a scalar id, a primitive, a function
+   that takes/returns scalar ids and primitives, or a
+   side-table reference reached through `services` -- no field
+   holds an authoring-graph object. Name the extension seam in
+   one sentence: applications layer app-shaped state through
+   the `data?: unknown` field (sim's `ActorExecutionContext`
+   reaches into `ctx.data` to recover its actor handle); what
+   an app layers on top is the app's contract, not core's. Note
+   that there is no `currentFiberId` field on the dense
+   context; fiber identity is scheduler-internal and not
+   exposed to host functions.
+
+2. **Dense `PlatformServices` members.** Enumerate the
+   id-keyed members the dense plan added to `PlatformServices`:
+   - `program: IProgramServices` -- `getRuleFuncIdForFunc(funcId): number | undefined`,
+     resolves the owning rule for a given function id.
+   - `brainVars: IBrainVariableServices` -- `getByName` /
+     `setByName` / `clearByName`, brain-global variable
+     storage keyed by name.
+   - `ruleVars: IRuleVariableServices` -- the same three
+     accessors keyed by `(ruleFuncId, name)`. When
+     `ruleFuncId` is `undefined`, reads return `NIL_VALUE`
+     and writes are no-ops; the underlying store walks
+     `Program.ruleAncestors` for inherited values.
+   - `brainPages: IBrainPageServices` -- `getCurrentPageId` /
+     `getPreviousPageId` / `requestPageChange(pageIndex)` /
+     `requestPageChangeByPageId(pageId)` / `requestPageRestart`.
+   - `rng: IRngServices` -- `next(): number` returning a value
+     in `[0, 1)`. Backs the core `random` sensor's
+     brain-scoped random stream.
+   - `callsite: ICallsiteServices` -- a single seven-method
+     surface that combines the per-callsite state-slot pad
+     and the host-owned opaque cell, both keyed by
+     `callSiteId`: `ensure(id) -> bool` (returns `true` on
+     first allocation, used as the bytecode-action
+     initializer-dispatch gate); `reset(id)` (drops slots
+     and host state together); `getSlot(id, slotIdx)` /
+     `setSlot(id, slotIdx, value)` (slot pad backing
+     `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`);
+     `getHostState(id)` / `setHostState(id, value)` /
+     `clearHostState(id)` (the opaque cell host functions
+     persist across ticks).
+   State the closure property: every dense member operates on
+   ids, names, and primitives only. The dense plan does not
+   add time, clock, or platform-entity / world-access services
+   to `PlatformServices`; applications layer those in via
+   their own host functions and platform-side service objects
+   if needed. Action resolution is **not** a `PlatformServices`
+   member; the VM resolves actions directly from the loaded
+   `Program`'s slot-indexed action table.
+
+3. **`HOST_CALL` / `HOST_CALL_ASYNC` / `ACTION_CALL*`
+   callsite-id binding.** State the discipline pinned in D3
+   and extended by D4: the VM binds `currentCallSiteId` and
+   `currentRuleFuncId` on `ExecutionContext` before
+   dispatching to a host function via `HOST_CALL`,
+   `HOST_CALL_ASYNC`, `ACTION_CALL` (host branch), or
+   `ACTION_CALL_ASYNC` (host branch), and before invoking
+   any of the `onInitialized` / `onPageEntered` /
+   `onPageExited` lifecycle hooks. Host functions reach
+   per-callsite host state through `services.callsite.{getHostState,
+   setHostState, clearHostState}` directly, or through the
+   exported helpers `getCallSiteState<T>(ctx)` /
+   `setCallSiteState(ctx, value)` /
+   `clearCallSiteState(ctx)` on `runtime/context.ts` which
+   read `ctx.currentCallSiteId` (and throw when it is
+   `undefined`, i.e. invoked outside a host-call dispatch).
+   Host functions never dereference a `Brain` / `BrainRule` /
    `ActionInstance` reference.
+
 4. **Action call state model.** State the discipline pinned
    in D4 + D6:
    - sync `ACTION_CALL` and async `ACTION_CALL_ASYNC` both
-     route per-callsite action state through the
-     state-slots side table keyed by `(callSiteId,
-slotIndex)`;
-   - state slots reset on page activation;
-   - `ACTION_CALL_ASYNC` allocates a `HandleId` from the VM
-     handle table, spawns a child fiber (bytecode branch)
-     or invokes `execAsync(ctx, args, hid)` (host branch),
-     and resolves the handle through the
-     `HandleTable.events.completed` channel that the
-     `FiberScheduler` subscribes to.
+     route per-callsite state-slot traffic through
+     `services.callsite.{getSlot, setSlot}` keyed by
+     `(callSiteId, slotIdx)`, backing the bytecode
+     `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR` opcodes
+     that implement compiled-action local state.
+   - The brain calls `services.callsite.reset(callSiteId)`
+     when re-allocating a call site on page (re)activation,
+     dropping both slots and host state together;
+     `clearHostState(callSiteId)` is the opt-in primitive
+     for dropping only the host-owned cell.
+   - `ACTION_CALL_ASYNC` allocates a `HandleId` from the
+     VM's `HandleTable`, then either spawns a child fiber
+     (bytecode branch) or invokes `execAsync(ctx, args,
+     handleId)` (host branch). Either branch resolves the
+     handle through the `handles.events.on("completed", ...)`
+     channel that both the VM and the `FiberScheduler`
+     subscribe to.
+   - **Host obligation (per D6):** every `execAsync` call
+     must eventually resolve, reject, or cancel the supplied
+     `HandleId`. A synchronous throw out of `execAsync` is
+     rolled back automatically (the host branch frees the
+     handle in a `try/catch`); a silent drop (return without
+     resolution) leaves the handle pending until
+     `HandleTable.gc()` reclaims it after all waiters have
+     departed.
+
 5. **Id-spaces.** Reference D0 table 6 in prose (do not
-   copy). State the durable facts: rule ids and action ids
-   are program-resolved (stable across reload of the same
-   compiled `Program`); fiber ids are scheduler-issued and
-   not stable across reload; `nextInternalFiberId` (negative
-   ids for child fibers spawned by `ACTION_CALL_ASYNC`) is
-   an internal allocation detail noted but not contracted
-   for downstream consumption; handle ids are issued by the
-   VM `HandleTable`.
+   copy). State the durable facts: rule ids (funcIds owning
+   rules) and action ids (action-table slot indices) are
+   compiler-assigned and stable across reload of the same
+   compiled `Program`; numeric `0` is a real `RuleId`, so
+   `undefined` is the only "no rule" sentinel. Fiber ids
+   are scheduler-issued and not stable across reload; the
+   `FiberScheduler.nextFiberId` allocator hands out positive
+   ids for top-level fibers, and the `VM.nextInternalFiberId`
+   allocator hands out negative ids for child fibers spawned
+   by `ACTION_CALL_ASYNC`. Both fiber-id allocators are
+   internal allocation details noted but not contracted for
+   downstream consumption. `HandleId`s are issued by the
+   VM's `HandleTable`.
+
 6. **Brain-fate one-liner.** State the disposition pinned by
    D5: Brain survives as a thin id-only orchestrator owning
-   variable storage, VM and scheduler ownership,
-   ExecutionContext construction, page lifecycle FSM,
-   activation-hook driver, and page lookup tables (concerns
-   3-8 from D5's eight-concern audit). Brain's
+   the brain-instance variable store, VM and scheduler
+   ownership, `ExecutionContext` construction, the page
+   lifecycle FSM, the activation-hook driver, and the page
+   lookup tables (concerns 3-8 from D5's eight-concern
+   audit). The `activeRuleFiberIds` field is the canonical
+   Brain<->scheduler interface and may not carry
+   authoring-graph references in its entries. Brain's
    runtime-facing surface is id-only; no method on Brain
-   accepts or returns an `IBrainRule` / `IBrainPage` /
+   accepts or returns a `BrainPage` / `BrainRule` /
    `ActionInstance` reference. The physical split into
    `BrainRuntime` (runtime concerns) and `Brain` /
    `BrainCompiler` (authoring + compile concerns) is the
    subject of a follow-on plan
    (`ts-brain-runtime-split-plan-2026-05-03.md`); this
    contract section pins the surface, not the file layout.
+
 7. **Out-of-scope statement.** Registry-shaped
-   `PlatformServices` members (`functions`, `types`,
-   conversions, operators) and the `VmEvents` aggregate are
-   covered by the existing `## Construction and services
-boundary` section. The dense additions enumerated in
-   sub-section 2 extend that aggregate; they do not redefine
-   the registry surface.
+   `PlatformServices` members (`functions`, `types`) and the
+   `VmEvents` aggregate are covered by the existing
+   `## Construction and services boundary` section. The
+   dense additions enumerated in sub-section 2 extend that
+   aggregate; they do not redefine the registry surface.
+   Conversions and operators are owned by the type and
+   function registries respectively (per the M2.0 module
+   tables) and are not separate `PlatformServices` members.
+
 8. **Maintenance rule.** Any subsequent spec that adds or
    removes a dense `PlatformServices` member, changes the
-   `ExecutionContext` field set, changes the callsite-id
-   binding discipline, changes the action state-slot
-   keying, or changes the Brain runtime-facing surface
-   **must update this section in lock-step** with the code
-   change, in the same unit. Mirror the wording of the
-   existing maintenance rule on the construction-and-
-   services-boundary section.
+   `ExecutionContext` field set or its exported helpers,
+   changes the callsite-id / rule-id binding discipline,
+   changes the action state-slot keying, changes the
+   `HandleId` host-obligation contract, or changes the
+   Brain runtime-facing surface **must update this section
+   in lock-step** with the code change, in the same unit.
+   Mirror the wording of the existing maintenance rule on
+   the construction-and-services-boundary section.
 
 ### Verification gates (these are the work, not side checks)
 
