@@ -18,8 +18,8 @@ export interface HostActionBinding {
    * Invoked every time the action's owning page is deactivated, before the
    * page's fibers are cancelled. Runs with `ctx.currentCallSiteId` bound to
    * the action's call site so the hook can inspect or clear per-call-site
-   * host state via {@link getCallSiteState}, {@link setCallSiteState}, or
-   * `services.callSite.clearHostState`.
+   * host state via `ctx.services.callSite.getHostState` /
+   * `setHostState` / `clearHostState`.
    */
   onPageExited?: (ctx: ExecutionContext) => void;
   execSync?: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
@@ -68,19 +68,14 @@ export type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
 /**
  * Brain-instance-scoped action-instance state owned by the dense-state
  * action services. Bytecode-backed actions use `stateSlots` for
- * `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`; host-backed actions store
- * an opaque persistent payload in `hostState` via
- * {@link getCallSiteState} / {@link setCallSiteState}. Both views are
- * backed by the same shim-owned storage. The instance is allocated lazily
- * on first write (via `setCallSiteState`, `setStateSlot`, or
- * `ensureCallsite`) and persists until `services.action.resetCallsite` or
- * `Brain.shutdown()`. `stateSlots` grows on demand to cover the largest
- * `slotIdx` written.
+ * `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`. The instance is allocated
+ * lazily on first write (via `setStateSlot` or `ensureCallsite`) and
+ * persists until `services.action.resetCallsite` or `Brain.shutdown()`.
+ * `stateSlots` grows on demand to cover the largest `slotIdx` written.
  */
 export interface ActionInstance {
   callSiteId: number;
   stateSlots: List<Value>;
-  hostState?: unknown;
 }
 
 /** Maps `callSiteId` to its persistent {@link ActionInstance} for an active page. */
@@ -165,50 +160,8 @@ export interface ExecutionContext {
 }
 
 // ============================================================================
-// Call-Site State Helper Functions
+// Rule Variable Helper Functions
 // ============================================================================
-
-/**
- * Get the per-call-site host state for the currently executing host-backed
- * call. Used by host functions to persist opaque state across ticks at a
- * single call site (e.g. cooldown timers).
- *
- * Returns `undefined` when no call site is bound (the helper is invoked
- * outside a HOST_CALL/ACTION_CALL dispatch).
- *
- * @example
- * ```typescript
- * interface MoveState { lastMoveTime: number; }
- *
- * function fnMove(ctx: ExecutionContext, args: List<Value>): Value {
- *   const state = getCallSiteState<MoveState>(ctx);
- *   if (state && ctx.time - state.lastMoveTime < COOLDOWN) {
- *     return FALSE_VALUE;
- *   }
- *   setCallSiteState(ctx, { lastMoveTime: ctx.time });
- *   return TRUE_VALUE;
- * }
- * ```
- */
-export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
-  const callSiteId = ctx.currentCallSiteId;
-  if (callSiteId === undefined) {
-    return undefined;
-  }
-  return ctx.services.callSite.getHostState(callSiteId) as T | undefined;
-}
-
-/**
- * Set the per-call-site host state for the currently executing host-backed
- * call. No-op when invoked outside a HOST_CALL/ACTION_CALL dispatch.
- */
-export function setCallSiteState<T>(ctx: ExecutionContext, state: T): void {
-  const callSiteId = ctx.currentCallSiteId;
-  if (callSiteId === undefined) {
-    return;
-  }
-  ctx.services.callSite.setHostState(callSiteId, state);
-}
 
 /**
  * Read a rule-scoped variable by name from the rule currently being executed.
@@ -238,4 +191,57 @@ export function getRuleVariable<T extends Value = Value>(ctx: ExecutionContext, 
  */
 export function setRuleVariable(ctx: ExecutionContext, name: string, value: Value): void {
   ctx.services.ruleVars.setByName(ctx.currentRuleFuncId, name, value);
+}
+
+// ============================================================================
+// Call-Site Host State Helper Functions
+// ============================================================================
+
+/**
+ * Read the host-owned state attached to the current call site, or
+ * `undefined` if no state has been written. The call site is taken from
+ * {@link ExecutionContext.currentCallSiteId}, which the VM binds before
+ * dispatching to a host function via `HOST_CALL` / `HOST_CALL_ASYNC` /
+ * `ACTION_CALL` / `ACTION_CALL_ASYNC`.
+ *
+ * The optional type parameter `T` narrows the return type for callers that
+ * know the stored shape; the runtime does not validate the cast.
+ *
+ * Throws when invoked outside a host-call dispatch (i.e.
+ * `currentCallSiteId` is `undefined`).
+ *
+ * @param ctx - The execution context
+ */
+export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
+  return ctx.services.callSite.getHostState(ctx.currentCallSiteId!) as T | undefined;
+}
+
+/**
+ * Write the host-owned state attached to the current call site. The state
+ * persists for the lifetime of the brain instance and survives page
+ * deactivation/reactivation. Use {@link clearCallSiteState} from an
+ * `onPageExited` hook to opt out of survival.
+ *
+ * Throws when invoked outside a host-call dispatch (i.e.
+ * `currentCallSiteId` is `undefined`).
+ *
+ * @param ctx - The execution context
+ * @param value - The host-owned state to store
+ */
+export function setCallSiteState(ctx: ExecutionContext, value: unknown): void {
+  ctx.services.callSite.setHostState(ctx.currentCallSiteId!, value);
+}
+
+/**
+ * Drop the host-owned state attached to the current call site. Subsequent
+ * {@link getCallSiteState} calls return `undefined` until the next
+ * {@link setCallSiteState}.
+ *
+ * Throws when invoked outside a host-call dispatch (i.e.
+ * `currentCallSiteId` is `undefined`).
+ *
+ * @param ctx - The execution context
+ */
+export function clearCallSiteState(ctx: ExecutionContext): void {
+  ctx.services.callSite.clearHostState(ctx.currentCallSiteId!);
 }

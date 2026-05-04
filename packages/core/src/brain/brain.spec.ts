@@ -37,9 +37,11 @@ import {
   BYTECODE_VERSION,
   CoreSensorId,
   CoreTypeIds,
+  clearCallSiteState,
   extractBooleanValue,
   extractNumberValue,
   extractStringValue,
+  getCallSiteState,
   getRuleVariable,
   type HandleId,
   type HostAsyncFn,
@@ -52,6 +54,7 @@ import {
   NIL_VALUE,
   Op,
   param,
+  setCallSiteState,
   setRuleVariable,
   TRUE_VALUE,
   type Value,
@@ -1382,9 +1385,9 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       descriptor,
       execSync: (ctx) => {
         invokeCount += 1;
-        const cur = (ctx.services.callSite.getHostState(ctx.currentCallSiteId!) as number | undefined) ?? 0;
+        const cur = getCallSiteState<number>(ctx) ?? 0;
         const next = cur + 1;
-        ctx.services.callSite.setHostState(ctx.currentCallSiteId!, next);
+        setCallSiteState(ctx, next);
         return mkNumberValue(next);
       },
     });
@@ -1430,14 +1433,12 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       binding: "host",
       descriptor,
       onPageExited: (ctx) => {
-        if (ctx.currentCallSiteId !== undefined) {
-          ctx.services.callSite.clearHostState(ctx.currentCallSiteId);
-        }
+        clearCallSiteState(ctx);
       },
       execSync: (ctx) => {
-        const cur = (ctx.services.callSite.getHostState(ctx.currentCallSiteId!) as number | undefined) ?? 0;
+        const cur = getCallSiteState<number>(ctx) ?? 0;
         const next = cur + 1;
-        ctx.services.callSite.setHostState(ctx.currentCallSiteId!, next);
+        setCallSiteState(ctx, next);
         return mkNumberValue(next);
       },
     });

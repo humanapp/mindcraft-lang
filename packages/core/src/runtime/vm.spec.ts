@@ -32,7 +32,6 @@ import {
   FiberState,
   type FunctionBytecode,
   type FunctionValue,
-  getCallSiteState,
   HandleState,
   HandleTable,
   type Instr,
@@ -49,7 +48,6 @@ import {
   type NumberValue,
   Op,
   type Program,
-  setCallSiteState,
   TRUE_VALUE,
   type Value,
   ValueDict,
@@ -1118,8 +1116,9 @@ describe("VM -- callsite-persistent variables", () => {
           binding: "host" as const,
           descriptor,
           execSync: (ctx: ExecutionContext) => {
-            const nextValue = (getCallSiteState<number>(ctx) ?? 0) + 1;
-            setCallSiteState(ctx, nextValue);
+            const callSiteId = ctx.currentCallSiteId!;
+            const nextValue = ((ctx.services.callSite.getHostState(callSiteId) as number | undefined) ?? 0) + 1;
+            ctx.services.callSite.setHostState(callSiteId, nextValue);
             seenValues.push(nextValue);
             return mkNumberValue(nextValue);
           },

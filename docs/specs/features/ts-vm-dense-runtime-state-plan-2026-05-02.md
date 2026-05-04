@@ -466,11 +466,56 @@ call sites are already gone; `services.action.resetCallsite`,
 rescoped against this new baseline -- see each phase's "Status
 update (2026-05-03)" preamble.
 
-Next up: D3
+Next up: D4
 
 ---
 
 ## Phase Log
+
+### D3
+
+**Status**
+
+Host-call callsite host-state migration shipped. All host functions
+reach per-callsite host state through
+`services.callSite.{getHostState,setHostState,clearHostState}`; the
+legacy `ActionInstance.hostState` field is gone, and dense-shims
+holds host state in its own `Dict<callSiteId, unknown>` independent
+of the action-instance map. New helpers `getCallSiteState<T>(ctx)`,
+`setCallSiteState(ctx, value)`, `clearCallSiteState(ctx)` exported
+from `@mindcraft-lang/core/app` source `currentCallSiteId` from the
+context.
+Verification: full gate green (732/732 tests).
+
+**Risks** (D3 -> D4/D5/D6)
+
+- `ActionInstance` and `ActionInstanceMap` survive D3 with only
+  `callSiteId` and `stateSlots`; the `hostState` field is gone.
+  D4 retires both. Any new code that adds fields to
+  `ActionInstance` between now and D4 will collide with the
+  retirement; do not extend the interface.
+- `test-only-runtime-services-factory.ts` keeps host state in the
+  shared `__test__ActionState` record alongside `stateSlots`
+  (the dense-shims split was intentionally not mirrored there
+  since the factory has no production callers). If D4 collapses
+  or rewrites that factory, port the host-state branch first or
+  the test surface will diverge from the production contract.
+- `getCallSiteState(ctx)` / `setCallSiteState(ctx, value)` /
+  `clearCallSiteState(ctx)` use `ctx.currentCallSiteId!` and
+  throw on `undefined`. They are only safe inside a host-call
+  dispatch (`HOST_CALL` / `HOST_CALL_ASYNC` / `ACTION_CALL` /
+  `ACTION_CALL_ASYNC` / `onPageEntered` / `onPageExited`). New
+  hook surfaces added by future phases must bind
+  `currentCallSiteId` before invoking host code, or these
+  helpers will throw rather than no-op.
+- Host-state and action-state-slot stores are now structurally
+  separate maps with parallel lifetimes (allocate-on-write, clear
+  on `Brain.shutdown` / `services.action.resetCallsite`). A
+  future cleanup may unify them into a single per-callsite record;
+  if so, the unification must preserve the independent reset
+  semantics already exercised by
+  `dense-shims.spec.ts` and
+  `callsite-host-state-lifetime.spec.ts`.
 
 ### D2
 

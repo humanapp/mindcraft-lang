@@ -100,3 +100,33 @@ describe("createDenseShims -- callsite lifecycle", () => {
     assert.equal(shims.action.ensureCallsite(41), true);
   });
 });
+
+describe("createDenseShims -- callSite host state", () => {
+  test("setHostState / getHostState round-trip preserves the stored reference", () => {
+    const shims = createDenseShims(stubBrain);
+    const payload = { foo: 1 };
+    shims.callSite.setHostState(7, payload);
+    assert.equal(shims.callSite.getHostState(7), payload);
+  });
+
+  test("getHostState on an unwritten callsite returns undefined", () => {
+    const shims = createDenseShims(stubBrain);
+    assert.equal(shims.callSite.getHostState(8), undefined);
+  });
+
+  test("distinct callSiteIds do not alias host state", () => {
+    const shims = createDenseShims(stubBrain);
+    const a = { tag: "a" };
+    const b = { tag: "b" };
+    shims.callSite.setHostState(7, a);
+    shims.callSite.setHostState(8, b);
+    assert.equal(shims.callSite.getHostState(7), a);
+    assert.equal(shims.callSite.getHostState(8), b);
+  });
+
+  test("setHostState does not allocate an action callsite", () => {
+    const shims = createDenseShims(stubBrain);
+    shims.callSite.setHostState(7, "payload");
+    assert.equal(shims.action.ensureCallsite(7), true);
+  });
+});

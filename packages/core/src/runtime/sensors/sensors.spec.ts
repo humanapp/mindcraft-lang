@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { Dict, List } from "@mindcraft-lang/core";
+import { List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import {
@@ -19,9 +19,7 @@ import {
 } from "@mindcraft-lang/core/runtime";
 import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 
-function mkCtx(
-  overrides: Omit<Partial<ExecutionContext>, "callSiteState"> & { callSiteState?: Dict<number, unknown> } = {}
-): ExecutionContext {
+function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
     services: __test__createPlatformServices(),
     fiberId: 0,
@@ -61,7 +59,7 @@ describe("timeout sensor", () => {
   });
 
   function setupCtx(callSiteId = 1): ExecutionContext {
-    const ctx = mkCtx({ currentCallSiteId: callSiteId, callSiteState: new Dict<number, unknown>() });
+    const ctx = mkCtx({ currentCallSiteId: callSiteId });
     fn.onPageEntered!(ctx);
     return ctx;
   }
@@ -231,7 +229,7 @@ describe("on-page-entered sensor", () => {
   });
 
   function setupCtx(callSiteId = 1): ExecutionContext {
-    const ctx = mkCtx({ currentCallSiteId: callSiteId, callSiteState: new Dict<number, unknown>() });
+    const ctx = mkCtx({ currentCallSiteId: callSiteId });
     fn.onPageEntered!(ctx);
     return ctx;
   }

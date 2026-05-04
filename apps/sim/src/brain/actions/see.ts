@@ -97,33 +97,6 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
     setCallSiteState(ctx, state);
   }
 
-  /*
-  // If we still remember an actor that passed filters and we still see them, keep them as the target for behavioral consistency
-  const hasRememberedActor = state.rememberedActorId !== undefined;
-  const rememberedActor = hasRememberedActor ? self.engine.getActorById(state.rememberedActorId!.v) : undefined;
-  const stillSeesRememberedActorId = rememberedActor
-    ? self.sightQueue.some((sightResult) => sightResult.actor.actorId === rememberedActor.actorId)
-    : false;
-
-  if (stillSeesRememberedActorId && rememberedActor) {
-    // Store targets for the DO side to access
-    ctx.rule?.setVariable("targetActor", state.rememberedActorId!);
-    const pos = new Vector2(rememberedActor.sprite.x, rememberedActor.sprite.y);
-    const posVal = mkVector2Value(pos);
-    ctx.rule?.setVariable("targetPos", posVal);
-    state.rememberedPos = posVal; // Update remembered position in case the actor moved
-    state.memoryExpiration = now + ctx.brain.rng() * 2000 + 500; // Refresh memory for another 0.5 to 2.5 seconds
-    setCallSiteState(ctx, state);
-    return TRUE_VALUE;
-  }
-
-  if (!state.rememberedActorId && state.rememberedPos) {
-    ctx.rule?.clearVariable("targetActor");
-    ctx.rule?.setVariable("targetPos", state.rememberedPos!);
-    return TRUE_VALUE;
-  }
-  */
-
   const bHasCarnivoreFilter = hasArg(args, kActorKindCarnivoreSlotId);
   const bHasHerbivoreFilter = hasArg(args, kActorKindHerbivoreSlotId);
   const bHasPlantFilter = hasArg(args, kActorKindPlantSlotId);

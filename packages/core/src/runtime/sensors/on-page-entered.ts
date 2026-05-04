@@ -33,8 +33,8 @@ function onPageEntered(ctx: ExecutionContext) {
 }
 
 function fnOnPageEntered(ctx: ExecutionContext): Value {
-  const state = getCallSiteState<TimeoutState>(ctx)!;
-  if (!state?.fired) {
+  const state = getCallSiteState<TimeoutState>(ctx);
+  if (state && !state.fired) {
     state.fired = true;
     return TRUE_VALUE;
   }

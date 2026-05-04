@@ -29,16 +29,17 @@ export interface IDenseShims {
 
 /**
  * Build dense-state service adapters for `brain` backed by the legacy
- * {@link IBrain} object graph. The shared `actionInstances` map backs both
- * the {@link IActionServices} (state slot) and {@link ICallSiteServices}
- * (host state) views.
+ * {@link IBrain} object graph. Per-callsite host state and per-callsite
+ * action state slots are stored in independent brain-instance-scoped maps,
+ * so writing host state never allocates an action callsite and vice versa.
  *
- * D3 and D4 retire the remaining branches of this shim by routing
- * per-callsite host state and per-callsite action-state slots through
- * compiler-allocated tables and side-tables on the brain orchestrator.
+ * D4 retires the remaining branch of this shim by routing per-callsite
+ * action-state slots through compiler-allocated tables and side-tables on
+ * the brain orchestrator.
  */
 export function createDenseShims(brain: IBrain): IDenseShims {
   const actionInstances: Dict<number, ActionInstance> = new Dict();
+  const hostStates: Dict<number, unknown> = new Dict();
 
   function allocateInstance(callSiteId: number): ActionInstance {
     const created: ActionInstance = { callSiteId, stateSlots: List.empty<Value>() };
@@ -99,17 +100,13 @@ export function createDenseShims(brain: IBrain): IDenseShims {
 
     callSite: {
       getHostState(callSiteId: number): unknown {
-        return actionInstances.get(callSiteId)?.hostState;
+        return hostStates.get(callSiteId);
       },
       setHostState(callSiteId: number, state: unknown): void {
-        const instance = ensureInstance(callSiteId);
-        instance.hostState = state;
+        hostStates.set(callSiteId, state);
       },
       clearHostState(callSiteId: number): void {
-        const instance = actionInstances.get(callSiteId);
-        if (instance) {
-          instance.hostState = undefined;
-        }
+        hostStates.delete(callSiteId);
       },
     },
 
@@ -140,6 +137,7 @@ export function createDenseShims(brain: IBrain): IDenseShims {
 
     reset(): void {
       actionInstances.clear();
+      hostStates.clear();
     },
   };
 }
