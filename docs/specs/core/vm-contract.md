@@ -75,62 +75,13 @@ functions and is not subject to this rule.
 
 Implementations MAY install a cheap dispatcher-level re-entry guard
 to surface contract violations as a deterministic fault rather than
-silent stack corruption. The TS reference VM and the C++ port are
-both encouraged to ship one.
-
-Shape: a single `inVm` boolean (or equivalent flag) on the VM, set
-on entry to any of the four entry points named above and cleared
-on exit. Re-entry while the flag is set is a fatal `VmReentry`
-fault, not a recoverable `ScriptError` -- the whole point is that
-the VM state is no longer consistent.
-
-Illustrative C++ sketch (RAII):
-
-```cpp
-struct VmReentryGuard {
-    Vm& vm;
-
-    VmReentryGuard(Vm& vm) : vm(vm) {
-        if (vm.inVm) {
-            vm.fatal(Fault::VmReentry);
-        }
-        vm.inVm = true;
-    }
-
-    ~VmReentryGuard() {
-        vm.inVm = false;
-    }
-};
-
-void brainThink(uint32_t now, uint32_t dt) {
-    VmReentryGuard guard(vm);
-    scheduler.tick(now, dt);
-    drainCompletions(); // or drain before tick, but still under
-                        // host-loop ownership
-}
-```
-
-The TS equivalent is a `try` / `finally` around each entry point
-that toggles the same flag.
-
-Notes:
-
-- The guard wraps the host-loop entry, not individual host calls.
-  A `HostSyncFn.exec` body runs _inside_ the guard's scope; if it
-  invokes `brain.think()` (etc.), the nested guard observes
-  `inVm == true` and faults.
-- The fault is fatal because there is no safe recovery: the
-  operand stack and any active `ReadonlyList<Value>` arg view are
-  in an indeterminate state.
-- The check is one branch on the dispatch entry path, not
-  per-instruction. Cost is negligible on both targets.
-
-A future relaxation (e.g. an actuator that synchronously evaluates
-a brain page, or a bytecode-backed struct getter invoked from inside
-a host function) must come as its own spec unit that revisits the
-contract -- a narrowly-scoped re-entrant entry point distinct from
-`brain.think()`, plus an explicit materialize/copy step for any
-ephemeral views the host holds. Ad-hoc loopholes are not permitted.
+silent stack corruption. The recommended shape is a single `inVm`
+boolean (or equivalent flag) on the VM, set on entry to any of the
+four entry points named above and cleared on exit; re-entry while the
+flag is set raises a fatal `VmReentry` fault (not a recoverable
+`ScriptError`, because the operand stack and any active argument view
+are in an indeterminate state). The check is one branch on the
+dispatch entry path, not per-instruction.
 
 ## Construction and services boundary
 
@@ -161,14 +112,12 @@ construction. Its members are:
   snapshot functions, and field getters/setters.
 
 Scope rule (binding on every future addition): `PlatformServices`
-covers only the runtime registries enumerated in the M2.0 tables of
-[ts-vm-module-decoupling-plan-2026-05-02.md](../features/ts-vm-module-decoupling-plan-2026-05-02.md).
-The VM does **not** receive a program verifier (the TS VM trusts
-its in-process compiler; verification is reserved for a future
-MCU-targeted port and lives in a separate spec). The VM also does
-**not** receive action resolution, rule state, platform entity
-access, or RNG through `PlatformServices`; those belong to the
-runtime-state surface defined by the dense-runtime-state spec.
+covers only runtime registries (function and type lookup tables)
+plus the runtime state members enumerated in the
+[Runtime state surface](#runtime-state-surface) section. The VM
+does **not** receive a program verifier; the reference VM trusts its
+in-process compiler, and verification is reserved for ports that
+accept bytecode from an untrusted source.
 
 ### `VmEvents` permissions and prohibitions
 
@@ -197,34 +146,28 @@ are:
 **Event-payload content rule.** Each event payload contains only
 values already locally available at the emit site. Nothing is
 computed, looked up, or allocated solely to satisfy an event.
-Payloads carry only IDs and primitive values that will survive the
-dense-runtime-state spec rewrite. Payloads do **not** carry
-references to today's object-shaped `Brain`, `BrainPage`,
-`BrainRule`, or `ActionInstance` instances.
+Payloads carry only ids and primitive values that are expressible
+through the runtime state surface. Payloads do **not** carry
+references to authoring-graph objects.
 
 Both rules bind every future event method added to `VmEvents` by
 any downstream spec.
 
 ### Import-firewall rule
 
-Every file under `packages/core/src/runtime/` may value-import only
-from `runtime/` and `platform/`. The transitive value-import
-closure is what is constrained; `import type` and other type-only
-positions are excluded. The allow-list is mechanized as the
-`runtime-allow-list` rule in
-`packages/core/.dependency-cruiser.cjs`, which is the source of
-truth for permitted edges (any narrowly-justified shim must be
-added there). The rule is enforced as a hard zero-violation gate by
-`packages/core/src/runtime/__firewall__.spec.ts`, which runs under
-`npm test`.
+The runtime is a closed module: its source files may value-depend
+only on other runtime files and on the platform-abstraction layer
+(no upward imports into the brain, compiler, or app layers). The TS
+reference enforces this through a build-time import allow-list and a
+test-suite gate; ports are expected to maintain the same closure by
+whatever mechanism their build system provides.
 
 ### Out of scope for this boundary
 
-This section does not cover runtime state shape (`Brain`,
-`BrainPage`, `BrainRule`, `ActionInstance`, dense
-`ExecutionContext`) or host ABI portability. Both are addressed by
-[ts-vm-dense-runtime-state-plan-2026-05-02.md](../features/ts-vm-dense-runtime-state-plan-2026-05-02.md),
-which builds on this boundary.
+This section does not cover runtime state shape or host ABI
+portability. Runtime state shape is documented in the
+[Runtime state surface](#runtime-state-surface) section
+below, which builds on this boundary.
 
 ### Maintenance rule
 
@@ -234,6 +177,119 @@ adds or removes a `PlatformServices` field, adds or removes a
 section in lock-step** with the code change. Per the workflow
 convention, update `docs/specs/core/vm-contract.md` as part of the
 same unit when the change is contract-shaping.
+
+## Runtime state surface
+
+`ExecutionContext` and the `PlatformServices` runtime state members form
+the portable runtime boundary. Every operation here is expressible by a
+static-allocation, no-GC implementation.
+
+### `ExecutionContext` shape
+
+`ExecutionContext` carries:
+
+- `services: PlatformServices` -- the runtime service aggregate below.
+- `getVariableBySlot(slotId)` / `setVariableBySlot(slotId, value)` --
+  slot-indexed brain-global access; back `LOAD_VAR_SLOT` / `STORE_VAR_SLOT`.
+- `currentCallSiteId?: number` -- bound before every host call and lifecycle
+  hook dispatch; `undefined` outside those boundaries.
+- `currentRuleFuncId?: number` -- `undefined` means no active rule; `0` is
+  a valid rule id.
+- `time`, `dt`, `currentTick` -- per-tick scalars stamped before each
+  `think()` call.
+- `data?: unknown` -- opaque per-tick application payload. The
+  reference VM exposes this as a TS field; ports may render it as a
+  `void*` user-data slot, a generic parameter, or another idiomatic
+  pass-through. The contract is only that an opaque slot exists.
+
+Every field is a scalar id, a primitive, a slot accessor, or a service
+reference. No field holds an authoring-graph object, and there is no
+`currentFiberId`; fiber identity is scheduler-internal.
+
+### `PlatformServices` runtime state members
+
+These id-keyed members extend `PlatformServices`
+(in addition to `functions` and `types` from
+[Construction and services boundary](#construction-and-services-boundary)):
+
+- `program` -- `getRuleFuncIdForFunc(funcId)`: owning rule id or `undefined`.
+- `brainVars` -- `getByName` / `setByName` / `clearByName`: brain-global vars.
+- `ruleVars` -- same three, keyed by `(ruleFuncId, name)`. `undefined`
+  ruleFuncId: reads return `NIL_VALUE`, writes are no-ops; store walks
+  `Program.ruleAncestors` for inherited values.
+- `brainPages` -- `getCurrentPageId()`, `getPreviousPageId()`,
+  `requestPageChange(pageIndex)`, `requestPageChangeByPageId(pageId)`,
+  `requestPageRestart()`.
+- `rng` -- `next(): number` in `[0, 1)`, brain-scoped random stream.
+- `callsite` -- `ensure(id)`, `reset(id)`, `getSlot(id, slotIdx)`,
+  `setSlot(id, slotIdx, value)`, `getHostState(id)`, `setHostState(id,
+  value)`, `clearHostState(id)`.
+
+Every member operates on ids, names, and primitives. Time, clock,
+and platform-entity services are not `PlatformServices` members.
+Action resolution is not a member; the VM resolves actions from
+`Program` directly.
+
+### Callsite-id binding discipline
+
+Before dispatching `HOST_CALL`, `HOST_CALL_ASYNC`, `ACTION_CALL` (host
+branch), `ACTION_CALL_ASYNC` (host branch), or any lifecycle hook
+(`onInitialized` / `onPageEntered` / `onPageExited`), the VM binds
+`currentCallSiteId` and `currentRuleFuncId` on `ExecutionContext`. Host
+functions reach per-callsite host state through
+`services.callsite.{getHostState, setHostState, clearHostState}`, keyed by
+`ctx.currentCallSiteId`; accessing host state when `currentCallSiteId` is
+`undefined` is an error. Host functions never dereference an
+authoring-graph object.
+
+### Action call state model
+
+`ACTION_CALL` and `ACTION_CALL_ASYNC` both route per-callsite state-slot
+traffic through `services.callsite.{getSlot, setSlot}` keyed by
+`(callSiteId, slotIdx)`, backing `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`.
+`services.callsite.reset(callSiteId)` drops both slots and host state
+together; `clearHostState(callSiteId)` drops only the host-owned cell.
+
+`ACTION_CALL_ASYNC` allocates a `HandleId`, then either spawns a child
+fiber (bytecode) or calls `execAsync(ctx, args, handleId)` (host). Both
+paths resolve through `handles.events.on("completed", ...)`. **Host
+obligation:** every `execAsync` call must eventually resolve, reject, or
+cancel the `HandleId`. A synchronous throw is rolled back (the host branch
+frees the handle in a `try/catch`); a silent drop leaves it pending until
+`HandleTable.gc()` reclaims it.
+
+### Id-spaces
+
+Rule ids and action ids are compiler-assigned and stable for the lifetime
+of a compiled `Program`. `0` is a valid `RuleId`; `undefined` is the only
+"no rule" sentinel. Fiber ids are scheduler-internal; the contract does
+not specify their allocation scheme. `HandleId`s come from the
+`HandleTable`.
+
+### Orchestrator opacity
+
+The runtime orchestrator that owns the VM, scheduler, brain-instance
+variable storage, and page-lifecycle state exposes an id-only public
+surface. No orchestrator method accepts or returns an authoring-graph
+reference, and the active-fiber set the scheduler exchanges with the
+orchestrator carries fiber ids only.
+
+### Out of scope for this section
+
+`functions`, `types`, and `VmEvents` are covered by
+[Construction and services boundary](#construction-and-services-boundary).
+The runtime state members above extend that aggregate without redefining the
+registry surface. Conversions and operators belong to the type and
+function registries, not to separate `PlatformServices` members.
+
+### Maintenance rule
+
+Any subsequent spec that adds or removes a `PlatformServices` runtime
+state member, changes the `ExecutionContext` field set or its exported helpers,
+changes the callsite-id or rule-id binding discipline, changes the action
+state-slot keying, changes the `HandleId` host-obligation contract, or
+changes Brain's runtime-facing surface **must update this section in
+lock-step** with the code change, in the same unit.
 
 ## Opcode completeness
 
@@ -268,6 +324,15 @@ every conforming VM must be able to execute any of them:
 One row per opcode: mnemonic, numeric code, operand widths, stack
 effect, side effects, fault conditions.
 
+> **Status:** the tables below are an in-progress reference covering
+> the opcodes whose semantics the contract has had reason to pin
+> precisely (stack manipulation, variable access, struct field
+> access, host calls, action calls). The canonical numeric assignment
+> for the full opcode set is the `Op` enum in
+> `packages/core/src/runtime/bytecode.ts`; a port consumes that as
+> the source of truth until each remaining opcode family is promoted
+> into a table here.
+
 ### Stack manipulation
 
 | Mnemonic        | Numeric | Operands       | Stack effect    | Faults                                                                       |
@@ -291,10 +356,10 @@ buffers at call sites; see [Calling convention](#calling-convention).
 Variable access is slot-keyed at dispatch time. `slotId` is a
 program-scoped index into `Program.variableNames`; the runtime hosts
 a parallel value list of the same length. The dispatch loop performs
-no `Dict.get(name)` lookup for variable access -- name -> slot
-resolution is the compiler's job, performed once at program build,
-and re-bound to the host's value list at program load via
-`Brain.installVariableTable`.
+no name lookup for variable access -- name -> slot resolution is the
+compiler's job, performed once at program build, and re-bound to the
+host's value list at program load via the orchestrator's
+variable-table install step.
 
 `STORE_VAR_SLOT` deep-copies struct values before writing
 (consulting `ITypeRegistry`); primitive values are written by
@@ -304,12 +369,11 @@ but bytecode reads/writes always observe a slot already sized to
 `Program.variableNames.size()`.
 
 Name-keyed access remains available to host code via
-`ExecutionContext.getVariable` / `setVariable` / `clearVariable`. A
-host that writes through a name not present in `variableNames`
-allocates a fresh slot at the end of the value list; that slot is
-not addressable from bytecode (no `LOAD_VAR_SLOT` operand can
-target it) and is dropped on the next `installVariableTable` (i.e.
-hot-reload).
+`services.brainVars.{getByName, setByName, clearByName}`. A host that
+writes through a name not present in `variableNames` allocates a
+fresh slot at the end of the value list; that slot is not addressable
+from bytecode (no `LOAD_VAR_SLOT` operand can target it) and is
+dropped on the next variable-table install (i.e. hot-reload).
 
 ### Struct field access
 
@@ -447,9 +511,12 @@ The dispatcher pops the buffer (or, for async, copies it then
 pops) before the host call returns, so the buffer is no longer
 visible to the host's continuation.
 
-**Re-entry.** The TS VM is not single-entry by contract. The host
-is responsible for the discipline around invoking VM operations
-synchronously inside its own `exec`.
+**Re-entry.** A host `exec` body must not invoke any of the four VM
+entry points listed in [Single-entry guarantee](#single-entry-guarantee).
+Within the synchronous duration of an `exec` call the host may read
+its `args` view and the rest of `ctx`, but must not call back into
+`brain.think()`, `scheduler.tick()`, `runFiber()`, or async-handle
+resolution. See that section for the full transitive rule.
 
 Action calls (`ACTION_CALL` / `ACTION_CALL_ASYNC`) use the same
 positional buffer shape as host calls. The compiler pushes one
@@ -484,12 +551,6 @@ or `ITypeRegistry` to dispatch a primitive arithmetic instruction.
 The dispatch loop only consults `ITypeRegistry` for struct-shaped
 opcodes (e.g. `GET_FIELD`, `SET_FIELD`, `STORE_VAR_SLOT` when
 deep-copying a struct value).
-
-This invariant is regression-guarded by the
-`VM -- operator monomorphization` test in
-`packages/core/src/brain/runtime/vm.spec.ts`, which wraps
-`ITypeRegistry` with an access counter and asserts a zero count after
-running a number-heavy arithmetic loop.
 
 ---
 
@@ -533,8 +594,8 @@ Host-bound actions carry:
   for the same activation. Symmetric to the bytecode
   `initializerFuncId`. Cleared by
   `services.callsite.reset(callSiteId)` (re-runs on the next
-  activation) and by `Brain.shutdown()` (re-runs on the next
-  `Brain.startup()`). Soft `requestPageRestart` does not
+  activation) and by the orchestrator's brain shutdown (re-runs on
+  the next brain startup). Soft `requestPageRestart` does not
   re-fire this hook.
 - `onPageEntered?: (...) => void` -- runs every time the page
   containing this callsite becomes active.
@@ -542,7 +603,7 @@ Host-bound actions carry:
   containing this callsite becomes inactive.
 
 When `onInitialized` is set, the brain runtime calls
-`services.action.ensureCallsite` for the host callsite to
+`services.callsite.ensure(callSiteId)` for the host callsite to
 detect first-touch; when it is unset, no callsite record is
 allocated for the host action and no first-touch dispatch
 occurs.
@@ -553,13 +614,13 @@ All callsite storage -- bytecode state slots and host state -- is
 scoped to a single brain instance. The runtime contract is:
 
 - Storage is allocated **lazily** on first write
-  (`setStateSlot`, `setHostState`) or on the first
-  `services.action.ensureCallsite(callSiteId)` call for actions
-  that declare an `initializerFuncId`.
-- `services.action.ensureCallsite(callSiteId)` returns `true` on
-  the first call for a callsite (newly allocated) and `false`
-  thereafter. The brain runtime uses this result to dispatch
-  `initializerFuncId` exactly once per allocation.
+  (`services.callsite.setSlot`, `services.callsite.setHostState`) or
+  on the first `services.callsite.ensure(callSiteId)` call for
+  actions that declare an `initializerFuncId`.
+- `services.callsite.ensure(callSiteId)` returns `true` on the first
+  call for a callsite (newly allocated) and `false` thereafter. The
+  brain runtime uses this result to dispatch `initializerFuncId`
+  exactly once per allocation.
 - Storage **persists** across page exits and re-entries within the
   same brain instance. Returning to a page does not reset its
   callsite state.
@@ -569,27 +630,27 @@ scoped to a single brain instance. The runtime contract is:
 The runtime exposes two primitives for callers (host code and the
 brain runtime itself) to discard callsite state explicitly:
 
-- `services.action.resetCallsite(callSiteId)` -- deallocates the
-  bytecode state slot block for the callsite. The next
-  `ensureCallsite` for the same id returns `true` and the next
-  page activation re-runs the `initializerFuncId` for that
-  callsite.
-- `services.action.clearHostState(callSiteId)` -- clears the
-  host-side state map entry for the callsite without affecting
-  bytecode state slots.
+- `services.callsite.reset(callSiteId)` -- deallocates the bytecode
+  state slot block and the host-side cell for the callsite together.
+  The next `services.callsite.ensure` for the same id returns `true`
+  and the next page activation re-runs the `initializerFuncId` for
+  that callsite.
+- `services.callsite.clearHostState(callSiteId)` -- clears the
+  host-side state cell for the callsite without affecting bytecode
+  state slots.
 
 These primitives are the only sanctioned way to force a re-init
 short of tearing down the whole brain.
 
-### `Brain.shutdown()` teardown contract
+### Brain shutdown teardown contract
 
-`Brain.shutdown()` is the brain-wide teardown counterpart to
-allocation. It is required to release every callsite's storage so
-that a subsequent `Brain.startup()` on the same instance behaves
-identically to a fresh brain: every `initializerFuncId` runs again
-on first activation, and every host hook re-binds against freshly
-allocated host state. Implementations must not leak callsite state
-across a shutdown / startup boundary.
+The orchestrator's brain-shutdown operation is the brain-wide
+teardown counterpart to allocation. It is required to release every
+callsite's storage so that a subsequent brain startup on the same
+instance behaves identically to a fresh brain: every
+`initializerFuncId` runs again on first activation, and every host
+hook re-binds against freshly allocated host state. Implementations
+must not leak callsite state across a shutdown / startup boundary.
 
 ---
 
@@ -675,15 +736,12 @@ out of `runFiber`). Three are per-fiber (`VmConfig`); two are global
 | `maxHandles`    | `HandleTable` ctor arg | 100000 (production) | `HandleTable.createPending()` is invoked when the table already holds this many entries.                                                             |
 | `maxFibers`     | `SchedulerConfig`      | 10000               | `FiberScheduler.addFiber()` (and therefore `spawn()` and async-action fiber creation) is invoked when the scheduler already tracks this many fibers. |
 
-Limit violations are signalled internally with the `OverflowError`
-class, and operand-stack underflow with the parallel `UnderflowError`
-class (both extend the platform `Error` and live in
-`interfaces/vm.ts`). The VM dispatch loop detects each via
-`isOverflowError(e)` / `isUnderflowError(e)` and constructs the
-matching fault. Hosts that call `HandleTable.createPending` or
-`FiberScheduler.spawn` directly will see `OverflowError` propagate as
-a thrown value -- catch with `instanceof OverflowError` or
-`isOverflowError(e)` if a graceful path is needed.
+Both kinds of violation surface to the offending fiber as
+`ErrorCode.StackOverflow` (or `ErrorCode.StackUnderflow` for operand
+underflow). Hosts that drive `HandleTable.createPending` or
+`FiberScheduler.spawn` directly may see the limit violation propagate
+as a thrown value out of those calls; the wire-level fault code is
+still `StackOverflow`.
 
 `maxFibers` lives on `SchedulerConfig` because the scheduler -- not the
 VM -- owns the fiber pool.
