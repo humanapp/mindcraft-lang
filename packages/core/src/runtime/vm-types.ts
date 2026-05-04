@@ -254,6 +254,12 @@ export interface Fiber {
    * Core action dispatch binds state through action frames instead.
    */
   callsiteVars?: List<Value>;
+  /**
+   * The `HandleId` of the pending async-action result handle for a child fiber
+   * spawned by `ACTION_CALL_ASYNC`. Set on spawn by `spawnBytecodeActionFiber`;
+   * cleared by `resolveAsyncActionHandle`, `rejectAsyncActionHandle`, or
+   * `cancelAsyncActionHandle`. Never holds an authoring-object reference.
+   */
   asyncResultHandleId?: HandleId;
 }
 
@@ -385,9 +391,28 @@ export class HandleTable {
 
 /** Minimal scheduler hooks the VM uses to enqueue, complete, and look up fibers. */
 export interface Scheduler {
+  /**
+   * Called by the VM when an async-result handle transitions to a terminal state
+   * (resolved, rejected, or cancelled). The scheduler resumes any fiber awaiting
+   * this handle. The parameter is a `HandleId` only; no authoring-object reference.
+   */
   onHandleCompleted: (handleId: HandleId) => void;
+  /**
+   * Marks a fiber as ready to run. The parameter is a fiber id only; the
+   * scheduler looks up the `Fiber` struct by id when it needs the full record.
+   */
   enqueueRunnable: (fiberId: number) => void;
+  /**
+   * Looks up a live fiber by its numeric id. Returns `undefined` when the fiber
+   * has been removed from the scheduler (done, cancelled, or gc'd).
+   */
   getFiber: (fiberId: number) => Fiber | undefined;
+  /**
+   * Registers a newly-constructed child `Fiber` runtime struct with the scheduler.
+   * The argument is the VM-owned `Fiber` record, not an authoring object.
+   * Present only on schedulers that support child-fiber spawning
+   * (`ACTION_CALL_ASYNC` bytecode branch).
+   */
   addFiber?: (fiber: Fiber) => void;
 }
 

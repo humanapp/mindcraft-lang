@@ -454,15 +454,36 @@ Each unit must:
 
 ## Current State
 
-Completed: D0, D1, D2, D3, D4, D5; lifecycle-hooks precondition L1 / L2 / L3
+Completed: D0, D1, D2, D3, D4, D5, D6; lifecycle-hooks precondition L1 / L2 / L3
 landed (see
 [`ts-vm-page-lifecycle-hooks-2026-05-03.md`](./ts-vm-page-lifecycle-hooks-2026-05-03.md)).
 
-Next up: D6
+Next up: D7
 
 ---
 
 ## Phase Log
+
+### D6
+
+**Status**
+
+Pinned JSDoc on `Fiber.asyncResultHandleId` and the four `Scheduler` interface
+members; closed the pre-existing async-handle leak in the host branch of
+`execActionCallAsync` via a symmetric `try/catch` that rolls back the handle
+on synchronous `execAsync` throw.
+Verification: full gate green (751/751 tests).
+
+**Risks** (D6 -> D7)
+
+- The host-branch fix closes the synchronous-throw case only. If a host
+  `execAsync` silently discards the handle ID without ever resolving, rejecting,
+  or cancelling it, the handle remains pending indefinitely and is only
+  reclaimed by `HandleTable.gc()` when it has no waiters. D7's contract
+  section must state the host obligation: every `execAsync` call must
+  eventually resolve, reject, or cancel the supplied `HandleId`.
+
+---
 
 ### D5
 

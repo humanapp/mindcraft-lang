@@ -1064,7 +1064,12 @@ export class VM implements IVM {
 
       this.bindExecutionContext(fiber, frame, callSiteId);
 
-      action.execAsync(fiber.executionContext, args, hid);
+      try {
+        action.execAsync(fiber.executionContext, args, hid);
+      } catch (error) {
+        this.handles.delete(hid);
+        throw error;
+      }
       frame.pc++;
       this.syncExecutionContextFromTopFrame(fiber);
       return undefined;

@@ -1676,6 +1676,40 @@ describe("VM -- action calls", () => {
     assert.ok(rootResult !== undefined, "async bytecode action should resolve the outer handle");
     assert.equal((rootResult as NumberValue).v, 42);
   });
+
+  test("ACTION_CALL_ASYNC rolls back the handle when host execAsync throws synchronously", () => {
+    const descriptor = {
+      key: "test-vm-action-call-async-host-throw",
+      kind: "actuator" as const,
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: true,
+    };
+    const prog = {
+      ...mkProgram(
+        [mkFunc([{ op: Op.ACTION_CALL_ASYNC, a: 0, b: 0, c: 9 }, { op: Op.AWAIT }, { op: Op.RET }])],
+        [NIL_VALUE]
+      ),
+      actions: List.from([
+        {
+          binding: "host" as const,
+          descriptor,
+          execAsync: (_ctx: ExecutionContext, _args: ReadonlyList<Value>) => {
+            throw new Error("execAsync sync throw");
+          },
+        },
+      ]),
+    };
+
+    const handles = new HandleTable(100);
+    const vm = new VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
+    fiber.instrBudget = 100;
+
+    const sizeBefore = handles.size();
+    const result = vm.runFiber(fiber, mkSchedulerCallbacks());
+    assert.equal(result.status, VmStatus.FAULT, "fiber should fault on synchronous execAsync throw");
+    assert.equal(handles.size(), sizeBefore, "handle table must not grow after synchronous execAsync throw");
+  });
 });
 
 // ---- Async await/resume ----
