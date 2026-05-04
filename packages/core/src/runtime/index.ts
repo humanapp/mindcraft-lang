@@ -18,6 +18,7 @@ export * from "./math-builtins";
 export * from "./operator-defs";
 export * from "./operators";
 export * from "./program";
+export * from "./rule-services";
 export * from "./services";
 export * from "./string-builtins";
 export * from "./tile-ids";

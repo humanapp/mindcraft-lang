@@ -618,6 +618,27 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
     resultPools = dedup.constantPools;
   }
 
+  const newRuleFuncIds = new UniqueSet<number>();
+  if (program.ruleFuncIds !== undefined) {
+    program.ruleFuncIds.forEach((funcId) => {
+      const newId = funcRemap.get(funcId);
+      if (newId !== undefined) {
+        newRuleFuncIds.add(newId);
+      }
+    });
+  }
+
+  const newRuleAncestors = Dict.empty<number, number>();
+  if (program.ruleAncestors !== undefined) {
+    program.ruleAncestors.forEach((parentFuncId, childFuncId) => {
+      const newChild = funcRemap.get(childFuncId);
+      const newParent = funcRemap.get(parentFuncId);
+      if (newChild !== undefined && newParent !== undefined) {
+        newRuleAncestors.set(newChild, newParent);
+      }
+    });
+  }
+
   return {
     program: {
       version: program.version,
@@ -626,6 +647,8 @@ export function treeshakeProgram(linked: LinkedBrainProgram): LinkedBrainProgram
       variableNames: newVariableNames,
       entryPoint: newEntryPoint,
       actions: newActions,
+      ruleFuncIds: newRuleFuncIds,
+      ruleAncestors: newRuleAncestors,
     },
     ruleIndex: newRuleIndex,
     pages: newPages,

@@ -371,6 +371,8 @@ export function linkBrainProgram(
       variableNames,
       entryPoint: program.entryPoint,
       actions,
+      ruleFuncIds: program.ruleFuncIds,
+      ruleAncestors: program.ruleAncestors,
     },
     ruleIndex: program.ruleIndex,
     pages: program.pages,

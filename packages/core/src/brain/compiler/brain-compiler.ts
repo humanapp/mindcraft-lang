@@ -138,6 +138,10 @@ export class BrainCompiler {
   private constantPool: ConstantPool;
   private functions: List<FunctionBytecode>;
   private ruleIndex: Dict<string, number>;
+  /** Set of function ids that are rule entries (i.e. compiled from an `IBrainRuleDef`). */
+  private ruleFuncIds: UniqueSet<number>;
+  /** Mapping from a rule's funcId to its enclosing parent rule's funcId. Roots have no entry. */
+  private ruleAncestors: Dict<number, number>;
   private pages: List<PageMetadata>;
   private nextFuncId: number;
   private catalogs: ReadonlyList<ITileCatalog>;
@@ -157,6 +161,8 @@ export class BrainCompiler {
     this.constantPool = new ConstantPool();
     this.functions = List.empty();
     this.ruleIndex = Dict.empty();
+    this.ruleFuncIds = new UniqueSet<number>();
+    this.ruleAncestors = Dict.empty();
     this.pages = List.empty();
     this.nextFuncId = 0;
     this.catalogs = catalogs;
@@ -179,6 +185,8 @@ export class BrainCompiler {
     this.constantPool = new ConstantPool();
     this.functions = List.empty();
     this.ruleIndex = Dict.empty();
+    this.ruleFuncIds = new UniqueSet<number>();
+    this.ruleAncestors = Dict.empty();
     this.pages = List.empty();
     this.nextFuncId = 0;
     this.variableNames = List.empty();
@@ -207,6 +215,8 @@ export class BrainCompiler {
       variableNames: this.variableNames,
       entryPoint: 0, // First page's first rule
       ruleIndex: this.ruleIndex,
+      ruleFuncIds: this.ruleFuncIds,
+      ruleAncestors: this.ruleAncestors,
       actionRefs: this.actionRefs,
       pages: this.pages,
     };
@@ -222,7 +232,7 @@ export class BrainCompiler {
 
     for (let ruleIdx = 0; ruleIdx < rules.size(); ruleIdx++) {
       const ruleDef = rules.get(ruleIdx);
-      const funcId = this.assignFuncIdToRule(ruleDef, `${pageIdx}/${ruleIdx}`);
+      const funcId = this.assignFuncIdToRule(ruleDef, `${pageIdx}/${ruleIdx}`, undefined);
       rootRuleFuncIds.push(funcId);
     }
 
@@ -240,9 +250,13 @@ export class BrainCompiler {
   /**
    * Recursively assign function IDs to a rule and its children.
    */
-  private assignFuncIdToRule(ruleDef: IBrainRuleDef, rulePath: string): number {
+  private assignFuncIdToRule(ruleDef: IBrainRuleDef, rulePath: string, parentFuncId: number | undefined): number {
     const funcId = this.nextFuncId++;
     this.ruleIndex.set(rulePath, funcId);
+    this.ruleFuncIds.add(funcId);
+    if (parentFuncId !== undefined) {
+      this.ruleAncestors.set(funcId, parentFuncId);
+    }
 
     // Reserve slot in functions list (will be filled during compile pass)
     this.functions.push({
@@ -255,7 +269,7 @@ export class BrainCompiler {
     const children = ruleDef.children();
     for (let childIdx = 0; childIdx < children.size(); childIdx++) {
       const childDef = children.get(childIdx);
-      this.assignFuncIdToRule(childDef, `${rulePath}/${childIdx}`);
+      this.assignFuncIdToRule(childDef, `${rulePath}/${childIdx}`, funcId);
     }
 
     return funcId;

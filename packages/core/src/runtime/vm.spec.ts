@@ -35,7 +35,6 @@ import {
   getCallSiteState,
   HandleState,
   HandleTable,
-  type IBrainRule,
   type Instr,
   isFunctionValue,
   isOverflowError,

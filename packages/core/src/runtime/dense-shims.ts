@@ -1,31 +1,19 @@
 import { Dict } from "../platform/dict";
 import { List } from "../platform/list";
 import type { ActionInstance } from "./context";
-import type { IBrain, IBrainRule } from "./host-bindings";
+import type { IBrain } from "./host-bindings";
 import type {
   IActionServices,
   IBrainPageServices,
   IBrainVariableServices,
   ICallSiteServices,
-  IProgramServices,
   IRngServices,
-  IRuleVariableServices,
 } from "./services";
 import { NIL_VALUE, type Value } from "./value";
 
-/**
- * Lookup function shape providing a `funcId -> rule` resolution that the
- * dense-state program services delegate to. The brain owns the underlying
- * mapping (today: `funcIdToRule`); D2 retires this shim branch in favor of
- * a `Program`-table lookup populated by the compiler.
- */
-export type RuleByFuncIdLookup = (funcId: number) => IBrainRule | undefined;
-
 /** Aggregate of dense-state service implementations produced by {@link createDenseShims}. */
 export interface IDenseShims {
-  program: IProgramServices;
   brainVars: IBrainVariableServices;
-  ruleVars: IRuleVariableServices;
   brainPages: IBrainPageServices;
   rng: IRngServices;
   callSite: ICallSiteServices;
@@ -41,15 +29,15 @@ export interface IDenseShims {
 
 /**
  * Build dense-state service adapters for `brain` backed by the legacy
- * brain object graph (`IBrain`, `IBrainRule`). The shared
- * `actionInstances` map backs both the {@link IActionServices} (state slot)
- * and {@link ICallSiteServices} (host state) views.
+ * {@link IBrain} object graph. The shared `actionInstances` map backs both
+ * the {@link IActionServices} (state slot) and {@link ICallSiteServices}
+ * (host state) views.
  *
- * D2, D3, and D4 retire individual branches of this shim by routing the
- * relevant service through compiler-allocated tables and side-tables on
- * the brain orchestrator instead of the legacy object graph.
+ * D3 and D4 retire the remaining branches of this shim by routing
+ * per-callsite host state and per-callsite action-state slots through
+ * compiler-allocated tables and side-tables on the brain orchestrator.
  */
-export function createDenseShims(brain: IBrain, ruleLookup: RuleByFuncIdLookup): IDenseShims {
+export function createDenseShims(brain: IBrain): IDenseShims {
   const actionInstances: Dict<number, ActionInstance> = new Dict();
 
   function allocateInstance(callSiteId: number): ActionInstance {
@@ -73,12 +61,6 @@ export function createDenseShims(brain: IBrain, ruleLookup: RuleByFuncIdLookup):
   }
 
   return {
-    program: {
-      getRuleFuncIdForFunc(funcId: number): number | undefined {
-        return ruleLookup(funcId) !== undefined ? funcId : undefined;
-      },
-    },
-
     brainVars: {
       getByName(name: string): Value {
         return brain.getVariable(name) ?? NIL_VALUE;
@@ -88,39 +70,6 @@ export function createDenseShims(brain: IBrain, ruleLookup: RuleByFuncIdLookup):
       },
       clearByName(name: string): void {
         brain.clearVariable(name);
-      },
-    },
-
-    ruleVars: {
-      getByName(ruleFuncId: number | undefined, name: string): Value {
-        if (ruleFuncId === undefined) {
-          return NIL_VALUE;
-        }
-        const rule = ruleLookup(ruleFuncId);
-        if (!rule) {
-          return NIL_VALUE;
-        }
-        return rule.getVariable<Value>(name) ?? NIL_VALUE;
-      },
-      setByName(ruleFuncId: number | undefined, name: string, value: Value): void {
-        if (ruleFuncId === undefined) {
-          return;
-        }
-        const rule = ruleLookup(ruleFuncId);
-        if (!rule) {
-          return;
-        }
-        rule.setVariable(name, value);
-      },
-      clearByName(ruleFuncId: number | undefined, name: string): void {
-        if (ruleFuncId === undefined) {
-          return;
-        }
-        const rule = ruleLookup(ruleFuncId);
-        if (!rule) {
-          return;
-        }
-        rule.clearVariable(name);
       },
     },
 

@@ -16,6 +16,7 @@ import type { BytecodeExecutableAction, ExecutionContext } from "../runtime/cont
 import { createDenseShims, type IDenseShims } from "../runtime/dense-shims";
 import { linkBrainProgram } from "../runtime/linker";
 import type { Program } from "../runtime/program";
+import { createProgramServices, createRuleVariableServices, type RuleVariableStores } from "../runtime/rule-services";
 import type { PlatformServices } from "../runtime/services";
 import { treeshakeProgram } from "../runtime/tree-shaker";
 import { NIL_VALUE, type Value } from "../runtime/value";
@@ -122,6 +123,14 @@ export class Brain implements IBrain {
   private funcIdToRule: Dict<number, IBrainRule> = new Dict();
 
   /**
+   * Per-rule variable storage keyed by rule funcId, then by variable name.
+   * Backs {@link PlatformServices.ruleVars}; reads walk the ancestor chain
+   * declared by `Program.ruleAncestors` when the variable is not present in
+   * the child rule's own store. Allocated lazily per rule on first write.
+   */
+  private ruleVariableStores: RuleVariableStores = new Dict();
+
+  /**
    * Fiber IDs for the currently active page's root rules.
    * Tracked for respawning when they complete.
    */
@@ -184,15 +193,17 @@ export class Brain implements IBrain {
       this.collectFuncIdToRuleMapping(page.children(), this.funcIdToRule);
     }
 
+    // Allocate the brain-instance side-table that backs services.ruleVars.
+    this.ruleVariableStores = new Dict<number, Dict<string, Value>>();
+
     // Build dense-state shim adapter and assemble PlatformServices for the VM.
-    const funcIdToRule = this.funcIdToRule;
-    this.denseShims = createDenseShims(this, (funcId) => funcIdToRule.get(funcId));
+    this.denseShims = createDenseShims(this);
     const platformServices: PlatformServices = {
       functions: this.services.functions,
       types: this.services.types,
-      program: this.denseShims.program,
+      program: createProgramServices(this.program),
       brainVars: this.denseShims.brainVars,
-      ruleVars: this.denseShims.ruleVars,
+      ruleVars: createRuleVariableServices(this.program, this.ruleVariableStores),
       brainPages: this.denseShims.brainPages,
       rng: this.denseShims.rng,
       callSite: this.denseShims.callSite,
@@ -478,6 +489,9 @@ export class Brain implements IBrain {
     // Tear down all per-callsite storage so a subsequent startup() re-runs
     // every action's initializerFuncId.
     this.denseShims?.reset();
+
+    // Clear per-rule variable storage.
+    this.ruleVariableStores.clear();
 
     // Clear variables
     this.clearVariables();

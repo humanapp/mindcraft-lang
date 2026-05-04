@@ -1,4 +1,6 @@
+import type { Dict } from "../platform/dict";
 import type { List } from "../platform/list";
+import type { UniqueSet } from "../platform/uniqueset";
 import type { ConstantPools, FunctionBytecode } from "./bytecode";
 import type { ExecutableAction } from "./context";
 
@@ -21,6 +23,25 @@ export interface Program {
    * action calls.
    */
   actions?: List<ExecutableAction>;
+  /**
+   * Set of function ids that are rule entries. Membership identifies a
+   * function as the body of a brain rule; non-members are regular bytecode
+   * functions called from rule bodies. Backs
+   * {@link IProgramServices.getRuleFuncIdForFunc}. Absent on programs that
+   * have not been compiled from a brain definition (e.g. raw test
+   * fixtures); treated as empty in that case.
+   */
+  ruleFuncIds?: UniqueSet<number>;
+  /**
+   * Mapping from a rule's funcId to its enclosing parent rule's funcId. A
+   * rule with no enclosing rule (i.e. a root rule on a page) has no entry.
+   * Backs the ancestor-walk semantics of
+   * {@link IRuleVariableServices.getByName}: a read on a child rule resolves
+   * up the ancestor chain when the variable is not present in the child's
+   * own store. Absent on programs that have not been compiled from a brain
+   * definition; treated as empty in that case.
+   */
+  ruleAncestors?: Dict<number, number>;
 }
 
 /**

@@ -454,7 +454,7 @@ Each unit must:
 
 ## Current State
 
-Completed: D0, D1; lifecycle-hooks precondition L1 / L2 / L3
+Completed: D0, D1, D2; lifecycle-hooks precondition L1 / L2 / L3
 landed (see
 [`ts-vm-page-lifecycle-hooks-2026-05-03.md`](./ts-vm-page-lifecycle-hooks-2026-05-03.md)).
 Lifecycle-hooks L1 incidentally completed several D3 / D4 work
@@ -466,11 +466,45 @@ call sites are already gone; `services.action.resetCallsite`,
 rescoped against this new baseline -- see each phase's "Status
 update (2026-05-03)" preamble.
 
-Next up: D2
+Next up: D3
 
 ---
 
 ## Phase Log
+
+### D2
+
+**Status**
+
+Rule identity flows through `Program.ruleFuncIds` and
+`Program.ruleAncestors` (compiler-emitted, linker-passthrough,
+tree-shaker-remapped). `services.program` and `services.ruleVars`
+built directly via `runtime/rule-services.ts` against a
+brain-instance side-table; the rule branch of `dense-shims.ts` is
+gone. The shim's remaining surfaces (brainVars, brainPages, rng,
+callSite, action) await D3/D4.
+Verification: full gate green (725/725 tests).
+
+**Risks** (D2 -> D3/D4/D5)
+
+- `Program.ruleFuncIds` / `ruleAncestors` are optional on the
+  `Program` interface so legacy test fixtures that build bare
+  `Program` literals keep compiling. The dense rule-services
+  factories treat `undefined` as empty. Future readers of these
+  fields must do the same; assuming presence will silently mis-key
+  rule traffic on test-only programs.
+- `Brain.funcIdToRule` and `collectFuncIdToRuleMapping` are now
+  unread by the runtime path but kept in place per spec (D5
+  decides `Brain`'s fate). If a future phase removes them, audit
+  any host-side consumers of `IBrainRule` first; nothing under
+  `runtime/` should value-import `IBrainRule` outside what D3/D4
+  retire from the shim.
+- The new ancestor-walk semantics live in
+  `createRuleVariableServices` and are pinned by
+  `rule-services.spec.ts`. Any future change that splits per-rule
+  variable storage (e.g. dense slot-array per rule) must preserve
+  the chain: child store missing -> walk
+  `Program.ruleAncestors` -> `NIL_VALUE` on root miss.
 
 ### D1
 
