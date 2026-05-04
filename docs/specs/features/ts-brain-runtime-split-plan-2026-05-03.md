@@ -487,8 +487,8 @@ Each unit must:
 
 ## Current State
 
-Completed: A0, B0
-Next up: B1
+Completed: A0, B0, B1
+Next up: B2
 
 ---
 
@@ -513,6 +513,30 @@ Verification: full gate green (752/752 core, 981/981 ts-compiler).
 ### B0
 
 Completed (no post-mortem notes written as user's request).
+
+### B1 -- `BrainRuntime` skeleton
+
+Landed an empty `IBrainRuntime` interface and a method-less `BrainRuntime` class
+implementing it, with the pinned 5-parameter constructor (`program`,
+`pageMetadata`, `hostServices`, `contextData`, `previousVariables`). `IBrain`
+now extends `IBrainRuntime`; its own body is unchanged.
+
+New contract surface: `IBrainRuntime`, `BrainRuntime`, `VariableSnapshot`.
+
+Verification: full gate green (752/752 core).
+
+#### Risks
+
+- Biome's `noEmptyInterface` auto-fix rewrote `interface IBrainRuntime {}`
+  to `type IBrainRuntime = {}`. `IBrain extends IBrainRuntime` still
+  type-checks against an object-type alias, but B2 must convert it back to
+  `interface IBrainRuntime { ... }` in the same diff that adds the first
+  member; otherwise the three-step coordinated-edit dance (add to
+  `IBrainRuntime`, remove from `IBrain`'s body, implement on
+  `BrainRuntime`) does not have an interface to grow.
+- The firewall invariant on `IBrainRuntime` is vacuous until B2 adds the
+  first method. Reviewers of B2 should re-check the firewall report
+  explicitly rather than relying on a green pass that proves nothing.
 
 ---
 

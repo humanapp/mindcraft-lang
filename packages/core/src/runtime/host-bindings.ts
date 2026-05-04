@@ -134,7 +134,22 @@ export type BrainEvents = {
   //  variable_changed: { varId: string; oldValue: Value | undefined; newValue: Value };
 };
 
-export interface IBrain {
+/**
+ * Runtime surface of a Mindcraft brain: every observable behavior reachable
+ * during a tick (variable storage, page lifecycle FSM, scheduler-driven
+ * `think`, event channel) without any authoring-side compile / link / edit
+ * concerns. Implemented by `BrainRuntime` in `runtime/brain-runtime.ts`.
+ *
+ * `IBrainRuntime` exists so that runtime-only targets can satisfy this
+ * contract without ever touching `packages/core/src/brain/`. The
+ * dependency-cruiser firewall test (`__firewall__.spec.ts`) enforces
+ * that no value-import under `runtime/` resolves into `brain/`; any
+ * method added here must be implementable on `BrainRuntime` without
+ * crossing that boundary.
+ */
+export type IBrainRuntime = {};
+
+export interface IBrain extends IBrainRuntime {
   events(): EventEmitterConsumer<BrainEvents>;
   getVariable(varId: string): Value | undefined;
   setVariable(varId: string, value: Value): void;

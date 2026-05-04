@@ -1,4 +1,5 @@
 export * from "./action-registry";
+export * from "./brain-runtime";
 export * from "./bytecode";
 export * from "./call-spec";
 export * from "./callsite-store";
