@@ -4,7 +4,7 @@ import { EventEmitter } from "../platform/event-emitter";
 import type { List, ReadonlyList } from "../platform/list";
 import { Time } from "../platform/time";
 import { UniqueSet } from "../platform/uniqueset";
-import type { ActionInstance, ExecutionContext } from "./context";
+import type { ExecutionContext } from "./context";
 import { ErrorCode, type ErrorValue, type HandleId, type StructValue, type Value } from "./value";
 
 ///////////////////////////
@@ -199,7 +199,6 @@ export interface ActionFrameBinding {
   actionKey: string;
   callSiteId: number;
   isAsync: boolean;
-  actionInstance: ActionInstance;
 }
 
 /** Single call frame on a fiber's frame stack. */

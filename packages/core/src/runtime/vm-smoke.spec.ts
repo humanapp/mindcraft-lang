@@ -21,10 +21,7 @@ test("VM terminates cleanly from a runtime-only program with no event observer",
   const vm = new VM(program, __test__createPlatformServices());
 
   const fiber = vm.spawnFiber(1, 0, List.empty(), {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,

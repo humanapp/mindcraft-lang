@@ -17,11 +17,16 @@ import {
   type Value,
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
+
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+}
 
 before(() => {
   services = __test__createBrainServices();
@@ -29,10 +34,7 @@ before(() => {
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -136,7 +138,7 @@ function runProgram(prog: UserAuthoredProgram): Value | undefined {
   const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
   if (prog.activationFuncId !== undefined) {
-    const vm = new runtime.VM(prog, services, { handles });
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -144,7 +146,7 @@ function runProgram(prog: UserAuthoredProgram): Value | undefined {
     assert.equal(r.status, VmStatus.DONE);
   }
 
-  const vm = new runtime.VM(prog, services, { handles });
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
   fiber.callsiteVars = callsiteVars;
   fiber.instrBudget = 10000;
@@ -163,7 +165,7 @@ function runExecutable(prog: FlatExecutable): Value | undefined {
   const callsiteVars = List.from<Value>(Array.from({ length: numSlots }, () => NIL_VALUE));
 
   if (action?.binding === "bytecode" && action.activationFuncId !== undefined) {
-    const vm = new runtime.VM(prog, services, { handles });
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, action.activationFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -172,7 +174,7 @@ function runExecutable(prog: FlatExecutable): Value | undefined {
   }
 
   const entryFuncId = action?.binding === "bytecode" ? action.entryFuncId : (prog.entryPoint ?? 0);
-  const vm = new runtime.VM(prog, services, { handles });
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const fiber = vm.spawnFiber(1, entryFuncId, List.empty<Value>(), mkCtx());
   fiber.callsiteVars = callsiteVars;
   fiber.instrBudget = 10000;

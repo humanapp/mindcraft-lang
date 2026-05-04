@@ -5,7 +5,7 @@
  * application-specific data injected into the ExecutionContext.
  */
 
-import { type ExecutionContext, isNumberValue } from "@mindcraft-lang/core/app";
+import { type ExecutionContext, getRuleVariable, isNumberValue } from "@mindcraft-lang/core/app";
 import type { Actor } from "./actor";
 
 /**
@@ -67,13 +67,9 @@ export function getTargetActor(ctx: ExecutionContext): Actor | undefined {
   if (!hasActorData(ctx)) {
     return undefined;
   }
-  const rule = ctx.rule;
-  if (!rule) {
-    return undefined;
-  }
-  const targetActorId = rule.getVariable("targetActor");
+  const targetActorId = getRuleVariable(ctx, "targetActor");
 
-  if (!targetActorId || !isNumberValue(targetActorId)) {
+  if (!isNumberValue(targetActorId)) {
     return undefined;
   }
   return getActor(ctx, targetActorId.v);

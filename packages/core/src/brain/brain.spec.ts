@@ -11,11 +11,18 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
-import { List, type ReadonlyList } from "@mindcraft-lang/core";
+import {
+  createHostActuator,
+  createHostSensor,
+  type HostActuatorDefinition,
+  type HostSensorDefinition,
+  List,
+  type ReadonlyList,
+} from "@mindcraft-lang/core";
 import { Brain, type BrainServices, mkVariableTileId, TilePlacement } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
-import { BrainDef } from "@mindcraft-lang/core/brain/model";
+import { BrainDef, type BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import {
   BrainTileActuatorDef,
   BrainTileLiteralDef,
@@ -33,6 +40,7 @@ import {
   extractBooleanValue,
   extractNumberValue,
   extractStringValue,
+  getRuleVariable,
   type HandleId,
   type HostAsyncFn,
   type IBrain,
@@ -44,6 +52,8 @@ import {
   NIL_VALUE,
   Op,
   param,
+  setRuleVariable,
+  TRUE_VALUE,
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
@@ -414,6 +424,232 @@ describe("Brain behavioral -- sensors and actuators", () => {
 
     assert.ok(called, "actuator should have been called");
     assert.equal(extractNumberValue(receivedArg), 42);
+  });
+});
+
+describe("Brain behavioral -- rule variables (regression)", () => {
+  // Regression: an early dense-state implementation treated `ruleFuncId === 0`
+  // as a "no-rule" sentinel and silently dropped reads/writes. Because the
+  // brain compiler assigns funcIds starting at 0, the first rule on the first
+  // page always lands on funcId 0, which made WHEN-sets-rulevar /
+  // DO-reads-rulevar (e.g. bump.targetActor -> eat) silently fail for the
+  // most common single-page brains. The only no-rule sentinel is `undefined`.
+
+  /**
+   * Register a host sensor or actuator definition (built via
+   * {@link createHostSensor} / {@link createHostActuator}) with the test's
+   * BrainServices: function registry, action registry, and tile catalog.
+   * Returns the same definition for chaining.
+   */
+  function defineHost<T extends HostSensorDefinition | HostActuatorDefinition>(def: T): T {
+    const fn = def.function;
+    services.functions.register(fn.name, fn.isAsync, fn.fn, fn.callDef);
+    const exec = (def.actionFn as { exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value }).exec;
+    services.actions.register({ binding: "host", descriptor: def.descriptor, execSync: exec });
+    return def;
+  }
+
+  test("WHEN sensor sets rule var, DO actuator reads it back (single page, funcId 0)", () => {
+    const brainVarName = "rulevar-roundtrip-out";
+
+    // Sensor: writes 42 into rule var "stash" and returns true.
+    const sensorDef = defineHost(
+      createHostSensor({
+        key: "test-rulevar-set-sensor",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        outputType: CoreTypeIds.Boolean,
+        fn: {
+          exec: (ctx) => {
+            setRuleVariable(ctx, "stash", mkNumberValue(42));
+            return TRUE_VALUE;
+          },
+        },
+      })
+    );
+
+    // Actuator: reads rule var "stash" and writes the value into a brain var
+    // so the test can assert on it.
+    const actuatorDef = defineHost(
+      createHostActuator({
+        key: "test-rulevar-read-actuator",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        fn: {
+          exec: (ctx) => {
+            const v = getRuleVariable(ctx, "stash");
+            ctx.services.brainVars.setByName(brainVarName, v);
+            return VOID_VALUE;
+          },
+        },
+      })
+    );
+
+    const sensor = new BrainTileSensorDef(sensorDef.descriptor.key, sensorDef.descriptor, {
+      placement: TilePlacement.Inline,
+    });
+    const actuator = actuatorDef.tile as BrainTileActuatorDef;
+
+    const brainDef = buildBrain([sensor], [actuator]);
+    const brain = runBrain(brainDef);
+
+    const out = brain.getVariable(brainVarName);
+    assert.ok(out !== undefined, "brain var should be set by actuator");
+    assert.equal(extractNumberValue(out), 42, "actuator must read the same value the sensor stashed");
+  });
+
+  test("rule var read returns NIL_VALUE when never written", () => {
+    const brainVarName = "rulevar-unset-out";
+    let observedIsNil = false;
+
+    const actuatorDef = defineHost(
+      createHostActuator({
+        key: "test-rulevar-read-unset",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        fn: {
+          exec: (ctx) => {
+            const v = getRuleVariable(ctx, "never-set");
+            observedIsNil = v.t === NIL_VALUE.t;
+            ctx.services.brainVars.setByName(brainVarName, v);
+            return VOID_VALUE;
+          },
+        },
+      })
+    );
+
+    const actuator = actuatorDef.tile as BrainTileActuatorDef;
+    const brainDef = buildBrain([], [actuator]);
+    runBrain(brainDef);
+
+    assert.ok(observedIsNil, "unwritten rule var must read as NIL");
+  });
+
+  test("rule vars are isolated across rules on different pages (different funcIds)", () => {
+    // Two pages, each with one rule that writes a different number into rule
+    // var "shared", then reads it back into a page-tagged brain var. After
+    // two ticks (page 1, then page 2 via switch), both brain vars should
+    // hold their respective writer's value, proving funcIds 0 and 1 do not
+    // share rule-var storage.
+    const brainVarP1 = "rulevar-iso-p1";
+    const brainVarP2 = "rulevar-iso-p2";
+
+    const actuatorDef = defineHost(
+      createHostActuator({
+        key: "test-rulevar-isolation",
+        callDef: mkCallDef({
+          type: "bag",
+          items: [
+            {
+              type: "arg",
+              name: "writeVal",
+              tileId: "tile.param->rulevar-iso-write",
+              required: true,
+              anonymous: true,
+            },
+            {
+              type: "arg",
+              name: "outName",
+              tileId: "tile.param->rulevar-iso-out",
+              required: true,
+              anonymous: true,
+            },
+          ],
+        }),
+        fn: {
+          exec: (ctx, args) => {
+            const writeVal = args.get(0)!;
+            const outName = extractStringValue(args.get(1)!) ?? "";
+            setRuleVariable(ctx, "shared", writeVal);
+            const readBack = getRuleVariable(ctx, "shared");
+            ctx.services.brainVars.setByName(outName, readBack);
+            return VOID_VALUE;
+          },
+        },
+      })
+    );
+
+    const actuator = actuatorDef.tile as BrainTileActuatorDef;
+
+    // Build a 2-page brain manually so each rule lands on a distinct funcId.
+    const brainDef = new BrainDef(services);
+    const p1Result = brainDef.appendNewPage();
+    assert.ok(p1Result.success);
+    const p1 = p1Result.value!.page;
+    const p2Result = brainDef.appendNewPage();
+    assert.ok(p2Result.success);
+    const p2 = p2Result.value!.page;
+
+    const r1 = p1.children().get(0)!;
+    r1.do().appendTile(actuator as never);
+    r1.do().appendTile(mkLiteral(11) as never);
+    r1.do().appendTile(mkStringLiteral(brainVarP1) as never);
+
+    const r2 = p2.children().get(0)!;
+    r2.do().appendTile(actuator as never);
+    r2.do().appendTile(mkLiteral(22) as never);
+    r2.do().appendTile(mkStringLiteral(brainVarP2) as never);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    brain.requestPageChangeByPageId(p2.pageId());
+    brain.think(32);
+
+    assert.equal(extractNumberValue(brain.getVariable(brainVarP1)), 11);
+    assert.equal(extractNumberValue(brain.getVariable(brainVarP2)), 22);
+  });
+
+  test("child rule reads rule var written by its parent rule (ancestor walk)", () => {
+    // Parent rule WHEN: sensor stashes 99 into rule var "fromParent" (and
+    // returns true so the parent's DO and child rules execute).
+    // Child rule DO: actuator reads rule var "fromParent" via
+    // getRuleVariable; because the child has its own funcId, this exercises
+    // IBrainRule.getVariable<T>'s ancestor walk inside the dense shim.
+    const brainVarName = "rulevar-parent-child-out";
+
+    const sensorDef = defineHost(
+      createHostSensor({
+        key: "test-rulevar-parent-set",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        outputType: CoreTypeIds.Boolean,
+        fn: {
+          exec: (ctx) => {
+            setRuleVariable(ctx, "fromParent", mkNumberValue(99));
+            return TRUE_VALUE;
+          },
+        },
+      })
+    );
+
+    const actuatorDef = defineHost(
+      createHostActuator({
+        key: "test-rulevar-child-read",
+        callDef: mkCallDef({ type: "bag", items: [] }),
+        fn: {
+          exec: (ctx) => {
+            const v = getRuleVariable(ctx, "fromParent");
+            ctx.services.brainVars.setByName(brainVarName, v);
+            return VOID_VALUE;
+          },
+        },
+      })
+    );
+
+    const sensor = sensorDef.tile as BrainTileSensorDef;
+    const actuator = actuatorDef.tile as BrainTileActuatorDef;
+
+    const brainDef = new BrainDef(services);
+    const pageResult = brainDef.appendNewPage();
+    assert.ok(pageResult.success);
+    const parentRule = pageResult.value!.page.children().get(0)! as BrainRuleDef;
+    parentRule.when().appendTile(sensor as never);
+    const childRule = parentRule.appendNewRule();
+    childRule.do().appendTile(actuator as never);
+
+    const brain = runBrain(brainDef);
+
+    const out = brain.getVariable(brainVarName);
+    assert.ok(out !== undefined, "child actuator should have written to brain var");
+    assert.equal(extractNumberValue(out), 99, "child rule must read parent's rule var via the ancestor chain");
   });
 });
 

@@ -33,6 +33,7 @@ import {
   VmStatus,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 
 function mkInstr(op: Op, a?: number, b?: number, c?: number): Instr {
   const ins: Instr = { op };
@@ -777,6 +778,10 @@ describe("treeshakeProgram", () => {
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+}
+
 before(() => {
   services = __test__createBrainServices();
 });
@@ -784,10 +789,7 @@ before(() => {
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   const slots = List.empty<Value | undefined>();
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: (slotId: number) => {
       if (slotId < 0 || slotId >= slots.size()) return NIL_VALUE;
       const v = slots.get(slotId);
@@ -805,7 +807,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
 }
 
 function runProgramToResult(prog: FlatProgram): Value | undefined {
-  const vm = new VM(prog, services);
+  const vm = new VM(prog, toVmServices(services));
   const fiber = vm.spawnFiber(1, prog.entryPoint ?? 0, List.empty(), mkCtx());
   fiber.instrBudget = 10000;
   const result = vm.runFiber(fiber, {
@@ -910,7 +912,7 @@ describe("treeshakeProgram -- integration", () => {
 
     const shaken = treeshakeProgram(prog);
 
-    const vm = new VM(shaken, services);
+    const vm = new VM(shaken, toVmServices(services));
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 100;
 

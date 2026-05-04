@@ -22,6 +22,7 @@ import {
   ValueDict,
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { compileUserTile } from "../compiler/compile.js";
 import { linkUserPrograms } from "./linker.js";
 
@@ -29,10 +30,7 @@ function mkCtx(
   overrides: Omit<Partial<ExecutionContext>, "callSiteState"> & { callSiteState?: Dict<number, unknown> } = {}
 ): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -126,6 +124,9 @@ function resolveLinkedFuncId(linkInfo: { functionOffset: number }, localFuncId: 
 
 describe("linker", () => {
   let services: BrainServices;
+  function toVmServices(b: BrainServices) {
+    return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  }
   before(() => {
     services = __test__createBrainServices();
   });
@@ -218,7 +219,7 @@ export default Sensor({
 
     const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], result.program!.entryFuncId);
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(linkedProgram, services, { handles });
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, linkedEntryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
@@ -259,7 +260,7 @@ export default Sensor({
 
     const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], result.program!.entryFuncId);
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(linkedProgram, services, { handles });
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
 
     const args = mkArgsList({ 0: mkNumberValue(7) });
     const fiber = vm.spawnFiber(1, linkedEntryFuncId, args, mkCtx());
@@ -312,7 +313,7 @@ export default Sensor({
     );
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(linkedProgram, services, { handles });
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
 
     const fiber1 = vm.spawnFiber(
       1,
@@ -397,7 +398,7 @@ export default Sensor({
     assert.equal(originalFn.code.get(0).a, 0);
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(linkedProgram, services, { handles });
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -458,7 +459,7 @@ export default Sensor({
 
     const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], userProg.entryFuncId);
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(linkedProgram, services, { handles });
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
     const args = mkArgsList({ 0: mkNumberValue(5) });
     const fiber = vm.spawnFiber(1, linkedEntryFuncId, args, mkCtx());
     fiber.instrBudget = 1000;

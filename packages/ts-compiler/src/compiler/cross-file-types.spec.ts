@@ -17,18 +17,20 @@ import {
   type Value,
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -55,7 +57,7 @@ function compileProject(files: Record<string, string>) {
 
 function runAndGetResult(prog: UserAuthoredProgram): Value {
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(prog, services, { handles });
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
   fiber.instrBudget = 5000;
   const result = vm.runFiber(fiber, mkScheduler());

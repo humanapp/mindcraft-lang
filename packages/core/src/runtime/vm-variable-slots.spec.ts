@@ -18,10 +18,7 @@ import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__t
 test("STORE_VAR_SLOT and LOAD_VAR_SLOT round-trip a value through the execution context", () => {
   const slots = List.empty<Value>();
   const ctx: ExecutionContext = {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: (slotId) => slots.get(slotId) ?? NIL_VALUE,
     setVariableBySlot: (slotId, value) => {
       while (slots.size() <= slotId) {

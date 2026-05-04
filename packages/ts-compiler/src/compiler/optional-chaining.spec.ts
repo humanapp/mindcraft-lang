@@ -20,17 +20,19 @@ import {
   type Value,
   VmStatus,
 } from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -56,7 +58,7 @@ function runSensor(source: string, args?: List<Value>): { result: Value | undefi
 
   const prog = result.program!;
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(prog, services, { handles });
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const ctx = mkCtx();
   const fiberArgs = args ? args : List.empty<Value>();
   const fiber = vm.spawnFiber(1, 0, fiberArgs, ctx);

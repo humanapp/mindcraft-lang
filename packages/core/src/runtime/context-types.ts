@@ -1,6 +1,7 @@
 import type { BrainServices } from "../brain/services";
 import { List, type ReadonlyList } from "../platform/list";
 import type { ExecutionContext } from "./context";
+import { getRuleVariable, setRuleVariable } from "./context";
 import { CoreTypeIds, mkTypeId } from "./core-types";
 import { mkCallDef } from "./function-defs";
 import { NativeType } from "./type-defs";
@@ -111,7 +112,7 @@ export function registerContextTypes(services: BrainServices) {
     {
       exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const name = (args.get(1) as StringValue).v;
-        return ctx.getVariable(name) ?? NIL_VALUE;
+        return ctx.services.brainVars.getByName(name);
       },
     },
     emptyCallDef
@@ -124,7 +125,7 @@ export function registerContextTypes(services: BrainServices) {
       exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const name = (args.get(1) as StringValue).v;
         const value = args.get(2) as Value;
-        ctx.setVariable(name, value);
+        ctx.services.brainVars.setByName(name, value);
         return NIL_VALUE;
       },
     },
@@ -137,7 +138,7 @@ export function registerContextTypes(services: BrainServices) {
     {
       exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const name = (args.get(1) as StringValue).v;
-        return ctx.rule?.getVariable(name) ?? NIL_VALUE;
+        return getRuleVariable(ctx, name);
       },
     },
     emptyCallDef
@@ -150,7 +151,7 @@ export function registerContextTypes(services: BrainServices) {
       exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const name = (args.get(1) as StringValue).v;
         const value = args.get(2) as Value;
-        ctx.rule?.setVariable(name, value);
+        setRuleVariable(ctx, name, value);
         return NIL_VALUE;
       },
     },

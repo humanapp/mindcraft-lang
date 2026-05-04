@@ -33,10 +33,7 @@ test("runFiber returns YIELDED and exhausts the budget on an infinite loop", () 
   };
 
   const ctx: ExecutionContext = {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,

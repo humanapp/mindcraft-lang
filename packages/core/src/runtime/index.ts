@@ -6,6 +6,7 @@ export * from "./context-types";
 export * from "./conversion-defs";
 export * from "./conversions";
 export * from "./core-types";
+export * from "./dense-shims";
 export * from "./element-access-builtins";
 export * from "./events";
 export * from "./function-defs";

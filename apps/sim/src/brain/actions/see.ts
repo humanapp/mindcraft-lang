@@ -20,6 +20,7 @@ import {
   repeated,
   type StructValue,
   setCallSiteState,
+  setRuleVariable,
   TRUE_VALUE,
   type Value,
   Vector2,
@@ -196,21 +197,23 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   // Set as remembered actor
   state.rememberedPos = mkVector2Value(targetPos);
   state.rememberedActorId = mkNumberValue(seenActor.actorId);
-  state.memoryExpiration = now + ctx.brain.rng() * 2000 + 500; // Remember for 0.5-2.5s of sim time
+  state.memoryExpiration = now + ctx.services.rng.next() * 2000 + 500; // Remember for 0.5-2.5s of sim time
   setCallSiteState(ctx, state);
 
   // Store targets for the DO side to access
   const seenActors = filteredSightQueue.map((sr) => sr.actor);
-  ctx.rule?.setVariable(
+  setRuleVariable(
+    ctx,
     "targetActors",
     mkListValue("", List.from(seenActors.map((actor) => mkNumberValue(actor.actorId))))
   );
-  ctx.rule?.setVariable(
+  setRuleVariable(
+    ctx,
     "targetPositions",
     mkListValue("", List.from(seenActors.map((actor) => mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y)))))
   );
-  ctx.rule?.setVariable("targetActor", state.rememberedActorId!);
-  ctx.rule?.setVariable("targetPos", state.rememberedPos!);
+  setRuleVariable(ctx, "targetActor", state.rememberedActorId!);
+  setRuleVariable(ctx, "targetPos", state.rememberedPos!);
   self.debugTargetPositions.set(seenActor.actorId, targetPos);
   return TRUE_VALUE;
 }

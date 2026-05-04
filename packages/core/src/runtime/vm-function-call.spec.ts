@@ -39,10 +39,7 @@ test("CALL transfers control to a callee and propagates its return value", () =>
   };
 
   const ctx: ExecutionContext = {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,

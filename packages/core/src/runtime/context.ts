@@ -1,8 +1,8 @@
-import { Dict } from "../platform/dict";
-import { List, type ReadonlyList } from "../platform/list";
+import type { Dict } from "../platform/dict";
+import type { List, ReadonlyList } from "../platform/list";
 import type { ActionDescriptor } from "./function-defs";
-import type { IBrain, IBrainRule } from "./host-bindings";
-import { type HandleId, NIL_VALUE, type Value } from "./value";
+import type { PlatformServices } from "./services";
+import type { HandleId, Value } from "./value";
 
 /** Action binding implemented by a host (sync or async) function. */
 export interface HostActionBinding {
@@ -26,11 +26,12 @@ export interface BytecodeExecutableAction {
 export type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
 
 /**
- * Page-activation-scoped action-instance state.
- *
- * Bytecode-backed actions use `stateSlots` for LOAD_CALLSITE_VAR /
- * STORE_CALLSITE_VAR. Host-backed actions store their opaque persistent payload
- * in `hostState` via getCallSiteState()/setCallSiteState().
+ * Page-activation-scoped action-instance state owned by the dense-state
+ * action services. Bytecode-backed actions use `stateSlots` for
+ * `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`; host-backed actions store
+ * an opaque persistent payload in `hostState` via
+ * {@link getCallSiteState} / {@link setCallSiteState}. Both views are
+ * backed by the same shim-owned storage.
  */
 export interface ActionInstance {
   callSiteId: number;
@@ -40,54 +41,27 @@ export interface ActionInstance {
 
 /** Maps `callSiteId` to its persistent {@link ActionInstance} for an active page. */
 export type ActionInstanceMap = Dict<number, ActionInstance>;
-/** Alias for {@link ActionInstanceMap}, used in call-site state contexts. */
-export type CallSiteStateMap = ActionInstanceMap;
 
 /**
- * Execution context passed to host functions.
+ * Execution context passed to host functions and bytecode dispatch paths.
  *
- * This context provides access to:
- * - The BrainRule being executed (for accessing runtime state)
- * - Variable storage (via the rule's Brain)
- * - Fiber scheduler (for spawning new fibers)
- * - Other execution state
+ * Provides id-keyed and slot-indexed access to per-tick scalar anchors
+ * (`time`, `dt`, `currentTick`), the currently-executing call site / rule,
+ * and program-global variable slot storage. All other state previously
+ * reachable as object references (brain, rule, action instance, callsite
+ * map) lives behind {@link PlatformServices} ops on `services`.
  *
- * The execution context is the bridge between the VM's execution
- * and the brain's runtime state, enabling host functions to:
- * - Read/write variables at the Brain level
- * - Access rule-specific state
- * - Spawn child fibers
- * - Query execution metadata
+ * Apps may extend this interface (e.g. sim's `ActorExecutionContext`) to
+ * carry app-specific payloads through the `data` field; the base shape
+ * stays portable across constrained-target VM implementations.
  */
 export interface ExecutionContext {
   /**
-   * The brain hosting this execution context.
+   * Per-VM service aggregate exposing program-table lookups, brain/rule
+   * variable storage, page lifecycle, RNG, and per-callsite host/action
+   * state. Host functions reach into runtime services through this field.
    */
-  brain: IBrain;
-
-  /**
-   * Get a variable value from the Brain's variable storage.
-   * Variables are identified by their unique ID (not by name).
-   *
-   * @param varId - Unique identifier for the variable
-   * @returns The variable's current value, or undefined if not found
-   */
-  getVariable<T extends Value>(varId: string): T | undefined;
-
-  /**
-   * Set a variable value in the Brain's variable storage.
-   * Variables are identified by their unique ID (not by name).
-   *
-   * @param varId - Unique identifier for the variable
-   * @param value - The value to store
-   */
-  setVariable(varId: string, value: Value): void;
-
-  /**
-   * Clear a variable from the Brain's variable storage.
-   * @param varId - Unique identifier for the variable
-   */
-  clearVariable(varId: string): void;
+  services: PlatformServices;
 
   /**
    * Read a variable by its compiler-assigned slot index. The slot index is
@@ -110,146 +84,40 @@ export interface ExecutionContext {
   setVariableBySlot(slotId: number, value: Value): void;
 
   /**
-   * Optional application-specific data that can be attached to the execution context.
-   * This allows host functions (sensors, actuators) to access environment-specific state
-   * without coupling the core VM to application-specific types.
+   * Optional application-specific data attached to the execution context.
+   * Allows host functions (sensors, actuators) to reach environment-specific
+   * state without coupling the core VM to application-specific types.
    *
-   * Example use cases:
-   * - Game: Actor/Entity reference for movement, collision detection
-   * - Web: DOM elements, browser APIs
-   * - Server: Request context, database connections
-   *
-   * Type is unknown to maintain cross-platform compatibility.
-   * Applications should use type guards or assertions when accessing this field.
+   * Type is `unknown` to maintain cross-platform compatibility; consumers
+   * use type guards or assertions when accessing this field.
    */
   data?: unknown;
-
-  /**
-   * Page-activation-scoped action-instance storage keyed by action call-site ID.
-   * Runtime code binds the current action instance through `currentActionInstance`.
-   */
-  callSiteState?: CallSiteStateMap;
-
-  /**
-   * The currently bound action instance for host-backed action execution or the
-   * current bytecode action frame chain.
-   */
-  currentActionInstance?: ActionInstance;
 
   /**
    * Current call-site ID being executed.
    * Set by the VM before invoking a host function via HOST_CALL/HOST_CALL_ASYNC
    * or a host-backed action via ACTION_CALL/ACTION_CALL_ASYNC.
-   * Host functions can use this with callSiteState to access per-call-site data.
+   * Host functions can use this with {@link PlatformServices.callSite} to
+   * access per-call-site host state.
    */
   currentCallSiteId?: number;
 
   /**
-   * The BrainRule currently being executed. This provides access to rule-specific state
-   * and metadata. It is set by the VM before host-backed host or action calls using
-   * the funcIdToRule mapping.
+   * The funcId of the rule currently being executed, or `undefined` when
+   * execution is not inside any rule. Set by the VM before host or action
+   * calls based on the current frame's `ruleFuncId`. Resolve associated
+   * metadata via {@link PlatformServices.program.getRuleFuncIdForFunc}.
    */
-  rule?: IBrainRule;
+  currentRuleFuncId?: number;
 
-  /**
-   * Mapping from function ID to the IBrainRule that was compiled into that function.
-   * Set by the Brain during initialization. Used by the VM to resolve ctx.rule
-   * before host-backed host or action calls, based on the current frame's funcId.
-   */
-  funcIdToRule?: Dict<number, IBrainRule>;
-
-  /**
-   * Current time in milliseconds since epoch. Updated before each think() call.
-   */
+  /** Current time in milliseconds since epoch. Updated before each think() call. */
   time: number;
 
-  /**
-   * Delta time in milliseconds since the last tick. Updated before each think() call.
-   */
+  /** Delta time in milliseconds since the last tick. Updated before each think() call. */
   dt: number;
 
-  /**
-   * Current tick number. Incremented on each think() call.
-   */
+  /** Current tick number. Incremented on each think() call. */
   currentTick: number;
-}
-
-function createActionStateSlots(numStateSlots: number): List<Value> {
-  const stateSlots = List.empty<Value>();
-  for (let i = 0; i < numStateSlots; i++) {
-    stateSlots.push(NIL_VALUE);
-  }
-  return stateSlots;
-}
-
-function isActionInstance(value: unknown): value is ActionInstance {
-  if (!value) {
-    return false;
-  }
-
-  const maybeActionInstance = value as Partial<ActionInstance>;
-  return maybeActionInstance.callSiteId !== undefined && maybeActionInstance.stateSlots !== undefined;
-}
-
-export function getActionInstance(ctx: ExecutionContext, callSiteId: number): ActionInstance | undefined {
-  const rawValue = ctx.callSiteState?.get(callSiteId) as unknown;
-  if (rawValue === undefined) {
-    return undefined;
-  }
-
-  if (isActionInstance(rawValue)) {
-    return rawValue;
-  }
-
-  const actionInstance: ActionInstance = {
-    callSiteId,
-    stateSlots: List.empty<Value>(),
-    hostState: rawValue,
-  };
-  ctx.callSiteState!.set(callSiteId, actionInstance);
-  return actionInstance;
-}
-
-export function getOrCreateActionInstance(
-  ctx: ExecutionContext,
-  callSiteId: number,
-  numStateSlots: number
-): ActionInstance {
-  if (!ctx.callSiteState) {
-    ctx.callSiteState = new Dict<number, ActionInstance>();
-  }
-
-  const existing = getActionInstance(ctx, callSiteId);
-  if (existing) {
-    return existing;
-  }
-
-  const actionInstance: ActionInstance = {
-    callSiteId,
-    stateSlots: createActionStateSlots(numStateSlots),
-  };
-  ctx.callSiteState.set(callSiteId, actionInstance);
-  return actionInstance;
-}
-
-export function resetActionInstance(ctx: ExecutionContext, callSiteId: number, numStateSlots: number): ActionInstance {
-  if (!ctx.callSiteState) {
-    ctx.callSiteState = new Dict<number, ActionInstance>();
-  }
-
-  const existingHostState = getActionInstance(ctx, callSiteId)?.hostState;
-  const actionInstance: ActionInstance = {
-    callSiteId,
-    stateSlots: createActionStateSlots(numStateSlots),
-    ...(existingHostState !== undefined ? { hostState: existingHostState } : {}),
-  };
-  ctx.callSiteState.set(callSiteId, actionInstance);
-
-  if (ctx.currentCallSiteId === callSiteId) {
-    ctx.currentActionInstance = actionInstance;
-  }
-
-  return actionInstance;
 }
 
 // ============================================================================
@@ -257,11 +125,12 @@ export function resetActionInstance(ctx: ExecutionContext, callSiteId: number, n
 // ============================================================================
 
 /**
- * Get the per-call-site state for the current host-backed call.
- * This allows host functions to persist state across ticks.
+ * Get the per-call-site host state for the currently executing host-backed
+ * call. Used by host functions to persist opaque state across ticks at a
+ * single call site (e.g. cooldown timers).
  *
- * @param ctx - The execution context
- * @returns The state object for this call site, or undefined if not set
+ * Returns `undefined` when no call site is bound (the helper is invoked
+ * outside a HOST_CALL/ACTION_CALL dispatch).
  *
  * @example
  * ```typescript
@@ -269,46 +138,60 @@ export function resetActionInstance(ctx: ExecutionContext, callSiteId: number, n
  *
  * function fnMove(ctx: ExecutionContext, args: List<Value>): Value {
  *   const state = getCallSiteState<MoveState>(ctx);
- *   const now = getCurrentTime();
- *
- *   if (state && now - state.lastMoveTime < COOLDOWN) {
- *     return FALSE_VALUE; // Still on cooldown
+ *   if (state && ctx.time - state.lastMoveTime < COOLDOWN) {
+ *     return FALSE_VALUE;
  *   }
- *
- *   // Perform move...
- *   setCallSiteState(ctx, { lastMoveTime: now });
+ *   setCallSiteState(ctx, { lastMoveTime: ctx.time });
  *   return TRUE_VALUE;
  * }
  * ```
  */
 export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
-  const actionInstance =
-    ctx.currentActionInstance ??
-    (ctx.currentCallSiteId !== undefined ? getActionInstance(ctx, ctx.currentCallSiteId) : undefined);
-  if (!actionInstance) {
+  const callSiteId = ctx.currentCallSiteId;
+  if (callSiteId === undefined) {
     return undefined;
   }
-  return actionInstance.hostState as T | undefined;
+  return ctx.services.callSite.getHostState(callSiteId) as T | undefined;
 }
 
 /**
- * Set the per-call-site state for the current host-backed call.
- * This allows host functions to persist state across ticks.
- *
- * @param ctx - The execution context
- * @param state - The state object to store
+ * Set the per-call-site host state for the currently executing host-backed
+ * call. No-op when invoked outside a HOST_CALL/ACTION_CALL dispatch.
  */
 export function setCallSiteState<T>(ctx: ExecutionContext, state: T): void {
-  let actionInstance = ctx.currentActionInstance;
-  if (!actionInstance) {
-    const callSiteId = ctx.currentCallSiteId;
-    if (callSiteId === undefined) {
-      return;
-    }
-
-    actionInstance = getOrCreateActionInstance(ctx, callSiteId, 0);
-    ctx.currentActionInstance = actionInstance;
+  const callSiteId = ctx.currentCallSiteId;
+  if (callSiteId === undefined) {
+    return;
   }
+  ctx.services.callSite.setHostState(callSiteId, state);
+}
 
-  actionInstance.hostState = state;
+/**
+ * Read a rule-scoped variable by name from the rule currently being executed.
+ * Returns `NIL_VALUE` when execution is not inside any rule (i.e.
+ * {@link ExecutionContext.currentRuleFuncId} is `undefined`) or when the
+ * named variable has never been written.
+ *
+ * The optional type parameter `T` narrows the return type for callers that
+ * know the expected `Value` shape; the runtime does not validate the cast,
+ * so callers must guard against `NIL_VALUE` when reads can be absent.
+ *
+ * @param ctx - The execution context
+ * @param name - The variable name as authored on the rule
+ */
+export function getRuleVariable<T extends Value = Value>(ctx: ExecutionContext, name: string): T {
+  return ctx.services.ruleVars.getByName(ctx.currentRuleFuncId, name) as T;
+}
+
+/**
+ * Write a rule-scoped variable by name on the rule currently being executed.
+ * No-op when execution is not inside any rule (i.e.
+ * {@link ExecutionContext.currentRuleFuncId} is `undefined`).
+ *
+ * @param ctx - The execution context
+ * @param name - The variable name as authored on the rule
+ * @param value - The value to store
+ */
+export function setRuleVariable(ctx: ExecutionContext, name: string, value: Value): void {
+  ctx.services.ruleVars.setByName(ctx.currentRuleFuncId, name, value);
 }

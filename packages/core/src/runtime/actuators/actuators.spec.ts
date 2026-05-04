@@ -18,13 +18,11 @@ import {
   type Value,
   VOID_VALUE,
 } from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -70,9 +68,11 @@ describe("switch-page actuator", () => {
   test("calls requestPageChange with 0-based index for number arg", () => {
     let calledWith: number | undefined;
     const ctx = mkCtx({
-      brain: {
-        requestPageChange: (idx: number) => {
-          calledWith = idx;
+      services: {
+        brainPages: {
+          requestPageChange: (idx: number) => {
+            calledWith = idx;
+          },
         },
       } as never,
     });
@@ -88,9 +88,11 @@ describe("switch-page actuator", () => {
   test("calls requestPageChangeByPageId for string arg", () => {
     let calledWith: string | undefined;
     const ctx = mkCtx({
-      brain: {
-        requestPageChangeByPageId: (id: string) => {
-          calledWith = id;
+      services: {
+        brainPages: {
+          requestPageChangeByPageId: (id: string) => {
+            calledWith = id;
+          },
         },
       } as never,
     });
@@ -106,9 +108,11 @@ describe("switch-page actuator", () => {
   test("calls requestPageRestart with no args", () => {
     let restartCalled = false;
     const ctx = mkCtx({
-      brain: {
-        requestPageRestart: () => {
-          restartCalled = true;
+      services: {
+        brainPages: {
+          requestPageRestart: () => {
+            restartCalled = true;
+          },
         },
       } as never,
     });
@@ -133,9 +137,11 @@ describe("restart-page actuator", () => {
   test("calls requestPageRestart", () => {
     let called = false;
     const ctx = mkCtx({
-      brain: {
-        requestPageRestart: () => {
-          called = true;
+      services: {
+        brainPages: {
+          requestPageRestart: () => {
+            called = true;
+          },
         },
       } as never,
     });

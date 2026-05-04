@@ -12,6 +12,7 @@ import {
   mod,
   optional,
   type ReadonlyList,
+  setRuleVariable,
   TRUE_VALUE,
   type Value,
   Vector2,
@@ -78,7 +79,7 @@ function execBump(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   const bumpedActorId = filteredBumps[Symbol.iterator]().next().value!;
 
   // Store as "targetActor" for the DO side to access
-  ctx.rule?.setVariable("targetActor", mkNumberValue(bumpedActorId));
+  setRuleVariable(ctx, "targetActor", mkNumberValue(bumpedActorId));
 
   const bumpedActor = self.engine.getActorById(bumpedActorId);
   if (bumpedActor) {

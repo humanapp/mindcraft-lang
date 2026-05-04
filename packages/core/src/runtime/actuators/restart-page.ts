@@ -28,7 +28,7 @@ const descriptor: ActionDescriptor = {
 };
 
 function fnRestartPage(ctx: ExecutionContext): Value {
-  ctx.brain.requestPageRestart();
+  ctx.services.brainPages.requestPageRestart();
   return VOID_VALUE;
 }
 

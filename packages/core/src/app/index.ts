@@ -89,7 +89,7 @@ export { APP_CAPABILITY_BIT_OFFSET, CoreCapabilityBits } from "../brain/interfac
 export type { StructFieldGetterFn, StructTypeDef } from "../runtime";
 export { getSlotId } from "../runtime";
 export type { ExecutionContext } from "../runtime/context";
-export { getCallSiteState, setCallSiteState } from "../runtime/context";
+export { getCallSiteState, getRuleVariable, setCallSiteState, setRuleVariable } from "../runtime/context";
 export type {
   ListValue,
   MapValue,

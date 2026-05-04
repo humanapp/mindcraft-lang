@@ -376,6 +376,11 @@ export class BrainDef implements IBrainDef {
       page.deserializeJson(pageJson, catalogs);
     }
 
+    // addPage() ran syncPageTiles_() while pages still had their default
+    // names; page.deserializeJson() assigns name_ directly without emitting
+    // name_changed. Re-sync so tile labels reflect the deserialized names.
+    brain.syncPageTiles_();
+
     return brain;
   }
 

@@ -17,15 +17,13 @@ import {
   TRUE_VALUE,
   type Value,
 } from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 
 function mkCtx(
   overrides: Omit<Partial<ExecutionContext>, "callSiteState"> & { callSiteState?: Dict<number, unknown> } = {}
 ): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     fiberId: 0,
     time: 0,
     dt: 0,
@@ -279,7 +277,7 @@ describe("random sensor", () => {
 
   test("returns value from brain.rng()", () => {
     const ctx = mkCtx({
-      brain: { rng: () => 0.42 } as never,
+      services: { rng: { next: () => 0.42 } } as never,
     });
     const args = mkArgs();
 
@@ -292,7 +290,7 @@ describe("random sensor", () => {
     let call = 0;
     const values = [0.1, 0.9];
     const ctx = mkCtx({
-      brain: { rng: () => values[call++]! } as never,
+      services: { rng: { next: () => values[call++]! } } as never,
     });
     const args = mkArgs();
 

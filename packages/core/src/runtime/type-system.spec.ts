@@ -25,6 +25,7 @@ import {
   type UnionTypeDef,
   type Value,
 } from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 
 let services: BrainServices;
 
@@ -39,10 +40,7 @@ function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?:
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,

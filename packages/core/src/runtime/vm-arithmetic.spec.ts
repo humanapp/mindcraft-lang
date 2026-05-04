@@ -55,10 +55,7 @@ test("HOST_CALL invokes a sync host function and returns the result", () => {
   };
 
   const ctx: ExecutionContext = {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,

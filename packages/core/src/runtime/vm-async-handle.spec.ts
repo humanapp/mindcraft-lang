@@ -47,10 +47,7 @@ test("HOST_CALL_ASYNC and AWAIT complete in one run when the handle resolves syn
   };
 
   const ctx: ExecutionContext = {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,

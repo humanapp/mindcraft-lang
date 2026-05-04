@@ -12,14 +12,11 @@ import {
   type UnlinkedBrainProgram,
   VmStatus,
 } from "../runtime";
-import {
-  type ActionInstance,
-  type BytecodeExecutableAction,
-  type ExecutionContext,
-  resetActionInstance,
-} from "../runtime/context";
+import type { BytecodeExecutableAction, ExecutionContext } from "../runtime/context";
+import { createDenseShims, type IDenseShims } from "../runtime/dense-shims";
 import { linkBrainProgram } from "../runtime/linker";
 import type { Program } from "../runtime/program";
+import type { PlatformServices } from "../runtime/services";
 import { treeshakeProgram } from "../runtime/tree-shaker";
 import { NIL_VALUE, type Value } from "../runtime/value";
 import { FiberScheduler, VM } from "../runtime/vm";
@@ -118,6 +115,12 @@ export class Brain implements IBrain {
    */
   private executionContext: ExecutionContext | undefined;
 
+  /** Dense-state shim that adapts the legacy IBrain/IBrainRule object graph to {@link PlatformServices}. */
+  private denseShims: IDenseShims | undefined;
+
+  /** Mapping from rule function ids to their owning {@link IBrainRule}; backs the dense shim's program/ruleVars services. */
+  private funcIdToRule: Dict<number, IBrainRule> = new Dict();
+
   /**
    * Fiber IDs for the currently active page's root rules.
    * Tracked for respawning when they complete.
@@ -173,8 +176,31 @@ export class Brain implements IBrain {
     // Wire the brain-level variable storage to the loaded program's variableNames pool.
     this.installVariableTable(this.program.variableNames);
 
+    // Assign function IDs to runtime rule objects and build funcId->rule mapping
+    this.funcIdToRule = new Dict<number, IBrainRule>();
+    for (let pageIdx = 0; pageIdx < this.pages.size(); pageIdx++) {
+      const page = this.pages.get(pageIdx)!;
+      page.assignFuncIds(this.ruleIndex, pageIdx);
+      this.collectFuncIdToRuleMapping(page.children(), this.funcIdToRule);
+    }
+
+    // Build dense-state shim adapter and assemble PlatformServices for the VM.
+    const funcIdToRule = this.funcIdToRule;
+    this.denseShims = createDenseShims(this, (funcId) => funcIdToRule.get(funcId));
+    const platformServices: PlatformServices = {
+      functions: this.services.functions,
+      types: this.services.types,
+      program: this.denseShims.program,
+      brainVars: this.denseShims.brainVars,
+      ruleVars: this.denseShims.ruleVars,
+      brainPages: this.denseShims.brainPages,
+      rng: this.denseShims.rng,
+      callSite: this.denseShims.callSite,
+      action: this.denseShims.action,
+    };
+
     // Create VM with the linked executable program.
-    this.vm = new VM(this.program, this.services);
+    this.vm = new VM(this.program, platformServices);
 
     // Create scheduler
     this.scheduler = new FiberScheduler(this.vm, {
@@ -182,14 +208,6 @@ export class Brain implements IBrain {
       defaultBudget: 1000,
       autoGcHandles: true,
     });
-
-    // Assign function IDs to runtime rule objects and build funcId->rule mapping
-    const funcIdToRule = new Dict<number, IBrainRule>();
-    for (let pageIdx = 0; pageIdx < this.pages.size(); pageIdx++) {
-      const page = this.pages.get(pageIdx)!;
-      page.assignFuncIds(this.ruleIndex, pageIdx);
-      this.collectFuncIdToRuleMapping(page.children(), funcIdToRule);
-    }
 
     // Build page lookup indices for O(1) resolution in requestPageChangeByPageId / requestPageChangeByName
     this.pageIdToIndex = new Dict();
@@ -203,21 +221,9 @@ export class Brain implements IBrain {
     }
 
     // Create shared execution context
-    // The getVariable/setVariable/clearVariable closures capture `brain` by reference
-    // instead of using method references (this.getVariable) because Roblox-TS
-    // doesn't support `this` binding with unbound method references.
     const brain = this;
     this.executionContext = {
-      brain: this,
-      getVariable<T extends Value>(varId: string): T | undefined {
-        return brain.getVariable<T>(varId);
-      },
-      setVariable(varId: string, value: Value): void {
-        brain.setVariable(varId, value);
-      },
-      clearVariable(varId: string): void {
-        brain.clearVariable(varId);
-      },
+      services: platformServices,
       getVariableBySlot(slotId: number): Value {
         return brain.getVariableBySlot(slotId);
       },
@@ -227,7 +233,6 @@ export class Brain implements IBrain {
       time: 0,
       dt: 0,
       currentTick: 0,
-      funcIdToRule,
       data: contextData,
     };
   }
@@ -516,7 +521,15 @@ export class Brain implements IBrain {
    * Activate a page by spawning fibers for its root rules.
    */
   private activatePage(pageIndex: number): void {
-    if (!this.program || !this.scheduler || !this.executionContext || !this.vm || !this.pageMetadata) return;
+    if (
+      !this.program ||
+      !this.scheduler ||
+      !this.executionContext ||
+      !this.vm ||
+      !this.pageMetadata ||
+      !this.denseShims
+    )
+      return;
 
     const pageMetadata = this.pageMetadata.get(pageIndex);
     if (!pageMetadata) return;
@@ -533,27 +546,23 @@ export class Brain implements IBrain {
         continue;
       }
 
-      const actionInstance = resetActionInstance(
-        this.executionContext,
-        site.callSiteId,
-        action.binding === "bytecode" ? action.numStateSlots : 0
-      );
+      const numStateSlots = action.binding === "bytecode" ? action.numStateSlots : 0;
+      this.denseShims.resetCallsite(site.callSiteId, numStateSlots);
 
       if (action.binding === "host") {
         if (action.onPageEntered) {
-          this.runHostActivationHook(site.callSiteId, actionInstance, action.onPageEntered);
+          this.runHostActivationHook(site.callSiteId, action.onPageEntered);
         }
         continue;
       }
 
       if (action.activationFuncId !== undefined) {
-        this.runBytecodeActivationHook(action, site.callSiteId, actionInstance);
+        this.runBytecodeActivationHook(action, site.callSiteId);
       }
     }
 
     this.executionContext.currentCallSiteId = undefined;
-    this.executionContext.currentActionInstance = undefined;
-    this.executionContext.rule = undefined;
+    this.executionContext.currentRuleFuncId = undefined;
 
     // Spawn a fiber for each root rule in the page.
     for (let i = 0; i < pageMetadata.rootRuleFuncIds.size(); i++) {
@@ -592,9 +601,8 @@ export class Brain implements IBrain {
     this.activeRuleFiberIds = List.empty();
 
     if (this.executionContext) {
-      this.executionContext.currentActionInstance = undefined;
       this.executionContext.currentCallSiteId = undefined;
-      this.executionContext.rule = undefined;
+      this.executionContext.currentRuleFuncId = undefined;
     }
 
     // Notify the page runtime
@@ -648,37 +656,26 @@ export class Brain implements IBrain {
     return fiber.state === FiberState.DONE || fiber.state === FiberState.FAULT || fiber.state === FiberState.CANCELLED;
   }
 
-  private runHostActivationHook(
-    callSiteId: number,
-    actionInstance: ActionInstance,
-    onPageEntered: (ctx: ExecutionContext) => void
-  ): void {
+  private runHostActivationHook(callSiteId: number, onPageEntered: (ctx: ExecutionContext) => void): void {
     if (!this.executionContext) {
       return;
     }
 
     const previousCallSiteId = this.executionContext.currentCallSiteId;
-    const previousActionInstance = this.executionContext.currentActionInstance;
-    const previousRule = this.executionContext.rule;
+    const previousRuleFuncId = this.executionContext.currentRuleFuncId;
 
     this.executionContext.currentCallSiteId = callSiteId;
-    this.executionContext.currentActionInstance = actionInstance;
-    this.executionContext.rule = undefined;
+    this.executionContext.currentRuleFuncId = undefined;
 
     try {
       onPageEntered(this.executionContext);
     } finally {
       this.executionContext.currentCallSiteId = previousCallSiteId;
-      this.executionContext.currentActionInstance = previousActionInstance;
-      this.executionContext.rule = previousRule;
+      this.executionContext.currentRuleFuncId = previousRuleFuncId;
     }
   }
 
-  private runBytecodeActivationHook(
-    action: BytecodeExecutableAction,
-    callSiteId: number,
-    actionInstance: ActionInstance
-  ): void {
+  private runBytecodeActivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
     if (!this.executionContext || !this.vm || !this.scheduler || action.activationFuncId === undefined) {
       return;
     }
@@ -686,8 +683,7 @@ export class Brain implements IBrain {
     const activationContext: ExecutionContext = {
       ...this.executionContext,
       currentCallSiteId: callSiteId,
-      currentActionInstance: actionInstance,
-      rule: undefined,
+      currentRuleFuncId: undefined,
     };
     const activationFiber = this.vm.spawnFiber(
       this.nextInlineFiberId--,
@@ -700,7 +696,6 @@ export class Brain implements IBrain {
       actionKey: action.descriptor.key,
       callSiteId,
       isAsync: false,
-      actionInstance,
     };
     activationFiber.instrBudget = 10000;
 

@@ -9,7 +9,6 @@ import { UniqueSet } from "../platform/uniqueset";
 import type { FunctionBytecode, Instr } from "./bytecode";
 import { Op } from "./bytecode";
 import type { ActionInstance, ExecutableAction, ExecutionContext } from "./context";
-import { getOrCreateActionInstance } from "./context";
 import type { VmEvents } from "./events";
 import type { Program } from "./program";
 import type { PlatformServices } from "./services";
@@ -92,7 +91,7 @@ export interface VmOptions extends Partial<VmConfig> {
  * - Slot ids are operands to LOAD_VAR_SLOT/STORE_VAR_SLOT and index into the
  *   loaded program's variableNames pool
  * - The dispatch loop calls ctx.getVariableBySlot/setVariableBySlot directly
- * - Host functions still address variables by name via ctx.getVariable/setVariable
+ * - Host functions still address variables by name via ctx.services.brainVars/ruleVars
  *
  * Invariants:
  * - vstack contains only operand stack (variables managed by ExecutionContext)
@@ -670,22 +669,34 @@ export class VM implements IVM {
 
   private execLoadCallsiteVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const idx = ins.a ?? 0;
-    const stateSlots = this.getCurrentActionStateSlots(fiber, "LOAD_CALLSITE_VAR");
-    if (idx < 0 || idx >= stateSlots.size()) {
-      throw new Error(`LOAD_CALLSITE_VAR: index ${idx} out of bounds [0, ${stateSlots.size()})`);
+    const callSiteId = this.getCurrentActionCallSiteId(fiber, "LOAD_CALLSITE_VAR");
+    if (callSiteId === -1 && fiber.callsiteVars) {
+      if (idx < 0 || idx >= fiber.callsiteVars.size()) {
+        throw new Error(`LOAD_CALLSITE_VAR: index ${idx} out of bounds [0, ${fiber.callsiteVars.size()})`);
+      }
+      this.push(fiber, fiber.callsiteVars.get(idx)!);
+      frame.pc++;
+      return undefined;
     }
-    this.push(fiber, stateSlots.get(idx)!);
+    const value = fiber.executionContext.services.action.getStateSlot(callSiteId, idx);
+    this.push(fiber, value);
     frame.pc++;
     return undefined;
   }
 
   private execStoreCallsiteVar(fiber: Fiber, ins: Instr, frame: Frame): undefined {
     const idx = ins.a ?? 0;
-    const stateSlots = this.getCurrentActionStateSlots(fiber, "STORE_CALLSITE_VAR");
-    if (idx < 0 || idx >= stateSlots.size()) {
-      throw new Error(`STORE_CALLSITE_VAR: index ${idx} out of bounds [0, ${stateSlots.size()})`);
+    const callSiteId = this.getCurrentActionCallSiteId(fiber, "STORE_CALLSITE_VAR");
+    const value = this.pop(fiber);
+    if (callSiteId === -1 && fiber.callsiteVars) {
+      if (idx < 0 || idx >= fiber.callsiteVars.size()) {
+        throw new Error(`STORE_CALLSITE_VAR: index ${idx} out of bounds [0, ${fiber.callsiteVars.size()})`);
+      }
+      fiber.callsiteVars.set(idx, value);
+      frame.pc++;
+      return undefined;
     }
-    stateSlots.set(idx, this.pop(fiber));
+    fiber.executionContext.services.action.setStateSlot(callSiteId, idx, value);
     frame.pc++;
     return undefined;
   }
@@ -996,8 +1007,8 @@ export class VM implements IVM {
         throw new Error(`ACTION_CALL: host action ${actionKey} is missing execSync`);
       }
 
-      const actionInstance = getOrCreateActionInstance(fiber.executionContext, callSiteId, 0);
-      this.bindExecutionContext(fiber, frame, callSiteId, actionInstance);
+      fiber.executionContext.services.action.ensureCallsite(callSiteId, 0);
+      this.bindExecutionContext(fiber, frame, callSiteId);
 
       const args = fiber.vstack.subview(stackSize - argc, argc);
       const result = action.execSync(fiber.executionContext, args);
@@ -1052,8 +1063,8 @@ export class VM implements IVM {
       const hid = this.handles.createPending();
       this.push(fiber, V.handle(hid));
 
-      const actionInstance = getOrCreateActionInstance(fiber.executionContext, callSiteId, 0);
-      this.bindExecutionContext(fiber, frame, callSiteId, actionInstance);
+      fiber.executionContext.services.action.ensureCallsite(callSiteId, 0);
+      this.bindExecutionContext(fiber, frame, callSiteId);
 
       action.execAsync(fiber.executionContext, args, hid);
       frame.pc++;
@@ -1663,10 +1674,7 @@ export class VM implements IVM {
   }
 
   private resolveDirectRuleFuncId(executionContext: ExecutionContext, funcId: number): number | undefined {
-    if (executionContext.funcIdToRule?.has(funcId)) {
-      return funcId;
-    }
-    return undefined;
+    return executionContext.services.program.getRuleFuncIdForFunc(funcId);
   }
 
   private resolveFrameRuleFuncId(executionContext: ExecutionContext, frame: Frame | undefined): number | undefined {
@@ -1689,33 +1697,22 @@ export class VM implements IVM {
     );
   }
 
-  private resolveRuleForFrame(executionContext: ExecutionContext, frame: Frame | undefined) {
-    const ruleFuncId = this.resolveFrameRuleFuncId(executionContext, frame);
-    if (ruleFuncId === undefined) {
-      return undefined;
-    }
-    return executionContext.funcIdToRule?.get(ruleFuncId);
-  }
-
-  private bindExecutionContext(fiber: Fiber, frame: Frame, callSiteId: number, actionInstance?: ActionInstance): void {
+  private bindExecutionContext(fiber: Fiber, frame: Frame, callSiteId: number): void {
     fiber.executionContext.currentCallSiteId = callSiteId;
-    fiber.executionContext.currentActionInstance = actionInstance ?? this.getCurrentActionInstance(fiber);
-    fiber.executionContext.rule = this.resolveRuleForFrame(fiber.executionContext, frame);
+    fiber.executionContext.currentRuleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, frame);
   }
 
   private syncExecutionContextFromTopFrame(fiber: Fiber): void {
     const topFrame = this.topFrame(fiber);
     if (!topFrame) {
       fiber.executionContext.currentCallSiteId = undefined;
-      fiber.executionContext.currentActionInstance = undefined;
-      fiber.executionContext.rule = undefined;
+      fiber.executionContext.currentRuleFuncId = undefined;
       return;
     }
 
     const actionBinding = this.getCurrentActionBinding(fiber);
     fiber.executionContext.currentCallSiteId = actionBinding?.callSiteId;
-    fiber.executionContext.currentActionInstance = actionBinding?.actionInstance;
-    fiber.executionContext.rule = this.resolveRuleForFrame(fiber.executionContext, topFrame);
+    fiber.executionContext.currentRuleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, topFrame);
   }
 
   private getCurrentActionBinding(fiber: Fiber) {
@@ -1728,18 +1725,14 @@ export class VM implements IVM {
     return undefined;
   }
 
-  private getCurrentActionInstance(fiber: Fiber): ActionInstance | undefined {
-    return this.getCurrentActionBinding(fiber)?.actionInstance;
-  }
-
-  private getCurrentActionStateSlots(fiber: Fiber, opName: string): List<Value> {
-    const actionInstance = this.getCurrentActionInstance(fiber);
-    if (actionInstance) {
-      return actionInstance.stateSlots;
+  private getCurrentActionCallSiteId(fiber: Fiber, opName: string): number {
+    const actionBinding = this.getCurrentActionBinding(fiber);
+    if (actionBinding) {
+      return actionBinding.callSiteId;
     }
 
     if (fiber.callsiteVars) {
-      return fiber.callsiteVars;
+      return -1;
     }
 
     throw new Error(`${opName}: no action state is bound to the current frame chain`);
@@ -1783,16 +1776,14 @@ export class VM implements IVM {
       fiber.executionContext,
       `ACTION_CALL:${action.descriptor.key}`
     );
-    const actionInstance = getOrCreateActionInstance(fiber.executionContext, callSiteId, action.numStateSlots);
+    fiber.executionContext.services.action.ensureCallsite(callSiteId, action.numStateSlots);
     const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, callerFrame);
     const base = fiber.vstack.size();
     const locals = this.allocLocals(fn, effectiveArgs);
 
     callerFrame.pc++;
     fiber.executionContext.currentCallSiteId = callSiteId;
-    fiber.executionContext.currentActionInstance = actionInstance;
-    fiber.executionContext.rule =
-      ruleFuncId !== undefined ? fiber.executionContext.funcIdToRule?.get(ruleFuncId) : undefined;
+    fiber.executionContext.currentRuleFuncId = ruleFuncId;
     fiber.frames.push({
       funcId: action.entryFuncId,
       pc: 0,
@@ -1803,7 +1794,6 @@ export class VM implements IVM {
         actionKey: action.descriptor.key,
         callSiteId,
         isAsync: false,
-        actionInstance,
       },
     });
   }
@@ -1816,19 +1806,17 @@ export class VM implements IVM {
   ): Fiber {
     const childContext: ExecutionContext = { ...parentFiber.executionContext };
     const childFiber = this.spawnFiber(this.nextInternalFiberId--, action.entryFuncId, args, childContext);
-    const actionInstance = getOrCreateActionInstance(childContext, callSiteId, action.numStateSlots);
+    childContext.services.action.ensureCallsite(callSiteId, action.numStateSlots);
     const ruleFuncId = this.resolveFrameRuleFuncId(parentFiber.executionContext, this.topFrame(parentFiber));
     const childFrame = this.topFrame(childFiber)!;
 
     childContext.currentCallSiteId = callSiteId;
-    childContext.currentActionInstance = actionInstance;
-    childContext.rule = ruleFuncId !== undefined ? childContext.funcIdToRule?.get(ruleFuncId) : undefined;
+    childContext.currentRuleFuncId = ruleFuncId;
     childFrame.ruleFuncId = ruleFuncId;
     childFrame.actionBinding = {
       actionKey: action.descriptor.key,
       callSiteId,
       isAsync: true,
-      actionInstance,
     };
 
     return childFiber;

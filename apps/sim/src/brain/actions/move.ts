@@ -9,6 +9,7 @@ import {
   extractListValue,
   extractNumberValue,
   getCallSiteState,
+  getRuleVariable,
   getSlotId,
   type List,
   type ListValue,
@@ -128,7 +129,7 @@ function resolveAwayFromTarget(ctx: ExecutionContext, args: ReadonlyList<Value>)
   }
 
   // Try targetPositions list variable -> center of mass of the 2 nearest
-  const targetPositionsVar = ctx.rule?.getVariable<ListValue>("targetPositions");
+  const targetPositionsVar = getRuleVariable<ListValue>(ctx, "targetPositions");
   if (targetPositionsVar) {
     const self = getSelf(ctx);
     const sx = self?.sprite.x ?? 0;
@@ -183,7 +184,7 @@ function computeWanderSteering(ctx: ExecutionContext, self: Actor, weight: numbe
   if (!state || state.wanderTargetExpiresAt < now) {
     state = {
       wanderTargetPos: mkVector2Value(self.randomPosition()),
-      wanderTargetExpiresAt: now + ctx.brain.rng() * 5000 + 2000, // 2-7 seconds
+      wanderTargetExpiresAt: now + ctx.services.rng.next() * 5000 + 2000, // 2-7 seconds
     } satisfies MoveState;
     setCallSiteState(ctx, state);
   }

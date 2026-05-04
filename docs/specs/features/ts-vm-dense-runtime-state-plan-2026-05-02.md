@@ -101,6 +101,22 @@ The dense-state work assumes:
 If any prerequisite slips, this spec stops -- do not work around a
 missing seam by reaching back into `brain/`.
 
+**Lifecycle-hooks precondition (added 2026-05-03).** D2 / D3 / D4
+additionally assume the page-lifecycle-hooks spec
+([`ts-vm-page-lifecycle-hooks-2026-05-03.md`](./ts-vm-page-lifecycle-hooks-2026-05-03.md))
+has landed (phases L1 and L2). Under that spec, callsite storage
+(action state slots and host state cells) is
+**brain-instance-scoped**, not page-activation-scoped:
+`services.action.ensureCallsite` allocates on first call and is a
+no-op afterward, and reset is opt-in via
+`services.action.resetCallsite(callSiteId)`,
+`services.callSite.clearHostState(callSiteId)`, the new bytecode
+hooks `initializerFuncId` / `deactivationFuncId`, the new host
+hook `onPageExited`, or `Brain.shutdown()`. Every reference in
+this plan to callsite-storage lifetime is written against that
+contract; if the lifecycle-hooks spec slips, this spec's D3 and
+D4 phases stop until it ships.
+
 ## Desired End State
 
 The runtime exposes one portable `ExecutionContext` shape and a
@@ -126,12 +142,13 @@ PlatformServices (extends the runtime aggregate documented in
 
 Note: `time`, `dt`, and `currentTick` are per-tick scalar anchors
 on `ExecutionContext`, stamped by the host before each tick. Core
-does not ship an RNG service, a sub-tick `now()` service, or any
-other time/randomness facility on `PlatformServices`. Applications
-that need such facilities layer them in at the application level
-(via their own host functions and platform-side service objects);
-the dense plan does not surface them through the core runtime
-contract.
+ships an `IRngServices` member on `PlatformServices` because the
+core `random` sensor (`packages/core/src/runtime/sensors/random.ts`)
+is a shipped host function and requires a brain-scoped random
+stream. Core does not ship a sub-tick `now()` service or any other
+time facility on `PlatformServices`; applications that need such
+facilities layer them in at the application level (via their own
+host functions and platform-side service objects).
 
 Note: "platform entity / self access" (e.g. sim's actor handle,
 target actor, world view) is **not** part of the core
@@ -425,12 +442,53 @@ Each unit must:
 
 ## Current State
 
-Completed: D0
-Next up: D1
+Completed: D0, D1
+Next up: D2
 
 ---
 
 ## Phase Log
+
+### D1
+
+**Status**
+
+`ExecutionContext` and `PlatformServices` reshaped to the dense
+surface (D0 tables 1-6); new ops (`services.brainVars`,
+`services.ruleVars`, `services.brainPages`, `services.callSite`,
+`services.action`, `services.program`, `services.rng`) backed by
+`runtime/dense-shims.ts` against the legacy `Brain` / `IBrainRule`
+graph. `vm.ts` reads route through the new surface only. Lowering
+audit (step 0): no ts-compiler edits required.
+Verification: full gate green (711/711 tests).
+
+**Risks** (D1 -> D2/D3/D4)
+
+- **Numeric `0` is a real `RuleId`, not a no-rule sentinel.** The
+  compiler assigns funcId `0` to the first rule of the first page,
+  so `undefined` is the only no-rule marker. D1 hit a live
+  regression where the shim short-circuited on `ruleFuncId === 0`
+  and silently dropped rule-var traffic for single-page brains.
+  D2 must keep `undefined` as the sole sentinel; new regression
+  tests in `dense-shims.spec.ts` and `brain.spec.ts` (single-page
+  WHEN/DO roundtrip, parent->child ancestor walk, page isolation,
+  unset = NIL) inherit as the gate when the shim's rule-side
+  branch is removed.
+- **`runtime/dense-shims.ts` is the only post-D1 value-importer of
+  `IBrain` / `IBrainRule` under `runtime/`.** D2/D3/D4 each retire
+  one branch; the file deletes at end of D4. Any new value-import
+  of those types from `runtime/` outside `dense-shims.ts` is a
+  regression and must be bounced.
+- **`services.callSite` host-state lifetime is
+  brain-instance-scoped.** Per the page-lifecycle-hooks spec,
+  the host-state map is allocated once per
+  `(brainInstance, callSiteId)` and survives until
+  `Brain.shutdown()` or an explicit `clearHostState`. D3 must
+  add behavior tests for `move` cooldown and `eat`
+  consumption window so the adapter's semantics do not
+  drift from this contract.
+
+---
 
 ### D0
 
@@ -453,11 +511,12 @@ Verification: acceptance #11 grep returns only matches inside D0's own procedure
   cannot distinguish "no rule" from "rule 0." D2 step 2 adds the
   guard.
 - **`services.callSite` host-state must not clear on action reset.**
-  Today `resetActionInstance` deliberately preserves `existingHostState`
-  across slot resets so cooldowns survive action restart. The D3
-  adapter's map is keyed only by `callSiteId` and is independent of
-  action-instance lifetime. D3's behavior tests for `move` cooldown
-  and `eat` consumption window catch a regression.
+  Per the page-lifecycle-hooks spec, the host-state map is
+  brain-instance-scoped and survives page round-trips; clearing it
+  is opt-in via `clearHostState` or `Brain.shutdown`. The D3
+  adapter's map is keyed only by `callSiteId` and is independent
+  of action-instance lifetime. D3's behavior tests for `move`
+  cooldown and `eat` consumption window catch a regression.
 - **`currentActionInstance` deletion gated on D3 grep cleanliness.**
   Table 1 dispositions `delete` the field as dead-after-D3. D3
   acceptance #1/#2 are the gate; if either grep is non-empty, D4
@@ -574,7 +633,7 @@ the start of D0 work; update on D0-merge if rebased).
 | ------------ | -------------- | --------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
 | `RuleId`     | `number`       | compiler        | `0`      | rule variables, allocated by compiler from rule's local var declarations                                                                                                                                        | `regenerated-on-reload` |
 | `ActionId`   | `number`       | compiler        | `0`      | n/a                                                                                                                                                                                                             | `regenerated-on-reload` |
-| `CallSiteId` | `number`       | compiler        | `0`      | per-callsite host-state cell plus per-callsite action-state-slot list, allocated by compiler at action-call lowering (page-activation-scoped lifetime; `services.action.ensureCallsite` overwrites on re-entry) | `regenerated-on-reload` |
+| `CallSiteId` | `number`       | compiler        | `0`      | per-callsite host-state cell plus per-callsite action-state-slot list, allocated by compiler at action-call lowering (brain-instance-scoped lifetime per the page-lifecycle-hooks spec; `services.action.ensureCallsite` allocates on first call and is a no-op afterward; explicit reset via `services.action.resetCallsite` / `services.callSite.clearHostState` / `Brain.shutdown`) | `regenerated-on-reload` |
 | `PageId`     | `number`       | compiler        | `0`      | n/a                                                                                                                                                                                                             | `regenerated-on-reload` |
 
 ---
@@ -1591,11 +1650,12 @@ absent, escalate per the Workflow Convention and reopen D0.
   `packages/core/src/runtime/sensors/sensors.spec.ts:66, 236`
   (build `mkCtx({ currentCallSiteId, callSiteState: ... })`),
   and `packages/core/src/runtime/vm.spec.ts:1214` (asserts
-  `ctx.currentCallSiteId`). Any sim-side test that exercises
-  `move` / `shoot` / `eat` / `see` cooldowns updates to the
-  new host-state surface; the agent enumerates these by
-  searching for `getCallSiteState` / `setCallSiteState` under
-  `apps/sim/`.
+  `ctx.currentCallSiteId`). D3 introduces no sim-side test
+  changes; cooldown / consumption-window / recharge behavior
+  is exercised by the synthetic actuators added under
+  `packages/core/src/brain/brain.spec.ts` (see "New
+  regression tests" below). Sim is exercised only via the
+  full-gate acceptance line.
 
 ### New surface
 
@@ -1657,9 +1717,10 @@ expose `ActionInstance` to host code.
    `callSiteState: new Dict<number, unknown>()` to
    constructing a test-local `services.callSite` adapter that
    holds host state for the asserted call sites. The
-   `currentCallSiteId` assignment is unchanged. Sim-side test
-   sweeps for cooldown behavior assert through the new
-   surface.
+   `currentCallSiteId` assignment is unchanged. The new
+   regression tests below exercise cooldown-style behavior
+   end-to-end through the new surface; no sim-side test
+   sweeps are required.
 
 ### Notes (not work items)
 
@@ -1673,6 +1734,93 @@ expose `ActionInstance` to host code.
   was the deleted helper pair, so removing the field cannot
   affect bytecode behavior.
 
+### New regression tests
+
+Lifetime-flip behavior is covered by the page-lifecycle-hooks
+spec's L1 phase (`/memories/repo/vm-lifecycle-L1.md` once L1
+ships, plus the L1 "New regression tests" list inside that
+spec). The tests below are D3-specific: they pin the
+`services.callSite` adapter's wiring and the carry-over of
+cooldown semantics across page round-trips through synthetic
+host actuators that mirror the shapes of `move`, `eat`, and
+`shoot` without depending on sim.
+
+All new D3 tests live under `packages/core/src/runtime/` and
+`packages/core/src/brain/`:
+
+1. **`services.callSite.getHostState` / `setHostState` round-trip
+   (unit).** File:
+   `packages/core/src/runtime/dense-shims.spec.ts`. Construct
+   the dense-shims adapter, call `setHostState(7, { foo: 1
+})`, assert `getHostState(7)` returns the same object
+   reference. Call `getHostState(8)` returns `undefined`.
+2. **Distinct `callSiteId`s do not alias (unit).** Same file.
+   Set host state on callsite 7 and 8 independently; assert
+   each `getHostState` returns the correct payload.
+3. **`services.callSite` host-state survives a page round-trip
+   (brain-level).** File:
+   `packages/core/src/brain/brain.spec.ts`. Build a brain with
+   one host actuator that, on first `exec`, writes
+   `setHostState(ctx.currentCallSiteId, { tick: ctx.time })`
+   and on every subsequent `exec` reads that value back. Tick
+   the brain, capture the written tick, switch pages and back,
+   tick again, assert the actuator observes the originally
+   written tick. Inverts under the lifetime-flip assumption:
+   no `onPageExited` clearing means the host cell carries.
+4. **Child-fiber sees parent's host-state map (brain-level).**
+   Same file. Build a brain with an async host actuator that
+   spawns a child fiber via `HOST_CALL_ASYNC`; both parent and
+   child write to and read from the same
+   `currentCallSiteId`'s host state. Assert the child reads
+   what the parent wrote and vice versa within the same tick.
+   This pins the "adapter map is shared across the cloned
+   `ExecutionContext`" guarantee called out in the Risks
+   block.
+5. **Synthetic cooldown actuator survives page round-trip
+   (brain-level).** File:
+   `packages/core/src/brain/brain.spec.ts`. Register a
+   synthetic host actuator whose `exec` reads
+   `getHostState(ctx.currentCallSiteId)` as
+   `{ readyAt: number } | undefined`, refuses to act when
+   `ctx.time < state.readyAt`, and on success writes
+   `setHostState(ctx.currentCallSiteId, { readyAt: ctx.time +
+COOLDOWN })`. This shape mirrors `move`'s cooldown
+   without depending on sim. Drive the brain so the actuator
+   fires and sets `readyAt`; switch pages and back; tick
+   again at a `time` value still inside the cooldown window;
+   assert the actuator declines to act (proving the
+   host-state `readyAt` carried across the round-trip).
+6. **Synthetic consumption-window actuator survives page
+   round-trip (brain-level).** Same file. Register a
+   synthetic actuator whose host state is
+   `{ remainingUses: number }` initialized on first exec to
+   3 and decremented each subsequent exec; the actuator
+   refuses to act when `remainingUses === 0`. Mirrors
+   `eat`'s consumption window. Tick to consume two uses,
+   round-trip the page, tick again, assert
+   `remainingUses === 0` after one more exec (proving the
+   counter carried).
+7. **Synthetic recharge actuator survives page round-trip
+   (brain-level).** Same file. Register a synthetic
+   actuator whose host state is
+   `{ chargeLevel: number; lastFireTime: number }` and that
+   recharges based on `ctx.time - state.lastFireTime`.
+   Mirrors `shoot`'s recharge. Fire once, round-trip the
+   page advancing `ctx.time` by less than the full recharge
+   interval, fire again, assert `chargeLevel` reflects the
+   round-trip elapsed time (proving both `lastFireTime` and
+   `chargeLevel` carried).
+
+Tests #5, #6, #7 may be combined into a single
+`callsite-host-state-lifetime.spec.ts` under
+`packages/core/src/brain/` if it reads more cleanly as a
+single fixture sweep over the three synthetic shapes; the
+spec requires the assertions to exist, not the file layout.
+Keeping these tests in core (rather than sim) means the
+lifetime contract is exercised by the layer that owns it
+and does not require sim to be in a working state for the
+dense-state plan to ship.
+
 ### Risks
 
 - **Mid-flight type leak.** Between steps 3 and 5 the new
@@ -1682,23 +1830,23 @@ expose `ActionInstance` to host code.
   invisible until step 4's grep. Mitigation: step 4 is a
   hard gate, not a smoke check; the grep must return zero
   matches in `apps/` before step 5.
-- **`resetActionInstance` carry-over.** Today
-  `resetActionInstance` (`runtime/context.ts:236-249`)
-  preserves `existingHostState` across slot resets so
-  cooldown state survives an action restart. After D3 the
-  `hostState` field is gone; the new `services.callSite`
-  storage preserves the same semantics by _not_ being cleared
-  on action reset (the adapter's host-state map is keyed by
-  `callSiteId` and lives for the page activation, independent
-  of action-instance lifetime).
+- **Host-state lifetime is brain-instance-scoped.** Per the
+  page-lifecycle-hooks spec, the `services.callSite` host-state
+  map is allocated once per `(brainInstance, callSiteId)` and
+  survives until `Brain.shutdown()` or an explicit
+  `clearHostState(callSiteId)`. This is broader than today's
+  `resetActionInstance` carry-over (which preserved
+  `existingHostState` only across slot resets within a single
+  page activation): host state now also survives full page
+  round-trips. Cooldown-sensitive behavior tests for
+  `move`, `eat`, and `shoot` exercise this guarantee.
 - **Child-fiber visibility.** The child fiber spawned at
   `vm.ts:1820-1825` inherits the parent's
   `currentCallSiteId` and `currentActionInstance`. Because
   the new host-state storage lives in the
-  `services.callSite` adapter (page-activation-scoped, not
+  `services.callSite` adapter (brain-instance-scoped, not
   per-fiber), child fibers transparently see the same map as
-  the parent -- identical to today's
-  `Dict<callSiteId, ActionInstance>` behavior.
+  the parent.
 
 ### Acceptance (validation checklist)
 
@@ -1731,12 +1879,13 @@ D3 ships only when every item passes:
    pass with the project's zero-noise standard.
 8. From `apps/sim`, `npm run typecheck && npm run check &&
 npm test && npm run build` pass.
-9. No behavior changes: cooldown-sensitive sim behavior tests
-   (move cooldown, shoot recharge, eat consumption window)
-   pass without modification beyond the surface rename in
-   step 7's fixture sweep. Any test that constructs
-   `currentCallSiteId` plus per-callsite state still
-   exercises the same logical scenarios.
+9. No behavior changes: the synthetic cooldown / consumption /
+   recharge actuators added under "New regression tests"
+   exercise the host-state surface end-to-end and pass without
+   modification beyond the surface rename in step 7's fixture
+   sweep. Any test that constructs `currentCallSiteId` plus
+   per-callsite state still exercises the same logical
+   scenarios.
 
 ## Phase D4 -- Action State Slots Migration
 
@@ -1773,8 +1922,10 @@ pinned `gap`:
   of a dense state-slot store);
 - table 6 row for the new per-callsite state-slot surface
   (expected: `services.action` adapter trio, with
-  page-activation-scoped lifetime and explicit reset
-  semantics on `ensureCallsite`).
+  brain-instance-scoped lifetime per the page-lifecycle-hooks
+  spec; `ensureCallsite` is allocate-on-first-call, no-op
+  afterward; explicit reset via
+  `services.action.resetCallsite`).
 
 If any row is unresolved, escalate per the Workflow Convention
 and reopen D0.
@@ -1875,9 +2026,12 @@ and reopen D0.
   - `packages/core/src/runtime/sensors/sensors.spec.ts` -- D3
     already migrated `callSiteState` consumers; this phase
     drops `ActionInstance` construction sites if any remain.
-  - Any sim-side action-state test (sweep
-    `apps/sim/**/*.spec.ts` for `currentActionInstance` or
-    `ActionInstance`).
+  - D4 introduces no sim-side test changes. Existing sim
+    tests that happened to grep-match `currentActionInstance`
+    or `ActionInstance` (if any -- expected: zero, since
+    those are core-internal types) are inspected by the
+    grep gate in acceptance #1-#3 against `packages/core`,
+    not by a sweep into `apps/sim`.
 
 ### New surface
 
@@ -1892,14 +2046,17 @@ the contract for per-callsite bytecode action state slots is a
 The surface:
 
 - does not expose `ActionInstance`;
-- `ensureCallsite` is page-activation-scoped: it is the only
-  operation that allocates / resets the slot list for a
-  callsite; once allocated, the slot list lives until
-  page deactivation (matches today's
-  `Dict<callSiteId, ActionInstance>` lifetime exactly);
-- `ensureCallsite` overwrites existing slots (matches
-  `resetActionInstance` semantics: a fresh slot list on
-  every page activation).
+- `ensureCallsite` is brain-instance-scoped per the
+  page-lifecycle-hooks spec: it allocates the slot list on
+  first call for a `callSiteId` and is a no-op on
+  subsequent calls. Returns `boolean` (`true` if newly
+  allocated, `false` otherwise) so the brain orchestrator
+  can drive `initializerFuncId`;
+- explicit reset is via
+  `services.action.resetCallsite(callSiteId)` (defined by
+  the page-lifecycle-hooks spec): deallocates the slot
+  list; the next `ensureCallsite` returns `true` and the
+  initializer driver re-runs `initializerFuncId`.
 
 Per Finding 3 of the D4 review, the host-action callsite's
 "current action instance" binding is dead. There is no
@@ -1958,15 +2115,18 @@ relocate them as part of pinning Brain's fate.
    itself stays (it still binds `currentCallSiteId` and
    `rule`).
 6. **Migrate brain.ts page activation.** In `activatePage`,
-   replace `resetActionInstance(ctx, callSiteId, ...)` with
-   the ensure-slots op (which is also a reset on
-   re-activation; matches today's semantics because the
-   per-page-activation reset overwrites the slot list). Drop
-   the `actionInstance` local; pass `callSiteId` only into
-   `runHostActivationHook` / `runBytecodeActivationHook`.
-   Update those two helpers' signatures to drop the
-   `ActionInstance` parameter; route any state-slot access
-   in their bodies through the new surface.
+   replace any remaining legacy `resetActionInstance(ctx,
+callSiteId, ...)` calls with the
+   `services.action.ensureCallsite` op. Per the
+   page-lifecycle-hooks spec the op is
+   allocate-on-first-call and returns `boolean`; the
+   initializer driver added by that spec consumes the
+   return value. Drop the `actionInstance` local; pass
+   `callSiteId` only into `runHostActivationHook` /
+   `runBytecodeActivationHook`. Update those two helpers'
+   signatures to drop the `ActionInstance` parameter; route
+   any state-slot access in their bodies through the new
+   surface.
 7. **Retire `currentActionInstance` writes.** Delete the
    field writes in `bindExecutionContext` (line 1702),
    `syncExecutionContextFromTopFrame` (lines 1710, 1717),
@@ -1989,16 +2149,16 @@ relocate them as part of pinning Brain's fate.
 9. **Bind the new surface to its real owner.** Replace the
    shim's delegation with the real `services.action` adapter
    implementation under `runtime/`, owning the
-   page-activation-scoped state-slot store keyed by
-   `callSiteId`. `dense-shims.ts` is now empty and is
-   deleted.
-10. **Sweep tests.** Update every fixture that constructs
-    `callSiteState`, `currentActionInstance`, or
-    `ActionInstance` to construct the new surface's
-    backing. Sim-side tests that exercise bytecode action
-    state slots assert through the new surface (or, more
-    likely, are unchanged because they observe behavior, not
-    storage).
+   brain-instance-scoped state-slot store keyed by
+   `callSiteId` (per the page-lifecycle-hooks spec).
+   `dense-shims.ts` is now empty and is deleted.
+10. **Sweep tests.** Update every fixture under
+    `packages/core/src/` that constructs `callSiteState`,
+    `currentActionInstance`, or `ActionInstance` to
+    construct the new surface's backing. D4 introduces no
+    sim-side test changes; behavior assertions live in
+    core (the D3 synthetic actuators and the D4 vm-level
+    dispatch tests).
 
 ### Notes (not work items)
 
@@ -2014,22 +2174,74 @@ relocate them as part of pinning Brain's fate.
   handle creation, scheduler entry) without touching the
   state-slot surface this phase pins.
 
+### New regression tests
+
+Lifetime-flip behavior (state slot survives page round-trip;
+`initializerFuncId` runs once; `resetCallsite` zeros the slot
+list; `Brain.shutdown` re-runs initializer) is covered by the
+page-lifecycle-hooks spec's L1 phase. The tests below are
+D4-specific: they pin the `services.action` adapter's surface
+shape and the dispatch wiring through `LOAD_CALLSITE_VAR` /
+`STORE_CALLSITE_VAR`.
+
+1. **`services.action.ensureCallsite` allocates a slot list
+   of the requested size (unit).** File:
+   `packages/core/src/runtime/dense-shims.spec.ts` (or its
+   adapter-module successor after step 9). Call
+   `ensureCallsite(5, 3)`; assert
+   `getStateSlot(5, 0)` / `getStateSlot(5, 1)` /
+   `getStateSlot(5, 2)` all return NIL; `getStateSlot(5, 3)`
+   throws (or returns a documented out-of-range value).
+2. **`services.action.setStateSlot` / `getStateSlot`
+   round-trip (unit).** Same file. Set slot 1 to a `Value`,
+   read it back, assert equality. Set slot 2 to a different
+   value; assert slot 1 is unchanged.
+3. **Distinct `callSiteId`s do not alias (unit).** Same
+   file. `ensureCallsite(5, 2)` and `ensureCallsite(6, 2)`;
+   write distinct values into slot 0 of each; assert each
+   returns the correct value.
+4. **Frame-walk dispatch: `LOAD_CALLSITE_VAR` /
+   `STORE_CALLSITE_VAR` route through the new surface
+   (vm-level).** File: `packages/core/src/runtime/vm.spec.ts`.
+   Construct a `BytecodeExecutableAction` with
+   `numStateSlots = 2`; emit a function that does
+   `STORE_CALLSITE_VAR 0, <value>` then
+   `LOAD_CALLSITE_VAR 0`; assert the loaded value equals
+   what was stored, and assert the value is observable via
+   `services.action.getStateSlot(callSiteId, 0)` from
+   outside the VM.
+5. **Child-fiber sees parent's slot store (vm-level).** Same
+   file. Spawn a bytecode child via
+   `spawnBytecodeActionFiber`; have parent write slot 0,
+   child read slot 0; assert the child reads what the
+   parent wrote. Pins the "adapter map is shared across the
+   cloned `ExecutionContext`" guarantee called out in the
+   Risks block.
+6. **`Frame.actionBinding.actionInstance` deletion does not
+   break frame-walk dispatch (vm-level).** Same file. After
+   step 4 deletes the field, run a bytecode action that
+   does `LOAD_CALLSITE_VAR` from a deeply-nested frame;
+   assert `getCurrentActionStateSlots` resolves to the
+   correct callsite via `getCurrentActionBinding`'s
+   `callSiteId`.
+
 ### Risks
 
-- **Lifetime semantics change.** Today the slot list is
-  freshly allocated on every page activation
-  (`resetActionInstance`) and survives the page activation
-  intact. The new `services.action.ensureCallsite` op
-  preserves exactly this per D0 table 6:
-  page-activation-scoped, overwrite on re-activation, no
-  per-fiber clone.
+- **Lifetime semantics are brain-instance-scoped, not
+  page-activation-scoped.** Per the page-lifecycle-hooks
+  spec, `services.action.ensureCallsite` allocates the slot
+  list on first call for a `callSiteId` and is a no-op on
+  subsequent calls; the slot list survives page round-trips
+  until `services.action.resetCallsite` or `Brain.shutdown`.
+  Any D4 code path that assumed per-page-activation reset
+  is wrong; the regression tests in the lifecycle-hooks
+  spec's L1 are the gate.
 - **Child-fiber visibility.** `spawnBytecodeActionFiber`
   shallow-clones the parent's `ExecutionContext`. The
   `services.action` adapter's slot store is owned by the
-  adapter (one map keyed by `callSiteId`, page-activation
-  scoped), not the context, so child fibers and parents see
-  the same store -- identical to today's
-  `Dict<callSiteId, ActionInstance>` behavior.
+  adapter (one map keyed by `callSiteId`,
+  brain-instance-scoped), not the context, so child fibers
+  and parents see the same store.
 - **Activation-hook parameter churn.** Removing
   `ActionInstance` from `runHostActivationHook` /
   `runBytecodeActivationHook` is a signature change inside
@@ -2074,14 +2286,16 @@ D4 ships only when every item passes:
    `npm run typecheck && npm run check && npm test && npm run build`
    pass with the project's zero-noise standard.
 9. From `apps/sim`, all four gates pass.
-10. No behavior changes: bytecode action programs (any sim
-    example using `for ... in` loops over actuators with
-    state, plus the existing
+10. No behavior changes vs the post-lifecycle-hooks-spec
+    baseline: bytecode action programs (any sim example
+    using `for ... in` loops over actuators with state,
+    plus the existing
     `apps/sim/src/examples/Detect/detect.ts` and
     `apps/sim/src/examples/Teleport/teleport.ts` probes)
     produce identical output traces before and after D4.
-    Page-activation reset still re-zeros state slots on every
-    re-entry to a page.
+    Action state slots survive page round-trips per the
+    lifecycle-hooks spec; D4 introduces no new lifetime
+    behavior beyond what L1 already pinned.
 
 ## Phase D5 -- Lock In The Brain<->Scheduler Surface; Cleanup Tail
 
@@ -2697,11 +2911,13 @@ slot)`, callsite host state addressed by `callSiteId`,
    action state-slot side table). For each, state the
    id-keyed signature shape in one line. State the closure
    property: every dense member operates on ids and
-   primitives only. Note that core does not ship time,
-   RNG, clock, or platform-entity / world-access services
-   on `PlatformServices`; applications layer those in at
-   the application level via their own host functions and
-   platform-side service objects if needed.
+   primitives only. Note that core ships an `IRngServices`
+   member on `PlatformServices` to back the core `random`
+   sensor's brain-scoped random stream, but does not ship
+   time, clock, or platform-entity / world-access services;
+   applications layer those in at the application level via
+   their own host functions and platform-side service
+   objects if needed.
 3. **`HOST_CALL` / `HOST_CALL_ASYNC` callsite-id binding
    contract.** State the discipline pinned in D3:
    `currentCallSiteId` is bound on entry to a host call,
