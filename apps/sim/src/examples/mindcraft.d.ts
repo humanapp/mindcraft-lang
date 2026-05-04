@@ -404,6 +404,7 @@ declare module "mindcraft" {
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): unknown;
     onPageEntered?(ctx: Context): void;
+    onPageExited?(ctx: Context): void;
   }
 
   export interface ActuatorConfig {
@@ -415,6 +416,7 @@ declare module "mindcraft" {
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;
+    onPageExited?(ctx: Context): void;
   }
 
   export function Sensor(config: SensorConfig): unknown;

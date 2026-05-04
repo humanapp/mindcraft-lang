@@ -111,6 +111,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
   let onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction | undefined;
   let execIsAsync = false;
   let onPageEnteredNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null = null;
+  let onPageExitedNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null = null;
   let label: string | undefined;
   let icon: string | undefined;
   let iconSpan: SourceSpan | undefined;
@@ -150,6 +151,18 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
               DescriptorDiagCode.OnPageEnteredMustBeFunction,
               prop.initializer,
               "`onPageEntered` must be a function."
+            );
+          }
+          break;
+
+        case "onPageExited":
+          if (ts.isFunctionExpression(prop.initializer) || ts.isArrowFunction(prop.initializer)) {
+            onPageExitedNode = prop.initializer;
+          } else {
+            addDiag(
+              DescriptorDiagCode.OnPageExitedMustBeFunction,
+              prop.initializer,
+              "`onPageExited` must be a function."
             );
           }
           break;
@@ -205,6 +218,8 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
         execIsAsync = prop.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false;
       } else if (prop.name.text === "onPageEntered") {
         onPageEnteredNode = prop;
+      } else if (prop.name.text === "onPageExited") {
+        onPageExitedNode = prop;
       }
     }
   }
@@ -234,6 +249,7 @@ export function extractDescriptor(sourceFile: ts.SourceFile): ExtractionResult {
       execIsAsync,
       onExecuteNode: onExecuteNode!,
       onPageEnteredNode,
+      onPageExitedNode,
       label,
       icon,
       iconSpan,

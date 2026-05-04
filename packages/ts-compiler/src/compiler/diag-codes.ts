@@ -161,6 +161,8 @@ export enum DescriptorDiagCode {
   RepeatedBoundMustBeNumericLiteral = 2049,
   /** seq() requires at least one argument */
   SeqRequiresArguments = 2050,
+  /** onPageExited property is not a function */
+  OnPageExitedMustBeFunction = 2051,
 }
 
 /**
@@ -396,6 +398,8 @@ export enum LoweringDiagCode {
   InstanceofRhsNotClass = 3170,
   /** Assignment to a read-only struct field */
   ReadOnlyFieldAssignment = 3171,
+  /** onPageExited function has no body */
+  OnPageExitedHasNoBody = 3172,
 }
 
 /**

@@ -519,8 +519,9 @@ re-setup on respawn, and teardown.
   this slot for an in-action `onPageEntered` handler; without that
   source-level construct, user programs leave it unset.
 - `deactivationFuncId?: number` -- runs every time the page
-  containing this callsite becomes inactive. Reserved for the
-  symmetric in-action `onPageExited` handler.
+  containing this callsite becomes inactive. The compiler reserves
+  this slot for an in-action `onPageExited` handler; without that
+  source-level construct, user programs leave it unset.
 
 ### Host hook fields
 

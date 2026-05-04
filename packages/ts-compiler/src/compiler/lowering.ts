@@ -142,6 +142,12 @@ export interface ProgramLoweringResult {
    * `onPageEntered` handler.
    */
   activationFuncId?: number;
+  /**
+   * Func id of the per-page-deactivation hook. Runs every time the owning
+   * page is deactivated, before fiber cancellation. Set when the action
+   * declares an `onPageExited` handler.
+   */
+  deactivationFuncId?: number;
   numStateSlots: number;
   functionTable: Map<string, number>;
   diagnostics: CompileDiagnostic[];
@@ -1070,6 +1076,11 @@ export function lowerProgram(
     activationFuncId = funcIdCounter.value++;
   }
 
+  let deactivationFuncId: number | undefined;
+  if (descriptor.onPageExitedNode) {
+    deactivationFuncId = funcIdCounter.value++;
+  }
+
   const functions: FunctionEntry[] = [];
 
   registerUserEnumTypes(localEnumNodes, importedEnums ?? [], checker, diagnostics, services);
@@ -1178,6 +1189,21 @@ export function lowerProgram(
     functions.push(activationEntry);
   }
 
+  if (deactivationFuncId !== undefined) {
+    const exitEntry = lowerOnPageExitedBody(
+      descriptor,
+      checker,
+      callsiteVars,
+      functionTable,
+      diagnostics,
+      funcIdCounter,
+      closureFunctions,
+      services,
+      classInfos
+    );
+    functions.push(exitEntry);
+  }
+
   const closureEntries = Array.from(closureFunctions.entries())
     .sort(([a], [b]) => a - b)
     .map(([, entry]) => entry);
@@ -1188,6 +1214,7 @@ export function lowerProgram(
     entryFuncId,
     initializerFuncId,
     activationFuncId,
+    deactivationFuncId,
     numStateSlots: nextCallsiteVar,
     functionTable,
     diagnostics,
@@ -1273,6 +1300,95 @@ function lowerOnPageEnteredBody(
     numParams: 1,
     numLocals: scopeStack.nextLocal,
     name: `${descriptor.name}.onPageEntered`,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
+    isGenerated: false,
+    sourceFileName: funcNode.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(funcNode),
+  };
+}
+
+function lowerOnPageExitedBody(
+  descriptor: ExtractedDescriptor,
+  checker: ts.TypeChecker,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  sharedDiagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices,
+  classInfos: ClassInfo[]
+): FunctionEntry {
+  const ir: IrNode[] = [];
+  const funcNode = descriptor.onPageExitedNode!;
+
+  const paramLocals = new Map<string, number>();
+  const ctxParam = funcNode.parameters[0];
+  if (ctxParam && ts.isIdentifier(ctxParam.name)) {
+    paramLocals.set(ctxParam.name.text, 0);
+  }
+
+  const scopeStack = new ScopeStack(1);
+  const funcScopeId = scopeStack.initFunctionScope(0, `${descriptor.name}.onPageExited`);
+
+  if (ctxParam && ts.isIdentifier(ctxParam.name)) {
+    scopeStack.addParameterMetadata(ctxParam.name.text, 0, funcScopeId);
+  }
+
+  const ctx: LowerContext = {
+    services,
+    checker,
+    paramsSymbol: undefined,
+    paramLocals,
+    scopeStack,
+    ir,
+    diagnostics: sharedDiagnostics,
+    loopStack: [],
+    breakStack: [],
+    nextLabelId: 0,
+    callsiteVars,
+    functionTable,
+    funcIdCounter,
+    closureFunctions,
+    currentFunctionName: `${descriptor.name}.onPageExited`,
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    classInfos,
+  };
+
+  const body = funcNode.body;
+  if (!body || !ts.isBlock(body)) {
+    sharedDiagnostics.push({
+      code: LoweringDiagCode.OnPageExitedHasNoBody,
+      message: "onPageExited function has no body",
+      severity: "error",
+    });
+    scopeStack.finalizeFunctionScope(ir.length);
+    return {
+      ir,
+      numParams: 1,
+      numLocals: scopeStack.nextLocal,
+      name: `${descriptor.name}.onPageExited`,
+      injectCtxTypeId: ContextTypeIds.Context,
+      scopeMetadata: [...scopeStack.scopeMetadata],
+      localMetadata: [...scopeStack.localMetadata],
+      isGenerated: false,
+      sourceFileName: funcNode.getSourceFile()?.fileName,
+      functionSpan: spanFromNode(funcNode),
+    };
+  }
+
+  lowerStatements(body.statements, ctx);
+
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+
+  scopeStack.finalizeFunctionScope(ir.length);
+  return {
+    ir,
+    numParams: 1,
+    numLocals: scopeStack.nextLocal,
+    name: `${descriptor.name}.onPageExited`,
+    injectCtxTypeId: ContextTypeIds.Context,
     scopeMetadata: [...scopeStack.scopeMetadata],
     localMetadata: [...scopeStack.localMetadata],
     isGenerated: false,

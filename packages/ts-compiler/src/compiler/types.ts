@@ -61,6 +61,7 @@ export interface ExtractedDescriptor {
   execIsAsync: boolean;
   onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction;
   onPageEnteredNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null;
+  onPageExitedNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null;
   label?: string;
   icon?: string;
   iconSpan?: SourceSpan;

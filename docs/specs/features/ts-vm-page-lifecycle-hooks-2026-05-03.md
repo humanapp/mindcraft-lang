@@ -217,13 +217,14 @@ undefined)` call.
 
 ## Current State
 
-Completed: L1, L2
-Next up: L3
+Completed: L1, L2, L3
+Next up: none -- spec complete.
 
 L1 risks (lazy callsite storage; VM no longer calls `ensureCallsite`;
 `numStateSlots` is no longer read by runtime services) carried
-through L2 unchanged. L2 surfaced an asymmetry between bytecode
-hook fields and user-language syntax that is now scheduled as L3.
+through L2 and L3 unchanged. After L3, every row of the bytecode
+column in the Lifetime Contract table has a user-language
+counterpart.
 
 ---
 
@@ -265,6 +266,25 @@ added; this gap is now scheduled as L3 and the Out of Scope
 bullet has been narrowed accordingly.
 
 Verification: full gate green (ts-compiler 973/973, core 722/722,
+sim typecheck/check/build).
+
+### L3 -- Compiler Emission Of Deactivation Func Id (`onPageExited` Syntax)
+
+Descriptor now parses `onPageExited` in both property-assignment
+and method-shorthand branches; `lowering.ts` emits the body into
+`deactivationFuncId` (allocated only when the descriptor declares
+the handler, preserving func-id layout for programs that don't).
+The lowered function carries `injectCtxTypeId: ContextTypeIds.Context`
+so `Brain.runBytecodeHook` can spawn it directly with an empty
+args list. Ambient `SensorConfig` / `ActuatorConfig` and the sim
+`mindcraft.d.ts` shim gained the optional `onPageExited` member.
+
+New surfaces: `ExtractedDescriptor.onPageExitedNode`;
+`ProgramLoweringResult.deactivationFuncId` (forwarded onto
+`UserAuthoredProgram`); `DescriptorDiagCode.OnPageExitedMustBeFunction`
+(2051); `LoweringDiagCode.OnPageExitedHasNoBody` (3172).
+
+Verification: full gate green (ts-compiler 981/981, core 722/722,
 sim typecheck/check/build).
 
 ---

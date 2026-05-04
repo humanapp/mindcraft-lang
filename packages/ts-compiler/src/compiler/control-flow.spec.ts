@@ -36,7 +36,7 @@ import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__t
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
-import { CompileDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
+import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
@@ -1634,5 +1634,176 @@ export default Sensor({
     // proving x was only initialized to 0 a single time.
     assert.equal(dispatchExec(), 5);
     assert.equal(dispatchExec(), 6);
+  });
+});
+
+describe("onPageExited handler", () => {
+  before(() => {
+    services = __test__createBrainServices();
+  });
+
+  test("descriptor recognizes property-assignment arrow form", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-arrow",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited: (ctx: Context): void => {},
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+    assert.ok(result.program!.deactivationFuncId !== undefined);
+  });
+
+  test("descriptor recognizes property-assignment function-expression form", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-fn-expr",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited: function (ctx: Context): void {},
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+    assert.ok(result.program!.deactivationFuncId !== undefined);
+  });
+
+  test("descriptor recognizes method-shorthand form", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-method",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited(ctx: Context): void {},
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+    assert.ok(result.program!.deactivationFuncId !== undefined);
+  });
+
+  test("missing onPageExited leaves deactivationFuncId unset", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "no-exit",
+  onExecute(ctx: Context): number { return 0; },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+    assert.equal(result.program!.deactivationFuncId, undefined);
+  });
+
+  test("non-function onPageExited produces OnPageExitedMustBeFunction diag", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-not-fn",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited: 42 as unknown as (ctx: Context) => void,
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.OnPageExitedMustBeFunction));
+  });
+
+  test("program with onPageEntered + onPageExited + module-init produces three distinct func ids", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let count = 0;
+
+export default Sensor({
+  name: "all-three",
+  onExecute(ctx: Context): number { return count; },
+  onPageEntered(ctx: Context): void { count = 0; },
+  onPageExited(ctx: Context): void { count = -1; },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    const prog = result.program!;
+    assert.ok(prog.initializerFuncId !== undefined);
+    assert.ok(prog.activationFuncId !== undefined);
+    assert.ok(prog.deactivationFuncId !== undefined);
+    const ids = new Set([prog.initializerFuncId, prog.activationFuncId, prog.deactivationFuncId]);
+    assert.equal(ids.size, 3);
+  });
+
+  test("onPageExited mutation persists into the next exec call (brain-instance-scoped storage)", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let count = 0;
+
+export default Sensor({
+  name: "exit-mutates",
+  onExecute(ctx: Context): number {
+    count += 1;
+    return count;
+  },
+  onPageExited(ctx: Context): void {
+    count = 100;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    const prog = result.program!;
+    assert.ok(prog.initializerFuncId !== undefined);
+    assert.ok(prog.deactivationFuncId !== undefined);
+    assert.equal(prog.activationFuncId, undefined);
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+
+    const dispatchFn = (funcId: number): Value | undefined => {
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
+      const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      return r.status === VmStatus.DONE ? r.result : undefined;
+    };
+
+    // First activation runs the initializer once; storage now holds count = 0.
+    dispatchFn(prog.initializerFuncId!);
+    assert.equal((dispatchFn(prog.entryFuncId) as NumberValue).v, 1);
+    assert.equal((dispatchFn(prog.entryFuncId) as NumberValue).v, 2);
+
+    // Page deactivates: onPageExited writes 100 into the persisted storage.
+    dispatchFn(prog.deactivationFuncId!);
+
+    // Re-entering the page does NOT re-run the initializer (storage survives),
+    // so the next exec sees the deactivation handler's mutation.
+    assert.equal((dispatchFn(prog.entryFuncId) as NumberValue).v, 101);
+  });
+
+  test("onPageExited body without a block produces OnPageExitedHasNoBody diag", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-no-body",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited: (ctx: Context) => 1 as unknown as void,
+});
+`;
+    const result = compileUserTile(source, { services });
+    // Arrow with non-block expression body should trip OnPageExitedHasNoBody.
+    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.OnPageExitedHasNoBody));
   });
 });

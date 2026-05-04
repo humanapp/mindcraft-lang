@@ -446,6 +446,7 @@ export class UserTileProject {
       entryFuncId: programResult.entryFuncId,
       initializerFuncId: programResult.initializerFuncId,
       activationFuncId: programResult.activationFuncId,
+      deactivationFuncId: programResult.deactivationFuncId,
       revisionId: generateRevisionId(),
       args: qualifiedArgs,
       debugMetadata,
