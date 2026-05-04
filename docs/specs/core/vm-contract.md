@@ -324,20 +324,60 @@ every conforming VM must be able to execute any of them:
 One row per opcode: mnemonic, numeric code, operand widths, stack
 effect, side effects, fault conditions.
 
-> **Status:** the tables below are an in-progress reference covering
-> the opcodes whose semantics the contract has had reason to pin
-> precisely (stack manipulation, variable access, struct field
-> access, host calls, action calls). The canonical numeric assignment
-> for the full opcode set is the `Op` enum in
-> `packages/core/src/runtime/bytecode.ts`; a port consumes that as
-> the source of truth until each remaining opcode family is promoted
-> into a table here.
+> **Source of truth.** The numeric assignments below are the
+> contract; the canonical TS expression of the same assignments is
+> the `Op` enum in `packages/core/src/runtime/bytecode.ts`. Any
+> divergence between the table and the enum is a bug in one of the
+> two; reconcile in the same change.
+
+### Conventions
+
+These conventions apply to every row in every group below; rows omit
+what would otherwise repeat in every cell.
+
+- **Operand encoding.** Every operand is a u16 unless a row says
+  otherwise. Operand cells use the form `name (slot)` where `slot`
+  is `a`, `b`, or `c` (the three operand fields on `Instr`); the
+  type is u16 by default.
+- **Stack-effect notation.** `[x, y, z] -> [w]` reads bottom-to-top
+  with the rightmost element being the top of stack. An empty `[]`
+  on either side means "no change at that boundary."
+- **Universal faults.** Every opcode raises `StackUnderflow` if the
+  dispatcher cannot pop the operands its stack effect requires, and
+  raises `ScriptError` if a constant-pool, function-table, or
+  type-table operand is out of range. Per-row "Faults" cells list
+  only opcode-specific failures beyond these.
+- **PC advance.** Every opcode advances the program counter by one
+  instruction unless its row says otherwise (`JMP`, `RET`, etc. are
+  the obvious exceptions).
+- **Side effects.** Side effects beyond the stack effect (deep
+  copies, host calls, scheduler interaction, type-registry lookups)
+  are described in the prose paragraph following each table, not in
+  the table itself.
 
 ### Stack manipulation
 
-| Mnemonic        | Numeric | Operands       | Stack effect    | Faults                                                                       |
-| --------------- | ------- | -------------- | --------------- | ---------------------------------------------------------------------------- |
-| `STACK_SET_REL` | 6       | `d: u16` (`a`) | `[value] -> []` | `ScriptError` if `d` exceeds the post-pop top index (out-of-bounds write).   |
+| Mnemonic         | Numeric | Operands     | Stack effect           | Faults |
+| ---------------- | ------- | ------------ | ---------------------- | ------ |
+| `PUSH_CONST_VAL` | 0       | `k` (`a`)    | `[] -> [value]`        | -      |
+| `POP`            | 1       | none         | `[value] -> []`        | -      |
+| `DUP`            | 2       | none         | `[value] -> [value, value]` | - |
+| `SWAP`           | 3       | none         | `[a, b] -> [b, a]`     | -      |
+| `PUSH_CONST_NUM` | 4       | `k` (`a`)    | `[] -> [number]`       | -      |
+| `PUSH_CONST_STR` | 5       | `k` (`a`)    | `[] -> [string]`       | -      |
+| `STACK_SET_REL`  | 6       | `d` (`a`)    | `[value] -> []`        | `ScriptError` if `d` exceeds the post-pop top index (out-of-bounds write). |
+
+`PUSH_CONST_VAL`, `PUSH_CONST_NUM`, and `PUSH_CONST_STR` each address
+their own independent constant sub-pool: `k` indexes
+`Program.constantPools.values`, `.numbers`, and `.strings`
+respectively. The numeric and string pushes wrap the raw constant in
+a `NumberValue` / `StringValue` at runtime; `PUSH_CONST_VAL` pushes
+the residual-pool entry directly. See
+[Constant pool layout](#constant-pool-layout) for the pool partitioning.
+
+`POP` discards the top of stack. `DUP` re-pushes the top of stack
+(by reference; struct values are not deep-copied). `SWAP` exchanges
+the top two values.
 
 `STACK_SET_REL` pops one value off the operand stack, then writes
 it to `vstack[top - d]` where `top` is the index of the topmost
@@ -348,10 +388,10 @@ buffers at call sites; see [Calling convention](#calling-convention).
 
 ### Variable access
 
-| Mnemonic         | Numeric | Operands            | Stack effect    | Faults                                                     |
-| ---------------- | ------- | ------------------- | --------------- | ---------------------------------------------------------- |
-| `LOAD_VAR_SLOT`  | 10      | `slotId: u16` (`a`) | `[] -> [value]` | `ScriptError` if `slotId >= program.variableNames.size()`. |
-| `STORE_VAR_SLOT` | 11      | `slotId: u16` (`a`) | `[value] -> []` | `ScriptError` if `slotId >= program.variableNames.size()`. |
+| Mnemonic         | Numeric | Operands       | Stack effect    | Faults |
+| ---------------- | ------- | -------------- | --------------- | ------ |
+| `LOAD_VAR_SLOT`  | 10      | `slotId` (`a`) | `[] -> [value]` | `ScriptError` if `slotId >= program.variableNames.size()`. |
+| `STORE_VAR_SLOT` | 11      | `slotId` (`a`) | `[value] -> []` | `ScriptError` if `slotId >= program.variableNames.size()`. |
 
 Variable access is slot-keyed at dispatch time. `slotId` is a
 program-scoped index into `Program.variableNames`; the runtime hosts
@@ -375,27 +415,307 @@ fresh slot at the end of the value list; that slot is not addressable
 from bytecode (no `LOAD_VAR_SLOT` operand can target it) and is
 dropped on the next variable-table install (i.e. hot-reload).
 
-### Struct field access
+### Control flow
 
-| Mnemonic           | Numeric | Operands              | Stack effect              | Faults                                      |
-| ------------------ | ------- | --------------------- | ------------------------- | ------------------------------------------- |
-| `STRUCT_GET_FIELD` | 114     | `fieldIndex: u16` (`a`) | `[struct] -> [value]`     | `ScriptError` if the source is not struct.  |
-| `STRUCT_SET_FIELD` | 115     | `fieldIndex: u16` (`a`) | `[struct, value] -> [struct]` | `ScriptError` if the source is not struct. |
-| `GET_FIELD`        | 120     | none                  | `[source, fieldName] -> [value]` | `ScriptError` if `fieldName` is not string. |
-| `SET_FIELD`        | 121     | none                  | `[source, fieldName, value] -> [source]` | `ScriptError` if `fieldName` is not string or the source rejects the write. |
+| Mnemonic       | Numeric | Operands         | Stack effect    | Faults |
+| -------------- | ------- | ---------------- | --------------- | ------ |
+| `JMP`          | 20      | `rel: i16` (`a`) | `[] -> []`      | -      |
+| `JMP_IF_FALSE` | 21      | `rel: i16` (`a`) | `[value] -> []` | -      |
+| `JMP_IF_TRUE`  | 22      | `rel: i16` (`a`) | `[value] -> []` | -      |
 
+`rel` is a signed PC delta relative to the current instruction's
+address. `JMP` always sets `pc = pc + rel`. `JMP_IF_FALSE` pops the
+top of stack and jumps when the value is falsy (otherwise advances
+to `pc + 1`); `JMP_IF_TRUE` is the symmetric truthy branch.
+Truthiness follows the value-model rule defined in
+[Value model](#value-model): nil and `false` are falsy; every other
+value (including `0`, `""`, empty collections, error values) is
+truthy.
+
+### Function calls
+
+| Mnemonic | Numeric | Operands                              | Stack effect                           | Faults |
+| -------- | ------- | ------------------------------------- | -------------------------------------- | ------ |
+| `CALL`   | 30      | `funcId` (`a`), `argc` (`b`)          | `[arg0, ..., arg(argc-1)] -> []`       | `ScriptError` if `funcId` is out of bounds or `argc != callee.numParams`. `StackOverflow` if frame depth would exceed `maxFrameDepth`. |
+| `RET`    | 31      | none                                  | `[retv] -> []` (caller frame: `[] -> [retv]`) | -      |
+
+`CALL` pops `argc` values right-to-left into the callee's local-slot
+0..argc-1, pushes a new frame whose `pc` starts at 0, and resumes
+execution in the callee. The arg values are not duplicated on the
+operand stack; they are moved into locals.
+
+`RET` pops one return value, discards the current frame, restores
+the caller's stack base, and pushes the return value onto the
+caller's operand stack. If `RET` runs in the root frame, the fiber
+transitions to `DONE` and any owning async-action handle is
+resolved with the return value.
+
+### Host calls
+
+| Mnemonic          | Numeric | Operands                                          | Stack effect                                | Faults |
+| ----------------- | ------- | ------------------------------------------------- | ------------------------------------------- | ------ |
+| `HOST_CALL`       | 40      | `fnId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if `fnId` is out of bounds; host-thrown errors propagate as `ScriptError`. |
+| `HOST_CALL_ASYNC` | 41      | `fnId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `HOST_CALL`; additionally `StackOverflow` if the handle table is full. |
+
+Both opcodes bind `currentCallSiteId` and `currentRuleFuncId` on
+`ExecutionContext` before dispatch; see
+[Calling convention](#host-call-layout) for the full arg-buffer
+shape, sync-vs-async lifetime contract, and the host re-entry rule.
+
+### Action calls
+
+| Mnemonic            | Numeric | Operands                                              | Stack effect                                | Faults |
+| ------------------- | ------- | ----------------------------------------------------- | ------------------------------------------- | ------ |
+| `ACTION_CALL`       | 42      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if `actionSlot` is out of bounds or the program defines no actions. |
+| `ACTION_CALL_ASYNC` | 43      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `ACTION_CALL`; additionally `StackOverflow` on handle-table or fiber-pool exhaustion. |
+
+`actionSlot` indexes `Program.actions`. The host or bytecode branch
+is selected from the `ExecutableAction.binding` discriminant. See
+[Calling convention](#host-call-layout) for the shared arg-buffer
+shape and [Action call state model](#action-call-state-model) for
+state-slot routing and `HandleId` allocation.
+
+### Async and cooperative scheduling
+
+| Mnemonic | Numeric | Operands | Stack effect      | Faults |
+| -------- | ------- | -------- | ----------------- | ------ |
+| `AWAIT`  | 50      | none     | `[handle] -> [value]` (or fault on rejection) | `ScriptError` if the top of stack is not a handle value, or the handle id is unknown. The fiber must be suspendable. |
+| `YIELD`  | 51      | none     | `[] -> []`        | The fiber must be suspendable. |
+
+`AWAIT` pops one handle value. If the handle is already resolved,
+the resolved value is pushed and execution continues in the same
+tick. If rejected or cancelled, the rejection error enters the
+exception path (caught by an active `TRY`, otherwise faulting the
+fiber). If still pending, the fiber transitions to `WAITING` and
+records its resume PC, stack height, and frame depth; the scheduler
+resumes the fiber when the handle completes.
+
+`YIELD` is a cooperative suspension point that does not allocate a
+handle: the fiber transitions to `YIELDED` and the scheduler picks
+another runnable fiber. The fiber resumes at the next instruction
+on its next scheduled turn.
+
+Both opcodes require the fiber to be suspendable (i.e. not running
+inside a non-suspendable host frame). Use in a non-suspendable
+context faults the fiber with `ScriptError`.
+
+### Exception handling
+
+| Mnemonic  | Numeric | Operands              | Stack effect    | Faults |
+| --------- | ------- | --------------------- | --------------- | ------ |
+| `TRY`     | 60      | `catchRel: i16` (`a`) | `[] -> []`      | `StackOverflow` if the handler stack would exceed `maxHandlers`. |
+| `END_TRY` | 61      | none                  | `[] -> []`      | -      |
+| `THROW`   | 62      | none                  | `[value] -> []` | `ScriptError` if the popped value is not an error value (the dispatch loop wraps the non-error value into a `ScriptError` payload before unwinding). |
+
+`TRY` pushes a handler entry recording the catch PC
+(`pc + catchRel`), the current operand-stack height, and the
+current frame depth. `END_TRY` pops the topmost handler entry
+without altering the operand stack.
+
+`THROW` pops one value. If it is an error value, that error becomes
+the in-flight exception; otherwise the dispatch loop synthesizes a
+`ScriptError` whose detail captures the popped value. The dispatch
+loop unwinds operand stack and frames to the depths recorded by the
+topmost matching handler, sets `pc = catchPc`, and pushes the error
+value onto the operand stack at the handler's entry. With no active
+handler, the fiber transitions to `FAULT` and any owning
+async-action handle is rejected with the error.
+
+### Section boundary markers
+
+| Mnemonic     | Numeric | Operands              | Stack effect          | Faults |
+| ------------ | ------- | --------------------- | --------------------- | ------ |
+| `WHEN_START` | 70      | none                  | `[] -> []`            | -      |
+| `WHEN_END`   | 71      | `endRel: i16` (`a`)   | `[whenResult] -> []`  | -      |
+| `DO_START`   | 72      | none                  | `[] -> []`            | -      |
+| `DO_END`     | 73      | none                  | `[] -> []`            | -      |
+
+`WHEN_START` and `DO_START` / `DO_END` are pure markers: they
+advance the PC by one and have no other effect. They exist so the
+compiled bytecode preserves the source-level rule structure for
+diagnostics and debug walkers; conforming VMs must execute them
+without observable side effect.
+
+`WHEN_END` is the conditional gate. It pops the result of the
+WHEN expression block; if truthy, execution continues into the
+DO block (PC advances by one); if falsy, PC advances by `endRel`,
+skipping the DO block and any nested boundaries.
+
+### Frame locals
+
+| Mnemonic      | Numeric | Operands     | Stack effect    | Faults |
+| ------------- | ------- | ------------ | --------------- | ------ |
+| `LOAD_LOCAL`  | 130     | `idx` (`a`)  | `[] -> [value]` | `ScriptError` if `idx >= frame.locals.size()`. |
+| `STORE_LOCAL` | 131     | `idx` (`a`)  | `[value] -> []` | `ScriptError` if `idx >= frame.locals.size()`. |
+
+Frame locals are indexed slots on the current call frame, sized at
+frame creation from `FunctionBytecode.numLocals` (defaults to
+`numParams`). Locals 0..numParams-1 are populated from call args
+on entry; the remaining slots are nil-initialized.
+
+### Per-callsite state slots
+
+| Mnemonic             | Numeric | Operands     | Stack effect    | Faults |
+| -------------------- | ------- | ------------ | --------------- | ------ |
+| `LOAD_CALLSITE_VAR`  | 140     | `idx` (`a`)  | `[] -> [value]` | `ScriptError` if no callsite is bound and the local fallback array is unavailable, or if `idx` is out of bounds in the fallback array. |
+| `STORE_CALLSITE_VAR` | 141     | `idx` (`a`)  | `[value] -> []` | Same as `LOAD_CALLSITE_VAR`. |
+
+Per-callsite storage backs `let` / `const` variables declared at
+action scope. Reads and writes route through
+`services.callsite.{getSlot, setSlot}` keyed by
+`(currentCallSiteId, idx)`; callsite-id binding follows the
+[Callsite-id binding discipline](#callsite-id-binding-discipline)
+and the [Action call state model](#action-call-state-model).
+
+### Type introspection
+
+| Mnemonic      | Numeric | Operands    | Stack effect       | Faults |
+| ------------- | ------- | ----------- | ------------------ | ------ |
+| `TYPE_CHECK`  | 150     | `tag` (`a`) | `[value] -> [bool]` | -     |
+| `INSTANCE_OF` | 151     | `k` (`a`)   | `[value] -> [bool]` | `ScriptError` if `k` is out of range in `constantPools.strings`. |
+
+`TYPE_CHECK` compares the popped value's tag (`Value.t`) to the
+operand and pushes the boolean result.
+
+`INSTANCE_OF` reads the target `TypeId` from
+`constantPools.strings[k]` and pushes `true` when the popped value
+is a struct value whose `typeId` equals the target. Non-struct
+values always yield `false`.
+
+### Indirect function calls
+
+| Mnemonic             | Numeric | Operands     | Stack effect                                       | Faults |
+| -------------------- | ------- | ------------ | -------------------------------------------------- | ------ |
+| `CALL_INDIRECT`      | 160     | `argc` (`a`) | `[func, arg0, ..., arg(argc-1)] -> []`             | `ScriptError` if the popped function reference is not a `FunctionValue`, the resolved `funcId` is out of bounds, or `argc != callee.numParams`. `StackOverflow` if frame depth would exceed `maxFrameDepth`. |
+| `CALL_INDIRECT_ARGS` | 161     | `argc` (`a`) | `[func, arg0, ..., arg(argc-1)] -> []`             | Same as `CALL_INDIRECT` minus the arity check; surplus args are dropped and missing args are nil-padded to `callee.numParams`. |
+
+`CALL_INDIRECT` resolves a `FunctionValue` from the operand stack
+(below the args), enforces strict arity, and otherwise behaves like
+`CALL`. Captured environment from the `FunctionValue` is bound to
+the new frame.
+
+`CALL_INDIRECT_ARGS` is the lenient variant: it accepts any
+positive `argc`, truncates excess args, and nil-pads missing args
+to match the callee's declared `numParams`. Used when the call site
+cannot statically prove an exact arity (e.g. variadic-style
+internal helpers).
+
+### Closures
+
+| Mnemonic       | Numeric | Operands                                | Stack effect                                            | Faults |
+| -------------- | ------- | --------------------------------------- | ------------------------------------------------------- | ------ |
+| `MAKE_CLOSURE` | 170     | `funcId` (`a`), `captureCount` (`b`)    | `[capture0, ..., capture(captureCount-1)] -> [func]`    | -      |
+| `LOAD_CAPTURE` | 171     | `captureIdx` (`a`)                      | `[] -> [value]`                                         | `ScriptError` if the current frame has no captures, or `captureIdx >= captures.size()`. |
+
+`MAKE_CLOSURE` pops `captureCount` values right-to-left to preserve
+push order, and pushes a `FunctionValue` bound to `funcId` whose
+`captures` field carries the popped values. The resulting value is
+callable through `CALL_INDIRECT` / `CALL_INDIRECT_ARGS`; the new
+frame's `captures` field aliases the closure's captures.
+
+`LOAD_CAPTURE` reads the current frame's capture by index; only
+frames created by an indirect call from a closure value carry a
+captures list.
+
+### List operations
+
+| Mnemonic      | Numeric | Operands              | Stack effect                          | Faults |
+| ------------- | ------- | --------------------- | ------------------------------------- | ------ |
+| `LIST_NEW`    | 90      | `_` (`a`), `k?` (`b`) | `[] -> [list]`                        | -      |
+| `LIST_PUSH`   | 91      | none                  | `[list, item] -> [list]`              | `ScriptError` if the popped list is not a list value. |
+| `LIST_GET`    | 92      | none                  | `[list, index] -> [value]`            | `ScriptError` if not a list, or `index` is not a number. Out-of-bounds reads return `nil`. |
+| `LIST_SET`    | 93      | none                  | `[list, index, value] -> [list]`      | `ScriptError` if not a list, or `index` is not a number. |
+| `LIST_LEN`    | 94      | none                  | `[list] -> [number]`                  | `ScriptError` if not a list. |
+| `LIST_POP`    | 95      | none                  | `[list] -> [value]`                   | `ScriptError` if not a list. Empty-list pop yields `nil`. |
+| `LIST_SHIFT`  | 96      | none                  | `[list] -> [value]`                   | `ScriptError` if not a list. Empty-list shift yields `nil`. |
+| `LIST_REMOVE` | 97      | none                  | `[list, index] -> [value]`            | `ScriptError` if not a list, or `index` is not a number. |
+| `LIST_INSERT` | 98      | none                  | `[list, index, value] -> []`          | `ScriptError` if not a list, or `index` is not a number. |
+| `LIST_SWAP`   | 99      | none                  | `[list, i, j] -> []`                  | `ScriptError` if not a list, or either index is not a number. |
+
+`LIST_NEW`'s `b` operand is optional: when present and in range, it
+indexes `constantPools.strings` for the list's `TypeId`; when
+omitted or out of range, the typeId defaults to `list:<unknown>`.
+The `a` operand is reserved.
+
+All in-place list mutations (`LIST_PUSH`, `LIST_SET`, `LIST_INSERT`,
+`LIST_SWAP`, `LIST_POP`, `LIST_SHIFT`, `LIST_REMOVE`) modify the
+target list value directly; the list reference is the same value
+seen elsewhere on the stack and in variables. Numeric indices are
+floored to integers before indexing.
+
+### Map operations
+
+| Mnemonic     | Numeric | Operands              | Stack effect                  | Faults |
+| ------------ | ------- | --------------------- | ----------------------------- | ------ |
+| `MAP_NEW`    | 100     | `_` (`a`), `k?` (`b`) | `[] -> [map]`                 | -      |
+| `MAP_SET`    | 101     | none                  | `[map, key, value] -> [map]`  | `ScriptError` if the popped value is not a map, or `key` is not a string or number. |
+| `MAP_GET`    | 102     | none                  | `[map, key] -> [value]`       | Same constraints as `MAP_SET`. Missing keys yield `nil`. |
+| `MAP_HAS`    | 103     | none                  | `[map, key] -> [bool]`        | Same constraints as `MAP_SET`. |
+| `MAP_DELETE` | 104     | none                  | `[map, key] -> [map]`         | Same constraints as `MAP_SET`. |
+
+`MAP_NEW`'s `b` operand has the same optional typeId-from-strings
+behavior as `LIST_NEW`'s; the default typeId is `map:<unknown>`.
+Map keys are restricted to string and number values; key equality
+follows the underlying platform `Dict` semantics (numbers compare
+by value, strings by character sequence).
+
+### Struct operations
+
+| Mnemonic             | Numeric | Operands                          | Stack effect                                                            | Faults |
+| -------------------- | ------- | --------------------------------- | ----------------------------------------------------------------------- | ------ |
+| `STRUCT_NEW`         | 110     | `numFields` (`a`), `k?` (`b`)     | `[name0, val0, ..., nameN, valN] -> [struct]` (with `N = numFields`)    | `ScriptError` if any popped name is not a string. Unknown field names are ignored. |
+| `STRUCT_GET`         | 111     | none                              | `[struct, fieldName] -> [value]`                                        | `ScriptError` if the popped value is not a struct, or `fieldName` is not a string. Unknown fields yield `nil`. |
+| `STRUCT_SET`         | 112     | none                              | `[struct, fieldName, value] -> [struct]`                                | Same constraints as `STRUCT_GET`. Unknown fields are silently dropped. |
+| `STRUCT_COPY_EXCEPT` | 113     | `numExclude` (`a`), `k?` (`b`)    | `[source, key0, ..., key(numExclude-1)] -> [struct]`                    | `ScriptError` if any exclude key is not a string, or the source value is not a struct. |
+| `STRUCT_GET_FIELD`   | 114     | `fieldIndex` (`a`)                | `[struct] -> [value]`                                                   | `ScriptError` if the source is not a struct. |
+| `STRUCT_SET_FIELD`   | 115     | `fieldIndex` (`a`)                | `[struct, value] -> [struct]`                                           | `ScriptError` if the source is not a struct. |
+
+`STRUCT_NEW`'s `b` operand, when present and in range, indexes
+`constantPools.strings` for the struct's `TypeId`; when omitted, the
+typeId defaults to `struct:<anonymous>`. The dispatcher pre-allocates
+a field list sized to the registered type's field count (or empty
+for an anonymous struct), then resolves each `(name, value)` pair
+to a `fieldIndex` via `StructTypeDef.fieldIndexByName` and writes
+into that slot. Pairs whose names are not declared on the type are
+silently ignored.
+
+`STRUCT_GET` / `STRUCT_SET` are the name-keyed variants used when
+the compiler cannot prove the source's static type. They look up
+the field through `fieldIndexByName` and read or write the underlying
+`StructValue.v` slot; unknown names are no-ops on `STRUCT_SET` and
+yield `nil` on `STRUCT_GET`.
+
+`STRUCT_COPY_EXCEPT` builds a new struct value (typed by the
+optional `b` operand, or carried over from the source's typeId
+when no replacement type is given) by copying all fields of `source`
+except those whose names appear in the popped exclude key set.
+
+`STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` are the index-keyed fast
+paths used when the compiler statically knows the field index. They
+index `StructValue.v` directly with no type-registry consultation.
 Closed structs store field values in `StructValue.v: List<Value>`,
-indexed by `StructFieldDef.fieldIndex`. Compilers emit
-`STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` when type information proves
-the source is a closed struct. Missing list entries read as `nil`.
+indexed by `StructFieldDef.fieldIndex`; missing list entries read
+as `nil`.
 
-Native-backed and open structs use the name-keyed `GET_FIELD` /
-`SET_FIELD` family. For native-backed structs, the VM delegates to
-the registered `fieldGetter` / `fieldSetter` hooks. Name-keyed access
-to a closed struct is still defined by looking up the field name in
-`StructTypeDef.fieldIndexByName` and then indexing `StructValue.v`; this is
-for dynamic field-name paths and compatibility within the opcode set,
-not the preferred static lowering.
+### Generic field access
+
+| Mnemonic    | Numeric | Operands | Stack effect                              | Faults |
+| ----------- | ------- | -------- | ----------------------------------------- | ------ |
+| `GET_FIELD` | 120     | none     | `[source, fieldName] -> [value]`          | `ScriptError` if `fieldName` is not a string. Non-struct sources yield `nil`. |
+| `SET_FIELD` | 121     | none     | `[source, fieldName, value] -> [source]`  | `ScriptError` if `fieldName` is not a string, the source is not a struct, or the registered `fieldSetter` returns `false`. |
+
+`GET_FIELD` / `SET_FIELD` are the universal field-access opcodes,
+emitted when the compiler cannot lower to a `STRUCT_GET_FIELD` /
+`STRUCT_SET_FIELD` pair. For struct values whose registered
+`StructTypeDef` has a `fieldGetter` / `fieldSetter` callback, the
+opcodes delegate to those callbacks (this is the path
+native-backed structs use to project host objects); otherwise they
+look up the field through `StructTypeDef.fieldIndexByName` and
+read or write `StructValue.v` directly.
+
+`SET_FIELD` deep-copies struct values before storing them, the same
+way `STORE_VAR_SLOT` does, so a struct field cannot become an alias
+of a struct held elsewhere.
 
 ---
 
@@ -443,12 +763,9 @@ carried as a `ConstantOffsets` aggregate.
 ### Host-call layout
 
 Host functions registered through `IFunctionRegistry` are invoked
-via the opcode pair:
-
-| Mnemonic          | Numeric | Operands                                            | Stack effect                                            |
-| ----------------- | ------- | --------------------------------------------------- | ------------------------------------------------------- |
-| `HOST_CALL`       | 40      | `fnId: u16` (`a`), `argc: u16` (`b`), `csId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [result]`                  |
-| `HOST_CALL_ASYNC` | 41      | `fnId: u16` (`a`), `argc: u16` (`b`), `csId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`                  |
+via the `HOST_CALL` / `HOST_CALL_ASYNC` opcode pair (see the
+[Host calls](#host-calls) row in the opcode reference for numeric
+assignments and per-row stack effects).
 
 Operands:
 
@@ -459,11 +776,11 @@ Operands:
   `argc == fnEntry.callDef.argSlots.size()` is true by construction
   for compiler-emitted call sites. Carried as an operand to avoid the
   registry indirection on the hot dispatch path.
-- `csId` is the unique call-site id used by the host to key
+- `callSiteId` is the unique call-site id used by the host to key
   per-call-site state (e.g. timer carry, accumulator state).
 
 Before invoking the host, the dispatcher sets
-`fiber.executionContext.currentCallSiteId = csId`.
+`fiber.executionContext.currentCallSiteId = callSiteId`.
 
 **Arg buffer.** The compiler reserves `argc` operand-stack slots
 immediately preceding the call by emitting `argc` `PUSH_CONST_VAL`

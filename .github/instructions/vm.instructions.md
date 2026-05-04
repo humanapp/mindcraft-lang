@@ -26,66 +26,22 @@ The brain VM (`packages/core/src/brain/runtime/`) is a stack-based bytecode virt
 - `page.ts` / `rule.ts` - Page and Rule runtime instances
 - `sensors/` / `actuators/` - Core sensor and actuator implementations
 
-## Opcodes (Op enum)
+## Opcodes
 
-| Range   | Category   | Opcodes                                                                                              |
-| ------- | ---------- | ---------------------------------------------------------------------------------------------------- |
-| 0-6     | Stack      | `PUSH_CONST_VAL`, `POP`, `DUP`, `SWAP`, `PUSH_CONST_NUM`, `PUSH_CONST_STR`, `STACK_SET_REL`         |
-| 10-11   | Variables  | `LOAD_VAR_SLOT`, `STORE_VAR_SLOT`                                                                    |
-| 20-22   | Control    | `JMP`, `JMP_IF_FALSE`, `JMP_IF_TRUE`                                                                 |
-| 30-31   | Calls      | `CALL`, `RET`                                                                                        |
-| 40-41   | Host       | `HOST_CALL`, `HOST_CALL_ASYNC`                                                                       |
-| 42-43   | Action     | `ACTION_CALL`, `ACTION_CALL_ASYNC`                                                                   |
-| 50-51   | Async      | `AWAIT`, `YIELD`                                                                                     |
-| 60-62   | Exceptions | `TRY`, `END_TRY`, `THROW`                                                                            |
-| 70-73   | Boundaries | `WHEN_START`, `WHEN_END`, `DO_START`, `DO_END`                                                       |
-| 90-99   | Lists      | `LIST_NEW`, `LIST_PUSH`, `LIST_GET`, `LIST_SET`, `LIST_LEN`, `LIST_POP`, `LIST_SHIFT`, `LIST_REMOVE`, `LIST_INSERT`, `LIST_SWAP` |
-| 100-104 | Maps       | `MAP_NEW`, `MAP_SET`, `MAP_GET`, `MAP_HAS`, `MAP_DELETE`                                             |
-| 110-115 | Structs    | `STRUCT_NEW`, `STRUCT_GET`, `STRUCT_SET`, `STRUCT_COPY_EXCEPT`, `STRUCT_GET_FIELD`, `STRUCT_SET_FIELD` |
-| 120-121 | Fields     | `GET_FIELD`, `SET_FIELD`                                                                             |
-| 130-131 | Locals     | `LOAD_LOCAL`, `STORE_LOCAL`                                                                          |
-| 140-141 | Callsite   | `LOAD_CALLSITE_VAR`, `STORE_CALLSITE_VAR`                                                            |
-| 150-151 | Types      | `TYPE_CHECK`, `INSTANCE_OF`                                                                  |
-| 160-161 | Indirect   | `CALL_INDIRECT`, `CALL_INDIRECT_ARGS`                                                                |
-| 170-171 | Closures   | `MAKE_CLOSURE`, `LOAD_CAPTURE`                                                                       |
+The full opcode reference -- numeric assignments, operand layout,
+stack effects, fault conditions, and per-group prose -- lives in
+[docs/specs/core/vm-contract.md](../../docs/specs/core/vm-contract.md)
+under "Opcode reference". The TS expression of the same numeric
+assignments is the `Op` enum in
+`packages/core/src/runtime/bytecode.ts`. When changing an opcode in
+either place, update both in the same unit.
 
-### Host Calls
-
-Host functions registered through `IFunctionRegistry` are invoked via the
-positional `HOST_CALL` / `HOST_CALL_ASYNC` pair. The compiler emits an
-`argc`-wide arg buffer on the operand stack; the dispatcher reads slot
-`i` as `args.get(i)`. Sync hosts receive a `Sublist` view; async hosts
-receive an owned snapshot.
-
-| Opcode            | a    | b    | c          | Stack input               | Stack output | Sync? |
-| ----------------- | ---- | ---- | ---------- | ------------------------- | ------------ | ----- |
-| `HOST_CALL`       | fnId | argc | callSiteId | `argc` positional values  | result Value | sync  |
-| `HOST_CALL_ASYNC` | fnId | argc | callSiteId | `argc` positional values  | handle Value | async |
-
-Async variants push a handle; the VM must then execute `AWAIT` to suspend the fiber and retrieve the result when the handle resolves.
-
-Before every host call, the VM sets `fiber.executionContext.currentCallSiteId = callSiteId`. See the "Calling convention" section of `docs/specs/core/vm-contract.md` for the full arg-buffer layout (NIL fillers + `STACK_SET_REL` per supplied slot).
-
-### STRUCT_COPY_EXCEPT (113)
-
-Pops `a` string keys as an exclusion set, pops source struct. Copies all fields from source except those in the exclusion set. `b` is the constant index for the new struct's typeId string.
-
-### CALL_INDIRECT vs CALL_INDIRECT_ARGS
-
-- `CALL_INDIRECT` (160): pops `a` args then a `FunctionValue`; requires exact `argc == fn.numParams`.
-- `CALL_INDIRECT_ARGS` (161): same but pads or trims args to match `fn.numParams`.
-
-### Frame Locals and Captures
+### Frame and capture layout
 
 `Frame` carries:
+
 - `locals: List<Value>` -- indexed slots sized by `fn.numLocals ?? fn.numParams`. Args fill slots 0..numParams-1; rest are nil.
-- `captures?: List<Value>` -- closure capture list set when entering a closure function.
-
-`LOAD_LOCAL`/`STORE_LOCAL` index into `frame.locals`. `LOAD_CAPTURE` indexes into `frame.captures`.
-
-### Callsite Variables
-
-`LOAD_CALLSITE_VAR`/`STORE_CALLSITE_VAR` index into `fiber.callsiteVars`, a per-fiber list for persistent callsite state across ticks.
+- `captures?: List<Value>` -- closure capture list set when entering a closure function via an indirect call.
 
 ## Key Data Structures
 
