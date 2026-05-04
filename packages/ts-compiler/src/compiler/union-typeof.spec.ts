@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -101,7 +101,7 @@ describe("union types", () => {
   });
 
   test("tsTypeToTypeId returns a union TypeId for number | string (not Any)", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const unionId = types.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     assert.ok(unionId);
     assert.notEqual(unionId, CoreTypeIds.Any);
@@ -111,7 +111,7 @@ describe("union types", () => {
   });
 
   test("[1, 'hello'] compiles to a list with a union element type, not AnyList", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -145,14 +145,14 @@ export default Sensor({
   });
 
   test("ambient output for a union type emits member1 | member2", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     types.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     assert.ok(!ambientSource.includes("union:<"), "union type internal name should not appear in ambient output");
   });
 
   test("operator resolution works through union expansion: (number | string) + number", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -192,7 +192,7 @@ describe("typeof lowering", () => {
   });
 
   test("typeof x === 'number' compiles and returns true for number", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context } from "mindcraft";
 
@@ -227,7 +227,7 @@ export default Sensor({
   });
 
   test("typeof x !== 'string' produces negated result", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context } from "mindcraft";
 
@@ -262,7 +262,7 @@ export default Sensor({
   });
 
   test("reversed form: 'boolean' === typeof x", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context } from "mindcraft";
 
@@ -297,7 +297,7 @@ export default Sensor({
   });
 
   test("typeof x === 'undefined' for nil value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -329,7 +329,7 @@ export default Sensor({
   });
 
   test("typeof x === 'object' produces a diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -350,7 +350,7 @@ export default Sensor({
   });
 
   test("typeof in if-statement for runtime narrowing", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context } from "mindcraft";
 

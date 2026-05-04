@@ -184,7 +184,7 @@ function computeWanderSteering(ctx: ExecutionContext, self: Actor, weight: numbe
   if (!state || state.wanderTargetExpiresAt < now) {
     state = {
       wanderTargetPos: mkVector2Value(self.randomPosition()),
-      wanderTargetExpiresAt: now + ctx.services.rng.next() * 5000 + 2000, // 2-7 seconds
+      wanderTargetExpiresAt: now + ctx.services.app.rng.next() * 5000 + 2000, // 2-7 seconds
     } satisfies MoveState;
     setCallSiteState(ctx, state);
   }

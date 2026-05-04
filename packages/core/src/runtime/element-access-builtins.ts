@@ -78,9 +78,9 @@ function stringGetJs(source: string, key: Value | undefined): Value {
   return NIL_VALUE;
 }
 
-/** Register the built-in element-access operations (list/map/struct read and write) on `services.functions`. */
+/** Register the built-in element-access operations (list/map/struct read and write) on `services.runtime.functions`. */
 export function registerElementAccessBuiltins(services: BrainServices) {
-  const { functions } = services;
+  const { functions } = services.runtime;
 
   functions.register(
     "$$list_get_js",

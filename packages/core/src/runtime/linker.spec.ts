@@ -87,8 +87,8 @@ describe("linkBrainProgram", () => {
     };
 
     const brainDef = buildBrainWithBytecodeActuator(action);
-    const catalogs = List.from([services.tiles, brainDef.catalog()]);
-    const compiled = compileBrain(brainDef, catalogs, services.conversions);
+    const catalogs = List.from([services.edit.tiles, brainDef.catalog()]);
+    const compiled = compileBrain(brainDef, catalogs, services.shared.conversions);
     const unlinked = {
       ...compiled,
       variableNames: List.from(["brainVar"]),

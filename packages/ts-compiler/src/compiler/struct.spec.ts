@@ -46,7 +46,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -82,7 +82,7 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
 }
 
 function getStructField(source: StructValue, fieldName: string): Value | undefined {
-  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const def = services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
   const fieldIndex = def?.fieldIndexByName.get(fieldName);
   return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
 }
@@ -191,7 +191,7 @@ function emitSyntheticHostCallBuffer(
   op: Op.HOST_CALL | Op.HOST_CALL_ASYNC = Op.HOST_CALL
 ): FunctionBytecode {
   const localServices = __test__createBrainServices();
-  localServices.functions.register(
+  localServices.runtime.functions.register(
     "$$emit_host_call_matrix",
     op === Op.HOST_CALL_ASYNC,
     op === Op.HOST_CALL_ASYNC ? { exec: () => {} } : { exec: () => NIL_VALUE },
@@ -219,7 +219,7 @@ function emitSyntheticHostCallBuffer(
     undefined,
     undefined,
     undefined,
-    localServices.functions
+    localServices.runtime.functions
   );
   assert.deepStrictEqual(result.diagnostics, []);
   return result.bytecode;
@@ -278,7 +278,7 @@ describe("struct literal compilation", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -309,7 +309,7 @@ describe("struct literal compilation", () => {
   });
 
   test("struct literal with type annotation compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -347,7 +347,7 @@ export default Sensor({
   });
 
   test("struct literal as return value (contextual type from return annotation)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -382,7 +382,7 @@ export default Sensor({
   });
 
   test("nested struct literal compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
@@ -421,7 +421,7 @@ export default Sensor({
   });
 
   test("native-backed struct object literal produces compile error", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NativeObj } from "mindcraft";
 
@@ -438,7 +438,7 @@ export default Sensor({
   });
 
   test("untyped object literal compiles as anonymous struct", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -460,8 +460,8 @@ describe("property access chains + host calls", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
-    const fns = services.functions;
+    const types = services.runtime.types;
+    const fns = services.runtime.functions;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
 
@@ -516,7 +516,7 @@ describe("property access chains + host calls", () => {
   });
 
   test("closed struct property access compiles to STRUCT_GET_FIELD", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -552,7 +552,7 @@ export default Sensor({
   });
 
   test("chained struct property access (entity.position.x)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
@@ -585,7 +585,7 @@ export default Sensor({
   });
 
   test("ctx.time compiles to GET_FIELD", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -617,7 +617,7 @@ export default Sensor({
   });
 
   test("ctx.dt compiles to GET_FIELD", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -649,7 +649,7 @@ export default Sensor({
   });
 
   test("ctx.brain.getVariable compiles to struct method call", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -670,8 +670,10 @@ export default Sensor({
     const variables = new Map<string, Value>();
     variables.set("myVar", mkNumberValue(999));
     const customServices = __test__createPlatformServices({
-      functions: services.functions,
-      types: services.types,
+      runtime: {
+        functions: services.runtime.functions,
+        types: services.runtime.types,
+      },
       brainVars: {
         getByName: (name: string) => variables.get(name) ?? NIL_VALUE,
         setByName: (name: string, value: Value) => {
@@ -693,7 +695,7 @@ export default Sensor({
   });
 
   test("ctx.brain.setVariable compiles to struct method call", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -711,7 +713,7 @@ export default Sensor({
   });
 
   test("ctx.engine.queryNearby compiles to struct method call", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -730,7 +732,7 @@ export default Sensor({
   });
 
   test("unknown engine method produces compile error", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -747,7 +749,7 @@ export default Sensor({
   });
 
   test("params.speed still resolves to LoadLocal (regression)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context } from "mindcraft";
 
@@ -783,7 +785,7 @@ export default Sensor({
   });
 
   test("list.length still resolves to ListLen (regression)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -816,7 +818,7 @@ export default Sensor({
   });
 
   test("native-backed struct field access uses GET_FIELD", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const nativeActorId = mkTypeId(NativeType.Struct, "NativeActor");
     if (!types.get(nativeActorId)) {
@@ -829,7 +831,7 @@ export default Sensor({
       });
     }
 
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type NativeActor } from "mindcraft";
 
@@ -850,7 +852,7 @@ export default Sensor({
   });
 
   test("unknown struct field produces compile error (caught by TS checker)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -871,7 +873,7 @@ export default Sensor({
   });
 
   test("ctx alias resolves ctx.time correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -904,7 +906,7 @@ export default Sensor({
   });
 
   test("ctx alias resolves ctx.brain.getVariable correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -927,8 +929,8 @@ describe("struct method calls", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
-    const fns = services.functions;
+    const types = services.runtime.types;
+    const fns = services.runtime.functions;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const voidTypeId = mkTypeId(NativeType.Void, "void");
@@ -1026,7 +1028,7 @@ describe("struct method calls", () => {
   });
 
   test("struct method with one arg compiles to HostCall with argc 2", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -1046,7 +1048,7 @@ export default Sensor({
   });
 
   test("struct method with no args compiles to HostCall with argc 1", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -1067,7 +1069,7 @@ export default Sensor({
   });
 
   test("struct method with multiple args compiles with correct argc", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -1087,7 +1089,7 @@ export default Sensor({
   });
 
   test("unknown method name on struct produces compile diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -1110,7 +1112,7 @@ export default Sensor({
   });
 
   test("end-to-end: struct method call executes and returns correct value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -1149,7 +1151,7 @@ export default Sensor({
   });
 
   test("end-to-end: struct method with multiple args returns correct value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -1188,14 +1190,14 @@ export default Sensor({
   });
 
   test("ambient declarations include method signatures for structs with methods", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     assert.ok(ambientSource.includes("getValue(key: string): number;"), "Expected getValue method signature");
     assert.ok(ambientSource.includes("reset(): void;"), "Expected reset method signature");
     assert.ok(ambientSource.includes("add(a: number, b: number): number;"), "Expected add method signature");
   });
 
   test("async method declaration generates Promise<T> return type in ambient output", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     assert.ok(
       ambientSource.includes("fetchData(url: string): Promise<string>;"),
       "Expected async method with Promise return type"
@@ -1203,7 +1205,7 @@ export default Sensor({
   });
 
   test("calling async host function emits HOST_CALL_ASYNC", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -1232,7 +1234,7 @@ export default Sensor({
   });
 
   test("calling sync host function emits HOST_CALL (not HOST_CALL_ASYNC)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -1260,7 +1262,7 @@ export default Sensor({
   });
 
   test(".pop() removes and returns last element", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1291,7 +1293,7 @@ export default Sensor({
   });
 
   test(".pop() on empty list returns nil", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1323,7 +1325,7 @@ export default Sensor({
   });
 
   test(".shift() removes and returns first element", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1354,7 +1356,7 @@ export default Sensor({
   });
 
   test(".unshift() adds element at beginning", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1390,7 +1392,7 @@ export default Sensor({
   });
 
   test(".splice(1, 2) removes 2 elements at index 1", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1425,7 +1427,7 @@ export default Sensor({
   });
 
   test(".sort((a, b) => a - b) sorts ascending", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1460,7 +1462,7 @@ export default Sensor({
   });
 
   test(".sort((a, b) => b - a) sorts descending", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1495,7 +1497,7 @@ export default Sensor({
   });
 
   test(".sort() on already-sorted list is unchanged", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1530,7 +1532,7 @@ export default Sensor({
   });
 
   test(".sort() on single-element list is unchanged", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1563,7 +1565,7 @@ export default Sensor({
   });
 
   test(".sort() on empty list is unchanged", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1595,7 +1597,7 @@ export default Sensor({
   });
 
   test(".sort() without comparator emits diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1613,7 +1615,7 @@ export default Sensor({
   });
 
   test(".sort() mutates the original array", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 

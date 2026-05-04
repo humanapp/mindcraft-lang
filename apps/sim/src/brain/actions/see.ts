@@ -170,7 +170,7 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   // Set as remembered actor
   state.rememberedPos = mkVector2Value(targetPos);
   state.rememberedActorId = mkNumberValue(seenActor.actorId);
-  state.memoryExpiration = now + ctx.services.rng.next() * 2000 + 500; // Remember for 0.5-2.5s of sim time
+  state.memoryExpiration = now + ctx.services.app.rng.next() * 2000 + 500; // Remember for 0.5-2.5s of sim time
   setCallSiteState(ctx, state);
 
   // Store targets for the DO side to access

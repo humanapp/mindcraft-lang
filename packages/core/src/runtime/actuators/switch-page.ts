@@ -26,14 +26,14 @@ function fnSwitchPage(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
 
   if (numberArg !== undefined && !isNilValue(numberArg) && isNumberValue(numberArg)) {
     const pageNumber = numberArg.v - 1; // Convert 1-based to 0-based index
-    ctx.services.brainPages.requestPageChange(pageNumber);
+    ctx.services.brain.pages.requestPageChange(pageNumber);
   } else if (stringArg !== undefined && !isNilValue(stringArg) && isStringValue(stringArg)) {
     // Try stable pageId first (from BrainTilePageDef), then fall back to
     // page name lookup so brain code can compute page names at runtime.
-    ctx.services.brainPages.requestPageChangeByPageId(stringArg.v);
+    ctx.services.brain.pages.requestPageChangeByPageId(stringArg.v);
   } else {
     // No argument provided -- restart the current page
-    ctx.services.brainPages.requestPageRestart();
+    ctx.services.brain.pages.requestPageRestart();
   }
 
   return VOID_VALUE;

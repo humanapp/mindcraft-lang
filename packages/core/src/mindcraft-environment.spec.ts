@@ -281,23 +281,23 @@ describe("mindcraft environment", () => {
     const servicesA = getEnvironmentServices(envA);
     const servicesB = getEnvironmentServices(envB);
 
-    assert.equal(servicesA.types.resolveByName("AlphaThing"), capture.typeId);
-    assert.equal(servicesB.types.resolveByName("AlphaThing"), undefined);
+    assert.equal(servicesA.runtime.types.resolveByName("AlphaThing"), capture.typeId);
+    assert.equal(servicesB.runtime.types.resolveByName("AlphaThing"), undefined);
 
-    assert.ok(servicesA.functions.get("alpha.helper"));
-    assert.equal(servicesB.functions.get("alpha.helper"), undefined);
+    assert.ok(servicesA.runtime.functions.get("alpha.helper"));
+    assert.equal(servicesB.runtime.functions.get("alpha.helper"), undefined);
 
-    const alphaTile = servicesA.tiles.get(capture.parameterTile!.tileId);
+    const alphaTile = servicesA.edit.tiles.get(capture.parameterTile!.tileId);
     assert.ok(alphaTile);
     assert.equal(alphaTile.tileId, capture.parameterTile!.tileId);
-    assert.equal(servicesB.tiles.get(capture.parameterTile!.tileId), undefined);
+    assert.equal(servicesB.edit.tiles.get(capture.parameterTile!.tileId), undefined);
 
-    const alphaAction = servicesA.actions.getByKey("alpha.sensor");
+    const alphaAction = servicesA.runtime.actions.getByKey("alpha.sensor");
     assert.ok(alphaAction);
-    assert.equal(servicesB.actions.getByKey("alpha.sensor"), undefined);
+    assert.equal(servicesB.runtime.actions.getByKey("alpha.sensor"), undefined);
 
-    assert.ok(servicesA.operatorTable.get("alpha_eq"));
-    assert.equal(servicesB.operatorTable.get("alpha_eq"), undefined);
+    assert.ok(servicesA.runtime.operatorTable.get("alpha_eq"));
+    assert.equal(servicesB.runtime.operatorTable.get("alpha_eq"), undefined);
 
     const brainDef = BrainDef.emptyBrainDef(servicesA, "Alpha Brain");
     const rule = brainDef.pages().get(0)!.children().get(0)!;
@@ -419,7 +419,7 @@ describe("mindcraft environment", () => {
 
     const initialChain = internals.buildCatalogChain(brainDef, List.from([overlayRaw]));
     assert.equal(initialChain.size(), 3);
-    assert.equal(initialChain.get(0), internals.brainServices.tiles);
+    assert.equal(initialChain.get(0), internals.brainServices.edit.tiles);
     assert.equal(initialChain.get(1), overlayRaw);
     assert.equal(initialChain.get(2), brainDef.catalog());
     assert.equal(resolveTileFromChain(initialChain, sharedSensor.tile.tileId), sharedSensor.tile);
@@ -434,7 +434,7 @@ describe("mindcraft environment", () => {
 
     const hydratedChain = internals.buildCatalogChain(brainDef, List.from([overlayRaw]));
     assert.equal(hydratedChain.size(), 4);
-    assert.equal(hydratedChain.get(0), internals.brainServices.tiles);
+    assert.equal(hydratedChain.get(0), internals.brainServices.edit.tiles);
     assert.equal(hydratedChain.get(1), internals.bundleCatalog);
     assert.equal(hydratedChain.get(2), overlayRaw);
     assert.equal(hydratedChain.get(3), brainDef.catalog());
@@ -447,7 +447,7 @@ describe("mindcraft environment", () => {
 
     const bundleChain = internals.buildCatalogChain(brainDef, List.from([overlayRaw]));
     assert.equal(bundleChain.size(), 4);
-    assert.equal(bundleChain.get(0), internals.brainServices.tiles);
+    assert.equal(bundleChain.get(0), internals.brainServices.edit.tiles);
     assert.equal(bundleChain.get(1), internals.bundleCatalog);
     assert.equal(bundleChain.get(2), overlayRaw);
     assert.equal(bundleChain.get(3), brainDef.catalog());

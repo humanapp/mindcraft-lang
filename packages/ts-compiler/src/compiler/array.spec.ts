@@ -27,14 +27,14 @@ let ambientSource: string;
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function ensureSetup(): void {
   if (!ambientSource) {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const numListName = "NumberList";
     const numListTypeId = mkTypeId(NativeType.List, numListName);
@@ -42,7 +42,7 @@ function ensureSetup(): void {
       types.addListType(numListName, { elementTypeId: numTypeId });
     }
 
-    ambientSource = buildAmbientDeclarations(services.types);
+    ambientSource = buildAmbientDeclarations(services.runtime.types);
   }
 }
 
@@ -1175,7 +1175,7 @@ describe("Generic function body - struct field access", () => {
 
   before(() => {
     structServices = __test__createBrainServices();
-    const types = structServices.types;
+    const types = structServices.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const numListName = "NumberList";
@@ -1194,7 +1194,7 @@ describe("Generic function body - struct field access", () => {
       });
     }
 
-    structAmbient = buildAmbientDeclarations(structServices.types);
+    structAmbient = buildAmbientDeclarations(structServices.runtime.types);
   });
 
   test("generic function reads struct field via constrained T", () => {
@@ -1498,7 +1498,7 @@ describe("Generic function - Map operations", () => {
 
   before(() => {
     mapServices = __test__createBrainServices();
-    mapAmbient = buildAmbientDeclarations(mapServices.types);
+    mapAmbient = buildAmbientDeclarations(mapServices.runtime.types);
   });
 
   test("generic function with concrete Map operations", () => {

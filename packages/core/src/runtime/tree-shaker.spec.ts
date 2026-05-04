@@ -779,7 +779,9 @@ describe("treeshakeProgram", () => {
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({
+    runtime: { functions: b.runtime.functions, types: b.runtime.types },
+  });
 }
 
 before(() => {

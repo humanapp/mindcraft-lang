@@ -16,7 +16,7 @@ import { getActor, getTargetActor } from "@/brain/execution-context-types";
 import { extractVector2, mkVector2Value, SimTypeIds } from "@/brain/type-system";
 
 export function registerBrainContext(api: MindcraftModuleApi) {
-  const { types, functions } = api.brainServices;
+  const { types, functions } = api.brainServices.runtime;
 
   const nullableActorRefTypeId = types.addNullableType(SimTypeIds.ActorRef);
   const nullableVector2TypeId = types.addNullableType(SimTypeIds.Vector2);

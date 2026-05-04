@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -99,8 +99,8 @@ describe("await expression", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
-    const fns = services.functions;
+    const types = services.runtime.types;
+    const fns = services.runtime.functions;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const voidTypeId = mkTypeId(NativeType.Void, "void");
@@ -163,7 +163,7 @@ describe("await expression", () => {
   });
 
   test("single await: fiber suspends, resolves, and returns value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -210,7 +210,7 @@ export default Sensor({
   });
 
   test("two consecutive awaits: fiber suspends twice and produces correct result", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -266,7 +266,7 @@ export default Sensor({
   });
 
   test("local variable survives across await point", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -307,7 +307,7 @@ export default Sensor({
   });
 
   test("await on sync function call produces compile error", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 

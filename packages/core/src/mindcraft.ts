@@ -10,7 +10,7 @@ import type {
 import type { BrainJson } from "./brain/model";
 import { BrainDef, brainJsonFromPlain } from "./brain/model";
 import type { BrainServices } from "./brain/services";
-import { createBrainServices } from "./brain/services-factory";
+import { createAppServices, createBrainServices } from "./brain/services-factory";
 import { registerAccessorTileDef } from "./brain/tiles/accessors";
 import { BrainTileActuatorDef } from "./brain/tiles/actuators";
 import { TileCatalog } from "./brain/tiles/catalog";
@@ -24,6 +24,7 @@ import { List, type ReadonlyList } from "./platform/list";
 import { TypeUtils } from "./platform/types";
 import type {
   ActionDescriptor,
+  AppServices,
   BrainActionCallDef,
   BrainActionResolver,
   Conversion,
@@ -35,6 +36,7 @@ import type {
   HostFn,
   HostSyncFn,
   IBrain,
+  IRngServices,
   ListTypeDef,
   ListTypeShape,
   MapTypeDef,
@@ -329,6 +331,11 @@ export interface BrainInvalidationEvent extends ActionBundleUpdate {}
  */
 export interface MindcraftEnvironment {
   readonly brainServices: BrainServices;
+  /**
+   * Host-supplied app services (currently just the RNG) shared by every brain
+   * in this environment. Identical to `brainServices.app`.
+   */
+  readonly appServices: AppServices;
   withServices<T>(callback: (services: BrainServices) => T): T;
   createCatalog(): MindcraftCatalog;
   deserializeBrainJson(json: BrainJson): IBrainDef;
@@ -343,6 +350,11 @@ export interface MindcraftEnvironment {
 
 type CreateMindcraftEnvironmentOptions = {
   readonly modules?: readonly MindcraftModule[];
+  /**
+   * Random-number stream shared with every brain created by this environment.
+   * Defaults to {@link createDefaultRng} when omitted.
+   */
+  readonly rng?: IRngServices;
 };
 
 function buildHostActionBinding(
@@ -367,11 +379,11 @@ function buildHostActionBinding(
 }
 
 function ensureFunctionRegistered(services: BrainServices, definition: HostFunctionDefinition): void {
-  if (services.functions.get(definition.name)) {
+  if (services.runtime.functions.get(definition.name)) {
     return;
   }
 
-  services.functions.register(definition.name, definition.isAsync, definition.fn, definition.callDef);
+  services.runtime.functions.register(definition.name, definition.isAsync, definition.fn, definition.callDef);
 }
 
 function assertRegisteredTypeId(actual: string, expected: string, name: string): string {
@@ -384,17 +396,17 @@ function assertRegisteredTypeId(actual: string, expected: string, name: string):
 const assignNoop: HostSyncFn = { exec: () => NIL_VALUE };
 
 function autoRegisterAssignment(services: BrainServices, typeId: TypeId): void {
-  if (services.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId])) {
+  if (services.edit.operatorOverloads.resolve(CoreOpId.Assign, [typeId, typeId])) {
     return;
   }
-  services.operatorOverloads.binary(CoreOpId.Assign, typeId, typeId, typeId, assignNoop, false);
+  services.edit.operatorOverloads.binary(CoreOpId.Assign, typeId, typeId, typeId, assignNoop, false);
 }
 
 function registerMindcraftTypeDefinition(services: BrainServices, definition: MindcraftTypeDefinition): string {
   const nullableDef = definition as NullableTypeDef;
   if (definition.nullable && nullableDef.baseTypeId !== undefined) {
     return assertRegisteredTypeId(
-      services.types.addNullableType(nullableDef.baseTypeId),
+      services.runtime.types.addNullableType(nullableDef.baseTypeId),
       nullableDef.typeId,
       nullableDef.name
     );
@@ -404,19 +416,39 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
 
   switch (definition.coreType) {
     case NativeType.Void:
-      return assertRegisteredTypeId(services.types.addVoidType(definition.name), definition.typeId, definition.name);
+      return assertRegisteredTypeId(
+        services.runtime.types.addVoidType(definition.name),
+        definition.typeId,
+        definition.name
+      );
     case NativeType.Nil:
-      return assertRegisteredTypeId(services.types.addNilType(definition.name), definition.typeId, definition.name);
+      return assertRegisteredTypeId(
+        services.runtime.types.addNilType(definition.name),
+        definition.typeId,
+        definition.name
+      );
     case NativeType.Boolean:
-      return assertRegisteredTypeId(services.types.addBooleanType(definition.name), definition.typeId, definition.name);
+      return assertRegisteredTypeId(
+        services.runtime.types.addBooleanType(definition.name),
+        definition.typeId,
+        definition.name
+      );
     case NativeType.Number:
-      return assertRegisteredTypeId(services.types.addNumberType(definition.name), definition.typeId, definition.name);
+      return assertRegisteredTypeId(
+        services.runtime.types.addNumberType(definition.name),
+        definition.typeId,
+        definition.name
+      );
     case NativeType.String:
-      return assertRegisteredTypeId(services.types.addStringType(definition.name), definition.typeId, definition.name);
+      return assertRegisteredTypeId(
+        services.runtime.types.addStringType(definition.name),
+        definition.typeId,
+        definition.name
+      );
     case NativeType.Enum: {
       const enumDef = definition as EnumTypeDef;
       registeredTypeId = assertRegisteredTypeId(
-        services.types.addEnumType(enumDef.name, {
+        services.runtime.types.addEnumType(enumDef.name, {
           symbols: enumDef.symbols,
           defaultKey: enumDef.defaultKey,
         }),
@@ -428,7 +460,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     case NativeType.List: {
       const listDef = definition as ListTypeDef;
       registeredTypeId = assertRegisteredTypeId(
-        services.types.addListType(listDef.name, { elementTypeId: listDef.elementTypeId }),
+        services.runtime.types.addListType(listDef.name, { elementTypeId: listDef.elementTypeId }),
         listDef.typeId,
         listDef.name
       );
@@ -437,7 +469,10 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     case NativeType.Map: {
       const mapDef = definition as MapTypeDef;
       registeredTypeId = assertRegisteredTypeId(
-        services.types.addMapType(mapDef.name, { keyTypeId: mapDef.keyTypeId, valueTypeId: mapDef.valueTypeId }),
+        services.runtime.types.addMapType(mapDef.name, {
+          keyTypeId: mapDef.keyTypeId,
+          valueTypeId: mapDef.valueTypeId,
+        }),
         mapDef.typeId,
         mapDef.name
       );
@@ -446,7 +481,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     case NativeType.Struct: {
       const structDef = definition as StructTypeDef & StructDefineOptions;
       registeredTypeId = assertRegisteredTypeId(
-        services.types.addStructType(structDef.name, {
+        services.runtime.types.addStructType(structDef.name, {
           fields: structDef.fields,
           nominal: structDef.nominal,
           fieldGetter: structDef.fieldGetter,
@@ -477,12 +512,16 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
       break;
     }
     case NativeType.Any:
-      return assertRegisteredTypeId(services.types.addAnyType(definition.name), definition.typeId, definition.name);
+      return assertRegisteredTypeId(
+        services.runtime.types.addAnyType(definition.name),
+        definition.typeId,
+        definition.name
+      );
     case NativeType.Function: {
       const functionDef = definition as FunctionTypeDef;
       if (functionDef.paramTypeIds !== undefined && functionDef.returnTypeId !== undefined) {
         return assertRegisteredTypeId(
-          services.types.getOrCreateFunctionType({
+          services.runtime.types.getOrCreateFunctionType({
             paramTypeIds: functionDef.paramTypeIds,
             returnTypeId: functionDef.returnTypeId,
           }),
@@ -491,7 +530,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
         );
       }
       return assertRegisteredTypeId(
-        services.types.addFunctionType(definition.name),
+        services.runtime.types.addFunctionType(definition.name),
         definition.typeId,
         definition.name
       );
@@ -499,7 +538,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
     case NativeType.Union: {
       const unionDef = definition as UnionTypeDef;
       return assertRegisteredTypeId(
-        services.types.getOrCreateUnionType(unionDef.memberTypeIds),
+        services.runtime.types.getOrCreateUnionType(unionDef.memberTypeIds),
         unionDef.typeId,
         unionDef.name
       );
@@ -513,7 +552,7 @@ function registerMindcraftTypeDefinition(services: BrainServices, definition: Mi
 }
 
 function registerOperatorDefinition(services: BrainServices, definition: OperatorDefinition): void {
-  services.operatorTable.add(definition.spec);
+  services.runtime.operatorTable.add(definition.spec);
   const overloads = definition.overloads;
   if (!overloads) {
     return;
@@ -524,7 +563,7 @@ function registerOperatorDefinition(services: BrainServices, definition: Operato
     const overload = overloadList.get(i)!;
     const argTypes = List.from(overload.argTypes);
     if (argTypes.size() === 1) {
-      services.operatorOverloads.unary(
+      services.edit.operatorOverloads.unary(
         definition.spec.id,
         argTypes.get(0)!,
         overload.resultType,
@@ -535,7 +574,7 @@ function registerOperatorDefinition(services: BrainServices, definition: Operato
     }
 
     if (argTypes.size() === 2) {
-      services.operatorOverloads.binary(
+      services.edit.operatorOverloads.binary(
         definition.spec.id,
         argTypes.get(0)!,
         argTypes.get(1)!,
@@ -666,8 +705,8 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
     }
 
     ensureFunctionRegistered(this.brainServices, def.function);
-    this.brainServices.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
-    this.brainServices.tiles.registerTileDef(def.tile);
+    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
+    this.brainServices.edit.tiles.registerTileDef(def.tile);
   }
 
   registerHostActuator(def: HostActuatorDefinition): void {
@@ -676,8 +715,8 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
     }
 
     ensureFunctionRegistered(this.brainServices, def.function);
-    this.brainServices.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
-    this.brainServices.tiles.registerTileDef(def.tile);
+    this.brainServices.runtime.actions.register(buildHostActionBinding(def.descriptor, def.actionFn));
+    this.brainServices.edit.tiles.registerTileDef(def.tile);
   }
 
   registerFunction(def: HostFunctionDefinition): void {
@@ -685,14 +724,14 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
   }
 
   registerTile(def: TileDefinitionInput): string {
-    this.brainServices.tiles.registerTileDef(def);
+    this.brainServices.edit.tiles.registerTileDef(def);
     return def.tileId;
   }
 
   registerModifiers(defs: readonly ModifierTileInput[]): void {
     for (const def of defs) {
       const metadata: ITileMetadata = { label: def.label, iconUrl: def.iconUrl };
-      this.brainServices.tiles.registerTileDef(new BrainTileModifierDef(def.id, { metadata }));
+      this.brainServices.edit.tiles.registerTileDef(new BrainTileModifierDef(def.id, { metadata }));
     }
   }
 
@@ -702,7 +741,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
       if (def.label) {
         opts.metadata = { label: def.label, iconUrl: def.iconUrl };
       }
-      this.brainServices.tiles.registerTileDef(new BrainTileParameterDef(def.id, def.dataType, opts));
+      this.brainServices.edit.tiles.registerTileDef(new BrainTileParameterDef(def.id, def.dataType, opts));
     }
   }
 
@@ -711,7 +750,7 @@ class EnvironmentModuleApi implements MindcraftModuleApi {
   }
 
   registerConversion(def: ConversionDefinition): void {
-    this.brainServices.conversions.register(def);
+    this.brainServices.shared.conversions.register(def);
   }
 }
 
@@ -725,6 +764,7 @@ class EnvironmentActionResolver implements BrainActionResolver {
 
 class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   readonly brainServices: BrainServices;
+  readonly appServices: AppServices;
   private readonly bundleCatalog = new TileCatalog();
   private readonly bundleResolver = new Dict<string, CompiledActionArtifact>();
   private readonly trackedBrains = List.empty<ManagedMindcraftBrain>();
@@ -733,8 +773,9 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   private readonly actionResolver: BrainActionResolver;
   private readonly brainJsonMigrations_ = List.empty<BrainJsonMigration>();
 
-  constructor(modules: readonly MindcraftModule[]) {
-    this.brainServices = createBrainServices();
+  constructor(modules: readonly MindcraftModule[], rng?: IRngServices) {
+    this.appServices = createAppServices(rng);
+    this.brainServices = createBrainServices(this.appServices);
     this.actionResolver = new EnvironmentActionResolver(this);
     this.installModules(modules);
   }
@@ -744,7 +785,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   }
 
   tileCatalogs(): readonly ITileCatalog[] {
-    return [this.brainServices.tiles, this.bundleCatalog];
+    return [this.brainServices.edit.tiles, this.bundleCatalog];
   }
 
   createCatalog(): MindcraftCatalog {
@@ -842,7 +883,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
 
   buildCatalogChain(definition: IBrainDef, overlays: List<ITileCatalog>): List<ITileCatalog> {
     const catalogs = List.empty<ITileCatalog>();
-    catalogs.push(this.brainServices.tiles);
+    catalogs.push(this.brainServices.edit.tiles);
     if (!this.bundleCatalog.getAll().isEmpty()) {
       catalogs.push(this.bundleCatalog);
     }
@@ -855,7 +896,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
 
   buildDeserializeCatalogs(): List<ITileCatalog> {
     const catalogs = List.empty<ITileCatalog>();
-    catalogs.push(this.brainServices.tiles);
+    catalogs.push(this.brainServices.edit.tiles);
     if (!this.bundleCatalog.getAll().isEmpty()) {
       catalogs.push(this.bundleCatalog);
     }
@@ -886,7 +927,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
       };
     }
 
-    return this.brainServices.actions.resolveAction(descriptor);
+    return this.brainServices.runtime.actions.resolveAction(descriptor);
   }
 
   removeBrain(brain: ManagedMindcraftBrain): void {
@@ -1135,7 +1176,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
 
 /** Construct a {@link MindcraftEnvironment}, installing each module in `options.modules`. */
 export function createMindcraftEnvironment(options: CreateMindcraftEnvironmentOptions = {}): MindcraftEnvironment {
-  return new MindcraftEnvironmentImpl(options.modules ?? []);
+  return new MindcraftEnvironmentImpl(options.modules ?? [], options.rng);
 }
 
 /** The built-in `mindcraft.core` module: registers the core types, operators, and tile components every brain needs. */

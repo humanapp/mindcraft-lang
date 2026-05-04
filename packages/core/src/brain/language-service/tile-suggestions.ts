@@ -1341,7 +1341,9 @@ export function suggestTiles(
   catalogs: ReadonlyList<ITileCatalog>,
   services: BrainServices
 ): TileSuggestionResult {
-  const { conversions, operatorOverloads, types } = services;
+  const { conversions } = services.shared;
+  const { operatorOverloads } = services.edit;
+  const { types } = services.runtime;
   const result: TileSuggestionResult = {
     exact: List.empty(),
     withConversion: List.empty(),

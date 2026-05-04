@@ -27,7 +27,7 @@ import { compileUserTile } from "./compile.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -51,7 +51,7 @@ function mkScheduler(): Scheduler {
 }
 
 function runSensor(source: string, args?: List<Value>): { result: Value | undefined } {
-  const ambientSource = buildAmbientDeclarations(services.types);
+  const ambientSource = buildAmbientDeclarations(services.runtime.types);
   const result = compileUserTile(source, { ambientSource, services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program);
@@ -76,7 +76,7 @@ describe("optional chaining", () => {
   before(() => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
 

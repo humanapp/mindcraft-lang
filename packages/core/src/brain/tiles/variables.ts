@@ -95,7 +95,7 @@ export function registerVariableFactoryTileDef(
   opts: BrainTileDefCreateOptions = {},
   services: BrainServices
 ) {
-  services.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts));
+  services.edit.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts));
 }
 
 function manufactureVarTileDef(

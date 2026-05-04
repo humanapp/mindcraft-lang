@@ -23,9 +23,9 @@ function optNum(args: ReadonlyList<Value>, index: number): number | undefined {
   return (val as NumberValue).v;
 }
 
-/** Register the built-in string operations (`$$str_length`, etc.) on `services.functions`. */
+/** Register the built-in string operations (`$$str_length`, etc.) on `services.runtime.functions`. */
 export function registerStringBuiltins(services: BrainServices) {
-  const { functions, types } = services;
+  const { functions, types } = services.runtime;
 
   functions.register(
     "$$str_length",

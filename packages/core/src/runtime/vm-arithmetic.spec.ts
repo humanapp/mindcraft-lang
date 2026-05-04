@@ -63,7 +63,7 @@ test("HOST_CALL invokes a sync host function and returns the result", () => {
     currentTick: 0,
   };
 
-  const vm = new VM(program, __test__createPlatformServices({ functions: registry }));
+  const vm = new VM(program, __test__createPlatformServices({ runtime: { functions: registry } }));
   const fiber = vm.spawnFiber(1, 0, List.empty(), ctx);
   fiber.instrBudget = 20;
   const result = vm.runFiber(fiber, {

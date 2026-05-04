@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -770,7 +770,7 @@ export default Sensor({
   },
 });
 `;
-    const types = services.types;
+    const types = services.runtime.types;
     const nullableNumberId = types.addNullableType(mkTypeId(NativeType.Number, "number"));
     const nullableDef = types.get(nullableNumberId);
     assert.ok(nullableDef);
@@ -779,7 +779,7 @@ export default Sensor({
   });
 
   test("tsTypeToTypeId returns nullable TypeId for string | undefined", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const nullableStringId = types.addNullableType(mkTypeId(NativeType.String, "string"));
     assert.equal(nullableStringId, "string:<string?>");
     const def = types.get(nullableStringId);
@@ -788,16 +788,16 @@ export default Sensor({
   });
 
   test("multi-member non-null union resolves to Any (not nullable)", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const anyId = types.get(mkTypeId(NativeType.Any, "any"));
     assert.ok(anyId);
     assert.equal(anyId.nullable, undefined);
   });
 
   test("ambient output includes | null for nullable types", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     types.addNullableType(mkTypeId(NativeType.Number, "number"));
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     assert.ok(
       ambientSource.includes("number?") && ambientSource.includes("number | null"),
       "ambient declarations should include nullable type with | null"
@@ -808,7 +808,7 @@ export default Sensor({
 describe("nullable struct nil comparison", () => {
   before(() => {
     services = __test__createBrainServices();
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vec2TypeId)) {
@@ -823,7 +823,7 @@ describe("nullable struct nil comparison", () => {
   });
 
   test("nullable struct === null compiles and returns true when nil", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -853,7 +853,7 @@ export default Sensor({
   });
 
   test("nullable struct !== null compiles and returns true when non-nil", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -883,7 +883,7 @@ export default Sensor({
   });
 
   test("null === nullable struct compiles (nil on left side)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -913,7 +913,7 @@ export default Sensor({
   });
 
   test("nullable struct !== null returns false when nil", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -947,7 +947,7 @@ describe("auto-instantiated list types", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -962,7 +962,7 @@ describe("auto-instantiated list types", () => {
   });
 
   test("Vector2[] compiles via auto-instantiation without pre-registered Vector2List", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -996,9 +996,9 @@ export default Sensor({
   });
 
   test("ambient generation skips auto-instantiated types", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     types.instantiate("List", List.from([CoreTypeIds.Number]));
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     assert.ok(
       !ambientSource.includes("List<number:<number>>"),
       "auto-instantiated type name should not appear in ambient"

@@ -64,7 +64,9 @@ before(() => {
 });
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({
+    runtime: { functions: b.runtime.functions, types: b.runtime.types },
+  });
 }
 
 // -- Helpers --
@@ -116,8 +118,8 @@ function mkSchedulerCallbacks() {
 describe("VM -- closed struct field opcodes", () => {
   test("STRUCT_SET_FIELD and STRUCT_GET_FIELD use fieldIndex slots", () => {
     const typeId = mkTypeId(NativeType.Struct, "IndexedPair");
-    if (!services.types.get(typeId)) {
-      services.types.addStructType("IndexedPair", {
+    if (!services.runtime.types.get(typeId)) {
+      services.runtime.types.addStructType("IndexedPair", {
         fields: List.from([
           { name: "left", typeId: CoreTypeIds.Number },
           { name: "right", typeId: CoreTypeIds.Number },
@@ -157,8 +159,8 @@ describe("VM -- closed struct field opcodes", () => {
 
   test("GET_FIELD remains name-keyed for native-backed structs", () => {
     const typeId = mkTypeId(NativeType.Struct, "V33NativePoint");
-    if (!services.types.get(typeId)) {
-      services.types.addStructType("V33NativePoint", {
+    if (!services.runtime.types.get(typeId)) {
+      services.runtime.types.addStructType("V33NativePoint", {
         fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
         fieldGetter: (source, fieldName) => {
           if (fieldName === "x") {
@@ -1117,8 +1119,8 @@ describe("VM -- callsite-persistent variables", () => {
           descriptor,
           execSync: (ctx: ExecutionContext) => {
             const callSiteId = ctx.currentCallSiteId!;
-            const nextValue = ((ctx.services.callsite.getHostState(callSiteId) as number | undefined) ?? 0) + 1;
-            ctx.services.callsite.setHostState(callSiteId, nextValue);
+            const nextValue = ((ctx.services.brain.callsite.getHostState(callSiteId) as number | undefined) ?? 0) + 1;
+            ctx.services.brain.callsite.setHostState(callSiteId, nextValue);
             seenValues.push(nextValue);
             return mkNumberValue(nextValue);
           },
@@ -1531,7 +1533,7 @@ describe("VM -- action calls", () => {
   test("ACTION_CALL bytecode actions preserve the caller rule for host calls", () => {
     let seenRuleFuncId: number | undefined;
 
-    const hostFnEntry = services.functions.register(
+    const hostFnEntry = services.runtime.functions.register(
       "test-vm-bytecode-action-rule-host",
       false,
       {
@@ -1574,8 +1576,7 @@ describe("VM -- action calls", () => {
       List.empty(),
       mkCtx({
         services: __test__createPlatformServices({
-          functions: services.functions,
-          types: services.types,
+          runtime: { functions: services.runtime.functions, types: services.runtime.types },
           program: { getRuleFuncIdForFunc: (funcId: number) => (funcId === 0 ? 0 : undefined) },
         }),
       })
@@ -3023,33 +3024,34 @@ describe("VM -- overflow faults", () => {
 // ---- Operator monomorphization ----
 
 /**
- * Build a BrainServices that wraps `services.types` with a Proxy that increments
+ * Build a BrainServices that wraps `services.runtime.types` with a Proxy that increments
  * `counter.n` for every property access (including method calls). Used to assert
  * that the dispatch hot path does not consult the type registry for primitive
  * arithmetic.
  */
 function makeServicesWithTypeAccessCounter(base: BrainServices, counter: { n: number }): BrainServices {
-  const countingTypes = new Proxy(base.types, {
+  const countingTypes = new Proxy(base.runtime.types, {
     get(target, prop, receiver) {
       counter.n++;
       return Reflect.get(target, prop, receiver);
     },
   });
   return new BrainServices({
-    tiles: base.tiles,
-    actions: base.actions,
-    operatorTable: base.operatorTable,
-    operatorOverloads: base.operatorOverloads,
-    types: countingTypes,
-    tileBuilder: base.tileBuilder,
-    functions: base.functions,
-    conversions: base.conversions,
+    runtime: {
+      types: countingTypes,
+      functions: base.runtime.functions,
+      operatorTable: base.runtime.operatorTable,
+      actions: base.runtime.actions,
+    },
+    edit: base.edit,
+    shared: base.shared,
+    app: base.app,
   });
 }
 
 describe("VM -- operator monomorphization", () => {
   test("primitive number arithmetic does not consult ITypeRegistry on the dispatch hot path", () => {
-    const resolved = services.operatorOverloads.resolve(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
+    const resolved = services.edit.operatorOverloads.resolve(CoreOpId.Add, [CoreTypeIds.Number, CoreTypeIds.Number]);
     assert.ok(resolved !== undefined, "add(number, number) overload must be registered");
     const addFnId = resolved!.overload.fnEntry.id;
 
@@ -3083,7 +3085,7 @@ describe("VM -- operator monomorphization", () => {
     // increment the counter, ensuring the previous test's zero count is meaningful.
     const counter = { n: 0 };
     const countedServices = makeServicesWithTypeAccessCounter(services, counter);
-    countedServices.types.get(CoreTypeIds.Number);
+    countedServices.runtime.types.get(CoreTypeIds.Number);
     assert.ok(counter.n > 0, "counter must observe registry access");
   });
 });
@@ -3159,7 +3161,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
         { type: "arg", tileId: "addArgs.rhs", name: "rhs", required: true },
       ],
     });
-    const fnEntry = services.functions.register(
+    const fnEntry = services.runtime.functions.register(
       "$$test_v4_1_add",
       false,
       {
@@ -3214,7 +3216,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
       result = vm.runFiber(fiber, mkSchedulerCallbacks());
     } finally {
       ValueDict.prototype.constructor = beforeProto;
-      services.functions.unregister("$$test_v4_1_add");
+      services.runtime.functions.unregister("$$test_v4_1_add");
     }
 
     assert.equal(result.status, VmStatus.DONE);
@@ -3234,7 +3236,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
         { type: "arg", tileId: "asyncCapture.b", name: "b", required: true },
       ],
     });
-    const fnEntry = services.functions.register(
+    const fnEntry = services.runtime.functions.register(
       "$$test_v4_1_async_capture",
       true,
       {
@@ -3274,7 +3276,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
     try {
       result = vm.runFiber(fiber, mkSchedulerCallbacks());
     } finally {
-      services.functions.unregister("$$test_v4_1_async_capture");
+      services.runtime.functions.unregister("$$test_v4_1_async_capture");
     }
 
     assert.equal(result.status, VmStatus.DONE);
@@ -3330,7 +3332,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
       ],
     });
     let observed: List<Value> | undefined;
-    const fnEntry = services.functions.register(
+    const fnEntry = services.runtime.functions.register(
       "$$test_v4_1_spy",
       false,
       {
@@ -3372,7 +3374,7 @@ describe("VM -- V4.1 host-call ABI (positional Sublist / owned snapshot)", () =>
     try {
       result = vm.runFiber(fiber, mkSchedulerCallbacks());
     } finally {
-      services.functions.unregister("$$test_v4_1_spy");
+      services.runtime.functions.unregister("$$test_v4_1_spy");
     }
     assert.equal(result.status, VmStatus.DONE);
     assert.ok(observed);

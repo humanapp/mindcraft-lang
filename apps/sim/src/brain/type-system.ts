@@ -186,7 +186,7 @@ export function registerTypes(api: MindcraftModuleApi) {
     accessors: true,
     variableFactory: true,
   });
-  vector2TypeDef = api.brainServices.types.get(SimTypeIds.Vector2) as StructTypeDef | undefined;
+  vector2TypeDef = api.brainServices.runtime.types.get(SimTypeIds.Vector2) as StructTypeDef | undefined;
   if (!vector2TypeDef) {
     throw new Error("Vector2 type registration failed");
   }
@@ -256,7 +256,7 @@ export function registerTypes(api: MindcraftModuleApi) {
   // Vector2 methods
   // -------------------------------------------------------
 
-  const { types, functions } = api.brainServices;
+  const { types, functions } = api.brainServices.runtime;
   const emptyCallDef = mkCallDef({ type: "bag", items: [] });
 
   types.addStructMethods(

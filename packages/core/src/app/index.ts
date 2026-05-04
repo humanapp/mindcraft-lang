@@ -83,6 +83,11 @@ export { ContextTypeIds, ContextTypeNames } from "../runtime/context-types";
 export type { ITypeRegistry } from "../runtime";
 export { mkTypeId, NativeType } from "../runtime";
 
+// -- Host services --------------------------------------------------------------
+
+export { MathOps } from "../platform/math";
+export type { AppServices, IRngServices } from "../runtime";
+
 // -- Runtime values & helpers ---------------------------------------------------
 
 export { APP_CAPABILITY_BIT_OFFSET, CoreCapabilityBits } from "../brain/interfaces";

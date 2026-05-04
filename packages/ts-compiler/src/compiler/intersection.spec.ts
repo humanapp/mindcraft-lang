@@ -23,7 +23,7 @@ import { compileUserTile } from "./compile.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 let ambientSource: string;
 
@@ -79,7 +79,7 @@ function compileAndRunString(source: string): string {
 function ensureSetup() {
   if (!services) {
     services = __test__createBrainServices();
-    ambientSource = buildAmbientDeclarations(services.types);
+    ambientSource = buildAmbientDeclarations(services.runtime.types);
   }
 }
 

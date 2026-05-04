@@ -24,7 +24,7 @@ export class BrainTileActuatorDef extends BrainActionTileBase {
 
 /** Register the built-in core actuator tiles on `services`. */
 export function registerCoreActuatorTileDefs(services: BrainServices) {
-  const tiles = services.tiles;
+  const tiles = services.edit.tiles;
   const register = (
     actuatorId: string,
     action: typeof fnSwitchPage.descriptor,

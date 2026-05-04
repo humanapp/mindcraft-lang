@@ -39,7 +39,7 @@ export interface LinkedUserProgram {
 
 /** Options passed to the user-tile compiler. */
 export interface CompileOptions {
-  /** Override the ambient `.d.ts` source. When omitted, declarations are generated from `services.types`. */
+  /** Override the ambient `.d.ts` source. When omitted, declarations are generated from `services.runtime.types`. */
   ambientSource?: string;
   services: BrainServices;
 }

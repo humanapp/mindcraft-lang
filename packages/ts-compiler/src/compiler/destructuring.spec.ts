@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -66,7 +66,7 @@ function mkScheduler(): Scheduler {
 }
 
 function getStructField(source: StructValue, fieldName: string): Value | undefined {
-  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const def = services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
   const fieldIndex = def?.fieldIndexByName.get(fieldName);
   return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
 }
@@ -111,7 +111,7 @@ describe("destructuring", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -126,7 +126,7 @@ describe("destructuring", () => {
   });
 
   test("object destructuring: const { x, y } = { x: 1, y: 2 }", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -158,7 +158,7 @@ export default Sensor({
   });
 
   test("array destructuring: const [a, b] = [10, 20]", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -190,7 +190,7 @@ export default Sensor({
   });
 
   test("nested object destructuring: const { inner: { x, y } } = obj", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     if (!types.get(entityTypeId)) {
@@ -198,7 +198,7 @@ export default Sensor({
         fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
       });
     }
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Vector2, type Entity } from "mindcraft";
@@ -231,7 +231,7 @@ export default Sensor({
   });
 
   test("nested array-in-object destructuring: const { pos: [x, y] } = entity", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const numListTypeId = types.instantiate("List", List.from([numTypeId]));
     const coordTypeId = mkTypeId(NativeType.Struct, "Coord");
@@ -240,7 +240,7 @@ export default Sensor({
         fields: List.from([{ name: "pos", typeId: numListTypeId }]),
       });
     }
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Coord } from "mindcraft";
@@ -273,7 +273,7 @@ export default Sensor({
   });
 
   test("mixed nesting: object containing array", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const numListTypeId = types.instantiate("List", List.from([numTypeId]));
     const pairHolderTypeId = mkTypeId(NativeType.Struct, "PairHolder");
@@ -282,7 +282,7 @@ export default Sensor({
         fields: List.from([{ name: "items", typeId: numListTypeId }]),
       });
     }
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type PairHolder } from "mindcraft";
@@ -315,7 +315,7 @@ export default Sensor({
   });
 
   test("three levels of nesting: array in object in object", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
     const wrapperTypeId = mkTypeId(NativeType.Struct, "Wrapper");
@@ -324,7 +324,7 @@ export default Sensor({
         fields: List.from([{ name: "entity", typeId: entityTypeId }]),
       });
     }
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Vector2, type Entity, type Wrapper } from "mindcraft";
@@ -357,7 +357,7 @@ export default Sensor({
   });
 
   test("array rest pattern: const [first, ...rest] = arr", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -389,7 +389,7 @@ export default Sensor({
   });
 
   test("array rest pattern: const [a, b, ...tail] = arr", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -421,7 +421,7 @@ export default Sensor({
   });
 
   test("array rest pattern: const [...all] = arr copies the array", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -453,7 +453,7 @@ export default Sensor({
   });
 
   test("object rest pattern: const { x, ...rest } = obj extracts x", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -485,7 +485,7 @@ export default Sensor({
   });
 
   test("object rest pattern: rest contains remaining fields", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -520,7 +520,7 @@ export default Sensor({
   });
 
   test("nested destructuring with rest on inner struct: const { pos: { x, ...posRest } } = entity", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
     const entityTypeId = mkTypeId(NativeType.Struct, "Entity");
@@ -529,7 +529,7 @@ export default Sensor({
         fields: List.from([{ name: "pos", typeId: vec2TypeId }]),
       });
     }
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Vector2, type Entity } from "mindcraft";
@@ -562,7 +562,7 @@ export default Sensor({
   });
 
   test("rest on outer struct with 3 fields: const { name, ...rest } = player", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -576,7 +576,7 @@ export default Sensor({
         ]),
       });
     }
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
@@ -614,7 +614,7 @@ export default Sensor({
   });
 
   test("nested destructure + rest at outer level: const { pos: { x }, ...rest } = player", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -628,7 +628,7 @@ export default Sensor({
         ]),
       });
     }
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
@@ -661,7 +661,7 @@ export default Sensor({
   });
 
   test("property access on object rest variable: rest.y after const { x, ...rest } = obj", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -693,7 +693,7 @@ export default Sensor({
   });
 
   test("property access on rest variable from 3-field struct: rest.health after const { name, ...rest } = player", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -707,7 +707,7 @@ export default Sensor({
         ]),
       });
     }
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Vector2, type Player } from "mindcraft";
@@ -740,7 +740,7 @@ export default Sensor({
   });
 
   test("computed property name in destructuring: const { ['x']: val } = obj", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -772,7 +772,7 @@ export default Sensor({
   });
 
   test("computed property name with variable key: const key = 'y'; const { [key]: val } = obj", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -805,7 +805,7 @@ export default Sensor({
   });
 
   test("computed property name combined with rest pattern: const { ['x']: val, ...rest } = obj", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -837,7 +837,7 @@ export default Sensor({
   });
 
   test("object destructuring with default value uses default when field is present", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -869,7 +869,7 @@ export default Sensor({
   });
 
   test("object destructuring with rename: const { x: posX } = pos", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -901,7 +901,7 @@ export default Sensor({
   });
 
   test("array destructuring with omitted elements: const [, b] = arr", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -933,7 +933,7 @@ export default Sensor({
   });
 
   test("helper function with object destructuring in parameter: function f({ x, y }: Point)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
@@ -969,7 +969,7 @@ export default Sensor({
   });
 
   test("helper function with array destructuring in parameter: function f([a, b]: number[])", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context } from "mindcraft";
@@ -1005,7 +1005,7 @@ export default Sensor({
   });
 
   test("closure with object destructuring in parameter: ({ x }: Point) => x", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
@@ -1041,7 +1041,7 @@ export default Sensor({
   });
 
   test("closure with destructured param that also captures an outer variable", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
@@ -1078,7 +1078,7 @@ export default Sensor({
   });
 
   test("destructuring in onExecute parameter position produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
 
     const source = `
 import { Sensor, type Context } from "mindcraft";

@@ -353,7 +353,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
     const sensorId = "test-sensor-sync";
     const anonParam = param("anon-num");
 
-    const fnEntry = services.functions.register(
+    const fnEntry = services.runtime.functions.register(
       sensorId,
       false,
       { exec: () => ({ t: NativeType.Number, v: 77 }) },
@@ -362,7 +362,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
     assert.equal(fnEntry.isAsync, false);
 
     const action = mkActionDescriptor("sensor", fnEntry, CoreTypeIds.Number);
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor: action,
       execSync: () => ({ t: NativeType.Number, v: 77 }),
@@ -397,7 +397,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
       ],
     });
 
-    const fnEntry = services.functions.register(
+    const fnEntry = services.runtime.functions.register(
       actuatorId,
       false,
       {
@@ -410,7 +410,7 @@ describe("Brain behavioral -- sensors and actuators", () => {
     assert.equal(fnEntry.isAsync, false);
 
     const action = mkActionDescriptor("actuator", fnEntry);
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor: action,
       execSync: (_ctx: ExecutionContext, args: ReadonlyList<Value>) => {
@@ -446,9 +446,9 @@ describe("Brain behavioral -- rule variables (regression)", () => {
    */
   function defineHost<T extends HostSensorDefinition | HostActuatorDefinition>(def: T): T {
     const fn = def.function;
-    services.functions.register(fn.name, fn.isAsync, fn.fn, fn.callDef);
+    services.runtime.functions.register(fn.name, fn.isAsync, fn.fn, fn.callDef);
     const exec = (def.actionFn as { exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value }).exec;
-    services.actions.register({ binding: "host", descriptor: def.descriptor, execSync: exec });
+    services.runtime.actions.register({ binding: "host", descriptor: def.descriptor, execSync: exec });
     return def;
   }
 
@@ -479,7 +479,7 @@ describe("Brain behavioral -- rule variables (regression)", () => {
         fn: {
           exec: (ctx) => {
             const v = getRuleVariable(ctx, "stash");
-            ctx.services.brainVars.setByName(brainVarName, v);
+            ctx.services.brain.brainVars.setByName(brainVarName, v);
             return VOID_VALUE;
           },
         },
@@ -511,7 +511,7 @@ describe("Brain behavioral -- rule variables (regression)", () => {
           exec: (ctx) => {
             const v = getRuleVariable(ctx, "never-set");
             observedIsNil = v.t === NIL_VALUE.t;
-            ctx.services.brainVars.setByName(brainVarName, v);
+            ctx.services.brain.brainVars.setByName(brainVarName, v);
             return VOID_VALUE;
           },
         },
@@ -562,7 +562,7 @@ describe("Brain behavioral -- rule variables (regression)", () => {
             const outName = extractStringValue(args.get(1)!) ?? "";
             setRuleVariable(ctx, "shared", writeVal);
             const readBack = getRuleVariable(ctx, "shared");
-            ctx.services.brainVars.setByName(outName, readBack);
+            ctx.services.brain.brainVars.setByName(outName, readBack);
             return VOID_VALUE;
           },
         },
@@ -630,7 +630,7 @@ describe("Brain behavioral -- rule variables (regression)", () => {
         fn: {
           exec: (ctx) => {
             const v = getRuleVariable(ctx, "fromParent");
-            ctx.services.brainVars.setByName(brainVarName, v);
+            ctx.services.brain.brainVars.setByName(brainVarName, v);
             return VOID_VALUE;
           },
         },
@@ -698,7 +698,7 @@ describe("Brain behavioral -- multi-page", () => {
 describe("Brain behavioral -- page sensors", () => {
   test("current-page sensor returns active page ID", () => {
     const v = mkVar("cp", CoreTypeIds.String);
-    const fnEntry = services.functions.get(CoreSensorId.CurrentPage);
+    const fnEntry = services.runtime.functions.get(CoreSensorId.CurrentPage);
     assert.ok(fnEntry, "current-page function should be registered");
     const cpSensor = new BrainTileSensorDef(
       CoreSensorId.CurrentPage,
@@ -723,7 +723,7 @@ describe("Brain behavioral -- page sensors", () => {
 
   test("previous-page returns current page when no switch has occurred", () => {
     const v = mkVar("pp-no-switch", CoreTypeIds.String);
-    const fnEntry = services.functions.get(CoreSensorId.PreviousPage);
+    const fnEntry = services.runtime.functions.get(CoreSensorId.PreviousPage);
     assert.ok(fnEntry, "previous-page function should be registered");
     const ppSensor = new BrainTileSensorDef(
       CoreSensorId.PreviousPage,
@@ -748,7 +748,7 @@ describe("Brain behavioral -- page sensors", () => {
 
   test("previous-page returns page 0 ID after switching to page 1", () => {
     const v = mkVar("pp-after-switch", CoreTypeIds.String);
-    const fnEntry = services.functions.get(CoreSensorId.PreviousPage);
+    const fnEntry = services.runtime.functions.get(CoreSensorId.PreviousPage);
     assert.ok(fnEntry);
     const ppSensor = new BrainTileSensorDef(
       CoreSensorId.PreviousPage,
@@ -795,7 +795,7 @@ describe("Brain behavioral -- page sensors", () => {
 
   test("previous-page updates after multiple page switches", () => {
     const v = mkVar("pp-multi", CoreTypeIds.String);
-    const fnEntry = services.functions.get(CoreSensorId.PreviousPage);
+    const fnEntry = services.runtime.functions.get(CoreSensorId.PreviousPage);
     assert.ok(fnEntry);
     const ppSensor = new BrainTileSensorDef(
       CoreSensorId.PreviousPage,
@@ -864,7 +864,7 @@ describe("Brain behavioral -- action state", () => {
   test("host-backed action state survives root-rule respawns and page restart", () => {
     let activationCount = 0;
 
-    const onPageEnteredFn = services.functions.get(CoreSensorId.OnPageEntered);
+    const onPageEnteredFn = services.runtime.functions.get(CoreSensorId.OnPageEntered);
     assert.ok(onPageEnteredFn, "on-page-entered function should be registered");
 
     const sensor = new BrainTileSensorDef(
@@ -881,7 +881,7 @@ describe("Brain behavioral -- action state", () => {
       callDef: mkCallDef({ type: "bag", items: [] }),
       isAsync: false,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor: actuatorDescriptor,
       execSync: () => {
@@ -910,7 +910,7 @@ describe("Brain behavioral -- action state", () => {
 
   test("bytecode-backed activation hook runs once per activation, preserved on restart", () => {
     let activationCount = 0;
-    const activationFnEntry = services.functions.register(
+    const activationFnEntry = services.runtime.functions.register(
       "test-phase5-bytecode-activation-host",
       false,
       {
@@ -973,7 +973,7 @@ describe("Brain behavioral -- action state", () => {
     };
 
     const brain = new Brain(brainDef, services, {
-      catalogs: List.from([services.tiles, brainDef.catalog()]),
+      catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
       actionResolver: {
         resolveAction(actionDescriptor) {
           if (actionDescriptor.key === descriptor.key) {
@@ -1015,7 +1015,7 @@ describe("Brain behavioral -- action state", () => {
   test("action state resets when switching to a different page and back", () => {
     let activationCount = 0;
 
-    const onPageEnteredFn = services.functions.get(CoreSensorId.OnPageEntered);
+    const onPageEnteredFn = services.runtime.functions.get(CoreSensorId.OnPageEntered);
     assert.ok(onPageEnteredFn, "on-page-entered function should be registered");
 
     const sensor = new BrainTileSensorDef(
@@ -1032,7 +1032,7 @@ describe("Brain behavioral -- action state", () => {
       callDef: mkCallDef({ type: "bag", items: [] }),
       isAsync: false,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor: actuatorDescriptor,
       execSync: () => {
@@ -1158,7 +1158,7 @@ function buildBytecodeActionBrain(
   }
 
   const brain = new Brain(brainDef, services, {
-    catalogs: List.from([services.tiles, brainDef.catalog()]),
+    catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
     actionResolver: {
       resolveAction(ad) {
         if (ad.key !== key) return undefined;
@@ -1178,7 +1178,7 @@ function buildBytecodeActionBrain(
 describe("Brain behavioral -- page lifecycle hooks", () => {
   test("bytecode initializer runs exactly once across N page activations and shutdown re-runs it", () => {
     let initCount = 0;
-    const initFn = services.functions.register(
+    const initFn = services.runtime.functions.register(
       "test-page-init-fn",
       false,
       {
@@ -1237,7 +1237,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     let initCount = 0;
     let actCount = 0;
     let deactCount = 0;
-    const initFn = services.functions.register(
+    const initFn = services.runtime.functions.register(
       "test-page-restart-init-fn",
       false,
       {
@@ -1248,7 +1248,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       },
       mkCallDef({ type: "bag", items: [] })
     );
-    const actFn = services.functions.register(
+    const actFn = services.runtime.functions.register(
       "test-page-restart-act-fn",
       false,
       {
@@ -1259,7 +1259,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       },
       mkCallDef({ type: "bag", items: [] })
     );
-    const deactFn = services.functions.register(
+    const deactFn = services.runtime.functions.register(
       "test-page-restart-deact-fn",
       false,
       {
@@ -1308,7 +1308,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
 
   test("deactivationFuncId can call services.callsite.reset to force re-initialization on next activation", () => {
     let initCount = 0;
-    const initFn = services.functions.register(
+    const initFn = services.runtime.functions.register(
       "test-page-deact-reset-init-fn",
       false,
       {
@@ -1319,13 +1319,13 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       },
       mkCallDef({ type: "bag", items: [] })
     );
-    const resetFn = services.functions.register(
+    const resetFn = services.runtime.functions.register(
       "test-page-deact-reset-reset-fn",
       false,
       {
         exec: (ctx: ExecutionContext) => {
           if (ctx.currentCallSiteId !== undefined) {
-            ctx.services.callsite.reset(ctx.currentCallSiteId);
+            ctx.services.brain.callsite.reset(ctx.currentCallSiteId);
           }
           return NIL_VALUE;
         },
@@ -1380,7 +1380,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       isAsync: false,
       outputType: CoreTypeIds.Number,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor,
       execSync: (ctx) => {
@@ -1429,7 +1429,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       isAsync: false,
       outputType: CoreTypeIds.Number,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor,
       onPageExited: (ctx) => {
@@ -1480,7 +1480,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       isAsync: false,
       outputType: CoreTypeIds.Number,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor,
       onInitialized: () => {
@@ -1526,7 +1526,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       isAsync: false,
       outputType: CoreTypeIds.Number,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor,
       onInitialized: () => {
@@ -1568,7 +1568,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       isAsync: false,
       outputType: CoreTypeIds.Number,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor,
       onInitialized: () => {
@@ -1576,7 +1576,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       },
       onPageExited: (ctx) => {
         if (ctx.currentCallSiteId !== undefined) {
-          ctx.services.callsite.reset(ctx.currentCallSiteId);
+          ctx.services.brain.callsite.reset(ctx.currentCallSiteId);
         }
       },
       execSync: () => mkNumberValue(0),
@@ -1617,7 +1617,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       isAsync: false,
       outputType: CoreTypeIds.Number,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor,
       onInitialized: () => {
@@ -1652,7 +1652,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
   test("host action without onInitialized leaves a page-mate bytecode initializer unaffected", () => {
     let bytecodeInitCount = 0;
     let hostExecCount = 0;
-    const initFn = services.functions.register(
+    const initFn = services.runtime.functions.register(
       "test-l4-mate-bytecode-init-fn",
       false,
       {
@@ -1670,7 +1670,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       isAsync: false,
       outputType: CoreTypeIds.Number,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor: hostDescriptor,
       execSync: () => {
@@ -1736,7 +1736,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     assert.ok(p1.success);
 
     const brain = new Brain(brainDef, services, {
-      catalogs: List.from([services.tiles, brainDef.catalog()]),
+      catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
       actionResolver: {
         resolveAction(ad) {
           if (ad.key === btKey) {
@@ -1747,7 +1747,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
               metadata: { key: btKey, kind: "sensor", callDef: btDescriptor.callDef, outputType: CoreTypeIds.Number },
             };
           }
-          return services.actions.resolveAction(ad);
+          return services.runtime.actions.resolveAction(ad);
         },
       },
     });
@@ -1774,13 +1774,13 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       isAsync: false,
       outputType: CoreTypeIds.Number,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor,
       onInitialized: (ctx) => {
         initCount += 1;
         if (ctx.currentCallSiteId !== undefined) {
-          ctx.services.callsite.setHostState(ctx.currentCallSiteId, { tag: "init" });
+          ctx.services.brain.callsite.setHostState(ctx.currentCallSiteId, { tag: "init" });
         }
       },
       onPageExited: () => {
@@ -1816,7 +1816,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
   test("mixed-binding page fires both bytecode and host initializers exactly once on first activation", () => {
     let bytecodeInitCount = 0;
     let hostInitCount = 0;
-    const initFn = services.functions.register(
+    const initFn = services.runtime.functions.register(
       "test-l4-mixed-bytecode-init-fn",
       false,
       {
@@ -1834,7 +1834,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       isAsync: false,
       outputType: CoreTypeIds.Number,
     };
-    services.actions.register({
+    services.runtime.actions.register({
       binding: "host",
       descriptor: hostDescriptor,
       onInitialized: () => {
@@ -1900,7 +1900,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     assert.ok(p1.success);
 
     const brain = new Brain(brainDef, services, {
-      catalogs: List.from([services.tiles, brainDef.catalog()]),
+      catalogs: List.from([services.edit.tiles, brainDef.catalog()]),
       actionResolver: {
         resolveAction(ad) {
           if (ad.key === btKey) {
@@ -1911,7 +1911,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
               metadata: { key: btKey, kind: "sensor", callDef: btDescriptor.callDef, outputType: CoreTypeIds.Number },
             };
           }
-          return services.actions.resolveAction(ad);
+          return services.runtime.actions.resolveAction(ad);
         },
       },
     });
@@ -1955,7 +1955,11 @@ describe("Brain behavioral -- compiled program structure", () => {
 
     const actuator = new BrainTileActuatorDef("test-phase2-unbound-actuator", unboundAction);
     const brainDef = buildBrain([], [actuator]);
-    const program = compileBrain(brainDef, List.from([services.tiles, brainDef.catalog()]), services.conversions);
+    const program = compileBrain(
+      brainDef,
+      List.from([services.edit.tiles, brainDef.catalog()]),
+      services.shared.conversions
+    );
 
     assert.equal(program.actionRefs.size(), 1);
     assert.deepEqual(program.actionRefs.get(0), {
@@ -1979,7 +1983,7 @@ describe("Brain behavioral -- compiled program structure", () => {
   });
 
   test("brain initialization links action slots to executable host actions", () => {
-    const fnEntry = services.functions.get(CoreSensorId.CurrentPage);
+    const fnEntry = services.runtime.functions.get(CoreSensorId.CurrentPage);
     assert.ok(fnEntry, "current-page function should be registered");
 
     const cpSensor = new BrainTileSensorDef(
@@ -2095,7 +2099,7 @@ describe("Brain behavioral -- nil value overloads", () => {
 
 describe("Brain behavioral -- timeout sensor", () => {
   function getCoreSensor(sensorId: string): BrainTileSensorDef {
-    const tile = services.tiles.get(mkSensorTileId(sensorId)) as BrainTileSensorDef;
+    const tile = services.edit.tiles.get(mkSensorTileId(sensorId)) as BrainTileSensorDef;
     assert.ok(tile, `${sensorId} sensor tile should be registered`);
     return tile;
   }

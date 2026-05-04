@@ -1,4 +1,8 @@
+import type { IBrainTileDefBuilder, ITileCatalog } from "../brain/interfaces/catalog";
+import type { IConversionRegistry } from "./conversion-defs";
 import type { IFunctionRegistry } from "./function-defs";
+import type { IBrainActionRegistry } from "./host-bindings";
+import type { IOperatorOverloads, IOperatorTable } from "./operator-defs";
 import type { ITypeRegistry } from "./type-defs";
 import type { Value } from "./value";
 
@@ -51,7 +55,11 @@ export interface IBrainPageServices {
   requestPageRestart(): void;
 }
 
-/** Random number generator scoped to a single brain (or VM-wide for tests). */
+/**
+ * Random number generator. Lifetime and isolation (one-per-brain vs shared
+ * across all brains in the process) are the host's choice; the runtime makes
+ * no isolation guarantees.
+ */
 export interface IRngServices {
   /** Returns the next pseudo-random number in `[0, 1)`. */
   next(): number;
@@ -134,14 +142,69 @@ export interface ICallsiteServices {
   clearHostState(callSiteId: number): void;
 }
 
-/** Runtime service aggregate required by VM execution paths. */
-export interface PlatformServices {
-  /** Host function registry used by HOST_CALL and HOST_CALL_ASYNC dispatch. */
-  functions: IFunctionRegistry;
+/**
+ * Host-supplied capabilities the embedding application provides at
+ * environment construction. These cross the host/core seam and are not
+ * configured by `coreModule()` or other Mindcraft modules. Today RNG is
+ * the only entry; future host-injected capabilities (logger, network,
+ * clock, persistence, etc.) land here.
+ */
+export interface AppServices {
+  /** Random-number stream. */
+  rng: IRngServices;
+}
 
+/**
+ * Language-side registries the VM consults during fiber execution. Owned
+ * and populated by `coreModule()` and other Mindcraft modules during
+ * environment setup; the host does not supply these.
+ */
+export interface RuntimeLangServices {
   /** Type registry used by VM value copying and struct field access paths. */
   types: ITypeRegistry;
 
+  /** Host function registry used by HOST_CALL and HOST_CALL_ASYNC dispatch. */
+  functions: IFunctionRegistry;
+
+  /** Operator dispatch table used by the VM arithmetic / comparison opcodes. */
+  operatorTable: IOperatorTable;
+
+  /** Action registry used to resolve `BrainAction` invocations to bound impls. */
+  actions: IBrainActionRegistry;
+}
+
+/**
+ * Language-side registries the compiler, language service, and editor
+ * consult at edit / compile time. Not consumed by the VM.
+ */
+export interface EditLangServices {
+  /** Tile catalog used by the editor and the parser to resolve tile defs. */
+  tiles: ITileCatalog;
+
+  /** Builder used by tile registration to construct {@link IBrainTileDef}s. */
+  tileBuilder: IBrainTileDefBuilder;
+
+  /** Operator overload table used by tile suggestion ranking and the parser. */
+  operatorOverloads: IOperatorOverloads;
+}
+
+/**
+ * Language-side registries consulted by both the VM (at runtime) and the
+ * compiler / editor (at edit time). Conversions are the canonical example:
+ * the registry is invoked from the VM when an implicit conversion fires,
+ * and inspected by tile suggestion ranking at edit time.
+ */
+export interface SharedLangServices {
+  /** Implicit-conversion registry. */
+  conversions: IConversionRegistry;
+}
+
+/**
+ * Brain-instance-scoped services: built fresh for each brain, closing over
+ * that brain's program, variable storage, page lifecycle, rule-variable
+ * stores, and callsite store. The runtime constructs these internally.
+ */
+export interface BrainInstanceServices {
   /** Program-table lookups (rule resolution by funcId). */
   program: IProgramServices;
 
@@ -152,10 +215,7 @@ export interface PlatformServices {
   ruleVars: IRuleVariableServices;
 
   /** Page lifecycle operations. */
-  brainPages: IBrainPageServices;
-
-  /** Random-number stream. */
-  rng: IRngServices;
+  pages: IBrainPageServices;
 
   /**
    * Per-callsite state: bytecode-addressable typed slots
@@ -163,4 +223,17 @@ export interface PlatformServices {
    * opaque cell. Both share a per-callsite record and lifetime.
    */
   callsite: ICallsiteServices;
+}
+
+/**
+ * Runtime service aggregate required by VM execution paths. Each tier is
+ * exposed as a nested field; the VM and host functions reach into the
+ * appropriate tier (`services.runtime.types`, `services.app.rng`,
+ * `services.brain.callsite`, etc.) when consuming a member.
+ */
+export interface PlatformServices {
+  runtime: RuntimeLangServices;
+  shared: SharedLangServices;
+  app: AppServices;
+  brain: BrainInstanceServices;
 }

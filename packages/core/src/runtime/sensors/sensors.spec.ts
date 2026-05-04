@@ -39,7 +39,7 @@ function mkArgs(size = 1): List<Value> {
 let services: BrainServices;
 
 function getSyncEntry(name: string): BrainSyncFunctionEntry {
-  const entry = services.functions.get(name);
+  const entry = services.runtime.functions.get(name);
   assert.ok(entry, `function '${name}' not found in registry`);
   assert.equal(entry.isAsync, false);
   return entry as BrainSyncFunctionEntry;
@@ -275,7 +275,7 @@ describe("random sensor", () => {
 
   test("returns value from brain.rng()", () => {
     const ctx = mkCtx({
-      services: { rng: { next: () => 0.42 } } as never,
+      services: { app: { rng: { next: () => 0.42 } } } as never,
     });
     const args = mkArgs();
 
@@ -288,7 +288,7 @@ describe("random sensor", () => {
     let call = 0;
     const values = [0.1, 0.9];
     const ctx = mkCtx({
-      services: { rng: { next: () => values[call++]! } } as never,
+      services: { app: { rng: { next: () => values[call++]! } } } as never,
     });
     const args = mkArgs();
 

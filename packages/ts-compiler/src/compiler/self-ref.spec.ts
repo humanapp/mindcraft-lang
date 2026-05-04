@@ -20,7 +20,7 @@ import { compileUserTile } from "./compile.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -49,7 +49,7 @@ describe("self-referential and mutually recursive types", () => {
   });
 
   test("self-referential interface (TreeNode) registers correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -69,7 +69,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/user-code.ts::TreeNode");
     assert.ok(typeId, "TreeNode struct type should be registered");
     const def = registry.get(typeId!) as StructTypeDef;
@@ -85,7 +85,7 @@ export default Sensor({
   });
 
   test("self-referential interface compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -125,7 +125,7 @@ export default Sensor({
   });
 
   test("mutually recursive interfaces register correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -149,7 +149,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const nodeAId = registry.resolveByName("/user-code.ts::NodeA");
     const nodeBId = registry.resolveByName("/user-code.ts::NodeB");
     assert.ok(nodeAId, "NodeA should be registered");
@@ -174,7 +174,7 @@ export default Sensor({
   });
 
   test("mutually recursive interfaces compile and execute", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -218,7 +218,7 @@ export default Sensor({
   });
 
   test("self-referential type alias registers correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -257,7 +257,7 @@ export default Sensor({
   });
 
   test("cross-kind mutual recursion (interface + type alias)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 

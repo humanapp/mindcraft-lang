@@ -44,7 +44,7 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
   constructor(valueType: TypeId, value: unknown, opts: BrainTileLiteralDefOptions = {}, services: BrainServices) {
     if (opts.placement === undefined) opts.placement = TilePlacement.EitherSide;
     if (opts.persist === undefined) opts.persist = true;
-    const typeDef = services.types.get(valueType);
+    const typeDef = services.runtime.types.get(valueType);
     if (!typeDef) {
       throw new Error(`BrainTileLiteralDef.deserialize: unknown value type ${valueType}`);
     }
@@ -62,7 +62,7 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
   // -- JSON serialization ----------------------------------------------------
 
   toJson(): LiteralTileJson {
-    const typeDef = this.services_.types.get(this.valueType);
+    const typeDef = this.services_.runtime.types.get(this.valueType);
     if (!typeDef) {
       throw new Error(`BrainTileLiteralDef.toJson: unknown value type ${this.valueType}`);
     }
@@ -82,7 +82,7 @@ export class BrainTileLiteralDef extends BrainTileDefBase {
       throw new Error(`BrainTileLiteralDef.fromJson: unsupported version ${json.version}`);
     }
     if (catalog.has(json.tileId)) return catalog.get(json.tileId) as BrainTileLiteralDef;
-    const typeDef = services.types.get(json.valueType as TypeId);
+    const typeDef = services.runtime.types.get(json.valueType as TypeId);
     if (!typeDef) {
       throw new Error(`BrainTileLiteralDef.fromJson: unknown value type ${json.valueType}`);
     }
@@ -148,7 +148,7 @@ export function registerLiteralFactoryTileDef(
     producedDataType,
     opts
   );
-  services.tiles.registerTileDef(tileDef);
+  services.edit.tiles.registerTileDef(tileDef);
 }
 
 function manufactureLiteralTileDef(
@@ -168,7 +168,7 @@ function manufactureLiteralTileDef(
 
 /** Register the built-in literal factories (`Number`, `String`) and well-known `true`/`false`/`nil` tiles. */
 export function registerCoreLiteralFactoryTileDefs(services: BrainServices) {
-  const tiles = services.tiles;
+  const tiles = services.edit.tiles;
   // --------------------------------------------------------------
   // Literal Factories
   registerLiteralFactoryTileDef(CoreLiteralFactoryId.Number, CoreTypeIds.Number, {}, services);

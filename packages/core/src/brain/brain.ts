@@ -1,7 +1,6 @@
 import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { List } from "../platform/list";
-import { MathOps } from "../platform/math";
 import {
   type BrainEvents,
   type BrainLinkEnvironment,
@@ -170,7 +169,7 @@ export class Brain implements IBrain {
     const linkEnvironment = this.getLinkEnvironment();
 
     // Compile the entire brain into an unlinked program, then link actions.
-    this.compiledProgram = compileBrain(this.brainDef, linkEnvironment.catalogs, this.services.conversions);
+    this.compiledProgram = compileBrain(this.brainDef, linkEnvironment.catalogs, this.services.shared.conversions);
     let linked = linkBrainProgram(
       this.compiledProgram,
       this.brainDef,
@@ -200,14 +199,16 @@ export class Brain implements IBrain {
     // adapter to the brain's callsiteStore.
     const runtimeServices = createRuntimeServices(this, this.callsiteStore);
     const platformServices: PlatformServices = {
-      functions: this.services.functions,
-      types: this.services.types,
-      program: createProgramServices(this.program),
-      brainVars: runtimeServices.brainVars,
-      ruleVars: createRuleVariableServices(this.program, this.ruleVariableStores),
-      brainPages: runtimeServices.brainPages,
-      rng: runtimeServices.rng,
-      callsite: runtimeServices.callsite,
+      runtime: this.services.runtime,
+      shared: this.services.shared,
+      app: this.services.app,
+      brain: {
+        program: createProgramServices(this.program),
+        brainVars: runtimeServices.brainVars,
+        ruleVars: createRuleVariableServices(this.program, this.ruleVariableStores),
+        pages: runtimeServices.brainPages,
+        callsite: runtimeServices.callsite,
+      },
     };
 
     // Create VM with the linked executable program.
@@ -531,10 +532,6 @@ export class Brain implements IBrain {
     this.lastThinkTime = currentTime;
   }
 
-  rng(): number {
-    return MathOps.random(); // TODO: Replace with a seeded deterministic RNG
-  }
-
   /**
    * Activate a page by spawning fibers for its root rules.
    */
@@ -821,8 +818,8 @@ export class Brain implements IBrain {
     }
 
     return {
-      catalogs: List.from([this.services.tiles]),
-      actionResolver: this.services.actions,
+      catalogs: List.from([this.services.edit.tiles]),
+      actionResolver: this.services.runtime.actions,
     };
   }
 }

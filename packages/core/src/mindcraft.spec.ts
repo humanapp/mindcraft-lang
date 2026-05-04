@@ -66,7 +66,7 @@ test("exports mindcraft public contracts from the root package", () => {
 });
 
 test("coreModule installs through MindcraftModuleApi with brainServices", () => {
-  const services = brain.createBrainServices();
+  const services = brain.createBrainServices(brain.createAppServices());
 
   const fail = (): never => {
     throw new Error("coreModule() should use api.brainServices directly");
@@ -87,9 +87,9 @@ test("coreModule installs through MindcraftModuleApi with brainServices", () => 
 
   coreModule().install(api);
 
-  assert.ok(services.types.resolveByName("number"));
-  assert.ok(services.functions.get(brain.CoreSensorId.CurrentPage));
-  assert.ok(services.actions.getByKey(brain.CoreSensorId.CurrentPage));
-  assert.ok(services.tiles.get(brain.mkSensorTileId(brain.CoreSensorId.CurrentPage)));
-  assert.ok(services.operatorTable.get(runtime.CoreOpId.Add));
+  assert.ok(services.runtime.types.resolveByName("number"));
+  assert.ok(services.runtime.functions.get(brain.CoreSensorId.CurrentPage));
+  assert.ok(services.runtime.actions.getByKey(brain.CoreSensorId.CurrentPage));
+  assert.ok(services.edit.tiles.get(brain.mkSensorTileId(brain.CoreSensorId.CurrentPage)));
+  assert.ok(services.runtime.operatorTable.get(runtime.CoreOpId.Add));
 });

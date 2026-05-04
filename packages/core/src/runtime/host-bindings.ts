@@ -157,7 +157,6 @@ export interface IBrain {
   getCompiledProgram(): UnlinkedBrainProgram | undefined;
   /** Per-page metadata for the loaded program (page activation, call sites, sensors, actuators). */
   getPages(): List<PageMetadata>;
-  rng(): number; // Returns a random number between 0 and 1.
   requestPageChange(pageIndex: number): void;
   requestPageChangeByPageId(pageId: string): void;
   requestPageChangeByName(name: string): void;

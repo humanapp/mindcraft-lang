@@ -15,7 +15,7 @@ export class BrainTileControlFlowDef extends BrainTileDefBase {
 
 /** Register the built-in control-flow tiles on `services`. */
 export function registerCoreControlFlowTileDefs(services: BrainServices) {
-  const tiles = services.tiles;
+  const tiles = services.edit.tiles;
   const register = (cfId: string, opts: BrainTileDefCreateOptions = {}) => {
     const tileDef = new BrainTileControlFlowDef(cfId, opts);
     tiles.registerTileDef(tileDef);

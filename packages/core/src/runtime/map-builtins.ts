@@ -9,9 +9,9 @@ import { type MapValue, mkListValue, mkNumberValue, mkStringValue, type Value } 
 
 const mapCallDef = mkCallDef({ type: "bag", items: [] });
 
-/** Register the built-in map operations on `services.functions`. */
+/** Register the built-in map operations on `services.runtime.functions`. */
 export function registerMapBuiltins(services: BrainServices) {
-  const { functions, types } = services;
+  const { functions, types } = services.runtime;
 
   functions.register(
     "$$map_keys",

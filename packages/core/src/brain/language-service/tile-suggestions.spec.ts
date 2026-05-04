@@ -93,7 +93,7 @@ before(() => {
 // ---- Helpers ----
 
 function catalogList(): List<ITileCatalog> {
-  return List.from([services.tiles]);
+  return List.from([services.edit.tiles]);
 }
 
 function listFind<T>(list: List<T>, predicate: (item: T) => boolean): T | undefined {
@@ -196,7 +196,7 @@ test("Test 3: Expression position, DO side, no type constraint", () => {
 
 test("Test 4: Action call context for switch-page actuator", () => {
   const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
-  const switchPageTile = services.tiles.get(switchPageTileId) as BrainTileActuatorDef;
+  const switchPageTile = services.edit.tiles.get(switchPageTileId) as BrainTileActuatorDef;
   assert.ok(switchPageTile !== undefined, "switch-page actuator exists in catalog");
 
   if (switchPageTile) {
@@ -250,7 +250,7 @@ test("Test 5: Expression position, WHEN side, expected Boolean", () => {
 // ---- Test 6: getTileOutputType utility ----
 
 test("Test 6: getTileOutputType helper", () => {
-  const allTiles = services.tiles.getAll();
+  const allTiles = services.edit.tiles.getAll();
   let checkedCount = 0;
   for (let i = 0; i < allTiles.size(); i++) {
     const tileDef = allTiles.get(i);
@@ -293,7 +293,7 @@ test("Test 7: Complete value expr (literal) -> infix operators only", () => {
 
 test("Test 8: Complete actuator (all slots filled) -> nothing", () => {
   const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
-  const switchPageTile = services.tiles.get(switchPageTileId) as BrainTileActuatorDef;
+  const switchPageTile = services.edit.tiles.get(switchPageTileId) as BrainTileActuatorDef;
 
   if (switchPageTile) {
     const callDef = switchPageTile.action.callDef;
@@ -331,7 +331,7 @@ test("Test 8: Complete actuator (all slots filled) -> nothing", () => {
 
 test("Test 9: Actuator with parameter needing value (errorExpr) -> value tiles", () => {
   const restartPageTileId = mkActuatorTileId(CoreActuatorId.RestartPage);
-  const restartPageTile = services.tiles.get(restartPageTileId) as BrainTileActuatorDef;
+  const restartPageTile = services.edit.tiles.get(restartPageTileId) as BrainTileActuatorDef;
 
   if (restartPageTile) {
     const priorityParamDef = new BrainTileParameterDef("test.priority", CoreTypeIds.Number, {
@@ -389,14 +389,19 @@ test("Test 9: Actuator with parameter needing value (errorExpr) -> value tiles",
 test("Test 10: Integration -- parse [actuator, priority] -> suggest value tiles", () => {
   const testParamId = "test.priority.10";
   const testParamDef = new BrainTileParameterDef(testParamId, CoreTypeIds.Number, { metadata: { label: "priority" } });
-  services.tiles.registerTileDef(testParamDef);
+  services.edit.tiles.registerTileDef(testParamDef);
 
   const testCallDef = mkCallDef(bag(optional(param(testParamId))));
-  const testFnEntry = services.functions.register("test-move-10", false, { exec: () => VOID_VALUE }, testCallDef);
+  const testFnEntry = services.runtime.functions.register(
+    "test-move-10",
+    false,
+    { exec: () => VOID_VALUE },
+    testCallDef
+  );
   const testActuatorDef = new BrainTileActuatorDef("test-move-10", mkActionDescriptor("actuator", testFnEntry), {
     metadata: { label: "move" },
   });
-  services.tiles.registerTileDef(testActuatorDef);
+  services.edit.tiles.registerTileDef(testActuatorDef);
 
   const tileSequence = List.from([testActuatorDef as IBrainTileDef, testParamDef as IBrainTileDef]);
   const expr = parseTilesForSuggestions(tileSequence);
@@ -433,11 +438,11 @@ test("Test 10: Integration -- parse [actuator, priority] -> suggest value tiles"
 
 describe("Replace operand/operator in binary expression", () => {
   test("Test 11: Replace left operand in [lit] [+] [lit] -> value tiles", () => {
-    const litTileDef = services.tiles
+    const litTileDef = services.edit.tiles
       .getAll()
       .toArray()
       .find((t) => t.kind === "literal") as BrainTileLiteralDef;
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
     const leftLit: LiteralExpr = { nodeId: 1, kind: "literal", tileDef: litTileDef, span: { from: 0, to: 1 } };
     const rightLit: LiteralExpr = { nodeId: 2, kind: "literal", tileDef: litTileDef, span: { from: 2, to: 3 } };
@@ -465,7 +470,7 @@ describe("Replace operand/operator in binary expression", () => {
 
   test("Test 12: Replace operator in [lit] [+] [lit] -> infix operators only", () => {
     const litTileDef = new BrainTileLiteralDef(CoreTypeIds.Number, 42, {}, services);
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
     const leftLit: LiteralExpr = { nodeId: 1, kind: "literal", tileDef: litTileDef, span: { from: 0, to: 1 } };
     const rightLit: LiteralExpr = { nodeId: 2, kind: "literal", tileDef: litTileDef, span: { from: 2, to: 3 } };
@@ -499,11 +504,11 @@ describe("Replace operand/operator in binary expression", () => {
   });
 
   test("Test 13: Replace prefix operator in [not] [lit] -> prefix operators only", () => {
-    const litTileDef = services.tiles
+    const litTileDef = services.edit.tiles
       .getAll()
       .toArray()
       .find((t) => t.kind === "literal") as BrainTileLiteralDef;
-    const notOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
 
     const operandLit: LiteralExpr = { nodeId: 1, kind: "literal", tileDef: litTileDef, span: { from: 1, to: 2 } };
     const unaryExpr: UnaryOpExpr = {
@@ -532,11 +537,11 @@ describe("Replace operand/operator in binary expression", () => {
   });
 
   test("Test 14: Replace operand in [not] [lit] -> value tiles", () => {
-    const litTileDef = services.tiles
+    const litTileDef = services.edit.tiles
       .getAll()
       .toArray()
       .find((t) => t.kind === "literal") as BrainTileLiteralDef;
-    const notOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
 
     const operandLit: LiteralExpr = { nodeId: 1, kind: "literal", tileDef: litTileDef, span: { from: 1, to: 2 } };
     const unaryExpr: UnaryOpExpr = {
@@ -562,15 +567,20 @@ describe("Replace operand/operator in binary expression", () => {
     const testParamDef = new BrainTileParameterDef(testParamId, CoreTypeIds.Number, {
       metadata: { label: "priority" },
     });
-    services.tiles.registerTileDef(testParamDef);
+    services.edit.tiles.registerTileDef(testParamDef);
     const testCallDef = mkCallDef(bag(optional(param(testParamId))));
-    const testFnEntry = services.functions.register("test-move-15", false, { exec: () => VOID_VALUE }, testCallDef);
+    const testFnEntry = services.runtime.functions.register(
+      "test-move-15",
+      false,
+      { exec: () => VOID_VALUE },
+      testCallDef
+    );
     const testActuatorDef = new BrainTileActuatorDef("test-move-15", mkActionDescriptor("actuator", testFnEntry), {
       metadata: { label: "move" },
     });
-    services.tiles.registerTileDef(testActuatorDef);
+    services.edit.tiles.registerTileDef(testActuatorDef);
 
-    const litTileDef = services.tiles
+    const litTileDef = services.edit.tiles
       .getAll()
       .toArray()
       .find((t) => t.kind === "literal") as BrainTileLiteralDef;
@@ -609,8 +619,8 @@ describe("Replace operand/operator in binary expression", () => {
   });
 
   test("Test 16: Replace action tile itself -> expression tiles", () => {
-    const testActuatorDef = services.tiles.get(mkActuatorTileId("test-move-15")) as BrainTileActuatorDef;
-    const testParamDef = services.tiles.get(mkParameterTileId("test.priority.15")) as BrainTileParameterDef;
+    const testActuatorDef = services.edit.tiles.get(mkActuatorTileId("test-move-15")) as BrainTileActuatorDef;
+    const testParamDef = services.edit.tiles.get(mkParameterTileId("test.priority.15")) as BrainTileParameterDef;
 
     if (testActuatorDef && testParamDef) {
       const paramExpr: ParameterExpr = {
@@ -645,8 +655,8 @@ describe("Replace operand/operator in binary expression", () => {
   });
 
   test("Test 17: Replace parameter tile in action call -> other arg tiles", () => {
-    const testActuatorDef = services.tiles.get(mkActuatorTileId("test-move-15")) as BrainTileActuatorDef;
-    const testParamDef = services.tiles.get(mkParameterTileId("test.priority.15")) as BrainTileParameterDef;
+    const testActuatorDef = services.edit.tiles.get(mkActuatorTileId("test-move-15")) as BrainTileActuatorDef;
+    const testParamDef = services.edit.tiles.get(mkParameterTileId("test.priority.15")) as BrainTileParameterDef;
 
     if (testActuatorDef && testParamDef) {
       const paramExpr: ParameterExpr = {
@@ -686,16 +696,16 @@ describe("Parameter value expression chains", () => {
   before(() => {
     const id = "test.priority.18";
     testParamDef = new BrainTileParameterDef(id, CoreTypeIds.Number, { metadata: { label: "priority" } });
-    services.tiles.registerTileDef(testParamDef);
+    services.edit.tiles.registerTileDef(testParamDef);
     const callDef = mkCallDef(bag(optional(param(id))));
-    const fnEntry = services.functions.register("test-move-18", false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register("test-move-18", false, { exec: () => VOID_VALUE }, callDef);
     testActuatorDef = new BrainTileActuatorDef("test-move-18", mkActionDescriptor("actuator", fnEntry), {
       metadata: { label: "move" },
     });
-    services.tiles.registerTileDef(testActuatorDef);
+    services.edit.tiles.registerTileDef(testActuatorDef);
 
     numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "1", { metadata: { label: "1" } }, services);
-    services.tiles.registerTileDef(numLitDef);
+    services.edit.tiles.registerTileDef(numLitDef);
   });
 
   test("Test 18: [move] [priority] [1] -> infix operators", () => {
@@ -716,7 +726,7 @@ describe("Parameter value expression chains", () => {
   });
 
   test("Test 19: [move] [priority] [1] [+] -> value tiles", () => {
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
     const tiles = List.from<IBrainTileDef>([testActuatorDef, testParamDef, numLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
 
@@ -746,7 +756,7 @@ describe("Parameter value expression chains", () => {
   });
 
   test("Test 20: [move] [priority] [1] [+] [1] -> infix operators", () => {
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
     const tiles = List.from<IBrainTileDef>([testActuatorDef, testParamDef, numLitDef, addOpDef, numLitDef]);
     const expr = parseTilesForSuggestions(tiles);
 
@@ -764,8 +774,8 @@ describe("Parameter value expression chains", () => {
   });
 
   test("Test 21: Top-level [1] [+] -> value tiles, not operators", () => {
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
-    const localNumLit = services.tiles
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const localNumLit = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -835,7 +845,7 @@ describe("Parameter value expression chains", () => {
   });
 
   test("Test 23: [move] [priority] [negative] [1] -> infix operators", () => {
-    const negOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Negate)) as BrainTileOperatorDef;
+    const negOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Negate)) as BrainTileOperatorDef;
     const tiles = List.from<IBrainTileDef>([testActuatorDef, testParamDef, negOpDef, numLitDef]);
     const expr = parseTilesForSuggestions(tiles);
 
@@ -938,15 +948,15 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
     modCDef = new BrainTileModifierDef("test.modC", { metadata: { label: "C" } });
     modFastDef = new BrainTileModifierDef("test.fast", { metadata: { label: "fast" } });
     modSlowDef = new BrainTileModifierDef("test.slow", { metadata: { label: "slow" } });
-    services.tiles.registerTileDef(modADef);
-    services.tiles.registerTileDef(modBDef);
-    services.tiles.registerTileDef(modCDef);
-    services.tiles.registerTileDef(modFastDef);
-    services.tiles.registerTileDef(modSlowDef);
+    services.edit.tiles.registerTileDef(modADef);
+    services.edit.tiles.registerTileDef(modBDef);
+    services.edit.tiles.registerTileDef(modCDef);
+    services.edit.tiles.registerTileDef(modFastDef);
+    services.edit.tiles.registerTileDef(modSlowDef);
 
     const priorityId = "test.priority.24";
     const priorityDef = new BrainTileParameterDef(priorityId, CoreTypeIds.Number, { metadata: { label: "priority" } });
-    services.tiles.registerTileDef(priorityDef);
+    services.edit.tiles.registerTileDef(priorityDef);
 
     richCallDef = mkCallDef(
       bag(
@@ -955,11 +965,16 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
         optional(param(priorityId))
       )
     );
-    const richFnEntry = services.functions.register("test-rich", false, { exec: () => VOID_VALUE }, richCallDef);
+    const richFnEntry = services.runtime.functions.register(
+      "test-rich",
+      false,
+      { exec: () => VOID_VALUE },
+      richCallDef
+    );
     richActuatorDef = new BrainTileActuatorDef("test-rich", mkActionDescriptor("actuator", richFnEntry), {
       metadata: { label: "rich" },
     });
-    services.tiles.registerTileDef(richActuatorDef);
+    services.edit.tiles.registerTileDef(richActuatorDef);
 
     slotFast = getSlotIdForTile(mkModifierTileId("test.fast"));
   });
@@ -1035,8 +1050,8 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
 
     // Placed
     const slotPriority = getSlotIdForTile(priorityTileId);
-    const priorityParamDef = services.tiles.get(priorityTileId) as BrainTileParameterDef;
-    const litDef = services.tiles
+    const priorityParamDef = services.edit.tiles.get(priorityTileId) as BrainTileParameterDef;
+    const litDef = services.edit.tiles
       .getAll()
       .toArray()
       .find((t) => t.kind === "literal") as BrainTileLiteralDef;
@@ -1057,14 +1072,14 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
   test("Test 29: Conditional -- args available only when condition met", () => {
     const modXDef = new BrainTileModifierDef("test.modX", { metadata: { label: "X" } });
     const modYDef = new BrainTileModifierDef("test.modY", { metadata: { label: "Y" } });
-    services.tiles.registerTileDef(modXDef);
-    services.tiles.registerTileDef(modYDef);
+    services.edit.tiles.registerTileDef(modXDef);
+    services.edit.tiles.registerTileDef(modYDef);
 
     const testCondParamId = "test.condValue";
     const testCondParamDef = new BrainTileParameterDef(testCondParamId, CoreTypeIds.Number, {
       metadata: { label: "val" },
     });
-    services.tiles.registerTileDef(testCondParamDef);
+    services.edit.tiles.registerTileDef(testCondParamDef);
 
     const condCallDef = mkCallDef(
       bag(
@@ -1072,11 +1087,16 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
         conditional("theValue", optional(choice(mod("test.modX"), mod("test.modY"))))
       )
     );
-    const condFnEntry = services.functions.register("test-cond", false, { exec: () => VOID_VALUE }, condCallDef);
+    const condFnEntry = services.runtime.functions.register(
+      "test-cond",
+      false,
+      { exec: () => VOID_VALUE },
+      condCallDef
+    );
     const condActuatorDef = new BrainTileActuatorDef("test-cond", mkActionDescriptor("actuator", condFnEntry), {
       metadata: { label: "cond" },
     });
-    services.tiles.registerTileDef(condActuatorDef);
+    services.edit.tiles.registerTileDef(condActuatorDef);
 
     // No value -> condition not met
     {
@@ -1097,7 +1117,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
     // Value placed -> condition met
     {
       const anonSlotId = condCallDef.argSlots.get(0).slotId;
-      const litDef = services.tiles
+      const litDef = services.edit.tiles
         .getAll()
         .toArray()
         .find((t) => t.kind === "literal") as BrainTileLiteralDef;
@@ -1127,7 +1147,7 @@ describe("Call spec constraints (choice, repeat, conditional)", () => {
       const modXSlotId = condCallDef.argSlots
         .toArray()
         .find((s) => s.argSpec.tileId === mkModifierTileId("test.modX"))!.slotId;
-      const litDef = services.tiles
+      const litDef = services.edit.tiles
         .getAll()
         .toArray()
         .find((t) => t.kind === "literal") as BrainTileLiteralDef;
@@ -1165,11 +1185,16 @@ describe("Non-inline sensor operator suggestions", () => {
   test("Test 30: Non-inline sensor with satisfied choice -> no infix operators", () => {
     const modPDef = new BrainTileModifierDef("test.modP", { metadata: { label: "P" } });
     const modQDef = new BrainTileModifierDef("test.modQ", { metadata: { label: "Q" } });
-    services.tiles.registerTileDef(modPDef);
-    services.tiles.registerTileDef(modQDef);
+    services.edit.tiles.registerTileDef(modPDef);
+    services.edit.tiles.registerTileDef(modQDef);
 
     const sensorCallDef = mkCallDef(choice(mod("test.modP"), mod("test.modQ")));
-    const sensorFnEntry = services.functions.register("test-sense", false, { exec: () => VOID_VALUE }, sensorCallDef);
+    const sensorFnEntry = services.runtime.functions.register(
+      "test-sense",
+      false,
+      { exec: () => VOID_VALUE },
+      sensorCallDef
+    );
     const testSensorDef = new BrainTileSensorDef(
       "test-sense",
       mkActionDescriptor("sensor", sensorFnEntry, CoreTypeIds.Number),
@@ -1177,7 +1202,7 @@ describe("Non-inline sensor operator suggestions", () => {
         metadata: { label: "sense" },
       }
     );
-    services.tiles.registerTileDef(testSensorDef);
+    services.edit.tiles.registerTileDef(testSensorDef);
 
     const modPSlotId = sensorCallDef.argSlots
       .toArray()
@@ -1206,7 +1231,7 @@ describe("Non-inline sensor operator suggestions", () => {
   });
 
   test("Test 30b: Inline sensor (no args) -> infix operators offered", () => {
-    const randomSensorDef = services.tiles
+    const randomSensorDef = services.edit.tiles
       .getAll()
       .toArray()
       .find((t) => t.kind === "sensor") as BrainTileSensorDef;
@@ -1231,10 +1256,10 @@ describe("Non-inline sensor operator suggestions", () => {
     const modSDef = new BrainTileModifierDef("test.modS", { metadata: { label: "S" } });
     const modNrDef = new BrainTileModifierDef("test.modNr", { metadata: { label: "Near" } });
     const modFrDef = new BrainTileModifierDef("test.modFr", { metadata: { label: "Far" } });
-    services.tiles.registerTileDef(modRDef);
-    services.tiles.registerTileDef(modSDef);
-    services.tiles.registerTileDef(modNrDef);
-    services.tiles.registerTileDef(modFrDef);
+    services.edit.tiles.registerTileDef(modRDef);
+    services.edit.tiles.registerTileDef(modSDef);
+    services.edit.tiles.registerTileDef(modNrDef);
+    services.edit.tiles.registerTileDef(modFrDef);
 
     const senseCallDef = mkCallDef(
       bag(
@@ -1242,7 +1267,12 @@ describe("Non-inline sensor operator suggestions", () => {
         choice(repeated(mod("test.modNr"), { max: 3 }), repeated(mod("test.modFr"), { max: 3 }))
       )
     );
-    const senseFnEntry = services.functions.register("test-sense2", false, { exec: () => VOID_VALUE }, senseCallDef);
+    const senseFnEntry = services.runtime.functions.register(
+      "test-sense2",
+      false,
+      { exec: () => VOID_VALUE },
+      senseCallDef
+    );
     const senseDef = new BrainTileSensorDef(
       "test-sense2",
       mkActionDescriptor("sensor", senseFnEntry, CoreTypeIds.Boolean),
@@ -1250,7 +1280,7 @@ describe("Non-inline sensor operator suggestions", () => {
         metadata: { label: "sense2" },
       }
     );
-    services.tiles.registerTileDef(senseDef);
+    services.edit.tiles.registerTileDef(senseDef);
 
     const modRSlotId = senseCallDef.argSlots
       .toArray()
@@ -1305,7 +1335,7 @@ describe("Non-inline sensor operator suggestions", () => {
 
 describe("Operator overload filtering", () => {
   test("Test 31: Number LHS -> operators filtered by overload", () => {
-    const numLitDef = services.tiles
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -1351,7 +1381,7 @@ describe("Operator overload filtering", () => {
   });
 
   test("Test 32: Boolean LHS -> operators filtered by overload", () => {
-    const boolLitDef = services.tiles
+    const boolLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -1389,13 +1419,13 @@ describe("Operator overload filtering", () => {
   });
 
   test("Test 34: Replace operator with LHS type awareness", () => {
-    const numLitDef = services.tiles
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
         (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
       ) as BrainTileLiteralDef;
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
     const leftLit: LiteralExpr = { nodeId: 1, kind: "literal", tileDef: numLitDef, span: { from: 0, to: 0 } };
     const rightLit: LiteralExpr = { nodeId: 2, kind: "literal", tileDef: numLitDef, span: { from: 2, to: 2 } };
@@ -1435,15 +1465,15 @@ describe("Incomplete expression type constraints", () => {
   test("Test 35: [say] ['hi'] [+] -> suggests string-producing value tiles", () => {
     const anonStringSpec = param(CoreParameterId.AnonymousString, { name: "anonStr", required: true, anonymous: true });
     const sayCallDef = mkCallDef(bag(anonStringSpec));
-    const sayFnEntry = services.functions.register("test-say", false, { exec: () => VOID_VALUE }, sayCallDef);
+    const sayFnEntry = services.runtime.functions.register("test-say", false, { exec: () => VOID_VALUE }, sayCallDef);
     const sayDef = new BrainTileActuatorDef("test-say", mkActionDescriptor("actuator", sayFnEntry), {
       metadata: { label: "say" },
     });
-    services.tiles.registerTileDef(sayDef);
+    services.edit.tiles.registerTileDef(sayDef);
 
     const strLitDef = new BrainTileLiteralDef(CoreTypeIds.String, "hi", { metadata: { label: "hi" } }, services);
-    services.tiles.registerTileDef(strLitDef);
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    services.edit.tiles.registerTileDef(strLitDef);
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
     const tiles = List.from<IBrainTileDef>([sayDef, strLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -1477,7 +1507,7 @@ describe("Incomplete expression type constraints", () => {
 
   test("Test 36: Variable LHS -> assign suggested; literal LHS -> assign excluded", () => {
     const numVarDef = new BrainTileVariableDef("test.numVar", "score", CoreTypeIds.Number, "var-score-1");
-    services.tiles.registerTileDef(numVarDef);
+    services.edit.tiles.registerTileDef(numVarDef);
 
     const assignTileId = mkOperatorTileId(CoreOpId.Assign);
 
@@ -1490,7 +1520,7 @@ describe("Incomplete expression type constraints", () => {
     );
 
     // Literal LHS
-    const numLitDef = services.tiles
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -1504,7 +1534,7 @@ describe("Incomplete expression type constraints", () => {
     );
 
     // Sensor LHS
-    const randomSensorDef = services.tiles
+    const randomSensorDef = services.edit.tiles
       .getAll()
       .toArray()
       .find((t) => t.kind === "sensor") as BrainTileSensorDef;
@@ -1526,7 +1556,7 @@ describe("Incomplete expression type constraints", () => {
     }
 
     // BinaryOp LHS
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
     const binaryExpr: BinaryOpExpr = {
       nodeId: 3,
       kind: "binaryOp",
@@ -1545,19 +1575,24 @@ describe("Incomplete expression type constraints", () => {
   test("Test 37: Number expected -> negate suggested", () => {
     const anonNumSpec = param(CoreParameterId.AnonymousNumber, { name: "anonNum", required: true, anonymous: true });
     const numActCallDef = mkCallDef(bag(anonNumSpec));
-    const numActFnEntry = services.functions.register("test-numact", false, { exec: () => VOID_VALUE }, numActCallDef);
+    const numActFnEntry = services.runtime.functions.register(
+      "test-numact",
+      false,
+      { exec: () => VOID_VALUE },
+      numActCallDef
+    );
     const numActDef = new BrainTileActuatorDef("test-numact", mkActionDescriptor("actuator", numActFnEntry), {
       metadata: { label: "numact" },
     });
-    services.tiles.registerTileDef(numActDef);
+    services.edit.tiles.registerTileDef(numActDef);
 
-    const numLitDef = services.tiles.get(
-      services.tiles
+    const numLitDef = services.edit.tiles.get(
+      services.edit.tiles
         .getAll()
         .toArray()
         .find((t) => t.kind === "literal" && getTileOutputType(t) === CoreTypeIds.Number)!.tileId
     )!;
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
     const negateTileId = mkOperatorTileId(CoreOpId.Negate);
 
     const numTiles = List.from<IBrainTileDef>([numActDef, numLitDef, addOpDef]);
@@ -1581,7 +1616,7 @@ describe("Accessor / struct field suggestions", () => {
   let posVarDef: BrainTileVariableDef;
 
   before(() => {
-    posStructTypeId = services.types.addStructType("Position", {
+    posStructTypeId = services.runtime.types.addStructType("Position", {
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number },
         { name: "y", typeId: CoreTypeIds.Number },
@@ -1594,14 +1629,14 @@ describe("Accessor / struct field suggestions", () => {
       metadata: { label: "mag" },
       readOnly: true,
     });
-    services.tiles.registerTileDef(accessorXDef);
-    services.tiles.registerTileDef(accessorYDef);
-    services.tiles.registerTileDef(accessorMagDef);
+    services.edit.tiles.registerTileDef(accessorXDef);
+    services.edit.tiles.registerTileDef(accessorYDef);
+    services.edit.tiles.registerTileDef(accessorMagDef);
 
     posVarDef = new BrainTileVariableDef("test.posVar", "my_position", posStructTypeId, "var-pos-1");
-    services.tiles.registerTileDef(posVarDef);
+    services.edit.tiles.registerTileDef(posVarDef);
 
-    services.operatorOverloads.binary(
+    services.edit.operatorOverloads.binary(
       CoreOpId.Assign,
       posStructTypeId,
       posStructTypeId,
@@ -1623,7 +1658,7 @@ describe("Accessor / struct field suggestions", () => {
   });
 
   test("Test 39: Number variable -> accessor tiles NOT suggested", () => {
-    const numVarDef2 = services.tiles
+    const numVarDef2 = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -1687,7 +1722,7 @@ describe("Accessor / struct field suggestions", () => {
   });
 
   test("Test 43: [$pos] [x] [=] -> value tiles for assignment RHS", () => {
-    const assignOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
     const tiles = List.from<IBrainTileDef>([posVarDef, accessorXDef, assignOpDef]);
     const expr = parseTilesForSuggestions(tiles);
 
@@ -1715,8 +1750,8 @@ describe("Accessor / struct field suggestions", () => {
   });
 
   test("Test 44: [$pos] [x] [=] [1] -> infix ops to extend value", () => {
-    const assignOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
-    const numLitDef = services.tiles
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -1765,7 +1800,7 @@ describe("Accessor / struct field suggestions", () => {
   });
 
   test("Test 46: Different struct type -> only matching accessors suggested", () => {
-    const velStructTypeId = services.types.addStructType("Velocity", {
+    const velStructTypeId = services.runtime.types.addStructType("Velocity", {
       fields: List.from([
         { name: "dx", typeId: CoreTypeIds.Number },
         { name: "dy", typeId: CoreTypeIds.Number },
@@ -1777,11 +1812,11 @@ describe("Accessor / struct field suggestions", () => {
     const accessorDyDef = new BrainTileAccessorDef(velStructTypeId, "dy", CoreTypeIds.Number, {
       metadata: { label: "dy" },
     });
-    services.tiles.registerTileDef(accessorDxDef);
-    services.tiles.registerTileDef(accessorDyDef);
+    services.edit.tiles.registerTileDef(accessorDxDef);
+    services.edit.tiles.registerTileDef(accessorDyDef);
 
     const velVarDef = new BrainTileVariableDef("test.velVar", "my_velocity", velStructTypeId, "var-vel-1");
-    services.tiles.registerTileDef(velVarDef);
+    services.edit.tiles.registerTileDef(velVarDef);
 
     // Position variable -> Position accessors only
     {
@@ -1809,9 +1844,9 @@ describe("Accessor / struct field suggestions", () => {
     // No Position accessors should be suggested since they all produce Number,
     // which does not match the Position target type.
     const posVarDef2 = new BrainTileVariableDef("test.posVar2", "other_position", posStructTypeId, "var-pos-2");
-    services.tiles.registerTileDef(posVarDef2);
+    services.edit.tiles.registerTileDef(posVarDef2);
 
-    const assignOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
     const tiles = List.from<IBrainTileDef>([posVarDef, assignOpDef, posVarDef2]);
     const expr = parseTilesForSuggestions(tiles);
 
@@ -1827,9 +1862,9 @@ describe("Accessor / struct field suggestions", () => {
     // When the assignment target is Number and the RHS is a struct,
     // accessors producing Number should be suggested.
     const numVarDef = new BrainTileVariableDef("test.numVar78", "my_number", CoreTypeIds.Number, "var-num-78");
-    services.tiles.registerTileDef(numVarDef);
+    services.edit.tiles.registerTileDef(numVarDef);
 
-    const assignOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
+    const assignOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Assign)) as BrainTileOperatorDef;
     const tiles = List.from<IBrainTileDef>([numVarDef, assignOpDef, posVarDef]);
     const expr = parseTilesForSuggestions(tiles);
 
@@ -1866,8 +1901,8 @@ describe("Sub-expression filtering", () => {
       },
       services
     );
-    services.tiles.registerTileDef(strLitDef);
-    const neOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.NotEqualTo)) as BrainTileOperatorDef;
+    services.edit.tiles.registerTileDef(strLitDef);
+    const neOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.NotEqualTo)) as BrainTileOperatorDef;
 
     const tiles = List.from<IBrainTileDef>([strLitDef, neOpDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -1908,13 +1943,13 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 49: [1] [+] _ without overloads -- prefix ops still offered", () => {
-    const numLitDef = services.tiles
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
         (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
       ) as BrainTileLiteralDef;
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
     const tiles = List.from<IBrainTileDef>([numLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -1937,13 +1972,13 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 50: [1] [+] _ with overloads -> [negate] offered, [not] excluded", () => {
-    const numLitDef = services.tiles
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
         (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
       ) as BrainTileLiteralDef;
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
     const tiles = List.from<IBrainTileDef>([numLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -1961,8 +1996,8 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 51: [not] [on-page-entered] -> UnaryOp(NOT, SensorExpr)", () => {
-    const notOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
-    const sensorDef = services.tiles.get(mkSensorTileId(CoreSensorId.OnPageEntered)) as BrainTileSensorDef;
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreSensorId.OnPageEntered)) as BrainTileSensorDef;
 
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -1978,7 +2013,7 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 52: Incomplete [not] -> non-inline sensors suggested", () => {
-    const notOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
     const tiles = List.from<IBrainTileDef>([notOpDef]);
     const expr = parseTilesForSuggestions(tiles);
 
@@ -2001,8 +2036,8 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 53: Complete [not] [on-page-entered] -> Boolean infix operators", () => {
-    const notOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
-    const sensorDef = services.tiles.get(mkSensorTileId(CoreSensorId.OnPageEntered)) as BrainTileSensorDef;
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreSensorId.OnPageEntered)) as BrainTileSensorDef;
 
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -2030,18 +2065,18 @@ describe("Sub-expression filtering", () => {
   test("Test 54: [not] [sensor-with-args] -> call spec tiles suggested", () => {
     const modNearDef = new BrainTileModifierDef("test.near54", { metadata: { label: "near" } });
     const modFarDef = new BrainTileModifierDef("test.far54", { metadata: { label: "far" } });
-    services.tiles.registerTileDef(modNearDef);
-    services.tiles.registerTileDef(modFarDef);
+    services.edit.tiles.registerTileDef(modNearDef);
+    services.edit.tiles.registerTileDef(modFarDef);
 
     const callDef54 = mkCallDef(bag(choice(mod("test.near54"), mod("test.far54"))));
-    const fnEntry54 = services.functions.register("test-see54", false, { exec: () => TRUE_VALUE }, callDef54);
+    const fnEntry54 = services.runtime.functions.register("test-see54", false, { exec: () => TRUE_VALUE }, callDef54);
     const seeDef = new BrainTileSensorDef("test-see54", mkActionDescriptor("sensor", fnEntry54, CoreTypeIds.Boolean), {
       placement: TilePlacement.WhenSide,
       metadata: { label: "see" },
     });
-    services.tiles.registerTileDef(seeDef);
+    services.edit.tiles.registerTileDef(seeDef);
 
-    const notOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
     const tiles = List.from<IBrainTileDef>([notOpDef, seeDef]);
     const expr = parseTilesForSuggestions(tiles);
 
@@ -2059,16 +2094,16 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 55: [not] [sensor] [near] -> [far] excluded, no infix ops", () => {
-    const notOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
-    const seeDef = services.tiles.get(mkSensorTileId("test-see54")) as BrainTileSensorDef;
-    const modNearDef = services.tiles.get(mkModifierTileId("test.near54")) as BrainTileModifierDef;
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const seeDef = services.edit.tiles.get(mkSensorTileId("test-see54")) as BrainTileSensorDef;
+    const modNearDef = services.edit.tiles.get(mkModifierTileId("test.near54")) as BrainTileModifierDef;
 
     const tiles = List.from<IBrainTileDef>([notOpDef, seeDef, modNearDef]);
     const expr = parseTilesForSuggestions(tiles);
 
     const result = suggestTiles({ ruleSide: RuleSide.When, expr }, catalogList(), services);
 
-    const modFarDef = services.tiles.get(mkModifierTileId("test.far54")) as BrainTileModifierDef;
+    const modFarDef = services.edit.tiles.get(mkModifierTileId("test.far54")) as BrainTileModifierDef;
     assert.ok(
       !listFind(result.exact, (s) => s.tileDef.tileId === modFarDef.tileId),
       "[far] should be excluded by choice"
@@ -2083,8 +2118,8 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 56: Replace operand in [not] [sensor] -> expression tiles including sensors", () => {
-    const notOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
-    const sensorDef = services.tiles.get(mkSensorTileId(CoreSensorId.OnPageEntered)) as BrainTileSensorDef;
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const sensorDef = services.edit.tiles.get(mkSensorTileId(CoreSensorId.OnPageEntered)) as BrainTileSensorDef;
 
     const tiles = List.from<IBrainTileDef>([notOpDef, sensorDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -2096,16 +2131,16 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 57: Replace modifier inside [not] [sensor] [mod] -> action call arg tiles", () => {
-    const notOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
-    const seeDef = services.tiles.get(mkSensorTileId("test-see54")) as BrainTileSensorDef;
-    const modNearDef = services.tiles.get(mkModifierTileId("test.near54")) as BrainTileModifierDef;
+    const notOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Not)) as BrainTileOperatorDef;
+    const seeDef = services.edit.tiles.get(mkSensorTileId("test-see54")) as BrainTileSensorDef;
+    const modNearDef = services.edit.tiles.get(mkModifierTileId("test.near54")) as BrainTileModifierDef;
 
     const tiles = List.from<IBrainTileDef>([notOpDef, seeDef, modNearDef]);
     const expr = parseTilesForSuggestions(tiles);
 
     const result = suggestTiles({ ruleSide: RuleSide.When, expr, replaceTileIndex: 2 }, catalogList(), services);
 
-    const modFarDef = services.tiles.get(mkModifierTileId("test.far54")) as BrainTileModifierDef;
+    const modFarDef = services.edit.tiles.get(mkModifierTileId("test.far54")) as BrainTileModifierDef;
     assert.ok(listFind(result.exact, (s) => s.tileDef.tileId === modFarDef.tileId) !== undefined, "Should offer [far]");
     assert.ok(
       listFind(result.exact, (s) => s.tileDef.tileId === modNearDef.tileId) !== undefined,
@@ -2114,13 +2149,13 @@ describe("Sub-expression filtering", () => {
   });
 
   test("Test 58: [1] [+] _ still excludes non-inline sensors", () => {
-    const numLitDef = services.tiles
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
         (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
       ) as BrainTileLiteralDef;
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
 
     const tiles = List.from<IBrainTileDef>([numLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -2152,7 +2187,7 @@ describe("Capability requirements filtering", () => {
       },
       services
     );
-    services.tiles.registerTileDef(reqLitDef);
+    services.edit.tiles.registerTileDef(reqLitDef);
 
     // Undefined capabilities -> included (no filtering)
     const result1 = suggestTiles({ ruleSide: RuleSide.When }, catalogList(), services);
@@ -2196,7 +2231,7 @@ describe("Capability requirements filtering", () => {
       "Should be excluded when wrong bits"
     );
 
-    services.tiles.delete(reqLitDef.tileId);
+    services.edit.tiles.delete(reqLitDef.tileId);
   });
 
   test("Test 61: Multi-bit requirements need all bits present", () => {
@@ -2212,7 +2247,7 @@ describe("Capability requirements filtering", () => {
       },
       services
     );
-    services.tiles.registerTileDef(multiLitDef);
+    services.edit.tiles.registerTileDef(multiLitDef);
 
     // Partial
     const result1 = suggestTiles(
@@ -2247,7 +2282,7 @@ describe("Capability requirements filtering", () => {
       "Superset should include"
     );
 
-    services.tiles.delete(multiLitDef.tileId);
+    services.edit.tiles.delete(multiLitDef.tileId);
   });
 });
 
@@ -2261,7 +2296,7 @@ describe("Struct-specific operator and accessor behavior", () => {
   let posVarDef: BrainTileVariableDef;
 
   before(() => {
-    posStructTypeId = services.types.addStructType("Position62", {
+    posStructTypeId = services.runtime.types.addStructType("Position62", {
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number },
         { name: "y", typeId: CoreTypeIds.Number },
@@ -2274,14 +2309,14 @@ describe("Struct-specific operator and accessor behavior", () => {
       metadata: { label: "mag" },
       readOnly: true,
     });
-    services.tiles.registerTileDef(accessorXDef);
-    services.tiles.registerTileDef(accessorYDef);
-    services.tiles.registerTileDef(accessorMagDef);
+    services.edit.tiles.registerTileDef(accessorXDef);
+    services.edit.tiles.registerTileDef(accessorYDef);
+    services.edit.tiles.registerTileDef(accessorMagDef);
 
     posVarDef = new BrainTileVariableDef("test.posVar62", "my_position", posStructTypeId, "var-pos-62");
-    services.tiles.registerTileDef(posVarDef);
+    services.edit.tiles.registerTileDef(posVarDef);
 
-    services.operatorOverloads.binary(
+    services.edit.operatorOverloads.binary(
       CoreOpId.Assign,
       posStructTypeId,
       posStructTypeId,
@@ -2357,15 +2392,15 @@ describe("Struct-specific operator and accessor behavior", () => {
 
 describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => {
   test("Test 66: countUnclosedParens utility", () => {
-    const openParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
-    const closeParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
-    const numLitDef = services.tiles
+    const openParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    const closeParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
         (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
       ) as BrainTileLiteralDef;
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as IBrainTileDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as IBrainTileDef;
 
     assert.equal(countUnclosedParens(List.empty<IBrainTileDef>()), 0, "empty list -> 0");
     assert.equal(countUnclosedParens(List.from([openParen])), 1, "[(] -> 1");
@@ -2391,8 +2426,8 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
   });
 
   test("Test 67: [(] [2] _ -> close paren suggested, actuators excluded", () => {
-    const openParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
-    const numLitDef = services.tiles
+    const openParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -2426,7 +2461,7 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
   });
 
   test("Test 68: [(] _ (empty) -> no actuators, no non-inline sensors", () => {
-    const openParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    const openParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
     const tiles = List.from<IBrainTileDef>([openParen]);
     const expr = parseTilesForSuggestions(tiles);
     const depth = countUnclosedParens(tiles);
@@ -2456,7 +2491,7 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
   });
 
   test("Test 69: Balanced parens (depth=0) -> no close paren", () => {
-    const numLitDef = services.tiles
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -2478,14 +2513,14 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
   });
 
   test("Test 70: [(] [2] [+] _ -> incomplete inside parens, actuators excluded", () => {
-    const openParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
-    const numLitDef = services.tiles
+    const openParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
         (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
       ) as BrainTileLiteralDef;
-    const addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as IBrainTileDef;
+    const addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as IBrainTileDef;
 
     const tiles = List.from<IBrainTileDef>([openParen, numLitDef, addOpDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -2510,9 +2545,9 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
   });
 
   test("Test 71: countUnclosedParens with excludeIndex", () => {
-    const openParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
-    const closeParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
-    const numLitDef = services.tiles
+    const openParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    const closeParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -2526,9 +2561,9 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
   });
 
   test("Test 72: Replace close paren in [(] [2] [)] -> infix ops + close paren", () => {
-    const openParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
-    const closeParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
-    const numLitDef = services.tiles
+    const openParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    const closeParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -2567,14 +2602,14 @@ describe("Parentheses (countUnclosedParens and close-paren suggestions)", () => 
   });
 
   test("Test 73: Replace [divided by] in [(] [2] [divided by] -> close paren suggested", () => {
-    const openParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
-    const numLitDef = services.tiles
+    const openParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    const numLitDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
         (t) => t.kind === "literal" && (t as BrainTileLiteralDef).valueType === CoreTypeIds.Number
       ) as BrainTileLiteralDef;
-    const divOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Divide)) as IBrainTileDef;
+    const divOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Divide)) as IBrainTileDef;
 
     const tiles = List.from<IBrainTileDef>([openParen, numLitDef, divOpDef]);
     const expr = parseTilesForSuggestions(tiles);
@@ -2618,20 +2653,20 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
   before(() => {
     const durationId = "test.duration.78";
     durationParamDef = new BrainTileParameterDef(durationId, CoreTypeIds.Number, { metadata: { label: "duration" } });
-    services.tiles.registerTileDef(durationParamDef);
+    services.edit.tiles.registerTileDef(durationParamDef);
 
     const anonStr = param(CoreParameterId.AnonymousString, { anonymous: true });
     const durationParam = param(durationId);
     const callDef = mkCallDef(bag(optional(anonStr), optional(durationParam)));
-    const fnEntry = services.functions.register("test-say-78", false, { exec: () => VOID_VALUE }, callDef);
+    const fnEntry = services.runtime.functions.register("test-say-78", false, { exec: () => VOID_VALUE }, callDef);
     sayActuatorDef = new BrainTileActuatorDef("test-say-78", mkActionDescriptor("actuator", fnEntry), {
       metadata: { label: "say" },
       placement: TilePlacement.DoSide,
     });
-    services.tiles.registerTileDef(sayActuatorDef);
+    services.edit.tiles.registerTileDef(sayActuatorDef);
 
     numLitDef = new BrainTileLiteralDef(CoreTypeIds.Number, "5", { metadata: { label: "5" } }, services);
-    services.tiles.registerTileDef(numLitDef);
+    services.edit.tiles.registerTileDef(numLitDef);
 
     strLitDef = new BrainTileLiteralDef(
       CoreTypeIds.String,
@@ -2639,11 +2674,11 @@ describe("Unclosed parens suppress named tiles in action calls", () => {
       { metadata: { label: "test78greet" } },
       services
     );
-    services.tiles.registerTileDef(strLitDef);
+    services.edit.tiles.registerTileDef(strLitDef);
 
-    addOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
-    openParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
-    closeParen = services.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
+    addOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.Add)) as BrainTileOperatorDef;
+    openParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.OpenParen))!;
+    closeParen = services.edit.tiles.get(mkControlFlowTileId(CoreControlFlowId.CloseParen))!;
   });
 
   test("Test 78: [say] [(] _ -> named params suppressed, value tiles offered", () => {
@@ -2896,9 +2931,9 @@ describe("Replace repeated modifier and anonymous slot value", () => {
   let slotFast: number;
 
   before(() => {
-    modFastDef = services.tiles.get(mkModifierTileId("test.fast")) as BrainTileModifierDef;
-    modSlowDef = services.tiles.get(mkModifierTileId("test.slow")) as BrainTileModifierDef;
-    richActuatorDef = services.tiles.get(mkActuatorTileId("test-rich")) as BrainTileActuatorDef;
+    modFastDef = services.edit.tiles.get(mkModifierTileId("test.fast")) as BrainTileModifierDef;
+    modSlowDef = services.edit.tiles.get(mkModifierTileId("test.slow")) as BrainTileModifierDef;
+    richActuatorDef = services.edit.tiles.get(mkActuatorTileId("test-rich")) as BrainTileActuatorDef;
     richCallDef = richActuatorDef.action.callDef;
     slotFast = richCallDef.argSlots.toArray().find((s) => s.argSpec.tileId === mkModifierTileId("test.fast"))!.slotId;
   });
@@ -2943,16 +2978,16 @@ describe("Replace repeated modifier and anonymous slot value", () => {
     const anonNumParamDef = new BrainTileParameterDef(anonNumParamId, CoreTypeIds.Number, {
       metadata: { label: "amt" },
     });
-    services.tiles.registerTileDef(anonNumParamDef);
+    services.edit.tiles.registerTileDef(anonNumParamDef);
 
     const callDef75 = mkCallDef(bag(param(anonNumParamId, { anonymous: true })));
-    const fnEntry75 = services.functions.register("test-anon75", false, { exec: () => VOID_VALUE }, callDef75);
+    const fnEntry75 = services.runtime.functions.register("test-anon75", false, { exec: () => VOID_VALUE }, callDef75);
     const actuatorDef75 = new BrainTileActuatorDef("test-anon75", mkActionDescriptor("actuator", fnEntry75), {
       metadata: { label: "anon75" },
     });
-    services.tiles.registerTileDef(actuatorDef75);
+    services.edit.tiles.registerTileDef(actuatorDef75);
 
-    const litDef = services.tiles
+    const litDef = services.edit.tiles
       .getAll()
       .toArray()
       .find((t) => t.kind === "literal" && getTileOutputType(t) === CoreTypeIds.Number) as BrainTileLiteralDef;
@@ -2996,11 +3031,11 @@ describe("Replace repeated modifier and anonymous slot value", () => {
     // choice). When replacing, the system should still recognize String as an
     // exact match (via the AnonString sibling), not a conversion.
     const switchPageTileId = mkActuatorTileId(CoreActuatorId.SwitchPage);
-    const switchPageTile = services.tiles.get(switchPageTileId) as BrainTileActuatorDef;
+    const switchPageTile = services.edit.tiles.get(switchPageTileId) as BrainTileActuatorDef;
     assert.ok(switchPageTile, "switch-page actuator must exist");
 
     const pageDef = new BrainTilePageDef("test-page-76", "My Page");
-    services.tiles.registerTileDef(pageDef);
+    services.edit.tiles.registerTileDef(pageDef);
 
     // Find the AnonNumber slot (first choice option) -- this is what the parser
     // would greedily assign a page tile to.
@@ -3075,11 +3110,11 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
     const modPlantDef = new BrainTileModifierDef("test.plant77", { metadata: { label: "plant" } });
     const modNearDef77 = new BrainTileModifierDef("test.near77", { metadata: { label: "nearby" } });
     const modFarDef77 = new BrainTileModifierDef("test.far77", { metadata: { label: "far away" } });
-    services.tiles.registerTileDef(modCarnDef);
-    services.tiles.registerTileDef(modHerbDef);
-    services.tiles.registerTileDef(modPlantDef);
-    services.tiles.registerTileDef(modNearDef77);
-    services.tiles.registerTileDef(modFarDef77);
+    services.edit.tiles.registerTileDef(modCarnDef);
+    services.edit.tiles.registerTileDef(modHerbDef);
+    services.edit.tiles.registerTileDef(modPlantDef);
+    services.edit.tiles.registerTileDef(modNearDef77);
+    services.edit.tiles.registerTileDef(modFarDef77);
 
     const seeCallDef = mkCallDef(
       bag(
@@ -3087,7 +3122,7 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
         optional(choice(repeated(mod("test.near77"), { max: 3 }), repeated(mod("test.far77"), { max: 3 })))
       )
     );
-    const seeFnEntry = services.functions.register("test-see77", false, { exec: () => TRUE_VALUE }, seeCallDef);
+    const seeFnEntry = services.runtime.functions.register("test-see77", false, { exec: () => TRUE_VALUE }, seeCallDef);
     const seeDef77 = new BrainTileSensorDef(
       "test-see77",
       mkActionDescriptor("sensor", seeFnEntry, CoreTypeIds.Boolean),
@@ -3095,7 +3130,7 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
         metadata: { label: "see" },
       }
     );
-    services.tiles.registerTileDef(seeDef77);
+    services.edit.tiles.registerTileDef(seeDef77);
 
     // Build sensor expr with no modifiers placed
     const seeExpr: SensorExpr = {
@@ -3118,10 +3153,10 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
   });
 
   test("Test 78: [see-like] [carnivore] -> nearby and faraway still available", () => {
-    const seeDef = services.tiles.get(mkSensorTileId("test-see77")) as BrainTileSensorDef;
-    const modCarnDef = services.tiles.get(mkModifierTileId("test.carn77")) as BrainTileModifierDef;
-    const modNearDef = services.tiles.get(mkModifierTileId("test.near77")) as BrainTileModifierDef;
-    const modFarDef = services.tiles.get(mkModifierTileId("test.far77")) as BrainTileModifierDef;
+    const seeDef = services.edit.tiles.get(mkSensorTileId("test-see77")) as BrainTileSensorDef;
+    const modCarnDef = services.edit.tiles.get(mkModifierTileId("test.carn77")) as BrainTileModifierDef;
+    const modNearDef = services.edit.tiles.get(mkModifierTileId("test.near77")) as BrainTileModifierDef;
+    const modFarDef = services.edit.tiles.get(mkModifierTileId("test.far77")) as BrainTileModifierDef;
 
     const carnSlotId = seeDef.action.callDef.argSlots
       .toArray()
@@ -3154,7 +3189,7 @@ describe("See-like sensor optional+choice+repeated modifiers", () => {
 
 describe("Right-spine operator rebinding", () => {
   test("Test 89: [numVar] [>] [numVar] -> numeric operators suggested via right-spine rebinding", () => {
-    const numVarDef = services.tiles
+    const numVarDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -3162,7 +3197,7 @@ describe("Right-spine operator rebinding", () => {
       ) as BrainTileVariableDef;
     assert.ok(numVarDef, "Need a Number variable tile");
 
-    const gtOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.GreaterThan)) as BrainTileOperatorDef;
+    const gtOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.GreaterThan)) as BrainTileOperatorDef;
     assert.ok(gtOpDef, "Need the > operator tile");
 
     // Build [a] [>] [b] as a complete binaryOp expression
@@ -3205,7 +3240,7 @@ describe("Right-spine operator rebinding", () => {
   });
 
   test("Test 89b: parseTilesForSuggestions [numVar] [>] [numVar] -> numeric operators available", () => {
-    const numVarDef = services.tiles
+    const numVarDef = services.edit.tiles
       .getAll()
       .toArray()
       .find(
@@ -3213,7 +3248,7 @@ describe("Right-spine operator rebinding", () => {
       ) as BrainTileVariableDef;
     assert.ok(numVarDef, "Need a Number variable tile");
 
-    const gtOpDef = services.tiles.get(mkOperatorTileId(CoreOpId.GreaterThan)) as BrainTileOperatorDef;
+    const gtOpDef = services.edit.tiles.get(mkOperatorTileId(CoreOpId.GreaterThan)) as BrainTileOperatorDef;
     assert.ok(gtOpDef, "Need the > operator tile");
 
     // Use parseTilesForSuggestions to match the real UI flow

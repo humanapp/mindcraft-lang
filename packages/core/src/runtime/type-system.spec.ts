@@ -30,7 +30,7 @@ import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__t
 let services: BrainServices;
 
 function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const existing = registry.resolveByName(name);
   if (existing) {
     return existing;
@@ -58,7 +58,7 @@ function mkBinaryArgs(
 }
 
 function callEnumEqualityOperator(opId: string, typeId: string, leftKey: string, rightKey: string): boolean {
-  const resolution = services.operatorOverloads.resolve(opId, [typeId, typeId]);
+  const resolution = services.edit.operatorOverloads.resolve(opId, [typeId, typeId]);
   assert.ok(resolution, `operator ${opId} for ${typeId} was not registered`);
 
   const entry = resolution.overload.fnEntry;
@@ -97,7 +97,7 @@ describe("AnyCodec", () => {
   });
 
   test("stringify produces correct output for each type", () => {
-    const anyDef = services.types.get(CoreTypeIds.Any);
+    const anyDef = services.runtime.types.get(CoreTypeIds.Any);
     assert.ok(anyDef);
     assert.equal(anyDef.codec.stringify(undefined), "nil");
     assert.equal(anyDef.codec.stringify(true), "true");
@@ -113,16 +113,16 @@ describe("registerCoreTypes registers Any and AnyList", () => {
   });
 
   test("Any type is registered", () => {
-    const anyDef = services.types.get(CoreTypeIds.Any);
+    const anyDef = services.runtime.types.get(CoreTypeIds.Any);
     assert.ok(anyDef);
     assert.equal(anyDef.coreType, NativeType.Any);
     assert.equal(anyDef.name, CoreTypeNames.Any);
   });
 
   test("AnyList type is registered", () => {
-    const anyListTypeId = services.types.resolveByName("AnyList");
+    const anyListTypeId = services.runtime.types.resolveByName("AnyList");
     assert.ok(anyListTypeId);
-    const def = services.types.get(anyListTypeId);
+    const def = services.runtime.types.get(anyListTypeId);
     assert.ok(def);
     assert.equal(def.coreType, NativeType.List);
     assert.equal(def.typeId, mkTypeId(NativeType.List, "AnyList"));
@@ -144,7 +144,7 @@ describe("enum type registration", () => {
       "On"
     );
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const symbol = registry.getEnumSymbol(typeId, "On");
     assert.ok(symbol);
     assert.equal(symbol.value, "on");
@@ -163,7 +163,7 @@ describe("enum type registration", () => {
       "Up"
     );
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const symbol = registry.getEnumSymbol(typeId, "Up");
     assert.ok(symbol);
     assert.equal(symbol.value, 0);
@@ -173,7 +173,7 @@ describe("enum type registration", () => {
   });
 
   test("enum values are required", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const malformedSymbol = { key: "North", label: "North" } as EnumSymbolDef;
 
     assert.throws(() => {
@@ -187,17 +187,17 @@ describe("enum type registration", () => {
   test("empty enums can be registered without defaultKey", () => {
     const typeId = ensureEnumType("TypeSystemSpecEmptyEnum", List.empty<EnumSymbolDef>());
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const def = registry.get(typeId) as EnumTypeDef;
     assert.equal(def.symbols.size(), 0);
     assert.equal(def.defaultKey, undefined);
 
-    const resolution = services.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]);
+    const resolution = services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]);
     assert.equal(resolution, undefined);
   });
 
   test("empty enums reject defaultKey", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
 
     assert.throws(() => {
       registry.addEnumType("TypeSystemSpecEmptyEnumWithDefault", {
@@ -208,7 +208,7 @@ describe("enum type registration", () => {
   });
 
   test("non-empty enums require defaultKey", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
 
     assert.throws(() => {
       registry.addEnumType("TypeSystemSpecMissingDefaultKey", {
@@ -218,7 +218,7 @@ describe("enum type registration", () => {
   });
 
   test("heterogeneous enum values are rejected", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.throws(() => {
       registry.addEnumType("TypeSystemSpecHeterogeneousEnum", {
         symbols: List.from([
@@ -251,7 +251,7 @@ describe("addNullableType", () => {
   });
 
   test("returns a TypeId like 'number:<number?>' with nullable: true", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const nullableId = registry.addNullableType(CoreTypeIds.Number);
     assert.equal(nullableId, "number:<number?>");
     const def = registry.get(nullableId);
@@ -262,28 +262,28 @@ describe("addNullableType", () => {
   });
 
   test("calling addNullableType twice returns the same TypeId (idempotent)", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const first = registry.addNullableType(CoreTypeIds.String);
     const second = registry.addNullableType(CoreTypeIds.String);
     assert.equal(first, second);
   });
 
   test("throws if the base TypeId is not registered", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.throws(() => {
       registry.addNullableType("nonexistent:<fake>");
     });
   });
 
   test("addNullableType on an already-nullable type returns the input TypeId", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const nullableNumber = registry.addNullableType(CoreTypeIds.Number);
     const doubleNullable = registry.addNullableType(nullableNumber);
     assert.equal(doubleNullable, nullableNumber);
   });
 
   test("nullable boolean produces correct TypeId", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const nullableBool = registry.addNullableType(CoreTypeIds.Boolean);
     assert.equal(nullableBool, "boolean:<boolean?>");
     const def = registry.get(nullableBool);
@@ -298,7 +298,7 @@ describe("NullableCodec", () => {
   });
 
   test("stringify returns 'nil' for nil, delegates for non-nil", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const nullableId = registry.addNullableType(CoreTypeIds.Number);
     const def = registry.get(nullableId)!;
     assert.equal(def.codec.stringify(undefined), "nil");
@@ -312,7 +312,7 @@ describe("registerConstructor", () => {
   });
 
   test("List and Map constructors are registered after registerCoreTypes", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const listTypeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
     assert.ok(listTypeId);
     const mapTypeId = registry.instantiate("Map", List.from([CoreTypeIds.String, CoreTypeIds.Number]));
@@ -320,7 +320,7 @@ describe("registerConstructor", () => {
   });
 
   test("duplicate constructor registration throws", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.throws(() => {
       registry.registerConstructor({
         name: "List",
@@ -338,7 +338,7 @@ describe("instantiate", () => {
   });
 
   test("instantiate('List', [CoreTypeIds.Number]) returns a valid TypeId", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
     assert.ok(typeId);
     const def = registry.get(typeId);
@@ -348,21 +348,21 @@ describe("instantiate", () => {
   });
 
   test("calling instantiate twice returns the same TypeId (memoized)", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const first = registry.instantiate("List", List.from([CoreTypeIds.Number]));
     const second = registry.instantiate("List", List.from([CoreTypeIds.Number]));
     assert.equal(first, second);
   });
 
   test("instantiate('List', [CoreTypeIds.String]) returns a different TypeId from number", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const numList = registry.instantiate("List", List.from([CoreTypeIds.Number]));
     const strList = registry.instantiate("List", List.from([CoreTypeIds.String]));
     assert.notEqual(numList, strList);
   });
 
   test("instantiate('Map', [CoreTypeIds.String, CoreTypeIds.Number]) works", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.instantiate("Map", List.from([CoreTypeIds.String, CoreTypeIds.Number]));
     assert.ok(typeId);
     const def = registry.get(typeId);
@@ -373,21 +373,21 @@ describe("instantiate", () => {
   });
 
   test("instantiate with unknown constructor name throws", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.throws(() => {
       registry.instantiate("Unknown", List.from([CoreTypeIds.Number]));
     });
   });
 
   test("instantiate with wrong arity throws", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.throws(() => {
       registry.instantiate("List", List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     });
   });
 
   test("existing addListType still works alongside constructors", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const explicitId = registry.resolveByName("AnyList");
     assert.ok(explicitId);
     const instantiatedId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
@@ -395,7 +395,7 @@ describe("instantiate", () => {
   });
 
   test("TypeDef from instantiated type has autoInstantiated flag", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
     const def = registry.get(typeId);
     assert.ok(def);
@@ -403,7 +403,7 @@ describe("instantiate", () => {
   });
 
   test("nested instantiation works (List<List<number>>)", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const innerTypeId = registry.instantiate("List", List.from([CoreTypeIds.Number]));
     const outerTypeId = registry.instantiate("List", List.from([innerTypeId]));
     assert.ok(outerTypeId);
@@ -430,7 +430,7 @@ describe("getOrCreateUnionType", () => {
   });
 
   test("returns a stable TypeId with coreType Union", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     assert.ok(unionId);
     const def = registry.get(unionId);
@@ -439,14 +439,14 @@ describe("getOrCreateUnionType", () => {
   });
 
   test("reversed order returns the same TypeId (order-independent)", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const id1 = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     const id2 = registry.getOrCreateUnionType(List.from([CoreTypeIds.String, CoreTypeIds.Number]));
     assert.equal(id1, id2);
   });
 
   test("nested union flattening works", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const innerUnion = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     const outerUnion = registry.getOrCreateUnionType(List.from([innerUnion, CoreTypeIds.Boolean]));
     const def = registry.get(outerUnion) as UnionTypeDef;
@@ -455,40 +455,40 @@ describe("getOrCreateUnionType", () => {
   });
 
   test("single-member collapse returns the member TypeId directly", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const result = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number]));
     assert.equal(result, CoreTypeIds.Number);
   });
 
   test("nullable subsumption: [Number, Nil] returns addNullableType result", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const unionResult = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.Nil]));
     const nullableResult = registry.addNullableType(CoreTypeIds.Number);
     assert.equal(unionResult, nullableResult);
   });
 
   test("throws for zero members", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.throws(() => {
       registry.getOrCreateUnionType(List.from([]));
     });
   });
 
   test("throws for unregistered member TypeId", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.throws(() => {
       registry.getOrCreateUnionType(List.from(["fake:<fake>"]));
     });
   });
 
   test("deduplicates identical members", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const result = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.Number]));
     assert.equal(result, CoreTypeIds.Number);
   });
 
   test("memberTypeIds on def are sorted and deduplicated", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const unionId = registry.getOrCreateUnionType(
       List.from([CoreTypeIds.String, CoreTypeIds.Boolean, CoreTypeIds.Number])
     );
@@ -503,7 +503,7 @@ describe("getOrCreateUnionType", () => {
   });
 
   test("flattens nullable members into [base, Nil]", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const nullableNum = registry.addNullableType(CoreTypeIds.Number);
     const unionId = registry.getOrCreateUnionType(List.from([nullableNum, CoreTypeIds.String]));
     const def = registry.get(unionId) as UnionTypeDef;
@@ -524,7 +524,7 @@ describe("UnionCodec", () => {
   });
 
   test("stringify delegates to the correct member codec", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     const def = registry.get(unionId)!;
     assert.equal(def.codec.stringify(42), "42");
@@ -532,7 +532,7 @@ describe("UnionCodec", () => {
   });
 
   test("autoInstantiated flag is set on union types", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const unionId = registry.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     const def = registry.get(unionId)!;
     assert.equal(def.autoInstantiated, true);
@@ -545,7 +545,7 @@ describe("getOrCreateFunctionType", () => {
   });
 
   test("returns a stable TypeId for the same signature", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const shape = { paramTypeIds: List.from([CoreTypeIds.Number]), returnTypeId: CoreTypeIds.Number };
     const id1 = registry.getOrCreateFunctionType(shape);
     const id2 = registry.getOrCreateFunctionType(shape);
@@ -553,7 +553,7 @@ describe("getOrCreateFunctionType", () => {
   });
 
   test("different signatures produce different TypeIds", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const id1 = registry.getOrCreateFunctionType({
       paramTypeIds: List.from([CoreTypeIds.Number]),
       returnTypeId: CoreTypeIds.Number,
@@ -566,7 +566,7 @@ describe("getOrCreateFunctionType", () => {
   });
 
   test("def has coreType Function and autoInstantiated flag", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const id = registry.getOrCreateFunctionType({
       paramTypeIds: List.from([CoreTypeIds.Number, CoreTypeIds.String]),
       returnTypeId: CoreTypeIds.Boolean,
@@ -578,7 +578,7 @@ describe("getOrCreateFunctionType", () => {
   });
 
   test("def carries paramTypeIds and returnTypeId", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const id = registry.getOrCreateFunctionType({
       paramTypeIds: List.from([CoreTypeIds.Number]),
       returnTypeId: CoreTypeIds.String,
@@ -591,7 +591,7 @@ describe("getOrCreateFunctionType", () => {
   });
 
   test("zero-parameter function type works", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const id = registry.getOrCreateFunctionType({
       paramTypeIds: List.from([]),
       returnTypeId: CoreTypeIds.Number,
@@ -609,7 +609,7 @@ describe("isStructurallyCompatible", () => {
   });
 
   test("same TypeId is always compatible", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeA = registry.addStructType("IdenticalA", {
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number },
@@ -627,7 +627,7 @@ describe("isStructurallyCompatible", () => {
   });
 
   test("struct with extra fields is compatible with struct with fewer fields", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const point2D = registry.addStructType("Point2D", {
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number },
@@ -646,7 +646,7 @@ describe("isStructurallyCompatible", () => {
   });
 
   test("struct missing a required field is NOT compatible", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const withName = registry.addStructType("WithName", {
       fields: List.from([
         { name: "name", typeId: CoreTypeIds.String },
@@ -660,7 +660,7 @@ describe("isStructurallyCompatible", () => {
   });
 
   test("nominal struct is NOT compatible with any other struct", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const screenCoord = registry.addStructType("ScreenCoord", {
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number },
@@ -688,7 +688,7 @@ describe("isStructurallyCompatible", () => {
   });
 
   test("recursive compatibility for nested struct fields", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const innerA = registry.addStructType("InnerA", {
       fields: List.from([
         { name: "val", typeId: CoreTypeIds.Number },
@@ -711,7 +711,7 @@ describe("isStructurallyCompatible", () => {
   });
 
   test("recursive incompatibility for nested struct fields with different types", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const innerC = registry.addStructType("InnerC", {
       fields: List.from([{ name: "val", typeId: CoreTypeIds.Number }]),
     });
@@ -728,13 +728,13 @@ describe("isStructurallyCompatible", () => {
   });
 
   test("non-struct types return false", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.equal(registry.isStructurallyCompatible(CoreTypeIds.Number, CoreTypeIds.String), false);
     assert.equal(registry.isStructurallyCompatible(CoreTypeIds.Number, CoreTypeIds.Number), true);
   });
 
   test("unknown type IDs return false", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.equal(registry.isStructurallyCompatible("nonexistent:a", "nonexistent:b"), false);
   });
 });
@@ -745,7 +745,7 @@ describe("removeUserTypes", () => {
   });
 
   test("removes enum types with module-qualified names and clears derived artifacts", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.addEnumType("/user-enum.ts::TrafficLight", {
       symbols: List.from([
         { key: "stop", label: "Stop", value: 0 },
@@ -756,23 +756,23 @@ describe("removeUserTypes", () => {
 
     assert.ok(registry.get(typeId));
     assert.ok(registry.resolveByName("/user-enum.ts::TrafficLight"));
-    assert.ok(services.conversions.get(typeId, CoreTypeIds.String));
-    assert.ok(services.conversions.get(typeId, CoreTypeIds.Number));
-    assert.ok(services.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]));
-    assert.ok(services.operatorOverloads.resolve(CoreOpId.NotEqualTo, [typeId, typeId]));
+    assert.ok(services.shared.conversions.get(typeId, CoreTypeIds.String));
+    assert.ok(services.shared.conversions.get(typeId, CoreTypeIds.Number));
+    assert.ok(services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]));
+    assert.ok(services.edit.operatorOverloads.resolve(CoreOpId.NotEqualTo, [typeId, typeId]));
 
     registry.removeUserTypes();
 
     assert.equal(registry.get(typeId), undefined);
     assert.equal(registry.resolveByName("/user-enum.ts::TrafficLight"), undefined);
-    assert.equal(services.conversions.get(typeId, CoreTypeIds.String), undefined);
-    assert.equal(services.conversions.get(typeId, CoreTypeIds.Number), undefined);
-    assert.equal(services.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]), undefined);
-    assert.equal(services.operatorOverloads.resolve(CoreOpId.NotEqualTo, [typeId, typeId]), undefined);
+    assert.equal(services.shared.conversions.get(typeId, CoreTypeIds.String), undefined);
+    assert.equal(services.shared.conversions.get(typeId, CoreTypeIds.Number), undefined);
+    assert.equal(services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId, typeId]), undefined);
+    assert.equal(services.edit.operatorOverloads.resolve(CoreOpId.NotEqualTo, [typeId, typeId]), undefined);
   });
 
   test("removes struct types with module-qualified names (contains ::)", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.addStructType("/user-code.ts::UserClass", {
       fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
     });
@@ -786,7 +786,7 @@ describe("removeUserTypes", () => {
   });
 
   test("preserves struct types with bare names (no ::)", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const hostId = registry.addStructType("AppVector2RM", {
       fields: List.from([{ name: "x", typeId: CoreTypeIds.Number }]),
     });
@@ -799,7 +799,7 @@ describe("removeUserTypes", () => {
   });
 
   test("preserves enum types with bare names (no ::)", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const hostId = registry.addEnumType("HostStatusRM", {
       symbols: List.from([
         { key: "ready", label: "Ready", value: "ready" },
@@ -812,12 +812,12 @@ describe("removeUserTypes", () => {
 
     assert.ok(registry.get(hostId));
     assert.ok(registry.resolveByName("HostStatusRM"));
-    assert.ok(services.conversions.get(hostId, CoreTypeIds.String));
-    assert.ok(services.operatorOverloads.resolve(CoreOpId.EqualTo, [hostId, hostId]));
+    assert.ok(services.shared.conversions.get(hostId, CoreTypeIds.String));
+    assert.ok(services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [hostId, hostId]));
   });
 
   test("does not remove non-struct types", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.ok(registry.get(CoreTypeIds.Number));
     assert.ok(registry.get(CoreTypeIds.String));
     assert.ok(registry.get(CoreTypeIds.Boolean));
@@ -836,7 +836,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
   });
 
   test("addStructType assigns sequential fieldIndex starting at 0", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.addStructType("FieldIndexA", {
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number },
@@ -855,7 +855,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
   });
 
   test("finalizeStructType assigns sequential fieldIndex on the reserved type", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.reserveStructType("FieldIndexB");
     registry.finalizeStructType(typeId, {
       fields: List.from([
@@ -872,7 +872,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
   });
 
   test("addStructFields continues fieldIndex from existing tail", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.addStructType("FieldIndexC", {
       fields: List.from([{ name: "first", typeId: CoreTypeIds.Number }]),
     });
@@ -897,7 +897,7 @@ describe("StructTypeDef.fields[i].fieldIndex", () => {
   });
 
   test("forEach iteration order matches fieldIndex", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.addStructType("FieldIndexD", {
       fields: List.from([
         { name: "alpha", typeId: CoreTypeIds.Number },

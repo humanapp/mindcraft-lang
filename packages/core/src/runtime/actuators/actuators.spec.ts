@@ -41,7 +41,7 @@ function mkArgs(size = 4): List<Value> {
 let services: BrainServices;
 
 function getSyncEntry(name: string): BrainSyncFunctionEntry {
-  const entry = services.functions.get(name);
+  const entry = services.runtime.functions.get(name);
   assert.ok(entry, `function '${name}' not found in registry`);
   assert.equal(entry.isAsync, false);
   return entry as BrainSyncFunctionEntry;
@@ -69,9 +69,11 @@ describe("switch-page actuator", () => {
     let calledWith: number | undefined;
     const ctx = mkCtx({
       services: {
-        brainPages: {
-          requestPageChange: (idx: number) => {
-            calledWith = idx;
+        brain: {
+          pages: {
+            requestPageChange: (idx: number) => {
+              calledWith = idx;
+            },
           },
         },
       } as never,
@@ -89,9 +91,11 @@ describe("switch-page actuator", () => {
     let calledWith: string | undefined;
     const ctx = mkCtx({
       services: {
-        brainPages: {
-          requestPageChangeByPageId: (id: string) => {
-            calledWith = id;
+        brain: {
+          pages: {
+            requestPageChangeByPageId: (id: string) => {
+              calledWith = id;
+            },
           },
         },
       } as never,
@@ -109,9 +113,11 @@ describe("switch-page actuator", () => {
     let restartCalled = false;
     const ctx = mkCtx({
       services: {
-        brainPages: {
-          requestPageRestart: () => {
-            restartCalled = true;
+        brain: {
+          pages: {
+            requestPageRestart: () => {
+              restartCalled = true;
+            },
           },
         },
       } as never,
@@ -138,9 +144,11 @@ describe("restart-page actuator", () => {
     let called = false;
     const ctx = mkCtx({
       services: {
-        brainPages: {
-          requestPageRestart: () => {
-            called = true;
+        brain: {
+          pages: {
+            requestPageRestart: () => {
+              called = true;
+            },
           },
         },
       } as never,

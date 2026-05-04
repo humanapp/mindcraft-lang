@@ -29,29 +29,38 @@ const stubBrain = {} as IBrain;
 describe("__test__createPlatformServices -- ruleVars regression", () => {
   test("default ruleVars roundtrips for funcId 0 (regression)", () => {
     const services = __test__createPlatformServices();
-    services.ruleVars.setByName(0, "targetActor", mkNumberValue(42));
-    assert.deepEqual(services.ruleVars.getByName(0, "targetActor"), mkNumberValue(42));
+    services.brain.ruleVars.setByName(0, "targetActor", mkNumberValue(42));
+    assert.deepEqual(services.brain.ruleVars.getByName(0, "targetActor"), mkNumberValue(42));
   });
 
   test("default ruleVars clearByName works for funcId 0 (regression)", () => {
     const services = __test__createPlatformServices();
-    services.ruleVars.setByName(0, "k", mkNumberValue(1));
-    services.ruleVars.clearByName(0, "k");
-    assert.deepEqual(services.ruleVars.getByName(0, "k"), NIL_VALUE);
+    services.brain.ruleVars.setByName(0, "k", mkNumberValue(1));
+    services.brain.ruleVars.clearByName(0, "k");
+    assert.deepEqual(services.brain.ruleVars.getByName(0, "k"), NIL_VALUE);
   });
 
   test("default ruleVars treats only `undefined` as the no-rule sentinel", () => {
     const services = __test__createPlatformServices();
-    services.ruleVars.setByName(undefined, "ignored", mkNumberValue(1));
-    assert.deepEqual(services.ruleVars.getByName(undefined, "ignored"), NIL_VALUE);
+    services.brain.ruleVars.setByName(undefined, "ignored", mkNumberValue(1));
+    assert.deepEqual(services.brain.ruleVars.getByName(undefined, "ignored"), NIL_VALUE);
   });
 
   test("default ruleVars isolates funcId 0 from funcId 1", () => {
     const services = __test__createPlatformServices();
-    services.ruleVars.setByName(0, "v", mkNumberValue(10));
-    services.ruleVars.setByName(1, "v", mkNumberValue(20));
-    assert.deepEqual(services.ruleVars.getByName(0, "v"), mkNumberValue(10));
-    assert.deepEqual(services.ruleVars.getByName(1, "v"), mkNumberValue(20));
+    services.brain.ruleVars.setByName(0, "v", mkNumberValue(10));
+    services.brain.ruleVars.setByName(1, "v", mkNumberValue(20));
+    assert.deepEqual(services.brain.ruleVars.getByName(0, "v"), mkNumberValue(10));
+    assert.deepEqual(services.brain.ruleVars.getByName(1, "v"), mkNumberValue(20));
+  });
+});
+
+describe("createRuntimeServices -- aggregate shape", () => {
+  test("returns exactly { brainVars, brainPages, callsite } and no rng field", () => {
+    const services = createRuntimeServices(stubBrain, createCallsiteStore());
+    const keys = Object.keys(services).sort();
+    assert.deepEqual(keys, ["brainPages", "brainVars", "callsite"]);
+    assert.equal((services as { rng?: unknown }).rng, undefined);
   });
 });
 

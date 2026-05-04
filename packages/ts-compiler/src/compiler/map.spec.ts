@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -66,7 +66,7 @@ function mkScheduler(): Scheduler {
 }
 
 function getStructField(source: StructValue, fieldName: string): Value | undefined {
-  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const def = services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
   const fieldIndex = def?.fieldIndexByName.get(fieldName);
   return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
 }
@@ -111,7 +111,7 @@ describe("Map compilation", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -126,7 +126,7 @@ describe("Map compilation", () => {
   });
 
   test("new Map with entries compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -158,7 +158,7 @@ export default Sensor({
   });
 
   test("for...of m.keys() iterates over map keys", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -192,7 +192,7 @@ export default Sensor({
   });
 
   test("for...in iterates over registered struct keys", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -227,7 +227,7 @@ export default Sensor({
   });
 
   test("empty new Map() compiles to MAP_NEW only", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -259,7 +259,7 @@ export default Sensor({
   });
 
   test("map set and get returns correct values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -293,7 +293,7 @@ export default Sensor({
   });
 
   test("struct-typed object literal still compiles to STRUCT_NEW (regression)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 

@@ -20,7 +20,7 @@ describe("BrainRuleDef", () => {
     brain.addPage(page);
 
     const rule = page.appendNewRule() as BrainRuleDef;
-    const globalTile = services.tiles.get("tile.op->add");
+    const globalTile = services.edit.tiles.get("tile.op->add");
     assert.ok(globalTile);
 
     const literalTile = new BrainTileLiteralDef(CoreTypeIds.Number, 1, {}, services);

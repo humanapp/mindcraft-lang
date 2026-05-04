@@ -14,6 +14,7 @@ import { type AppBridgeState, AppEnvironmentHost, type UserTileMetadata } from "
 import {
   type BrainDef,
   coreModule,
+  MathOps,
   type MindcraftEnvironment,
   mkActuatorTileId,
   mkSensorTileId,
@@ -261,6 +262,9 @@ export class SimEnvironmentStore {
       loadBindingToken,
       saveBindingToken,
       examples: loadExamples(),
+      rng: {
+        next: () => MathOps.random(),
+      },
       onDidCompile: (_result, tileResult) => {
         if (tileResult && instanceRef) {
           instanceRef.userTileDocEntries = buildDocEntries(tileResult.metadata);

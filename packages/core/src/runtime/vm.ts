@@ -11,7 +11,7 @@ import { Op } from "./bytecode";
 import type { ExecutableAction, ExecutionContext } from "./context";
 import type { VmEvents } from "./events";
 import type { Program } from "./program";
-import type { PlatformServices } from "./services";
+import type { PlatformServices, RuntimeLangServices } from "./services";
 import type { ITypeRegistry } from "./type-defs";
 import { NativeType, type StructTypeDef, type TypeId } from "./type-defs";
 import type { ErrorValue, HandleId, Value } from "./value";
@@ -270,7 +270,7 @@ const VALID_TRANSITIONS: Record<FiberState, UniqueSet<FiberState>> = {
 export class VM implements IVM {
   private config: VmConfig;
   private services: PlatformServices;
-  private fns: PlatformServices["functions"];
+  private fns: RuntimeLangServices["functions"];
   private events?: VmEvents;
   private nextInternalFiberId = -1;
   public handles: HandleTable;
@@ -281,7 +281,7 @@ export class VM implements IVM {
     options?: VmOptions
   ) {
     this.services = services;
-    this.fns = services.functions;
+    this.fns = services.runtime.functions;
     const events = options?.events;
     const injectedHandles = options?.handles;
     const configOverrides: Partial<VmConfig> = {};
@@ -641,7 +641,7 @@ export class VM implements IVM {
     if (slotId < 0 || slotId >= this.prog.variableNames.size()) {
       throw new Error(`STORE_VAR_SLOT: slot index ${slotId} out of bounds`);
     }
-    const value = deepCopyValue(this.pop(fiber), this.services.types, fiber.executionContext);
+    const value = deepCopyValue(this.pop(fiber), this.services.runtime.types, fiber.executionContext);
     fiber.executionContext.setVariableBySlot(slotId, value);
     frame.pc++;
     return undefined;
@@ -678,7 +678,7 @@ export class VM implements IVM {
       frame.pc++;
       return undefined;
     }
-    const value = fiber.executionContext.services.callsite.getSlot(callSiteId, idx);
+    const value = fiber.executionContext.services.brain.callsite.getSlot(callSiteId, idx);
     this.push(fiber, value);
     frame.pc++;
     return undefined;
@@ -696,7 +696,7 @@ export class VM implements IVM {
       frame.pc++;
       return undefined;
     }
-    fiber.executionContext.services.callsite.setSlot(callSiteId, idx, value);
+    fiber.executionContext.services.brain.callsite.setSlot(callSiteId, idx, value);
     frame.pc++;
     return undefined;
   }
@@ -1437,13 +1437,13 @@ export class VM implements IVM {
 
   // Struct operations
   private findStructField(typeId: TypeId, fieldName: string): number | undefined {
-    const typeDef = this.services.types.get(typeId) as StructTypeDef | undefined;
+    const typeDef = this.services.runtime.types.get(typeId) as StructTypeDef | undefined;
     return typeDef?.fieldIndexByName.get(fieldName);
   }
 
   private makeStructFields(typeId: TypeId): List<Value> {
     const fields = List.empty<Value>();
-    const typeDef = this.services.types.get(typeId) as StructTypeDef | undefined;
+    const typeDef = this.services.runtime.types.get(typeId) as StructTypeDef | undefined;
     const fieldCount = typeDef?.fields.size() ?? 0;
     for (let i = 0; i < fieldCount; i++) {
       fields.push(NIL_VALUE);
@@ -1557,7 +1557,7 @@ export class VM implements IVM {
 
     let resultTypeId = typeId;
     let fields = this.makeStructFields(resultTypeId);
-    const sourceDef = this.services.types.get(source.typeId) as StructTypeDef | undefined;
+    const sourceDef = this.services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
     if (source.v && sourceDef && fields.size() === 0) {
       resultTypeId = source.typeId;
       fields = List.empty<Value>();
@@ -1598,7 +1598,7 @@ export class VM implements IVM {
 
     if (isStructValue(source)) {
       // Check for a registered fieldGetter on the struct type
-      const typeDef = this.services.types.get(source.typeId) as StructTypeDef | undefined;
+      const typeDef = this.services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
       if (typeDef?.fieldGetter) {
         result = typeDef.fieldGetter(source, fieldName.v, fiber.executionContext);
       } else {
@@ -1615,7 +1615,7 @@ export class VM implements IVM {
   }
 
   private execSetField(fiber: Fiber, frame: Frame): undefined {
-    const value = deepCopyValue(this.pop(fiber), this.services.types, fiber.executionContext);
+    const value = deepCopyValue(this.pop(fiber), this.services.runtime.types, fiber.executionContext);
     const fieldName = this.pop(fiber);
     const source = this.pop(fiber);
 
@@ -1625,7 +1625,7 @@ export class VM implements IVM {
 
     if (isStructValue(source)) {
       // Check for a registered fieldSetter on the struct type
-      const typeDef = this.services.types.get(source.typeId) as StructTypeDef | undefined;
+      const typeDef = this.services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
       if (typeDef?.fieldSetter) {
         const success = typeDef.fieldSetter(source, fieldName.v, value, fiber.executionContext);
         if (!success) {
@@ -1677,7 +1677,7 @@ export class VM implements IVM {
   }
 
   private resolveDirectRuleFuncId(executionContext: ExecutionContext, funcId: number): number | undefined {
-    return executionContext.services.program.getRuleFuncIdForFunc(funcId);
+    return executionContext.services.brain.program.getRuleFuncIdForFunc(funcId);
   }
 
   private resolveFrameRuleFuncId(executionContext: ExecutionContext, frame: Frame | undefined): number | undefined {

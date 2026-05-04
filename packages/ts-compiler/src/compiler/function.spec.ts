@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -441,7 +441,7 @@ export default Sensor({
   });
 
   test("different callback signatures resolve to different function TypeIds", () => {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const id1 = registry.getOrCreateFunctionType({
       paramTypeIds: List.from([CoreTypeIds.Number]),
       returnTypeId: CoreTypeIds.Number,

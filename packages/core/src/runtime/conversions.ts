@@ -159,7 +159,7 @@ const anonConversionCallDef = mkCallDef({
 
 /** Register the implicit/explicit conversions for an enum type (string<->enum, number<->enum). */
 export function registerEnumConversions(typeId: TypeId, services: BrainServices) {
-  const enumType = services.types.get(typeId);
+  const enumType = services.runtime.types.get(typeId);
   if (!enumType || enumType.coreType !== NativeType.Enum) {
     throw new Error(`registerEnumConversions: type ${typeId} is not an enum`);
   }
@@ -170,9 +170,9 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
     return;
   }
 
-  if (!services.conversions.get(typeId, CoreTypeIds.String)) {
+  if (!services.shared.conversions.get(typeId, CoreTypeIds.String)) {
     const stringCost = TypeUtils.isNumber(firstSymbol.value) ? 2 : 1;
-    services.conversions.register({
+    services.shared.conversions.register({
       fromType: typeId,
       toType: CoreTypeIds.String,
       cost: stringCost,
@@ -188,8 +188,8 @@ export function registerEnumConversions(typeId: TypeId, services: BrainServices)
     });
   }
 
-  if (TypeUtils.isNumber(firstSymbol.value) && !services.conversions.get(typeId, CoreTypeIds.Number)) {
-    services.conversions.register({
+  if (TypeUtils.isNumber(firstSymbol.value) && !services.shared.conversions.get(typeId, CoreTypeIds.Number)) {
+    services.shared.conversions.register({
       fromType: typeId,
       toType: CoreTypeIds.Number,
       cost: 1,
@@ -219,7 +219,7 @@ function resolveEnumPrimitiveValue(
     throw new Error(`Enum conversion expected value of type ${typeId}`);
   }
 
-  const symbol = services.types.getEnumSymbol(typeId, enumValue.v);
+  const symbol = services.runtime.types.getEnumSymbol(typeId, enumValue.v);
   if (!symbol) {
     throw new Error(`Unknown enum key ${enumValue.v} for type ${typeId}`);
   }
@@ -229,7 +229,7 @@ function resolveEnumPrimitiveValue(
 
 /** Register the built-in conversions between core primitive types (number<->string, boolean<->number, etc.). */
 export function registerCoreConversions(services: BrainServices) {
-  const conversionRegistry = services.conversions;
+  const conversionRegistry = services.shared.conversions;
   // Number -> String conversion
   conversionRegistry.register({
     fromType: CoreTypeIds.Number,

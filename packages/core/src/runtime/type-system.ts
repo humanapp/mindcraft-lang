@@ -201,7 +201,7 @@ export class TypeRegistry implements ITypeRegistry {
     if ((def as EnumTypeDef).symbols.size() === 0) {
       return;
     }
-    const overloads = this.services_.operatorOverloads;
+    const overloads = this.services_.edit.operatorOverloads;
     overloads.binary(
       CoreOpId.EqualTo,
       typeId,
@@ -250,10 +250,10 @@ export class TypeRegistry implements ITypeRegistry {
 
   private unregisterEnumArtifacts(typeId: TypeId): void {
     if (!this.services_) return;
-    this.services_.conversions.remove(typeId, CoreTypeIds.String);
-    this.services_.conversions.remove(typeId, CoreTypeIds.Number);
-    this.services_.operatorOverloads.remove(CoreOpId.EqualTo, [typeId, typeId]);
-    this.services_.operatorOverloads.remove(CoreOpId.NotEqualTo, [typeId, typeId]);
+    this.services_.shared.conversions.remove(typeId, CoreTypeIds.String);
+    this.services_.shared.conversions.remove(typeId, CoreTypeIds.Number);
+    this.services_.edit.operatorOverloads.remove(CoreOpId.EqualTo, [typeId, typeId]);
+    this.services_.edit.operatorOverloads.remove(CoreOpId.NotEqualTo, [typeId, typeId]);
   }
 
   addListType(name: string, shape: ListTypeShape): TypeId {
@@ -740,9 +740,9 @@ export class TypeRegistry implements ITypeRegistry {
 // ----------------------------------------------------
 // Register core types
 
-/** Register the built-in core types (`Void`, `Nil`, `Boolean`, `Number`, `String`, `Any`, `Function`, list/map constructors) on `services.types`. */
+/** Register the built-in core types (`Void`, `Nil`, `Boolean`, `Number`, `String`, `Any`, `Function`, list/map constructors) on `services.runtime.types`. */
 export function registerCoreTypes(services: BrainServices) {
-  const typeRegistry = services.types;
+  const typeRegistry = services.runtime.types;
   typeRegistry.addVoidType(CoreTypeNames.Void);
   typeRegistry.addNilType(CoreTypeNames.Nil);
   typeRegistry.addBooleanType(CoreTypeNames.Boolean);

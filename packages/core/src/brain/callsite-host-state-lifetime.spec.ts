@@ -48,7 +48,7 @@ function buildSingleSensorBrain(
   exec: (ctx: ExecutionContext) => { t: number; v: number },
   varName: string
 ) {
-  services.actions.register({
+  services.runtime.actions.register({
     binding: "host",
     descriptor,
     execSync: exec,

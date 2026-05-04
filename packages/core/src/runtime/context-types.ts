@@ -25,7 +25,7 @@ export const ContextTypeIds = {
 
 /** Register the built-in context struct types and their host method bindings. */
 export function registerContextTypes(services: BrainServices) {
-  const { types, functions } = services;
+  const { types, functions } = services.runtime;
 
   const brainContextTypeId = types.addStructType(ContextTypeNames.BrainContext, {
     fields: List.empty(),
@@ -112,7 +112,7 @@ export function registerContextTypes(services: BrainServices) {
     {
       exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const name = (args.get(1) as StringValue).v;
-        return ctx.services.brainVars.getByName(name);
+        return ctx.services.brain.brainVars.getByName(name);
       },
     },
     emptyCallDef
@@ -125,7 +125,7 @@ export function registerContextTypes(services: BrainServices) {
       exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => {
         const name = (args.get(1) as StringValue).v;
         const value = args.get(2) as Value;
-        ctx.services.brainVars.setByName(name, value);
+        ctx.services.brain.brainVars.setByName(name, value);
         return NIL_VALUE;
       },
     },

@@ -22,7 +22,7 @@ import { LoweringDiagCode } from "./diag-codes.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -51,7 +51,7 @@ describe("type alias declarations", () => {
   });
 
   test("basic object type alias registers as struct type", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -70,7 +70,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/user-code.ts::Point");
     assert.ok(typeId, "Point struct type should be registered");
     const def = registry.get(typeId!);
@@ -87,7 +87,7 @@ export default Sensor({
   });
 
   test("type alias with optional field registers nullable type", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -106,7 +106,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/user-code.ts::Config");
     assert.ok(typeId, "Config struct type should be registered");
     const structDef = registry.get(typeId!) as StructTypeDef;
@@ -126,7 +126,7 @@ export default Sensor({
   });
 
   test("type alias object literal compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -164,7 +164,7 @@ export default Sensor({
   });
 
   test("type alias with nested struct field", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -208,7 +208,7 @@ export default Sensor({
   });
 
   test("generic type alias emits diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -228,7 +228,7 @@ export default Sensor({
   });
 
   test("type alias colliding with ambient type emits diagnostic", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     types.addStructType("AmbientPoint", {
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number },
@@ -257,7 +257,7 @@ export default Sensor({
   });
 
   test("non-object type alias is silently skipped", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -275,7 +275,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     assert.equal(registry.resolveByName("/user-code.ts::StringOrNumber"), undefined);
     assert.equal(registry.resolveByName("/user-code.ts::MyString"), undefined);
     assert.equal(registry.resolveByName("/user-code.ts::NumArray"), undefined);

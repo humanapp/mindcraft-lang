@@ -21,7 +21,7 @@ const descriptor: ActionDescriptor = {
 };
 
 function fnRandom(ctx: ExecutionContext): Value {
-  return { t: NativeType.Number, v: ctx.services.rng.next() };
+  return { t: NativeType.Number, v: ctx.services.app.rng.next() };
 }
 
 const binding: HostActionBinding = {

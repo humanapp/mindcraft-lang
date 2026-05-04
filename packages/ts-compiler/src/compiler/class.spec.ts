@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -101,7 +101,7 @@ describe("class declarations", () => {
   });
 
   test("class with constructor and method compiles without errors (stub bodies)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -130,7 +130,7 @@ export default Sensor({
   });
 
   test("class registers struct type with correct fields", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -153,7 +153,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/user-code.ts::Vec2");
     assert.ok(typeId, "Vec2 struct type should be registered");
     const def = registry.get(typeId!);
@@ -170,7 +170,7 @@ export default Sensor({
   });
 
   test("class registers method declarations on struct type", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -197,7 +197,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/user-code.ts::Counter");
     assert.ok(typeId, "Counter struct type should be registered");
     const def = registry.get(typeId!) as StructTypeDef;
@@ -212,7 +212,7 @@ export default Sensor({
   });
 
   test("function table contains constructor and method entries", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -249,7 +249,7 @@ export default Sensor({
   });
 
   test("class with extends produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -279,7 +279,7 @@ export default Sensor({
   });
 
   test("class with static field passes validation", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -301,7 +301,7 @@ export default Sensor({
   });
 
   test("static fields excluded from struct type registration", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -325,7 +325,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/user-code.ts::Mixed");
     assert.ok(typeId, "Mixed struct type should be registered");
     const def = registry.get(typeId!) as StructTypeDef;
@@ -341,7 +341,7 @@ export default Sensor({
   });
 
   test("static methods excluded from struct method declarations", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -362,7 +362,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/user-code.ts::Counter");
     assert.ok(typeId, "Counter struct type should be registered");
     const def = registry.get(typeId!) as StructTypeDef;
@@ -378,7 +378,7 @@ export default Sensor({
   });
 
   test("static field with initializer stored as callsite var during module init", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -413,7 +413,7 @@ export default Sensor({
   });
 
   test("static field without initializer gets default value during module init", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -452,7 +452,7 @@ export default Sensor({
   });
 
   test("static field init emits STORE_CALLSITE_VAR in module-init function", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -479,7 +479,7 @@ export default Sensor({
   });
 
   test("uninitialized static field with unresolvable type emits diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -504,7 +504,7 @@ export default Sensor({
   });
 
   test("static method registered in function table with dollar separator", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -538,7 +538,7 @@ export default Sensor({
   });
 
   test("static method compiled with correct argc (no this parameter)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -572,7 +572,7 @@ export default Sensor({
   });
 
   test("this usage inside static method produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -597,7 +597,7 @@ export default Sensor({
   });
 
   test("static field access via ClassName.field compiles without diagnostics", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -620,7 +620,7 @@ export default Sensor({
   });
 
   test("static field access inside constructor body compiles without diagnostics", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -646,7 +646,7 @@ export default Sensor({
   });
 
   test("bare class name produces ClassObjectUsageNotSupported diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -672,7 +672,7 @@ export default Sensor({
   });
 
   test("static method reference via ClassName.method compiles without diagnostics", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -696,7 +696,7 @@ export default Sensor({
   });
 
   test("static method call via ClassName.method() emits direct Call", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -732,7 +732,7 @@ export default Sensor({
   });
 
   test("static method call with multiple arguments compiles correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -755,7 +755,7 @@ export default Sensor({
   });
 
   test("calling non-existent static method produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -777,7 +777,7 @@ export default Sensor({
   });
 
   test("static method accessing static field compiles and runs correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -801,7 +801,7 @@ export default Sensor({
   });
 
   test("class with private field produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -822,7 +822,7 @@ export default Sensor({
   });
 
   test("class with computed property name produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -852,7 +852,7 @@ export default Sensor({
   });
 
   test("class with no constructor compiles (zero-arg stub)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -880,7 +880,7 @@ export default Sensor({
   });
 
   test("class with getter registers accessor funcIds", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -924,7 +924,7 @@ export default Sensor({
   });
 
   test("instance getter desugars to function call at call site", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -959,7 +959,7 @@ export default Sensor({
   });
 
   test("this.x getter inside instance method desugars correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -997,7 +997,7 @@ export default Sensor({
   });
 
   test("static getter desugars to function call at call site", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1036,7 +1036,7 @@ export default Sensor({
   });
 
   test("getter returning computed value (not just backing field)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1071,7 +1071,7 @@ export default Sensor({
   });
 
   test("instance setter desugars obj.x = value to function call", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1108,7 +1108,7 @@ export default Sensor({
   });
 
   test("this.x = value through setter inside instance method", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1149,7 +1149,7 @@ export default Sensor({
   });
 
   test("static setter desugars ClassName.x = value to function call", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1190,7 +1190,7 @@ export default Sensor({
   });
 
   test("expression-position setter assignment evaluates to RHS value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1227,7 +1227,7 @@ export default Sensor({
   });
 
   test("setter that validates/clamps input", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1270,7 +1270,7 @@ export default Sensor({
   });
 
   test("obj.x += value with getter and setter", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1307,7 +1307,7 @@ export default Sensor({
   });
 
   test("this.x -= value inside a method with getter and setter", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1346,7 +1346,7 @@ export default Sensor({
   });
 
   test("obj.x++ and ++obj.x with getter and setter", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1384,7 +1384,7 @@ export default Sensor({
   });
 
   test("ClassName.x += value with static getter and setter", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1427,7 +1427,7 @@ export default Sensor({
   });
 
   test("static ++ClassName.x and ClassName.x++ with getter and setter", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1470,7 +1470,7 @@ export default Sensor({
   });
 
   test("getter-only property rejects compound assignment", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1494,7 +1494,7 @@ export default Sensor({
   });
 
   test("new ClassName(args) creates struct with correct field values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1536,7 +1536,7 @@ export default Sensor({
   });
 
   test("property initializer sets default value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1575,7 +1575,7 @@ export default Sensor({
   });
 
   test("property initializer runs before constructor body", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1615,7 +1615,7 @@ export default Sensor({
   });
 
   test("new expression with unknown class produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1632,7 +1632,7 @@ export default Sensor({
   });
 
   test("this outside class context produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1652,7 +1652,7 @@ export default Sensor({
   });
 
   test("constructor returns struct value directly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1694,7 +1694,7 @@ export default Sensor({
   });
 
   test("class with no explicit constructor uses property initializers", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1731,7 +1731,7 @@ export default Sensor({
   });
 
   test("method body reads this.x correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1774,7 +1774,7 @@ export default Sensor({
   });
 
   test("method body writes this.x with store-back pattern", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1819,7 +1819,7 @@ export default Sensor({
   });
 
   test("obj.method(args) calls a user-compiled method", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1862,7 +1862,7 @@ export default Sensor({
   });
 
   test("method calls another method on this", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1908,7 +1908,7 @@ export default Sensor({
   });
 
   test("method returns a computed value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1953,7 +1953,7 @@ export default Sensor({
   });
 
   test("method with no explicit return returns nil", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1997,7 +1997,7 @@ export default Sensor({
   });
 
   test("multiple methods on the same class", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2048,7 +2048,7 @@ export default Sensor({
   });
 
   test("compound assignment this.x += value reads, computes, and writes back", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2112,7 +2112,7 @@ export default Sensor({
     assert.deepStrictEqual(resultV1.diagnostics, [], `V1 diagnostics: ${JSON.stringify(resultV1.diagnostics)}`);
     assert.ok(resultV1.program);
 
-    const registryV1 = services.types;
+    const registryV1 = services.runtime.types;
     const typeIdV1 = registryV1.resolveByName("/user-code.ts::ShapeEvol");
     assert.ok(typeIdV1, "ShapeEvol should be registered after V1");
     const defV1 = registryV1.get(typeIdV1!) as StructTypeDef;
@@ -2138,7 +2138,7 @@ export default Sensor({
     assert.deepStrictEqual(resultV2.diagnostics, [], `V2 diagnostics: ${JSON.stringify(resultV2.diagnostics)}`);
     assert.ok(resultV2.program);
 
-    const registryV2 = services.types;
+    const registryV2 = services.runtime.types;
     const typeIdV2 = registryV2.resolveByName("/user-code.ts::ShapeEvol");
     assert.ok(typeIdV2, "ShapeEvol should be registered after V2");
     const defV2 = registryV2.get(typeIdV2!) as StructTypeDef;
@@ -2146,7 +2146,7 @@ export default Sensor({
   });
 
   test("simple static field assignment compiles without diagnostics", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2170,7 +2170,7 @@ export default Sensor({
   });
 
   test("compound static field assignment (+=) compiles without diagnostics", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2194,7 +2194,7 @@ export default Sensor({
   });
 
   test("prefix increment on static field compiles without diagnostics", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2218,7 +2218,7 @@ export default Sensor({
   });
 
   test("postfix increment on static field compiles without diagnostics", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2242,7 +2242,7 @@ export default Sensor({
   });
 
   test("assigning to a static method produces AssignmentTargetNotVariable", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2268,7 +2268,7 @@ export default Sensor({
   });
 
   test("prefix increment on static method produces a diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2294,7 +2294,7 @@ export default Sensor({
   });
 
   test("static field assignment and read produces correct runtime values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2334,7 +2334,7 @@ export default Sensor({
   });
 
   test("prefix and postfix increment on static field produce correct values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2379,7 +2379,7 @@ export default Sensor({
   });
 
   test("this.field read and this.method() call in static method", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2424,7 +2424,7 @@ export default Sensor({
   });
 
   test("this.field compound assignment and increment in static method", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2466,7 +2466,7 @@ export default Sensor({
   });
 
   test("this.otherMethod() call chain in static methods", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2509,7 +2509,7 @@ export default Sensor({
   });
 
   test("bare this in static method produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -2532,7 +2532,7 @@ export default Sensor({
   });
 
   test("this.field postfix increment in static method", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 

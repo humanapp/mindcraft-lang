@@ -28,7 +28,7 @@ import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(): ExecutionContext {
@@ -51,7 +51,7 @@ function mkScheduler(): Scheduler {
 }
 
 function getStructField(source: StructValue, fieldName: string): Value | undefined {
-  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const def = services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
   const fieldIndex = def?.fieldIndexByName.get(fieldName);
   return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
 }
@@ -66,7 +66,7 @@ describe("struct field assignment", () => {
   before(() => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -91,7 +91,7 @@ describe("struct field assignment", () => {
   });
 
   test("simple field assignment on a plain struct", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -121,7 +121,7 @@ export default Sensor({
   });
 
   test("field assignment on a nested struct field", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
@@ -151,7 +151,7 @@ export default Sensor({
   });
 
   test("struct field assignment to another struct value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Entity, type Vector2 } from "mindcraft";
 
@@ -191,7 +191,7 @@ describe("struct field assignment with fieldSetter", () => {
     services = __test__createBrainServices();
     setterCalls = [];
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const nativeTypeId = mkTypeId(NativeType.Struct, "NativeWidget");
@@ -221,7 +221,7 @@ describe("struct field assignment with fieldSetter", () => {
 
   test("assignment triggers fieldSetter on a native-backed struct", () => {
     setterCalls = [];
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type NativeWidget } from "mindcraft";
 
@@ -263,7 +263,7 @@ describe("struct field assignment diagnostics", () => {
   before(() => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const readOnlyTypeId = mkTypeId(NativeType.Struct, "Sensor_ReadOnly");
@@ -279,7 +279,7 @@ describe("struct field assignment diagnostics", () => {
   });
 
   test("assigning to a readOnly field produces a diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Sensor_ReadOnly } from "mindcraft";
 
@@ -305,7 +305,7 @@ export default Sensor({
   });
 
   test("assigning to a writable field on a struct with readOnly fields compiles without error", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Sensor_ReadOnly } from "mindcraft";
 
@@ -330,7 +330,7 @@ describe("struct field compound assignment", () => {
   before(() => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -345,7 +345,7 @@ describe("struct field compound assignment", () => {
   });
 
   test("compound += on a struct field", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -375,7 +375,7 @@ export default Sensor({
   });
 
   test("compound -= on a struct field", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -405,7 +405,7 @@ export default Sensor({
   });
 
   test("compound *= on a struct field", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2 } from "mindcraft";
 
@@ -441,7 +441,7 @@ describe("struct field assignment integration", () => {
   before(() => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
 
     const vec2TypeId = mkTypeId(NativeType.Struct, "Vector2");
@@ -495,7 +495,7 @@ describe("struct field assignment integration", () => {
   test("param struct field reads, writes, compound ops, conditionals, loop, and struct return", () => {
     nativeState = { hp: 100, armor: 5, x: 0, y: 0 };
 
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Unit, type Vector2 } from "mindcraft";
 

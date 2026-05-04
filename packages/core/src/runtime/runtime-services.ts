@@ -1,19 +1,18 @@
 import type { ICallsiteStore } from "./callsite-store";
 import type { IBrain } from "./host-bindings";
-import type { IBrainPageServices, IBrainVariableServices, ICallsiteServices, IRngServices } from "./services";
+import type { IBrainPageServices, IBrainVariableServices, ICallsiteServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
 
 /**
  * Aggregate of platform-service implementations produced by
  * {@link createRuntimeServices}. Combines brain-graph adapters
- * (`brainVars`, `brainPages`, `rng`) with the per-callsite
- * adapter (`callsite`) backed by an external {@link ICallsiteStore}
- * owned by the brain.
+ * (`brainVars`, `brainPages`) with the per-callsite adapter
+ * (`callsite`) backed by an external {@link ICallsiteStore} owned
+ * by the brain.
  */
 export interface IRuntimeServices {
   brainVars: IBrainVariableServices;
   brainPages: IBrainPageServices;
-  rng: IRngServices;
   callsite: ICallsiteServices;
 }
 
@@ -54,12 +53,6 @@ export function createRuntimeServices(brain: IBrain, callsiteStore: ICallsiteSto
       },
       requestPageRestart(): void {
         brain.requestPageRestart();
-      },
-    },
-
-    rng: {
-      next(): number {
-        return brain.rng();
       },
     },
 

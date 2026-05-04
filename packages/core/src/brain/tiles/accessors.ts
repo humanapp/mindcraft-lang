@@ -71,5 +71,5 @@ export function registerAccessorTileDef(
   services: BrainServices
 ) {
   const tileDef = createAccessorTileDef(structTypeId, fieldName, fieldTypeId, opts);
-  services.tiles.registerTileDef(tileDef);
+  services.edit.tiles.registerTileDef(tileDef);
 }

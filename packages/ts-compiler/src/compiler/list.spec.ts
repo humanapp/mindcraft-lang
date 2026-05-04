@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -66,7 +66,7 @@ function mkScheduler(): Scheduler {
 }
 
 function getStructField(source: StructValue, fieldName: string): Value | undefined {
-  const def = services.types.get(source.typeId) as StructTypeDef | undefined;
+  const def = services.runtime.types.get(source.typeId) as StructTypeDef | undefined;
   const fieldIndex = def?.fieldIndexByName.get(fieldName);
   return fieldIndex === undefined ? undefined : source.v?.get(fieldIndex);
 }
@@ -111,7 +111,7 @@ describe("array/list literal compilation", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
 
@@ -145,7 +145,7 @@ describe("array/list literal compilation", () => {
   });
 
   test("array literal with 3 elements compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -183,7 +183,7 @@ export default Sensor({
   });
 
   test("empty array compiles to empty list", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -218,7 +218,7 @@ export default Sensor({
   });
 
   test("array as return value (contextual type from return annotation)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -254,7 +254,7 @@ export default Sensor({
   });
 
   test("nested arrays compile to nested list construction", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Vector2, type Vector2List } from "mindcraft";
 
@@ -301,7 +301,7 @@ describe("mixed-type list compilation (AnyList)", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const anyTypeId = mkTypeId(NativeType.Any, "any");
     if (!types.get(anyTypeId)) {
       types.addAnyType("any");
@@ -320,7 +320,7 @@ describe("mixed-type list compilation (AnyList)", () => {
   });
 
   test("mixed-type array literal compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type AnyList } from "mindcraft";
 
@@ -358,7 +358,7 @@ export default Sensor({
   });
 
   test("homogeneous array still resolves to NumberList, not AnyList", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -394,7 +394,7 @@ export default Sensor({
   });
 
   test("empty array with AnyList annotation compiles correctly", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type AnyList } from "mindcraft";
 
@@ -429,7 +429,7 @@ export default Sensor({
   });
 
   test("buildAmbientDeclarations includes AnyList type alias", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     assert.ok(
       ambientSource.includes("export type AnyList = Array<MindcraftValue>;"),
       "AnyList type alias should be in ambient declarations"
@@ -441,7 +441,7 @@ describe("list element access and methods", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
 
@@ -457,7 +457,7 @@ describe("list element access and methods", () => {
   });
 
   test("element access reads from list by index", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -487,7 +487,7 @@ export default Sensor({
   });
 
   test("element access with variable index", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context, type NumberList } from "mindcraft";
 
@@ -521,7 +521,7 @@ export default Sensor({
   });
 
   test("element access on list supports stringified indexes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -551,7 +551,7 @@ export default Sensor({
   });
 
   test('element access on list supports "length" like JS', () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -581,7 +581,7 @@ export default Sensor({
   });
 
   test("element access on string supports stringified indexes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -611,7 +611,7 @@ export default Sensor({
   });
 
   test('element access on string supports "length" like JS', () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -641,7 +641,7 @@ export default Sensor({
   });
 
   test("element assignment sets value at index", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -677,7 +677,7 @@ export default Sensor({
   });
 
   test(".push() appends element to list", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -711,7 +711,7 @@ export default Sensor({
   });
 
   test(".indexOf() returns index of matching element", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -741,7 +741,7 @@ export default Sensor({
   });
 
   test(".indexOf() returns -1 when element not found", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -771,7 +771,7 @@ export default Sensor({
   });
 
   test(".filter() creates new list with matching elements", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -805,7 +805,7 @@ export default Sensor({
   });
 
   test(".filter() with closure capturing threshold variable", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context, type NumberList } from "mindcraft";
 
@@ -844,7 +844,7 @@ export default Sensor({
   });
 
   test(".map() transforms each element", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -879,7 +879,7 @@ export default Sensor({
   });
 
   test(".map() with closure capturing multiplier", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context, type NumberList } from "mindcraft";
 
@@ -919,7 +919,7 @@ export default Sensor({
   });
 
   test(".forEach() iterates over all elements", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -953,7 +953,7 @@ export default Sensor({
   });
 
   test("for...of iterates over list elements", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -987,7 +987,7 @@ export default Sensor({
   });
 
   test("for...in iterates over list keys", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1021,7 +1021,7 @@ export default Sensor({
   });
 
   test("for...of with break exits early", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1058,7 +1058,7 @@ export default Sensor({
   });
 
   test("for...of with continue skips iteration", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1096,7 +1096,7 @@ export default Sensor({
   });
 
   test("for...of over empty list executes no body", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1130,7 +1130,7 @@ export default Sensor({
   });
 
   test(".includes() returns true when element found", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1160,7 +1160,7 @@ export default Sensor({
   });
 
   test(".includes() returns false when element not found", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1190,7 +1190,7 @@ export default Sensor({
   });
 
   test(".some() returns true when any element matches", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1220,7 +1220,7 @@ export default Sensor({
   });
 
   test(".some() returns false when no element matches", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1250,7 +1250,7 @@ export default Sensor({
   });
 
   test(".every() returns true when all elements match", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1280,7 +1280,7 @@ export default Sensor({
   });
 
   test(".every() returns false when any element fails", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1310,7 +1310,7 @@ export default Sensor({
   });
 
   test(".find() returns matching element", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1344,7 +1344,7 @@ export default Sensor({
   });
 
   test(".find() returns undefined when no match", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1378,7 +1378,7 @@ export default Sensor({
   });
 
   test(".concat() merges two lists", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1415,7 +1415,7 @@ export default Sensor({
   });
 
   test(".reverse() creates reversed list", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1450,7 +1450,7 @@ export default Sensor({
   });
 
   test(".slice() extracts sub-array", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1485,7 +1485,7 @@ export default Sensor({
   });
 
   test(".slice() with no args copies entire list", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1520,7 +1520,7 @@ export default Sensor({
   });
 
   test(".join() concatenates elements with separator", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 
@@ -1550,7 +1550,7 @@ export default Sensor({
   });
 
   test("unsupported array method produces diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type NumberList } from "mindcraft";
 

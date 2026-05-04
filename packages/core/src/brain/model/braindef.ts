@@ -138,11 +138,11 @@ export class BrainDef implements IBrainDef {
   }
 
   servicesTiles(): ITileCatalog {
-    return this.services_.tiles;
+    return this.services_.edit.tiles;
   }
 
   servicesConversions(): IConversionRegistry {
-    return this.services_.conversions;
+    return this.services_.shared.conversions;
   }
 
   static emptyBrainDef(services: BrainServices, name?: string): BrainDef {

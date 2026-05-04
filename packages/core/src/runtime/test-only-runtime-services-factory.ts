@@ -1,29 +1,35 @@
 import { Dict } from "../platform/dict";
+import { MathOps } from "../platform/math";
+import { BrainActionRegistry } from "./action-registry";
 import { createCallsiteStore } from "./callsite-store";
-import type { IFunctionRegistry } from "./function-defs";
+import { ConversionRegistry } from "./conversions";
 import { FunctionRegistry } from "./functions";
+import { OperatorOverloads, OperatorTable } from "./operators";
 import type {
+  AppServices,
   IBrainPageServices,
   IBrainVariableServices,
   ICallsiteServices,
   IProgramServices,
-  IRngServices,
   IRuleVariableServices,
   PlatformServices,
+  RuntimeLangServices,
+  SharedLangServices,
 } from "./services";
-import type { ITypeRegistry } from "./type-defs";
 import { TypeRegistry } from "./type-system";
 import { NIL_VALUE, type Value } from "./value";
 
 /**
- * TEST-ONLY. Per-provider overrides for {@link __test__createPlatformServices}.
- * Each field is optional; omitted fields fall back to empty runtime-only defaults.
+ * TEST-ONLY. Per-tier overrides for {@link __test__createPlatformServices}.
+ * Each field is optional; omitted fields fall back to runtime-only defaults.
  */
 export interface __test__PlatformServicesOptions {
-  /** Override the function registry. */
-  functions?: IFunctionRegistry;
-  /** Override the type registry. */
-  types?: ITypeRegistry;
+  /** Override individual fields of the {@link RuntimeLangServices} tier (types, functions, operatorTable, actions). */
+  runtime?: Partial<RuntimeLangServices>;
+  /** Override individual fields of the {@link SharedLangServices} tier (conversions). */
+  shared?: Partial<SharedLangServices>;
+  /** Override individual fields of the {@link AppServices} tier (rng). */
+  app?: Partial<AppServices>;
   /** Override the program services (rule funcId resolution). */
   program?: IProgramServices;
   /** Override the brain-variable services. */
@@ -32,8 +38,6 @@ export interface __test__PlatformServicesOptions {
   ruleVars?: IRuleVariableServices;
   /** Override the brain-page lifecycle services. */
   brainPages?: IBrainPageServices;
-  /** Override the RNG services. */
-  rng?: IRngServices;
   /** Override the per-callsite services (slots and host-owned state). */
   callsite?: ICallsiteServices;
 }
@@ -99,22 +103,37 @@ function __test__defaultBrainPages(): IBrainPageServices {
  * without rebuilding the whole aggregate.
  */
 export function __test__createPlatformServices(options?: __test__PlatformServicesOptions): PlatformServices {
+  const runtime = options?.runtime;
+  const shared = options?.shared;
+  const app = options?.app;
+  const functions = runtime?.functions ?? new FunctionRegistry();
   return {
-    functions: options?.functions ?? new FunctionRegistry(),
-    types: options?.types ?? new TypeRegistry(),
-    program: options?.program ?? {
-      getRuleFuncIdForFunc(_funcId: number): number | undefined {
-        return undefined;
+    runtime: {
+      types: runtime?.types ?? new TypeRegistry(),
+      functions,
+      operatorTable: runtime?.operatorTable ?? new OperatorTable(),
+      actions: runtime?.actions ?? new BrainActionRegistry(),
+    },
+    shared: {
+      conversions: shared?.conversions ?? new ConversionRegistry(functions),
+    },
+    app: {
+      rng: app?.rng ?? {
+        next(): number {
+          return MathOps.random();
+        },
       },
     },
-    brainVars: options?.brainVars ?? __test__defaultBrainVars(),
-    ruleVars: options?.ruleVars ?? __test__defaultRuleVars(),
-    brainPages: options?.brainPages ?? __test__defaultBrainPages(),
-    rng: options?.rng ?? {
-      next(): number {
-        return 0;
+    brain: {
+      program: options?.program ?? {
+        getRuleFuncIdForFunc(_funcId: number): number | undefined {
+          return undefined;
+        },
       },
+      brainVars: options?.brainVars ?? __test__defaultBrainVars(),
+      ruleVars: options?.ruleVars ?? __test__defaultRuleVars(),
+      pages: options?.brainPages ?? __test__defaultBrainPages(),
+      callsite: options?.callsite ?? createCallsiteStore(),
     },
-    callsite: options?.callsite ?? createCallsiteStore(),
   };
 }

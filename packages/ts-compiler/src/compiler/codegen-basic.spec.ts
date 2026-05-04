@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -342,14 +342,14 @@ export default Sensor({
   });
 
   test("app-defined output type resolves via registry", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const actorRefTypeId = mkTypeId(NativeType.Struct, "ActorRef");
     if (!types.get(actorRefTypeId)) {
       types.addStructType("ActorRef", {
         fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number") }]),
       });
     }
-    const appAmbient = buildAmbientDeclarations(services.types);
+    const appAmbient = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type ActorRef } from "mindcraft";
 

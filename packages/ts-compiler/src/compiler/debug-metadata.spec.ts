@@ -13,7 +13,7 @@ import { UserTileProject } from "./project.js";
 let services: BrainServices;
 
 function compileProject(files: Record<string, string>) {
-  const ambientSource = buildAmbientDeclarations(services.types);
+  const ambientSource = buildAmbientDeclarations(services.runtime.types);
   const project = new UserTileProject({ ambientSource, services });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();

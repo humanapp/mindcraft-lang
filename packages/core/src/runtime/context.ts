@@ -27,7 +27,7 @@ export interface HostActionBinding {
    * Invoked every time the action's owning page is deactivated, before the
    * page's fibers are cancelled. Runs with `ctx.currentCallSiteId` bound to
    * the action's call site so the hook can inspect or clear per-call-site
-   * host state via `ctx.services.callsite.getHostState` /
+   * host state via `ctx.services.brain.callsite.getHostState` /
    * `setHostState` / `clearHostState`.
    */
   onPageExited?: (ctx: ExecutionContext) => void;
@@ -171,7 +171,7 @@ export interface ExecutionContext {
  * @param name - The variable name as authored on the rule
  */
 export function getRuleVariable<T extends Value = Value>(ctx: ExecutionContext, name: string): T {
-  return ctx.services.ruleVars.getByName(ctx.currentRuleFuncId, name) as T;
+  return ctx.services.brain.ruleVars.getByName(ctx.currentRuleFuncId, name) as T;
 }
 
 /**
@@ -184,7 +184,7 @@ export function getRuleVariable<T extends Value = Value>(ctx: ExecutionContext, 
  * @param value - The value to store
  */
 export function setRuleVariable(ctx: ExecutionContext, name: string, value: Value): void {
-  ctx.services.ruleVars.setByName(ctx.currentRuleFuncId, name, value);
+  ctx.services.brain.ruleVars.setByName(ctx.currentRuleFuncId, name, value);
 }
 
 // ============================================================================
@@ -207,7 +207,7 @@ export function setRuleVariable(ctx: ExecutionContext, name: string, value: Valu
  * @param ctx - The execution context
  */
 export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
-  return ctx.services.callsite.getHostState(ctx.currentCallSiteId!) as T | undefined;
+  return ctx.services.brain.callsite.getHostState(ctx.currentCallSiteId!) as T | undefined;
 }
 
 /**
@@ -223,7 +223,7 @@ export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
  * @param value - The host-owned state to store
  */
 export function setCallSiteState(ctx: ExecutionContext, value: unknown): void {
-  ctx.services.callsite.setHostState(ctx.currentCallSiteId!, value);
+  ctx.services.brain.callsite.setHostState(ctx.currentCallSiteId!, value);
 }
 
 /**
@@ -237,5 +237,5 @@ export function setCallSiteState(ctx: ExecutionContext, value: unknown): void {
  * @param ctx - The execution context
  */
 export function clearCallSiteState(ctx: ExecutionContext): void {
-  ctx.services.callsite.clearHostState(ctx.currentCallSiteId!);
+  ctx.services.brain.callsite.clearHostState(ctx.currentCallSiteId!);
 }

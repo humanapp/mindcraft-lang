@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -258,7 +258,7 @@ export default Sensor({
 describe("enum value literals", () => {
   before(async () => {
     services = __test__createBrainServices();
-    const types = services.types;
+    const types = services.runtime.types;
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
       types.addEnumType("Direction", {
@@ -274,7 +274,7 @@ describe("enum value literals", () => {
   });
 
   test("string literal with enum type annotation produces EnumValue", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -310,7 +310,7 @@ export default Sensor({
   });
 
   test("enum value as function argument", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -349,7 +349,7 @@ export default Sensor({
   });
 
   test("enum value as return value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -384,7 +384,7 @@ export default Sensor({
   });
 
   test("plain string literal without enum context produces StringValue", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -417,7 +417,7 @@ export default Sensor({
   });
 
   test("enum equality (===) returns true for matching values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -452,7 +452,7 @@ export default Sensor({
   });
 
   test("enum equality (===) returns false for different values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -489,7 +489,7 @@ export default Sensor({
   });
 
   test("enum inequality (!==) returns true for different values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 

@@ -21,7 +21,7 @@ const descriptor: ActionDescriptor = {
 };
 
 function fnCurrentPage(ctx: ExecutionContext): Value {
-  return { t: NativeType.String, v: ctx.services.brainPages.getCurrentPageId() };
+  return { t: NativeType.String, v: ctx.services.brain.pages.getCurrentPageId() };
 }
 
 const binding: HostActionBinding = {

@@ -42,7 +42,7 @@ import type { UserAuthoredProgram } from "./types.js";
 let services: BrainServices;
 
 function toVmServices(b: BrainServices) {
-  return __test__createPlatformServices({ functions: b.functions, types: b.types });
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
 }
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
@@ -99,7 +99,7 @@ describe("binary operator implicit conversions", () => {
   before(() => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
       types.addEnumType("Direction", {
@@ -229,7 +229,7 @@ export default Sensor({
   });
 
   test("enum values concatenate with strings through enum-to-string conversion", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -267,7 +267,7 @@ describe("target-typed implicit conversions", () => {
   before(() => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const signalTypeId = mkTypeId(NativeType.Enum, "Signal");
     if (!types.get(signalTypeId)) {
       types.addEnumType("Signal", {
@@ -292,7 +292,7 @@ describe("target-typed implicit conversions", () => {
   });
 
   test("return statement converts a pre-registered enum value to string", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Signal } from "mindcraft";
 
@@ -323,7 +323,7 @@ export default Sensor({
   });
 
   test("function-call arguments convert enum values to the declared parameter type", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Signal } from "mindcraft";
 
@@ -358,7 +358,7 @@ export default Sensor({
   });
 
   test("variable initializers and simple assignments convert numeric enum values to number", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Throttle } from "mindcraft";
 

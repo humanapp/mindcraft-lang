@@ -148,9 +148,11 @@ eight distinct concerns. The split assigns each to one side:
 
 Concerns 3, 4, 5, 6, 7, 8 (six of eight) move to
 `runtime/brain-runtime.ts`. Concerns 1 and 2 stay in `brain/`.
-`Brain.rng()` is **deleted entirely** (Phase A0); RNG is
-host-registered as part of `AppServices` and reaches the VM
-via `services.rng`.
+`Brain.rng()` does not exist; RNG is host-registered as part of
+`AppServices` and reaches the VM via `services.app.rng`.
+`PlatformServices` is a nested struct with four tiers
+`{ runtime, shared, app, brain }` (see
+`packages/core/src/runtime/services.ts`).
 
 **Line-number citations.** All line numbers in this spec (in the
 table above and in every phase's Source paths) are pinned at the
@@ -167,7 +169,8 @@ addresses.
   constructor takes:
   - `program: Program`,
   - `pageMetadata: List<PageMetadata>`,
-  - `appServices: AppServices`,
+  - `hostServices: Omit<PlatformServices, "brain">` -- the three
+    host- and module-supplied tiers (`runtime`, `shared`, `app`),
   - `contextData: unknown` (defaults to `undefined`),
   - `previousVariables?: VariableSnapshot` (defaults to
     `undefined`).
@@ -183,14 +186,15 @@ addresses.
   `undefined`; the authoring-side facade passes a snapshot of
   the previous runtime's variables on every re-init.
 
-  `appServices: AppServices` is the host-supplied tier of
-  `PlatformServices` (see Phase A0 below for the full split).
-  At the inspection commit it carries `functions`, `types`,
-  and `rng`; future host-scoped services (network, wall-clock,
-  logger, telemetry) will land here. The runtime constructor
-  builds the brain-instance tier (`program`, `brainVars`,
-  `ruleVars`, `brainPages`, `callsite`) internally and
-  composes them with `appServices` into the full
+  `hostServices` is the brain-runtime view of `PlatformServices`
+  with the brain-instance tier omitted: it carries `runtime`
+  (`RuntimeLangServices` -- `types`, `functions`, `operatorTable`,
+  `actions`), `shared` (`SharedLangServices` -- `conversions`),
+  and `app` (`AppServices` -- `rng`; future host-scoped services
+  like network / wallClock / logger land here). The runtime
+  constructor builds the brain-instance tier (`program`,
+  `brainVars`, `ruleVars`, `pages`, `callsite`) internally and
+  composes it with `hostServices` into the full nested
   `PlatformServices` consumed by `VM`.
 
   `contextData` is a runtime concern. The constructor stores
@@ -212,11 +216,11 @@ addresses.
   `clearVariable`, `clearVariables`, `getVariableBySlot`,
   `setVariableBySlot`).
 
-  `rng()` is **not** on the runtime surface. Phase A0 deletes
-  `Brain.rng()` and `IBrain.rng()`; RNG reaches the VM via
-  `appServices.rng` (an `IRngServices` instance the host
-  registers once at app startup). Host functions that need
-  randomness call `ctx.services.rng.next()`.
+  `rng()` is **not** on the runtime surface. RNG reaches the VM
+  via `services.app.rng` (an `IRngServices` instance the host
+  registers once at app startup as part of `AppServices`).
+  Host functions that need randomness call
+  `ctx.services.app.rng.next()`.
 - `packages/core/src/brain/brain.ts` becomes a thin facade:
   - Holds `brainDef`, `services: BrainServices`, `linkEnvironment`,
     `pages: List<BrainPage>`, `compiledProgram`, and (after
@@ -483,378 +487,28 @@ Each unit must:
 
 ## Current State
 
-Completed: None
-Next up: A0
+Completed: A0
+Next up: B0
 
 ---
 
 ## Phase Log
 
-(empty)
+### A0 -- AppServices tier and `Brain.rng()` removal
 
----
+Split `PlatformServices` into a nested struct `{ runtime, shared, app, brain }`
+backed by new `RuntimeLangServices`, `SharedLangServices`, `EditLangServices`,
+`AppServices`, and `BrainInstanceServices` interfaces; deleted `Brain.rng()` /
+`IBrain.rng()` and routed RNG through `services.app.rng` registered at
+`MindcraftEnvironment` construction. `BrainServices` reshaped to
+`{ runtime, edit, shared, app }`; standalone `functions` / `types` removed.
 
-## Phase A0 -- Introduce `AppServices` Tier And Delete `Brain.rng()`
+New contract surface: `AppServices`, `RuntimeLangServices`,
+`SharedLangServices`, `EditLangServices`, `BrainInstanceServices`,
+nested `PlatformServices`, `MindcraftEnvironment.appServices`,
+optional `rng` parameter on `createMindcraftEnvironment`.
 
-**Purpose.** `PlatformServices` today mixes two distinct
-lifetimes: app-scoped services the host registers once at
-startup (`functions`, `types`, `rng`) and brain-instance-scoped
-services that close over a single brain's state (`program`,
-`brainVars`, `ruleVars`, `brainPages`, `callsite`). Today's
-`createRuntimeServices` papers over this by routing the
-app-scoped `rng` through a per-brain adapter that calls back
-to `Brain.rng()`, which itself is a one-line wrapper around
-`MathOps.random()`. That round trip exists for no reason
-beyond historical ordering and is in the way of every other
-clean-up: the upcoming brain-runtime split (B0-B8) cannot
-give the runtime constructor a clean signature without
-resolving it, and a constrained-target port has no obvious
-place to inject a deterministic RNG.
-
-A0 names the two tiers, deletes `Brain.rng()` and
-`IBrain.rng()`, and wires the host-registered `IRngServices`
-through the renamed `AppServices` aggregate. After A0 ships,
-the runtime split (B0-B8) can give `BrainRuntime` a
-self-documenting `appServices: AppServices` constructor
-parameter instead of a `Pick<PlatformServices, ...>`.
-
-**Why before B0.** A0 is a precondition for B0's decision
-tables and for B5's services-assembly cutover. Doing it
-after B5 would mean re-revising B5's narrowed constructor
-parameter and the B7 self-test's services literal. A0 has
-no dependency on the runtime split being done; it is pure
-refactoring of an existing seam.
-
-**Precondition.** None beyond the M0-M5 / D0-D7 prerequisites
-shared with the rest of the plan.
-
-### Source paths (the agent edits / inspects these)
-
-- **Service contracts:**
-  `packages/core/src/runtime/services.ts` -- the
-  `PlatformServices` interface and the supporting
-  `IRngServices` / `IBrainVariableServices` /
-  `IRuleVariableServices` / `IBrainPageServices` /
-  `IProgramServices` / `ICallsiteServices` interfaces.
-- **Brain-instance services adapter:**
-  `packages/core/src/runtime/runtime-services.ts` --
-  `createRuntimeServices(brain: IBrain, callsiteStore)`
-  and the `IRuntimeServices` aggregate it returns.
-- **Brain facade:**
-  `packages/core/src/brain/brain.ts` -- `Brain.rng()`
-  (line 520 at the inspection commit), the
-  `PlatformServices` literal assembled inside
-  `Brain.initialize()` (lines 200-224 at the inspection
-  commit).
-- **`IBrain` declaration:**
-  `packages/core/src/runtime/host-bindings.ts` -- removes
-  the `rng()` method from `IBrain`.
-- **`BrainServices` (edit-time host aggregate):**
-  `packages/core/src/brain/services.ts`. Today carries
-  `tiles`, `actions`, `operatorTable`, `operatorOverloads`,
-  `types`, `tileBuilder`, `functions`, `conversions`. A0
-  adds an `appServices: AppServices` field; the `functions`
-  and `types` fields stay where they are (every existing
-  reader uses them through `BrainServices`).
-- **`MindcraftEnvironment`:**
-  `packages/core/src/mindcraft.ts` -- the `MindcraftEnvironment`
-  interface and the `createMindcraftEnvironment` factory.
-  A0 extends both with an `appServices: AppServices` member
-  populated at environment-construction time, before any
-  brain is instantiated.
-- **`apps/sim` startup:**
-  `apps/sim/src/services/sim-environment-store.ts` --
-  `SimEnvironmentStore.create()` (line 248 at the
-  inspection commit) is the single startup site that
-  builds the sim's `MindcraftEnvironment` (via
-  `AppEnvironmentHost` from `@mindcraft-lang/bridge-app`).
-  A0 wires the default RNG (`MathOps.random()` adapter)
-  through this site; sim does not currently need a
-  custom RNG, but the registration must be explicit so
-  the seam is exercised.
-- **`AppEnvironmentHost`:**
-  `packages/bridge-app/src/...` -- whichever module
-  constructs the `MindcraftEnvironment` consumed by
-  `SimEnvironmentStore`. A0 propagates the
-  `appServices` parameter through this layer so the
-  sim's startup can register its `rng` once.
-- **Tests:**
-  `packages/core/src/brain/brain.spec.ts`,
-  `packages/core/src/runtime/runtime-services.spec.ts`,
-  `packages/core/src/runtime/test-only-runtime-services-factory.ts`
-  (the `__test__createPlatformServices` helper). A0
-  updates the test factory to expose `appServices` as a
-  separate parameter (defaulted to a `MathOps.random()`
-  adapter) and updates `runtime-services.spec.ts` to
-  reflect the narrower `IRuntimeServices` shape.
-
-### Procedure (execute in order; the tree compiles after each step)
-
-0. **Re-anchor inspection-commit references.** Before
-   editing, run:
-   - `grep -nE 'class AppEnvironmentHost' packages/bridge-app/src`
-     to pin the file path for step 7's propagation work
-     (the spec lists `packages/bridge-app/src/...` without
-     a filename because the module structure may shift).
-   - `grep -nE '\brng\s*\(' packages/core/src/brain/brain.ts packages/core/src/runtime/host-bindings.ts`
-     to re-pin the `Brain.rng()` line number cited as 520
-     and the `IBrain.rng()` declaration site.
-   - `grep -nE 'BrainServices\s*\(|new BrainServices\b' packages/core/src apps/ packages/`
-     to enumerate every site that constructs a
-     `BrainServices` literal; step 4 must update all of
-     them.
-   - `grep -nE '\bservices\.(functions|types)\b' packages/core/src`
-     to enumerate every reader of
-     `BrainServices.functions` / `BrainServices.types`;
-     step 4 migrates each one to read via
-     `services.appServices.functions` /
-     `services.appServices.types`.
-
-   Record the resulting paths and call-site counts in the
-   post-mortem so a future agent can audit drift.
-1. **Split `PlatformServices` into two tiers** in
-   `runtime/services.ts`:
-
-   ```ts
-   /**
-    * App-scoped services: registered once by the host at
-    * startup, shared by every brain in the process. The
-    * host owns the lifetime; the runtime never constructs
-    * these.
-    */
-   export interface AppServices {
-     functions: IFunctionRegistry;
-     types: ITypeRegistry;
-     rng: IRngServices;
-   }
-
-   /**
-    * Brain-instance-scoped services: built fresh for each
-    * brain, closing over that brain's program, variable
-    * storage, page FSM, rule-variable stores, and
-    * callsite store. The runtime constructs these
-    * internally.
-    */
-   export interface BrainInstanceServices {
-     program: IProgramServices;
-     brainVars: IBrainVariableServices;
-     ruleVars: IRuleVariableServices;
-     brainPages: IBrainPageServices;
-     callsite: ICallsiteServices;
-   }
-
-   /**
-    * Runtime aggregate consumed by the VM. Composed from
-    * AppServices (host-supplied) and BrainInstanceServices
-    * (built per-brain).
-    */
-   export interface PlatformServices extends AppServices, BrainInstanceServices {}
-   ```
-
-   The eight existing keys are preserved; the new
-   interfaces are partitions of the same shape, so no
-   external reader of `PlatformServices` changes. Update
-   the doc-comment on `IRngServices` to state that scope
-   (one-per-brain vs shared) is the host's choice and the
-   runtime makes no isolation guarantees.
-2. **Drop `rng` from `IRuntimeServices`** in
-   `runtime/runtime-services.ts`:
-   - Remove the `rng: IRngServices` field from
-     `IRuntimeServices`.
-   - Remove the `rng: { next() { return brain.rng(); } }`
-     entry from `createRuntimeServices`'s return literal.
-
-   `IRuntimeServices` now describes exactly what its name
-   suggests: the brain-instance-bound adapters
-   (`brainVars`, `brainPages`, `callsite`) built by
-   `createRuntimeServices`.
-3. **Delete `Brain.rng()` and `IBrain.rng()`.** In
-   `runtime/host-bindings.ts`, remove the `rng(): number`
-   declaration from `IBrain`. In `brain/brain.ts`, delete
-   the `rng()` method (line 520 at the inspection commit)
-   and remove the `MathOps` import if it has no other
-   reader.
-4. **Replace `BrainServices.functions` and
-   `BrainServices.types` with a single
-   `appServices: AppServices` field.** In
-   `brain/services.ts`, remove the standalone
-   `functions` and `types` fields from `BrainServices`
-   and add a `public readonly appServices: AppServices`
-   field in their place. Update `createBrainServices`
-   in `brain/services-factory.ts` to accept an
-   `appServices: AppServices` parameter (no default in
-   core: callers must register one) in place of the
-   former `functions` / `types` parameters. Migrate
-   every reader enumerated in step 0 from
-   `services.functions` / `services.types` to
-   `services.appServices.functions` /
-   `services.appServices.types`; update every call site
-   that constructs a `BrainServices` (production and
-   test) to pass `appServices` instead of the two
-   former fields.
-
-   No `@deprecated` JSDoc tag is introduced and no
-   field duplication is left behind. The TypeScript
-   compiler surfaces every site that needs migrating;
-   the gate at step 9 is the proof that no reader was
-   missed.
-5. **Rewrite `Brain.initialize()`'s `PlatformServices`
-   assembly.** Replace the eight-key literal with a
-   composed object that draws `functions` / `types` /
-   `rng` from `this.services.appServices` and the
-   brain-instance half from the existing
-   `createRuntimeServices` / `createProgramServices` /
-   `createRuleVariableServices` calls (which no longer
-   produce `rng`). The resulting `platformServices`
-   variable is the same shape as before; only the
-   sources of `functions`, `types`, and `rng` change.
-6. **Wire `AppServices` through `MindcraftEnvironment`.**
-   Extend the `MindcraftEnvironment` interface in
-   `packages/core/src/mindcraft.ts` with a
-   `readonly appServices: AppServices` member. Update
-   the implementation (the class returned by
-   `createMindcraftEnvironment`) to construct
-   `appServices` at the same time it builds
-   `brainServices`, drawing `functions` and `types` from
-   the same registry instances that `appServices`
-   exposes (the two views are identity-equal because
-   `BrainServices.appServices` is the same reference).
-   Add an optional `rng?: IRngServices` parameter to
-   `createMindcraftEnvironment`'s options; when omitted,
-   default to `{ next: () => MathOps.random() }`.
-   `MindcraftEnvironment.createBrain` continues to call
-   `new Brain(brainDef, this.brainServices, ...)`; the
-   brain reads `appServices` via `this.services.appServices`,
-   so no signature change to `Brain`'s constructor lands
-   in A0.
-7. **Wire the registration through `apps/sim`'s
-   startup.** In
-   `apps/sim/src/services/sim-environment-store.ts`,
-   `SimEnvironmentStore.create()` constructs the
-   `AppEnvironmentHost`. Propagate the optional `rng`
-   parameter through `AppEnvironmentHost` to the
-   underlying `createMindcraftEnvironment` call. The
-   sim explicitly registers the default RNG
-   (`{ next: () => MathOps.random() }`) at the
-   `SimEnvironmentStore.create()` site, even though the
-   default would suffice -- the explicit registration
-   exercises the seam and serves as the worked example
-   for other apps.
-
-   **Constraint:** the registration MUST happen inside
-   `SimEnvironmentStore.create()` (or earlier in the app
-   startup chain), before any code path that could
-   instantiate a `Brain`. The sim has no `Brain`
-   construction outside `SimEnvironmentStore`'s
-   downstream code paths, so this is naturally enforced;
-   A0's procedure documents the constraint so future
-   apps know where to place the registration.
-8. **Update the test factory.**
-   `__test__createPlatformServices` in
-   `packages/core/src/runtime/test-only-runtime-services-factory.ts`
-   gains an optional `appServices?: Partial<AppServices>`
-   parameter; missing fields default to a
-   `MathOps.random()`-backed RNG and the
-   already-defaulted `functions` / `types` registries.
-   Update `runtime-services.spec.ts` to assert
-   `IRuntimeServices` no longer carries an `rng` field.
-9. **Run the full gate.** From `packages/core`, then
-   from `apps/sim`, then from any other affected
-   package (`apps/vscode-extension`, etc.).
-
-### Acceptance (validation checklist)
-
-1. `runtime/services.ts` declares `AppServices`,
-   `BrainInstanceServices`, and
-   `PlatformServices extends AppServices, BrainInstanceServices`.
-   The eight keys partition into 3 (`functions`, `types`,
-   `rng`) on `AppServices` and 5 (`program`, `brainVars`,
-   `ruleVars`, `brainPages`, `callsite`) on
-   `BrainInstanceServices`.
-2. `grep -nE '\brng\s*\(\s*\)' packages/core/src/brain/brain.ts`
-   returns nothing -- `Brain.rng()` is gone.
-3. `grep -nE '\brng\s*\(\s*\)' packages/core/src/runtime/host-bindings.ts`
-   returns nothing -- `IBrain.rng()` is gone.
-4. `grep -nE 'brain\.rng\b' packages/core/src/`
-   returns nothing.
-5. `IRuntimeServices` in `runtime-services.ts` declares
-   exactly three fields: `brainVars`, `brainPages`,
-   `callsite`. `createRuntimeServices`'s return literal
-   matches.
-6. `BrainServices` carries an `appServices: AppServices`
-   field and **does not** carry standalone `functions`
-   or `types` fields. `MindcraftEnvironment.appServices`
-   and `BrainServices.appServices` are the same
-   reference (identity-equal).
-7. `createMindcraftEnvironment` accepts an optional
-   `rng?: IRngServices`; omitting it produces an
-   environment whose `appServices.rng.next()` returns
-   `MathOps.random()`-style values.
-8. `SimEnvironmentStore.create()` explicitly passes a
-   `rng` (even if the default value) to
-   `AppEnvironmentHost`'s constructor. The grep
-   `grep -nE 'rng\s*:' apps/sim/src/services/sim-environment-store.ts`
-   shows the explicit registration site.
-9. The full gate passes from `packages/core`,
-   `apps/sim`, and every other downstream package with
-   zero noise per the zero-noise policy.
-10. `brain.spec.ts`, `runtime-services.spec.ts`,
-    `mindcraft-environment.spec.ts`, `apps/sim`
-    end-to-end tests all pass without behavior changes.
-    Any test that called `brain.rng()` directly is
-    updated to read `services.rng.next()` (or its
-    domain-equivalent) -- list these in the post-mortem
-    so B0 can re-anchor any line numbers that shift.
-11. `__firewall__.spec.ts` reports
-    `BASELINE_VIOLATIONS = 0`. A0 does not move code
-    across the firewall boundary; it only renames and
-    splits an interface.
-12. No `@deprecated` JSDoc tag exists anywhere in the
-    files A0 touches:
-    `grep -RnE '@deprecated' packages/core/src/brain/services.ts packages/core/src/brain/services-factory.ts packages/core/src/runtime/services.ts packages/core/src/mindcraft.ts`
-    returns nothing. (Per project policy, `@deprecated`
-    is permitted only as a transient marker within a
-    single unit and must not survive the unit's
-    completion.)
-
-### Risks
-
-- **`BrainServices` reader migration.** Step 4 removes
-  the standalone `functions` / `types` fields and
-  migrates every reader to `appServices.functions` /
-  `appServices.types` in the same diff. The TypeScript
-  compiler catches missed readers; the gate at step 9
-  is the proof. The risk is that step 0's enumeration
-  misses a reader hidden behind dynamic property access
-  (`services["functions"]`) -- run a textual grep for
-  the bracketed form in addition to the dotted form
-  before declaring step 4 complete.
-- **Test-only RNG determinism.** The default RNG is
-  `MathOps.random()`, which is not deterministic.
-  Tests that depended on `brain.rng()` to be
-  `MathOps.random()` keep working because the seam
-  swap is identity-preserving. Tests that want
-  determinism continue to inject their own
-  `IRngServices` -- now via
-  `__test__createPlatformServices({ appServices: { rng: ... } })`
-  instead of through a brain subclass override.
-- **Apps that construct `Brain` outside
-  `MindcraftEnvironment`.** A0 leaves
-  `BrainServices.appServices` mandatory (no default
-  in core). A test or app that builds its own
-  `BrainServices` literal must add the `appServices`
-  field; the type system catches the omission. Hostile
-  to a hypothetical app that constructs `BrainServices`
-  but does not want to think about RNG -- intentional;
-  the explicit registration is the point of A0.
-- **`AppServices` will grow.** Future units will add
-  `network`, `wallClock`, `logger`, `telemetry` to
-  `AppServices`. Each addition is a one-field extension
-  to the interface and a one-field extension to
-  `MindcraftEnvironment`'s constructor; the host
-  registers the implementation once at startup. A0's
-  shape is forward-compatible; do not pre-allocate
-  empty fields for future services.
+Verification: full gate green (752/752 core, 981/981 ts-compiler).
 
 ---
 
@@ -951,8 +605,10 @@ respectively. B0 does not re-derive them.
 
 1. If the field / method participates in the authoring graph
    (uses `BrainPage`, `BrainRule`, `IBrainDef`,
-   `BrainServices`, `BrainLinkEnvironment`, `compileBrain`),
-   it is `keep-on-facade`. Goes to `Brain` (facade).
+   `BrainServices` (the edit-time aggregate with fields
+   `{ runtime, edit, shared, app }`), `BrainLinkEnvironment`,
+   `compileBrain`), it is `keep-on-facade`. Goes to `Brain`
+   (facade).
 2. If the field / method participates in compile / link /
    treeshake (`compiledProgram`, `getCompiledProgram`,
    `installVariableTable` callers on the compile side,
@@ -989,7 +645,10 @@ End State" above:
 
 - `program: Program` (linked, treeshaken)
 - `pageMetadata: List<PageMetadata>`
-- `appServices: AppServices` (host-supplied tier; see Phase A0)
+- `hostServices: Omit<PlatformServices, "brain">` -- the three
+  non-`brain` tiers of the nested `PlatformServices` (`runtime`,
+  `shared`, `app`). The runtime builds the `brain` tier
+  internally.
 - `contextData: unknown` (defaults to `undefined`)
 - `previousVariables?: VariableSnapshot` (defaults to `undefined`)
 
@@ -1003,9 +662,9 @@ linking happens on the facade side before the runtime is
 constructed. The constructor does not accept a full
 `PlatformServices`: the runtime builds the
 `BrainInstanceServices` half (`program`, `brainVars`,
-`ruleVars`, `brainPages`, `callsite`) internally and composes
-it with `appServices` into the `PlatformServices` consumed by
-`VM`. No callbacks for `page.activate()` /
+`ruleVars`, `pages`, `callsite`) internally and composes
+it with `hostServices` into the nested `PlatformServices`
+consumed by `VM`. No callbacks for `page.activate()` /
 `page.deactivate()`; those run via the `BrainEvents` channel
 per the bridge rules below.
 
@@ -1234,8 +893,9 @@ IBrainRuntime`.
   the `IBrain` interface. After B2, the adapter still binds
   to `IBrain`; B2 moves the implementation, not the binding
   shape. (B5 narrows the parameter to `IBrainRuntime`,
-  once the FSM accessors have moved. RNG is no longer on
-  `IBrain` after Phase A0.)
+  once the FSM accessors have moved. RNG is not on
+  `IBrain`; host functions read it via
+  `ctx.services.app.rng`.)
 - **`ExecutionContext` construction (informational):**
   `Brain.initialize()` lines 236-247. The
   `getVariableBySlot` / `setVariableBySlot` arrows close
@@ -1453,29 +1113,37 @@ assembly:
   creates the `ICallsiteStore`, calls
   `createRuntimeServices(this, callsiteStore)` (where
   `this` is the `Brain` facade, still holding the FSM),
-  assembles the eight-key `PlatformServices`
-  literal, and passes the full literal into
-  `new BrainRuntime(program, pageMetadata, services,
-  contextData)`. The runtime constructor stores
-  `this.services = services` and reads
-  `this.callsiteStore = services.callsite as ICallsiteStore`
+  assembles the nested four-tier `PlatformServices`
+  literal (`{ runtime, shared, app, brain }`; the three
+  host-tier fields are read directly off
+  `this.services` (`BrainServices`), and the `brain` tier
+  is built from `runtimeServices.brainVars` / `.callsite`
+  / `runtimeServices.brainPages` (rebound to `pages`),
+  `createProgramServices(...)`, and
+  `createRuleVariableServices(...)`), and passes the full
+  literal into `new BrainRuntime(program, pageMetadata,
+  services, contextData)`. The runtime constructor stores
+  the literal in `this.services` and reads
+  `this.callsiteStore = services.brain.callsite as ICallsiteStore`
   (the store is the callsite-services impl with no
   wrapping). The `callsiteStore` field on `BrainRuntime`
   loses its `= createCallsiteStore()` initializer.
 - **B5 -- runtime owns assembly.** Once the FSM moves
   to `BrainRuntime`, `createRuntimeServices` can take
   `IBrainRuntime` and the facade can stop building
-  services. B5 moves the
+  the `brain` tier. B5 moves the
   `createCallsiteStore()` call, the
   `createRuntimeServices(this, this.callsiteStore)`
-  call, and the eight-key literal assembly into the
+  call, and the `brain`-tier construction into the
   `BrainRuntime` constructor. The constructor parameter
   narrows from full `PlatformServices` to
-  `AppServices` (the host-supplied tier introduced in
-  Phase A0), and the runtime fills the
-  `BrainInstanceServices` half. `createRuntimeServices`'s
-  `brain` parameter narrows from `IBrain` to
-  `IBrainRuntime` in the same diff.
+  `Omit<PlatformServices, "brain">` (the three
+  host-supplied tiers); the parameter is renamed to
+  `hostServices` to match. The runtime fills the `brain`
+  tier internally and assembles the nested
+  `PlatformServices` literal as `{ ...hostServices, brain: {...} }`.
+  `createRuntimeServices`'s `brain` parameter narrows
+  from `IBrain` to `IBrainRuntime` in the same diff.
 
 The B3 shape is intentionally less elegant than B5's; it
 exists only because the FSM has not yet moved.
@@ -1526,7 +1194,7 @@ exists only because the FSM has not yet moved.
    1. Store `this.program = program`,
       `this.pageMetadata = pageMetadata`,
       `this.services = services`.
-   2. Read `this.callsiteStore = services.callsite as ICallsiteStore`.
+   2. Read `this.callsiteStore = services.brain.callsite as ICallsiteStore`.
    3. Read `program.variableNames` and call
       `this.installVariableTable(program.variableNames,
       previousVariables)` (already moved in B2; the
@@ -1534,7 +1202,7 @@ exists only because the FSM has not yet moved.
       constructor argument).
    4. Allocate `this.ruleVariableStores = new Dict()`.
       (Also exposed via the facade-built
-      `services.ruleVars`; the runtime field exists
+      `services.brain.ruleVars`; the runtime field exists
       because B5 will build the services in-place and
       needs the underlying store.)
    5. `this.vm = new VM(this.program, this.services)`.
@@ -1576,17 +1244,22 @@ exists only because the FSM has not yet moved.
       new Dict<...>()`.
    7. Build `runtimeServices = createRuntimeServices(this, callsiteStore)`
       (`this` is the facade, which still holds the FSM
-      until B5; RNG is already on
-      `this.services.appServices.rng` after A0).
-   8. Assemble the eight-key `PlatformServices` literal
-      as a local `platformServices`. The three
-      app-scoped keys (`functions`, `types`, `rng`)
-      come from `this.services.appServices` (spread or
-      copied per-key); `program` from
-      `createProgramServices(linked.program)`;
-      `brainVars`, `brainPages`, `callsite` from
-      `runtimeServices`; `ruleVars` from
-      `createRuleVariableServices(linked.program, ruleVariableStores)`.
+      until B5; RNG reaches the VM via
+      `this.services.app.rng`).
+   8. Assemble the nested four-tier `PlatformServices`
+      literal as a local `platformServices`. The three
+      host-supplied tiers (`runtime`, `shared`, `app`)
+      are taken directly from `this.services`
+      (`BrainServices` carries identical sub-aggregates).
+      The `brain` tier is constructed inline:
+      `program: createProgramServices(linked.program)`;
+      `brainVars: runtimeServices.brainVars`;
+      `pages: runtimeServices.brainPages` (the
+      `IRuntimeServices` aggregate kept the legacy field
+      name `brainPages`; rebound to `pages` per the
+      `IBrainPageServices` contract);
+      `callsite: runtimeServices.callsite`;
+      `ruleVars: createRuleVariableServices(linked.program, ruleVariableStores)`.
    9. `this.runtime = new BrainRuntime(linked.program, linked.pages, platformServices, contextData, previousVariables);`.
    10. Subscribe to `this.runtime.events()` for
        `page_activated` / `page_deactivated` per the
@@ -1622,8 +1295,8 @@ exists only because the FSM has not yet moved.
    returns nothing.
 2. `grep -nE 'new (VM|FiberScheduler)\(' packages/core/src/brain/brain.ts`
    returns nothing.
-3. `Brain.initialize()` builds the eight-key
-   `PlatformServices` from local `callsiteStore` /
+3. `Brain.initialize()` builds the nested four-tier
+   `PlatformServices` literal from local `callsiteStore` /
    `ruleVariableStores` and passes the assembled
    literal into a single `new BrainRuntime(...)` call.
    Service-assembly call sites
@@ -1635,7 +1308,7 @@ exists only because the FSM has not yet moved.
    resolve `linkEnvironment`, compile-link-treeshake,
    `this.compiledProgram = compiled`, the `assignFuncIds`
    loop over local `ruleIndex`, `PlatformServices`
-   assembly from locals, the
+   nested-literal assembly from locals, the
    `new BrainRuntime(...)` call, the event-bridge
    subscription. Anything else there is a regression.
 5. `grep -nE 'this\.(program|pageMetadata|ruleIndex)\s*=' packages/core/src/brain/brain.ts`
@@ -1945,19 +1618,14 @@ present; B5 deletes both.
    of the hook drivers are `activatePage` and
    `runDeactivationHooksForCurrentPage`, both now on
    `BrainRuntime`.
-10. **(removed.)** `Brain.rng()` and `IBrain.rng()` were
-    deleted entirely in Phase A0; no body remains to
-    forward and no state to move. Step number preserved
-    so downstream references in this section stay
-    stable; future re-numbering is out of scope for B5.
-11. **Confirm `Brain.startup()` / `Brain.shutdown()` are
+10. **Confirm `Brain.startup()` / `Brain.shutdown()` are
     now one-liners** that delegate to `this.runtime`.
     `ManagedMindcraftBrain` continues to override them;
     the override calls `super.startup()` /
     `super.shutdown()`, which now hit the delegating
     one-liner. The override-around-`super` shape is
     preserved.
-12. **`IBrain` -> `IBrainRuntime` cutover.** With every
+11. **`IBrain` -> `IBrainRuntime` cutover.** With every
     runtime-surface member now declared on
     `IBrainRuntime`, narrow
     `createRuntimeServices(brain: IBrain, callsiteStore)`
@@ -1967,28 +1635,33 @@ present; B5 deletes both.
     `createRuntimeServices(this, this.callsiteStore)` /
     `createProgramServices` /
     `createRuleVariableServices` calls and the
-    eight-key `PlatformServices` literal assembly from
+    nested-literal `brain`-tier assembly from
     `Brain.initialize()` into the `BrainRuntime`
     constructor (the "B5 -- runtime owns assembly"
     shape from the B3 spec section). Narrow the runtime
     constructor's services parameter from full
-    `PlatformServices` to `AppServices` (the
-    host-supplied tier introduced in Phase A0); rename
-    the parameter to `appServices` to match. The runtime
-    builds the `BrainInstanceServices` half internally
-    and assembles the full `PlatformServices` literal
-    by spreading `appServices` plus the brain-instance
-    keys.
-    `Brain.initialize()` now passes only the
-    `appServices` reference into
-    `new BrainRuntime(linked.program, linked.pages, this.services.appServices, contextData, previousVariables)`
+    `PlatformServices` to
+    `Omit<PlatformServices, "brain">` (the three
+    host-supplied tiers `runtime`, `shared`, `app`);
+    rename the parameter to `hostServices` to match.
+    The runtime builds the `brain` tier internally
+    (binding the in-flight `callsiteStore`,
+    `ruleVariableStores`, `program`, `pageMetadata`,
+    and the FSM accessors -- now its own state) and
+    assembles the full nested `PlatformServices`
+    literal as `{ ...hostServices, brain: { ... } }`
+    inside the constructor.
+    `Brain.initialize()` now passes only the three
+    host-tier sub-aggregates from `this.services`
+    into
+    `new BrainRuntime(linked.program, linked.pages, { runtime: this.services.runtime, shared: this.services.shared, app: this.services.app }, contextData, previousVariables)`
     (the `previousVariables` snapshot is still captured
     at the top of `initialize()` per B2).
     After this step, `IBrain` is referenced only by the
     facade's own `implements` clause and by
     `IBrainPage.brain()`; no parameter type under
     `runtime/` reads `IBrain` any more.
-13. **Run the full gate.**
+12. **Run the full gate.**
 
 ### Acceptance (validation checklist)
 
@@ -2114,8 +1787,10 @@ to `this.runtime`).
    - `brainDef` -- needed by `getLinkEnvironment()` and
      the ctor's `BrainPage` construction. **Keep.**
    - `services` -- needed by `getLinkEnvironment()` and
-     the partial `{ functions, types }` passed to the
-     runtime constructor. **Keep.**
+     by the three host-tier sub-aggregates
+     (`this.services.runtime`, `this.services.shared`,
+     `this.services.app`) passed to the runtime
+     constructor. **Keep.**
    - `linkEnvironment` -- needed for re-initialization
      (`ManagedMindcraftBrain.refreshLinkEnvironment`
      mutates it). **Keep.**
@@ -2182,9 +1857,12 @@ to `this.runtime`).
    3. `this.compiledProgram = compiledProgram`.
    4. For each page in `this.pages`, call
       `page.assignFuncIds(linked.ruleIndex, pageIdx)`.
-   5. Build the partial `{ functions, types }` from
-      `this.services` (`BrainServices`).
-   6. `this.runtime = new BrainRuntime(linked.program, linked.pages, { functions, types }, contextData)`.
+   5. Build the `hostServices` literal from
+      `this.services`:
+      `{ runtime: this.services.runtime, shared: this.services.shared, app: this.services.app }`
+      (the three non-`brain` tiers of
+      `PlatformServices`).
+   6. `this.runtime = new BrainRuntime(linked.program, linked.pages, hostServices, contextData)`.
    7. Subscribe to `this.runtime.events()` for
       `page_activated` / `page_deactivated`. Store the
       unsubscribe callbacks for cleanup in `shutdown`.
@@ -2219,13 +1897,14 @@ to `this.runtime`).
 4. `Brain.shutdown()` calls `this.runtime?.shutdown()`
    and tears down subscriptions; nothing else.
 5. `Brain.events()`, `Brain.getProgram()`,
-   `Brain.getPages()`, `Brain.rng()`, `Brain.think()`,
+   `Brain.getPages()`, `Brain.think()`,
    `Brain.startup()`, every `Brain.requestPage*`,
    `Brain.getCurrentPageId()`, `Brain.getPreviousPageId()`,
    `Brain.setEnabled` / `isEnabled` / `interrupt` /
    `clearInterrupt` / `isInterrupted`, every
    variable-accessor: each is a one-liner delegating to
-   `this.runtime`.
+   `this.runtime`. (`Brain` does not declare an `rng()`
+   method; RNG reaches the VM via `services.app.rng`.)
 6. `Brain.getCompiledProgram()` and
    `Brain.isInitialized()` are the only methods on
    `Brain` that do *not* delegate to `this.runtime`.
@@ -2384,20 +2063,25 @@ re-introduce a runtime import of `brain/` or a
   semantics through the factory. Mitigation: the
   self-test asserts in a `before()` hook that the
   factory's returned services expose exactly the
-  contracted member names. `PlatformServices` is
-  `AppServices & BrainInstanceServices` (Phase A0); the
-  assertion enumerates each top-level key explicitly --
-  app-scoped: `functions`, `types`, `rng`;
-  brain-instance: `program`, `brainVars`, `brainPages`,
-  `ruleVars`, `callsite` -- with
-  `assert.notStrictEqual(services.<key>, undefined)`;
+  contracted member names. `PlatformServices` is the
+  nested four-tier struct
+  `{ runtime, shared, app, brain }`; the
+  assertion enumerates each tier and each leaf member
+  explicitly --
+  `services.runtime`: `types`, `functions`,
+  `operatorTable`, `actions`;
+  `services.shared`: `conversions`;
+  `services.app`: `rng`;
+  `services.brain`: `program`, `brainVars`, `ruleVars`,
+  `pages`, `callsite` --
+  with `assert.notStrictEqual(services.<tier>.<leaf>, undefined)`;
   do not iterate via `Object.keys` or wrap the literal
   in a `Dict`. The `__test__createPlatformServices`
   factory itself accepts an optional
-  `appServices?: Partial<AppServices>` parameter (per
-  A0); the self-test exercises both the default
+  `app?: Partial<AppServices>` parameter; the
+  self-test exercises both the default
   (`MathOps.random()`-backed RNG) and an injected
-  deterministic RNG to confirm the two-tier seam.
+  deterministic RNG to confirm the host-supplied seam.
 - Hand-building a `Program` directly is brittle if the
   `Program` shape changes. The self-test constructs a
   `Program` literal inline (the type lives under
@@ -2459,20 +2143,36 @@ self-contained and exercised by `brain-runtime.spec.ts`.
       program access (`getProgram`, `getPages`),
       events (`events`). Note that `rng()` is **not**
       on `IBrainRuntime`; randomness is a host-scoped
-      service, see the next sub-section.
-   3a. **App-scoped vs brain-instance-scoped services.**
-       One paragraph plus a small table: `PlatformServices`
-       is `AppServices & BrainInstanceServices`.
-       `AppServices` (host-supplied at app startup,
-       shared across brains) carries `functions`,
-       `types`, `rng`. `BrainInstanceServices` (built
-       per-brain by the runtime constructor) carries
-       `program`, `brainVars`, `ruleVars`, `brainPages`,
-       `callsite`. Constrained-target ports register
-       `AppServices` once at process startup (the
+      service exposed through `services.app.rng`, see
+      the next sub-section.
+   3a. **Tiered service aggregate.** One paragraph plus
+       a small table: `PlatformServices` is a nested
+       four-tier struct
+       `{ runtime, shared, app, brain }`.
+       `RuntimeLangServices` (`runtime` -- `types`,
+       `functions`, `operatorTable`, `actions`; owned
+       by `coreModule()` and other Mindcraft modules,
+       installed at environment setup) carries the
+       VM-time language registries.
+       `SharedLangServices` (`shared` -- `conversions`)
+       carries language registries consulted by both
+       runtime and edit time.
+       `AppServices` (`app` -- `rng`; future
+       host-scoped services like network / wallClock /
+       logger / telemetry land here) is supplied by
+       the embedding application at
+       `MindcraftEnvironment` construction (the
        `apps/sim` `SimEnvironmentStore.create()` site
-       is the worked example) and pass it to each
-       `BrainRuntime` constructor.
+       is the worked example).
+       `BrainInstanceServices` (`brain` -- `program`,
+       `brainVars`, `ruleVars`, `pages`, `callsite`)
+       is built per-brain by the `BrainRuntime`
+       constructor. Constrained-target ports register
+       the three host- and module-supplied tiers
+       (`runtime`, `shared`, `app`) once at process
+       startup and pass them as the `hostServices`
+       constructor parameter on each `BrainRuntime`
+       construction.
    4. **Firewall guarantee.** One paragraph: nothing
       under `packages/core/src/runtime/` value-imports
       from `packages/core/src/brain/`. The

@@ -15,7 +15,7 @@ describe("buildAmbientDeclarations", () => {
   });
 
   test("generates plain interface for user-creatable struct", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const vecId = mkTypeId(NativeType.Struct, "Vector2");
     if (!types.get(vecId)) {
       types.addStructType("Vector2", {
@@ -26,7 +26,7 @@ describe("buildAmbientDeclarations", () => {
       });
     }
 
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     assert.ok(ambient.includes("export interface Vector2 {"), "should contain Vector2 interface");
     assert.ok(ambient.includes("x: number;"), "should contain x field");
     assert.ok(ambient.includes("y: number;"), "should contain y field");
@@ -38,7 +38,7 @@ describe("buildAmbientDeclarations", () => {
   });
 
   test("generates branded interface for native-backed struct", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const actorRefId = mkTypeId(NativeType.Struct, "ActorRef");
     if (!types.get(actorRefId)) {
       types.addStructType("ActorRef", {
@@ -50,7 +50,7 @@ describe("buildAmbientDeclarations", () => {
       });
     }
 
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     assert.ok(ambient.includes("export interface ActorRef {"), "should contain ActorRef interface");
     assert.ok(ambient.includes("readonly __brand: unique symbol;"), "native-backed should have brand");
     assert.ok(ambient.includes("readonly id: number;"), "fields should be readonly");
@@ -59,7 +59,7 @@ describe("buildAmbientDeclarations", () => {
   });
 
   test("branded struct prevents object literal assignment (TS type error)", () => {
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type ActorRef } from "mindcraft";
 
@@ -76,7 +76,7 @@ export default Sensor({
   });
 
   test("native-backed struct param compiles to LOAD_LOCAL/STORE_LOCAL", () => {
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type ActorRef, type Context } from "mindcraft";
 
@@ -97,7 +97,7 @@ export default Sensor({
   });
 
   test("struct fields referencing other struct types resolve correctly", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const posId = mkTypeId(NativeType.Struct, "Position");
     if (!types.get(posId)) {
       types.addStructType("Position", {
@@ -117,24 +117,24 @@ export default Sensor({
       });
     }
 
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     assert.ok(ambient.includes("export interface Entity {"), "should contain Entity interface");
     assert.ok(ambient.includes("pos: Position;"), "struct field should reference Position type");
   });
 
   test("strongly-typed number adds MindcraftTypeMap entry", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const healthId = mkTypeId(NativeType.Number, "health");
     if (!types.get(healthId)) {
       types.addNumberType("health");
     }
 
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     assert.ok(ambient.includes("health: number;"), "should map health to number");
   });
 
   test("enum type generates string union", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const dirId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirId)) {
       types.addEnumType("Direction", {
@@ -147,7 +147,7 @@ export default Sensor({
       });
     }
 
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     assert.ok(
       ambient.includes('export type Direction = "north" | "south" | "east";'),
       "should generate string union from enum keys"
@@ -156,7 +156,7 @@ export default Sensor({
   });
 
   test("list type generates Array alias", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const listId = mkTypeId(NativeType.List, "NumberList");
     if (!types.get(listId)) {
       types.addListType("NumberList", {
@@ -164,19 +164,19 @@ export default Sensor({
       });
     }
 
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     assert.ok(ambient.includes("export type NumberList = Array<number>;"), "should generate Array type alias");
     assert.ok(ambient.includes("NumberList: NumberList;"), "should have MindcraftTypeMap entry");
   });
 
   test("core types are not duplicated in MindcraftTypeMap", () => {
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     const matches = ambient.match(/boolean: boolean;/g);
     assert.equal(matches?.length, 1, "boolean should appear exactly once in MindcraftTypeMap");
   });
 
   test("function type emits arrow syntax in typeDefToTs", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const fnId = types.getOrCreateFunctionType({
       paramTypeIds: List.from([mkTypeId(NativeType.Number, "number")]),
       returnTypeId: mkTypeId(NativeType.Number, "number"),
@@ -184,7 +184,7 @@ export default Sensor({
     const def = types.get(fnId)!;
     assert.ok(def);
     assert.equal(def.autoInstantiated, true);
-    const ambient = buildAmbientDeclarations(services.types);
+    const ambient = buildAmbientDeclarations(services.runtime.types);
     assert.ok(!ambient.includes(def.name), "auto-instantiated function types should not appear in ambient output");
   });
 

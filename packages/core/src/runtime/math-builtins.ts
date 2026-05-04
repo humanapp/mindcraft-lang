@@ -12,9 +12,9 @@ function num(args: ReadonlyList<Value>, index: number): number {
   return (args.get(index) as NumberValue).v;
 }
 
-/** Register the built-in math functions on `services.functions`. */
+/** Register the built-in math functions on `services.runtime.functions`. */
 export function registerMathBuiltins(services: BrainServices) {
-  const { functions } = services;
+  const { functions } = services.runtime;
 
   functions.register(
     "$$math_abs",

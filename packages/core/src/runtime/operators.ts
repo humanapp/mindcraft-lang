@@ -370,8 +370,8 @@ export function safeStrCompare(args: ReadonlyList<Value>, cmp: (a: string, b: st
  * Note: Assignment is special-cased in the compiler and is a no-op at runtime. The overload is registered for the type system.
  */
 export function registerCoreOperators(services: BrainServices) {
-  const operatorTable = services.operatorTable;
-  const operatorOverloads = services.operatorOverloads;
+  const operatorTable = services.runtime.operatorTable;
+  const operatorOverloads = services.edit.operatorOverloads;
 
   operatorTable.add({ id: CoreOpId.And, parse: Precedence[CoreOpId.And] });
   operatorTable.add({ id: CoreOpId.Or, parse: Precedence[CoreOpId.Or] });

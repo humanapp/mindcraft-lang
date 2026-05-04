@@ -21,7 +21,7 @@ const descriptor: ActionDescriptor = {
 };
 
 function fnPreviousPage(ctx: ExecutionContext): Value {
-  return { t: NativeType.String, v: ctx.services.brainPages.getPreviousPageId() };
+  return { t: NativeType.String, v: ctx.services.brain.pages.getPreviousPageId() };
 }
 
 const binding: HostActionBinding = {

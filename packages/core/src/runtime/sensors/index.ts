@@ -8,15 +8,15 @@ import fnTimeout from "./timeout";
 
 /** Register the built-in sensors on `services`. */
 export function registerCoreSensors(services: BrainServices) {
-  services.actions.register(fnRandom.binding);
-  services.actions.register(fnOnPageEntered.binding);
-  services.actions.register(fnTimeout.binding);
-  services.actions.register(fnCurrentPage.binding);
-  services.actions.register(fnPreviousPage.binding);
+  services.runtime.actions.register(fnRandom.binding);
+  services.runtime.actions.register(fnOnPageEntered.binding);
+  services.runtime.actions.register(fnTimeout.binding);
+  services.runtime.actions.register(fnCurrentPage.binding);
+  services.runtime.actions.register(fnPreviousPage.binding);
 
-  services.functions.register(CoreSensorId.Random, false, fnRandom.fn, fnRandom.callDef);
-  services.functions.register(CoreSensorId.OnPageEntered, false, fnOnPageEntered.fn, fnOnPageEntered.callDef);
-  services.functions.register(CoreSensorId.Timeout, false, fnTimeout.fn, fnTimeout.callDef);
-  services.functions.register(CoreSensorId.CurrentPage, false, fnCurrentPage.fn, fnCurrentPage.callDef);
-  services.functions.register(CoreSensorId.PreviousPage, false, fnPreviousPage.fn, fnPreviousPage.callDef);
+  services.runtime.functions.register(CoreSensorId.Random, false, fnRandom.fn, fnRandom.callDef);
+  services.runtime.functions.register(CoreSensorId.OnPageEntered, false, fnOnPageEntered.fn, fnOnPageEntered.callDef);
+  services.runtime.functions.register(CoreSensorId.Timeout, false, fnTimeout.fn, fnTimeout.callDef);
+  services.runtime.functions.register(CoreSensorId.CurrentPage, false, fnCurrentPage.fn, fnCurrentPage.callDef);
+  services.runtime.functions.register(CoreSensorId.PreviousPage, false, fnPreviousPage.fn, fnPreviousPage.callDef);
 }

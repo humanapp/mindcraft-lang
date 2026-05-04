@@ -5,7 +5,9 @@ import { buildUserTileMetadata } from "./user-tile-metadata.js";
 
 /** Register a single compiled user tile (action descriptor, action tile, and parameter tiles) into the brain services. */
 export function registerUserTile(program: UserAuthoredProgram, services: BrainServices): void {
-  const { actions, tiles, types } = services;
+  const { actions } = services.runtime;
+  const { tiles } = services.edit;
+  const { types } = services.runtime;
   let unresolvedTypeName: string | undefined;
   const metadata = buildUserTileMetadata(program, (typeName) => {
     const typeId = types.resolveByName(typeName);

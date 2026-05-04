@@ -230,7 +230,7 @@ function findOptionalChainRoot(
 }
 
 function resolveOperator(opId: string, argTypes: string[], services: BrainServices): string | undefined {
-  return services.operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
+  return services.edit.operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
 }
 
 // Operator resolution with type expansion: if a direct overload lookup fails,
@@ -311,7 +311,7 @@ function resolveRegisteredEnumTypeIdFromSymbol(
   const resolvedSym = resolveAliasedSymbol(sym, checker);
   if (!resolvedSym) return undefined;
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const typeId = registry.resolveByName(resolveRegistryName(resolvedSym, services, checker));
   if (!typeId) return undefined;
 
@@ -390,7 +390,7 @@ function resolveSingleStepConversion(
     return undefined;
   }
 
-  const conversionPath = services.conversions.findBestPath(fromTypeId, toTypeId, 1);
+  const conversionPath = services.shared.conversions.findBestPath(fromTypeId, toTypeId, 1);
   const conversion = conversionPath?.get(0);
   if (!conversion) {
     return undefined;
@@ -408,7 +408,7 @@ function emitSingleStepConversion(fnName: string, ctx: LowerContext): void {
 }
 
 function resolveExpandedTargetTypeIds(expectedTypeId: TypeId, services: BrainServices): TypeId[] {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const typeDef = registry.get(expectedTypeId);
   if (!typeDef) {
     return [expectedTypeId];
@@ -438,7 +438,7 @@ function isSatisfiedWithoutTargetTypeConversion(
     return true;
   }
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const sourceDef = registry.get(sourceTypeId);
   const expectedDef = registry.get(expectedTypeId);
   if (!sourceDef || !expectedDef) {
@@ -2518,7 +2518,7 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
       stmt,
       bindingName,
       () => {
-        const keyListTypeId = ctx.services.types.instantiate("List", List.from([CoreTypeIds.String]));
+        const keyListTypeId = ctx.services.runtime.types.instantiate("List", List.from([CoreTypeIds.String]));
         ctx.ir.push({ kind: "ListNew", typeId: keyListTypeId });
         for (const field of structDef.fields.toArray()) {
           ctx.ir.push({ kind: "PushConst", value: mkStringValue(field.name) });
@@ -3360,7 +3360,7 @@ function lowerStructMethodCall(
     return true;
   }
 
-  const fnEntry = ctx.services.functions.get(fnName);
+  const fnEntry = ctx.services.runtime.functions.get(fnName);
   if (!fnEntry) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.UnknownStructMethod, `Unknown struct method: '${bareName}.${methodName}'`, propAccess)
@@ -3643,7 +3643,7 @@ function emitStore(
 }
 
 function checkStructAssignmentCompat(lhsNode: ts.Node, rhsNode: ts.Node, diagNode: ts.Node, ctx: LowerContext): void {
-  const registry = ctx.services.types;
+  const registry = ctx.services.runtime.types;
   const lhsType = ctx.checker.getTypeAtLocation(lhsNode);
   const rhsType = ctx.checker.getTypeAtLocation(rhsNode);
   const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
@@ -7471,7 +7471,7 @@ function lowerNullableNilComparison(expr: ts.BinaryExpression, opId: string, ctx
   const valueTypeId = resolveExpressionTypeId(valueNode, ctx);
   if (!valueTypeId) return false;
 
-  const valueDef = ctx.services.types.get(valueTypeId);
+  const valueDef = ctx.services.runtime.types.get(valueTypeId);
   if (!valueDef) return false;
 
   if (!valueDef.nullable) {
@@ -7968,7 +7968,7 @@ function resolveRegistryName(sym: ts.Symbol, services: BrainServices, checker?: 
   const decls = resolvedSym.getDeclarations();
   if (decls && decls.length > 0 && isUserSourceDecl(decls[0])) {
     const qualName = qualifiedClassName(decls[0].getSourceFile().fileName, name);
-    if (services.types.resolveByName(qualName)) {
+    if (services.runtime.types.resolveByName(qualName)) {
       return qualName;
     }
   }
@@ -7980,7 +7980,7 @@ function resolveStructType(
   services: BrainServices,
   checker?: ts.TypeChecker
 ): StructTypeDef | undefined {
-  const registry = services.types;
+  const registry = services.runtime.types;
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     if (nonNullish.length === 1) {
@@ -8067,7 +8067,7 @@ function registerUserEnumType(
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): void {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualifiedName = qualifiedClassName(enumNode.getSourceFile().fileName, enumNode.name.text);
   if (registry.resolveByName(qualifiedName)) {
     return;
@@ -8161,7 +8161,7 @@ function resolveEnumPropertyAccess(
   }
 
   const key = getEnumMemberKey(memberDecl);
-  if (!key || !ctx.services.types.getEnumSymbol(typeId, key)) {
+  if (!key || !ctx.services.runtime.types.getEnumSymbol(typeId, key)) {
     return { kind: "unsupported" };
   }
 
@@ -8533,7 +8533,7 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
 }
 
 function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined {
-  const registry = ctx.services.types;
+  const registry = ctx.services.runtime.types;
 
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
@@ -8578,7 +8578,7 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
 }
 
 function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | undefined {
-  const registry = ctx.services.types;
+  const registry = ctx.services.runtime.types;
 
   if (arrayType.isUnion()) {
     const nonNullish = arrayType.types.filter(
@@ -8700,7 +8700,7 @@ function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {
 }
 
 function expandTypeIdMembers(typeId: string, services: BrainServices): string[] {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const def = registry.get(typeId);
   if (!def) return [typeId];
   if (def.coreType === NativeType.Union) {
@@ -8721,7 +8721,7 @@ function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value |
   if (!contextualType) return undefined;
   const typeId = resolveRegisteredEnumTypeId(contextualType, ctx.services, ctx.checker);
   if (!typeId) return undefined;
-  const registry = ctx.services.types;
+  const registry = ctx.services.runtime.types;
   const typeDef = registry.get(typeId);
   if (!typeDef || typeDef.coreType !== NativeType.Enum) return undefined;
   return { t: NativeType.Enum, typeId, v: expr.text };
@@ -8778,7 +8778,7 @@ function tsTypeToTypeId(
       const retType = sig.getReturnType();
       const retTid = tsTypeToTypeId(retType, checker, services);
       if (retTid) {
-        return services.types.getOrCreateFunctionType({
+        return services.runtime.types.getOrCreateFunctionType({
           paramTypeIds,
           returnTypeId: retTid,
         });
@@ -8796,7 +8796,7 @@ function tsTypeToTypeId(
       const baseTypeId = tsTypeToTypeId(nonNullish[0], checker, services);
       if (!baseTypeId) return undefined;
       if (hasNullish) {
-        return services.types.addNullableType(baseTypeId);
+        return services.runtime.types.addNullableType(baseTypeId);
       }
       return baseTypeId;
     }
@@ -8815,7 +8815,7 @@ function tsTypeToTypeId(
         deduped.add(id);
       });
       if (deduped.size >= 2) {
-        return services.types.getOrCreateUnionType(List.from([...deduped]));
+        return services.runtime.types.getOrCreateUnionType(List.from([...deduped]));
       }
       if (deduped.size === 1) {
         return [...deduped][0];
@@ -8841,7 +8841,7 @@ function tsTypeToTypeId(
   }
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (sym) {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const symName = sym.getName();
 
     if (symName === "Array" && checker) {
@@ -8879,7 +8879,7 @@ function tsTypeToTypeId(
     if (indexType) {
       const valueTypeId = tsTypeToTypeId(indexType, checker, services);
       if (valueTypeId) {
-        return services.types.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
+        return services.runtime.types.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
       }
     }
   }
@@ -8895,7 +8895,7 @@ function autoRegisterIntersectionType(
   const aliasSym = type.aliasSymbol;
   if (aliasSym) {
     const aliasName = resolveRegistryName(aliasSym, services);
-    const existing = services.types.resolveByName(aliasName);
+    const existing = services.runtime.types.resolveByName(aliasName);
     if (existing) return existing;
   }
 
@@ -8914,7 +8914,7 @@ function autoRegisterIntersectionType(
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
-      fieldTypeId = services.types.addNullableType(fieldTypeId);
+      fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
     fields.push({ name: prop.name, typeId: fieldTypeId });
   }
@@ -8930,11 +8930,11 @@ function autoRegisterIntersectionType(
       constituentNames.push(id);
     }
     structName = constituentNames.join("&");
-    const existing = services.types.resolveByName(structName);
+    const existing = services.runtime.types.resolveByName(structName);
     if (existing) return existing;
   }
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const typeId = registry.reserveStructType(structName);
   registry.finalizeStructType(typeId, { fields });
   return typeId;
@@ -8961,14 +8961,14 @@ function autoRegisterAnonymousStruct(
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
-      fieldTypeId = services.types.addNullableType(fieldTypeId);
+      fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
     fields.push({ name: prop.name, typeId: fieldTypeId });
     nameParts.push(`${prop.name}:${fieldTypeId}`);
   }
 
   const structName = `{${nameParts.join(",")}}`;
-  const registry = services.types;
+  const registry = services.runtime.types;
   const existing = registry.resolveByName(structName);
   if (existing) {
     const def = registry.get(existing);
@@ -9028,7 +9028,7 @@ function autoRegisterObjectType(
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
-      fieldTypeId = services.types.addNullableType(fieldTypeId);
+      fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
     fields.push({ name: prop.name, typeId: fieldTypeId });
   }
@@ -9048,7 +9048,7 @@ function autoRegisterObjectType(
     structName = `${baseName}<${argIds.join(",")}>`;
   }
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const existing = registry.resolveByName(structName);
   if (existing) return existing;
 
@@ -9188,7 +9188,7 @@ function registerClassStructType(
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): void {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
   const existing = registry.resolveByName(qualName);
   if (existing) return;
@@ -9207,7 +9207,7 @@ function reserveInterfaceStructType(
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): string | undefined {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualName = qualifiedClassName(ii.sourceFile.fileName, ii.name);
 
   if (registry.resolveByName(ii.name)) {
@@ -9245,7 +9245,7 @@ function finalizeInterfaceStructType(
   const fields = extractInterfaceFields(type, ii.node, checker, diagnostics, services);
   if (!fields) return;
 
-  services.types.finalizeStructType(typeId, { fields });
+  services.runtime.types.finalizeStructType(typeId, { fields });
 }
 
 function reserveTypeAliasStructType(
@@ -9254,7 +9254,7 @@ function reserveTypeAliasStructType(
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): string | undefined {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualName = qualifiedClassName(tai.sourceFile.fileName, tai.name);
 
   if (registry.resolveByName(tai.name)) {
@@ -9291,7 +9291,7 @@ function finalizeTypeAliasStructType(
   const fields = extractInterfaceFields(type, tai.node, checker, diagnostics, services);
   if (!fields) return;
 
-  services.types.finalizeStructType(typeId, { fields });
+  services.runtime.types.finalizeStructType(typeId, { fields });
 }
 
 function extractInterfaceFields(
@@ -9349,7 +9349,7 @@ function extractInterfaceFields(
     }
 
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
-      fieldTypeId = services.types.addNullableType(fieldTypeId);
+      fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
 
     fields.push({ name: prop.name, typeId: fieldTypeId });
@@ -9371,7 +9371,7 @@ function lowerClassDeclaration(
 ): FunctionEntry[] {
   const entries: FunctionEntry[] = [];
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
   const typeId = registry.resolveByName(qualName);
 
@@ -9434,7 +9434,7 @@ function lowerClassDeclaration(
     if (!member.initializer) continue;
 
     const fieldName = member.name.text;
-    const structDef = typeId ? (services.types.get(typeId) as StructTypeDef | undefined) : undefined;
+    const structDef = typeId ? (services.runtime.types.get(typeId) as StructTypeDef | undefined) : undefined;
     const field = structDef ? findStructField(structDef, fieldName) : undefined;
     const fieldIndex = field && structDef && isIndexedStruct(structDef) ? field.fieldIndex : undefined;
     ctorIr.push({ kind: "LoadLocal", index: thisLocal });
