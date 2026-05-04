@@ -487,8 +487,8 @@ Each unit must:
 
 ## Current State
 
-Completed: A0, B0, B1, B2, B3
-Next up: B4
+Completed: A0, B0, B1, B2, B3, B4
+Next up: B5
 
 ---
 
@@ -593,6 +593,31 @@ Verification: full gate green (752/752 tests).
   the brain tier internally. That narrowing is deferred to B5 when the
   brain tier construction moves into BrainRuntime. Until then, Brain passes
   the fully assembled PlatformServices and BrainRuntime trusts it.
+
+### B4 -- Move Activation / Deactivation Hook Drivers
+
+The seven hook driver methods moved from `Brain` to `BrainRuntime`;
+`Brain.activatePage` and `Brain.runDeactivationHooksForCurrentPage` now
+delegate via `this.runtime.<method>(...)`. `BytecodeExecutableAction`,
+`ExecutionContext`, and `VmStatus` imports removed from `brain.ts`.
+
+New transitional surface on `BrainRuntime` (public until B5 demotes to private):
+`runHostActivationHook`, `runHostInitializerHook`, `runBytecodeInitializerHook`,
+`runBytecodeActivationHook`, `runBytecodeDeactivationHook`,
+`runHostDeactivationHook`, `runBytecodeHook`. Each carries `@deprecated`.
+
+Verification: full gate green (752/752 tests).
+
+#### Risks
+
+- The seven hook drivers are `public` on `BrainRuntime`. B5 must demote all
+  seven (including `runBytecodeHook`) to `private` in the same diff that moves
+  the FSM in. Leaving any one public after B5 is a surface leak.
+- The spec's B4 procedure step said to tag the methods with
+  `@deprecated transitional; becomes private in B5` -- that text contains phase
+  markers forbidden by the global rule. The resolved form is plain `@deprecated transitional`
+  with no phase text. B5 should follow the same pattern for any temporary surface
+  it adds.
 
 ---
 
@@ -1594,7 +1619,7 @@ there.
    for the duration of B4-B5; B5 demotes them back to
    `private` once the FSM caller moves into the runtime
    (B5 step 9). Mark each with a JSDoc tag
-   `@internal transitional; becomes private in B5`.
+   `@deprecated transitional`.
 2. **Replace `Brain`'s call sites** with
    `this.runtime.<method>(...)`. `Brain.activatePage` and
    `Brain.runDeactivationHooksForCurrentPage` are the
@@ -1626,7 +1651,7 @@ there.
    each hook driver only via `this.runtime.<method>`.
 5. The seven hook drivers exist on `BrainRuntime` with
    their JSDoc preserved verbatim (plus the
-   `@internal transitional` tag).
+   `@deprecated transitional` tag).
 6. The full gate passes from `packages/core` with zero
    noise.
 7. Behavior tests covering action initialization
@@ -1671,7 +1696,7 @@ authoring graph and the compile / link / treeshake
 pipeline.
 
 **Precondition.** B3 and B4 shipped. The transitional
-getters on `BrainRuntime` (B3) and the `@internal
+getters on `BrainRuntime` (B3) and the `@deprecated
 transitional` tags on the hook drivers (B4) are still
 present; B5 deletes both.
 
@@ -1792,7 +1817,7 @@ present; B5 deletes both.
    `BrainRuntime`.
 9. **Demote the seven hook drivers** from `public` (the
    B4 transitional shape) to `private`. Remove the
-   `@internal transitional` JSDoc tag. The only callers
+   `@deprecated transitional` JSDoc tag. The only callers
    of the hook drivers are `activatePage` and
    `runDeactivationHooksForCurrentPage`, both now on
    `BrainRuntime`.
@@ -1859,7 +1884,7 @@ present; B5 deletes both.
    and `page_deactivated` after hook + fiber-cancel, per
    B0 table 3.
 7. The seven hook drivers on `BrainRuntime` are
-   `private` with no `@internal transitional` tag.
+   `private` with no `@deprecated transitional` tag.
 8. The transitional getters on `BrainRuntime` (B3) are
    deleted.
 9. `IBrain` -> `IBrainRuntime` cutover complete:

@@ -1,14 +1,16 @@
 import { Dict } from "../platform/dict";
+import { Error } from "../platform/error";
 import { EventEmitter, type EventEmitterConsumer } from "../platform/event-emitter";
 import { List } from "../platform/list";
 import type { ICallsiteStore } from "./callsite-store";
-import type { ExecutionContext } from "./context";
+import type { BytecodeExecutableAction, ExecutionContext } from "./context";
 import type { BrainEvents, IBrainRuntime, PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
 import type { RuleVariableStores } from "./rule-services";
 import type { PlatformServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
 import { FiberScheduler, VM } from "./vm";
+import { VmStatus } from "./vm-types";
 
 /**
  * Runtime entry point for a compiled Mindcraft brain. Owns the VM, the fiber
@@ -92,12 +94,9 @@ export class BrainRuntime implements IBrainRuntime {
   private nextInlineFiberId: number = -1000000;
 
   /**
-   * Event emitter for brain lifecycle events. Held here so Brain can
-   * subscribe in B3; becomes the authoritative emitter once B5 moves
-   * the page FSM into this class.
-   *
-   * @deprecated transitional; remove `@deprecated` tag in B5 when this
-   *   becomes the canonical emitter.
+   * Event emitter for brain lifecycle events.
+   * 
+   * @deprecated transitional
    */
   private readonly emitter_: EventEmitter<BrainEvents> = new EventEmitter<BrainEvents>();
 
@@ -176,52 +175,51 @@ export class BrainRuntime implements IBrainRuntime {
   }
 
   // -------------------------------------------------------------------------
-  // Transitional accessors -- expose private fields to Brain's FSM during
-  // B3-B4 while the page lifecycle methods still live in brain.ts.
-  // Removed in B5 when the FSM moves into this class.
+  // Accessors for Brain's FSM while the page lifecycle methods still live
+  // in brain.ts. Removed when the FSM moves into this class.
   // -------------------------------------------------------------------------
 
-  /** @deprecated transitional; removed in B5 */
+  /** @deprecated transitional */
   _vm(): VM {
     return this.vm;
   }
 
-  /** @deprecated transitional; removed in B5 */
+  /** @deprecated transitional */
   _scheduler(): FiberScheduler {
     return this.scheduler;
   }
 
-  /** @deprecated transitional; removed in B5 */
+  /** @deprecated transitional */
   _executionContext(): ExecutionContext {
     return this.executionContext;
   }
 
-  /** @deprecated transitional; removed in B5 */
+  /** @deprecated transitional */
   _callsiteStore(): ICallsiteStore {
     return this.callsiteStore;
   }
 
-  /** @deprecated transitional; removed in B5 */
+  /** @deprecated transitional */
   _ruleVariableStores(): RuleVariableStores {
     return this.ruleVariableStores;
   }
 
-  /** @deprecated transitional; removed in B5 */
+  /** @deprecated transitional */
   _getActiveRuleFiberIds(): List<{ funcId: number; fiberId: number | undefined }> {
     return this.activeRuleFiberIds;
   }
 
-  /** @deprecated transitional; removed in B5 */
+  /** @deprecated transitional */
   _setActiveRuleFiberIds(value: List<{ funcId: number; fiberId: number | undefined }>): void {
     this.activeRuleFiberIds = value;
   }
 
-  /** @deprecated transitional; removed in B5 */
+  /** @deprecated transitional */
   _getNextInlineFiberId(): number {
     return this.nextInlineFiberId;
   }
 
-  /** @deprecated transitional; removed in B5 */
+  /** @deprecated transitional */
   _consumeNextInlineFiberId(): number {
     return this.nextInlineFiberId--;
   }
@@ -323,6 +321,123 @@ export class BrainRuntime implements IBrainRuntime {
    */
   snapshotVariables(): VariableSnapshot {
     return { values: this.variables, slotsByName: this.varSlotByName };
+  }
+
+  // -------------------------------------------------------------------------
+  // Activation / deactivation hook drivers -- called by Brain's FSM.
+  // -------------------------------------------------------------------------
+
+  /**
+   * Run the host-binding activation hook for a call site.
+   */
+  public runHostActivationHook(callSiteId: number, onPageEntered: (ctx: ExecutionContext) => void): void {
+    const executionContext = this.executionContext;
+    const previousCallSiteId = executionContext.currentCallSiteId;
+    const previousRuleFuncId = executionContext.currentRuleFuncId;
+
+    executionContext.currentCallSiteId = callSiteId;
+    executionContext.currentRuleFuncId = undefined;
+
+    try {
+      onPageEntered(executionContext);
+    } finally {
+      executionContext.currentCallSiteId = previousCallSiteId;
+      executionContext.currentRuleFuncId = previousRuleFuncId;
+    }
+  }
+
+  /**
+   * Run the host-binding initializer hook for a call site.
+   */
+  public runHostInitializerHook(callSiteId: number, onInitialized: (ctx: ExecutionContext) => void): void {
+    const executionContext = this.executionContext;
+    const previousCallSiteId = executionContext.currentCallSiteId;
+    const previousRuleFuncId = executionContext.currentRuleFuncId;
+
+    executionContext.currentCallSiteId = callSiteId;
+    executionContext.currentRuleFuncId = undefined;
+
+    try {
+      onInitialized(executionContext);
+    } finally {
+      executionContext.currentCallSiteId = previousCallSiteId;
+      executionContext.currentRuleFuncId = previousRuleFuncId;
+    }
+  }
+
+  /**
+   * Run the bytecode initializer hook for an action.
+   */
+  public runBytecodeInitializerHook(action: BytecodeExecutableAction, callSiteId: number): void {
+    if (action.initializerFuncId === undefined) return;
+    this.runBytecodeHook(action, callSiteId, action.initializerFuncId, "initialization");
+  }
+
+  /**
+   * Run the bytecode activation hook for an action.
+   */
+  public runBytecodeActivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
+    if (action.activationFuncId === undefined) return;
+    this.runBytecodeHook(action, callSiteId, action.activationFuncId, "activation");
+  }
+
+  /**
+   * Run the bytecode deactivation hook for an action.
+   */
+  public runBytecodeDeactivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
+    if (action.deactivationFuncId === undefined) return;
+    this.runBytecodeHook(action, callSiteId, action.deactivationFuncId, "deactivation");
+  }
+
+  /**
+   * Run the host-binding deactivation hook for a call site.
+   */
+  public runHostDeactivationHook(callSiteId: number, onPageExited: (ctx: ExecutionContext) => void): void {
+    const executionContext = this.executionContext;
+    const previousCallSiteId = executionContext.currentCallSiteId;
+    const previousRuleFuncId = executionContext.currentRuleFuncId;
+
+    executionContext.currentCallSiteId = callSiteId;
+    executionContext.currentRuleFuncId = undefined;
+
+    try {
+      onPageExited(executionContext);
+    } finally {
+      executionContext.currentCallSiteId = previousCallSiteId;
+      executionContext.currentRuleFuncId = previousRuleFuncId;
+    }
+  }
+
+  /**
+   * Spawn a synchronous fiber for a hook function and run it to completion.
+   * Throws a platform {@link Error} if the fiber faults or suspends.
+   */
+  public runBytecodeHook(action: BytecodeExecutableAction, callSiteId: number, funcId: number, label: string): void {
+    const executionContext = this.executionContext;
+    const vm = this.vm;
+    const scheduler = this.scheduler;
+
+    const hookContext: ExecutionContext = {
+      ...executionContext,
+      currentCallSiteId: callSiteId,
+      currentRuleFuncId: undefined,
+    };
+    const hookFiber = vm.spawnFiber(this.nextInlineFiberId--, funcId, List.empty(), hookContext);
+    const hookFrame = hookFiber.frames.get(0)!;
+    hookFrame.actionBinding = {
+      actionKey: action.descriptor.key,
+      callSiteId,
+      isAsync: false,
+    };
+    hookFiber.instrBudget = 10000;
+
+    const result = vm.runFiber(hookFiber, scheduler);
+    if (result.status === VmStatus.FAULT) {
+      throw new Error(`Page ${label} for action '${action.descriptor.key}' faulted: ${result.error.message}`);
+    }
+    if (result.status !== VmStatus.DONE) {
+      throw new Error(`Page ${label} for action '${action.descriptor.key}' cannot suspend`);
+    }
   }
 
   /**

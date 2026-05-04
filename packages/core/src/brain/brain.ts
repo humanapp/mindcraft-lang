@@ -9,10 +9,8 @@ import {
   type IBrain,
   type PageMetadata,
   type UnlinkedBrainProgram,
-  VmStatus,
 } from "../runtime";
 import { createCallsiteStore } from "../runtime/callsite-store";
-import type { BytecodeExecutableAction, ExecutionContext } from "../runtime/context";
 import { linkBrainProgram } from "../runtime/linker";
 import type { Program } from "../runtime/program";
 import { createProgramServices, createRuleVariableServices, type RuleVariableStores } from "../runtime/rule-services";
@@ -414,7 +412,7 @@ export class Brain implements IBrain {
       if (action.binding === "bytecode" && action.initializerFuncId !== undefined) {
         const newlyAllocated = callsiteStore.ensure(site.callSiteId);
         if (newlyAllocated) {
-          this.runBytecodeInitializerHook(action, site.callSiteId);
+          this.runtime.runBytecodeInitializerHook(action, site.callSiteId);
         }
       }
 
@@ -422,17 +420,17 @@ export class Brain implements IBrain {
         if (action.onInitialized) {
           const newlyAllocated = callsiteStore.ensure(site.callSiteId);
           if (newlyAllocated) {
-            this.runHostInitializerHook(site.callSiteId, action.onInitialized);
+            this.runtime.runHostInitializerHook(site.callSiteId, action.onInitialized);
           }
         }
         if (action.onPageEntered) {
-          this.runHostActivationHook(site.callSiteId, action.onPageEntered);
+          this.runtime.runHostActivationHook(site.callSiteId, action.onPageEntered);
         }
         continue;
       }
 
       if (action.activationFuncId !== undefined) {
-        this.runBytecodeActivationHook(action, site.callSiteId);
+        this.runtime.runBytecodeActivationHook(action, site.callSiteId);
       }
     }
 
@@ -515,13 +513,13 @@ export class Brain implements IBrain {
 
       if (action.binding === "host") {
         if (action.onPageExited) {
-          this.runHostDeactivationHook(site.callSiteId, action.onPageExited);
+          this.runtime.runHostDeactivationHook(site.callSiteId, action.onPageExited);
         }
         continue;
       }
 
       if (action.deactivationFuncId !== undefined) {
-        this.runBytecodeDeactivationHook(action, site.callSiteId);
+        this.runtime.runBytecodeDeactivationHook(action, site.callSiteId);
       }
     }
   }
@@ -564,112 +562,6 @@ export class Brain implements IBrain {
     if (!fiber) return true;
 
     return fiber.state === FiberState.DONE || fiber.state === FiberState.FAULT || fiber.state === FiberState.CANCELLED;
-  }
-
-  private runHostActivationHook(callSiteId: number, onPageEntered: (ctx: ExecutionContext) => void): void {
-    if (!this.runtime) {
-      return;
-    }
-    const executionContext = this.runtime._executionContext();
-
-    const previousCallSiteId = executionContext.currentCallSiteId;
-    const previousRuleFuncId = executionContext.currentRuleFuncId;
-
-    executionContext.currentCallSiteId = callSiteId;
-    executionContext.currentRuleFuncId = undefined;
-
-    try {
-      onPageEntered(executionContext);
-    } finally {
-      executionContext.currentCallSiteId = previousCallSiteId;
-      executionContext.currentRuleFuncId = previousRuleFuncId;
-    }
-  }
-
-  private runHostInitializerHook(callSiteId: number, onInitialized: (ctx: ExecutionContext) => void): void {
-    if (!this.runtime) {
-      return;
-    }
-    const executionContext = this.runtime._executionContext();
-
-    const previousCallSiteId = executionContext.currentCallSiteId;
-    const previousRuleFuncId = executionContext.currentRuleFuncId;
-
-    executionContext.currentCallSiteId = callSiteId;
-    executionContext.currentRuleFuncId = undefined;
-
-    try {
-      onInitialized(executionContext);
-    } finally {
-      executionContext.currentCallSiteId = previousCallSiteId;
-      executionContext.currentRuleFuncId = previousRuleFuncId;
-    }
-  }
-
-  private runBytecodeInitializerHook(action: BytecodeExecutableAction, callSiteId: number): void {
-    if (action.initializerFuncId === undefined) return;
-    this.runBytecodeHook(action, callSiteId, action.initializerFuncId, "initialization");
-  }
-
-  private runBytecodeActivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
-    if (action.activationFuncId === undefined) return;
-    this.runBytecodeHook(action, callSiteId, action.activationFuncId, "activation");
-  }
-
-  private runBytecodeDeactivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
-    if (action.deactivationFuncId === undefined) return;
-    this.runBytecodeHook(action, callSiteId, action.deactivationFuncId, "deactivation");
-  }
-
-  private runHostDeactivationHook(callSiteId: number, onPageExited: (ctx: ExecutionContext) => void): void {
-    if (!this.runtime) {
-      return;
-    }
-    const executionContext = this.runtime._executionContext();
-
-    const previousCallSiteId = executionContext.currentCallSiteId;
-    const previousRuleFuncId = executionContext.currentRuleFuncId;
-
-    executionContext.currentCallSiteId = callSiteId;
-    executionContext.currentRuleFuncId = undefined;
-
-    try {
-      onPageExited(executionContext);
-    } finally {
-      executionContext.currentCallSiteId = previousCallSiteId;
-      executionContext.currentRuleFuncId = previousRuleFuncId;
-    }
-  }
-
-  private runBytecodeHook(action: BytecodeExecutableAction, callSiteId: number, funcId: number, label: string): void {
-    if (!this.runtime) {
-      return;
-    }
-    const executionContext = this.runtime._executionContext();
-    const vm = this.runtime._vm();
-    const scheduler = this.runtime._scheduler();
-
-    const hookContext: ExecutionContext = {
-      ...executionContext,
-      currentCallSiteId: callSiteId,
-      currentRuleFuncId: undefined,
-    };
-    const hookFiber = vm.spawnFiber(this.runtime._consumeNextInlineFiberId(), funcId, List.empty(), hookContext);
-    const hookFrame = hookFiber.frames.get(0)!;
-    hookFrame.actionBinding = {
-      actionKey: action.descriptor.key,
-      callSiteId,
-      isAsync: false,
-    };
-    hookFiber.instrBudget = 10000;
-
-    const result = vm.runFiber(hookFiber, scheduler);
-    if (result.status === VmStatus.FAULT) {
-      throw new Error(`Page ${label} for action '${action.descriptor.key}' faulted: ${result.error.message}`);
-    }
-    if (result.status !== VmStatus.DONE) {
-      throw new Error(`Page ${label} for action '${action.descriptor.key}' cannot suspend`);
-    }
   }
 
   private isValidPageIndex(pageIndex: number): boolean {
