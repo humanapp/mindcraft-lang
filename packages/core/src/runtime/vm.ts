@@ -1007,7 +1007,6 @@ export class VM implements IVM {
         throw new Error(`ACTION_CALL: host action ${actionKey} is missing execSync`);
       }
 
-      fiber.executionContext.services.action.ensureCallsite(callSiteId, 0);
       this.bindExecutionContext(fiber, frame, callSiteId);
 
       const args = fiber.vstack.subview(stackSize - argc, argc);
@@ -1063,7 +1062,6 @@ export class VM implements IVM {
       const hid = this.handles.createPending();
       this.push(fiber, V.handle(hid));
 
-      fiber.executionContext.services.action.ensureCallsite(callSiteId, 0);
       this.bindExecutionContext(fiber, frame, callSiteId);
 
       action.execAsync(fiber.executionContext, args, hid);
@@ -1776,7 +1774,6 @@ export class VM implements IVM {
       fiber.executionContext,
       `ACTION_CALL:${action.descriptor.key}`
     );
-    fiber.executionContext.services.action.ensureCallsite(callSiteId, action.numStateSlots);
     const ruleFuncId = this.resolveFrameRuleFuncId(fiber.executionContext, callerFrame);
     const base = fiber.vstack.size();
     const locals = this.allocLocals(fn, effectiveArgs);
@@ -1806,7 +1803,6 @@ export class VM implements IVM {
   ): Fiber {
     const childContext: ExecutionContext = { ...parentFiber.executionContext };
     const childFiber = this.spawnFiber(this.nextInternalFiberId--, action.entryFuncId, args, childContext);
-    childContext.services.action.ensureCallsite(callSiteId, action.numStateSlots);
     const ruleFuncId = this.resolveFrameRuleFuncId(parentFiber.executionContext, this.topFrame(parentFiber));
     const childFrame = this.topFrame(childFiber)!;
 

@@ -31,13 +31,12 @@ export interface IDenseShims {
   callSite: ICallSiteServices;
   action: IActionServices;
   /**
-   * Reset the per-callsite action state slots while preserving the
-   * callsite's host state. Invoked by the brain on page activation; not
-   * part of the public {@link IActionServices} dense surface.
+   * Tear down all per-callsite storage (action state slots and host state).
+   * Used by `Brain.shutdown()` after the active page has been deactivated.
+   * After teardown, every prior `callSiteId` is invalid until the next
+   * `ensureCallsite` re-allocates.
    */
-  resetCallsite(callSiteId: number, numStateSlots: number): void;
-  /** Clear all per-callsite action state and host state (e.g. on page deactivation). */
-  clearAllCallsites(): void;
+  reset(): void;
 }
 
 /**
@@ -53,18 +52,24 @@ export interface IDenseShims {
 export function createDenseShims(brain: IBrain, ruleLookup: RuleByFuncIdLookup): IDenseShims {
   const actionInstances: Dict<number, ActionInstance> = new Dict();
 
-  function ensure(callSiteId: number, numStateSlots: number): ActionInstance {
+  function allocateInstance(callSiteId: number): ActionInstance {
+    const created: ActionInstance = { callSiteId, stateSlots: List.empty<Value>() };
+    actionInstances.set(callSiteId, created);
+    return created;
+  }
+
+  function ensureInstance(callSiteId: number): ActionInstance {
     const existing = actionInstances.get(callSiteId);
     if (existing) {
       return existing;
     }
-    const stateSlots = List.empty<Value>();
-    for (let i = 0; i < numStateSlots; i++) {
-      stateSlots.push(NIL_VALUE);
+    return allocateInstance(callSiteId);
+  }
+
+  function padSlotsTo(slots: List<Value>, length: number): void {
+    while (slots.size() < length) {
+      slots.push(NIL_VALUE);
     }
-    const created: ActionInstance = { callSiteId, stateSlots };
-    actionInstances.set(callSiteId, created);
-    return created;
   }
 
   return {
@@ -148,14 +153,24 @@ export function createDenseShims(brain: IBrain, ruleLookup: RuleByFuncIdLookup):
         return actionInstances.get(callSiteId)?.hostState;
       },
       setHostState(callSiteId: number, state: unknown): void {
-        const instance = ensure(callSiteId, 0);
+        const instance = ensureInstance(callSiteId);
         instance.hostState = state;
+      },
+      clearHostState(callSiteId: number): void {
+        const instance = actionInstances.get(callSiteId);
+        if (instance) {
+          instance.hostState = undefined;
+        }
       },
     },
 
     action: {
-      ensureCallsite(callSiteId: number, numStateSlots: number): void {
-        ensure(callSiteId, numStateSlots);
+      ensureCallsite(callSiteId: number): boolean {
+        if (actionInstances.has(callSiteId)) {
+          return false;
+        }
+        allocateInstance(callSiteId);
+        return true;
       },
       getStateSlot(callSiteId: number, slotIdx: number): Value {
         const instance = actionInstances.get(callSiteId);
@@ -165,28 +180,16 @@ export function createDenseShims(brain: IBrain, ruleLookup: RuleByFuncIdLookup):
         return instance.stateSlots.get(slotIdx) ?? NIL_VALUE;
       },
       setStateSlot(callSiteId: number, slotIdx: number, value: Value): void {
-        const instance = actionInstances.get(callSiteId);
-        if (!instance) {
-          return;
-        }
+        const instance = ensureInstance(callSiteId);
+        padSlotsTo(instance.stateSlots, slotIdx + 1);
         instance.stateSlots.set(slotIdx, value);
+      },
+      resetCallsite(callSiteId: number): void {
+        actionInstances.delete(callSiteId);
       },
     },
 
-    resetCallsite(callSiteId: number, numStateSlots: number): void {
-      const previous = actionInstances.get(callSiteId);
-      const stateSlots = List.empty<Value>();
-      for (let i = 0; i < numStateSlots; i++) {
-        stateSlots.push(NIL_VALUE);
-      }
-      const fresh: ActionInstance = { callSiteId, stateSlots };
-      if (previous?.hostState !== undefined) {
-        fresh.hostState = previous.hostState;
-      }
-      actionInstances.set(callSiteId, fresh);
-    },
-
-    clearAllCallsites(): void {
+    reset(): void {
       actionInstances.clear();
     },
   };

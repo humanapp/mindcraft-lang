@@ -60,23 +60,50 @@ export interface IRngServices {
 /**
  * Per-callsite host-side state cell. Used by host functions that need to
  * persist opaque payloads across ticks at a single call site (e.g. cooldown
- * timers). Lifetime is page-activation-scoped.
+ * timers). Lifetime is brain-instance-scoped: the cell survives page
+ * deactivation / activation cycles. Use {@link clearHostState} to drop the
+ * cell explicitly (e.g. from a host `onPageExited` hook).
  */
 export interface ICallSiteServices {
   getHostState(callSiteId: number): unknown;
   setHostState(callSiteId: number, state: unknown): void;
+  /**
+   * Clear the host-state cell for `callSiteId`. After this call,
+   * {@link getHostState} returns `undefined` until the next
+   * {@link setHostState}. Equivalent in cost to
+   * `setHostState(callSiteId, undefined)`.
+   */
+  clearHostState(callSiteId: number): void;
 }
 
 /**
  * Per-callsite action-state slots backing bytecode-action `LOAD_CALLSITE_VAR` /
- * `STORE_CALLSITE_VAR` reads and writes. Slot allocation is compile-time;
- * {@link ensureCallsite} sizes the slot list on first entry to a callsite for
- * the current page activation.
+ * `STORE_CALLSITE_VAR` reads and writes. Storage is brain-instance-scoped
+ * and lazy: the slot list is allocated on first {@link setStateSlot} (or
+ * first {@link ensureCallsite}), and grows on demand to cover the largest
+ * `slotIdx` written so far. Reads of unwritten slots return
+ * {@link NIL_VALUE} without allocating. Use {@link resetCallsite} to
+ * deallocate explicitly.
  */
 export interface IActionServices {
-  ensureCallsite(callSiteId: number, numStateSlots: number): void;
+  /**
+   * Mark the call site as touched, allocating an empty slot list if the
+   * call site has not been touched before. Used exclusively as the
+   * one-time gate for bytecode-action initializer dispatch.
+   *
+   * @returns `true` if the call site was newly allocated by this call,
+   *   `false` if it already existed.
+   */
+  ensureCallsite(callSiteId: number): boolean;
   getStateSlot(callSiteId: number, slotIdx: number): Value;
   setStateSlot(callSiteId: number, slotIdx: number, value: Value): void;
+  /**
+   * Deallocate the call site's slot list. The next
+   * {@link ensureCallsite} for this `callSiteId` returns `true` and runs
+   * the action's `initializerFuncId` again. Does not touch host-state;
+   * use {@link ICallSiteServices.clearHostState} for that.
+   */
+  resetCallsite(callSiteId: number): void;
 }
 
 /** Runtime service aggregate required by VM execution paths. */

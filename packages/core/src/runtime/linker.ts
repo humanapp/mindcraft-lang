@@ -121,6 +121,22 @@ function validateResolvedAction(descriptor: ActionDescriptor, resolved: Resolved
       `linkBrainProgram: action '${descriptor.key}' has invalid activationFuncId ${artifact.activationFuncId}`
     );
   }
+  if (
+    artifact.initializerFuncId !== undefined &&
+    (artifact.initializerFuncId < 0 || artifact.initializerFuncId >= artifact.functions.size())
+  ) {
+    throw new Error(
+      `linkBrainProgram: action '${descriptor.key}' has invalid initializerFuncId ${artifact.initializerFuncId}`
+    );
+  }
+  if (
+    artifact.deactivationFuncId !== undefined &&
+    (artifact.deactivationFuncId < 0 || artifact.deactivationFuncId >= artifact.functions.size())
+  ) {
+    throw new Error(
+      `linkBrainProgram: action '${descriptor.key}' has invalid deactivationFuncId ${artifact.deactivationFuncId}`
+    );
+  }
   if (artifact.numStateSlots < 0) {
     throw new Error(`linkBrainProgram: action '${descriptor.key}' has invalid numStateSlots ${artifact.numStateSlots}`);
   }
@@ -267,7 +283,10 @@ function appendArtifactTables(
     binding: "bytecode",
     descriptor,
     entryFuncId: artifact.entryFuncId + funcOffset,
+    initializerFuncId: artifact.initializerFuncId !== undefined ? artifact.initializerFuncId + funcOffset : undefined,
     activationFuncId: artifact.activationFuncId !== undefined ? artifact.activationFuncId + funcOffset : undefined,
+    deactivationFuncId:
+      artifact.deactivationFuncId !== undefined ? artifact.deactivationFuncId + funcOffset : undefined,
     numStateSlots: artifact.numStateSlots,
   };
 }

@@ -226,3 +226,55 @@ describe("__test__createPlatformServices -- ruleVars regression", () => {
     assert.deepEqual(services.ruleVars.getByName(1, "v"), mkNumberValue(20));
   });
 });
+
+describe("createDenseShims -- callsite lifecycle", () => {
+  test("ensureCallsite returns true on first call, false on subsequent", () => {
+    const shims = createDenseShims(stubBrain, () => undefined);
+    assert.equal(shims.action.ensureCallsite(7), true);
+    assert.equal(shims.action.ensureCallsite(7), false);
+    assert.equal(shims.action.ensureCallsite(7), false);
+  });
+
+  test("resetCallsite deallocates so the next ensureCallsite returns true again", () => {
+    const shims = createDenseShims(stubBrain, () => undefined);
+    shims.action.ensureCallsite(11);
+    shims.action.setStateSlot(11, 0, mkNumberValue(99));
+    shims.action.resetCallsite(11);
+    assert.equal(shims.action.ensureCallsite(11), true);
+    assert.deepEqual(shims.action.getStateSlot(11, 0), NIL_VALUE);
+  });
+
+  test("clearHostState removes only the host-state cell, leaves slots intact", () => {
+    const shims = createDenseShims(stubBrain, () => undefined);
+    shims.action.ensureCallsite(13);
+    shims.action.setStateSlot(13, 0, mkNumberValue(7));
+    shims.callSite.setHostState(13, "payload");
+    assert.equal(shims.callSite.getHostState(13), "payload");
+    shims.callSite.clearHostState(13);
+    assert.equal(shims.callSite.getHostState(13), undefined);
+    assert.deepEqual(shims.action.getStateSlot(13, 0), mkNumberValue(7));
+    assert.equal(shims.action.ensureCallsite(13), false);
+  });
+
+  test("setStateSlot auto-allocates the callsite when none exists", () => {
+    const shims = createDenseShims(stubBrain, () => undefined);
+    shims.action.setStateSlot(21, 0, mkNumberValue(42));
+    assert.deepEqual(shims.action.getStateSlot(21, 0), mkNumberValue(42));
+    assert.equal(shims.action.ensureCallsite(21), false);
+  });
+
+  test("setStateSlot grows slots on demand to cover the largest written index", () => {
+    const shims = createDenseShims(stubBrain, () => undefined);
+    shims.action.setStateSlot(31, 4, mkNumberValue(99));
+    assert.deepEqual(shims.action.getStateSlot(31, 4), mkNumberValue(99));
+    assert.deepEqual(shims.action.getStateSlot(31, 0), NIL_VALUE);
+    assert.deepEqual(shims.action.getStateSlot(31, 3), NIL_VALUE);
+    assert.deepEqual(shims.action.getStateSlot(31, 99), NIL_VALUE);
+  });
+
+  test("getStateSlot on an unallocated callsite returns NIL_VALUE without allocating", () => {
+    const shims = createDenseShims(stubBrain, () => undefined);
+    assert.deepEqual(shims.action.getStateSlot(41, 0), NIL_VALUE);
+    assert.equal(shims.action.ensureCallsite(41), true);
+  });
+});

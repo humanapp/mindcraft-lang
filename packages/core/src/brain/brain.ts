@@ -469,11 +469,15 @@ export class Brain implements IBrain {
   }
 
   shutdown() {
-    // Cancel all active fibers
+    // Run deactivation hooks for the current page, then cancel its fibers.
     this.deactivateCurrentPage();
 
     // Release VM-owned transient runtime state.
     this.vm?.shutdown();
+
+    // Tear down all per-callsite storage so a subsequent startup() re-runs
+    // every action's initializerFuncId.
+    this.denseShims?.reset();
 
     // Clear variables
     this.clearVariables();
@@ -537,7 +541,10 @@ export class Brain implements IBrain {
     // Clear any existing tracked fibers
     this.activeRuleFiberIds = List.empty();
 
-    // Reset and activate each action callsite once for this page activation.
+    // For bytecode actions with an initializer, ensure the callsite to
+    // detect first-touch and dispatch the initializer exactly once per
+    // (brainInstance, callSiteId). Other action storage (state slots,
+    // host state) is allocated lazily on first write.
     for (let i = 0; i < pageMetadata.actionCallSites.size(); i++) {
       const site = pageMetadata.actionCallSites.get(i)!;
       const actions = this.program.actions;
@@ -546,8 +553,12 @@ export class Brain implements IBrain {
         continue;
       }
 
-      const numStateSlots = action.binding === "bytecode" ? action.numStateSlots : 0;
-      this.denseShims.resetCallsite(site.callSiteId, numStateSlots);
+      if (action.binding === "bytecode" && action.initializerFuncId !== undefined) {
+        const newlyAllocated = this.denseShims.action.ensureCallsite(site.callSiteId);
+        if (newlyAllocated) {
+          this.runBytecodeInitializerHook(action, site.callSiteId);
+        }
+      }
 
       if (action.binding === "host") {
         if (action.onPageEntered) {
@@ -594,9 +605,13 @@ export class Brain implements IBrain {
   }
 
   /**
-   * Deactivate the current page by cancelling its fibers.
+   * Deactivate the current page by running its actions' deactivation hooks
+   * and then cancelling its fibers. Hooks run before fiber cancellation so
+   * they observe a fully live execution context.
    */
   private deactivateCurrentPage(): void {
+    this.runDeactivationHooksForCurrentPage();
+
     this.cancelActiveFibers();
     this.activeRuleFiberIds = List.empty();
 
@@ -611,6 +626,34 @@ export class Brain implements IBrain {
       if (page) {
         page.deactivate();
         this.emitter_.emit("page_deactivated", { pageIndex: this.currentPageIndex });
+      }
+    }
+  }
+
+  private runDeactivationHooksForCurrentPage(): void {
+    if (!this.program || !this.pageMetadata || !this.isValidPageIndex(this.currentPageIndex)) {
+      return;
+    }
+    const pageMetadata = this.pageMetadata.get(this.currentPageIndex);
+    if (!pageMetadata) return;
+
+    const actions = this.program.actions;
+    if (!actions) return;
+
+    for (let i = 0; i < pageMetadata.actionCallSites.size(); i++) {
+      const site = pageMetadata.actionCallSites.get(i)!;
+      const action = actions.get(site.actionSlot);
+      if (!action) continue;
+
+      if (action.binding === "host") {
+        if (action.onPageExited) {
+          this.runHostDeactivationHook(site.callSiteId, action.onPageExited);
+        }
+        continue;
+      }
+
+      if (action.deactivationFuncId !== undefined) {
+        this.runBytecodeDeactivationHook(action, site.callSiteId);
       }
     }
   }
@@ -675,36 +718,65 @@ export class Brain implements IBrain {
     }
   }
 
+  private runBytecodeInitializerHook(action: BytecodeExecutableAction, callSiteId: number): void {
+    if (action.initializerFuncId === undefined) return;
+    this.runBytecodeHook(action, callSiteId, action.initializerFuncId, "initialization");
+  }
+
   private runBytecodeActivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
-    if (!this.executionContext || !this.vm || !this.scheduler || action.activationFuncId === undefined) {
+    if (action.activationFuncId === undefined) return;
+    this.runBytecodeHook(action, callSiteId, action.activationFuncId, "activation");
+  }
+
+  private runBytecodeDeactivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
+    if (action.deactivationFuncId === undefined) return;
+    this.runBytecodeHook(action, callSiteId, action.deactivationFuncId, "deactivation");
+  }
+
+  private runHostDeactivationHook(callSiteId: number, onPageExited: (ctx: ExecutionContext) => void): void {
+    if (!this.executionContext) {
       return;
     }
 
-    const activationContext: ExecutionContext = {
+    const previousCallSiteId = this.executionContext.currentCallSiteId;
+    const previousRuleFuncId = this.executionContext.currentRuleFuncId;
+
+    this.executionContext.currentCallSiteId = callSiteId;
+    this.executionContext.currentRuleFuncId = undefined;
+
+    try {
+      onPageExited(this.executionContext);
+    } finally {
+      this.executionContext.currentCallSiteId = previousCallSiteId;
+      this.executionContext.currentRuleFuncId = previousRuleFuncId;
+    }
+  }
+
+  private runBytecodeHook(action: BytecodeExecutableAction, callSiteId: number, funcId: number, label: string): void {
+    if (!this.executionContext || !this.vm || !this.scheduler) {
+      return;
+    }
+
+    const hookContext: ExecutionContext = {
       ...this.executionContext,
       currentCallSiteId: callSiteId,
       currentRuleFuncId: undefined,
     };
-    const activationFiber = this.vm.spawnFiber(
-      this.nextInlineFiberId--,
-      action.activationFuncId,
-      List.empty(),
-      activationContext
-    );
-    const activationFrame = activationFiber.frames.get(0)!;
-    activationFrame.actionBinding = {
+    const hookFiber = this.vm.spawnFiber(this.nextInlineFiberId--, funcId, List.empty(), hookContext);
+    const hookFrame = hookFiber.frames.get(0)!;
+    hookFrame.actionBinding = {
       actionKey: action.descriptor.key,
       callSiteId,
       isAsync: false,
     };
-    activationFiber.instrBudget = 10000;
+    hookFiber.instrBudget = 10000;
 
-    const result = this.vm.runFiber(activationFiber, this.scheduler);
+    const result = this.vm.runFiber(hookFiber, this.scheduler);
     if (result.status === VmStatus.FAULT) {
-      throw new Error(`Page activation for action '${action.descriptor.key}' faulted: ${result.error.message}`);
+      throw new Error(`Page ${label} for action '${action.descriptor.key}' faulted: ${result.error.message}`);
     }
     if (result.status !== VmStatus.DONE) {
-      throw new Error(`Page activation for action '${action.descriptor.key}' cannot suspend`);
+      throw new Error(`Page ${label} for action '${action.descriptor.key}' cannot suspend`);
     }
   }
 

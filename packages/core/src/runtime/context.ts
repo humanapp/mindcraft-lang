@@ -8,17 +8,57 @@ import type { HandleId, Value } from "./value";
 export interface HostActionBinding {
   binding: "host";
   descriptor: ActionDescriptor;
+  /**
+   * Invoked every time the action's owning page is activated, with the
+   * action's call site bound on `ctx.currentCallSiteId`. Symmetric to
+   * {@link onPageExited}.
+   */
   onPageEntered?: (ctx: ExecutionContext) => void;
+  /**
+   * Invoked every time the action's owning page is deactivated, before the
+   * page's fibers are cancelled. Runs with `ctx.currentCallSiteId` bound to
+   * the action's call site so the hook can inspect or clear per-call-site
+   * host state via {@link getCallSiteState}, {@link setCallSiteState}, or
+   * `services.callSite.clearHostState`.
+   */
+  onPageExited?: (ctx: ExecutionContext) => void;
   execSync?: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
   execAsync?: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
 }
 
-/** Bytecode-backed action ready for VM execution: entry function id and state-slot count. */
+/**
+ * Bytecode-backed action ready for VM execution.
+ *
+ * `entryFuncId` is the action body invoked on every `ACTION_CALL` /
+ * `ACTION_CALL_ASYNC`. The three lifecycle hooks below are independent and
+ * may all be set, all be unset, or any combination. Each is `undefined`
+ * when the action has no hook for that lifetime stage; numeric `0` is a
+ * real `funcId`, so `undefined` is the only "no hook" sentinel.
+ */
 export interface BytecodeExecutableAction {
   binding: "bytecode";
   descriptor: ActionDescriptor;
   entryFuncId: number;
+  /**
+   * Runs exactly once per `(brainInstance, callSiteId)`, on the first
+   * allocation of the call site (or after an explicit
+   * `services.action.resetCallsite`). Backs module-scope `let` / `const`
+   * initializer emission for user-language actions.
+   */
+  initializerFuncId?: number;
+  /**
+   * Runs every time the action's owning page is activated, after
+   * {@link initializerFuncId} on the first activation that allocates the
+   * call site. Symmetric to the host {@link HostActionBinding.onPageEntered}
+   * hook.
+   */
   activationFuncId?: number;
+  /**
+   * Runs every time the action's owning page is deactivated, before the
+   * page's fibers are cancelled. Symmetric to the host
+   * {@link HostActionBinding.onPageExited} hook.
+   */
+  deactivationFuncId?: number;
   numStateSlots: number;
 }
 
@@ -26,12 +66,16 @@ export interface BytecodeExecutableAction {
 export type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
 
 /**
- * Page-activation-scoped action-instance state owned by the dense-state
+ * Brain-instance-scoped action-instance state owned by the dense-state
  * action services. Bytecode-backed actions use `stateSlots` for
  * `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`; host-backed actions store
  * an opaque persistent payload in `hostState` via
  * {@link getCallSiteState} / {@link setCallSiteState}. Both views are
- * backed by the same shim-owned storage.
+ * backed by the same shim-owned storage. The instance is allocated lazily
+ * on first write (via `setCallSiteState`, `setStateSlot`, or
+ * `ensureCallsite`) and persists until `services.action.resetCallsite` or
+ * `Brain.shutdown()`. `stateSlots` grows on demand to cover the largest
+ * `slotIdx` written.
  */
 export interface ActionInstance {
   callSiteId: number;

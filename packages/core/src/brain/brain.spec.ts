@@ -1075,6 +1075,402 @@ describe("Brain behavioral -- action state", () => {
   });
 });
 
+// -- Page lifecycle hook helpers --
+
+interface BytecodeHookSpec {
+  numStateSlots?: number;
+  /** List of bytecode function definitions. funcId 0 must be the entry. */
+  functions: ReadonlyList<{
+    code: ReadonlyList<{ op: Op; a?: number; b?: number; c?: number }>;
+    numParams?: number;
+    name?: string;
+  }>;
+  numConsts?: number;
+  initializerFuncId?: number;
+  activationFuncId?: number;
+  deactivationFuncId?: number;
+}
+
+function buildBytecodeActionBrain(
+  key: string,
+  spec: BytecodeHookSpec,
+  twoPages = false
+): { brain: IBrain; varName: string } {
+  const descriptor: ActionDescriptor = {
+    key,
+    kind: "sensor",
+    callDef: mkCallDef({ type: "bag", items: [] }),
+    isAsync: false,
+    outputType: CoreTypeIds.Number,
+  };
+  const sensor = new BrainTileSensorDef(key, descriptor, {
+    placement: TilePlacement.EitherSide | TilePlacement.Inline,
+  });
+  const v = mkVar(`${key}-v`);
+
+  const numConsts = spec.numConsts ?? 1;
+  const values = List.empty<Value>();
+  for (let i = 0; i < numConsts; i++) values.push(NIL_VALUE);
+
+  const fns = List.empty<{ code: ReadonlyList<unknown>; numParams: number; name?: string }>();
+  for (let i = 0; i < spec.functions.size(); i++) {
+    const f = spec.functions.get(i)!;
+    fns.push({ code: f.code, numParams: f.numParams ?? 0, name: f.name });
+  }
+
+  const artifact: UserActionArtifact = {
+    version: BYTECODE_VERSION,
+    functions: fns as never,
+    constantPools: {
+      numbers: List.empty<number>(),
+      strings: List.empty<string>(),
+      values,
+    },
+    variableNames: List.empty(),
+    entryPoint: 0,
+    key,
+    kind: "sensor",
+    callDef: descriptor.callDef,
+    outputType: CoreTypeIds.Number,
+    isAsync: false,
+    numStateSlots: spec.numStateSlots ?? 1,
+    entryFuncId: 0,
+    initializerFuncId: spec.initializerFuncId,
+    activationFuncId: spec.activationFuncId,
+    deactivationFuncId: spec.deactivationFuncId,
+    revisionId: `${key}-rev1`,
+  };
+
+  const brainDef = new BrainDef(services);
+  const p0 = brainDef.appendNewPage();
+  assert.ok(p0.success);
+  const rule = p0.value!.page.children().get(0)!;
+  rule.do().appendTile(v as never);
+  rule.do().appendTile(opAssign as never);
+  rule.do().appendTile(sensor as never);
+
+  if (twoPages) {
+    const p1 = brainDef.appendNewPage();
+    assert.ok(p1.success);
+  }
+
+  const brain = new Brain(brainDef, services, {
+    catalogs: List.from([services.tiles, brainDef.catalog()]),
+    actionResolver: {
+      resolveAction(ad) {
+        if (ad.key !== key) return undefined;
+        return {
+          binding: "bytecode" as const,
+          descriptor: ad,
+          artifact,
+          metadata: { key, kind: "sensor", callDef: descriptor.callDef, outputType: CoreTypeIds.Number },
+        };
+      },
+    },
+  });
+
+  return { brain, varName: v.varName };
+}
+
+describe("Brain behavioral -- page lifecycle hooks", () => {
+  test("bytecode initializer runs exactly once across N page activations and shutdown re-runs it", () => {
+    let initCount = 0;
+    const initFn = services.functions.register(
+      "test-page-init-fn",
+      false,
+      {
+        exec: () => {
+          initCount += 1;
+          return mkNumberValue(initCount);
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const { brain, varName } = buildBytecodeActionBrain(
+      "test-page-init-once",
+      {
+        functions: List.from([
+          { code: List.from([{ op: Op.LOAD_CALLSITE_VAR, a: 0 }, { op: Op.RET }]), name: "entry" },
+          {
+            code: List.from([
+              { op: Op.HOST_CALL, a: initFn.id, b: 0, c: 0 },
+              { op: Op.STORE_CALLSITE_VAR, a: 0 },
+              { op: Op.PUSH_CONST_VAL, a: 0 },
+              { op: Op.RET },
+            ]),
+            name: "initializer",
+          },
+        ]),
+        initializerFuncId: 1,
+      },
+      true
+    );
+
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(initCount, 1, "initializer runs on first activation");
+    assert.equal(extractNumberValue(brain.getVariable(varName)), 1);
+
+    brain.requestPageChange(1);
+    brain.think(32);
+    brain.requestPageChange(0);
+    brain.think(48);
+    brain.requestPageChange(1);
+    brain.think(64);
+    brain.requestPageChange(0);
+    brain.think(80);
+    assert.equal(initCount, 1, "initializer does NOT re-run on subsequent page activations");
+    assert.equal(extractNumberValue(brain.getVariable(varName)), 1, "callsite slot survives round-trip");
+
+    brain.shutdown();
+    brain.startup();
+    brain.think(96);
+    assert.equal(initCount, 2, "shutdown teardown lets the next startup re-run the initializer");
+    assert.equal(extractNumberValue(brain.getVariable(varName)), 2);
+  });
+
+  test("requestPageRestart invokes no lifecycle hook", () => {
+    let initCount = 0;
+    let actCount = 0;
+    let deactCount = 0;
+    const initFn = services.functions.register(
+      "test-page-restart-init-fn",
+      false,
+      {
+        exec: () => {
+          initCount += 1;
+          return NIL_VALUE;
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const actFn = services.functions.register(
+      "test-page-restart-act-fn",
+      false,
+      {
+        exec: () => {
+          actCount += 1;
+          return NIL_VALUE;
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const deactFn = services.functions.register(
+      "test-page-restart-deact-fn",
+      false,
+      {
+        exec: () => {
+          deactCount += 1;
+          return NIL_VALUE;
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const { brain, varName } = buildBytecodeActionBrain("test-page-restart-hooks", {
+      numStateSlots: 0,
+      functions: List.from([
+        { code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }]), name: "entry" },
+        { code: List.from([{ op: Op.HOST_CALL, a: initFn.id, b: 0, c: 0 }, { op: Op.RET }]), name: "init" },
+        { code: List.from([{ op: Op.HOST_CALL, a: actFn.id, b: 0, c: 0 }, { op: Op.RET }]), name: "activation" },
+        { code: List.from([{ op: Op.HOST_CALL, a: deactFn.id, b: 0, c: 0 }, { op: Op.RET }]), name: "deactivation" },
+      ]),
+      initializerFuncId: 1,
+      activationFuncId: 2,
+      deactivationFuncId: 3,
+    });
+
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(initCount, 1);
+    assert.equal(actCount, 1);
+    assert.equal(deactCount, 0);
+
+    brain.requestPageRestart();
+    brain.think(32);
+    assert.equal(initCount, 1, "soft restart does not re-run initializer");
+    assert.equal(actCount, 1, "soft restart does not re-run activation");
+    assert.equal(deactCount, 0, "soft restart does not run deactivation");
+    assert.deepEqual(brain.getVariable(varName), NIL_VALUE);
+
+    // requestPageChange to the current page is equivalent to requestPageRestart;
+    // it must not fire deactivation, activation, or initializer hooks.
+    brain.requestPageChange(0);
+    brain.think(48);
+    assert.equal(initCount, 1, "same-page change does not re-run initializer");
+    assert.equal(actCount, 1, "same-page change does not re-run activation");
+    assert.equal(deactCount, 0, "same-page change does not run deactivation");
+  });
+
+  test("deactivationFuncId can call resetCallsite to force re-initialization on next activation", () => {
+    let initCount = 0;
+    const initFn = services.functions.register(
+      "test-page-deact-reset-init-fn",
+      false,
+      {
+        exec: () => {
+          initCount += 1;
+          return mkNumberValue(initCount);
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const resetFn = services.functions.register(
+      "test-page-deact-reset-reset-fn",
+      false,
+      {
+        exec: (ctx: ExecutionContext) => {
+          if (ctx.currentCallSiteId !== undefined) {
+            ctx.services.action.resetCallsite(ctx.currentCallSiteId);
+          }
+          return NIL_VALUE;
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const { brain, varName } = buildBytecodeActionBrain(
+      "test-page-deact-reset",
+      {
+        functions: List.from([
+          { code: List.from([{ op: Op.LOAD_CALLSITE_VAR, a: 0 }, { op: Op.RET }]), name: "entry" },
+          {
+            code: List.from([
+              { op: Op.HOST_CALL, a: initFn.id, b: 0, c: 0 },
+              { op: Op.STORE_CALLSITE_VAR, a: 0 },
+              { op: Op.PUSH_CONST_VAL, a: 0 },
+              { op: Op.RET },
+            ]),
+            name: "init",
+          },
+          {
+            code: List.from([{ op: Op.HOST_CALL, a: resetFn.id, b: 0, c: 0 }, { op: Op.RET }]),
+            name: "deact",
+          },
+        ]),
+        initializerFuncId: 1,
+        deactivationFuncId: 2,
+      },
+      true
+    );
+
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(initCount, 1);
+    assert.equal(extractNumberValue(brain.getVariable(varName)), 1);
+
+    brain.requestPageChange(1);
+    brain.think(32);
+    brain.requestPageChange(0);
+    brain.think(48);
+    assert.equal(initCount, 2, "deactivation hook reset the callsite, so initializer ran again");
+    assert.equal(extractNumberValue(brain.getVariable(varName)), 2);
+  });
+
+  test("host action state survives page deactivation/reactivation", () => {
+    let invokeCount = 0;
+    const descriptor: ActionDescriptor = {
+      key: "test-page-host-state-survives",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor,
+      execSync: (ctx) => {
+        invokeCount += 1;
+        const cur = (ctx.services.callSite.getHostState(ctx.currentCallSiteId!) as number | undefined) ?? 0;
+        const next = cur + 1;
+        ctx.services.callSite.setHostState(ctx.currentCallSiteId!, next);
+        return mkNumberValue(next);
+      },
+    });
+    const sensor = new BrainTileSensorDef(descriptor.key, descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const v = mkVar("page-host-state-survives-v");
+    const brainDef = new BrainDef(services);
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const r = p0.value!.page.children().get(0)!;
+    r.do().appendTile(v as never);
+    r.do().appendTile(opAssign as never);
+    r.do().appendTile(sensor as never);
+    const p1 = brainDef.appendNewPage();
+    assert.ok(p1.success);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1);
+    brain.think(32);
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 2);
+
+    brain.requestPageChange(1);
+    brain.think(48);
+    brain.requestPageChange(0);
+    brain.think(64);
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 3, "host state survived round trip");
+    assert.equal(invokeCount, 3);
+  });
+
+  test("host onPageExited can clear host state to opt out of survival", () => {
+    const descriptor: ActionDescriptor = {
+      key: "test-page-host-onpageexited-clears",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor,
+      onPageExited: (ctx) => {
+        if (ctx.currentCallSiteId !== undefined) {
+          ctx.services.callSite.clearHostState(ctx.currentCallSiteId);
+        }
+      },
+      execSync: (ctx) => {
+        const cur = (ctx.services.callSite.getHostState(ctx.currentCallSiteId!) as number | undefined) ?? 0;
+        const next = cur + 1;
+        ctx.services.callSite.setHostState(ctx.currentCallSiteId!, next);
+        return mkNumberValue(next);
+      },
+    });
+    const sensor = new BrainTileSensorDef(descriptor.key, descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const v = mkVar("page-host-clear-v");
+    const brainDef = new BrainDef(services);
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const r = p0.value!.page.children().get(0)!;
+    r.do().appendTile(v as never);
+    r.do().appendTile(opAssign as never);
+    r.do().appendTile(sensor as never);
+    const p1 = brainDef.appendNewPage();
+    assert.ok(p1.success);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1);
+    brain.think(32);
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 2);
+
+    brain.requestPageChange(1);
+    brain.think(48);
+    brain.requestPageChange(0);
+    brain.think(64);
+    assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1, "onPageExited cleared host state");
+  });
+});
+
 describe("Brain behavioral -- compiled program structure", () => {
   test("single-page brain produces correct program shape", () => {
     const v = mkVar("prog-v");

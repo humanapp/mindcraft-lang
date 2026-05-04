@@ -118,16 +118,29 @@ function __test__defaultActionAndCallSite(): { action: IActionServices; callSite
       setHostState(callSiteId: number, state: unknown): void {
         ensure(callSiteId).hostState = state;
       },
+      clearHostState(callSiteId: number): void {
+        const s = states.get(callSiteId);
+        if (s) {
+          s.hostState = undefined;
+        }
+      },
     },
     action: {
-      ensureCallsite(callSiteId: number, _numStateSlots: number): void {
+      ensureCallsite(callSiteId: number): boolean {
+        if (states.has(callSiteId)) {
+          return false;
+        }
         ensure(callSiteId);
+        return true;
       },
       getStateSlot(callSiteId: number, slotIdx: number): Value {
         return states.get(callSiteId)?.slots.get(slotIdx) ?? NIL_VALUE;
       },
       setStateSlot(callSiteId: number, slotIdx: number, value: Value): void {
         ensure(callSiteId).slots.set(slotIdx, value);
+      },
+      resetCallsite(callSiteId: number): void {
+        states.delete(callSiteId);
       },
     },
   };

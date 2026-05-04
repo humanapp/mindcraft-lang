@@ -214,13 +214,34 @@ undefined)` call.
 
 ## Current State
 
-Not started. Awaiting kickoff.
+Completed: L1
+Next up: L2
+
+L1 risks (callsite storage is lazy-allocate-on-first-write; VM
+no longer calls `ensureCallsite`; `numStateSlots` is no longer
+read by runtime services) propagate into L2 -- compiler emission
+into `initializerFuncId` must respect the lazy-write surface.
 
 ---
 
 ## Phase Log
 
-(empty until L1 ships)
+### L1 -- Runtime Lifetime Flip + Hook Driver Entries
+
+Lifecycle-hook runtime contract is live: callsite storage is
+brain-instance-scoped and lazy-allocated; Brain drives
+`initializerFuncId` (once per first allocation),
+`deactivationFuncId` / `onPageExited` (before fiber cancel),
+`activationFuncId` / `onPageEntered` (every activation), and
+`shutdown()` deactivates-then-tears-down.
+
+New surfaces: `BytecodeExecutableAction.initializerFuncId` /
+`.deactivationFuncId`; `HostActionBinding.onPageExited`;
+`IActionServices.ensureCallsite -> boolean` and `.resetCallsite`;
+`ICallSiteServices.clearHostState`; `IDenseShims.reset()`;
+`ProgramArtifact.initializerFuncId` / `.deactivationFuncId`.
+
+Verification: full gate green (722/722 tests).
 
 ---
 
@@ -459,6 +480,19 @@ emission patch is sufficient.
   wherever a program has module-scope initializers. The
   diff is mechanical (function body moves between two
   func-id slots). Review carefully to confirm.
+- **Lazy callsite storage (from L1).** `setStateSlot` and
+  `setHostState` auto-allocate; `stateSlots` grows on
+  demand. The compiler does not need to seed slots, and
+  the runtime no longer pre-sizes from `numStateSlots`.
+  If L2 introduces an emission path that depends on
+  `ensureCallsite` having been called first, it will
+  silently no-op for callsites whose action has no
+  `initializerFuncId` (Brain only calls `ensureCallsite`
+  when `initializerFuncId !== undefined`).
+- **`numStateSlots` is no longer read by runtime services**
+  (only by `linker.ts` for validation). If the compiler
+  stops emitting it, drop the linker check in the same
+  unit or it will reject all programs.
 
 ### Acceptance
 

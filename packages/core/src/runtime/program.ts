@@ -30,7 +30,24 @@ export interface Program {
  */
 export interface ProgramArtifact extends Program {
   entryFuncId: number;
+  /**
+   * Optional one-time initializer body for the action. Linked into
+   * {@link BytecodeExecutableAction.initializerFuncId}; runs once per
+   * `(brainInstance, callSiteId)`.
+   */
+  initializerFuncId?: number;
+  /**
+   * Optional per-page-activation entry hook. Linked into
+   * {@link BytecodeExecutableAction.activationFuncId}; runs every time the
+   * owning page is activated.
+   */
   activationFuncId?: number;
+  /**
+   * Optional per-page-deactivation hook. Linked into
+   * {@link BytecodeExecutableAction.deactivationFuncId}; runs every time
+   * the owning page is deactivated, before fiber cancellation.
+   */
+  deactivationFuncId?: number;
   numStateSlots: number;
   isAsync: boolean;
   revisionId: string;
