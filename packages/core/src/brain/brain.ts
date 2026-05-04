@@ -572,6 +572,12 @@ export class Brain implements IBrain {
       }
 
       if (action.binding === "host") {
+        if (action.onInitialized) {
+          const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
+          if (newlyAllocated) {
+            this.runHostInitializerHook(site.callSiteId, action.onInitialized);
+          }
+        }
         if (action.onPageEntered) {
           this.runHostActivationHook(site.callSiteId, action.onPageEntered);
         }
@@ -723,6 +729,25 @@ export class Brain implements IBrain {
 
     try {
       onPageEntered(this.executionContext);
+    } finally {
+      this.executionContext.currentCallSiteId = previousCallSiteId;
+      this.executionContext.currentRuleFuncId = previousRuleFuncId;
+    }
+  }
+
+  private runHostInitializerHook(callSiteId: number, onInitialized: (ctx: ExecutionContext) => void): void {
+    if (!this.executionContext) {
+      return;
+    }
+
+    const previousCallSiteId = this.executionContext.currentCallSiteId;
+    const previousRuleFuncId = this.executionContext.currentRuleFuncId;
+
+    this.executionContext.currentCallSiteId = callSiteId;
+    this.executionContext.currentRuleFuncId = undefined;
+
+    try {
+      onInitialized(this.executionContext);
     } finally {
       this.executionContext.currentCallSiteId = previousCallSiteId;
       this.executionContext.currentRuleFuncId = previousRuleFuncId;

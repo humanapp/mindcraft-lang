@@ -42,6 +42,11 @@ In scope (runtime + compiler + tests, shipped lock-step):
 - New host-binding hook on `HostActionBinding`:
   - `onPageExited?: (ctx: ExecutionContext) => void`,
     symmetric to the existing `onPageEntered?`.
+  - `onInitialized?: (ctx: ExecutionContext) => void`,
+    symmetric to the bytecode `initializerFuncId`. Runs
+    exactly once per `(brainInstance, callSiteId)`, on the
+    first allocation of the action's callsite, before the
+    first `onPageEntered`.
 - New explicit reset primitives on the dense-state plan's
   service surface:
   - `services.action.resetCallsite(callSiteId)` --
@@ -137,10 +142,11 @@ distinction:
 
 The host action surface gains the symmetric pair:
 
-| field           | when it runs                                                  |
-| --------------- | ------------------------------------------------------------- |
-| `onPageEntered` | every page activation (existing; semantics unchanged)         |
-| `onPageExited`  | every page deactivation (new)                                 |
+| field            | when it runs                                                                                  |
+| ---------------- | --------------------------------------------------------------------------------------------- |
+| `onInitialized`  | exactly once per `(brainInstance, callSiteId)`, on first allocation, before `onPageEntered`   |
+| `onPageEntered`  | every page activation (existing; semantics unchanged)                                         |
+| `onPageExited`   | every page deactivation                                                                       |
 
 `Brain.activatePage` calls `services.action.ensureCallsite`
 once per callsite. The op returns `boolean` (true if newly
@@ -217,14 +223,20 @@ undefined)` call.
 
 ## Current State
 
-Completed: L1, L2, L3
-Next up: none -- spec complete.
+Completed: L1, L2, L3, L4
+Next up: none -- spec is feature-complete; remaining bytecode/host
+hook asymmetry is closed.
 
 L1 risks (lazy callsite storage; VM no longer calls `ensureCallsite`;
 `numStateSlots` is no longer read by runtime services) carried
-through L2 and L3 unchanged. After L3, every row of the bytecode
-column in the Lifetime Contract table has a user-language
-counterpart.
+through L2-L4 unchanged. After L4, the host action surface
+exposes the same three lifecycle stages as the bytecode surface
+(initialize once, activate per page entry, deactivate per page
+exit). Pre-existing public-API gap: `mindcraft.ts` `SyncHostActionFn`
+/ `AsyncHostActionFn` mirror `onPageEntered` only; neither
+`onPageExited` (L3) nor `onInitialized` (L4) is forwarded through
+the `createHostSensor` / `createHostActuator` adapter. Plumbing
+that through is a separate follow-up outside this spec.
 
 ---
 
@@ -286,6 +298,25 @@ New surfaces: `ExtractedDescriptor.onPageExitedNode`;
 
 Verification: full gate green (ts-compiler 981/981, core 722/722,
 sim typecheck/check/build).
+
+### L4 -- Host-Side `onInitialized` Hook
+
+`HostActionBinding.onInitialized?` now mirrors the bytecode
+`initializerFuncId`: `Brain.activatePage` calls
+`callsiteStore.ensure` for a host callsite only when
+`onInitialized` is set, dispatches the new `runHostInitializerHook`
+helper on `newlyAllocated` before `runHostActivationHook`, and
+leaves bytecode initializer dispatch independent. `vm-contract.md`'s
+"Host hook fields" gained an `onInitialized` row and dropped the
+"no separate initializer slot" claim. `HostSyncFn` / `HostAsyncFn`
+mirror the field for symmetry with `onPageEntered`.
+
+Audit found zero in-tree host bindings doing `onPageEntered`-guarded
+one-shot setup; no migrations needed. Pre-existing gap recorded
+in Current State: `mindcraft.ts` public adapter does not yet forward
+`onPageExited` (L3) or `onInitialized` (L4) to `HostActionBinding`.
+
+Verification: full gate green (core 750/750; sim typecheck/check/build).
 
 ---
 
@@ -700,4 +731,177 @@ mirror.
    `deactivationFuncId` as "reserved."
 6. All four gates pass from `packages/ts-compiler`,
    `packages/core`, and `apps/sim`.
+
+---
+
+## Phase L4 -- Host-Side `onInitialized` Hook
+
+**Purpose.** Close the remaining hook-surface asymmetry
+between bytecode and host actions by adding a host-side
+one-shot initializer hook. After L4, both binding kinds
+expose the same three lifecycle stages (initialize once,
+activate per page entry, deactivate per page exit), so
+host actuators that today key one-shot setup off
+`onPageEntered` plus their own per-instance bookkeeping
+can drop the bookkeeping and use the runtime's first-touch
+gate directly.
+
+**Scope.** Core runtime + docs only. No ts-compiler change
+(user-authored tiles compile to bytecode and use
+`initializerFuncId`; `onInitialized` is exclusively for
+hand-coded host actions). No sim change beyond what gates
+require; sim actuators may opt into the new hook in a
+follow-up.
+
+**Precondition.** L3 has shipped. The callsite store's
+`ensure(callSiteId): boolean` first-touch detector is
+already in place from L1 and is host-agnostic; L4 wires it
+into the host activation path.
+
+### Source paths (the agent edits these)
+
+- `packages/core/src/runtime/context.ts` -- add
+  `onInitialized?: (ctx: ExecutionContext) => void` to
+  `HostActionBinding`. Update the JSDoc on
+  `HostActionBinding` and on the field to match the
+  bytecode `initializerFuncId` semantics (once per
+  `(brainInstance, callSiteId)`; cleared by
+  `services.callsite.reset` or `Brain.shutdown()`).
+- `packages/core/src/runtime/vm-types.ts` -- mirror the
+  field on the `HostSyncFn` / `HostAsyncFn` shapes if
+  those mirror the binding (they currently mirror
+  `onPageEntered`).
+- `packages/core/src/brain/brain.ts`:
+  - `activatePage`: in the host branch (today's
+    `if (action.binding === "host") { ... continue; }`),
+    when `action.onInitialized !== undefined`, call
+    `this.callsiteStore.ensure(site.callSiteId)`. On
+    `true`, dispatch via a new `runHostInitializerHook`
+    helper (parallel to `runHostActivationHook`) BEFORE
+    `runHostActivationHook` runs. The bytecode branch's
+    existing `ensure` call must remain independent so
+    that mixed pages keep correct semantics.
+  - Add `runHostInitializerHook(callSiteId, onInitialized)`
+    -- structurally identical to `runHostActivationHook`
+    (same `currentCallSiteId` / `currentRuleFuncId`
+    save-restore pattern; throws on host-thrown error per
+    the existing hook fault convention).
+- `docs/specs/core/vm-contract.md` -- update the "Host
+  hook fields" section to add an `onInitialized` row and
+  remove the existing sentence "Host hooks have no
+  separate 'initializer' slot." Add a one-line invariant
+  matching the bytecode initializer's lifetime guarantee.
+
+L4 does not modify `apps/sim`. Sim is exercised only as a
+downstream gate (acceptance #6).
+
+### Audit step (do first)
+
+Pin the inspection commit SHA in the L4 phase log. Walk
+each source path above; if any has drifted (helper
+renamed, field moved, hook driver consolidated), record
+the actual shape in the phase log before editing. In
+particular, confirm that `Brain.activatePage`'s host
+branch still uses `if (action.binding === "host") { ...
+continue; }` to short-circuit the bytecode path; if the
+branching has been restructured, write the actual shape
+into the phase log before proceeding. If drift
+invalidates a Pinned Decision, STOP and present the
+conflict to the user.
+
+Also walk `packages/core/src/runtime/sensors/` and
+`packages/core/src/runtime/actuators/` for any host
+binding that today implements one-shot setup via a
+guarded `onPageEntered`. Record the count and a brief
+note in the L4 phase log; **do not migrate** any of them
+in this phase. Migration is a follow-up.
+
+### Procedure (the tree compiles after each step)
+
+1. Add `HostActionBinding.onInitialized?` field. No
+   semantic change yet (no callers).
+2. Add `runHostInitializerHook` helper to `Brain`. No
+   callers yet.
+3. Wire `Brain.activatePage`'s host branch: gated `ensure`
+   call + dispatch on `newlyAllocated`. Bytecode branch
+   stays as-is.
+4. Update `vm-contract.md`'s "Host hook fields" section.
+5. Add the regression tests below. They must all pass.
+6. Run the full gate from `packages/core` and `apps/sim`
+   (`typecheck && check && test && build`).
+
+### Regression tests
+
+In `packages/core/src/brain/brain.spec.ts`, parallel to
+the existing host `onPageEntered` / `onPageExited`
+coverage:
+
+1. Synthetic `HostActionBinding` with `onInitialized` set
+   has its initializer fired exactly once across N page
+   round-trips (counter ends at 1).
+2. Host `onInitialized` fires before host `onPageEntered`
+   on the activation that first allocates the callsite
+   (assert call ordering via a shared log).
+3. After `services.callsite.reset(callSiteId)` is invoked
+   from inside `onPageExited`, the next page activation
+   fires `onInitialized` again.
+4. After `Brain.shutdown()` then `Brain.startup()`, the
+   next page activation fires `onInitialized` again.
+5. A host action with no `onInitialized` set never causes
+   `callsiteStore.ensure` to be called for its callsite
+   (verified by spying on the store or by asserting that a
+   bytecode action sharing the same page is unaffected).
+6. `requestPageRestart` does not fire `onInitialized`,
+   does not call `ensure`, and does not perturb the
+   already-allocated callsite record.
+7. Mixed-binding page test: a page containing one host
+   action with `onInitialized` and one bytecode action
+   with `initializerFuncId` fires both initializers
+   exactly once on first activation, in the order the
+   call sites appear in `pageMetadata.actionCallSites`.
+
+### Risks
+
+- **Existing host-binding bookkeeping conflict.** Host
+  actuators that today implement their own one-shot setup
+  via a flag inside `onPageEntered` will keep working
+  unchanged -- the new hook is opt-in. The audit step
+  above records the population so future migration can be
+  scoped, but L4 must not migrate them.
+- **`ensure` allocation cost for host actions.** Calling
+  `ensure` on a host callsite allocates an empty
+  `CallsiteRecord` (slot list = `List.empty()`,
+  `hostState = undefined`). The cost is a single map
+  insert per `(brainInstance, callSiteId)` over the life
+  of the brain; negligible. If a host action does not set
+  `onInitialized`, `ensure` is NOT called -- so unchanged
+  host actions pay zero cost.
+- **Hook ordering.** `onInitialized` must run BEFORE
+  `onPageEntered` on the first activation. Tests #2 and #7
+  are the gate; reversed ordering is a regression.
+- **Hook fault semantics.** `runHostInitializerHook`
+  follows the existing host-hook convention (throw on
+  host-thrown error). Initializer-fault rollback remains
+  the same intentional rough edge as the bytecode side.
+
+### Acceptance
+
+L4 ships only when every item passes:
+
+1. `HostActionBinding.onInitialized` field exists and is
+   wired through `Brain.activatePage`.
+2. `runHostInitializerHook` exists, mirrors
+   `runHostActivationHook`'s save-restore pattern, and
+   throws on host-thrown errors.
+3. `Brain.activatePage` calls `callsiteStore.ensure` for
+   host callsites only when `action.onInitialized !==
+undefined`; on `newlyAllocated`, the initializer runs
+   before `onPageEntered`.
+4. All seven regression tests pass.
+5. `vm-contract.md` documents the host `onInitialized`
+   surface and no longer claims "Host hooks have no
+   separate initializer slot."
+6. All four gates pass from `packages/core`, plus the
+   three-gate run from `apps/sim`
+   (`typecheck && check && build`; sim has no `npm test`).
 

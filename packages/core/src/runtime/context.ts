@@ -8,6 +8,16 @@ export interface HostActionBinding {
   binding: "host";
   descriptor: ActionDescriptor;
   /**
+   * Invoked exactly once per `(brainInstance, callSiteId)`, on the first
+   * activation that allocates the call site, before {@link onPageEntered}
+   * fires for the same activation. Symmetric to the bytecode
+   * {@link BytecodeExecutableAction.initializerFuncId} hook. Cleared by
+   * `services.callsite.reset(callSiteId)` (re-runs on the next activation)
+   * and by `Brain.shutdown()` (re-runs on the next `Brain.startup()`).
+   * Soft `requestPageRestart` does not re-fire this hook.
+   */
+  onInitialized?: (ctx: ExecutionContext) => void;
+  /**
    * Invoked every time the action's owning page is activated, with the
    * action's call site bound on `ctx.currentCallSiteId`. Symmetric to
    * {@link onPageExited}.

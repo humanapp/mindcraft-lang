@@ -527,14 +527,25 @@ re-setup on respawn, and teardown.
 
 Host-bound actions carry:
 
+- `onInitialized?: (...) => void` -- runs at most once per
+  `(brainInstance, callSiteId)` pair, on the first activation
+  that allocates the call site, before `onPageEntered` fires
+  for the same activation. Symmetric to the bytecode
+  `initializerFuncId`. Cleared by
+  `services.callsite.reset(callSiteId)` (re-runs on the next
+  activation) and by `Brain.shutdown()` (re-runs on the next
+  `Brain.startup()`). Soft `requestPageRestart` does not
+  re-fire this hook.
 - `onPageEntered?: (...) => void` -- runs every time the page
   containing this callsite becomes active.
 - `onPageExited?: (...) => void` -- runs every time the page
   containing this callsite becomes inactive.
 
-Host hooks have no separate "initializer" slot: the host owns
-allocation directly and may key any one-shot setup off `onPageEntered`
-combined with its own per-instance bookkeeping.
+When `onInitialized` is set, the brain runtime calls
+`services.action.ensureCallsite` for the host callsite to
+detect first-touch; when it is unset, no callsite record is
+allocated for the host action and no first-touch dispatch
+occurs.
 
 ### Brain-instance-scoped lifetime
 

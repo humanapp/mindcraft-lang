@@ -107,6 +107,7 @@ export interface VmConfig {
  * @returns The result value to push onto the stack
  */
 export type HostSyncFn = {
+  onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
   exec: (ctx: ExecutionContext, args: ReadonlyList<Value>) => Value;
 };
@@ -128,6 +129,7 @@ export type HostSyncFn = {
  * @param handleId - Handle ID for resolving the async operation
  */
 export type HostAsyncFn = {
+  onInitialized?: (ctx: ExecutionContext) => void;
   onPageEntered?: (ctx: ExecutionContext) => void;
   exec: (ctx: ExecutionContext, args: ReadonlyList<Value>, handleId: HandleId) => void;
 };

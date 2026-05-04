@@ -1470,6 +1470,464 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     brain.think(64);
     assert.equal(extractNumberValue(brain.getVariable(v.varName)), 1, "onPageExited cleared host state");
   });
+
+  test("host onInitialized fires exactly once across N page round-trips", () => {
+    let initCount = 0;
+    const descriptor: ActionDescriptor = {
+      key: "test-l4-host-init-once",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor,
+      onInitialized: () => {
+        initCount += 1;
+      },
+      execSync: () => mkNumberValue(0),
+    });
+    const sensor = new BrainTileSensorDef(descriptor.key, descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const v = mkVar("l4-host-init-once-v");
+    const brainDef = new BrainDef(services);
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const r = p0.value!.page.children().get(0)!;
+    r.do().appendTile(v as never);
+    r.do().appendTile(opAssign as never);
+    r.do().appendTile(sensor as never);
+    const p1 = brainDef.appendNewPage();
+    assert.ok(p1.success);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(initCount, 1, "initializer fires on first activation");
+
+    for (let i = 0; i < 4; i++) {
+      brain.requestPageChange(1);
+      brain.think(32 + i * 32);
+      brain.requestPageChange(0);
+      brain.think(48 + i * 32);
+    }
+    assert.equal(initCount, 1, "host onInitialized does not re-fire across N round-trips");
+  });
+
+  test("host onInitialized fires before host onPageEntered on first activation", () => {
+    const log = List.empty<string>();
+    const descriptor: ActionDescriptor = {
+      key: "test-l4-host-init-order",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor,
+      onInitialized: () => {
+        log.push("init");
+      },
+      onPageEntered: () => {
+        log.push("entered");
+      },
+      execSync: () => mkNumberValue(0),
+    });
+    const sensor = new BrainTileSensorDef(descriptor.key, descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const v = mkVar("l4-host-init-order-v");
+    const brainDef = new BrainDef(services);
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const r = p0.value!.page.children().get(0)!;
+    r.do().appendTile(v as never);
+    r.do().appendTile(opAssign as never);
+    r.do().appendTile(sensor as never);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+
+    assert.equal(log.size(), 2, "both hooks fired on first activation");
+    assert.equal(log.get(0), "init", "onInitialized fires before onPageEntered");
+    assert.equal(log.get(1), "entered", "onPageEntered fires after onInitialized");
+  });
+
+  test("services.callsite.reset inside onPageExited re-fires host onInitialized on next activation", () => {
+    let initCount = 0;
+    const descriptor: ActionDescriptor = {
+      key: "test-l4-host-init-reset",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor,
+      onInitialized: () => {
+        initCount += 1;
+      },
+      onPageExited: (ctx) => {
+        if (ctx.currentCallSiteId !== undefined) {
+          ctx.services.callsite.reset(ctx.currentCallSiteId);
+        }
+      },
+      execSync: () => mkNumberValue(0),
+    });
+    const sensor = new BrainTileSensorDef(descriptor.key, descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const v = mkVar("l4-host-init-reset-v");
+    const brainDef = new BrainDef(services);
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const r = p0.value!.page.children().get(0)!;
+    r.do().appendTile(v as never);
+    r.do().appendTile(opAssign as never);
+    r.do().appendTile(sensor as never);
+    const p1 = brainDef.appendNewPage();
+    assert.ok(p1.success);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(initCount, 1);
+
+    brain.requestPageChange(1);
+    brain.think(32);
+    brain.requestPageChange(0);
+    brain.think(48);
+    assert.equal(initCount, 2, "reset in onPageExited re-fires onInitialized on next activation");
+  });
+
+  test("Brain.shutdown then Brain.startup re-fires host onInitialized", () => {
+    let initCount = 0;
+    const descriptor: ActionDescriptor = {
+      key: "test-l4-host-init-shutdown",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor,
+      onInitialized: () => {
+        initCount += 1;
+      },
+      execSync: () => mkNumberValue(0),
+    });
+    const sensor = new BrainTileSensorDef(descriptor.key, descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const v = mkVar("l4-host-init-shutdown-v");
+    const brainDef = new BrainDef(services);
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const r = p0.value!.page.children().get(0)!;
+    r.do().appendTile(v as never);
+    r.do().appendTile(opAssign as never);
+    r.do().appendTile(sensor as never);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(initCount, 1);
+
+    brain.shutdown();
+    brain.startup();
+    brain.think(32);
+    assert.equal(initCount, 2, "shutdown teardown lets the next startup re-run onInitialized");
+  });
+
+  test("host action without onInitialized leaves a page-mate bytecode initializer unaffected", () => {
+    let bytecodeInitCount = 0;
+    let hostExecCount = 0;
+    const initFn = services.functions.register(
+      "test-l4-mate-bytecode-init-fn",
+      false,
+      {
+        exec: () => {
+          bytecodeInitCount += 1;
+          return mkNumberValue(bytecodeInitCount);
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const hostDescriptor: ActionDescriptor = {
+      key: "test-l4-mate-host-no-init",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor: hostDescriptor,
+      execSync: () => {
+        hostExecCount += 1;
+        return mkNumberValue(0);
+      },
+    });
+    const hostSensor = new BrainTileSensorDef(hostDescriptor.key, hostDescriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    const btKey = "test-l4-mate-bytecode";
+    const btDescriptor: ActionDescriptor = {
+      key: btKey,
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    const btSensor = new BrainTileSensorDef(btKey, btDescriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const btArtifact: UserActionArtifact = {
+      version: BYTECODE_VERSION,
+      functions: List.from([
+        { code: List.from([{ op: Op.LOAD_CALLSITE_VAR, a: 0 }, { op: Op.RET }]), numParams: 0, name: "entry" },
+        {
+          code: List.from([
+            { op: Op.HOST_CALL, a: initFn.id, b: 0, c: 0 },
+            { op: Op.STORE_CALLSITE_VAR, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.RET },
+          ]),
+          numParams: 0,
+          name: "init",
+        },
+      ]) as never,
+      constantPools: { numbers: List.empty<number>(), strings: List.empty<string>(), values: List.from([NIL_VALUE]) },
+      variableNames: List.empty(),
+      entryPoint: 0,
+      key: btKey,
+      kind: "sensor",
+      callDef: btDescriptor.callDef,
+      outputType: CoreTypeIds.Number,
+      isAsync: false,
+      numStateSlots: 1,
+      entryFuncId: 0,
+      initializerFuncId: 1,
+      revisionId: `${btKey}-rev1`,
+    };
+
+    const v = mkVar("l4-mate-v");
+    const brainDef = new BrainDef(services);
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const r0 = p0.value!.page.children().get(0)!;
+    r0.do().appendTile(v as never);
+    r0.do().appendTile(opAssign as never);
+    r0.do().appendTile(btSensor as never);
+    const r1 = p0.value!.page.appendNewRule() as BrainRuleDef;
+    r1.do().appendTile(hostSensor as never);
+    const p1 = brainDef.appendNewPage();
+    assert.ok(p1.success);
+
+    const brain = new Brain(brainDef, services, {
+      catalogs: List.from([services.tiles, brainDef.catalog()]),
+      actionResolver: {
+        resolveAction(ad) {
+          if (ad.key === btKey) {
+            return {
+              binding: "bytecode" as const,
+              descriptor: ad,
+              artifact: btArtifact,
+              metadata: { key: btKey, kind: "sensor", callDef: btDescriptor.callDef, outputType: CoreTypeIds.Number },
+            };
+          }
+          return services.actions.resolveAction(ad);
+        },
+      },
+    });
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(bytecodeInitCount, 1, "bytecode initializer ran once on first activation");
+    assert.ok(hostExecCount >= 1, "host action exec ran");
+
+    brain.requestPageChange(1);
+    brain.think(32);
+    brain.requestPageChange(0);
+    brain.think(48);
+    assert.equal(bytecodeInitCount, 1, "bytecode initializer not re-run on re-activation");
+  });
+
+  test("requestPageRestart does not fire host onInitialized and preserves callsite record", () => {
+    let initCount = 0;
+    let exitCount = 0;
+    const descriptor: ActionDescriptor = {
+      key: "test-l4-host-init-restart",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor,
+      onInitialized: (ctx) => {
+        initCount += 1;
+        if (ctx.currentCallSiteId !== undefined) {
+          ctx.services.callsite.setHostState(ctx.currentCallSiteId, { tag: "init" });
+        }
+      },
+      onPageExited: () => {
+        exitCount += 1;
+      },
+      execSync: () => mkNumberValue(0),
+    });
+    const sensor = new BrainTileSensorDef(descriptor.key, descriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const v = mkVar("l4-host-init-restart-v");
+    const brainDef = new BrainDef(services);
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const r = p0.value!.page.children().get(0)!;
+    r.do().appendTile(v as never);
+    r.do().appendTile(opAssign as never);
+    r.do().appendTile(sensor as never);
+
+    const brain = brainDef.compile();
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(initCount, 1);
+    assert.equal(exitCount, 0);
+
+    brain.requestPageRestart();
+    brain.think(32);
+    assert.equal(initCount, 1, "soft restart does not re-fire onInitialized");
+    assert.equal(exitCount, 0, "soft restart does not fire onPageExited");
+  });
+
+  test("mixed-binding page fires both bytecode and host initializers exactly once on first activation", () => {
+    let bytecodeInitCount = 0;
+    let hostInitCount = 0;
+    const initFn = services.functions.register(
+      "test-l4-mixed-bytecode-init-fn",
+      false,
+      {
+        exec: () => {
+          bytecodeInitCount += 1;
+          return mkNumberValue(bytecodeInitCount);
+        },
+      },
+      mkCallDef({ type: "bag", items: [] })
+    );
+    const hostDescriptor: ActionDescriptor = {
+      key: "test-l4-mixed-host",
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    services.actions.register({
+      binding: "host",
+      descriptor: hostDescriptor,
+      onInitialized: () => {
+        hostInitCount += 1;
+      },
+      execSync: () => mkNumberValue(0),
+    });
+    const hostSensor = new BrainTileSensorDef(hostDescriptor.key, hostDescriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+
+    const btKey = "test-l4-mixed-bytecode";
+    const btDescriptor: ActionDescriptor = {
+      key: btKey,
+      kind: "sensor",
+      callDef: mkCallDef({ type: "bag", items: [] }),
+      isAsync: false,
+      outputType: CoreTypeIds.Number,
+    };
+    const btSensor = new BrainTileSensorDef(btKey, btDescriptor, {
+      placement: TilePlacement.EitherSide | TilePlacement.Inline,
+    });
+    const btArtifact: UserActionArtifact = {
+      version: BYTECODE_VERSION,
+      functions: List.from([
+        { code: List.from([{ op: Op.LOAD_CALLSITE_VAR, a: 0 }, { op: Op.RET }]), numParams: 0, name: "entry" },
+        {
+          code: List.from([
+            { op: Op.HOST_CALL, a: initFn.id, b: 0, c: 0 },
+            { op: Op.STORE_CALLSITE_VAR, a: 0 },
+            { op: Op.PUSH_CONST_VAL, a: 0 },
+            { op: Op.RET },
+          ]),
+          numParams: 0,
+          name: "init",
+        },
+      ]) as never,
+      constantPools: { numbers: List.empty<number>(), strings: List.empty<string>(), values: List.from([NIL_VALUE]) },
+      variableNames: List.empty(),
+      entryPoint: 0,
+      key: btKey,
+      kind: "sensor",
+      callDef: btDescriptor.callDef,
+      outputType: CoreTypeIds.Number,
+      isAsync: false,
+      numStateSlots: 1,
+      entryFuncId: 0,
+      initializerFuncId: 1,
+      revisionId: `${btKey}-rev1`,
+    };
+
+    const v = mkVar("l4-mixed-v");
+    const brainDef = new BrainDef(services);
+    const p0 = brainDef.appendNewPage();
+    assert.ok(p0.success);
+    const r0 = p0.value!.page.children().get(0)!;
+    r0.do().appendTile(v as never);
+    r0.do().appendTile(opAssign as never);
+    r0.do().appendTile(btSensor as never);
+    const r1 = p0.value!.page.appendNewRule() as BrainRuleDef;
+    r1.do().appendTile(hostSensor as never);
+    const p1 = brainDef.appendNewPage();
+    assert.ok(p1.success);
+
+    const brain = new Brain(brainDef, services, {
+      catalogs: List.from([services.tiles, brainDef.catalog()]),
+      actionResolver: {
+        resolveAction(ad) {
+          if (ad.key === btKey) {
+            return {
+              binding: "bytecode" as const,
+              descriptor: ad,
+              artifact: btArtifact,
+              metadata: { key: btKey, kind: "sensor", callDef: btDescriptor.callDef, outputType: CoreTypeIds.Number },
+            };
+          }
+          return services.actions.resolveAction(ad);
+        },
+      },
+    });
+    brain.initialize();
+    brain.startup();
+    brain.think(16);
+    assert.equal(bytecodeInitCount, 1, "bytecode initializer fires once on first activation");
+    assert.equal(hostInitCount, 1, "host onInitialized fires once on first activation");
+
+    brain.requestPageChange(1);
+    brain.think(32);
+    brain.requestPageChange(0);
+    brain.think(48);
+    assert.equal(bytecodeInitCount, 1, "bytecode initializer does not re-fire on round-trip");
+    assert.equal(hostInitCount, 1, "host onInitialized does not re-fire on round-trip");
+  });
 });
 
 describe("Brain behavioral -- compiled program structure", () => {
