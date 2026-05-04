@@ -14,8 +14,8 @@ The end state is that a constrained-target port (Roblox-ts, future MCU C++ port,
 
 The complementary work that **enables** this split is:
 
-- [ts-vm-module-decoupling-plan-2026-05-02.md](ts-vm-module-decoupling-plan-2026-05-02.md): moved the type boundaries so `runtime/` does not value-import authoring types.
-- [ts-vm-dense-runtime-state-plan-2026-05-02.md](ts-vm-dense-runtime-state-plan-2026-05-02.md): moves the runtime-visible storage (variable reach-through, callsite host state, action state slots) off the authoring object graph and behind contracted dense surfaces. After D2-D4 of that spec land, the runtime side of `Brain` has zero value-imports of `IBrainRule` / `ActionInstance`.
+- [ts-vm-module-decoupling-plan-2026-05-02.md](/docs/.archived/ts-vm-module-decoupling-plan-2026-05-02.md): moved the type boundaries so `runtime/` does not value-import authoring types.
+- [ts-vm-dense-runtime-state-plan-2026-05-02.md](/docs/.archived/ts-vm-dense-runtime-state-plan-2026-05-02.md): moves the runtime-visible storage (variable reach-through, callsite host state, action state slots) off the authoring object graph and behind contracted dense surfaces. After D2-D4 of that spec land, the runtime side of `Brain` has zero value-imports of `IBrainRule` / `ActionInstance`.
 
 This spec depends on both being complete. **Do not start this plan until the dense-runtime-state plan ships through D5 (lock-in).** Doing the split before the dense contracts land would force `BrainRuntime` to import authoring types or carry shims, defeating the point.
 
