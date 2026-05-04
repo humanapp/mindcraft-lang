@@ -2507,19 +2507,58 @@ packages/core/src/` returns zero matches. The renamed
 ## Phase D5 -- Lock In The Brain<->Scheduler Surface; Cleanup Tail
 
 **Purpose.** D5 is a **lock-in / cleanup phase**, not a migration.
-After D2-D4 land, `runtime/FiberScheduler` already holds only ids
-and `Brain` already exposes only id-keyed methods to the runtime
-side. D5 verifies those properties hold, deletes the dead
-fragments D2-D4 left behind on the Brain side, and pins
-`activeRuleFiberIds` as the canonical Brain<->scheduler interface
-so a future code-split (Brain-runtime / Brain-compiler) can lift
-the runtime concerns out mechanically.
+After D2-D4 land, `runtime/FiberScheduler` already holds only
+ids, `runtime/vm.ts` no longer reads from any retired
+authoring-shape field, and `Brain`'s activation-hook helpers
+have already shed the `previousRule` / `previousActionInstance`
+save-restore pairs and the `rule: undefined` /
+`actionBinding.actionInstance` literal fields. D5 verifies those
+properties hold, sweeps the residual dead Brain-side state that
+D2's runtime-side retirement orphaned, and pins
+`activeRuleFiberIds` as the canonical Brain<->scheduler
+interface so a future code-split (Brain-runtime / Brain-compiler)
+can lift the runtime concerns out mechanically.
 
-**Scope.** Brain-side cleanup of dead state, pinning of the
-Brain<->scheduler interface, and verification grep gates that
-freeze the runtime side's id-only properties. No structural code
-move (the BrainRuntime / BrainCompiler split is the subject of a
-follow-on plan; see Out of Scope at the top of this spec).
+**Reality vs. original D5 plan.** When this phase was first
+drafted, D5's "cleanup tail" enumerated five items it expected
+to find on the Brain side. As of D5's start, four of those have
+already been done as fall-out from D2 / D3 / D4:
+
+- `runHostActivationHook` already saves and restores only
+  `currentCallSiteId` + `currentRuleFuncId`; there is no
+  `previousRule` / `previousActionInstance` pair to delete and
+  no `actionInstance` parameter on the helper.
+- `runBytecodeActivationHook` (via the shared `runBytecodeHook`
+  helper) already builds its hook context with only
+  `currentCallSiteId` + `currentRuleFuncId: undefined` and its
+  `actionBinding` literal with only
+  `{ actionKey, callSiteId, isAsync: false }`. There is no
+  `rule: undefined` field and no `actionInstance` field to
+  delete.
+- `getCallSiteState` / `setCallSiteState` are not "stale dead
+  imports inside `brain/`": they survived D3 as the contracted
+  host-state public API exported from `runtime/context.ts` and
+  are used (correctly) by tests in `brain/brain.spec.ts`. They
+  are not D5 sweep targets.
+- `getOrCreateActionInstance` / `resetActionInstance` /
+  `currentActionInstance` were retired entirely from the tree
+  by D4; no surviving import exists anywhere under `brain/`.
+
+The one residual item is `Brain.funcIdToRule` + its
+`collectFuncIdToRuleMapping` helper. The D2 retirement of
+`ctx.rule` and `services.ruleVars`'s ancestor walk removed every
+consumer of `funcIdToRule`, but the Brain-side builder still
+runs in `initialize()` and still pulls in `IBrainRule` as a
+type-only import to type the dictionary. D5 deletes both.
+
+**Scope.** Brain-side deletion of `funcIdToRule` and
+`collectFuncIdToRuleMapping`; addition of field-level JSDoc to
+`Brain.activeRuleFiberIds` pinning it as the canonical
+Brain<->scheduler interface; verification greps that freeze
+the runtime side's id-only properties. No structural code move
+(the BrainRuntime / BrainCompiler split is the subject of a
+follow-on plan; see Out of Scope at the top of this spec). No
+edits to `runtime/`.
 
 **Brain-fate disposition.** D0 table 5's `Brain` row must record
 **survives as a thin id-only orchestrator** (not "retires"). The
@@ -2554,124 +2593,112 @@ per the Workflow Convention -- the dense plan is not the right
 vehicle for that change.
 
 **Precondition.** D2 / D3 / D4 ship and pass their acceptance.
-The `runtime/` directory has zero value-imports of `IBrainRule`,
-`IBrainPage`, `BrainPage`, `BrainRule`, `Brain`, or
-`ActionInstance` (verified by grep at the start of D5). D0 table
-5's `Brain` row reads "survives as id-only orchestrator."
+The greps in **G1** and **G2** below pass at D5's start. D0
+table 5's `Brain` row reads "survives as id-only orchestrator."
 
 ### Source paths (the agent edits / inspects these)
 
 - **Pinned scheduler surface (informational; not edited):**
   `packages/core/src/runtime/vm.ts` --
-  - `FiberScheduler` class declaration (~line 2149) and its
-    method surface (`spawn(funcId, args, executionContext)`,
+  - `FiberScheduler` class declaration (`export class
+FiberScheduler implements IFiberScheduler`) and its method
+    surface (`spawn(funcId, args, executionContext)`,
     `addFiber(fiber)`, `removeFiber(fiberId)`,
     `getFiber(fiberId)`, `enqueueRunnable(fiberId)`,
     `cancel(fiberId)`, `tick()`, `gc()`, `getStats()`,
     `onHandleCompleted(handleId)`).
-  - `SchedulerConfig` interface (~line 2132) and
-    `DEFAULT_SCHEDULER_CONFIG` (~line 2141).
-    D5 does not modify any of this; the section below pins the
-    surface and the acceptance grep re-asserts it.
+  - `SchedulerConfig` interface and `DEFAULT_SCHEDULER_CONFIG`
+    constant. D5 does not modify any of this; the gates below
+    pin the surface.
+- **`IFiberScheduler` interface (informational; not edited):**
+  `packages/core/src/runtime/vm-types.ts` -- the
+  `IFiberScheduler extends Scheduler` declaration.
 - **Brain<->scheduler interface (pinned this phase):**
   `packages/core/src/brain/brain.ts` --
   - `activeRuleFiberIds: List<{ funcId: number; fiberId:
-number | undefined }>` field (line 125). This is **the**
-    Brain<->scheduler interface object; D5 pins it.
-  - `scheduler.spawn(funcId, ..., this.executionContext)`
-    call sites (lines 561 and 627),
-    `scheduler.cancel(entry.fiberId)` (line 582),
-    `scheduler.tick()` (line 633), `scheduler.gc()`
-    (line 635), `scheduler.getFiber(fiberId)` (line 645).
-    All five sites pass funcIds / fiberIds / context only; D5
-    re-asserts via grep.
-- **Dead Brain fragments to delete (cleanup tail from D2-D4):**
+number | undefined }>` field. **The** Brain<->scheduler
+    interface object; D5 adds field-level JSDoc.
+  - `this.scheduler.spawn(...)` call sites (in `activatePage`
+    and in `thinkPage`), `this.scheduler.cancel(entry.fiberId)`
+    in `cancelActiveFibers`, `this.scheduler.tick()` and
+    `this.scheduler.gc()` in `thinkPage`,
+    `this.scheduler.getFiber(fiberId)` in
+    `shouldRespawnFiber`. All six sites pass funcIds /
+    fiberIds / `List.empty()` args / `this.executionContext`
+    only; G3 re-asserts via grep.
+- **Dead Brain fragments to delete (cleanup tail from D2):**
   `packages/core/src/brain/brain.ts` --
-  - `funcIdToRule` field on Brain and the
-    `collectFuncIdToRuleMapping` helper (line 734) -- D2
-    retires the runtime-side consumer, but the Brain-side
-    builder may remain. Sweep and delete if no consumer remains.
-  - `runHostActivationHook` (line 651): the `previousRule`
-    save/restore around the `onPageEntered` call becomes a
-    no-op after D2 retires `ctx.rule`; reduce the function
-    body to just the `currentCallSiteId` save/restore (D3 and
-    D4 already retired the `currentActionInstance` arm).
-  - `runBytecodeActivationHook` (line 677): the `rule:
-undefined` field in the `activationContext` object
-    literal (line 685) is gone after D2; the `actionInstance`
-    field on `actionBinding` (line 695) is gone after D4.
-    The whole helper may simplify or merge with the host
-    variant; the agent inspects and deletes dead branches.
-  - Any `import` of `IBrainRule`, `ActionInstance`,
-    `getCallSiteState`, `setCallSiteState`,
-    `getOrCreateActionInstance`, `resetActionInstance` that
-    survives D2-D4 elsewhere in `brain/`.
-- **Boundary docs to update (informational; D7 owns the
-  user-facing version):** none in D5 -- D7 is the
-  vm-contract.md update.
+  - The `funcIdToRule: Dict<number, IBrainRule>` field
+    declaration.
+  - The two assignment statements in `initialize()` that
+    allocate the dict and populate it via
+    `collectFuncIdToRuleMapping`.
+  - The `collectFuncIdToRuleMapping` private method.
+  - The `IBrainRule` type-only import on the file's import
+    block (becomes unused once the field and helper delete).
 
 ### Verification gates (these are the work, not side checks)
 
-D5's mechanical work is mostly grep verification that the
-inheritance from D2-D4 holds, plus small dead-code deletion. The
-gates are:
+D5's mechanical work is one small dead-code deletion plus one
+JSDoc addition. The gates frame the verification:
 
-- **G1 -- Scheduler is id-only.**
-  `grep -nE '\\b(IBrain|IBrainRule|IBrainPage|BrainPage|BrainRule|ActionInstance)\\b' packages/core/src/runtime/vm.ts`
-  returns no value-import or method-signature matches inside
-  the `FiberScheduler` class declaration. Type-only matches in
-  imports are also disallowed for these names except
-  `ActionInstance` (which D4 deletes entirely; if any survives
-  here, the precondition was wrong).
-- **G2 -- Runtime is id-only.**
-  `grep -rnE '\\b(IBrain|IBrainRule|IBrainPage|BrainPage|BrainRule|ActionInstance)\\b' packages/core/src/runtime/`
-  returns zero matches.
+- **G1 -- Scheduler is id-only.** Read the `FiberScheduler`
+  class declaration in `packages/core/src/runtime/vm.ts` end
+  to end. Every method parameter, field type, and call into
+  `this.vm.*` is one of: a `funcId: number`, a
+  `fiberId: number`, a `HandleId`, a `Fiber` runtime struct,
+  a `List<Value>`, or `ExecutionContext`. No
+  `IBrainRule` / `IBrainPage` / `BrainPage` / `BrainRule` /
+  `ActionInstance` reference appears.
+- **G2 -- Runtime is id-only at the boundary.**
+  `grep -rnE '\\b(IBrainRule|IBrainPage|BrainPage|BrainRule|ActionInstance)\\b' packages/core/src/runtime/`
+  returns matches only inside `host-bindings.ts` (the
+  declarations of `IBrainPage` and `IBrainRule` themselves,
+  retained as authoring-shape interfaces under `runtime/` for
+  the import firewall). No other file under `runtime/` may
+  match. **`IBrain` is permitted everywhere under `runtime/`:**
+  it is the contracted brain surface that `runtime-services.ts`
+  consumes, and its members are id-keyed (variable names,
+  page indices, page-id strings, `rng()` -- no object
+  references).
 - **G3 -- Brain<->scheduler interface is fiber-id-keyed.**
   `grep -nE 'this\\.scheduler\\.' packages/core/src/brain/brain.ts`
   returns matches whose only arguments are funcIds, fiberIds,
-  `args` (a `List<Value>`), and `this.executionContext`. No
-  match passes a `BrainPage`, `BrainRule`, or `ActionInstance`
-  reference.
+  `List.empty()` args, and `this.executionContext`. No match
+  passes a `BrainPage`, `BrainRule`, `IBrainRule`, or
+  `ActionInstance` reference.
 - **G4 -- `activeRuleFiberIds` is the canonical interface
   object.** Its declaration on Brain has the type
   `List<{ funcId: number; fiberId: number | undefined }>`
-  unchanged from inspection. JSDoc (added this phase) names it
-  as the Brain<->scheduler interface and forbids embedding
-  object-graph references.
+  unchanged from inspection. Field-level JSDoc (added this
+  phase) names it as the Brain<->scheduler interface and
+  forbids embedding object-graph references.
 - **G5 -- Cleanup tail is gone.**
-  `grep -nE '\\b(funcIdToRule|collectFuncIdToRuleMapping|getCallSiteState|setCallSiteState|getOrCreateActionInstance|resetActionInstance|currentActionInstance)\\b' packages/core/src/brain/`
+  `grep -nE '\\b(funcIdToRule|collectFuncIdToRuleMapping)\\b' packages/core/src/`
   returns zero matches.
-- **G6 -- Activation hooks have no dead state binds.** Read
-  `runHostActivationHook` and `runBytecodeActivationHook`;
-  every save/restore or context-field write is for a field
-  that still exists in the post-D2/D3/D4 ExecutionContext
-  shape.
 
-### Procedure (execute in order; the tree should compile after each step)
+### Procedure (execute in order; the tree compiles after each step)
 
-1. **Run G1 / G2.** If either fails, stop -- a precondition is
-   violated, escalate to D2/D3/D4 post-mortem.
-2. **Sweep cleanup tail.** Run G5; for each match, delete the
-   dead import / field / helper. Re-run G5 to confirm zero.
-3. **Reduce activation hooks.** Apply G6: in
-   `runHostActivationHook`, delete the `previousRule` /
-   `previousActionInstance` save-and-restore lines (and the
-   parameter that carries the action instance). In
-   `runBytecodeActivationHook`, delete the `rule: undefined`
-   field from the `activationContext` literal and the
-   `actionInstance` field from the `actionBinding` literal.
-   Update the call sites in `activatePage` to drop the now-unused
-   `actionInstance` argument. Re-run G6.
-4. **Pin `activeRuleFiberIds` JSDoc.** Add field-level JSDoc
+1. **Run G1 / G2 / G3.** All must pass. If any fails, stop --
+   a precondition is violated; escalate to D2 / D3 / D4
+   post-mortem.
+2. **Delete `funcIdToRule` cleanup tail.**
+   - Remove the field declaration on `Brain`.
+   - Remove the two assignment statements in `initialize()`
+     that allocate the dict and populate it via
+     `collectFuncIdToRuleMapping`.
+   - Remove the `collectFuncIdToRuleMapping` private method.
+   - Remove the `IBrainRule` type-only import if it has no
+     remaining uses in the file (rerun the file's TypeScript
+     check; the unused-import rule will catch it).
+   - Re-run G5 and confirm zero matches.
+3. **Pin `activeRuleFiberIds` JSDoc.** Add field-level JSDoc
    stating: this list is the canonical Brain<->scheduler
    interface object; entries hold `funcId` (program-resolved)
    and `fiberId` (scheduler-issued); any future change must
    keep both fields scalar (no `BrainPage` / `BrainRule` /
-   `ActionInstance` references).
-5. **Run G3 / G4.** Both must pass. If G3 fails, the agent has
-   accidentally added a non-id argument to a scheduler call;
-   revert.
-6. **Standard verification.** From `packages/core`, run
+   `ActionInstance` references). Re-run G4.
+4. **Standard verification.** From `packages/core`, run
    `npm run typecheck && npm run check && npm test && npm run build`.
    From `apps/sim`, the same four. All must pass with the
    project's zero-noise standard.
@@ -2681,250 +2708,254 @@ gates are:
 - **Scheduler is not migrated.** D5 does not edit
   `FiberScheduler`. The "scheduler is id-only" property is
   inherited from inspection-commit reality; D5 verifies and
-  pins it via G1 / G3 / G4 / acceptance grep.
+  pins it via G1 / G3 / G4.
+- **`IBrain` survives in `runtime/`.** `runtime-services.ts`
+  consumes `IBrain` (declared in `runtime/host-bindings.ts`)
+  as the contracted brain surface; its members take strings
+  and indices, never authoring objects. This is the post-D2
+  contract shape and is intentional.
+- **`IBrainPage` / `IBrainRule` declarations stay in
+  `runtime/host-bindings.ts`.** The runtime no longer
+  consumes them, but they remain colocated with `IBrain` to
+  preserve the import-firewall topology. G2 explicitly
+  permits matches inside `host-bindings.ts`.
 - **Brain still mixes compile-time and runtime concerns.**
-  After D5, Brain holds all eight concerns listed above. The
-  physical split into `BrainRuntime` (concerns 3, 4, 5, 6, 7, 8) and `BrainCompiler` (concerns 1, 2) is a follow-on plan
-  (see Out of Scope at the top of this spec). D5 makes that
-  split mechanical by ensuring the Brain-side surface that
-  the future `BrainRuntime` will own is already free of
+  After D5, Brain holds all eight concerns listed in the
+  Brain-fate disposition above. The physical split into
+  `BrainRuntime` (concerns 3, 4, 5, 6, 7, 8) and
+  `BrainCompiler` (concerns 1, 2) is a follow-on plan (see
+  Out of Scope at the top of this spec). D5 makes that split
+  mechanical by ensuring the Brain-side surface that the
+  future `BrainRuntime` will own is already free of
   authoring-graph value imports.
-- **No new VmEvents added.** If a future phase needs a passive
-  scheduler event, the dense plan's general policy holds: add
-  it to the existing `VmEvents` aggregate; do not create a
-  parallel scheduler-events aggregate. D5 introduces no such
-  events.
+- **No new VmEvents added.** If a future phase needs a
+  passive scheduler event, the dense plan's general policy
+  holds: add it to the existing `VmEvents` aggregate; do not
+  create a parallel scheduler-events aggregate. D5 introduces
+  no such events.
 
 ### Risks
 
 - **Hidden authoring-graph re-coupling on Brain.** A future
   refactor inside `brain/` could re-add a value import of
   `IBrainRule` to the activation-hook helpers (e.g. by
-  threading `rule` back through for "convenience"). G5 catches
-  this only if re-run; the dense plan's general acceptance
-  should add the G1 / G2 / G5 greps as standing repository
-  checks (CI or pre-commit) so the lock-in survives. D5
-  records this as a follow-up for D7's contract docs.
+  threading `rule` back through for "convenience"). G5
+  catches this only if re-run; a follow-up for D7 is to record
+  the G1-G5 greps as standing repository checks (CI or
+  pre-commit) so the lock-in survives.
 - **Phantom-fix temptation.** Because D5 is small and
   mechanical, an agent may be tempted to "improve" the
   scheduler API or refactor the activation hooks while here.
-  Reject. D5's job is lock-in, not improvement. Any structural
-  change belongs in the follow-on Brain-runtime split plan.
+  Reject. D5's job is lock-in, not improvement. Any
+  structural change belongs in the follow-on Brain-runtime
+  split plan.
 
 ### Acceptance (validation checklist)
 
 D5 ships only when every item passes:
 
-1. G1 passes (FiberScheduler class declaration has zero
-   authoring-type matches).
-2. G2 passes (`packages/core/src/runtime/` has zero
-   authoring-type matches).
+1. G1 passes (FiberScheduler class declaration is id-only end
+   to end).
+2. G2 passes (`packages/core/src/runtime/` matches confined
+   to `host-bindings.ts` declarations).
 3. G3 passes (every `this.scheduler.*` call site in
-   `brain/brain.ts` carries only funcIds, fiberIds, args, and
-   the execution context).
+   `brain/brain.ts` carries only funcIds, fiberIds, args,
+   and the execution context).
 4. G4 passes (`activeRuleFiberIds` declaration unchanged;
-   JSDoc names it the Brain<->scheduler interface).
-5. G5 passes (cleanup tail of dead D2/D3/D4 fragments gone
-   from `brain/`).
-6. G6 passes (activation hooks have no dead state binds).
-7. From `packages/core`, all four standard gates pass with
+   field-level JSDoc names it the Brain<->scheduler
+   interface).
+5. G5 passes (zero `funcIdToRule` /
+   `collectFuncIdToRuleMapping` matches anywhere under
+   `packages/core/src/`).
+6. From `packages/core`, all four standard gates pass with
    zero noise.
-8. From `apps/sim`, all four standard gates pass.
-9. `git diff packages/core/src/runtime/vm.ts` for D5 shows
-   zero changes (D5 does not edit the VM).
-10. The follow-on Brain-runtime split plan exists as a written
-    document at `docs/specs/features/ts-brain-runtime-split-plan-YYYY-MM-DD.md`
-    (or an analogously-named successor). D5 does not execute
-    the split; it only verifies the split's precondition (no
-    authoring-type value-imports under `runtime/`) is locked
-    in.
+7. From `apps/sim`, all four standard gates pass.
+8. `git diff packages/core/src/runtime/` for D5 shows zero
+   changes (D5 does not edit the runtime).
 
 ## Phase D6 -- Async Action Fiber/Handle Wiring
 
-**Purpose.** D6 is a **lock-in / cleanup phase** for the async
-action path, parallel in shape to D5. After D2/D3/D4 land:
+**Purpose.** D6 is a **lock-in phase** for the async action
+path, parallel in shape to D5. After D2 / D3 / D4 land, the
+async wiring under `execActionCallAsync` /
+`spawnBytecodeActionFiber` is already id-keyed end to end:
 
-- the rule subsystem is already off the object graph (D2 retired
-  `ctx.rule` / `funcIdToRule`);
-- the host-call callsite-state surface is already id-keyed (D3);
-- the action state-slot machinery for both sync and async call
-  sites is already routed through a contracted op (D4 retired
-  `currentActionInstance` / `getOrCreateActionInstance` /
-  `actionBinding.actionInstance`).
+- the host branch of `execActionCallAsync` calls
+  `bindExecutionContext(fiber, frame, callSiteId)` (3-arg) and
+  no longer touches `getOrCreateActionInstance` or any
+  authoring object;
+- `spawnBytecodeActionFiber` builds its child context from
+  `parentFiber.executionContext`, sets only
+  `currentCallSiteId` + `currentRuleFuncId` on it, sets
+  `childFrame.ruleFuncId` (consumed by
+  `resolveFrameRuleFuncId`), and writes
+  `childFrame.actionBinding = { actionKey, callSiteId,
+isAsync: true }`. There is no `currentActionInstance` write,
+  no `funcIdToRule` lookup, no `actionInstance` field on the
+  binding;
+- `resolveAsyncActionHandle` / `rejectAsyncActionHandle` /
+  `cancelAsyncActionHandle` already touch only
+  `fiber.asyncResultHandleId` and the handle table;
+- `FiberScheduler.onHandleCompleted` already takes a
+  `HandleId` only, and the
+  `vm.handles.events.on("completed", ...)` subscription
+  already carries no richer payload.
 
-D5 then froze the Brain<->scheduler interface as id-only and
-pinned `activeRuleFiberIds` as the canonical interface object.
+**Reality vs. original D6 plan.** The original D6 plan
+expected a "cleanup tail of dead D2/D4 writes" inside
+`execActionCallAsync` and `spawnBytecodeActionFiber` -- five
+specific deletions in the bytecode child-fiber spawn and two
+in the host branch. **All seven were already swept as part of
+D2 / D3 / D4's mechanical sweeps.** D6 therefore has no dead
+writes to delete; it inherits a clean call site.
 
-What D6 owns is the **async action child-fiber and handle wiring
-that survived D2-D5** because it is async-specific:
+What survives for D6 to do is:
 
-- the `Scheduler.addFiber` call site for child-fiber spawn in
-  `execActionCallAsync` and the dead D2/D4 writes in
-  `spawnBytecodeActionFiber`;
-- the host-async branch's leftover dead binds
-  (`getOrCreateActionInstance`, `bindExecutionContext(...,
-actionInstance)`);
-- the async result handle lifecycle (`asyncResultHandleId`,
-  `resolveAsyncActionHandle`, `rejectAsyncActionHandle`,
-  `cancelAsyncActionHandle`, the
-  `vm.handles.events.on("completed", ...)` path on
-  `FiberScheduler`).
+- pin field-level JSDoc on `Fiber.asyncResultHandleId` naming
+  the resolve / reject / cancel contract;
+- pin member-level JSDoc on the `Scheduler` interface naming
+  each member's id-only contract;
+- close the **pre-existing** async-result handle leak in the
+  host branch of `execActionCallAsync`: the bytecode branch
+  wraps `scheduler.addFiber(childFiber)` in
+  `try { ... } catch { this.handles.delete(hid); throw error; }`,
+  but the host branch creates the handle before invoking
+  `action.execAsync(...)` and does not roll the handle back if
+  `execAsync` throws synchronously. D6 adds the symmetric
+  guard.
 
-**Scope.** Cleanup of dead D2/D4 writes on the async path,
-verification that the async wiring is id-keyed end-to-end, and
-pinning of the async-action surface (Scheduler interface,
-`asyncResultHandleId` field, handle-events subscription) so a
-future second implementation has a single contract to mirror. No
-behavior change.
+**Scope.** Pin two JSDoc blocks (`Fiber.asyncResultHandleId`
+and the `Scheduler` interface members). Close the host-branch
+async-handle-leak gap in `execActionCallAsync`. Verify the
+async wiring is id-keyed end to end. No other behavior change.
 
 **Precondition.** D5 ships and passes its acceptance.
-`runtime/` has zero value-imports of authoring types. D0 table 5
-has the `Brain` row pinned to "survives." The host-action async
-branch's legacy `getOrCreateActionInstance` /
-`bindExecutionContext(..., actionInstance)` lines are still
-present (D4 retires the **storage**; the binds in the
-**call site** carry through to D6 only because the async branch
-was excluded from D4's mechanical sweep -- this phase is the
-cleanup).
+`runtime/` has no value-imports of authoring types. The greps
+in **G2** and **G4** below pass at D6's start.
 
 ### Source paths (the agent edits / inspects these)
 
 - `packages/core/src/runtime/vm.ts`:
-  - `execActionCallAsync` (line ~1021). Both branches: - host branch (lines ~1043-1063): `getOrCreateActionInstance`
-    (line ~1054) and `bindExecutionContext(fiber, frame,
-callSiteId, actionInstance)` (line ~1055). After D4, the
-    action-instance carry is dead; the bind reduces to
-    `bindExecutionContext(fiber, frame, callSiteId)` (no
-    fourth argument). - bytecode branch (lines ~1064-1085): `spawnBytecodeActionFiber`
-    call (line ~1068), `Scheduler.addFiber(childFiber)`
-    (line ~1077), `bindExecutionContext(fiber, frame,
-callSiteId)` (line ~1082). The scheduler call already
-    hands a `Fiber` runtime struct (not an authoring
-    object); that is the contracted shape.
-  - `spawnBytecodeActionFiber` (line ~1811): - line ~1825: `childContext.currentActionInstance =
-actionInstance;` -- D4 retires `currentActionInstance`;
-    delete this line. - line ~1826: `childContext.rule = ruleFuncId !== undefined
-? childContext.funcIdToRule?.get(ruleFuncId) :
-undefined;` -- D2 retires both `ctx.rule` and
-    `funcIdToRule`; delete this line. - lines ~1827-1832: `childFrame.actionBinding = { ...,
-actionInstance };` -- D4 retires
-    `actionBinding.actionInstance`; remove the field from
-    the literal (the binding stays, with `actionKey`,
-    `callSiteId`, `isAsync: true`, and any other
-    post-D4-surviving fields). - The `getOrCreateActionInstance(childContext, callSiteId,
-action.numStateSlots)` call (line ~1820) is dead post-D4:
-    state-slot allocation moves to D4's contracted op. The
-    call deletes; if a state-slot reset is still needed at
-    child-fiber spawn, it issues through the D4 op (the agent
-    audits and the procedure step records the choice). - The `resolveFrameRuleFuncId` call (line ~1821) and the
-    `ruleFuncId` storage on `childFrame` survive only if a
-    surviving consumer reads `childFrame.ruleFuncId`. The
-    agent greps for consumers; if zero, both lines delete.
-  - `resolveAsyncActionHandle` (line ~1841),
-    `rejectAsyncActionHandle` (line ~1856),
-    `cancelAsyncActionHandle` (line ~1871). Read-only here:
-    these are id-keyed already; G2 verifies.
+  - `execActionCallAsync` -- both branches.
+    - Host branch: D6 adds a `try / catch` around
+      `action.execAsync(...)` that calls
+      `this.handles.delete(hid)` and rethrows. The bind
+      reduction (no fourth `actionInstance` arg) is already
+      done; the call already uses 3-arg
+      `bindExecutionContext(fiber, frame, callSiteId)`.
+    - Bytecode branch: read-only. The existing
+      `try { scheduler.addFiber(childFiber); } catch { ... }`
+      is the model the host branch's new guard mirrors.
+  - `spawnBytecodeActionFiber` -- read-only. The body
+    contains only id-keyed writes (`currentCallSiteId`,
+    `currentRuleFuncId`, `ruleFuncId`, and the
+    no-`actionInstance` `actionBinding` literal). G4 verifies.
+  - `resolveAsyncActionHandle` / `rejectAsyncActionHandle` /
+    `cancelAsyncActionHandle` -- read-only. G2 verifies they
+    touch only `fiber.asyncResultHandleId` and the handle
+    table.
   - `FiberScheduler.constructor` handle subscription
-    (line ~2160: `this.vm.handles.events.on("completed",
-(handleId) => this.onHandleCompleted(handleId));`).
-    Read-only here: id-keyed already; G3 verifies.
-  - `FiberScheduler.onHandleCompleted` (line ~2197).
-    Read-only here: id-keyed already; G3 verifies.
+    (`this.vm.handles.events.on("completed", (handleId) =>
+this.onHandleCompleted(handleId))`) -- read-only. G3
+    verifies the callback parameter is `HandleId`.
+  - `FiberScheduler.onHandleCompleted` -- read-only. G3
+    verifies it takes `HandleId` and looks up fibers by id.
 - `packages/core/src/runtime/vm-types.ts`:
-  - `Fiber.asyncResultHandleId?: HandleId` (line ~254). D6
-    pins this as the canonical async-result-handle anchor with
-    field-level JSDoc naming the resolve/reject/cancel
-    contract.
-  - `Scheduler` interface (line ~384). D6 adds JSDoc to each
-    member naming the id-only contract (`enqueueRunnable`,
-    `getFiber`, `onHandleCompleted` are id-keyed; `addFiber`
-    takes a `Fiber` runtime struct, which is itself id-only on
-    its public surface). No signature change.
+  - `Fiber.asyncResultHandleId?: HandleId` -- D6 adds field-
+    level JSDoc naming the async-result-handle anchor and
+    the resolve / reject / cancel contract that clears it.
+  - `Scheduler` interface (the four-member `Scheduler`
+    declaration: `onHandleCompleted`, `enqueueRunnable`,
+    `getFiber`, `addFiber?`) -- D6 adds member-level JSDoc
+    naming each member's id-only contract. `addFiber` takes
+    a `Fiber` runtime struct (the contracted runtime entity,
+    not an authoring object) -- the JSDoc states this
+    explicitly. No signature change.
 
 ### Verification gates (these are the work, not side checks)
 
-D6's mechanical work is small dead-code deletion plus pinning
-JSDoc; the gates are:
-
-- **G1 -- Async wiring is id-only end-to-end.**
-  In `execActionCallAsync`, every value that crosses into the
-  scheduler or handle table is one of: a `HandleId`, a
-  `Fiber` runtime struct, a `List<Value>` of args, or a
-  `callSiteId` number. No `ActionInstance`, no `BrainRule`,
-  no `BrainPage`, no `IBrainRule`, no authoring-object
+- **G1 -- Async wiring is id-only end-to-end.** Read
+  `execActionCallAsync` end to end. Every value passed into
+  `this.handles.*`, `this.push(fiber, ...)`,
+  `scheduler.addFiber(...)`, `this.bindExecutionContext(...)`
+  is one of: a `HandleId`, a `Fiber` runtime struct, a
+  `List<Value>` of args, a `callSiteId: number`, or
+  `fiber.executionContext`. No `ActionInstance`, no
+  `BrainRule`, no `BrainPage`, no `IBrainRule`, no authoring
   reference.
 - **G2 -- Async handle lifecycle is id-only.**
-  `grep -nE 'resolveAsyncActionHandle|rejectAsyncActionHandle|cancelAsyncActionHandle|onHandleCompleted' packages/core/src/runtime/vm.ts`
-  -- every match takes only `Fiber` + `HandleId` + (for
-  resolve) `Value`. Read all three resolve/reject/cancel
-  helpers; their bodies touch only `fiber.asyncResultHandleId`,
-  `this.handles.get/resolve/reject/cancel`. No
-  authoring-object access.
-- **G3 -- Handle events keyed by HandleId only.**
-  Read `vm.handles.events.on("completed", ...)` subscription
-  in `FiberScheduler` constructor; the callback parameter is
-  `HandleId`. No richer payload.
-- **G4 -- Cleanup tail of dead D2/D4 writes is gone.**
-  `grep -nE '\\b(currentActionInstance|funcIdToRule|actionInstance)\\b' packages/core/src/runtime/vm.ts`
-  returns zero matches inside `execActionCallAsync` and
-  `spawnBytecodeActionFiber`. (Other matches elsewhere should
-  also be zero post-D4; if any survive, escalate.)
+  `grep -nE 'resolveAsyncActionHandle|rejectAsyncActionHandle|cancelAsyncActionHandle' packages/core/src/runtime/vm.ts`
+  -- every match takes only `fiber: Fiber` plus (for
+  resolve) `result: Value` or (for reject) `err: ErrorValue`.
+  Read all three helpers; their bodies touch only
+  `fiber.asyncResultHandleId` and `this.handles.*`.
+- **G3 -- Handle events keyed by `HandleId` only.** Read the
+  `vm.handles.events.on("completed", ...)` subscription in
+  `FiberScheduler` constructor and the
+  `FiberScheduler.onHandleCompleted` declaration; the callback
+  parameter is `HandleId` and the body looks up fibers by id.
+- **G4 -- Cleanup tail is gone.**
+  `grep -nE '\\b(currentActionInstance|getOrCreateActionInstance|resetActionInstance)\\b' packages/core/src/runtime/`
+  returns zero matches. `actionInstance` (as a literal field
+  name) returns zero matches inside `execActionCallAsync` or
+  `spawnBytecodeActionFiber`.
 - **G5 -- `bindExecutionContext` arity matches the post-D4
   surface.** `grep -nE 'bindExecutionContext\\(' packages/core/src/runtime/vm.ts`
-  -- every call site has the post-D4 signature (no fourth
-  `actionInstance` argument).
+  -- every call site has the 3-arg signature
+  `(fiber, frame, callSiteId)`.
+- **G6 -- Host async-action handle is rolled back on
+  synchronous `execAsync` throw.** Read
+  `execActionCallAsync` host branch: the call to
+  `action.execAsync(...)` is wrapped in a `try { ... } catch
+{ this.handles.delete(hid); throw error; }` symmetric to
+  the bytecode branch's `scheduler.addFiber` guard. A new
+  test in `vm.spec.ts` (or the existing async-action spec
+  file) registers a host async action whose `execAsync`
+  throws synchronously, calls it via `ACTION_CALL_ASYNC`, and
+  asserts that the handle table size returns to its
+  pre-call value.
 
 ### Procedure (execute in order; tree compiles after each step)
 
-1. **Run G2 / G3 / G4 / G5 as inheritance gates.** If G2 / G3
-   fail, the precondition was wrong; escalate to D2/D3/D4/D5
-   post-mortem. If G4 / G5 fail with matches inside
-   `execActionCallAsync` or `spawnBytecodeActionFiber`, the
-   matches are exactly the dead writes D6 deletes; proceed.
-2. **Sweep dead writes in `spawnBytecodeActionFiber`** in the
-   order documented in Source paths above. Delete in this
-   order so the tree compiles after each delete:
-   - `actionBinding.actionInstance` field from the literal,
-   - `childContext.currentActionInstance = ...` line,
-   - `childContext.rule = ...` line,
-   - `getOrCreateActionInstance(childContext, callSiteId,
-action.numStateSlots)` call (route any surviving
-     state-slot reset through the D4 op),
-   - `resolveFrameRuleFuncId` call + `childFrame.ruleFuncId =
-ruleFuncId` if no consumer remains.
-     Run G4 after each delete; expect the count to drop by one.
-3. **Sweep dead binds in host branch of
-   `execActionCallAsync`.** Delete the
-   `getOrCreateActionInstance` line and reduce
-   `bindExecutionContext(fiber, frame, callSiteId,
-actionInstance)` to `bindExecutionContext(fiber, frame,
-callSiteId)`. Run G4 + G5.
-4. **Pin `Fiber.asyncResultHandleId` JSDoc.** Add field-level
+1. **Run G2 / G3 / G4 / G5.** All must pass. If any fails,
+   the precondition was wrong; escalate to D2 / D3 / D4 / D5
+   post-mortem.
+2. **Pin `Fiber.asyncResultHandleId` JSDoc.** Add field-level
    JSDoc in `vm-types.ts`: this field holds the `HandleId` of
    the pending async-action result handle for a child fiber
    spawned by `ACTION_CALL_ASYNC`; set on spawn, cleared by
    `resolveAsyncActionHandle` / `rejectAsyncActionHandle` /
    `cancelAsyncActionHandle`; never holds an authoring-object
    reference.
-5. **Pin `Scheduler` interface JSDoc.** Add member-level JSDoc
-   in `vm-types.ts` naming each member's id-only contract
-   (`enqueueRunnable(fiberId)`, `getFiber(fiberId)`,
-   `onHandleCompleted(handleId)`, `addFiber(fiber)` -- the
-   last takes a `Fiber` struct, which is the contracted
-   runtime entity, not an authoring object). No signature
-   change.
-6. **Run G1 by reading `execActionCallAsync` end-to-end.**
+3. **Pin `Scheduler` interface member JSDoc.** Add member-level
+   JSDoc in `vm-types.ts` for each member of the `Scheduler`
+   interface: `onHandleCompleted(handleId: HandleId)`,
+   `enqueueRunnable(fiberId: number)`,
+   `getFiber(fiberId: number)`, and the optional
+   `addFiber(fiber: Fiber)` (note: takes a `Fiber` runtime
+   struct, not an authoring object). No signature change.
+4. **Close the host async-handle-leak gap.** In the host
+   branch of `execActionCallAsync`, wrap the
+   `action.execAsync(fiber.executionContext, args, hid)` call
+   in `try { ... } catch (error) { this.handles.delete(hid);
+throw error; }`. Add a unit test under
+   `packages/core/src/runtime/` (or extend the existing
+   async-action spec) that registers a host async action whose
+   `execAsync` throws synchronously, invokes it via
+   `ACTION_CALL_ASYNC`, and asserts the handle table size
+   returns to its pre-call value.
+5. **Run G1 by reading `execActionCallAsync` end to end.**
    Trace every value passed to `this.handles.*`,
    `this.push(fiber, ...)`, `scheduler.addFiber(...)`,
    `this.bindExecutionContext(...)`. Each must be an id, a
    `HandleId`, a `Fiber` struct, a `List<Value>`, or a
-   `callSiteId`. Document the trace as a short comment block
-   only if the verification needs to be revisited; otherwise
-   the gate is the read.
+   `callSiteId`.
+6. **Re-run G6** (the new test from step 4 plus the existing
+   async-action regression suite).
 7. **Standard verification.** From `packages/core`, run
-   `npm run typecheck && npm run check && npm test &&
-npm run build`. From `apps/sim`, the same four. All pass
-   with the project's zero-noise standard.
+   `npm run typecheck && npm run check && npm test && npm run build`.
+   From `apps/sim`, the same four. All pass with the project's
+   zero-noise standard.
 
 ### Notes (not work items)
 
@@ -2945,41 +2976,34 @@ npm run build`. From `apps/sim`, the same four. All pass
   internally constructs a `Fiber` struct and hands it to the
   scheduler for storage.
 - **Internal child-fiber id space.** `nextInternalFiberId =
--1` (line ~276) issues negative ids for child fibers
-  spawned by `ACTION_CALL_ASYNC`. D6 does not change this;
-  D0 table 6 records it. If a future phase consolidates
-  fiber id allocation under the scheduler, that work is
-  scoped separately.
+-1` issues negative ids for child fibers spawned by
+  `ACTION_CALL_ASYNC`. D6 does not change this; D0 table 6
+  records it. If a future phase consolidates fiber id
+  allocation under the scheduler, that work is scoped
+  separately.
+- **`childFrame.ruleFuncId` is live, not dead.** The
+  original D6 plan flagged this for possible deletion if no
+  consumer remained. `resolveFrameRuleFuncId` consumes it; it
+  stays.
 
 ### Risks
 
 - **Phantom-fix temptation.** D6 is mechanical; an agent may
   be tempted to "improve" the handle table API or the
-  scheduler interface while here. Reject. D6's job is
-  cleanup + lock-in, not improvement. Any structural change
+  scheduler interface while here. Reject. D6's job is lock-in
+  plus the host-branch leak fix. Any structural change
   belongs in a follow-on plan.
-- **State-slot reset on async child-fiber spawn.** When the
-  agent deletes `getOrCreateActionInstance(childContext,
-callSiteId, action.numStateSlots)` from
-  `spawnBytecodeActionFiber`, the child fiber must still see
-  an initialized state-slot region for the child action's
-  call site. Either D4's contracted reset op is invoked at
-  the same point in the spawn flow (with an explicit comment
-  in the procedure record naming which op), or the agent
-  verifies that D4 already issues the reset on first slot
-  read by the child. Whichever route, the choice is
-  documented in the phase log.
-- **Async-result handle leak on spawn failure.** The existing
-  pattern in `execActionCallAsync` host branch creates the
-  handle (`this.handles.createPending()`) **before** calling
-  `action.execAsync`. If `execAsync` throws synchronously,
-  the handle is orphaned. The bytecode branch handles this
-  via `try { scheduler.addFiber(childFiber); } catch { ...
-this.handles.delete(hid); throw error; }`. D6 verifies the
-  host branch has the symmetric guard; if it does not, the
-  agent adds it as part of the cleanup (this is a
-  pre-existing latent bug that this phase surfaces, not a new
-  feature).
+- **Async-result handle leak surface area.** The host-branch
+  fix in step 4 closes the synchronous-throw case. If
+  `execAsync` returns a never-resolving promise (which the
+  contract permits as long as it eventually completes) and
+  the action provider later loses the handle, the handle
+  remains pending forever and gets GC'd by
+  `HandleTable.gc()` only if it has no waiters. This is
+  pre-existing behavior; D6 does not add a watchdog. A
+  follow-up risk for D7's contract docs is to state the host
+  contract: `execAsync` must eventually resolve, reject, or
+  cancel the handle.
 
 ### Acceptance (validation checklist)
 
@@ -2990,29 +3014,28 @@ D6 ships only when every item passes:
    struct, a `List<Value>`, or a `callSiteId`).
 2. G2 passes (resolve / reject / cancel async handle helpers
    are id-keyed).
-3. G3 passes (`vm.handles.events.completed` callback param is
+3. G3 passes (`vm.handles.events.completed` callback param
+   and `FiberScheduler.onHandleCompleted` parameter are
    `HandleId`).
 4. G4 passes (zero `currentActionInstance` /
-   `funcIdToRule` / `actionInstance` matches inside
-   `execActionCallAsync` and `spawnBytecodeActionFiber`).
-5. G5 passes (every `bindExecutionContext(` call site has the
-   post-D4 arity).
-6. JSDoc pinned on `Fiber.asyncResultHandleId` and on every
+   `getOrCreateActionInstance` / `resetActionInstance`
+   matches under `runtime/`; zero `actionInstance` literal-
+   field matches inside `execActionCallAsync` or
+   `spawnBytecodeActionFiber`).
+5. G5 passes (every `bindExecutionContext(` call site is
+   3-arg).
+6. G6 passes (host async-action handle is rolled back on
+   synchronous `execAsync` throw, verified by a new unit
+   test).
+7. JSDoc pinned on `Fiber.asyncResultHandleId` and on every
    member of the `Scheduler` interface.
-7. From `packages/core`, all four standard gates pass with
+8. From `packages/core`, all four standard gates pass with
    zero noise.
-8. From `apps/sim`, all four standard gates pass.
-9. Async action behavior is unchanged: existing tests that
-   exercise async action resolve / reject / cancel /
-   cancellation-on-parent-fault continue to pass without
-   modification. If a test had to be modified to accommodate
-   D6, the modification is a signature-only mechanical update
-   (e.g. dropping a now-removed `actionInstance` argument)
-   and is recorded in the phase log.
-10. Runtime programs that do not use `ACTION_CALL_ASYNC` do
-    not require any of the async-action surface to load or
-    construct (verifiable by greppin existing non-async tests
-    for any new required setup).
+9. From `apps/sim`, all four standard gates pass.
+10. Async action behavior is unchanged: existing tests that
+    exercise async action resolve / reject / cancel /
+    cancellation-on-parent-fault continue to pass without
+    modification.
 
 ## Phase D7 -- Document The Dense-State Contract
 
