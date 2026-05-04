@@ -101,21 +101,33 @@ The dense-state work assumes:
 If any prerequisite slips, this spec stops -- do not work around a
 missing seam by reaching back into `brain/`.
 
-**Lifecycle-hooks precondition (added 2026-05-03).** D2 / D3 / D4
-additionally assume the page-lifecycle-hooks spec
+**Lifecycle-hooks precondition (added 2026-05-03; updated
+2026-05-03).** All three phases of the page-lifecycle-hooks spec
 ([`ts-vm-page-lifecycle-hooks-2026-05-03.md`](./ts-vm-page-lifecycle-hooks-2026-05-03.md))
-has landed (phases L1 and L2). Under that spec, callsite storage
+(L1 / L2 / L3) have landed. Under that spec, callsite storage
 (action state slots and host state cells) is
 **brain-instance-scoped**, not page-activation-scoped:
-`services.action.ensureCallsite` allocates on first call and is a
-no-op afterward, and reset is opt-in via
-`services.action.resetCallsite(callSiteId)`,
-`services.callSite.clearHostState(callSiteId)`, the new bytecode
-hooks `initializerFuncId` / `deactivationFuncId`, the new host
-hook `onPageExited`, or `Brain.shutdown()`. Every reference in
-this plan to callsite-storage lifetime is written against that
-contract; if the lifecycle-hooks spec slips, this spec's D3 and
-D4 phases stop until it ships.
+`services.action.ensureCallsite(callSiteId): boolean` allocates
+on first call and is a no-op afterward (the slot list grows on
+demand via `setStateSlot`; `numStateSlots` is no longer read by
+runtime services), reset is opt-in via
+`services.action.resetCallsite(callSiteId)` /
+`services.callSite.clearHostState(callSiteId)` /
+`Brain.shutdown()`, and `BytecodeExecutableAction` carries the
+three-way `initializerFuncId` / `activationFuncId` /
+`deactivationFuncId` hook surface (with `HostActionBinding`
+adding the symmetric `onPageExited`). Brain owns the four hook
+drivers (`runBytecodeInitializerHook`,
+`runBytecodeActivationHook`, `runBytecodeDeactivationHook`,
+`runHostDeactivationHook`) and the dense-shims teardown call
+from `shutdown`. As a side effect, the legacy `ActionInstance`
+helpers (`getActionInstance`, `getOrCreateActionInstance`,
+`resetActionInstance`, `isActionInstance`) and the
+`ExecutionContext.currentActionInstance` field are already
+deleted, and `vm.ts` no longer calls `ensureCallsite` (Brain is
+the sole caller). D3 / D4 below are scoped against this new
+baseline -- see each phase's "Status update (2026-05-03)"
+preamble for what remains.
 
 ## Desired End State
 
@@ -442,7 +454,18 @@ Each unit must:
 
 ## Current State
 
-Completed: D0, D1
+Completed: D0, D1; lifecycle-hooks precondition L1 / L2 / L3
+landed (see
+[`ts-vm-page-lifecycle-hooks-2026-05-03.md`](./ts-vm-page-lifecycle-hooks-2026-05-03.md)).
+Lifecycle-hooks L1 incidentally completed several D3 / D4 work
+items (the legacy `ActionInstance` helper trio, the
+`currentActionInstance` field, and the vm.ts `ensureCallsite`
+call sites are already gone; `services.action.resetCallsite`,
+`services.callSite.clearHostState`, and the dense-shims
+`reset()` teardown are already in place). D3 and D4 have been
+rescoped against this new baseline -- see each phase's "Status
+update (2026-05-03)" preamble.
+
 Next up: D2
 
 ---
@@ -544,8 +567,8 @@ the start of D0 work; update on D0-merge if rebased).
 | `getVariableBySlot`     | `(slotId: number) => Value`            | `keep-portable`   | unchanged; already slot-keyed indexer                                                                                                                                                                                                                                                                                                                                                                                                                    | n/a     | already dense (slot-indexed scalar accessor).                                                                                                        |
 | `setVariableBySlot`     | `(slotId: number, v: Value) => void`   | `keep-portable`   | unchanged; already slot-keyed indexer                                                                                                                                                                                                                                                                                                                                                                                                                    | n/a     | already dense (slot-indexed scalar accessor).                                                                                                        |
 | `data`                  | `unknown`                              | `keep-portable`   | unchanged; opaque host-injected payload                                                                                                                                                                                                                                                                                                                                                                                                                  | n/a     | scalar / opaque pointer; no base-shape reach-through (sim's `getSelf` etc. are extension-side helpers).                                              |
-| `callSiteState`         | `CallSiteStateMap`                     | `move-to-service` | host-state branch: `services.callSite.getHostState(callSiteId: number): unknown` / `services.callSite.setHostState(callSiteId: number, state: unknown): void` (D3); action-state-slot branch: `services.action.ensureCallsite(callSiteId: number, numStateSlots: number): void` / `services.action.getStateSlot(callSiteId: number, slotIdx: number): Value` / `services.action.setStateSlot(callSiteId: number, slotIdx: number, v: Value): void` (D4). | D3 / D4 | tiebreaker 1: name-keyed map of `ActionInstance` objects with object-graph reach (`hostState`, `stateSlots`).                                        |
-| `currentActionInstance` | `ActionInstance \| undefined`          | `delete`          | n/a                                                                                                                                                                                                                                                                                                                                                                                                                                                      | n/a     | `grep -nE 'currentActionInstance' apps/sim packages/core/src` shows zero shipped-host reads after the D3 host-state retirement; field is dead state. |
+| `callSiteState`         | `CallSiteStateMap`                     | `move-to-service` | host-state branch: `services.callSite.getHostState(callSiteId: number): unknown` / `services.callSite.setHostState(callSiteId: number, state: unknown): void` (D3); action-state-slot branch: `services.action.ensureCallsite(callSiteId: number): boolean` / `services.action.getStateSlot(callSiteId: number, slotIdx: number): Value` / `services.action.setStateSlot(callSiteId: number, slotIdx: number, v: Value): void` (D4). Lifecycle-hooks L1 already moved the storage off `ExecutionContext`; the field declaration on `ExecutionContext` is gone. D3 / D4 retire the convenience helpers and any remaining `ActionInstance`-shaped fixtures.                                                                                                                                                | D3 / D4 | tiebreaker 1: name-keyed map of `ActionInstance` objects with object-graph reach (`hostState`, `stateSlots`).                                        |
+| `currentActionInstance` | `ActionInstance \| undefined`          | `delete`          | n/a (already deleted by lifecycle-hooks L1; field, helper graph, and vm.ts writes all gone)                                                                                                                                                                                                                                                                                                                                                              | done    | `grep -nE 'currentActionInstance' packages/core/src` returns zero matches.                                                                            |
 | `currentCallSiteId`     | `number \| undefined`                  | `keep-portable`   | unchanged                                                                                                                                                                                                                                                                                                                                                                                                                                                | n/a     | already dense (scalar number set by `bindExecutionContext`).                                                                                         |
 | `rule`                  | `IBrainRule \| undefined`              | `replace-with-id` | `currentRuleFuncId: number \| undefined` (`RuleId`, table 6); sentinel `0` (no rule). Lookup of rule-scoped data goes through `services.ruleVars.getByName(ruleFuncId, name): Value` / `setByName(ruleFuncId, name, value): void`.                                                                                                                                                                                                                       | D2      | tiebreaker 1: shipped host functions reach `ctx.rule.getVariable(name)` / `ctx.rule.setVariable(name, v)`.                                           |
 | `funcIdToRule`          | `Dict<number, IBrainRule>`             | `move-to-service` | `services.program.getRuleFuncIdForFunc(funcId: number): number \| undefined`                                                                                                                                                                                                                                                                                                                                                                             | D2      | tiebreaker 1: name-keyed object map; tiebreaker 3: VM-only read on host-call entry.                                                                  |
@@ -1543,6 +1566,26 @@ D2 ships only when every item passes:
 
 ## Phase D3 -- Host-Call Callsite-State Migration
 
+**Status update (2026-05-03).** Lifecycle-hooks L1 incidentally
+completed the structural half of D3: the `services.callSite`
+adapter is the real production owner of host-state storage
+(brain-instance-scoped, keyed by `callSiteId`), the legacy
+`ActionInstance` helper trio is gone, and
+`getCallSiteState<T>(ctx)` / `setCallSiteState(ctx, T)` are now
+thin convenience wrappers over `ctx.services.callSite.getHostState`
+/ `setHostState` -- they no longer reach for an
+`ActionInstance` graph. What's left for D3 is the *consistency*
+half: migrate the sim host functions (`bump`, `see`, `move`,
+`shoot`, `eat`, `turn`) and the core sensors
+(`onPageEntered`, `timeout`) from the convenience helpers to
+direct `services.callSite.{get,set}HostState` calls; then delete
+the helpers and their re-exports. The procedure below is
+annotated with what L1 already did. The lifetime-flip
+regression tests live in lifecycle-hooks L1; D3's behavioral
+regression tests (synthetic cooldown / consumption / recharge
+actuators in `packages/core/src/brain/brain.spec.ts`) remain
+the gate for the surface's end-to-end behavior.
+
 **Purpose.** Replace the legacy `callSiteState: Dict<callSiteId,
 ActionInstance>` reach-through used by host functions for
 per-callsite persistent state (e.g. cooldown timers in
@@ -1666,8 +1709,8 @@ branch), the contract for per-callsite host state is a
 - `services.callSite.getHostState(callSiteId: number): unknown`,
 - `services.callSite.setHostState(callSiteId: number, state: unknown): void`.
 
-The backing store is page-activation-scoped (matching today's
-`callSiteState` lifetime) and is owned by the adapter
+The backing store is brain-instance-scoped per the
+page-lifecycle-hooks spec and is owned by the adapter
 implementation, not the context. The new surface does not
 expose `ActionInstance` to host code.
 
@@ -1889,12 +1932,49 @@ npm test && npm run build` pass.
 
 ## Phase D4 -- Action State Slots Migration
 
+**Status update (2026-05-03; revised).** Lifecycle-hooks L1
+incidentally completed most of D4's *contract-surface* work: the
+`services.action` adapter trio
+(`ensureCallsite(callSiteId): boolean` -- no `numStateSlots`
+parameter, slot list grows on demand via `setStateSlot`;
+`getStateSlot`; `setStateSlot`) is the production owner of the
+contract; `services.action.resetCallsite` and the dense-shims
+`reset()` teardown exist; `Brain.activatePage` calls
+`ensureCallsite` and drives `initializerFuncId` from the
+`boolean` return; the `getOrCreateActionInstance` /
+`resetActionInstance` / `isActionInstance` legacy helpers are
+deleted; `vm.ts` no longer imports or calls those helpers and no
+longer calls `ensureCallsite` (Brain is the sole caller); the
+`ExecutionContext.currentActionInstance` field is deleted along
+with all writers; activation-hook signatures already drop the
+`ActionInstance` parameter.
+
+What L1 did NOT do, and what D4 must finish: the storage itself
+is still hidden inside a closure in `runtime/dense-shims.ts`, a
+file whose name implies "temporary bridge" and whose factory
+function owns brain-instance-scoped state. That is the same
+shape (services adapter doubling as state owner) the dense plan
+exists to dissolve at the contract surface; tolerating it on the
+implementation side recreates the original sin in miniature and
+breaks the symmetry established by D2 (rule storage owned at
+rule-instance scope) and D3 (host-state delegation already
+removed from the legacy graph). It also leaves D5 (Brain
+runtime/compile split) with a closure to re-plumb instead of a
+field to move.
+
+D4 finishes the migration by relocating storage to its proper
+home (a dedicated `runtime/callsite-store.ts` module that Brain
+holds), reducing the renamed services factory to a stateless
+projection, retiring the now-internal `ActionInstance` record
+type from the public `runtime/context.ts` surface, and adding
+the D4-specific regression tests for vm-level dispatch wiring.
+
 **Purpose.** Replace the `ActionInstance` object graph backing
 bytecode action state slots with a contracted dense per-callsite
-state-slot surface, retire the dead
-`ExecutionContext.currentActionInstance` field, and stop
-allocating per-callsite instances for host-backed actions
-entirely. Removes the action-state-slot branch of the D1 shim.
+state-slot surface, relocate the storage to a dedicated
+brain-instance-scoped owner (`runtime/callsite-store.ts`), and
+reduce the `PlatformServices` action / callSite adapters to
+pure projections.
 
 **Scope.** All `ACTION_CALL` and `ACTION_CALL_ASYNC` state-slot
 machinery -- both sync and async -- and the page-activation reset
@@ -2039,7 +2119,7 @@ Per D0 table 6 (and table 1's disposition for `callSiteState`),
 the contract for per-callsite bytecode action state slots is a
 `PlatformServices` adapter trio:
 
-- `services.action.ensureCallsite(callSiteId: number, numStateSlots: number): void`,
+- `services.action.ensureCallsite(callSiteId: number): boolean`,
 - `services.action.getStateSlot(callSiteId: number, slotIdx: number): Value`,
 - `services.action.setStateSlot(callSiteId: number, slotIdx: number, v: Value): void`.
 
@@ -2051,12 +2131,15 @@ The surface:
   first call for a `callSiteId` and is a no-op on
   subsequent calls. Returns `boolean` (`true` if newly
   allocated, `false` otherwise) so the brain orchestrator
-  can drive `initializerFuncId`;
+  can drive `initializerFuncId`. (Already shipped by L1; the
+  slot list is allocated empty and grows on demand via
+  `setStateSlot`; `numStateSlots` from `BytecodeExecutableAction`
+  is no longer read by the runtime services);
 - explicit reset is via
-  `services.action.resetCallsite(callSiteId)` (defined by
-  the page-lifecycle-hooks spec): deallocates the slot
-  list; the next `ensureCallsite` returns `true` and the
-  initializer driver re-runs `initializerFuncId`.
+  `services.action.resetCallsite(callSiteId)` (already
+  shipped by L1): deallocates the slot list; the next
+  `ensureCallsite` returns `true` and Brain's initializer
+  driver re-runs `initializerFuncId`.
 
 Per Finding 3 of the D4 review, the host-action callsite's
 "current action instance" binding is dead. There is no
@@ -2071,94 +2154,96 @@ relocate them as part of pinning Brain's fate.
 
 ### Procedure (execute in order; the tree should compile after each step)
 
-1. **Add the new surface as additions only.** Per D0 table 6,
-   add the `services.action` adapter trio
-   (`ensureCallsite` / `getStateSlot` / `setStateSlot`). The
-   legacy `ActionInstance` graph, `callSiteState` field,
-   `currentActionInstance` field, and three context.ts
-   helpers all stay through steps 2-6.
-2. **Wire the dense-shims action branch through the new
-   surface.** In `dense-shims.ts`, the new
-   `ensure`/`get`/`set` ops delegate to
-   `getOrCreateActionInstance` + `ActionInstance.stateSlots`
-   exactly as they implicitly do today. This is the same
-   delegation pattern the rule-side and host-state-side
-   shims used in D1.
+1. **Add the contract surface.** Per D0 table 6, the
+   `services.action` adapter trio
+   (`ensureCallsite(callSiteId): boolean` / `getStateSlot` /
+   `setStateSlot`) plus `resetCallsite` and the
+   `services.callSite` host-state pair are the dense
+   contract. *(Already shipped by lifecycle-hooks L1.)*
+2. **(legacy delegation step from the original D1-D4
+   trajectory).** *(Already shipped by lifecycle-hooks L1;
+   no legacy `ActionInstance` graph remains to delegate
+   to.)*
 3. **Migrate vm.ts state-slot reads/writes.**
-   `getCurrentActionStateSlots` switches from
-   `actionInstance.stateSlots` to a new helper that, given
-   the current frame's `actionBinding.callSiteId`, returns a
-   thin slot accessor over the new surface (or the legacy
-   `fiber.callsiteVars` fallback for non-action frames --
-   that fallback is unchanged). `LOAD_CALLSITE_VAR` /
-   `STORE_CALLSITE_VAR` (~lines 673, 684) are unchanged
-   because they go through this helper.
-4. **Migrate vm.ts ensure-slots calls.** Replace
-   `getOrCreateActionInstance(..., action.numStateSlots)` at
-   lines 1786 and 1819 with the new ensure-slots op. The
-   `ActionInstance` returned today is no longer needed; drop
-   the local variable. Remove the
-   `frame.actionBinding.actionInstance` field and stop
-   producing it.
-5. **Migrate vm.ts host-action call sites.** Delete the
-   `getOrCreateActionInstance(ctx, callSiteId, 0)` calls at
-   vm.ts:999 and vm.ts:1055. Host actions never needed
-   per-callsite _state slots_; their secondary purpose was
-   pre-populating `currentActionInstance` so the legacy
-   `getCallSiteState` fast path hit. D3 retired that helper
-   in favor of a `callSiteId`-keyed surface, so these calls
-   no longer carry any load. Per-callsite host state for the
-   `ACTION_CALL` host branch (e.g. `move`'s cooldown timer)
-   continues to flow through the D3 surface, keyed by
-   `ctx.currentCallSiteId` (set by `bindExecutionContext`).
-   The `bindExecutionContext(fiber, frame, callSiteId)` call
-   itself stays (it still binds `currentCallSiteId` and
-   `rule`).
-6. **Migrate brain.ts page activation.** In `activatePage`,
-   replace any remaining legacy `resetActionInstance(ctx,
-callSiteId, ...)` calls with the
-   `services.action.ensureCallsite` op. Per the
-   page-lifecycle-hooks spec the op is
-   allocate-on-first-call and returns `boolean`; the
-   initializer driver added by that spec consumes the
-   return value. Drop the `actionInstance` local; pass
-   `callSiteId` only into `runHostActivationHook` /
-   `runBytecodeActivationHook`. Update those two helpers'
-   signatures to drop the `ActionInstance` parameter; route
-   any state-slot access in their bodies through the new
-   surface.
-7. **Retire `currentActionInstance` writes.** Delete the
-   field writes in `bindExecutionContext` (line 1702),
-   `syncExecutionContextFromTopFrame` (lines 1710, 1717),
-   `enterBytecodeActionFrame` (line 1793),
-   `spawnBytecodeActionFiber` (line 1824), and
-   `activatePage` / `deactivateCurrentPage` end-of-block
-   clears. Delete the
-   `ExecutionContext.currentActionInstance` field
-   declaration in `context.ts`. After this step, grep for
-   `currentActionInstance` returns zero matches under
-   `packages/core/src/`.
-8. **Delete the legacy action-instance graph.** Remove
-   `ActionInstance`, `ActionInstanceMap`, `CallSiteStateMap`,
-   `isActionInstance`, `getActionInstance`,
-   `getOrCreateActionInstance`, `resetActionInstance`, and
-   the `ExecutionContext.callSiteState` field from
-   `context.ts`. Remove all corresponding re-exports in
-   `app/index.ts` (D3 already removed `getCallSiteState` /
-   `setCallSiteState`; this drops the action-side helpers).
-9. **Bind the new surface to its real owner.** Replace the
-   shim's delegation with the real `services.action` adapter
-   implementation under `runtime/`, owning the
-   brain-instance-scoped state-slot store keyed by
-   `callSiteId` (per the page-lifecycle-hooks spec).
-   `dense-shims.ts` is now empty and is deleted.
-10. **Sweep tests.** Update every fixture under
-    `packages/core/src/` that constructs `callSiteState`,
-    `currentActionInstance`, or `ActionInstance` to
-    construct the new surface's backing. D4 introduces no
-    sim-side test changes; behavior assertions live in
-    core (the D3 synthetic actuators and the D4 vm-level
-    dispatch tests).
+   `getCurrentActionStateSlots` resolves the slot list
+   through the contract surface keyed by the current
+   frame's `actionBinding.callSiteId`; the legacy
+   `fiber.callsiteVars` fallback for non-action frames is
+   unchanged. *(Already shipped by lifecycle-hooks L1.)*
+4. **Migrate vm.ts ensure-slots calls.** All legacy
+   `getOrCreateActionInstance(...)` call sites in vm.ts
+   are removed; `frame.actionBinding.actionInstance` is
+   gone. *(Already shipped by lifecycle-hooks L1; vm.ts
+   no longer calls `ensureCallsite` -- Brain is the sole
+   caller.)*
+5. **Migrate vm.ts host-action call sites.** The legacy
+   `getOrCreateActionInstance(ctx, callSiteId, 0)` calls
+   for the host `ACTION_CALL` / `ACTION_CALL_ASYNC`
+   branches are gone; per-callsite host state for those
+   branches flows through the D3 surface keyed by
+   `ctx.currentCallSiteId`. *(Already shipped by
+   lifecycle-hooks L1.)*
+6. **Brain drives lifecycle.** `Brain.activatePage` calls
+   `services.action.ensureCallsite(callSiteId)` per
+   callsite and dispatches `initializerFuncId` when the
+   call returns `true`; `runHostActivationHook` /
+   `runBytecodeActivationHook` take `callSiteId` only.
+   *(Already shipped by lifecycle-hooks L1.)*
+7. **Retire `currentActionInstance`.** The field
+   declaration on `ExecutionContext` and every writer in
+   vm.ts and brain.ts are deleted. *(Already shipped by
+   lifecycle-hooks L1.)*
+8. **Extract the storage owner.** Create
+   `packages/core/src/runtime/callsite-store.ts` exporting
+   `ICallSiteStore` (interface) and `createCallSiteStore()`
+   (factory). The store owns the `Dict<callSiteId,
+ActionInstance>` plus the slot-pad helper currently
+   declared inside `dense-shims.ts`. Move the
+   `ActionInstance` record type inline into
+   `callsite-store.ts` (it stops being a public
+   `runtime/context.ts` symbol). The store's surface is:
+   `ensureCallsite(callSiteId): boolean`,
+   `resetCallsite(callSiteId): void`,
+   `getStateSlot(callSiteId, slotIdx): Value`,
+   `setStateSlot(callSiteId, slotIdx, v): void`,
+   `getHostState(callSiteId): unknown`,
+   `setHostState(callSiteId, v: unknown): void`,
+   `clearHostState(callSiteId): void`,
+   `clearAll(): void`. The store is purely a storage
+   primitive -- no knowledge of `Brain`, no knowledge of
+   `PlatformServices`.
+9. **Brain owns the store.** Add a
+   `callSiteStore: ICallSiteStore` field on `Brain`,
+   constructed in the constructor alongside
+   `brainVarStore`. Replace the current
+   `denseShims.reset()` call in `Brain.shutdown` with
+   `this.callSiteStore.clearAll()`. Brain's `shutdown`
+   teardown sequence is now: `deactivateCurrentPage()`
+   (fires exit hooks), then `callSiteStore.clearAll()`.
+10. **Rename and reduce the services factory.** Rename
+    `runtime/dense-shims.ts` -> `runtime/runtime-services.ts`,
+    `createDenseShims` -> `createRuntimeServices`,
+    `IDenseShims` -> `IRuntimeServices`. Drop the
+    `IRuntimeServices.reset()` method (teardown is on
+    `ICallSiteStore`, not on the services aggregate). The
+    factory's signature becomes
+    `createRuntimeServices(brain: IBrain, ruleLookup:
+RuleByFuncIdLookup, callSiteStore: ICallSiteStore):
+IRuntimeServices`. Inside the factory, every
+    `services.action.*` and `services.callSite.*` method is
+    a one-line forwarder to the corresponding
+    `callSiteStore` method. The factory declares no
+    `Dict` / `List` / mutable state of its own.
+11. **Sweep tests.** Update `dense-shims.spec.ts` ->
+    `runtime-services.spec.ts`; tests that previously
+    constructed via `createDenseShims(stubBrain, ruleLookup)`
+    now construct via `createRuntimeServices(stubBrain,
+ruleLookup, createCallSiteStore())`. Add
+    `callsite-store.spec.ts` covering the storage
+    primitive in isolation (allocate/get/set/reset/
+    clear-host-state/clear-all). Update any other fixture
+    that still constructs `callSiteState`-shaped records.
+    D4 introduces no sim-side test changes.
 
 ### Notes (not work items)
 
@@ -2277,11 +2362,17 @@ D4 ships only when every item passes:
    `setStateSlot` per D0 table 6) is wired to a real backing
    store, exercised by `LOAD_CALLSITE_VAR` /
    `STORE_CALLSITE_VAR` and by `Brain.activatePage`.
-7. `dense-shims.ts` is deleted; the real `services.callSite`
-   and `services.action` adapter modules under `runtime/`
-   own their respective backing stores. The
-   `installDenseShims` call in `Brain.activationContext` is
-   removed.
+7. The `runtime/dense-shims.ts` file has been renamed to
+   `runtime/runtime-services.ts`. After D4, no production
+   module exports a symbol named `createDenseShims` /
+   `IDenseShims`; `grep -nE 'dense-shim|DenseShims'
+packages/core/src/` returns zero matches. The renamed
+   factory declares no `Dict` / `List` / mutable state of
+   its own; every method body is a one-line forwarder.
+   `runtime/callsite-store.ts` is the sole owner of the
+   `actionInstances` storage, and `Brain` holds a
+   `callSiteStore: ICallSiteStore` field whose `clearAll()`
+   is invoked from `Brain.shutdown`.
 8. From `packages/core`, all four of
    `npm run typecheck && npm run check && npm test && npm run build`
    pass with the project's zero-noise standard.
