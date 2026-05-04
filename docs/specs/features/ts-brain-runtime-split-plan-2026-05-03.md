@@ -487,8 +487,8 @@ Each unit must:
 
 ## Current State
 
-Completed: A0
-Next up: B0
+Completed: A0, B0
+Next up: B1
 
 ---
 
@@ -509,6 +509,104 @@ nested `PlatformServices`, `MindcraftEnvironment.appServices`,
 optional `rng` parameter on `createMindcraftEnvironment`.
 
 Verification: full gate green (752/752 core, 981/981 ts-compiler).
+
+### B0
+
+Completed (no post-mortem notes written as user's request).
+
+---
+
+## Phase B0 Decisions
+
+Inspection commit: `dca5e9bf8d72b2b2002df593ea8a2269e901bede`.
+
+External-reader survey covers: `packages/core/src/`, `packages/ts-compiler/src/`,
+`packages/ui/src/`, `apps/sim/src/`, `apps/vscode-extension/src/`,
+`apps/lbb/src/`, `packages/bridge-app/src/`, `packages/bridge-client/src/`,
+`packages/service-api/src/`. Field/private-method readers that resolve to
+non-`Brain` symbols (e.g. `IBrainDef.pages()`, `services.brain.pages`,
+`actor.brainDef`, JSON `brain.pages`) are not counted.
+
+Facade delegates for `move-to-runtime` rows preserve the existing `Brain`
+method signature exactly (the facade's method body becomes
+`return this.runtime.<method>(...)` or the void equivalent); the `notes`
+cell records the wrapper signature only when it differs from the original
+member shape.
+
+### Table 1 -- Per-member dispositions
+
+| field-or-method | kind | external-readers | disposition | target-class | phase | notes |
+| --------------- | ---- | ---------------- | ----------- | ------------ | ----- | ----- |
+| `brainDef` | field | none (`grep -n 'brain\.brainDef' packages apps`: no `Brain`-instance hits; matches resolve to `BrainActor.brainDef`) | keep-on-facade | Brain (facade) | - | rule 1 -- authoring graph holder; consumed by `getLinkEnvironment` and the ctor `BrainPage` build |
+| `services` | field | none (private) | keep-on-facade | Brain (facade) | - | rule 1 -- supplies the three host-tier sub-aggregates passed to the runtime ctor and `getLinkEnvironment` |
+| `linkEnvironment` | field | none (private; mutated by `ManagedMindcraftBrain.refreshLinkEnvironment`) | keep-on-facade | Brain (facade) | - | rule 2 -- compile-side input; re-init reads it via `getLinkEnvironment` |
+| `pages` | field | none (`brain\.pages` matches resolve to `IBrainDef.pages()`, `services.brain.pages`, JSON `brain.pages`; no `Brain.pages` reader) | keep-on-facade | Brain (facade) | - | rule 1 -- authoring runtime page list; B5 facade event subscriber reads `this.pages.get(pageIndex)` to invoke `BrainPage.activate()`/`deactivate()` |
+| `emitter_` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3 -- emit sites are `activatePage`/`deactivateCurrentPage`, both move in B5; facade-delete (rule 4) |
+| `enabled` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3 -- read by `think`, written by `setEnabled`; facade-delete (rule 4) |
+| `interrupted` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade-delete (rule 4) |
+| `currentPageIndex` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3 -- FSM state; facade-delete (rule 4) |
+| `desiredPageIndex` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade-delete (rule 4) |
+| `previousPageIndex` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade-delete (rule 4) |
+| `restartPageRequested` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade-delete (rule 4) |
+| `lastThinkTime` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade-delete (rule 4) |
+| `variables` | field | none | move-to-runtime | BrainRuntime | B2 | rule 3 -- VM dispatch reads via `getVariableBySlot`; facade-delete (rule 4) |
+| `varSlotByName` | field | none | move-to-runtime | BrainRuntime | B2 | rule 3; facade-delete (rule 4) |
+| `compiledProgram` | field | none (only via `getCompiledProgram`) | keep-on-facade | Brain (facade) | - | rule 2 -- compile output; backs `getCompiledProgram` |
+| `program` | field | none (only via `getProgram`) | move-to-runtime | BrainRuntime | B3 | rule 3 -- VM input; ctor parameter on runtime; facade does not store it (B6 acceptance 11 in B5 spec) |
+| `ruleIndex` | field | none | move-to-runtime | BrainRuntime | B3 | rule 3 -- consumed by `BrainPage.assignFuncIds` during init; field itself is local on facade after B3 |
+| `pageMetadata` | field | none (only via `getPages`) | move-to-runtime | BrainRuntime | B3 | rule 3 -- ctor parameter on runtime; facade does not store it |
+| `vm` | field | none | move-to-runtime | BrainRuntime | B3 | rule 3; facade-delete (rule 4) |
+| `scheduler` | field | none | move-to-runtime | BrainRuntime | B3 | rule 3; facade-delete (rule 4) |
+| `executionContext` | field | none | move-to-runtime | BrainRuntime | B3 | rule 3; facade-delete (rule 4) |
+| `callsiteStore` | field | none | move-to-runtime | BrainRuntime | B3 | rule 3 -- backs `services.brain.callsite`; facade-delete (rule 4) |
+| `ruleVariableStores` | field | none | move-to-runtime | BrainRuntime | B3 | rule 3 -- backs `services.brain.ruleVars`; facade-delete (rule 4) |
+| `activeRuleFiberIds` | field | none | move-to-runtime | BrainRuntime | B3 | rule 3 -- scheduler bookkeeping; facade-delete (rule 4) |
+| `nextInlineFiberId` | field | none | move-to-runtime | BrainRuntime | B3 | rule 3 -- hook fiber id counter; facade-delete (rule 4) |
+| `pageIdToIndex` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3 -- O(1) lookup; built in runtime ctor; facade-delete (rule 4) |
+| `pageNameToIndex` | field | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade-delete (rule 4) |
+| `constructor` | method | call sites: `BrainDef.compile()` (`braindef.ts:192`), `ManagedMindcraftBrain` ctor chain (`mindcraft.ts`) | keep-on-facade | Brain (facade) | - | rule 1 -- builds `BrainPage` instances from `IBrainDef.pages()`; signature unchanged |
+| `events()` | method | `apps/sim/src/brain/actor.ts:168,169,186,189,190,424` | move-to-runtime | BrainRuntime | B5 | rule 3 -- per B0 bridge rule 2, facade returns `this.runtime.events()` directly; wrapper signature `events(): EventEmitterConsumer<BrainEvents>` |
+| `initialize` | method | `mindcraft.ts` (`super.initialize` in `ManagedMindcraftBrain`), `brain.spec.ts`, `mindcraft-environment.spec.ts` | keep-on-facade | Brain (facade) | - | rule 2 -- compile/link/treeshake pipeline plus `new BrainRuntime(...)` plus event-bridge subscribe |
+| `isInitialized()` | method | `mindcraft.ts:1043,1069,1082,1104` (subclass `this.isInitialized()`) | keep-on-facade | Brain (facade) | - | rule 2 -- after B6 reads `this.runtime !== undefined`; signature unchanged |
+| `getProgram()` | method | `brain.spec.ts`, `mindcraft-environment.spec.ts:344`, `mindcraft.ts:1152` (`this.getProgram()` in subclass) | move-to-runtime | BrainRuntime | B3 | rule 5 -- runtime is source of truth; facade delegate `getProgram(): Program \| undefined` returns `this.runtime?.getProgram()` |
+| `getCompiledProgram()` | method | `brain.spec.ts` test fixtures | keep-on-facade | Brain (facade) | - | rule 2 -- backed by facade-resident `compiledProgram` |
+| `getPages()` | method | `apps/sim/src/brain/actor.ts:195`, `brain.spec.ts:716,741,781,832,833` | move-to-runtime | BrainRuntime | B3 | rule 5 -- runtime owns `pageMetadata`; facade delegate `getPages(): List<PageMetadata>` returns `this.runtime?.getPages() ?? List.empty()` |
+| `getVariable<T>(varId)` | method | `packages/ts-compiler/src/compiler/struct.spec.ts:659,917`, `packages/core/src/brain/brain.spec.ts` (many), `packages/core/src/brain/callsite-host-state-lifetime.spec.ts`, `mindcraft-environment.spec.ts:342,343` | move-to-runtime | BrainRuntime | B2 | rule 3 -- variable storage owner; facade delegate `getVariable<T extends Value>(varId: string): T \| undefined` |
+| `setVariable(varId, value)` | method | `packages/ts-compiler/src/compiler/struct.spec.ts:705`, `packages/ts-compiler/src/compiler/compile.spec.ts:53`, `mindcraft-environment.spec.ts:341` | move-to-runtime | BrainRuntime | B2 | rule 3; facade delegate `setVariable(varId: string, value: Value): void` |
+| `clearVariable(varId)` | method | none | move-to-runtime | BrainRuntime | B2 | rule 3 -- on `IBrain` so facade delegate required despite zero external readers; signature `clearVariable(varId: string): void` |
+| `clearVariables()` | method | none (called only by `Brain.shutdown`) | move-to-runtime | BrainRuntime | B2 | rule 3; on `IBrain` so facade delegate required; signature `clearVariables(): void` |
+| `getVariableBySlot(slotId)` | method | none external (called by VM via `ExecutionContext` arrow) | move-to-runtime | BrainRuntime | B2 | rule 3 -- VM dispatch hot path; not on `IBrain`, but `executionContext` arrow moves with it; facade-delete (rule 4) |
+| `setVariableBySlot(slotId, value)` | method | none external | move-to-runtime | BrainRuntime | B2 | rule 3 -- VM dispatch hot path; facade-delete (rule 4) |
+| `installVariableTable(programVariableNames)` | method | none (private; called only by `Brain.initialize`) | move-to-runtime | BrainRuntime | B2 | rule 6 -- caller after B2 is the `BrainRuntime` ctor (carry-forward from `previousVariables` snapshot per Hot-reload invariant); facade-delete (rule 4) |
+| `setEnabled(enabled)` | method | none | move-to-runtime | BrainRuntime | B5 | rule 3 -- gates `think`; on `IBrain` so facade delegate required; signature `setEnabled(enabled: boolean): void` |
+| `isEnabled()` | method | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `isEnabled(): boolean` |
+| `interrupt()` | method | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `interrupt(): void` |
+| `clearInterrupt()` | method | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `clearInterrupt(): void` |
+| `isInterrupted()` | method | none | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `isInterrupted(): boolean` |
+| `requestPageChange(pageIndex)` | method | `brain.spec.ts` (many), `mindcraft-environment.spec.ts:335`, `callsite-host-state-lifetime.spec.ts` | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `requestPageChange(pageIndex: number): void` |
+| `requestPageChangeByPageId(pageId)` | method | `brain.spec.ts:597` | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `requestPageChangeByPageId(pageId: string): void` |
+| `requestPageChangeByName(name)` | method | none external (called from `requestPageChangeByPageId` fallback) | move-to-runtime | BrainRuntime | B5 | rule 3; on `IBrain` so facade delegate required; signature `requestPageChangeByName(name: string): void` |
+| `requestPageRestart()` | method | `brain.spec.ts:905,1008,1293`, `runtime/actuators/restart-page.ts` (via `services.brain.pages`) | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `requestPageRestart(): void` |
+| `getCurrentPageId()` | method | `mindcraft-environment.spec.ts:338,339`, `runtime/sensors/current-page.ts` (via `services.brain.pages`) | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `getCurrentPageId(): string` |
+| `getPreviousPageId()` | method | none external on `Brain`; `runtime/sensors/previous-page.ts` reads via `services.brain.pages` | move-to-runtime | BrainRuntime | B5 | rule 3; on `IBrain` so facade delegate required; signature `getPreviousPageId(): string` |
+| `startup()` | method | `apps/sim/src/brain/actor.ts:170,191`, `brain.spec.ts` (many), `mindcraft-environment.spec.ts:332,333`, `mindcraft.ts` (`super.startup`) | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `startup(): void` short-circuits when `runtime` is undefined per B6 step 6 |
+| `shutdown()` | method | `brain.spec.ts:1229`, `mindcraft.ts` (`super.shutdown`) | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `shutdown(): void` calls `this.runtime?.shutdown()` and tears down event subscriptions |
+| `think(currentTime)` | method | `apps/sim/src/brain/actor.ts:250`, `brain.spec.ts` (many), `callsite-host-state-lifetime.spec.ts` (many), `mindcraft-environment.spec.ts:336` | move-to-runtime | BrainRuntime | B5 | rule 3; facade delegate `think(currentTime: number): void` |
+| `activatePage(pageIndex)` | method | none (private) | move-to-runtime | BrainRuntime | B5 | rule 3 -- FSM helper; facade-delete (rule 4); B5 step 4 replaces inline `page.activate()` with `emitter_.emit("page_activated", ...)` |
+| `cancelActiveFibers()` | method | none (private) | move-to-runtime | BrainRuntime | B5 | rule 3 -- scheduler helper; facade-delete (rule 4) |
+| `deactivateCurrentPage()` | method | none (private) | move-to-runtime | BrainRuntime | B5 | rule 3; facade-delete (rule 4); B5 step 4 replaces inline `page.deactivate()` with emit |
+| `runDeactivationHooksForCurrentPage()` | method | none (private) | move-to-runtime | BrainRuntime | B5 | rule 3 -- composes hook drivers; facade-delete (rule 4) |
+| `thinkPage(currentTime, dt)` | method | none (private) | move-to-runtime | BrainRuntime | B5 | rule 3 -- scheduler tick; facade-delete (rule 4) |
+| `shouldRespawnFiber(fiberId)` | method | none (private) | move-to-runtime | BrainRuntime | B5 | rule 3; facade-delete (rule 4) |
+| `runHostActivationHook(callSiteId, onPageEntered)` | method | none (private) | move-to-runtime | BrainRuntime | B4 | rule 3 -- activation hook driver; facade-delete (rule 4); public on runtime during B4-B5 transition then private (per B4 step 1, B5 step 9) |
+| `runHostInitializerHook(callSiteId, onInitialized)` | method | none (private) | move-to-runtime | BrainRuntime | B4 | rule 3; same transitional visibility; facade-delete (rule 4) |
+| `runBytecodeInitializerHook(action, callSiteId)` | method | none (private) | move-to-runtime | BrainRuntime | B4 | rule 3; facade-delete (rule 4) |
+| `runBytecodeActivationHook(action, callSiteId)` | method | none (private) | move-to-runtime | BrainRuntime | B4 | rule 3; facade-delete (rule 4) |
+| `runBytecodeDeactivationHook(action, callSiteId)` | method | none (private) | move-to-runtime | BrainRuntime | B4 | rule 3; facade-delete (rule 4) |
+| `runHostDeactivationHook(callSiteId, onPageExited)` | method | none (private) | move-to-runtime | BrainRuntime | B4 | rule 3; facade-delete (rule 4) |
+| `runBytecodeHook(action, callSiteId, funcId, label)` | method | none (private) | move-to-runtime | BrainRuntime | B4 | rule 3 -- shared hook fiber executor; throws on `VmStatus.FAULT`/non-`DONE`; facade-delete (rule 4) |
+| `isValidPageIndex(pageIndex)` | method | none (private) | move-to-runtime | BrainRuntime | B5 | rule 3 -- guards FSM transitions; facade-delete (rule 4) |
+| `getLinkEnvironment()` | method | none (private; called from `Brain.initialize`) | keep-on-facade | Brain (facade) | - | rule 2 -- builds `BrainLinkEnvironment` from `services.edit.tiles` and `services.runtime.actions`; consumed only by the compile pipeline |
 
 ---
 
