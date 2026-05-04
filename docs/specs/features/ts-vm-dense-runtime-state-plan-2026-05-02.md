@@ -454,23 +454,58 @@ Each unit must:
 
 ## Current State
 
-Completed: D0, D1, D2; lifecycle-hooks precondition L1 / L2 / L3
+Completed: D0, D1, D2, D3, D4; lifecycle-hooks precondition L1 / L2 / L3
 landed (see
 [`ts-vm-page-lifecycle-hooks-2026-05-03.md`](./ts-vm-page-lifecycle-hooks-2026-05-03.md)).
-Lifecycle-hooks L1 incidentally completed several D3 / D4 work
-items (the legacy `ActionInstance` helper trio, the
-`currentActionInstance` field, and the vm.ts `ensureCallsite`
-call sites are already gone; `services.action.resetCallsite`,
-`services.callSite.clearHostState`, and the dense-shims
-`reset()` teardown are already in place). D3 and D4 have been
-rescoped against this new baseline -- see each phase's "Status
-update (2026-05-03)" preamble.
 
-Next up: D4
+Next up: D5
 
 ---
 
 ## Phase Log
+
+### D4
+
+**Status**
+
+Per-callsite storage extracted into a brain-owned `ICallsiteStore`;
+`services.callSite` + `services.action` collapsed into a single
+`services.callsite: ICallsiteServices` backed directly by the store.
+`createRuntimeServices(brain, callsiteStore)` factory replaces the
+dense-shims closure. `ActionInstance` and `ActionInstanceMap` are
+retired from the public context.
+Verification: full gate green (743/743 tests).
+
+**Risks** (D4 -> D5/D6)
+
+- `services.callsite` is now a single surface with seven methods
+  (`ensure`, `reset`, `getSlot`, `setSlot`, `getHostState`,
+  `setHostState`, `clearHostState`). `reset(callSiteId)` drops both
+  the slot pad and the host-state cell in one operation;
+  `clearHostState` drops only the host-state cell. D6 must document
+  this in `vm-contract.md`. Future code that needs to drop slots
+  while preserving host state has no API for that today; if such a
+  use case appears, add a separate `clearSlots` rather than
+  re-introducing the host/action split.
+- `ICallsiteStore extends ICallsiteServices`, so the store is passed
+  into `services.callsite` with no per-method wrapping. This makes
+  the runtime path zero-overhead but means anyone subclassing or
+  proxying `ICallsiteStore` becomes observable to the VM. If a
+  future phase introduces a layer between Brain and the VM (e.g. a
+  recording wrapper for replay), it must wrap the service surface,
+  not the store.
+- The brain's `callsiteStore` field is `private readonly` and
+  initialized at field-declaration time, so it exists before
+  `initialize()` runs. Any future code that reads
+  `services.callsite` before `initialize()` (e.g. from a constructor
+  hook) will see an empty but functional store rather than throw.
+  D5/D6 should not rely on "no service before initialize" as a
+  safety property.
+- `__test__createPlatformServices` no longer has `callSite` or
+  `action` overrides; it has a single optional `callsite`. No
+  current consumers override either, but if D5 or downstream tests
+  need to inject a fake, they must build an `ICallsiteServices`
+  rather than splitting the surface back apart.
 
 ### D3
 
@@ -2348,22 +2383,24 @@ D4-specific: they pin the `services.action` adapter's surface
 shape and the dispatch wiring through `LOAD_CALLSITE_VAR` /
 `STORE_CALLSITE_VAR`.
 
-1. **`services.action.ensureCallsite` allocates a slot list
-   of the requested size (unit).** File:
-   `packages/core/src/runtime/dense-shims.spec.ts` (or its
-   adapter-module successor after step 9). Call
-   `ensureCallsite(5, 3)`; assert
-   `getStateSlot(5, 0)` / `getStateSlot(5, 1)` /
-   `getStateSlot(5, 2)` all return NIL; `getStateSlot(5, 3)`
-   throws (or returns a documented out-of-range value).
+1. **`services.action.ensureCallsite` first-touch
+   detection (unit).** File:
+   `packages/core/src/runtime/runtime-services.spec.ts` (the
+   adapter-module successor of `dense-shims.spec.ts` after
+   step 10). Call `ensureCallsite(5)` once and assert it
+   returns `true`; call it again and assert it returns
+   `false`. The slot list is allocated empty -- per the L1
+   contract, slots grow on demand via `setStateSlot`, so
+   `getStateSlot(5, 0)` returns NIL on a freshly-ensured
+   callsite without having written any slot.
 2. **`services.action.setStateSlot` / `getStateSlot`
    round-trip (unit).** Same file. Set slot 1 to a `Value`,
    read it back, assert equality. Set slot 2 to a different
    value; assert slot 1 is unchanged.
 3. **Distinct `callSiteId`s do not alias (unit).** Same
-   file. `ensureCallsite(5, 2)` and `ensureCallsite(6, 2)`;
-   write distinct values into slot 0 of each; assert each
-   returns the correct value.
+   file. `ensureCallsite(5)` and `ensureCallsite(6)`; write
+   distinct values into slot 0 of each; assert each returns
+   the correct value.
 4. **Frame-walk dispatch: `LOAD_CALLSITE_VAR` /
    `STORE_CALLSITE_VAR` route through the new surface
    (vm-level).** File: `packages/core/src/runtime/vm.spec.ts`.

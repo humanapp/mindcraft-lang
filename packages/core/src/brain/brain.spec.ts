@@ -1306,7 +1306,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
     assert.equal(deactCount, 0, "same-page change does not run deactivation");
   });
 
-  test("deactivationFuncId can call resetCallsite to force re-initialization on next activation", () => {
+  test("deactivationFuncId can call services.callsite.reset to force re-initialization on next activation", () => {
     let initCount = 0;
     const initFn = services.functions.register(
       "test-page-deact-reset-init-fn",
@@ -1325,7 +1325,7 @@ describe("Brain behavioral -- page lifecycle hooks", () => {
       {
         exec: (ctx: ExecutionContext) => {
           if (ctx.currentCallSiteId !== undefined) {
-            ctx.services.action.resetCallsite(ctx.currentCallSiteId);
+            ctx.services.callsite.reset(ctx.currentCallSiteId);
           }
           return NIL_VALUE;
         },

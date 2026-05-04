@@ -1,5 +1,4 @@
-import type { Dict } from "../platform/dict";
-import type { List, ReadonlyList } from "../platform/list";
+import type { ReadonlyList } from "../platform/list";
 import type { ActionDescriptor } from "./function-defs";
 import type { PlatformServices } from "./services";
 import type { HandleId, Value } from "./value";
@@ -18,7 +17,7 @@ export interface HostActionBinding {
    * Invoked every time the action's owning page is deactivated, before the
    * page's fibers are cancelled. Runs with `ctx.currentCallSiteId` bound to
    * the action's call site so the hook can inspect or clear per-call-site
-   * host state via `ctx.services.callSite.getHostState` /
+   * host state via `ctx.services.callsite.getHostState` /
    * `setHostState` / `clearHostState`.
    */
   onPageExited?: (ctx: ExecutionContext) => void;
@@ -42,7 +41,7 @@ export interface BytecodeExecutableAction {
   /**
    * Runs exactly once per `(brainInstance, callSiteId)`, on the first
    * allocation of the call site (or after an explicit
-   * `services.action.resetCallsite`). Backs module-scope `let` / `const`
+   * `services.callsite.reset`). Backs module-scope `let` / `const`
    * initializer emission for user-language actions.
    */
   initializerFuncId?: number;
@@ -66,22 +65,6 @@ export interface BytecodeExecutableAction {
 export type ExecutableAction = HostActionBinding | BytecodeExecutableAction;
 
 /**
- * Brain-instance-scoped action-instance state owned by the dense-state
- * action services. Bytecode-backed actions use `stateSlots` for
- * `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`. The instance is allocated
- * lazily on first write (via `setStateSlot` or `ensureCallsite`) and
- * persists until `services.action.resetCallsite` or `Brain.shutdown()`.
- * `stateSlots` grows on demand to cover the largest `slotIdx` written.
- */
-export interface ActionInstance {
-  callSiteId: number;
-  stateSlots: List<Value>;
-}
-
-/** Maps `callSiteId` to its persistent {@link ActionInstance} for an active page. */
-export type ActionInstanceMap = Dict<number, ActionInstance>;
-
-/**
  * Execution context passed to host functions and bytecode dispatch paths.
  *
  * Provides id-keyed and slot-indexed access to per-tick scalar anchors
@@ -97,8 +80,9 @@ export type ActionInstanceMap = Dict<number, ActionInstance>;
 export interface ExecutionContext {
   /**
    * Per-VM service aggregate exposing program-table lookups, brain/rule
-   * variable storage, page lifecycle, RNG, and per-callsite host/action
-   * state. Host functions reach into runtime services through this field.
+   * variable storage, page lifecycle, RNG, and per-callsite state
+   * (slots and host-owned cell). Host functions reach into runtime
+   * services through this field.
    */
   services: PlatformServices;
 
@@ -136,7 +120,7 @@ export interface ExecutionContext {
    * Current call-site ID being executed.
    * Set by the VM before invoking a host function via HOST_CALL/HOST_CALL_ASYNC
    * or a host-backed action via ACTION_CALL/ACTION_CALL_ASYNC.
-   * Host functions can use this with {@link PlatformServices.callSite} to
+   * Host functions can use this with {@link PlatformServices.callsite} to
    * access per-call-site host state.
    */
   currentCallSiteId?: number;
@@ -213,7 +197,7 @@ export function setRuleVariable(ctx: ExecutionContext, name: string, value: Valu
  * @param ctx - The execution context
  */
 export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
-  return ctx.services.callSite.getHostState(ctx.currentCallSiteId!) as T | undefined;
+  return ctx.services.callsite.getHostState(ctx.currentCallSiteId!) as T | undefined;
 }
 
 /**
@@ -229,7 +213,7 @@ export function getCallSiteState<T>(ctx: ExecutionContext): T | undefined {
  * @param value - The host-owned state to store
  */
 export function setCallSiteState(ctx: ExecutionContext, value: unknown): void {
-  ctx.services.callSite.setHostState(ctx.currentCallSiteId!, value);
+  ctx.services.callsite.setHostState(ctx.currentCallSiteId!, value);
 }
 
 /**
@@ -243,5 +227,5 @@ export function setCallSiteState(ctx: ExecutionContext, value: unknown): void {
  * @param ctx - The execution context
  */
 export function clearCallSiteState(ctx: ExecutionContext): void {
-  ctx.services.callSite.clearHostState(ctx.currentCallSiteId!);
+  ctx.services.callsite.clearHostState(ctx.currentCallSiteId!);
 }

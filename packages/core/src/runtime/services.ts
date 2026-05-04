@@ -58,52 +58,80 @@ export interface IRngServices {
 }
 
 /**
- * Per-callsite host-side state cell. Used by host functions that need to
- * persist opaque payloads across ticks at a single call site (e.g. cooldown
- * timers). Lifetime is brain-instance-scoped: the cell survives page
- * deactivation / activation cycles. Use {@link clearHostState} to drop the
- * cell explicitly (e.g. from a host `onPageExited` hook).
+ * Per-callsite runtime state, keyed by `callSiteId`.
+ *
+ * Each callsite carries two distinct kinds of state, both
+ * brain-instance-scoped:
+ *
+ * - **Slots:** a typed pad of {@link Value} slots indexed by `slotIdx`,
+ *   backing the bytecode `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`
+ *   opcodes that implement compiled-action local state. The slot list is
+ *   allocated empty on first touch and grows on demand to cover the
+ *   largest `slotIdx` ever written; reads of unwritten slots return
+ *   {@link NIL_VALUE} without allocating.
+ * - **Host state:** a single opaque cell of type `unknown`, used by host
+ *   sensors and actuators (e.g. cooldown timers, consumption windows) to
+ *   persist private payloads across ticks at one call site.
+ *
+ * Both kinds share a single per-callsite record. The first {@link setSlot},
+ * {@link setHostState}, or {@link ensure} for a `callSiteId` allocates the
+ * record; {@link reset} drops both. {@link clearHostState} drops only the
+ * host-state cell and leaves any slot list intact.
+ *
+ * Lifetime is brain-instance-scoped: callsite records survive page
+ * deactivation / activation cycles and are dropped en masse on
+ * `Brain.shutdown()`.
  */
-export interface ICallSiteServices {
-  getHostState(callSiteId: number): unknown;
-  setHostState(callSiteId: number, state: unknown): void;
+export interface ICallsiteServices {
   /**
-   * Clear the host-state cell for `callSiteId`. After this call,
-   * {@link getHostState} returns `undefined` until the next
-   * {@link setHostState}. Equivalent in cost to
-   * `setHostState(callSiteId, undefined)`.
-   */
-  clearHostState(callSiteId: number): void;
-}
-
-/**
- * Per-callsite action-state slots backing bytecode-action `LOAD_CALLSITE_VAR` /
- * `STORE_CALLSITE_VAR` reads and writes. Storage is brain-instance-scoped
- * and lazy: the slot list is allocated on first {@link setStateSlot} (or
- * first {@link ensureCallsite}), and grows on demand to cover the largest
- * `slotIdx` written so far. Reads of unwritten slots return
- * {@link NIL_VALUE} without allocating. Use {@link resetCallsite} to
- * deallocate explicitly.
- */
-export interface IActionServices {
-  /**
-   * Mark the call site as touched, allocating an empty slot list if the
-   * call site has not been touched before. Used exclusively as the
-   * one-time gate for bytecode-action initializer dispatch.
+   * Mark the call site as touched, allocating an empty record if the
+   * call site has not been touched before. Used as the one-time gate
+   * for bytecode-action initializer dispatch.
    *
    * @returns `true` if the call site was newly allocated by this call,
    *   `false` if it already existed.
    */
-  ensureCallsite(callSiteId: number): boolean;
-  getStateSlot(callSiteId: number, slotIdx: number): Value;
-  setStateSlot(callSiteId: number, slotIdx: number, value: Value): void;
+  ensure(callSiteId: number): boolean;
+
   /**
-   * Deallocate the call site's slot list. The next
-   * {@link ensureCallsite} for this `callSiteId` returns `true` and runs
-   * the action's `initializerFuncId` again. Does not touch host-state;
-   * use {@link ICallSiteServices.clearHostState} for that.
+   * Drop the call site's record (slot list and host-state cell). The
+   * next {@link ensure} for this `callSiteId` returns `true`, which
+   * Brain uses to re-run a bytecode action's `initializerFuncId`.
    */
-  resetCallsite(callSiteId: number): void;
+  reset(callSiteId: number): void;
+
+  /**
+   * Read state slot `slotIdx` at `callSiteId`. Returns {@link NIL_VALUE}
+   * when the call site has not been allocated or the slot has not been
+   * written.
+   */
+  getSlot(callSiteId: number, slotIdx: number): Value;
+
+  /**
+   * Write `value` to state slot `slotIdx` at `callSiteId`. Allocates
+   * the call-site record if absent; grows the slot list as needed.
+   */
+  setSlot(callSiteId: number, slotIdx: number, value: Value): void;
+
+  /**
+   * Read the host-owned opaque cell at `callSiteId`. Returns
+   * `undefined` when the call site has not been allocated or the cell
+   * has not been written.
+   */
+  getHostState(callSiteId: number): unknown;
+
+  /**
+   * Write the host-owned opaque cell at `callSiteId`. Allocates the
+   * call-site record if absent.
+   */
+  setHostState(callSiteId: number, state: unknown): void;
+
+  /**
+   * Drop the host-owned cell at `callSiteId` while leaving any
+   * allocated slot list intact. After this call, {@link getHostState}
+   * returns `undefined` until the next {@link setHostState}.
+   */
+  clearHostState(callSiteId: number): void;
 }
 
 /** Runtime service aggregate required by VM execution paths. */
@@ -129,9 +157,10 @@ export interface PlatformServices {
   /** Random-number stream. */
   rng: IRngServices;
 
-  /** Per-callsite host-side state cells. */
-  callSite: ICallSiteServices;
-
-  /** Per-callsite action state slots (bytecode action LOAD/STORE_CALLSITE_VAR). */
-  action: IActionServices;
+  /**
+   * Per-callsite state: bytecode-addressable typed slots
+   * (`LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`) and a host-owned
+   * opaque cell. Both share a per-callsite record and lifetime.
+   */
+  callsite: ICallsiteServices;
 }

@@ -1117,8 +1117,8 @@ describe("VM -- callsite-persistent variables", () => {
           descriptor,
           execSync: (ctx: ExecutionContext) => {
             const callSiteId = ctx.currentCallSiteId!;
-            const nextValue = ((ctx.services.callSite.getHostState(callSiteId) as number | undefined) ?? 0) + 1;
-            ctx.services.callSite.setHostState(callSiteId, nextValue);
+            const nextValue = ((ctx.services.callsite.getHostState(callSiteId) as number | undefined) ?? 0) + 1;
+            ctx.services.callsite.setHostState(callSiteId, nextValue);
             seenValues.push(nextValue);
             return mkNumberValue(nextValue);
           },

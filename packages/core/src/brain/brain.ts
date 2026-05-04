@@ -12,11 +12,12 @@ import {
   type UnlinkedBrainProgram,
   VmStatus,
 } from "../runtime";
+import { createCallsiteStore, type ICallsiteStore } from "../runtime/callsite-store";
 import type { BytecodeExecutableAction, ExecutionContext } from "../runtime/context";
-import { createDenseShims, type IDenseShims } from "../runtime/dense-shims";
 import { linkBrainProgram } from "../runtime/linker";
 import type { Program } from "../runtime/program";
 import { createProgramServices, createRuleVariableServices, type RuleVariableStores } from "../runtime/rule-services";
+import { createRuntimeServices } from "../runtime/runtime-services";
 import type { PlatformServices } from "../runtime/services";
 import { treeshakeProgram } from "../runtime/tree-shaker";
 import { NIL_VALUE, type Value } from "../runtime/value";
@@ -116,8 +117,12 @@ export class Brain implements IBrain {
    */
   private executionContext: ExecutionContext | undefined;
 
-  /** Dense-state shim that adapts the legacy IBrain/IBrainRule object graph to {@link PlatformServices}. */
-  private denseShims: IDenseShims | undefined;
+  /**
+   * Brain-instance-scoped owner of per-callsite state. Backs the
+   * `services.callsite` adapter built by {@link createRuntimeServices};
+   * cleared on {@link shutdown}.
+   */
+  private readonly callsiteStore: ICallsiteStore = createCallsiteStore();
 
   /** Mapping from rule function ids to their owning {@link IBrainRule}; backs the dense shim's program/ruleVars services. */
   private funcIdToRule: Dict<number, IBrainRule> = new Dict();
@@ -196,18 +201,18 @@ export class Brain implements IBrain {
     // Allocate the brain-instance side-table that backs services.ruleVars.
     this.ruleVariableStores = new Dict<number, Dict<string, Value>>();
 
-    // Build dense-state shim adapter and assemble PlatformServices for the VM.
-    this.denseShims = createDenseShims(this);
+    // Assemble PlatformServices for the VM, binding the per-callsite
+    // adapter to the brain's callsiteStore.
+    const runtimeServices = createRuntimeServices(this, this.callsiteStore);
     const platformServices: PlatformServices = {
       functions: this.services.functions,
       types: this.services.types,
       program: createProgramServices(this.program),
-      brainVars: this.denseShims.brainVars,
+      brainVars: runtimeServices.brainVars,
       ruleVars: createRuleVariableServices(this.program, this.ruleVariableStores),
-      brainPages: this.denseShims.brainPages,
-      rng: this.denseShims.rng,
-      callSite: this.denseShims.callSite,
-      action: this.denseShims.action,
+      brainPages: runtimeServices.brainPages,
+      rng: runtimeServices.rng,
+      callsite: runtimeServices.callsite,
     };
 
     // Create VM with the linked executable program.
@@ -488,7 +493,7 @@ export class Brain implements IBrain {
 
     // Tear down all per-callsite storage so a subsequent startup() re-runs
     // every action's initializerFuncId.
-    this.denseShims?.reset();
+    this.callsiteStore.clearAll();
 
     // Clear per-rule variable storage.
     this.ruleVariableStores.clear();
@@ -539,15 +544,7 @@ export class Brain implements IBrain {
    * Activate a page by spawning fibers for its root rules.
    */
   private activatePage(pageIndex: number): void {
-    if (
-      !this.program ||
-      !this.scheduler ||
-      !this.executionContext ||
-      !this.vm ||
-      !this.pageMetadata ||
-      !this.denseShims
-    )
-      return;
+    if (!this.program || !this.scheduler || !this.executionContext || !this.vm || !this.pageMetadata) return;
 
     const pageMetadata = this.pageMetadata.get(pageIndex);
     if (!pageMetadata) return;
@@ -568,7 +565,7 @@ export class Brain implements IBrain {
       }
 
       if (action.binding === "bytecode" && action.initializerFuncId !== undefined) {
-        const newlyAllocated = this.denseShims.action.ensureCallsite(site.callSiteId);
+        const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
         if (newlyAllocated) {
           this.runBytecodeInitializerHook(action, site.callSiteId);
         }

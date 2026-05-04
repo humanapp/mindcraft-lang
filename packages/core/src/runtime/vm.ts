@@ -8,7 +8,7 @@ import { Time } from "../platform/time";
 import { UniqueSet } from "../platform/uniqueset";
 import type { FunctionBytecode, Instr } from "./bytecode";
 import { Op } from "./bytecode";
-import type { ActionInstance, ExecutableAction, ExecutionContext } from "./context";
+import type { ExecutableAction, ExecutionContext } from "./context";
 import type { VmEvents } from "./events";
 import type { Program } from "./program";
 import type { PlatformServices } from "./services";
@@ -678,7 +678,7 @@ export class VM implements IVM {
       frame.pc++;
       return undefined;
     }
-    const value = fiber.executionContext.services.action.getStateSlot(callSiteId, idx);
+    const value = fiber.executionContext.services.callsite.getSlot(callSiteId, idx);
     this.push(fiber, value);
     frame.pc++;
     return undefined;
@@ -696,7 +696,7 @@ export class VM implements IVM {
       frame.pc++;
       return undefined;
     }
-    fiber.executionContext.services.action.setStateSlot(callSiteId, idx, value);
+    fiber.executionContext.services.callsite.setSlot(callSiteId, idx, value);
     frame.pc++;
     return undefined;
   }

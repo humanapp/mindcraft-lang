@@ -1,6 +1,6 @@
 /**
  * Synthetic-actuator regression tests pinning the carry-over of host state
- * stored via `services.callSite.{getHostState, setHostState, clearHostState}`
+ * stored via `services.callsite.{getHostState, setHostState, clearHostState}`
  * across page round-trips. The three actuators below mirror the shapes of
  * sim's `move` (cooldown), `eat` (consumption window), and `shoot`
  * (recharge), without depending on sim.

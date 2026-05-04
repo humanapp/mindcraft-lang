@@ -1,11 +1,11 @@
 import { Dict } from "../platform/dict";
+import { createCallsiteStore } from "./callsite-store";
 import type { IFunctionRegistry } from "./function-defs";
 import { FunctionRegistry } from "./functions";
 import type {
-  IActionServices,
   IBrainPageServices,
   IBrainVariableServices,
-  ICallSiteServices,
+  ICallsiteServices,
   IProgramServices,
   IRngServices,
   IRuleVariableServices,
@@ -34,15 +34,8 @@ export interface __test__PlatformServicesOptions {
   brainPages?: IBrainPageServices;
   /** Override the RNG services. */
   rng?: IRngServices;
-  /** Override the call-site services. */
-  callSite?: ICallSiteServices;
-  /** Override the action services. */
-  action?: IActionServices;
-}
-
-interface __test__ActionState {
-  hostState?: unknown;
-  slots: Dict<number, Value>;
+  /** Override the per-callsite services (slots and host-owned state). */
+  callsite?: ICallsiteServices;
 }
 
 function __test__defaultBrainVars(): IBrainVariableServices {
@@ -100,59 +93,12 @@ function __test__defaultBrainPages(): IBrainPageServices {
   };
 }
 
-function __test__defaultActionAndCallSite(): { action: IActionServices; callSite: ICallSiteServices } {
-  const states: Dict<number, __test__ActionState> = new Dict();
-  function ensure(callSiteId: number): __test__ActionState {
-    let s = states.get(callSiteId);
-    if (!s) {
-      s = { slots: new Dict() };
-      states.set(callSiteId, s);
-    }
-    return s;
-  }
-  return {
-    callSite: {
-      getHostState(callSiteId: number): unknown {
-        return states.get(callSiteId)?.hostState;
-      },
-      setHostState(callSiteId: number, state: unknown): void {
-        ensure(callSiteId).hostState = state;
-      },
-      clearHostState(callSiteId: number): void {
-        const s = states.get(callSiteId);
-        if (s) {
-          s.hostState = undefined;
-        }
-      },
-    },
-    action: {
-      ensureCallsite(callSiteId: number): boolean {
-        if (states.has(callSiteId)) {
-          return false;
-        }
-        ensure(callSiteId);
-        return true;
-      },
-      getStateSlot(callSiteId: number, slotIdx: number): Value {
-        return states.get(callSiteId)?.slots.get(slotIdx) ?? NIL_VALUE;
-      },
-      setStateSlot(callSiteId: number, slotIdx: number, value: Value): void {
-        ensure(callSiteId).slots.set(slotIdx, value);
-      },
-      resetCallsite(callSiteId: number): void {
-        states.delete(callSiteId);
-      },
-    },
-  };
-}
-
 /**
  * TEST-ONLY. Creates a {@link PlatformServices} backed by runtime-only registries.
  * Pass an {@link __test__PlatformServicesOptions} to override individual providers
  * without rebuilding the whole aggregate.
  */
 export function __test__createPlatformServices(options?: __test__PlatformServicesOptions): PlatformServices {
-  const defaults = __test__defaultActionAndCallSite();
   return {
     functions: options?.functions ?? new FunctionRegistry(),
     types: options?.types ?? new TypeRegistry(),
@@ -169,7 +115,6 @@ export function __test__createPlatformServices(options?: __test__PlatformService
         return 0;
       },
     },
-    callSite: options?.callSite ?? defaults.callSite,
-    action: options?.action ?? defaults.action,
+    callsite: options?.callsite ?? createCallsiteStore(),
   };
 }
