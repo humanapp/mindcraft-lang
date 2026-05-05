@@ -1,7 +1,6 @@
 # TS Brain Runtime Split Plan
 
 Date: 2026-05-03
-Status: Authored. Implementation not begun.
 
 ## Scope And Sibling Specs
 
@@ -487,8 +486,8 @@ Each unit must:
 
 ## Current State
 
-Completed: A0, B0, B1, B2, B3, B4, B5, B6, B7
-Next up: B8
+Completed: A0, B0, B1, B2, B3, B4, B5, B6, B7, B8
+Next up: None
 
 ---
 
