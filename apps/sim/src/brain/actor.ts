@@ -138,7 +138,7 @@ export class Actor {
   readonly debugTargetPositions = new Map<number, Vector2>(); // target actor id -> position, populated each tick by sensors
 
   get age(): number {
-    return this.engine.clock.now - this.bornAt;
+    return this.engine.simTime - this.bornAt;
   }
 
   constructor(engine: Engine, archetype: Archetype, brainDef: IBrainDef, moverCfg?: Partial<MoverConfig>) {
@@ -149,7 +149,7 @@ export class Actor {
     this.brain = this.tryCreateBrain();
     this.mover = new Mover(moverCfg);
     this.sprite = null!; // to be assigned later
-    this.bornAt = this.engine.clock.now;
+    this.bornAt = this.engine.simTime;
 
     const energyCfg = ARCHETYPES[archetype].energy;
     this.maxEnergy = energyCfg.maxEnergy;

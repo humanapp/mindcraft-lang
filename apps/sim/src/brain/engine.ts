@@ -207,7 +207,7 @@ export class Engine {
 
     // Fire any pending respawns whose delay has elapsed, but only if
     // the population is still below the desired count for that archetype.
-    const now = this.clock.now;
+    const now = this.simTime;
     this.pendingRespawns = this.pendingRespawns.filter((pending) => {
       if (now >= pending.at) {
         if (this.actors[pending.archetype].entities.length < this.desiredCounts[pending.archetype]) {
@@ -255,12 +255,12 @@ export class Engine {
    */
   private killActor(actor: Actor): void {
     actor.isDying = true;
-    const lifespanMs = this.clock.now - actor.bornAt;
+    const lifespanMs = this.simTime - actor.bornAt;
     this.scoreTracker.recordDeath(actor.archetype, lifespanMs);
     const delay = ARCHETYPES[actor.archetype].respawnDelay;
     this.pendingRespawns.push({
       archetype: actor.archetype,
-      at: this.clock.now + delay,
+      at: this.simTime + delay,
     });
     this.world.remove(actor);
     actor.sprite.destroy();
