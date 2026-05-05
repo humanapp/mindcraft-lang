@@ -1,10 +1,13 @@
-import type { BrainServices, BytecodeResolvedAction } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type { BytecodeResolvedAction } from "@mindcraft-lang/core/runtime";
 import type { UserAuthoredProgram } from "../compiler/types.js";
 import { buildUserTileMetadata } from "./user-tile-metadata.js";
 
 /** Register a single compiled user tile (action descriptor, action tile, and parameter tiles) into the brain services. */
 export function registerUserTile(program: UserAuthoredProgram, services: BrainServices): void {
-  const { actions, tiles, types } = services;
+  const { actions } = services.runtime;
+  const { tiles } = services.edit;
+  const { types } = services.runtime;
   let unresolvedTypeName: string | undefined;
   const metadata = buildUserTileMetadata(program, (typeName) => {
     const typeId = types.resolveByName(typeName);
@@ -22,6 +25,12 @@ export function registerUserTile(program: UserAuthoredProgram, services: BrainSe
     binding: "bytecode",
     descriptor: actionDescriptor,
     artifact: program,
+    metadata: {
+      key: program.key,
+      kind: program.kind,
+      callDef: program.callDef,
+      outputType: program.outputType,
+    },
   };
 
   for (const parameterTile of parameterTiles) {

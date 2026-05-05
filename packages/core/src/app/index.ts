@@ -28,8 +28,8 @@ export { BrainDef, brainJsonFromPlain } from "../brain/model";
 
 // -- Call-spec builders ---------------------------------------------------------
 
-export type { BrainActionCallChoiceSpec, BrainActionCallSpec } from "../brain/interfaces";
-export { bag, choice, conditional, mkCallDef, mod, optional, param, repeated } from "../brain/interfaces";
+export type { BrainActionCallChoiceSpec, BrainActionCallSpec } from "../runtime";
+export { bag, choice, conditional, mkCallDef, mod, optional, param, repeated } from "../runtime";
 
 // -- Tile definitions -----------------------------------------------------------
 
@@ -68,44 +68,52 @@ export {
   CoreActuatorId,
   CoreControlFlowId,
   CoreLiteralFactoryId,
-  CoreOpId,
   CoreParameterId,
   CoreSensorId,
-  CoreTypeIds,
   CoreVariableFactoryId,
 } from "../brain/interfaces";
+export { CoreOpId, CoreTypeIds } from "../runtime";
 
 // -- Context type IDs (for extending EngineContext, BrainContext, etc.) ----------
 
-export { ContextTypeIds, ContextTypeNames } from "../brain/runtime/context-types";
+export { ContextTypeIds, ContextTypeNames } from "../runtime/context-types";
 
 // -- Type system ----------------------------------------------------------------
 
-export type { ITypeRegistry } from "../brain/interfaces";
-export { mkTypeId, NativeType } from "../brain/interfaces";
+export type { ITypeRegistry } from "../runtime";
+export { mkTypeId, NativeType } from "../runtime";
+
+// -- Host services --------------------------------------------------------------
+
+export { MathOps } from "../platform/math";
+export type { AppServices, IRngServices } from "../runtime";
 
 // -- Runtime values & helpers ---------------------------------------------------
 
+export { APP_CAPABILITY_BIT_OFFSET, CoreCapabilityBits } from "../brain/interfaces";
+export type { StructFieldGetterFn, StructTypeDef } from "../runtime";
+export { getSlotId } from "../runtime";
+export type { ExecutionContext } from "../runtime/context";
+export {
+  clearCallSiteState,
+  getCallSiteState,
+  getRuleVariable,
+  setCallSiteState,
+  setRuleVariable,
+} from "../runtime/context";
 export type {
-  ExecutionContext,
   ListValue,
   MapValue,
   NumberValue,
-  StructFieldGetterFn,
-  StructTypeDef,
   StructValue,
   Value,
-} from "../brain/interfaces";
+} from "../runtime/value";
 export {
-  APP_CAPABILITY_BIT_OFFSET,
-  CoreCapabilityBits,
   extractListValue,
   extractNumberValue,
   extractStringValue,
   FALSE_VALUE,
-  getCallSiteState,
   getClosedStructFieldByName,
-  getSlotId,
   isNilValue,
   isNumberValue,
   mkClosedStructValue,
@@ -114,10 +122,9 @@ export {
   mkNativeStructValue,
   mkNumberValue,
   NIL_VALUE,
-  setCallSiteState,
   TRUE_VALUE,
   VOID_VALUE,
-} from "../brain/interfaces";
+} from "../runtime/value";
 
 // -- Tile visual types (editor integration) -------------------------------------
 

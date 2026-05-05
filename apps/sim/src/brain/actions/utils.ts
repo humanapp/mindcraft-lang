@@ -1,5 +1,5 @@
 import type { ExecutionContext, NumberValue, StructValue } from "@mindcraft-lang/core/app";
-import { isNilValue, type ReadonlyList, type Value, Vector2 } from "@mindcraft-lang/core/app";
+import { getRuleVariable, isNilValue, type ReadonlyList, type Value, Vector2 } from "@mindcraft-lang/core/app";
 import type { Actor } from "@/brain/actor";
 import { getActor } from "@/brain/execution-context-types";
 import { extractVector2, resolveActor } from "@/brain/type-system";
@@ -36,14 +36,14 @@ export function resolveTargetPosition(
   }
 
   // 2. Rule's targetPos variable
-  const targetPosVar = ctx.rule?.getVariable<StructValue>("targetPos");
+  const targetPosVar = getRuleVariable<StructValue>(ctx, "targetPos");
   if (targetPosVar) {
     const pos = extractVector2(targetPosVar);
     if (pos) return pos;
   }
 
   // 3. Rule's targetActor variable
-  const targetActorVar = ctx.rule?.getVariable<NumberValue>("targetActor");
+  const targetActorVar = getRuleVariable<NumberValue>(ctx, "targetActor");
   const targetId = targetActorVar?.v;
   const target = targetId !== undefined ? getActor(ctx, targetId) : undefined;
   return target ? new Vector2(target.sprite.x, target.sprite.y) : undefined;
@@ -71,7 +71,7 @@ export function resolveTargetActor(
   }
 
   // 2. Rule's targetActor variable
-  const targetActorVar = ctx.rule?.getVariable<NumberValue>("targetActor");
+  const targetActorVar = getRuleVariable<NumberValue>(ctx, "targetActor");
   const targetId = targetActorVar?.v;
   return targetId !== undefined ? getActor(ctx, targetId) : undefined;
 }

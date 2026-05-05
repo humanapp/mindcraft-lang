@@ -20,6 +20,7 @@ import {
   repeated,
   type StructValue,
   setCallSiteState,
+  setRuleVariable,
   TRUE_VALUE,
   type Value,
   Vector2,
@@ -59,19 +60,19 @@ type SeeState = {
   memoryExpiration: number; // Timestamp when the remembered actor ID should be forgotten
 };
 
+function initSee(ctx: ExecutionContext): void {
+  setCallSiteState(ctx, {
+    rememberedActorId: undefined,
+    rememberedPos: undefined,
+    memoryExpiration: 0,
+  } satisfies SeeState);
+}
+
 function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   // Get the Actor from the execution context (optional - sensor can work without it)
   const self = getSelf(ctx);
 
-  let state = getCallSiteState<SeeState>(ctx);
-  if (!state) {
-    state = {
-      rememberedActorId: undefined,
-      rememberedPos: undefined,
-      memoryExpiration: 0,
-    } satisfies SeeState;
-    setCallSiteState(ctx, state);
-  }
+  let state = getCallSiteState<SeeState>(ctx)!;
 
   if (!self) {
     console.warn("See sensor invoked without an actor in context");
@@ -95,33 +96,6 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
     } satisfies SeeState;
     setCallSiteState(ctx, state);
   }
-
-  /*
-  // If we still remember an actor that passed filters and we still see them, keep them as the target for behavioral consistency
-  const hasRememberedActor = state.rememberedActorId !== undefined;
-  const rememberedActor = hasRememberedActor ? self.engine.getActorById(state.rememberedActorId!.v) : undefined;
-  const stillSeesRememberedActorId = rememberedActor
-    ? self.sightQueue.some((sightResult) => sightResult.actor.actorId === rememberedActor.actorId)
-    : false;
-
-  if (stillSeesRememberedActorId && rememberedActor) {
-    // Store targets for the DO side to access
-    ctx.rule?.setVariable("targetActor", state.rememberedActorId!);
-    const pos = new Vector2(rememberedActor.sprite.x, rememberedActor.sprite.y);
-    const posVal = mkVector2Value(pos);
-    ctx.rule?.setVariable("targetPos", posVal);
-    state.rememberedPos = posVal; // Update remembered position in case the actor moved
-    state.memoryExpiration = now + ctx.brain.rng() * 2000 + 500; // Refresh memory for another 0.5 to 2.5 seconds
-    setCallSiteState(ctx, state);
-    return TRUE_VALUE;
-  }
-
-  if (!state.rememberedActorId && state.rememberedPos) {
-    ctx.rule?.clearVariable("targetActor");
-    ctx.rule?.setVariable("targetPos", state.rememberedPos!);
-    return TRUE_VALUE;
-  }
-  */
 
   const bHasCarnivoreFilter = hasArg(args, kActorKindCarnivoreSlotId);
   const bHasHerbivoreFilter = hasArg(args, kActorKindHerbivoreSlotId);
@@ -196,21 +170,23 @@ function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   // Set as remembered actor
   state.rememberedPos = mkVector2Value(targetPos);
   state.rememberedActorId = mkNumberValue(seenActor.actorId);
-  state.memoryExpiration = now + ctx.brain.rng() * 2000 + 500; // Remember for 0.5-2.5s of sim time
+  state.memoryExpiration = now + ctx.services.app.rng.next() * 2000 + 500; // Remember for 0.5-2.5s of sim time
   setCallSiteState(ctx, state);
 
   // Store targets for the DO side to access
   const seenActors = filteredSightQueue.map((sr) => sr.actor);
-  ctx.rule?.setVariable(
+  setRuleVariable(
+    ctx,
     "targetActors",
     mkListValue("", List.from(seenActors.map((actor) => mkNumberValue(actor.actorId))))
   );
-  ctx.rule?.setVariable(
+  setRuleVariable(
+    ctx,
     "targetPositions",
     mkListValue("", List.from(seenActors.map((actor) => mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y)))))
   );
-  ctx.rule?.setVariable("targetActor", state.rememberedActorId!);
-  ctx.rule?.setVariable("targetPos", state.rememberedPos!);
+  setRuleVariable(ctx, "targetActor", state.rememberedActorId!);
+  setRuleVariable(ctx, "targetPos", state.rememberedPos!);
   self.debugTargetPositions.set(seenActor.actorId, targetPos);
   return TRUE_VALUE;
 }
@@ -219,6 +195,7 @@ export default {
   key: TileIds.Sensor.See,
   callDef,
   fn: {
+    onInitialized: initSee,
     exec: execSee,
   },
   isAsync: false,

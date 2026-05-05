@@ -7,9 +7,7 @@
 
 import type { Dict } from "../../platform/dict";
 import type { List, ReadonlyList } from "../../platform/list";
-import type { Conversion } from "../interfaces";
-import type { OpOverload } from "../interfaces/operators";
-import type { TypeId } from "../interfaces/type-system";
+import type { Conversion, OpOverload, TypeId } from "../../runtime";
 import type {
   BrainTileAccessorDef,
   BrainTileActuatorDef,

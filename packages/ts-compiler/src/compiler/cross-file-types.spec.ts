@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/brain";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
 import {
-  type BrainServices,
   CoreTypeIds,
   HandleTable,
   isStructValue,
@@ -11,25 +12,25 @@ import {
   NativeType,
   NIL_VALUE,
   type NumberValue,
-  runtime,
   type StructTypeDef,
   type StructValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -48,7 +49,7 @@ function mkScheduler(): Scheduler {
 }
 
 function compileProject(files: Record<string, string>) {
-  const ambientSource = buildAmbientDeclarations(services.types);
+  const ambientSource = buildAmbientDeclarations(services.runtime.types);
   const project = new UserTileProject({ ambientSource, services });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
@@ -56,7 +57,7 @@ function compileProject(files: Record<string, string>) {
 
 function runAndGetResult(prog: UserAuthoredProgram): Value {
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
   fiber.instrBudget = 5000;
   const result = vm.runFiber(fiber, mkScheduler());

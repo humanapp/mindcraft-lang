@@ -1,24 +1,24 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
-  type BrainServices,
   CoreOpId,
   CoreTypeIds,
-  type ExecutionContext,
   HandleTable,
   mkNumberValue,
   NativeType,
   NIL_VALUE,
   type NumberValue,
-  runtime,
   type Scheduler,
   type StringValue,
   type StructTypeDef,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { CompileDiagCode } from "./diag-codes.js";
 import { UserTileProject } from "./project.js";
@@ -26,12 +26,13 @@ import type { ExtractedOptional, ExtractedParam, UserAuthoredProgram } from "./t
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -50,24 +51,27 @@ function mkScheduler(): Scheduler {
 }
 
 function compileProject(files: Record<string, string>) {
-  const ambientSource = buildAmbientDeclarations(services.types);
+  const ambientSource = buildAmbientDeclarations(services.runtime.types);
   const project = new UserTileProject({ ambientSource, services });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars: List<Value>): void {
-  if (prog.activationFuncId === undefined) {
-    return;
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+    fiber.callsiteVars = callsiteVars;
+    fiber.instrBudget = 1000;
+    const result = vm.runFiber(fiber, mkScheduler());
+    assert.equal(result.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
   }
-
-  const vm = new runtime.VM(services, prog, handles);
-  const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
-  fiber.callsiteVars = callsiteVars;
-  fiber.instrBudget = 1000;
-
-  const result = vm.runFiber(fiber, mkScheduler());
-  assert.equal(result.status, VmStatus.DONE);
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
+  }
 }
 
 describe("multi-file: helper module variables", () => {
@@ -108,7 +112,7 @@ export default Sensor({
     runActivation(prog, handles, callsiteVars);
 
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -156,7 +160,7 @@ export default Sensor({
     runActivation(prog, handles, callsiteVars);
 
     for (let expected = 1; expected <= 3; expected++) {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -220,7 +224,7 @@ export default Sensor({
     runActivation(prog, handles, callsiteVars);
 
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -268,7 +272,7 @@ export default Sensor({
     runActivation(prog, handles, callsiteVars);
 
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -362,7 +366,7 @@ export default Sensor({
     runActivation(progB, handles, varsB);
 
     {
-      const vm = new runtime.VM(services, progA, handles);
+      const vm = new runtime.VM(progA, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, progA.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = varsA;
       fiber.instrBudget = 1000;
@@ -372,7 +376,7 @@ export default Sensor({
     }
 
     {
-      const vm = new runtime.VM(services, progA, handles);
+      const vm = new runtime.VM(progA, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, progA.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = varsA;
       fiber.instrBudget = 1000;
@@ -382,7 +386,7 @@ export default Sensor({
     }
 
     {
-      const vm = new runtime.VM(services, progB, handles);
+      const vm = new runtime.VM(progB, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, progB.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = varsB;
       fiber.instrBudget = 1000;
@@ -430,7 +434,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -471,7 +475,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -569,7 +573,7 @@ export default Sensor({
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
@@ -615,7 +619,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -654,7 +658,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -671,7 +675,7 @@ describe("multi-file: enum recompilation cleanup", () => {
   });
 
   test("deleting a user enum removes its registered type and derived artifacts", () => {
-    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations(services.types), services });
+    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations(services.runtime.types), services });
     project.setFiles(
       new Map(
         Object.entries({
@@ -703,12 +707,12 @@ export default Sensor({
     assert.ok(entry);
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/helpers/mode.ts::Mode");
     assert.ok(typeId, "Mode should be registered before deletion");
-    assert.ok(services.conversions.get(typeId!, CoreTypeIds.String));
-    assert.ok(services.conversions.get(typeId!, CoreTypeIds.Number));
-    assert.ok(services.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]));
+    assert.ok(services.shared.conversions.get(typeId!, CoreTypeIds.String));
+    assert.ok(services.shared.conversions.get(typeId!, CoreTypeIds.Number));
+    assert.ok(services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]));
 
     project.deleteFile("helpers/mode.ts");
     project.updateFile(
@@ -732,13 +736,13 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
 
     assert.equal(registry.resolveByName("/helpers/mode.ts::Mode"), undefined);
-    assert.equal(services.conversions.get(typeId!, CoreTypeIds.String), undefined);
-    assert.equal(services.conversions.get(typeId!, CoreTypeIds.Number), undefined);
-    assert.equal(services.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]), undefined);
+    assert.equal(services.shared.conversions.get(typeId!, CoreTypeIds.String), undefined);
+    assert.equal(services.shared.conversions.get(typeId!, CoreTypeIds.Number), undefined);
+    assert.equal(services.edit.operatorOverloads.resolve(CoreOpId.EqualTo, [typeId!, typeId!]), undefined);
   });
 
   test("changing a user enum between numeric and string forms refreshes conversions", () => {
-    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations(services.types), services });
+    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations(services.runtime.types), services });
     project.setFiles(
       new Map(
         Object.entries({
@@ -767,10 +771,10 @@ export default Sensor({
     let result = project.compileAll();
     assert.equal(result.tsErrors.size, 0, `TS errors: ${JSON.stringify([...result.tsErrors])}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/helpers/mode.ts::Mode");
     assert.ok(typeId, "Mode should be registered before recompilation");
-    assert.ok(services.conversions.get(typeId!, CoreTypeIds.Number));
+    assert.ok(services.shared.conversions.get(typeId!, CoreTypeIds.Number));
 
     project.updateFile(
       "helpers/mode.ts",
@@ -803,8 +807,8 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
 
     assert.equal(registry.resolveByName("/helpers/mode.ts::Mode"), typeId);
-    assert.ok(services.conversions.get(typeId!, CoreTypeIds.String));
-    assert.equal(services.conversions.get(typeId!, CoreTypeIds.Number), undefined);
+    assert.ok(services.shared.conversions.get(typeId!, CoreTypeIds.String));
+    assert.equal(services.shared.conversions.get(typeId!, CoreTypeIds.Number), undefined);
   });
 });
 
@@ -861,7 +865,7 @@ export default Sensor({
     assert.deepStrictEqual(entryB.diagnostics, [], `b.ts diagnostics: ${JSON.stringify(entryB.diagnostics)}`);
     assert.ok(entryB.program);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeIdA = registry.resolveByName("/sensors/a.ts::Foo");
     const typeIdB = registry.resolveByName("/sensors/b.ts::Foo");
     assert.ok(typeIdA, "Foo from a.ts should be registered");
@@ -896,7 +900,7 @@ export default Sensor({
 `,
     });
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const boolTypeId = registry.resolveByName("boolean");
     assert.ok(boolTypeId, "boolean should still resolve with bare name");
     const def = registry.get(boolTypeId!);
@@ -931,7 +935,7 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, []);
     assert.ok(entry.program);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/sensors/single.ts::Point");
     assert.ok(typeId, "Point should be registered with qualified name");
 
@@ -970,7 +974,7 @@ export default Sensor({
     assert.deepStrictEqual(entry.diagnostics, [], `diagnostics: ${JSON.stringify(entry.diagnostics)}`);
     assert.ok(entry.program);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const qualifiedTypeId = registry.resolveByName("/sensors/detect.ts::Result");
     assert.ok(qualifiedTypeId, "Result should be registered with qualified name");
     assert.equal(entry.program!.outputType, qualifiedTypeId, "program outputType should use qualified TypeId");
@@ -1247,7 +1251,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 2000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1295,7 +1299,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 3000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1343,7 +1347,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 3000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1383,7 +1387,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 2000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1428,7 +1432,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 3000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1472,7 +1476,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 5000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1586,7 +1590,7 @@ export default Sensor({
 
     const prog = entry.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 3000;
     const r = vm.runFiber(fiber, mkScheduler());
@@ -1633,7 +1637,7 @@ export default Sensor({
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
     runActivation(prog, handles, callsiteVars);
 
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 2000;
@@ -1681,7 +1685,7 @@ export default Sensor({
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
     runActivation(prog, handles, callsiteVars);
 
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 3000;
@@ -1724,7 +1728,7 @@ export default Sensor({
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
     runActivation(prog, handles, callsiteVars);
 
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 2000;
@@ -1768,7 +1772,7 @@ export default Sensor({
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
     runActivation(prog, handles, callsiteVars);
 
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 3000;
@@ -1841,7 +1845,7 @@ export default Sensor({
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
     runActivation(prog, handles, callsiteVars);
 
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 5000;
@@ -1913,7 +1917,7 @@ export default Sensor({
     runActivation(progB, handlesB, csvB);
 
     {
-      const vm = new runtime.VM(services, progA, handlesA);
+      const vm = new runtime.VM(progA, toVmServices(services), { handles: handlesA });
       const fiber = vm.spawnFiber(1, progA.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = csvA;
       fiber.instrBudget = 5000;
@@ -1925,7 +1929,7 @@ export default Sensor({
     }
 
     {
-      const vm = new runtime.VM(services, progB, handlesB);
+      const vm = new runtime.VM(progB, toVmServices(services), { handles: handlesB });
       const fiber = vm.spawnFiber(1, progB.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = csvB;
       fiber.instrBudget = 5000;

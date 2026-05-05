@@ -62,6 +62,7 @@ The Roblox-TS compiler (`rbxtsc`) has restrictions beyond standard TypeScript. W
 2. **No `typeof` operator**: Use `TypeUtils.isString()`, `TypeUtils.isNumber()`, `TypeUtils.isBoolean()` from `platform/types.ts` instead of `typeof x === "string"` etc.
 3. **Luau reserved keywords cannot be used as identifiers**: This includes function names, parameter names, and variable names. Reserved words include: `and`, `break`, `do`, `else`, `elseif`, `end`, `false`, `for`, `function`, `if`, `in`, `local`, `nil`, `not`, `or`, `repeat`, `return`, `then`, `true`, `until`, `while`. For example, a function named `repeat()` or a parameter named `then` will fail the rbx build.
 4. **No `globalThis`**: Platform-specific implementations in `.node.ts` files can use it, but shared code in `.ts` files cannot.
+5. **No value-level circular imports**: Two modules may not form an import cycle unless every import in the cycle is type-only (`import type` / `export type`). Roblox-TS emits Luau `require` calls for value imports, and value-level cycles are not safe at module-init time on Luau (the second-required module sees a partially-initialized first module). Type-only imports are erased at compile time and may participate in cycles freely. When breaking a value cycle, prefer extracting the shared symbols into a third module that both sides import; switching one direction to `import type` only works if that side genuinely needs the symbol for types alone.
 
 ## Platform-Specific Implementation Pattern
 

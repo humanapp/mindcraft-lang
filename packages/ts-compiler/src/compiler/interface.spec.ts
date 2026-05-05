@@ -1,36 +1,38 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import type { ExecutionContext, MapValue, Scheduler } from "@mindcraft-lang/core/brain";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
 import {
-  type BrainServices,
   CoreTypeIds,
   HandleTable,
   isStructValue,
+  type MapValue,
   mkNumberValue,
   NativeType,
   NIL_VALUE,
   type NumberValue,
-  runtime,
   type StructTypeDef,
   type StructValue,
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 import { LoweringDiagCode } from "./diag-codes.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -54,7 +56,7 @@ describe("interface declarations", () => {
   });
 
   test("basic interface registers as struct type with correct fields", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -73,7 +75,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/user-code.ts::Point");
     assert.ok(typeId, "Point struct type should be registered");
     const def = registry.get(typeId!);
@@ -90,7 +92,7 @@ export default Sensor({
   });
 
   test("interface with optional field registers nullable type", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -109,7 +111,7 @@ export default Sensor({
     const result = compileUserTile(source, { ambientSource, services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
-    const registry = services.types;
+    const registry = services.runtime.types;
     const typeId = registry.resolveByName("/user-code.ts::Config");
     assert.ok(typeId, "Config struct type should be registered");
     const structDef = registry.get(typeId!) as StructTypeDef;
@@ -129,7 +131,7 @@ export default Sensor({
   });
 
   test("interface-typed object literal compiles and executes", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -152,7 +154,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 2000;
@@ -167,7 +169,7 @@ export default Sensor({
   });
 
   test("interface with nested struct field", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -196,7 +198,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 2000;
@@ -211,7 +213,7 @@ export default Sensor({
   });
 
   test("generic interface is silently skipped (no rejection diagnostic)", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -231,7 +233,7 @@ export default Sensor({
   });
 
   test("interface colliding with ambient type emits diagnostic", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     types.addStructType("AmbientPoint", {
       fields: List.from([
         { name: "x", typeId: CoreTypeIds.Number },
@@ -260,7 +262,7 @@ export default Sensor({
   });
 
   test("interface with index signature emits diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -281,7 +283,7 @@ export default Sensor({
   });
 
   test("interface with call signature emits diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -302,7 +304,7 @@ export default Sensor({
   });
 
   test("interface with boolean and string fields", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -326,7 +328,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 2000;

@@ -1,17 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
-import {
-  type BrainProgram,
-  type BrainServices,
-  BYTECODE_VERSION,
-  type FunctionBytecode,
-  mkNumberValue,
-  Op,
-  type PageMetadata,
-  type Value,
-} from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { PageMetadata, UnlinkedBrainProgram } from "@mindcraft-lang/core/runtime";
+import { BYTECODE_VERSION, type FunctionBytecode, mkNumberValue, Op, type Value } from "@mindcraft-lang/core/runtime";
 import { linkUserPrograms } from "../linker/linker.js";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
@@ -20,13 +13,13 @@ import { UserTileProject } from "./project.js";
 let services: BrainServices;
 
 function compileProject(files: Record<string, string>) {
-  const ambientSource = buildAmbientDeclarations(services.types);
+  const ambientSource = buildAmbientDeclarations(services.runtime.types);
   const project = new UserTileProject({ ambientSource, services });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
 
-function mkEmptyBrainProgram(): BrainProgram {
+function mkEmptyBrainProgram(): UnlinkedBrainProgram {
   const emptyPage: PageMetadata = {
     pageIndex: 0,
     pageId: "page-0",
@@ -134,8 +127,7 @@ export default Sensor({
     assert.equal(initFn!.isGenerated, true, "module-init should be generated");
 
     const activationFn = dm.functions.find((f) => f.debugFunctionId.endsWith("/<activation>"));
-    assert.ok(activationFn, "expected activation function");
-    assert.equal(activationFn!.isGenerated, true, "activation function should be generated");
+    assert.equal(activationFn, undefined, "no activation function expected without onPageEntered");
   });
 
   test("user-authored functions have isGenerated false", () => {
@@ -270,7 +262,7 @@ export default Sensor({
       numLocals: 0,
       name: "brain-stub",
     };
-    const brainWithStub: BrainProgram = {
+    const brainWithStub: UnlinkedBrainProgram = {
       ...brainProgram,
       functions: List.from([stubFn, stubFn, stubFn]),
       constantPools: {

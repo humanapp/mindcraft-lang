@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { CoreTypeIds } from "@mindcraft-lang/core/brain";
 import { BrainTileParameterDef, TileCatalog } from "@mindcraft-lang/core/brain/tiles";
+import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 
 describe("TileCatalog", () => {
   test("preserves explicit metadata when registering tiles", () => {

@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
-  type BrainServices,
   ContextTypeIds,
   CoreTypeIds,
   type EnumValue,
-  type ExecutionContext,
   HandleTable,
   isEnumValue,
   isListValue,
@@ -23,7 +24,6 @@ import {
   NIL_VALUE,
   type NumberValue,
   Op,
-  runtime,
   type Scheduler,
   type StringValue,
   type StructTypeDef,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -41,12 +41,13 @@ import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -77,19 +78,22 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {
-  if (prog.activationFuncId === undefined) {
-    return;
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+    if (callsiteVars) {
+      fiber.callsiteVars = callsiteVars;
+    }
+    fiber.instrBudget = 1000;
+    const result = vm.runFiber(fiber, mkScheduler());
+    assert.equal(result.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
   }
-
-  const vm = new runtime.VM(services, prog, handles);
-  const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
-  if (callsiteVars) {
-    fiber.callsiteVars = callsiteVars;
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
   }
-  fiber.instrBudget = 1000;
-
-  const result = vm.runFiber(fiber, mkScheduler());
-  assert.equal(result.status, VmStatus.DONE);
 }
 describe("lowering + emission", () => {
   before(() => {
@@ -116,7 +120,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const args = mkArgsList({ 0: mkNumberValue(3) });
@@ -152,7 +156,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const args = mkArgsList({ 0: mkNumberValue(15) });
@@ -185,7 +189,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -217,7 +221,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -245,7 +249,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -276,7 +280,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const args = mkArgsList({ 0: mkNumberValue(5) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
@@ -313,6 +317,7 @@ export default Sensor({
     assert.equal(prog.numStateSlots, 0);
     assert.ok(prog.outputType);
     assert.ok(prog.revisionId);
+    assert.equal(prog.initializerFuncId, undefined);
     assert.equal(prog.activationFuncId, undefined);
     assert.equal(prog.functions.size(), 1);
     assert.ok(prog.constantPools.values.size() > 0);
@@ -337,14 +342,14 @@ export default Sensor({
   });
 
   test("app-defined output type resolves via registry", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const actorRefTypeId = mkTypeId(NativeType.Struct, "ActorRef");
     if (!types.get(actorRefTypeId)) {
       types.addStructType("ActorRef", {
         fields: List.from([{ name: "id", typeId: mkTypeId(NativeType.Number, "number") }]),
       });
     }
-    const appAmbient = buildAmbientDeclarations(services.types);
+    const appAmbient = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type ActorRef } from "mindcraft";
 

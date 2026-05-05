@@ -1,4 +1,5 @@
-import type { BrainServices, ConstantOffsets, UserActionArtifact } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import type { ConstantOffsets, UserActionArtifact } from "@mindcraft-lang/core/runtime";
 import type ts from "typescript";
 import type { TsDiagCode } from "./diag-codes.js";
 
@@ -38,7 +39,7 @@ export interface LinkedUserProgram {
 
 /** Options passed to the user-tile compiler. */
 export interface CompileOptions {
-  /** Override the ambient `.d.ts` source. When omitted, declarations are generated from `services.types`. */
+  /** Override the ambient `.d.ts` source. When omitted, declarations are generated from `services.runtime.types`. */
   ambientSource?: string;
   services: BrainServices;
 }
@@ -60,6 +61,7 @@ export interface ExtractedDescriptor {
   execIsAsync: boolean;
   onExecuteNode: ts.FunctionExpression | ts.MethodDeclaration | ts.ArrowFunction;
   onPageEnteredNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null;
+  onPageExitedNode: ts.MethodDeclaration | ts.FunctionExpression | ts.ArrowFunction | null;
   label?: string;
   icon?: string;
   iconSpan?: SourceSpan;

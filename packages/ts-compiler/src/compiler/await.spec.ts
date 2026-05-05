@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List, type ReadonlyList } from "@mindcraft-lang/core";
+import { List, type ReadonlyList, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
-  type BrainServices,
   ContextTypeIds,
   CoreTypeIds,
   type EnumValue,
-  type ExecutionContext,
   HandleTable,
   isEnumValue,
   isListValue,
@@ -23,7 +24,6 @@ import {
   NIL_VALUE,
   type NumberValue,
   Op,
-  runtime,
   type Scheduler,
   type StringValue,
   type StructTypeDef,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -41,12 +41,13 @@ import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -77,26 +78,29 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {
-  if (prog.activationFuncId === undefined) {
-    return;
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+    if (callsiteVars) {
+      fiber.callsiteVars = callsiteVars;
+    }
+    fiber.instrBudget = 1000;
+    const result = vm.runFiber(fiber, mkScheduler());
+    assert.equal(result.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
   }
-
-  const vm = new runtime.VM(services, prog, handles);
-  const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
-  if (callsiteVars) {
-    fiber.callsiteVars = callsiteVars;
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
   }
-  fiber.instrBudget = 1000;
-
-  const result = vm.runFiber(fiber, mkScheduler());
-  assert.equal(result.status, VmStatus.DONE);
 }
 describe("await expression", () => {
   before(async () => {
     services = __test__createBrainServices();
 
-    const types = services.types;
-    const fns = services.functions;
+    const types = services.runtime.types;
+    const fns = services.runtime.functions;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
     const voidTypeId = mkTypeId(NativeType.Void, "void");
@@ -159,7 +163,7 @@ describe("await expression", () => {
   });
 
   test("single await: fiber suspends, resolves, and returns value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -186,7 +190,7 @@ export default Sensor({
     assert.ok(hasAwait, "Expected AWAIT opcode");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const args = mkArgsList({ 0: mkNativeStructValue("Widget", { id: 1 }) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
     fiber.instrBudget = 1000;
@@ -206,7 +210,7 @@ export default Sensor({
   });
 
   test("two consecutive awaits: fiber suspends twice and produces correct result", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -236,7 +240,7 @@ export default Sensor({
     assert.equal(awaitCount, 2, "Expected exactly 2 AWAIT instructions");
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const args = mkArgsList({ 0: mkNativeStructValue("Widget", { id: 1 }) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
     fiber.instrBudget = 1000;
@@ -262,7 +266,7 @@ export default Sensor({
   });
 
   test("local variable survives across await point", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 
@@ -284,7 +288,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const args = mkArgsList({ 0: mkNativeStructValue("Widget", { id: 1 }) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
     fiber.instrBudget = 1000;
@@ -303,7 +307,7 @@ export default Sensor({
   });
 
   test("await on sync function call produces compile error", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, param, type Context, type Widget } from "mindcraft";
 

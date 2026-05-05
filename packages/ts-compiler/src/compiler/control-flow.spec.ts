@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
-  type BrainServices,
   ContextTypeIds,
   CoreTypeIds,
   type EnumValue,
-  type ExecutionContext,
   HandleTable,
   isEnumValue,
   isListValue,
@@ -23,7 +24,6 @@ import {
   NIL_VALUE,
   type NumberValue,
   Op,
-  runtime,
   type Scheduler,
   type StringValue,
   type StructTypeDef,
@@ -31,22 +31,23 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
-import { CompileDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
+import { CompileDiagCode, DescriptorDiagCode, LoweringDiagCode, ValidatorDiagCode } from "./diag-codes.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -77,19 +78,22 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {
-  if (prog.activationFuncId === undefined) {
-    return;
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+    if (callsiteVars) {
+      fiber.callsiteVars = callsiteVars;
+    }
+    fiber.instrBudget = 1000;
+    const result = vm.runFiber(fiber, mkScheduler());
+    assert.equal(result.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
   }
-
-  const vm = new runtime.VM(services, prog, handles);
-  const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
-  if (callsiteVars) {
-    fiber.callsiteVars = callsiteVars;
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
   }
-  fiber.instrBudget = 1000;
-
-  const result = vm.runFiber(fiber, mkScheduler());
-  assert.equal(result.status, VmStatus.DONE);
 }
 describe("control flow + local variables", () => {
   before(() => {
@@ -120,7 +124,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const args = mkArgsList({ 0: mkNumberValue(10) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
@@ -157,7 +161,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const args = mkArgsList({ 0: mkNumberValue(3) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
@@ -191,7 +195,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
@@ -229,7 +233,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const args = mkArgsList({ 0: mkNumberValue(5) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
@@ -263,7 +267,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -301,7 +305,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const args = mkArgsList({ 0: mkNumberValue(4) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
@@ -339,7 +343,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -377,7 +381,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -414,7 +418,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const args = mkArgsList({ 0: mkNumberValue(4) });
     const fiber = vm.spawnFiber(1, 0, args, mkCtx());
@@ -449,7 +453,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -483,7 +487,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
@@ -519,7 +523,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -555,7 +559,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 50000;
@@ -593,7 +597,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -630,7 +634,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -670,7 +674,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -711,7 +715,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -749,7 +753,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 10000;
@@ -786,7 +790,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
@@ -827,7 +831,7 @@ export default Sensor({
 
     // x = 15 -> return 3
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, 0, mkArgsList({ 0: mkNumberValue(15) }), mkCtx());
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -839,7 +843,7 @@ export default Sensor({
 
     // x = 7 -> return 2
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, 0, mkArgsList({ 0: mkNumberValue(7) }), mkCtx());
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -851,7 +855,7 @@ export default Sensor({
 
     // x = 2 -> return 1
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, 0, mkArgsList({ 0: mkNumberValue(2) }), mkCtx());
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -897,7 +901,7 @@ export default Sensor({
 
     // x = 50 -> clamped to 50 (within range)
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, mkArgsList({ 0: mkNumberValue(50) }), mkCtx());
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -909,7 +913,7 @@ export default Sensor({
 
     // x = -10 -> clamped to 0
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, mkArgsList({ 0: mkNumberValue(-10) }), mkCtx());
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -921,7 +925,7 @@ export default Sensor({
 
     // x = 200 -> clamped to 100
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, mkArgsList({ 0: mkNumberValue(200) }), mkCtx());
       fiber.instrBudget = 1000;
       const r = vm.runFiber(fiber, mkScheduler());
@@ -956,7 +960,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, mkArgsList({ 0: mkNumberValue(7) }), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -995,7 +999,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, prog.entryFuncId, mkArgsList({ 0: mkNumberValue(10) }), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -1026,7 +1030,7 @@ export default Sensor({
 
     const prog = result.program!;
     assert.ok(prog.numStateSlots > 0, "expected numStateSlots > 0");
-    assert.ok(prog.activationFuncId !== undefined, "expected activationFuncId to be set");
+    assert.ok(prog.initializerFuncId !== undefined, "expected initializerFuncId to be set");
 
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
@@ -1035,7 +1039,7 @@ export default Sensor({
 
     // First call: count should become 1
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1048,7 +1052,7 @@ export default Sensor({
 
     // Second call: count should become 2
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1080,7 +1084,7 @@ export default Sensor({
 
     const prog = result.program!;
     assert.equal(prog.numStateSlots, 2);
-    assert.ok(prog.activationFuncId !== undefined);
+    assert.ok(prog.initializerFuncId !== undefined);
 
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
@@ -1089,7 +1093,7 @@ export default Sensor({
 
     // a=10, b=20 -> a+b = 30
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1125,7 +1129,7 @@ export default Sensor({
     const callsiteVars1 = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
     runActivation(prog, handles, callsiteVars1);
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars1;
       fiber.instrBudget = 1000;
@@ -1134,7 +1138,7 @@ export default Sensor({
       if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 1);
     }
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars1;
       fiber.instrBudget = 1000;
@@ -1147,7 +1151,7 @@ export default Sensor({
     const callsiteVars2 = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
     runActivation(prog, handles, callsiteVars2);
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars2;
       fiber.instrBudget = 1000;
@@ -1192,7 +1196,7 @@ export default Sensor({
 
     // Call with val=5 -> total becomes 5
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, mkArgsList({ 0: mkNumberValue(5) }), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1203,7 +1207,7 @@ export default Sensor({
 
     // Call with val=3 -> total becomes 8
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, mkArgsList({ 0: mkNumberValue(3) }), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1213,7 +1217,7 @@ export default Sensor({
     }
   });
 
-  test("no top-level vars produces numStateSlots=0 and no activationFuncId", () => {
+  test("no top-level vars produces numStateSlots=0 and no initializer or activation func", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1229,6 +1233,7 @@ export default Sensor({
     assert.ok(result.program);
 
     assert.equal(result.program!.numStateSlots, 0);
+    assert.equal(result.program!.initializerFuncId, undefined);
     assert.equal(result.program!.activationFuncId, undefined);
   });
 
@@ -1254,7 +1259,7 @@ export default Sensor({
     assert.equal(result.program!.functions.size(), 3);
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, result.program!.entryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -1292,7 +1297,7 @@ export default Sensor({
     assert.ok(result.program);
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, result.program!, handles);
+    const vm = new runtime.VM(result.program!, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, result.program!.entryFuncId, mkArgsList({ 0: mkNumberValue(5) }), mkCtx());
     fiber.instrBudget = 10000;
 
@@ -1332,7 +1337,7 @@ export default Sensor({
 
     // val=15 > THRESHOLD=10 -> true
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, mkArgsList({ 0: mkNumberValue(15) }), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1343,7 +1348,7 @@ export default Sensor({
 
     // val=5 > THRESHOLD=10 -> false
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, mkArgsList({ 0: mkNumberValue(5) }), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1390,7 +1395,7 @@ export default Sensor({
 
     // Call exec twice -> count = 1, then 2
     for (let expected = 1; expected <= 2; expected++) {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1403,7 +1408,7 @@ export default Sensor({
 
     // Next exec call -> count should be 1 again (reset happened)
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1413,7 +1418,7 @@ export default Sensor({
     }
   });
 
-  test("source without onPageEntered still emits activation that runs init", () => {
+  test("source without onPageEntered emits initializer but no activation func", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1432,7 +1437,8 @@ export default Sensor({
     assert.ok(result.program);
 
     const prog = result.program!;
-    assert.ok(prog.activationFuncId !== undefined, "activation should be generated when state exists");
+    assert.ok(prog.initializerFuncId !== undefined, "initializer should be generated when state exists");
+    assert.equal(prog.activationFuncId, undefined, "no activation expected without onPageEntered");
 
     const handles = new HandleTable(100);
     const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
@@ -1441,7 +1447,7 @@ export default Sensor({
 
     // Call exec twice -> count = 1, 2
     for (let expected = 1; expected <= 2; expected++) {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1454,7 +1460,7 @@ export default Sensor({
 
     // Next exec -> count = 1 (re-initialized)
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1495,7 +1501,7 @@ export default Sensor({
 
     // exec -> startValue was 100, now becomes 101
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1505,7 +1511,7 @@ export default Sensor({
     }
   });
 
-  test("no activation function is emitted with no callsite vars and no onPageEntered", () => {
+  test("no activation or initializer function is emitted with no callsite vars and no onPageEntered", () => {
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -1522,6 +1528,7 @@ export default Sensor({
 
     const prog = result.program!;
     assert.equal(prog.numStateSlots, 0);
+    assert.equal(prog.initializerFuncId, undefined);
     assert.equal(prog.activationFuncId, undefined);
   });
 
@@ -1557,7 +1564,7 @@ export default Sensor({
 
     // exec: a=5+1=6, b=50+10=60, return 66
     {
-      const vm = new runtime.VM(services, prog, handles);
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
       const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
       fiber.callsiteVars = callsiteVars;
       fiber.instrBudget = 1000;
@@ -1565,5 +1572,238 @@ export default Sensor({
       assert.equal(r.status, VmStatus.DONE);
       if (r.status === VmStatus.DONE) assert.equal((r.result as NumberValue).v, 66);
     }
+  });
+
+  test("module-scope initializer runs exactly once across multiple page activations", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let x = 0;
+
+export default Sensor({
+  name: "init-once",
+  onExecute(ctx: Context): number {
+    x += 1;
+    return x;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
+    assert.ok(result.program);
+
+    const prog = result.program!;
+    assert.ok(prog.initializerFuncId !== undefined, "module-scope let should produce an initializerFuncId");
+    assert.equal(prog.activationFuncId, undefined, "no onPageEntered handler -- activationFuncId should be unset");
+
+    const handles = new HandleTable(100);
+    // Brain-instance-scoped callsite storage: allocated on first page activation
+    // and reused across subsequent activations of the same instance.
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+
+    const dispatchInitializer = (): void => {
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
+      const fiber = vm.spawnFiber(1, prog.initializerFuncId!, List.empty<Value>(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+    };
+
+    const dispatchExec = (): number => {
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
+      const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      return r.status === VmStatus.DONE ? (r.result as NumberValue).v : Number.NaN;
+    };
+
+    // First page activation: callsite is freshly allocated -> initializer fires.
+    dispatchInitializer();
+    assert.equal(dispatchExec(), 1);
+    assert.equal(dispatchExec(), 2);
+
+    // Page exit + re-enter (round-trip 1): callsite is preserved at the brain
+    // instance scope, so the runtime would skip the initializer dispatch.
+    assert.equal(dispatchExec(), 3);
+    assert.equal(dispatchExec(), 4);
+
+    // Page exit + re-enter (round-trip 2): same -- counter keeps incrementing,
+    // proving x was only initialized to 0 a single time.
+    assert.equal(dispatchExec(), 5);
+    assert.equal(dispatchExec(), 6);
+  });
+});
+
+describe("onPageExited handler", () => {
+  before(() => {
+    services = __test__createBrainServices();
+  });
+
+  test("descriptor recognizes property-assignment arrow form", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-arrow",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited: (ctx: Context): void => {},
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+    assert.ok(result.program!.deactivationFuncId !== undefined);
+  });
+
+  test("descriptor recognizes property-assignment function-expression form", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-fn-expr",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited: function (ctx: Context): void {},
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+    assert.ok(result.program!.deactivationFuncId !== undefined);
+  });
+
+  test("descriptor recognizes method-shorthand form", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-method",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited(ctx: Context): void {},
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+    assert.ok(result.program!.deactivationFuncId !== undefined);
+  });
+
+  test("missing onPageExited leaves deactivationFuncId unset", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "no-exit",
+  onExecute(ctx: Context): number { return 0; },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    assert.ok(result.program);
+    assert.equal(result.program!.deactivationFuncId, undefined);
+  });
+
+  test("non-function onPageExited produces OnPageExitedMustBeFunction diag", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-not-fn",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited: 42 as unknown as (ctx: Context) => void,
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.ok(result.diagnostics.some((d) => d.code === DescriptorDiagCode.OnPageExitedMustBeFunction));
+  });
+
+  test("program with onPageEntered + onPageExited + module-init produces three distinct func ids", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let count = 0;
+
+export default Sensor({
+  name: "all-three",
+  onExecute(ctx: Context): number { return count; },
+  onPageEntered(ctx: Context): void { count = 0; },
+  onPageExited(ctx: Context): void { count = -1; },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    const prog = result.program!;
+    assert.ok(prog.initializerFuncId !== undefined);
+    assert.ok(prog.activationFuncId !== undefined);
+    assert.ok(prog.deactivationFuncId !== undefined);
+    const ids = new Set([prog.initializerFuncId, prog.activationFuncId, prog.deactivationFuncId]);
+    assert.equal(ids.size, 3);
+  });
+
+  test("onPageExited mutation persists into the next exec call (brain-instance-scoped storage)", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+let count = 0;
+
+export default Sensor({
+  name: "exit-mutates",
+  onExecute(ctx: Context): number {
+    count += 1;
+    return count;
+  },
+  onPageExited(ctx: Context): void {
+    count = 100;
+  },
+});
+`;
+    const result = compileUserTile(source, { services });
+    assert.deepStrictEqual(result.diagnostics, []);
+    const prog = result.program!;
+    assert.ok(prog.initializerFuncId !== undefined);
+    assert.ok(prog.deactivationFuncId !== undefined);
+    assert.equal(prog.activationFuncId, undefined);
+
+    const handles = new HandleTable(100);
+    const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
+
+    const dispatchFn = (funcId: number): Value | undefined => {
+      const vm = new runtime.VM(prog, toVmServices(services), { handles });
+      const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+      fiber.callsiteVars = callsiteVars;
+      fiber.instrBudget = 1000;
+      const r = vm.runFiber(fiber, mkScheduler());
+      assert.equal(r.status, VmStatus.DONE);
+      return r.status === VmStatus.DONE ? r.result : undefined;
+    };
+
+    // First activation runs the initializer once; storage now holds count = 0.
+    dispatchFn(prog.initializerFuncId!);
+    assert.equal((dispatchFn(prog.entryFuncId) as NumberValue).v, 1);
+    assert.equal((dispatchFn(prog.entryFuncId) as NumberValue).v, 2);
+
+    // Page deactivates: onPageExited writes 100 into the persisted storage.
+    dispatchFn(prog.deactivationFuncId!);
+
+    // Re-entering the page does NOT re-run the initializer (storage survives),
+    // so the next exec sees the deactivation handler's mutation.
+    assert.equal((dispatchFn(prog.entryFuncId) as NumberValue).v, 101);
+  });
+
+  test("onPageExited body without a block produces OnPageExitedHasNoBody diag", () => {
+    const source = `
+import { Sensor, type Context } from "mindcraft";
+
+export default Sensor({
+  name: "exit-no-body",
+  onExecute(ctx: Context): number { return 0; },
+  onPageExited: (ctx: Context) => 1 as unknown as void,
+});
+`;
+    const result = compileUserTile(source, { services });
+    // Arrow with non-block expression body should trip OnPageExitedHasNoBody.
+    assert.ok(result.diagnostics.some((d) => d.code === LoweringDiagCode.OnPageExitedHasNoBody));
   });
 });

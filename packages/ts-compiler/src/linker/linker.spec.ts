@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List, runtime, UniqueSet } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
-  type BrainProgram,
-  type BrainServices,
   BYTECODE_VERSION,
-  type ExecutionContext,
   type FunctionBytecode,
   HandleTable,
   type MapValue,
@@ -16,13 +16,13 @@ import {
   type NumberValue,
   Op,
   type PageMetadata,
-  runtime,
   type Scheduler,
+  type UnlinkedBrainProgram,
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { compileUserTile } from "../compiler/compile.js";
 import { linkUserPrograms } from "./linker.js";
 
@@ -30,10 +30,7 @@ function mkCtx(
   overrides: Omit<Partial<ExecutionContext>, "callSiteState"> & { callSiteState?: Dict<number, unknown> } = {}
 ): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -63,7 +60,7 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
   return args;
 }
 
-function mkEmptyBrainProgram(): BrainProgram {
+function mkEmptyBrainProgram(): UnlinkedBrainProgram {
   const emptyPage: PageMetadata = {
     pageIndex: 0,
     pageId: "page-0",
@@ -89,7 +86,7 @@ function mkEmptyBrainProgram(): BrainProgram {
   };
 }
 
-function mkBrainProgramWithStubFunction(): BrainProgram {
+function mkBrainProgramWithStubFunction(): UnlinkedBrainProgram {
   const stubFn: FunctionBytecode = {
     code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.RET }]),
     numParams: 0,
@@ -127,6 +124,9 @@ function resolveLinkedFuncId(linkInfo: { functionOffset: number }, localFuncId: 
 
 describe("linker", () => {
   let services: BrainServices;
+  function toVmServices(b: BrainServices) {
+    return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+  }
   before(() => {
     services = __test__createBrainServices();
   });
@@ -219,7 +219,7 @@ export default Sensor({
 
     const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], result.program!.entryFuncId);
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
 
     const fiber = vm.spawnFiber(1, linkedEntryFuncId, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
@@ -260,7 +260,7 @@ export default Sensor({
 
     const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], result.program!.entryFuncId);
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
 
     const args = mkArgsList({ 0: mkNumberValue(7) });
     const fiber = vm.spawnFiber(1, linkedEntryFuncId, args, mkCtx());
@@ -313,7 +313,7 @@ export default Sensor({
     );
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
 
     const fiber1 = vm.spawnFiber(
       1,
@@ -398,7 +398,7 @@ export default Sensor({
     assert.equal(originalFn.code.get(0).a, 0);
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty(), mkCtx());
     fiber.instrBudget = 1000;
     const runResult = vm.runFiber(fiber, mkScheduler());
@@ -459,7 +459,7 @@ export default Sensor({
 
     const linkedEntryFuncId = resolveLinkedFuncId(linkedArtifacts[0], userProg.entryFuncId);
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, linkedProgram, handles);
+    const vm = new runtime.VM(linkedProgram, toVmServices(services), { handles });
     const args = mkArgsList({ 0: mkNumberValue(5) });
     const fiber = vm.spawnFiber(1, linkedEntryFuncId, args, mkCtx());
     fiber.instrBudget = 1000;

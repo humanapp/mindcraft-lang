@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
   type BrainActionCallArgSpec,
@@ -10,8 +13,6 @@ import {
   type BrainActionCallOptionalSpec,
   type BrainActionCallRepeatSpec,
   type BrainActionCallSeqSpec,
-  type BrainServices,
-  type ExecutionContext,
   HandleTable,
   type MapValue,
   mkNumberValue,
@@ -19,14 +20,13 @@ import {
   NativeType,
   NIL_VALUE,
   type NumberValue,
-  runtime,
   type Scheduler,
   type StringValue,
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
 import { DescriptorDiagCode } from "./diag-codes.js";
@@ -42,6 +42,10 @@ import type {
 } from "./types.js";
 
 let services: BrainServices;
+
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
 
 describe("descriptor arg spec extraction", () => {
   before(() => {
@@ -1105,10 +1109,7 @@ export default Actuator({
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -1143,7 +1144,7 @@ function execSensor(prog: UserAuthoredProgram, argsMap: List<Value>): Value | un
     argsMap.push(NIL_VALUE);
   }
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const fiber = vm.spawnFiber(1, 0, argsMap, mkCtx());
   fiber.instrBudget = 2000;
   const result = vm.runFiber(fiber, mkScheduler());

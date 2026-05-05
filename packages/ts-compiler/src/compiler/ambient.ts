@@ -8,8 +8,8 @@ import type {
   StructTypeDef,
   TypeDef,
   UnionTypeDef,
-} from "@mindcraft-lang/core/brain";
-import { NativeType } from "@mindcraft-lang/core/brain";
+} from "@mindcraft-lang/core/runtime";
+import { NativeType } from "@mindcraft-lang/core/runtime";
 
 const AMBIENT_HEADER = `/// <reference no-default-lib="true"/>
 
@@ -358,6 +358,7 @@ const AMBIENT_MODULE_END = `
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): unknown;
     onPageEntered?(ctx: Context): void;
+    onPageExited?(ctx: Context): void;
   }
 
   export interface ActuatorConfig {
@@ -369,6 +370,7 @@ const AMBIENT_MODULE_END = `
     args?: ArgSpec[];
     onExecute(ctx: Context, args: Record<string, unknown>): void | Promise<void>;
     onPageEntered?(ctx: Context): void;
+    onPageExited?(ctx: Context): void;
   }
 
   export function Sensor(config: SensorConfig): unknown;

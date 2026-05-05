@@ -1,18 +1,23 @@
+import { MathOps } from "../platform/math";
 import type {
+  AppServices,
+  EditLangServices,
   IBrainActionRegistry,
-  IBrainTileDefBuilder,
   IConversionRegistry,
   IFunctionRegistry,
   IOperatorOverloads,
   IOperatorTable,
-  ITileCatalog,
+  IRngServices,
   ITypeRegistry,
-} from "./interfaces";
-import { BrainActionRegistry } from "./runtime/action-registry";
-import { ConversionRegistry } from "./runtime/conversions";
-import { FunctionRegistry } from "./runtime/functions";
-import { OperatorOverloads, OperatorTable } from "./runtime/operators";
-import { TypeRegistry } from "./runtime/type-system";
+  RuntimeLangServices,
+  SharedLangServices,
+} from "../runtime";
+import { BrainActionRegistry } from "../runtime/action-registry";
+import { ConversionRegistry } from "../runtime/conversions";
+import { FunctionRegistry } from "../runtime/functions";
+import { OperatorOverloads, OperatorTable } from "../runtime/operators";
+import { TypeRegistry } from "../runtime/type-system";
+import type { IBrainTileDefBuilder, ITileCatalog } from "./interfaces";
 import { BrainServices } from "./services";
 import { BrainTileDefBuilder } from "./tiles/builder";
 import { TileCatalog } from "./tiles/catalog";
@@ -28,47 +33,41 @@ import { TileCatalog } from "./tiles/catalog";
  * For testing, you can create registries manually or use mock implementations.
  */
 
-/**
- * Creates a new TileCatalog instance.
- * Isolated factory function to avoid circular dependencies.
- */
+/** Creates an empty {@link ITileCatalog}. */
 export function createTileCatalog(): ITileCatalog {
   return new TileCatalog();
 }
 
-/**
- * Creates a new brain action registry instance.
- */
+/** Creates an empty {@link IBrainActionRegistry}. */
 export function createActionRegistry(): IBrainActionRegistry {
   return new BrainActionRegistry();
 }
 
 /**
- * Creates a new TypeRegistry instance.
- * Does not register core types - call registerCoreTypes() separately.
+ * Creates an empty {@link ITypeRegistry}. Core types are not registered
+ * automatically; call `registerCoreTypes()` separately.
  */
 export function createTypeRegistry(): ITypeRegistry {
   return new TypeRegistry();
 }
 
-/**
- * Creates a new FunctionRegistry instance.
- */
+/** Creates an empty {@link IFunctionRegistry}. */
 export function createFunctionRegistry(): IFunctionRegistry {
   return new FunctionRegistry();
 }
 
 /**
- * Creates a new ConversionRegistry instance.
- * Requires a FunctionRegistry to register conversion functions.
+ * Creates a new {@link IConversionRegistry} that registers its conversion
+ * functions through `functions`.
  */
 export function createConversionRegistry(functions: IFunctionRegistry): IConversionRegistry {
   return new ConversionRegistry(functions);
 }
 
 /**
- * Creates a new OperatorTable and OperatorOverloads pair.
- * Requires a FunctionRegistry to register operator implementations.
+ * Creates a new {@link IOperatorTable} / {@link IOperatorOverloads} pair.
+ * Both are wired against `functions` so operator implementations resolve
+ * through the same function registry as host calls.
  */
 export function createOperatorRegistries(functions: IFunctionRegistry): {
   operatorTable: IOperatorTable;
@@ -79,51 +78,56 @@ export function createOperatorRegistries(functions: IFunctionRegistry): {
   return { operatorTable, operatorOverloads };
 }
 
-/**
- * Creates a new BrainTileDefBuilder instance.
- */
+/** Creates an empty {@link IBrainTileDefBuilder}. */
 export function createTileBuilder(): IBrainTileDefBuilder {
   return new BrainTileDefBuilder();
 }
 
+/** Default {@link IRngServices} implementation backed by {@link MathOps.random}. */
+export function createDefaultRng(): IRngServices {
+  return {
+    next(): number {
+      return MathOps.random();
+    },
+  };
+}
+
 /**
- * Creates a complete BrainServices instance with all registries initialized.
- *
- * This function:
- * 1. Creates all registries in the correct dependency order
- * 2. Wires them together
- * 3. Returns an immutable BrainServices container
- *
- * Note: Core types, operators, conversions, functions, and tiles are NOT registered by this function.
- * Call installCoreBrainComponents() after creating services to register all core components,
- * or manually register components after creating services:
- * - registerCoreTypes(services.types)
- * - registerCoreOperators(services.operatorTable, services.operatorOverloads)
- * - registerCoreConversions(services.conversions)
- * - registerCoreActuatorFunctions(services.functions)
- * - registerCoreTileComponents()
- *
- * @returns A new BrainServices instance with empty registries
+ * Creates an {@link AppServices} aggregate of host-supplied capabilities.
+ * The RNG defaults to {@link createDefaultRng} when `rng` is omitted.
  */
-export function createBrainServices(): BrainServices {
-  const tiles = createTileCatalog();
-  const actions = createActionRegistry();
+export function createAppServices(rng?: IRngServices): AppServices {
+  return { rng: rng ?? createDefaultRng() };
+}
+
+/**
+ * Creates a fully wired {@link BrainServices} container with empty
+ * registries in each tier.
+ *
+ * Core types, operators, conversions, functions, and tiles are NOT
+ * registered by this function. Call `installCoreBrainComponents()` after
+ * creating services to register all core components, or manually
+ * register components against the appropriate tier
+ * (`services.runtime.types`, `services.shared.conversions`, etc.).
+ *
+ * @param app - Host-supplied capabilities (RNG and future host injections).
+ *   The same reference is exposed by `MindcraftEnvironment.appServices`.
+ * @returns A new {@link BrainServices} instance.
+ */
+export function createBrainServices(app: AppServices): BrainServices {
   const types = createTypeRegistry();
   const functions = createFunctionRegistry();
+  const actions = createActionRegistry();
   const conversions = createConversionRegistry(functions);
   const { operatorTable, operatorOverloads } = createOperatorRegistries(functions);
+  const tiles = createTileCatalog();
   const tileBuilder = createTileBuilder();
 
-  const services = new BrainServices({
-    tiles,
-    actions,
-    operatorTable,
-    operatorOverloads,
-    types,
-    tileBuilder,
-    functions,
-    conversions,
-  });
+  const runtime: RuntimeLangServices = { types, functions, operatorTable, actions };
+  const edit: EditLangServices = { tiles, tileBuilder, operatorOverloads };
+  const shared: SharedLangServices = { conversions };
+
+  const services = new BrainServices({ runtime, edit, shared, app });
 
   (tileBuilder as BrainTileDefBuilder).setServices(services);
   (types as TypeRegistry).setServices(services);

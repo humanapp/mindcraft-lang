@@ -2,20 +2,19 @@ import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List, type ReadonlyList } from "../../platform/list";
 import { StringUtils as SU } from "../../platform/string";
+import type { IBrain, IConversionRegistry } from "../../runtime";
 import { EventEmitter, type EventEmitterConsumer } from "../../util/event-emitter";
 import { type OpResult, opFailure, opSuccess } from "../../util/op-result";
+import { Brain } from "..";
 import {
   type BrainDefEvents,
   getPageIdFromTileId,
-  type IBrain,
   type IBrainDef,
   type IBrainPageDef,
-  type IConversionRegistry,
   type ITileCatalog,
   isPageTileId,
   mkPageTileId,
 } from "../interfaces";
-import { Brain } from "../runtime";
 import type { BrainServices } from "../services";
 import { type CatalogTileJson, TileCatalog } from "../tiles/catalog";
 import { BrainTilePageDef } from "../tiles/pagetiles";
@@ -139,11 +138,11 @@ export class BrainDef implements IBrainDef {
   }
 
   servicesTiles(): ITileCatalog {
-    return this.services_.tiles;
+    return this.services_.edit.tiles;
   }
 
   servicesConversions(): IConversionRegistry {
-    return this.services_.conversions;
+    return this.services_.shared.conversions;
   }
 
   static emptyBrainDef(services: BrainServices, name?: string): BrainDef {
@@ -376,6 +375,11 @@ export class BrainDef implements IBrainDef {
       brain.addPage(page);
       page.deserializeJson(pageJson, catalogs);
     }
+
+    // addPage() ran syncPageTiles_() while pages still had their default
+    // names; page.deserializeJson() assigns name_ directly without emitting
+    // name_changed. Re-sync so tile labels reflect the deserialized names.
+    brain.syncPageTiles_();
 
     return brain;
   }

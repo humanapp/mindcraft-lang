@@ -1,6 +1,6 @@
 import type { List } from "../../platform/list";
+import type { TypeId } from "../../runtime/type-defs";
 import type { BrainTileDefCreateOptions, BrainTileLiteralDefOptions, IBrainTileDef, TileId } from "./tiles";
-import type { TypeId } from "./type-system";
 
 // ----------------------------------------------------
 // Tile Catalog

@@ -232,7 +232,7 @@ function buildHydratedSnapshot(
   metadata: readonly UserTileMetadata[]
 ): HydratedTileMetadataSnapshot {
   return env.withServices((services) => {
-    const { types } = services;
+    const { types } = services.runtime;
     const tiles = new Map<string, TileDefinitionInput>();
 
     for (const entry of metadata) {

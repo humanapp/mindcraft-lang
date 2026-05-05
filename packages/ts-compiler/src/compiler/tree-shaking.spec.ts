@@ -1,30 +1,32 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
+import { Dict, List, runtime, UniqueSet } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { BytecodeExecutableAction, ExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
-  type BrainServices,
-  type BytecodeExecutableAction,
-  type ExecutableAction,
-  type ExecutableBrainProgram,
-  type ExecutionContext,
   HandleTable,
+  type LinkedBrainProgram,
   NativeType,
   NIL_VALUE,
   type NumberValue,
   type PageMetadata,
-  runtime,
   type Scheduler,
   type StringValue,
+  treeshakeProgram as treeshakeLinked,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { treeshakeProgram } from "@mindcraft-lang/core/brain/runtime";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { UserTileProject } from "./project.js";
 import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
+
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
 
 before(() => {
   services = __test__createBrainServices();
@@ -32,10 +34,7 @@ before(() => {
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -54,13 +53,13 @@ function mkScheduler(): Scheduler {
 }
 
 function compileProject(files: Record<string, string>) {
-  const ambientSource = buildAmbientDeclarations(services.types);
+  const ambientSource = buildAmbientDeclarations(services.runtime.types);
   const project = new UserTileProject({ ambientSource, services });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
 
-function wrapAsExecutable(prog: UserAuthoredProgram): ExecutableBrainProgram {
+function wrapAsExecutable(prog: UserAuthoredProgram): FlatExecutable {
   const page: PageMetadata = {
     pageIndex: 0,
     pageId: "page-0",
@@ -79,6 +78,9 @@ function wrapAsExecutable(prog: UserAuthoredProgram): ExecutableBrainProgram {
   if (prog.activationFuncId !== undefined) {
     action.activationFuncId = prog.activationFuncId;
   }
+  if (prog.initializerFuncId !== undefined) {
+    action.initializerFuncId = prog.initializerFuncId;
+  }
   return {
     version: prog.version,
     functions: prog.functions,
@@ -91,20 +93,69 @@ function wrapAsExecutable(prog: UserAuthoredProgram): ExecutableBrainProgram {
   };
 }
 
+/**
+ * Flat view combining `Program` fields with `LinkedBrainProgram` side tables.
+ * Used by these tests for ergonomic field access; production code uses the
+ * split shape returned by `treeshakeProgram`.
+ */
+interface FlatExecutable {
+  version: number;
+  functions: UserAuthoredProgram["functions"];
+  constantPools: UserAuthoredProgram["constantPools"];
+  variableNames: UserAuthoredProgram["variableNames"];
+  entryPoint?: number;
+  ruleIndex: Dict<string, number>;
+  pages: List<PageMetadata>;
+  actions: List<ExecutableAction>;
+}
+
+function treeshakeProgram(flat: FlatExecutable): FlatExecutable {
+  const linked: LinkedBrainProgram = {
+    program: {
+      version: flat.version,
+      functions: flat.functions,
+      constantPools: flat.constantPools,
+      variableNames: flat.variableNames,
+      entryPoint: flat.entryPoint,
+      actions: flat.actions,
+    },
+    ruleIndex: flat.ruleIndex,
+    pages: flat.pages,
+  };
+  const out = treeshakeLinked(linked);
+  if (out === linked) return flat;
+  return {
+    version: out.program.version,
+    functions: out.program.functions,
+    constantPools: out.program.constantPools,
+    variableNames: out.program.variableNames,
+    entryPoint: out.program.entryPoint,
+    actions: out.program.actions ?? List.empty<ExecutableAction>(),
+    ruleIndex: out.ruleIndex,
+    pages: out.pages,
+  };
+}
+
 function runProgram(prog: UserAuthoredProgram): Value | undefined {
   const handles = new HandleTable(100);
   const callsiteVars = List.from<Value>(Array.from({ length: prog.numStateSlots }, () => NIL_VALUE));
 
-  if (prog.activationFuncId !== undefined) {
-    const vm = new runtime.VM(services, prog, handles);
-    const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
     const r = vm.runFiber(fiber, mkScheduler());
     assert.equal(r.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
+  }
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
   }
 
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const fiber = vm.spawnFiber(1, prog.entryFuncId, List.empty<Value>(), mkCtx());
   fiber.callsiteVars = callsiteVars;
   fiber.instrBudget = 10000;
@@ -116,23 +167,29 @@ function runProgram(prog: UserAuthoredProgram): Value | undefined {
   return undefined;
 }
 
-function runExecutable(prog: ExecutableBrainProgram): Value | undefined {
+function runExecutable(prog: FlatExecutable): Value | undefined {
   const handles = new HandleTable(100);
   const action = prog.actions.size() > 0 ? prog.actions.get(0) : undefined;
   const numSlots = action?.binding === "bytecode" ? action.numStateSlots : 0;
   const callsiteVars = List.from<Value>(Array.from({ length: numSlots }, () => NIL_VALUE));
 
-  if (action?.binding === "bytecode" && action.activationFuncId !== undefined) {
-    const vm = new runtime.VM(services, prog, handles);
-    const fiber = vm.spawnFiber(1, action.activationFuncId, List.empty<Value>(), mkCtx());
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
     fiber.callsiteVars = callsiteVars;
     fiber.instrBudget = 1000;
     const r = vm.runFiber(fiber, mkScheduler());
     assert.equal(r.status, VmStatus.DONE);
+  };
+  if (action?.binding === "bytecode" && action.initializerFuncId !== undefined) {
+    runFn(action.initializerFuncId);
+  }
+  if (action?.binding === "bytecode" && action.activationFuncId !== undefined) {
+    runFn(action.activationFuncId);
   }
 
   const entryFuncId = action?.binding === "bytecode" ? action.entryFuncId : (prog.entryPoint ?? 0);
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const fiber = vm.spawnFiber(1, entryFuncId, List.empty<Value>(), mkCtx());
   fiber.callsiteVars = callsiteVars;
   fiber.instrBudget = 10000;

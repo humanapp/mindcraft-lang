@@ -1,19 +1,13 @@
 import { Error } from "../../platform/error";
+import { type ActionDescriptor, mkSensorTileId, type TypeId } from "../../runtime";
+import fnCurrentPage from "../../runtime/sensors/current-page";
+import fnOnPageEntered from "../../runtime/sensors/on-page-entered";
+import fnPreviousPage from "../../runtime/sensors/previous-page";
+import fnRandom from "../../runtime/sensors/random";
+import fnTimeout from "../../runtime/sensors/timeout";
 import { BitSet } from "../../util/bitset";
-import {
-  type ActionDescriptor,
-  type BrainTileDefCreateOptions,
-  CoreCapabilityBits,
-  mkSensorTileId,
-  TilePlacement,
-  type TypeId,
-} from "../interfaces";
+import { type BrainTileDefCreateOptions, CoreCapabilityBits, TilePlacement } from "../interfaces";
 import { BrainActionTileBase } from "../model/tiledef";
-import fnCurrentPage from "../runtime/sensors/current-page";
-import fnOnPageEntered from "../runtime/sensors/on-page-entered";
-import fnPreviousPage from "../runtime/sensors/previous-page";
-import fnRandom from "../runtime/sensors/random";
-import fnTimeout from "../runtime/sensors/timeout";
 import type { BrainServices } from "../services";
 
 /**
@@ -58,7 +52,7 @@ export class BrainTileSensorDef extends BrainActionTileBase {
 
 /** Register the built-in core sensor tiles on `services`. */
 export function registerCoreSensorTileDefs(services: BrainServices) {
-  const tiles = services.tiles;
+  const tiles = services.edit.tiles;
   const register = (sensorId: string, action: typeof fnRandom.descriptor, opts: BrainTileDefCreateOptions = {}) => {
     const tileDef = new BrainTileSensorDef(sensorId, action, opts);
     tiles.registerTileDef(tileDef);

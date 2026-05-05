@@ -1,9 +1,10 @@
 import { Error } from "../../platform/error";
-import { type ActionDescriptor, type BrainTileDefCreateOptions, mkActuatorTileId, TilePlacement } from "../interfaces";
+import { type ActionDescriptor, mkActuatorTileId } from "../../runtime";
+import fnRestartPage from "../../runtime/actuators/restart-page";
+import fnSwitchPage from "../../runtime/actuators/switch-page";
+import fnYield from "../../runtime/actuators/yield";
+import { type BrainTileDefCreateOptions, TilePlacement } from "../interfaces";
 import { BrainActionTileBase } from "../model/tiledef";
-import fnRestartPage from "../runtime/actuators/restart-page";
-import fnSwitchPage from "../runtime/actuators/switch-page";
-import fnYield from "../runtime/actuators/yield";
 import type { BrainServices } from "../services";
 
 /** Tile definition for an actuator (`do`-side action) bound to an {@link ActionDescriptor}. */
@@ -23,7 +24,7 @@ export class BrainTileActuatorDef extends BrainActionTileBase {
 
 /** Register the built-in core actuator tiles on `services`. */
 export function registerCoreActuatorTileDefs(services: BrainServices) {
-  const tiles = services.tiles;
+  const tiles = services.edit.tiles;
   const register = (
     actuatorId: string,
     action: typeof fnSwitchPage.descriptor,

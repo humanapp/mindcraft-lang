@@ -1,9 +1,9 @@
 import { Dict } from "../../platform/dict";
 import { Error } from "../../platform/error";
 import { List } from "../../platform/list";
+import type { Instr } from "../../runtime/bytecode";
+import { Op } from "../../runtime/bytecode";
 import type { IBytecodeEmitter } from "../interfaces/emitter";
-import type { Instr } from "../interfaces/vm";
-import { Op } from "../interfaces/vm";
 
 /**
  * Two-pass bytecode emitter for VM instructions.

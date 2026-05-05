@@ -216,7 +216,7 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
   getCompilerControlledFiles(): ReadonlyMap<string, string> {
     const files = new Map<string, string>();
     const ambient =
-      this.options.ambientSource ?? buildAmbientDeclarations(this.options.environment.brainServices.types);
+      this.options.ambientSource ?? buildAmbientDeclarations(this.options.environment.brainServices.runtime.types);
     files.set("mindcraft.d.ts", ambient);
     files.set("tsconfig.json", TSCONFIG_CONTENT);
     return files;

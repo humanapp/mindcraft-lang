@@ -1,10 +1,5 @@
-import {
-  type BrainTileDefCreateOptions,
-  type IBrainTileDef,
-  type TileId,
-  TilePlacement,
-  type TypeId,
-} from "../interfaces";
+import type { TileId, TypeId } from "../../runtime";
+import { type BrainTileDefCreateOptions, type IBrainTileDef, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
 /** Tile definition that produces other tile definitions on demand via {@link manufacture}. */

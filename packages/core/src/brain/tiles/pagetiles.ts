@@ -1,5 +1,6 @@
 import { Error } from "../../platform/error";
-import { CoreTypeIds, type ITileCatalog, mkPageTileId, TilePlacement } from "../interfaces";
+import { CoreTypeIds } from "../../runtime";
+import { type ITileCatalog, mkPageTileId, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
 /** Serialized form of a {@link BrainTilePageDef}. */

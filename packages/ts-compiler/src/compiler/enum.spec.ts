@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
-  type BrainServices,
   ContextTypeIds,
   CoreTypeIds,
   type EnumValue,
-  type ExecutionContext,
   HandleTable,
   isEnumValue,
   isListValue,
@@ -23,7 +24,6 @@ import {
   NIL_VALUE,
   type NumberValue,
   Op,
-  runtime,
   type Scheduler,
   type StringValue,
   type StructTypeDef,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -41,12 +41,13 @@ import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -77,19 +78,22 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {
-  if (prog.activationFuncId === undefined) {
-    return;
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+    if (callsiteVars) {
+      fiber.callsiteVars = callsiteVars;
+    }
+    fiber.instrBudget = 1000;
+    const result = vm.runFiber(fiber, mkScheduler());
+    assert.equal(result.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
   }
-
-  const vm = new runtime.VM(services, prog, handles);
-  const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
-  if (callsiteVars) {
-    fiber.callsiteVars = callsiteVars;
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
   }
-  fiber.instrBudget = 1000;
-
-  const result = vm.runFiber(fiber, mkScheduler());
-  assert.equal(result.status, VmStatus.DONE);
 }
 describe("user-authored enum declarations", () => {
   before(() => {
@@ -121,7 +125,7 @@ export default Sensor({
     assert.equal(prog.outputType, typeId);
 
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -167,7 +171,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -206,7 +210,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -238,7 +242,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
     fiber.instrBudget = 1000;
 
@@ -254,7 +258,7 @@ export default Sensor({
 describe("enum value literals", () => {
   before(async () => {
     services = __test__createBrainServices();
-    const types = services.types;
+    const types = services.runtime.types;
     const dirTypeId = mkTypeId(NativeType.Enum, "Direction");
     if (!types.get(dirTypeId)) {
       types.addEnumType("Direction", {
@@ -270,7 +274,7 @@ describe("enum value literals", () => {
   });
 
   test("string literal with enum type annotation produces EnumValue", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -288,7 +292,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -306,7 +310,7 @@ export default Sensor({
   });
 
   test("enum value as function argument", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -327,7 +331,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -345,7 +349,7 @@ export default Sensor({
   });
 
   test("enum value as return value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -362,7 +366,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -380,7 +384,7 @@ export default Sensor({
   });
 
   test("plain string literal without enum context produces StringValue", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -397,7 +401,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -413,7 +417,7 @@ export default Sensor({
   });
 
   test("enum equality (===) returns true for matching values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -432,7 +436,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -448,7 +452,7 @@ export default Sensor({
   });
 
   test("enum equality (===) returns false for different values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -469,7 +473,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -485,7 +489,7 @@ export default Sensor({
   });
 
   test("enum inequality (!==) returns true for different values", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context, type Direction } from "mindcraft";
 
@@ -506,7 +510,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);

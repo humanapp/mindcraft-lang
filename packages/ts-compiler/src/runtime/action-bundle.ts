@@ -6,7 +6,7 @@ import { buildUserTileMetadata, type UserTileTypeResolver } from "./user-tile-me
 
 /** Options for {@link buildCompiledActionBundle}. */
 export interface BuildCompiledActionBundleOptions {
-  /** Resolve a parameter type name to its `TypeId`. Defaults to `services.types.resolveByName`. */
+  /** Resolve a parameter type name to its `TypeId`. Defaults to `services.runtime.types.resolveByName`. */
   resolveTypeId?: UserTileTypeResolver;
   /** Override the bundle revision. Defaults to a content hash of the included programs. */
   revision?: string;
@@ -75,7 +75,8 @@ export function buildCompiledActionBundle(
     return undefined;
   }
 
-  const resolveTypeId = options.resolveTypeId ?? ((typeName: string) => options.services.types.resolveByName(typeName));
+  const resolveTypeId =
+    options.resolveTypeId ?? ((typeName: string) => options.services.runtime.types.resolveByName(typeName));
   const programs = collectPrograms(result);
   const actions = new Dict<string, UserAuthoredProgram>();
   const tileMap = new Map<string, IBrainTileDef>();

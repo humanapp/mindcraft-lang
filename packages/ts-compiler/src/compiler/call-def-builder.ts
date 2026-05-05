@@ -10,7 +10,7 @@ import {
   optional as specOptional,
   repeated as specRepeated,
   seq as specSeq,
-} from "@mindcraft-lang/core/brain";
+} from "@mindcraft-lang/core/runtime";
 import type { ExtractedArgSpec } from "./types.js";
 
 /** Build the runtime {@link BrainActionCallDef} for a user tile from the descriptor's extracted arg specs. */

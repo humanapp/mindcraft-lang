@@ -1,15 +1,13 @@
 import { Error } from "../../platform/error";
 import { StringUtils as SU } from "../../platform/string";
+import { CoreTypeIds, type TileId, type TypeId } from "../../runtime";
 import {
   type BrainTileDefCreateOptions,
-  CoreTypeIds,
   CoreVariableFactoryId,
   type ITileCatalog,
   mkVariableFactoryTileId,
   mkVariableTileId,
-  type TileId,
   TilePlacement,
-  type TypeId,
 } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 
@@ -97,7 +95,7 @@ export function registerVariableFactoryTileDef(
   opts: BrainTileDefCreateOptions = {},
   services: BrainServices
 ) {
-  services.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts));
+  services.edit.tiles.registerTileDef(createVariableFactoryTileDef(factoryId, producedDataType, opts));
 }
 
 function manufactureVarTileDef(

@@ -1,6 +1,7 @@
 import {
   ContextTypeIds,
   type ExecutionContext,
+  getRuleVariable,
   List,
   type MindcraftModuleApi,
   mkCallDef,
@@ -15,7 +16,7 @@ import { getActor, getTargetActor } from "@/brain/execution-context-types";
 import { extractVector2, mkVector2Value, SimTypeIds } from "@/brain/type-system";
 
 export function registerBrainContext(api: MindcraftModuleApi) {
-  const { types, functions } = api.brainServices;
+  const { types, functions } = api.brainServices.runtime;
 
   const nullableActorRefTypeId = types.addNullableType(SimTypeIds.ActorRef);
   const nullableVector2TypeId = types.addNullableType(SimTypeIds.Vector2);
@@ -56,13 +57,13 @@ export function registerBrainContext(api: MindcraftModuleApi) {
     false,
     {
       exec: (ctx: ExecutionContext): Value => {
-        const targetPosVar = ctx.rule?.getVariable<StructValue>("targetPos");
+        const targetPosVar = getRuleVariable<StructValue>(ctx, "targetPos");
         if (targetPosVar) {
           const pos = extractVector2(targetPosVar);
           if (pos) return mkVector2Value(pos);
         }
 
-        const targetActorVar = ctx.rule?.getVariable<NumberValue>("targetActor");
+        const targetActorVar = getRuleVariable<NumberValue>(ctx, "targetActor");
         const targetId = targetActorVar?.v;
         const target = targetId !== undefined ? getActor(ctx, targetId) : undefined;
         if (target) return mkVector2Value(new Vector2(target.sprite.x, target.sprite.y));

@@ -55,16 +55,16 @@ type ShootState = {
   nextShootTime: number;
 };
 
+function initShoot(ctx: ExecutionContext): void {
+  setCallSiteState(ctx, { nextShootTime: 0 } satisfies ShootState);
+}
+
 export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
   const self = getSelf(ctx);
   if (!self) return VOID_VALUE;
 
   const now = self.engine.simTime;
-  let state = getCallSiteState<ShootState>(ctx);
-  if (!state) {
-    state = { nextShootTime: 0 } satisfies ShootState;
-    setCallSiteState(ctx, state);
-  }
+  const state = getCallSiteState<ShootState>(ctx)!;
 
   if (now < state.nextShootTime) return FALSE_VALUE;
 
@@ -124,7 +124,7 @@ export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Val
 export default {
   key: TileIds.Actuator.Shoot,
   callDef,
-  fn: { exec: execShoot },
+  fn: { onInitialized: initShoot, exec: execShoot },
   isAsync: false,
   metadata: { label: "shoot", iconUrl: "/assets/brain/icons/shoot.svg" },
 } satisfies CreateHostActuatorOptions;

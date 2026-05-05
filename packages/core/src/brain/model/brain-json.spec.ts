@@ -10,10 +10,11 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
-import { type BrainServices, CoreTypeIds, mkPageTileId, mkVariableTileId } from "@mindcraft-lang/core/brain";
+import { type BrainServices, mkPageTileId, mkVariableTileId } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
 import { BrainDef, type BrainJson, BrainRuleDef, type PageJson, type RuleJson } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, BrainTileVariableDef, type CatalogTileJson } from "@mindcraft-lang/core/brain/tiles";
+import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 
 let services: BrainServices;
 
@@ -245,7 +246,7 @@ describe("brain-json", () => {
     const page = original.pages().get(0)!;
     const rule = page.children().get(0)!;
 
-    const addOp = services.tiles.get("tile.op->add");
+    const addOp = services.edit.tiles.get("tile.op->add");
     assert.ok(addOp, "add operator should be in global catalog");
 
     const lit1 = mkLiteral(1);
@@ -353,7 +354,7 @@ describe("brain-json", () => {
 
     const lit1 = mkLiteral(10);
     const lit2 = mkLiteral(20);
-    const addOp = services.tiles.get("tile.op->add")!;
+    const addOp = services.edit.tiles.get("tile.op->add")!;
     original.catalog().registerTileDef(lit1);
     original.catalog().registerTileDef(lit2);
 
@@ -482,7 +483,7 @@ describe("brain-json", () => {
     const rule = page.children().get(0)! as BrainRuleDef;
 
     const lit = mkLiteral(11);
-    const addOp = services.tiles.get("tile.op->add")!;
+    const addOp = services.edit.tiles.get("tile.op->add")!;
     brain.catalog().registerTileDef(lit);
     rule.when().appendTile(lit);
     rule.when().appendTile(addOp);

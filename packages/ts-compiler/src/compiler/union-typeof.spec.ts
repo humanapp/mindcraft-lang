@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
-  type BrainServices,
   ContextTypeIds,
   CoreTypeIds,
   type EnumValue,
-  type ExecutionContext,
   HandleTable,
   isEnumValue,
   isListValue,
@@ -23,7 +24,6 @@ import {
   NIL_VALUE,
   type NumberValue,
   Op,
-  runtime,
   type Scheduler,
   type StringValue,
   type StructTypeDef,
@@ -31,8 +31,8 @@ import {
   type Value,
   ValueDict,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
 import { compileUserTile } from "./compile.js";
@@ -41,12 +41,13 @@ import type { UserAuthoredProgram } from "./types.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -77,19 +78,22 @@ function mkArgsList(entries: Record<number, Value>): List<Value> {
 }
 
 function runActivation(prog: UserAuthoredProgram, handles: HandleTable, callsiteVars?: List<Value>): void {
-  if (prog.activationFuncId === undefined) {
-    return;
+  const runFn = (funcId: number): void => {
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
+    const fiber = vm.spawnFiber(1, funcId, List.empty<Value>(), mkCtx());
+    if (callsiteVars) {
+      fiber.callsiteVars = callsiteVars;
+    }
+    fiber.instrBudget = 1000;
+    const result = vm.runFiber(fiber, mkScheduler());
+    assert.equal(result.status, VmStatus.DONE);
+  };
+  if (prog.initializerFuncId !== undefined) {
+    runFn(prog.initializerFuncId);
   }
-
-  const vm = new runtime.VM(services, prog, handles);
-  const fiber = vm.spawnFiber(1, prog.activationFuncId, List.empty<Value>(), mkCtx());
-  if (callsiteVars) {
-    fiber.callsiteVars = callsiteVars;
+  if (prog.activationFuncId !== undefined) {
+    runFn(prog.activationFuncId);
   }
-  fiber.instrBudget = 1000;
-
-  const result = vm.runFiber(fiber, mkScheduler());
-  assert.equal(result.status, VmStatus.DONE);
 }
 describe("union types", () => {
   before(() => {
@@ -97,7 +101,7 @@ describe("union types", () => {
   });
 
   test("tsTypeToTypeId returns a union TypeId for number | string (not Any)", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     const unionId = types.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
     assert.ok(unionId);
     assert.notEqual(unionId, CoreTypeIds.Any);
@@ -107,7 +111,7 @@ describe("union types", () => {
   });
 
   test("[1, 'hello'] compiles to a list with a union element type, not AnyList", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -125,7 +129,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -141,14 +145,14 @@ export default Sensor({
   });
 
   test("ambient output for a union type emits member1 | member2", () => {
-    const types = services.types;
+    const types = services.runtime.types;
     types.getOrCreateUnionType(List.from([CoreTypeIds.Number, CoreTypeIds.String]));
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     assert.ok(!ambientSource.includes("union:<"), "union type internal name should not appear in ambient output");
   });
 
   test("operator resolution works through union expansion: (number | string) + number", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -166,7 +170,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -188,7 +192,7 @@ describe("typeof lowering", () => {
   });
 
   test("typeof x === 'number' compiles and returns true for number", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context } from "mindcraft";
 
@@ -208,7 +212,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const args = mkArgsList({ 0: mkNumberValue(42) });
@@ -223,7 +227,7 @@ export default Sensor({
   });
 
   test("typeof x !== 'string' produces negated result", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context } from "mindcraft";
 
@@ -243,7 +247,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const args = mkArgsList({ 0: mkNumberValue(42) });
@@ -258,7 +262,7 @@ export default Sensor({
   });
 
   test("reversed form: 'boolean' === typeof x", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context } from "mindcraft";
 
@@ -278,7 +282,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const args = mkArgsList({ 0: { t: NativeType.Boolean, v: true } });
@@ -293,7 +297,7 @@ export default Sensor({
   });
 
   test("typeof x === 'undefined' for nil value", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -311,7 +315,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), ctx);
@@ -325,7 +329,7 @@ export default Sensor({
   });
 
   test("typeof x === 'object' produces a diagnostic", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, type Context } from "mindcraft";
 
@@ -346,7 +350,7 @@ export default Sensor({
   });
 
   test("typeof in if-statement for runtime narrowing", () => {
-    const ambientSource = buildAmbientDeclarations(services.types);
+    const ambientSource = buildAmbientDeclarations(services.runtime.types);
     const source = `
 import { Sensor, optional, param, type Context } from "mindcraft";
 
@@ -369,7 +373,7 @@ export default Sensor({
 
     const prog = result.program!;
     const handles = new HandleTable(100);
-    const vm = new runtime.VM(services, prog, handles);
+    const vm = new runtime.VM(prog, toVmServices(services), { handles });
     const ctx = mkCtx();
 
     const args = mkArgsList({ 0: mkNumberValue(10) });

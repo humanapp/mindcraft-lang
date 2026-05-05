@@ -1,5 +1,5 @@
+import type { TypeId } from "../../runtime/type-defs";
 import { type BrainTileDefCreateOptions, mkAccessorTileId, TilePlacement } from "../interfaces";
-import type { TypeId } from "../interfaces/type-system";
 import { BrainTileDefBase } from "../model/tiledef";
 import type { BrainServices } from "../services";
 
@@ -71,5 +71,5 @@ export function registerAccessorTileDef(
   services: BrainServices
 ) {
   const tileDef = createAccessorTileDef(structTypeId, fieldName, fieldTypeId, opts);
-  services.tiles.registerTileDef(tileDef);
+  services.edit.tiles.registerTileDef(tileDef);
 }

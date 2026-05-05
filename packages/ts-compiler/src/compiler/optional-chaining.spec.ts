@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
-  type BrainServices,
-  type ExecutionContext,
   HandleTable,
   isStructValue,
   mkNativeStructValue,
@@ -13,25 +14,25 @@ import {
   NativeType,
   NIL_VALUE,
   type NumberValue,
-  runtime,
   type Scheduler,
   type StringValue,
   type StructValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -50,14 +51,14 @@ function mkScheduler(): Scheduler {
 }
 
 function runSensor(source: string, args?: List<Value>): { result: Value | undefined } {
-  const ambientSource = buildAmbientDeclarations(services.types);
+  const ambientSource = buildAmbientDeclarations(services.runtime.types);
   const result = compileUserTile(source, { ambientSource, services });
   assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
   assert.ok(result.program);
 
   const prog = result.program!;
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const ctx = mkCtx();
   const fiberArgs = args ? args : List.empty<Value>();
   const fiber = vm.spawnFiber(1, 0, fiberArgs, ctx);
@@ -75,7 +76,7 @@ describe("optional chaining", () => {
   before(() => {
     services = __test__createBrainServices();
 
-    const types = services.types;
+    const types = services.runtime.types;
     const numTypeId = mkTypeId(NativeType.Number, "number");
     const strTypeId = mkTypeId(NativeType.String, "string");
 

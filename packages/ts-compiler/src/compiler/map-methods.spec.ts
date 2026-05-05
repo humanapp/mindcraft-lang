@@ -1,39 +1,40 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { List } from "@mindcraft-lang/core";
-import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/brain";
+import { List, runtime } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import type { ExecutionContext, Scheduler } from "@mindcraft-lang/core/runtime";
 import {
   type BooleanValue,
-  type BrainServices,
   HandleTable,
   NativeType,
   NIL_VALUE,
   type NumberValue,
-  runtime,
   type StringValue,
   type Value,
   VmStatus,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { compileUserTile } from "./compile.js";
 
 let ambientSource: string;
 let services: BrainServices;
 
+function toVmServices(b: BrainServices) {
+  return __test__createPlatformServices({ runtime: { functions: b.runtime.functions, types: b.runtime.types } });
+}
+
 function ensureSetup(): void {
   if (!ambientSource) {
     services = __test__createBrainServices();
-    ambientSource = buildAmbientDeclarations(services.types);
+    ambientSource = buildAmbientDeclarations(services.runtime.types);
   }
 }
 
 function mkCtx(): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -96,7 +97,7 @@ function compileAndRun(source: string): Value {
 
   const prog = result.program!;
   const handles = new HandleTable(100);
-  const vm = new runtime.VM(services, prog, handles);
+  const vm = new runtime.VM(prog, toVmServices(services), { handles });
   const fiber = vm.spawnFiber(1, 0, List.empty<Value>(), mkCtx());
   fiber.instrBudget = 10_000;
 

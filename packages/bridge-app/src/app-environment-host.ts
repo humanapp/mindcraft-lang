@@ -12,6 +12,7 @@ import {
 } from "@mindcraft-lang/app-host";
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
 import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
+import type { IRngServices } from "@mindcraft-lang/core/runtime";
 import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, WorkspaceChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
@@ -34,6 +35,14 @@ export interface AppEnvironmentHostOptions {
   userTileStorageKey: string;
   /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];
+
+  /**
+   * Host-supplied RNG. The bridge app forwards this to
+   * {@link createMindcraftEnvironment} so brains pull randomness from the host
+   * (e.g. the simulator's seeded RNG). When omitted, the environment falls back
+   * to a `Math.random()`-backed default.
+   */
+  rng?: IRngServices;
 
   /** When set, enables the optional bridge connection to a remote peer. */
   bridgeUrl?: string;
@@ -113,7 +122,7 @@ export class AppEnvironmentHost {
     this._saveBindingToken = options.saveBindingToken ?? (() => {});
     this._examples = options.examples ?? [];
 
-    this.env = createMindcraftEnvironment({ modules: [...options.modules] });
+    this.env = createMindcraftEnvironment({ modules: [...options.modules], rng: options.rng });
 
     this.env.onBrainsInvalidated((event) => {
       if (event.invalidatedBrains.length > 0) {

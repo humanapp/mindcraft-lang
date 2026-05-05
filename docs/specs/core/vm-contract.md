@@ -75,62 +75,221 @@ functions and is not subject to this rule.
 
 Implementations MAY install a cheap dispatcher-level re-entry guard
 to surface contract violations as a deterministic fault rather than
-silent stack corruption. The TS reference VM and the C++ port are
-both encouraged to ship one.
+silent stack corruption. The recommended shape is a single `inVm`
+boolean (or equivalent flag) on the VM, set on entry to any of the
+four entry points named above and cleared on exit; re-entry while the
+flag is set raises a fatal `VmReentry` fault (not a recoverable
+`ScriptError`, because the operand stack and any active argument view
+are in an indeterminate state). The check is one branch on the
+dispatch entry path, not per-instruction.
 
-Shape: a single `inVm` boolean (or equivalent flag) on the VM, set
-on entry to any of the four entry points named above and cleared
-on exit. Re-entry while the flag is set is a fatal `VmReentry`
-fault, not a recoverable `ScriptError` -- the whole point is that
-the VM state is no longer consistent.
+## Construction and services boundary
 
-Illustrative C++ sketch (RAII):
+This section pins the VM's external surface: the constructor, the
+service aggregate it consumes, the passive event aggregate it emits
+through, and the import firewall that holds them in place.
 
-```cpp
-struct VmReentryGuard {
-    Vm& vm;
+### Construction signature
 
-    VmReentryGuard(Vm& vm) : vm(vm) {
-        if (vm.inVm) {
-            vm.fatal(Fault::VmReentry);
-        }
-        vm.inVm = true;
-    }
+The VM is constructed as
+`new VM(program: Program, services: PlatformServices, options?: VmOptions)`.
+`options.events?: VmEvents` is the passive observer slot; omitting
+`options` (or omitting `options.events`) must yield identical
+program execution and identical host-visible side effects. The
+remaining `VmOptions` fields (`handles?`, plus `Partial<VmConfig>`
+overrides) tune resource shapes and do not change the boundary.
 
-    ~VmReentryGuard() {
-        vm.inVm = false;
-    }
-};
+### `PlatformServices` responsibilities
 
-void brainThink(uint32_t now, uint32_t dt) {
-    VmReentryGuard guard(vm);
-    scheduler.tick(now, dt);
-    drainCompletions(); // or drain before tick, but still under
-                        // host-loop ownership
-}
-```
+`PlatformServices` is the single aggregate the VM accepts at
+construction. Its members are:
 
-The TS equivalent is a `try` / `finally` around each entry point
-that toggles the same flag.
+- `functions: IFunctionRegistry` -- resolved by `HOST_CALL` and
+  `HOST_CALL_ASYNC` dispatch to obtain the host function record
+  for a given function id.
+- `types: ITypeRegistry` -- consulted by VM value copying and
+  struct field access paths to look up type definitions, native
+  snapshot functions, and field getters/setters.
 
-Notes:
+Scope rule (binding on every future addition): `PlatformServices`
+covers only runtime registries (function and type lookup tables)
+plus the runtime state members enumerated in the
+[Runtime state surface](#runtime-state-surface) section. The VM
+does **not** receive a program verifier; the reference VM trusts its
+in-process compiler, and verification is reserved for ports that
+accept bytecode from an untrusted source.
 
-- The guard wraps the host-loop entry, not individual host calls.
-  A `HostSyncFn.exec` body runs _inside_ the guard's scope; if it
-  invokes `brain.think()` (etc.), the nested guard observes
-  `inVm == true` and faults.
-- The fault is fatal because there is no safe recovery: the
-  operand stack and any active `ReadonlyList<Value>` arg view are
-  in an indeterminate state.
-- The check is one branch on the dispatch entry path, not
-  per-instruction. Cost is negligible on both targets.
+### `VmEvents` permissions and prohibitions
 
-A future relaxation (e.g. an actuator that synchronously evaluates
-a brain page, or a bytecode-backed struct getter invoked from inside
-a host function) must come as its own spec unit that revisits the
-contract -- a narrowly-scoped re-entrant entry point distinct from
-`brain.think()`, plus an explicit materialize/copy step for any
-ephemeral views the host holds. Ad-hoc loopholes are not permitted.
+`VmEvents` is the optional passive observer aggregate. Its methods
+are:
+
+- `onFiberFault?(payload: FiberFaultEvent)` -- a fiber faulted;
+  payload is `{ fiberId, err }`.
+- `onFiberDone?(payload: FiberDoneEvent)` -- a fiber completed
+  normally; payload is `{ fiberId, retv }`.
+- `onFiberCancelled?(payload: FiberCancelledEvent)` -- a fiber was
+  cancelled; payload is `{ fiberId }`.
+- `onFiberWaiting?(payload: FiberWaitingEvent)` -- a fiber
+  transitioned to waiting on a handle; payload is
+  `{ fiberId, handleId }`.
+
+**Passivity property.** An event observer is *passive* iff:
+
+1. `vm.ts` never reads from `events` to make a control-flow
+   decision (no branches, no return values consumed).
+2. Final `Program` state and any host-visible side effects are
+   identical for any two executions of the same program that
+   differ only in their `VmEvents` argument (including
+   `undefined`).
+
+**Event-payload content rule.** Each event payload contains only
+values already locally available at the emit site. Nothing is
+computed, looked up, or allocated solely to satisfy an event.
+Payloads carry only ids and primitive values that are expressible
+through the runtime state surface. Payloads do **not** carry
+references to authoring-graph objects.
+
+Both rules bind every future event method added to `VmEvents` by
+any downstream spec.
+
+### Import-firewall rule
+
+The runtime is a closed module: its source files may value-depend
+only on other runtime files and on the platform-abstraction layer
+(no upward imports into the brain, compiler, or app layers). The TS
+reference enforces this through a build-time import allow-list and a
+test-suite gate; ports are expected to maintain the same closure by
+whatever mechanism their build system provides.
+
+### Out of scope for this boundary
+
+This section does not cover runtime state shape or host ABI
+portability. Runtime state shape is documented in the
+[Runtime state surface](#runtime-state-surface) section
+below, which builds on this boundary.
+
+### Maintenance rule
+
+Any subsequent spec that modifies the VM constructor signature,
+adds or removes a `PlatformServices` field, adds or removes a
+`VmEvents` method, or changes the firewall rule **must update this
+section in lock-step** with the code change. Per the workflow
+convention, update `docs/specs/core/vm-contract.md` as part of the
+same unit when the change is contract-shaping.
+
+## Runtime state surface
+
+`ExecutionContext` and the `PlatformServices` runtime state members form
+the portable runtime boundary. Every operation here is expressible by a
+static-allocation, no-GC implementation.
+
+### `ExecutionContext` shape
+
+`ExecutionContext` carries:
+
+- `services: PlatformServices` -- the runtime service aggregate below.
+- `getVariableBySlot(slotId)` / `setVariableBySlot(slotId, value)` --
+  slot-indexed brain-global access; back `LOAD_VAR_SLOT` / `STORE_VAR_SLOT`.
+- `currentCallSiteId?: number` -- bound before every host call and lifecycle
+  hook dispatch; `undefined` outside those boundaries.
+- `currentRuleFuncId?: number` -- `undefined` means no active rule; `0` is
+  a valid rule id.
+- `time`, `dt`, `currentTick` -- per-tick scalars stamped before each
+  `think()` call.
+- `data?: unknown` -- opaque per-tick application payload. The
+  reference VM exposes this as a TS field; ports may render it as a
+  `void*` user-data slot, a generic parameter, or another idiomatic
+  pass-through. The contract is only that an opaque slot exists.
+
+Every field is a scalar id, a primitive, a slot accessor, or a service
+reference. No field holds an authoring-graph object, and there is no
+`currentFiberId`; fiber identity is scheduler-internal.
+
+### `PlatformServices` runtime state members
+
+These id-keyed members extend `PlatformServices`
+(in addition to `functions` and `types` from
+[Construction and services boundary](#construction-and-services-boundary)):
+
+- `program` -- `getRuleFuncIdForFunc(funcId)`: owning rule id or `undefined`.
+- `brainVars` -- `getByName` / `setByName` / `clearByName`: brain-global vars.
+- `ruleVars` -- same three, keyed by `(ruleFuncId, name)`. `undefined`
+  ruleFuncId: reads return `NIL_VALUE`, writes are no-ops; store walks
+  `Program.ruleAncestors` for inherited values.
+- `brainPages` -- `getCurrentPageId()`, `getPreviousPageId()`,
+  `requestPageChange(pageIndex)`, `requestPageChangeByPageId(pageId)`,
+  `requestPageRestart()`.
+- `rng` -- `next(): number` in `[0, 1)`, brain-scoped random stream.
+- `callsite` -- `ensure(id)`, `reset(id)`, `getSlot(id, slotIdx)`,
+  `setSlot(id, slotIdx, value)`, `getHostState(id)`, `setHostState(id,
+  value)`, `clearHostState(id)`.
+
+Every member operates on ids, names, and primitives. Time, clock,
+and platform-entity services are not `PlatformServices` members.
+Action resolution is not a member; the VM resolves actions from
+`Program` directly.
+
+### Callsite-id binding discipline
+
+Before dispatching `HOST_CALL`, `HOST_CALL_ASYNC`, `ACTION_CALL` (host
+branch), `ACTION_CALL_ASYNC` (host branch), or any lifecycle hook
+(`onInitialized` / `onPageEntered` / `onPageExited`), the VM binds
+`currentCallSiteId` and `currentRuleFuncId` on `ExecutionContext`. Host
+functions reach per-callsite host state through
+`services.callsite.{getHostState, setHostState, clearHostState}`, keyed by
+`ctx.currentCallSiteId`; accessing host state when `currentCallSiteId` is
+`undefined` is an error. Host functions never dereference an
+authoring-graph object.
+
+### Action call state model
+
+`ACTION_CALL` and `ACTION_CALL_ASYNC` both route per-callsite state-slot
+traffic through `services.callsite.{getSlot, setSlot}` keyed by
+`(callSiteId, slotIdx)`, backing `LOAD_CALLSITE_VAR` / `STORE_CALLSITE_VAR`.
+`services.callsite.reset(callSiteId)` drops both slots and host state
+together; `clearHostState(callSiteId)` drops only the host-owned cell.
+
+`ACTION_CALL_ASYNC` allocates a `HandleId`, then either spawns a child
+fiber (bytecode) or calls `execAsync(ctx, args, handleId)` (host). Both
+paths resolve through `handles.events.on("completed", ...)`. **Host
+obligation:** every `execAsync` call must eventually resolve, reject, or
+cancel the `HandleId`. A synchronous throw is rolled back (the host branch
+frees the handle in a `try/catch`); a silent drop leaves it pending until
+`HandleTable.gc()` reclaims it.
+
+### Id-spaces
+
+Rule ids and action ids are compiler-assigned and stable for the lifetime
+of a compiled `Program`. `0` is a valid `RuleId`; `undefined` is the only
+"no rule" sentinel. Fiber ids are scheduler-internal; the contract does
+not specify their allocation scheme. `HandleId`s come from the
+`HandleTable`.
+
+### Orchestrator opacity
+
+The runtime orchestrator that owns the VM, scheduler, brain-instance
+variable storage, and page-lifecycle state exposes an id-only public
+surface. No orchestrator method accepts or returns an authoring-graph
+reference, and the active-fiber set the scheduler exchanges with the
+orchestrator carries fiber ids only.
+
+### Out of scope for this section
+
+`functions`, `types`, and `VmEvents` are covered by
+[Construction and services boundary](#construction-and-services-boundary).
+The runtime state members above extend that aggregate without redefining the
+registry surface. Conversions and operators belong to the type and
+function registries, not to separate `PlatformServices` members.
+
+### Maintenance rule
+
+Any subsequent spec that adds or removes a `PlatformServices` runtime
+state member, changes the `ExecutionContext` field set or its exported helpers,
+changes the callsite-id or rule-id binding discipline, changes the action
+state-slot keying, changes the `HandleId` host-obligation contract, or
+changes Brain's runtime-facing surface **must update this section in
+lock-step** with the code change, in the same unit.
 
 ## Opcode completeness
 
@@ -165,11 +324,60 @@ every conforming VM must be able to execute any of them:
 One row per opcode: mnemonic, numeric code, operand widths, stack
 effect, side effects, fault conditions.
 
+> **Source of truth.** The numeric assignments below are the
+> contract; the canonical TS expression of the same assignments is
+> the `Op` enum in `packages/core/src/runtime/bytecode.ts`. Any
+> divergence between the table and the enum is a bug in one of the
+> two; reconcile in the same change.
+
+### Conventions
+
+These conventions apply to every row in every group below; rows omit
+what would otherwise repeat in every cell.
+
+- **Operand encoding.** Every operand is a u16 unless a row says
+  otherwise. Operand cells use the form `name (slot)` where `slot`
+  is `a`, `b`, or `c` (the three operand fields on `Instr`); the
+  type is u16 by default.
+- **Stack-effect notation.** `[x, y, z] -> [w]` reads bottom-to-top
+  with the rightmost element being the top of stack. An empty `[]`
+  on either side means "no change at that boundary."
+- **Universal faults.** Every opcode raises `StackUnderflow` if the
+  dispatcher cannot pop the operands its stack effect requires, and
+  raises `ScriptError` if a constant-pool, function-table, or
+  type-table operand is out of range. Per-row "Faults" cells list
+  only opcode-specific failures beyond these.
+- **PC advance.** Every opcode advances the program counter by one
+  instruction unless its row says otherwise (`JMP`, `RET`, etc. are
+  the obvious exceptions).
+- **Side effects.** Side effects beyond the stack effect (deep
+  copies, host calls, scheduler interaction, type-registry lookups)
+  are described in the prose paragraph following each table, not in
+  the table itself.
+
 ### Stack manipulation
 
-| Mnemonic        | Numeric | Operands       | Stack effect    | Faults                                                                       |
-| --------------- | ------- | -------------- | --------------- | ---------------------------------------------------------------------------- |
-| `STACK_SET_REL` | 6       | `d: u16` (`a`) | `[value] -> []` | `ScriptError` if `d` exceeds the post-pop top index (out-of-bounds write).   |
+| Mnemonic         | Numeric | Operands     | Stack effect           | Faults |
+| ---------------- | ------- | ------------ | ---------------------- | ------ |
+| `PUSH_CONST_VAL` | 0       | `k` (`a`)    | `[] -> [value]`        | -      |
+| `POP`            | 1       | none         | `[value] -> []`        | -      |
+| `DUP`            | 2       | none         | `[value] -> [value, value]` | - |
+| `SWAP`           | 3       | none         | `[a, b] -> [b, a]`     | -      |
+| `PUSH_CONST_NUM` | 4       | `k` (`a`)    | `[] -> [number]`       | -      |
+| `PUSH_CONST_STR` | 5       | `k` (`a`)    | `[] -> [string]`       | -      |
+| `STACK_SET_REL`  | 6       | `d` (`a`)    | `[value] -> []`        | `ScriptError` if `d` exceeds the post-pop top index (out-of-bounds write). |
+
+`PUSH_CONST_VAL`, `PUSH_CONST_NUM`, and `PUSH_CONST_STR` each address
+their own independent constant sub-pool: `k` indexes
+`Program.constantPools.values`, `.numbers`, and `.strings`
+respectively. The numeric and string pushes wrap the raw constant in
+a `NumberValue` / `StringValue` at runtime; `PUSH_CONST_VAL` pushes
+the residual-pool entry directly. See
+[Constant pool layout](#constant-pool-layout) for the pool partitioning.
+
+`POP` discards the top of stack. `DUP` re-pushes the top of stack
+(by reference; struct values are not deep-copied). `SWAP` exchanges
+the top two values.
 
 `STACK_SET_REL` pops one value off the operand stack, then writes
 it to `vstack[top - d]` where `top` is the index of the topmost
@@ -180,18 +388,18 @@ buffers at call sites; see [Calling convention](#calling-convention).
 
 ### Variable access
 
-| Mnemonic         | Numeric | Operands            | Stack effect    | Faults                                                     |
-| ---------------- | ------- | ------------------- | --------------- | ---------------------------------------------------------- |
-| `LOAD_VAR_SLOT`  | 10      | `slotId: u16` (`a`) | `[] -> [value]` | `ScriptError` if `slotId >= program.variableNames.size()`. |
-| `STORE_VAR_SLOT` | 11      | `slotId: u16` (`a`) | `[value] -> []` | `ScriptError` if `slotId >= program.variableNames.size()`. |
+| Mnemonic         | Numeric | Operands       | Stack effect    | Faults |
+| ---------------- | ------- | -------------- | --------------- | ------ |
+| `LOAD_VAR_SLOT`  | 10      | `slotId` (`a`) | `[] -> [value]` | `ScriptError` if `slotId >= program.variableNames.size()`. |
+| `STORE_VAR_SLOT` | 11      | `slotId` (`a`) | `[value] -> []` | `ScriptError` if `slotId >= program.variableNames.size()`. |
 
 Variable access is slot-keyed at dispatch time. `slotId` is a
 program-scoped index into `Program.variableNames`; the runtime hosts
 a parallel value list of the same length. The dispatch loop performs
-no `Dict.get(name)` lookup for variable access -- name -> slot
-resolution is the compiler's job, performed once at program build,
-and re-bound to the host's value list at program load via
-`Brain.installVariableTable`.
+no name lookup for variable access -- name -> slot resolution is the
+compiler's job, performed once at program build, and re-bound to the
+host's value list at program load via the orchestrator's
+variable-table install step.
 
 `STORE_VAR_SLOT` deep-copies struct values before writing
 (consulting `ITypeRegistry`); primitive values are written by
@@ -201,34 +409,313 @@ but bytecode reads/writes always observe a slot already sized to
 `Program.variableNames.size()`.
 
 Name-keyed access remains available to host code via
-`ExecutionContext.getVariable` / `setVariable` / `clearVariable`. A
-host that writes through a name not present in `variableNames`
-allocates a fresh slot at the end of the value list; that slot is
-not addressable from bytecode (no `LOAD_VAR_SLOT` operand can
-target it) and is dropped on the next `installVariableTable` (i.e.
-hot-reload).
+`services.brainVars.{getByName, setByName, clearByName}`. A host that
+writes through a name not present in `variableNames` allocates a
+fresh slot at the end of the value list; that slot is not addressable
+from bytecode (no `LOAD_VAR_SLOT` operand can target it) and is
+dropped on the next variable-table install (i.e. hot-reload).
 
-### Struct field access
+### Control flow
 
-| Mnemonic           | Numeric | Operands              | Stack effect              | Faults                                      |
-| ------------------ | ------- | --------------------- | ------------------------- | ------------------------------------------- |
-| `STRUCT_GET_FIELD` | 114     | `fieldIndex: u16` (`a`) | `[struct] -> [value]`     | `ScriptError` if the source is not struct.  |
-| `STRUCT_SET_FIELD` | 115     | `fieldIndex: u16` (`a`) | `[struct, value] -> [struct]` | `ScriptError` if the source is not struct. |
-| `GET_FIELD`        | 120     | none                  | `[source, fieldName] -> [value]` | `ScriptError` if `fieldName` is not string. |
-| `SET_FIELD`        | 121     | none                  | `[source, fieldName, value] -> [source]` | `ScriptError` if `fieldName` is not string or the source rejects the write. |
+| Mnemonic       | Numeric | Operands         | Stack effect    | Faults |
+| -------------- | ------- | ---------------- | --------------- | ------ |
+| `JMP`          | 20      | `rel: i16` (`a`) | `[] -> []`      | -      |
+| `JMP_IF_FALSE` | 21      | `rel: i16` (`a`) | `[value] -> []` | -      |
+| `JMP_IF_TRUE`  | 22      | `rel: i16` (`a`) | `[value] -> []` | -      |
 
+`rel` is a signed PC delta relative to the current instruction's
+address. `JMP` always sets `pc = pc + rel`. `JMP_IF_FALSE` pops the
+top of stack and jumps when the value is falsy (otherwise advances
+to `pc + 1`); `JMP_IF_TRUE` is the symmetric truthy branch.
+Truthiness follows the value-model rule defined in
+[Value model](#value-model): nil and `false` are falsy; every other
+value (including `0`, `""`, empty collections, error values) is
+truthy.
+
+### Function calls
+
+| Mnemonic | Numeric | Operands                              | Stack effect                           | Faults |
+| -------- | ------- | ------------------------------------- | -------------------------------------- | ------ |
+| `CALL`   | 30      | `funcId` (`a`), `argc` (`b`)          | `[arg0, ..., arg(argc-1)] -> []`       | `ScriptError` if `funcId` is out of bounds or `argc != callee.numParams`. `StackOverflow` if frame depth would exceed `maxFrameDepth`. |
+| `RET`    | 31      | none                                  | `[retv] -> []` (caller frame: `[] -> [retv]`) | -      |
+
+`CALL` pops `argc` values right-to-left into the callee's local-slot
+0..argc-1, pushes a new frame whose `pc` starts at 0, and resumes
+execution in the callee. The arg values are not duplicated on the
+operand stack; they are moved into locals.
+
+`RET` pops one return value, discards the current frame, restores
+the caller's stack base, and pushes the return value onto the
+caller's operand stack. If `RET` runs in the root frame, the fiber
+transitions to `DONE` and any owning async-action handle is
+resolved with the return value.
+
+### Host calls
+
+| Mnemonic          | Numeric | Operands                                          | Stack effect                                | Faults |
+| ----------------- | ------- | ------------------------------------------------- | ------------------------------------------- | ------ |
+| `HOST_CALL`       | 40      | `fnId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if `fnId` is out of bounds; host-thrown errors propagate as `ScriptError`. |
+| `HOST_CALL_ASYNC` | 41      | `fnId` (`a`), `argc` (`b`), `callSiteId` (`c`)    | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `HOST_CALL`; additionally `StackOverflow` if the handle table is full. |
+
+Both opcodes bind `currentCallSiteId` and `currentRuleFuncId` on
+`ExecutionContext` before dispatch; see
+[Calling convention](#host-call-layout) for the full arg-buffer
+shape, sync-vs-async lifetime contract, and the host re-entry rule.
+
+### Action calls
+
+| Mnemonic            | Numeric | Operands                                              | Stack effect                                | Faults |
+| ------------------- | ------- | ----------------------------------------------------- | ------------------------------------------- | ------ |
+| `ACTION_CALL`       | 42      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [result]`      | `ScriptError` if `actionSlot` is out of bounds or the program defines no actions. |
+| `ACTION_CALL_ASYNC` | 43      | `actionSlot` (`a`), `argc` (`b`), `callSiteId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`      | Same as `ACTION_CALL`; additionally `StackOverflow` on handle-table or fiber-pool exhaustion. |
+
+`actionSlot` indexes `Program.actions`. The host or bytecode branch
+is selected from the `ExecutableAction.binding` discriminant. See
+[Calling convention](#host-call-layout) for the shared arg-buffer
+shape and [Action call state model](#action-call-state-model) for
+state-slot routing and `HandleId` allocation.
+
+### Async and cooperative scheduling
+
+| Mnemonic | Numeric | Operands | Stack effect      | Faults |
+| -------- | ------- | -------- | ----------------- | ------ |
+| `AWAIT`  | 50      | none     | `[handle] -> [value]` (or fault on rejection) | `ScriptError` if the top of stack is not a handle value, or the handle id is unknown. The fiber must be suspendable. |
+| `YIELD`  | 51      | none     | `[] -> []`        | The fiber must be suspendable. |
+
+`AWAIT` pops one handle value. If the handle is already resolved,
+the resolved value is pushed and execution continues in the same
+tick. If rejected or cancelled, the rejection error enters the
+exception path (caught by an active `TRY`, otherwise faulting the
+fiber). If still pending, the fiber transitions to `WAITING` and
+records its resume PC, stack height, and frame depth; the scheduler
+resumes the fiber when the handle completes.
+
+`YIELD` is a cooperative suspension point that does not allocate a
+handle: the fiber transitions to `YIELDED` and the scheduler picks
+another runnable fiber. The fiber resumes at the next instruction
+on its next scheduled turn.
+
+Both opcodes require the fiber to be suspendable (i.e. not running
+inside a non-suspendable host frame). Use in a non-suspendable
+context faults the fiber with `ScriptError`.
+
+### Exception handling
+
+| Mnemonic  | Numeric | Operands              | Stack effect    | Faults |
+| --------- | ------- | --------------------- | --------------- | ------ |
+| `TRY`     | 60      | `catchRel: i16` (`a`) | `[] -> []`      | `StackOverflow` if the handler stack would exceed `maxHandlers`. |
+| `END_TRY` | 61      | none                  | `[] -> []`      | -      |
+| `THROW`   | 62      | none                  | `[value] -> []` | `ScriptError` if the popped value is not an error value (the dispatch loop wraps the non-error value into a `ScriptError` payload before unwinding). |
+
+`TRY` pushes a handler entry recording the catch PC
+(`pc + catchRel`), the current operand-stack height, and the
+current frame depth. `END_TRY` pops the topmost handler entry
+without altering the operand stack.
+
+`THROW` pops one value. If it is an error value, that error becomes
+the in-flight exception; otherwise the dispatch loop synthesizes a
+`ScriptError` whose detail captures the popped value. The dispatch
+loop unwinds operand stack and frames to the depths recorded by the
+topmost matching handler, sets `pc = catchPc`, and pushes the error
+value onto the operand stack at the handler's entry. With no active
+handler, the fiber transitions to `FAULT` and any owning
+async-action handle is rejected with the error.
+
+### Section boundary markers
+
+| Mnemonic     | Numeric | Operands              | Stack effect          | Faults |
+| ------------ | ------- | --------------------- | --------------------- | ------ |
+| `WHEN_START` | 70      | none                  | `[] -> []`            | -      |
+| `WHEN_END`   | 71      | `endRel: i16` (`a`)   | `[whenResult] -> []`  | -      |
+| `DO_START`   | 72      | none                  | `[] -> []`            | -      |
+| `DO_END`     | 73      | none                  | `[] -> []`            | -      |
+
+`WHEN_START` and `DO_START` / `DO_END` are pure markers: they
+advance the PC by one and have no other effect. They exist so the
+compiled bytecode preserves the source-level rule structure for
+diagnostics and debug walkers; conforming VMs must execute them
+without observable side effect.
+
+`WHEN_END` is the conditional gate. It pops the result of the
+WHEN expression block; if truthy, execution continues into the
+DO block (PC advances by one); if falsy, PC advances by `endRel`,
+skipping the DO block and any nested boundaries.
+
+### Frame locals
+
+| Mnemonic      | Numeric | Operands     | Stack effect    | Faults |
+| ------------- | ------- | ------------ | --------------- | ------ |
+| `LOAD_LOCAL`  | 130     | `idx` (`a`)  | `[] -> [value]` | `ScriptError` if `idx >= frame.locals.size()`. |
+| `STORE_LOCAL` | 131     | `idx` (`a`)  | `[value] -> []` | `ScriptError` if `idx >= frame.locals.size()`. |
+
+Frame locals are indexed slots on the current call frame, sized at
+frame creation from `FunctionBytecode.numLocals` (defaults to
+`numParams`). Locals 0..numParams-1 are populated from call args
+on entry; the remaining slots are nil-initialized.
+
+### Per-callsite state slots
+
+| Mnemonic             | Numeric | Operands     | Stack effect    | Faults |
+| -------------------- | ------- | ------------ | --------------- | ------ |
+| `LOAD_CALLSITE_VAR`  | 140     | `idx` (`a`)  | `[] -> [value]` | `ScriptError` if no callsite is bound and the local fallback array is unavailable, or if `idx` is out of bounds in the fallback array. |
+| `STORE_CALLSITE_VAR` | 141     | `idx` (`a`)  | `[value] -> []` | Same as `LOAD_CALLSITE_VAR`. |
+
+Per-callsite storage backs `let` / `const` variables declared at
+action scope. Reads and writes route through
+`services.callsite.{getSlot, setSlot}` keyed by
+`(currentCallSiteId, idx)`; callsite-id binding follows the
+[Callsite-id binding discipline](#callsite-id-binding-discipline)
+and the [Action call state model](#action-call-state-model).
+
+### Type introspection
+
+| Mnemonic      | Numeric | Operands    | Stack effect       | Faults |
+| ------------- | ------- | ----------- | ------------------ | ------ |
+| `TYPE_CHECK`  | 150     | `tag` (`a`) | `[value] -> [bool]` | -     |
+| `INSTANCE_OF` | 151     | `k` (`a`)   | `[value] -> [bool]` | `ScriptError` if `k` is out of range in `constantPools.strings`. |
+
+`TYPE_CHECK` compares the popped value's tag (`Value.t`) to the
+operand and pushes the boolean result.
+
+`INSTANCE_OF` reads the target `TypeId` from
+`constantPools.strings[k]` and pushes `true` when the popped value
+is a struct value whose `typeId` equals the target. Non-struct
+values always yield `false`.
+
+### Indirect function calls
+
+| Mnemonic             | Numeric | Operands     | Stack effect                                       | Faults |
+| -------------------- | ------- | ------------ | -------------------------------------------------- | ------ |
+| `CALL_INDIRECT`      | 160     | `argc` (`a`) | `[func, arg0, ..., arg(argc-1)] -> []`             | `ScriptError` if the popped function reference is not a `FunctionValue`, the resolved `funcId` is out of bounds, or `argc != callee.numParams`. `StackOverflow` if frame depth would exceed `maxFrameDepth`. |
+| `CALL_INDIRECT_ARGS` | 161     | `argc` (`a`) | `[func, arg0, ..., arg(argc-1)] -> []`             | Same as `CALL_INDIRECT` minus the arity check; surplus args are dropped and missing args are nil-padded to `callee.numParams`. |
+
+`CALL_INDIRECT` resolves a `FunctionValue` from the operand stack
+(below the args), enforces strict arity, and otherwise behaves like
+`CALL`. Captured environment from the `FunctionValue` is bound to
+the new frame.
+
+`CALL_INDIRECT_ARGS` is the lenient variant: it accepts any
+positive `argc`, truncates excess args, and nil-pads missing args
+to match the callee's declared `numParams`. Used when the call site
+cannot statically prove an exact arity (e.g. variadic-style
+internal helpers).
+
+### Closures
+
+| Mnemonic       | Numeric | Operands                                | Stack effect                                            | Faults |
+| -------------- | ------- | --------------------------------------- | ------------------------------------------------------- | ------ |
+| `MAKE_CLOSURE` | 170     | `funcId` (`a`), `captureCount` (`b`)    | `[capture0, ..., capture(captureCount-1)] -> [func]`    | -      |
+| `LOAD_CAPTURE` | 171     | `captureIdx` (`a`)                      | `[] -> [value]`                                         | `ScriptError` if the current frame has no captures, or `captureIdx >= captures.size()`. |
+
+`MAKE_CLOSURE` pops `captureCount` values right-to-left to preserve
+push order, and pushes a `FunctionValue` bound to `funcId` whose
+`captures` field carries the popped values. The resulting value is
+callable through `CALL_INDIRECT` / `CALL_INDIRECT_ARGS`; the new
+frame's `captures` field aliases the closure's captures.
+
+`LOAD_CAPTURE` reads the current frame's capture by index; only
+frames created by an indirect call from a closure value carry a
+captures list.
+
+### List operations
+
+| Mnemonic      | Numeric | Operands              | Stack effect                          | Faults |
+| ------------- | ------- | --------------------- | ------------------------------------- | ------ |
+| `LIST_NEW`    | 90      | `_` (`a`), `k?` (`b`) | `[] -> [list]`                        | -      |
+| `LIST_PUSH`   | 91      | none                  | `[list, item] -> [list]`              | `ScriptError` if the popped list is not a list value. |
+| `LIST_GET`    | 92      | none                  | `[list, index] -> [value]`            | `ScriptError` if not a list, or `index` is not a number. Out-of-bounds reads return `nil`. |
+| `LIST_SET`    | 93      | none                  | `[list, index, value] -> [list]`      | `ScriptError` if not a list, or `index` is not a number. |
+| `LIST_LEN`    | 94      | none                  | `[list] -> [number]`                  | `ScriptError` if not a list. |
+| `LIST_POP`    | 95      | none                  | `[list] -> [value]`                   | `ScriptError` if not a list. Empty-list pop yields `nil`. |
+| `LIST_SHIFT`  | 96      | none                  | `[list] -> [value]`                   | `ScriptError` if not a list. Empty-list shift yields `nil`. |
+| `LIST_REMOVE` | 97      | none                  | `[list, index] -> [value]`            | `ScriptError` if not a list, or `index` is not a number. |
+| `LIST_INSERT` | 98      | none                  | `[list, index, value] -> []`          | `ScriptError` if not a list, or `index` is not a number. |
+| `LIST_SWAP`   | 99      | none                  | `[list, i, j] -> []`                  | `ScriptError` if not a list, or either index is not a number. |
+
+`LIST_NEW`'s `b` operand is optional: when present and in range, it
+indexes `constantPools.strings` for the list's `TypeId`; when
+omitted or out of range, the typeId defaults to `list:<unknown>`.
+The `a` operand is reserved.
+
+All in-place list mutations (`LIST_PUSH`, `LIST_SET`, `LIST_INSERT`,
+`LIST_SWAP`, `LIST_POP`, `LIST_SHIFT`, `LIST_REMOVE`) modify the
+target list value directly; the list reference is the same value
+seen elsewhere on the stack and in variables. Numeric indices are
+floored to integers before indexing.
+
+### Map operations
+
+| Mnemonic     | Numeric | Operands              | Stack effect                  | Faults |
+| ------------ | ------- | --------------------- | ----------------------------- | ------ |
+| `MAP_NEW`    | 100     | `_` (`a`), `k?` (`b`) | `[] -> [map]`                 | -      |
+| `MAP_SET`    | 101     | none                  | `[map, key, value] -> [map]`  | `ScriptError` if the popped value is not a map, or `key` is not a string or number. |
+| `MAP_GET`    | 102     | none                  | `[map, key] -> [value]`       | Same constraints as `MAP_SET`. Missing keys yield `nil`. |
+| `MAP_HAS`    | 103     | none                  | `[map, key] -> [bool]`        | Same constraints as `MAP_SET`. |
+| `MAP_DELETE` | 104     | none                  | `[map, key] -> [map]`         | Same constraints as `MAP_SET`. |
+
+`MAP_NEW`'s `b` operand has the same optional typeId-from-strings
+behavior as `LIST_NEW`'s; the default typeId is `map:<unknown>`.
+Map keys are restricted to string and number values; key equality
+follows the underlying platform `Dict` semantics (numbers compare
+by value, strings by character sequence).
+
+### Struct operations
+
+| Mnemonic             | Numeric | Operands                          | Stack effect                                                            | Faults |
+| -------------------- | ------- | --------------------------------- | ----------------------------------------------------------------------- | ------ |
+| `STRUCT_NEW`         | 110     | `numFields` (`a`), `k?` (`b`)     | `[name0, val0, ..., nameN, valN] -> [struct]` (with `N = numFields`)    | `ScriptError` if any popped name is not a string. Unknown field names are ignored. |
+| `STRUCT_GET`         | 111     | none                              | `[struct, fieldName] -> [value]`                                        | `ScriptError` if the popped value is not a struct, or `fieldName` is not a string. Unknown fields yield `nil`. |
+| `STRUCT_SET`         | 112     | none                              | `[struct, fieldName, value] -> [struct]`                                | Same constraints as `STRUCT_GET`. Unknown fields are silently dropped. |
+| `STRUCT_COPY_EXCEPT` | 113     | `numExclude` (`a`), `k?` (`b`)    | `[source, key0, ..., key(numExclude-1)] -> [struct]`                    | `ScriptError` if any exclude key is not a string, or the source value is not a struct. |
+| `STRUCT_GET_FIELD`   | 114     | `fieldIndex` (`a`)                | `[struct] -> [value]`                                                   | `ScriptError` if the source is not a struct. |
+| `STRUCT_SET_FIELD`   | 115     | `fieldIndex` (`a`)                | `[struct, value] -> [struct]`                                           | `ScriptError` if the source is not a struct. |
+
+`STRUCT_NEW`'s `b` operand, when present and in range, indexes
+`constantPools.strings` for the struct's `TypeId`; when omitted, the
+typeId defaults to `struct:<anonymous>`. The dispatcher pre-allocates
+a field list sized to the registered type's field count (or empty
+for an anonymous struct), then resolves each `(name, value)` pair
+to a `fieldIndex` via `StructTypeDef.fieldIndexByName` and writes
+into that slot. Pairs whose names are not declared on the type are
+silently ignored.
+
+`STRUCT_GET` / `STRUCT_SET` are the name-keyed variants used when
+the compiler cannot prove the source's static type. They look up
+the field through `fieldIndexByName` and read or write the underlying
+`StructValue.v` slot; unknown names are no-ops on `STRUCT_SET` and
+yield `nil` on `STRUCT_GET`.
+
+`STRUCT_COPY_EXCEPT` builds a new struct value (typed by the
+optional `b` operand, or carried over from the source's typeId
+when no replacement type is given) by copying all fields of `source`
+except those whose names appear in the popped exclude key set.
+
+`STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` are the index-keyed fast
+paths used when the compiler statically knows the field index. They
+index `StructValue.v` directly with no type-registry consultation.
 Closed structs store field values in `StructValue.v: List<Value>`,
-indexed by `StructFieldDef.fieldIndex`. Compilers emit
-`STRUCT_GET_FIELD` / `STRUCT_SET_FIELD` when type information proves
-the source is a closed struct. Missing list entries read as `nil`.
+indexed by `StructFieldDef.fieldIndex`; missing list entries read
+as `nil`.
 
-Native-backed and open structs use the name-keyed `GET_FIELD` /
-`SET_FIELD` family. For native-backed structs, the VM delegates to
-the registered `fieldGetter` / `fieldSetter` hooks. Name-keyed access
-to a closed struct is still defined by looking up the field name in
-`StructTypeDef.fieldIndexByName` and then indexing `StructValue.v`; this is
-for dynamic field-name paths and compatibility within the opcode set,
-not the preferred static lowering.
+### Generic field access
+
+| Mnemonic    | Numeric | Operands | Stack effect                              | Faults |
+| ----------- | ------- | -------- | ----------------------------------------- | ------ |
+| `GET_FIELD` | 120     | none     | `[source, fieldName] -> [value]`          | `ScriptError` if `fieldName` is not a string. Non-struct sources yield `nil`. |
+| `SET_FIELD` | 121     | none     | `[source, fieldName, value] -> [source]`  | `ScriptError` if `fieldName` is not a string, the source is not a struct, or the registered `fieldSetter` returns `false`. |
+
+`GET_FIELD` / `SET_FIELD` are the universal field-access opcodes,
+emitted when the compiler cannot lower to a `STRUCT_GET_FIELD` /
+`STRUCT_SET_FIELD` pair. For struct values whose registered
+`StructTypeDef` has a `fieldGetter` / `fieldSetter` callback, the
+opcodes delegate to those callbacks (this is the path
+native-backed structs use to project host objects); otherwise they
+look up the field through `StructTypeDef.fieldIndexByName` and
+read or write `StructValue.v` directly.
+
+`SET_FIELD` deep-copies struct values before storing them, the same
+way `STORE_VAR_SLOT` does, so a struct field cannot become an alias
+of a struct held elsewhere.
 
 ---
 
@@ -276,12 +763,9 @@ carried as a `ConstantOffsets` aggregate.
 ### Host-call layout
 
 Host functions registered through `IFunctionRegistry` are invoked
-via the opcode pair:
-
-| Mnemonic          | Numeric | Operands                                            | Stack effect                                            |
-| ----------------- | ------- | --------------------------------------------------- | ------------------------------------------------------- |
-| `HOST_CALL`       | 40      | `fnId: u16` (`a`), `argc: u16` (`b`), `csId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [result]`                  |
-| `HOST_CALL_ASYNC` | 41      | `fnId: u16` (`a`), `argc: u16` (`b`), `csId` (`c`)  | `[arg0, ..., arg(argc-1)] -> [handle]`                  |
+via the `HOST_CALL` / `HOST_CALL_ASYNC` opcode pair (see the
+[Host calls](#host-calls) row in the opcode reference for numeric
+assignments and per-row stack effects).
 
 Operands:
 
@@ -292,11 +776,11 @@ Operands:
   `argc == fnEntry.callDef.argSlots.size()` is true by construction
   for compiler-emitted call sites. Carried as an operand to avoid the
   registry indirection on the hot dispatch path.
-- `csId` is the unique call-site id used by the host to key
+- `callSiteId` is the unique call-site id used by the host to key
   per-call-site state (e.g. timer carry, accumulator state).
 
 Before invoking the host, the dispatcher sets
-`fiber.executionContext.currentCallSiteId = csId`.
+`fiber.executionContext.currentCallSiteId = callSiteId`.
 
 **Arg buffer.** The compiler reserves `argc` operand-stack slots
 immediately preceding the call by emitting `argc` `PUSH_CONST_VAL`
@@ -344,9 +828,12 @@ The dispatcher pops the buffer (or, for async, copies it then
 pops) before the host call returns, so the buffer is no longer
 visible to the host's continuation.
 
-**Re-entry.** The TS VM is not single-entry by contract. The host
-is responsible for the discipline around invoking VM operations
-synchronously inside its own `exec`.
+**Re-entry.** A host `exec` body must not invoke any of the four VM
+entry points listed in [Single-entry guarantee](#single-entry-guarantee).
+Within the synchronous duration of an `exec` call the host may read
+its `args` view and the rest of `ctx`, but must not call back into
+`brain.think()`, `scheduler.tick()`, `runFiber()`, or async-handle
+resolution. See that section for the full transitive rule.
 
 Action calls (`ACTION_CALL` / `ACTION_CALL_ASYNC`) use the same
 positional buffer shape as host calls. The compiler pushes one
@@ -382,11 +869,105 @@ The dispatch loop only consults `ITypeRegistry` for struct-shaped
 opcodes (e.g. `GET_FIELD`, `SET_FIELD`, `STORE_VAR_SLOT` when
 deep-copying a struct value).
 
-This invariant is regression-guarded by the
-`VM -- operator monomorphization` test in
-`packages/core/src/brain/runtime/vm.spec.ts`, which wraps
-`ITypeRegistry` with an access counter and asserts a zero count after
-running a number-heavy arithmetic loop.
+---
+
+## Page lifecycle hooks
+
+Every `BytecodeExecutableAction` declares up to three optional
+hook function ids that the brain runtime dispatches at well-defined
+points in a page's life. Every host-bound action declares up to two
+optional host hook callbacks that the brain runtime dispatches at
+the same points. These hooks own all per-callsite state setup,
+re-setup on respawn, and teardown.
+
+### Bytecode hook fields
+
+`BytecodeExecutableAction` carries:
+
+- `initializerFuncId?: number` -- runs at most once per
+  `(brainInstance, callSiteId)` pair, the first time that callsite
+  is activated. The compiler emits module-scope `let` / `const`
+  initializers (and equivalent static-field initializers) into this
+  function. After the first run, the callsite's storage is
+  considered initialized and the function is not invoked again for
+  the same brain instance, even across page exits and re-entries,
+  until the brain itself is shut down.
+- `activationFuncId?: number` -- runs every time the page
+  containing this callsite becomes active. The compiler reserves
+  this slot for an in-action `onPageEntered` handler; without that
+  source-level construct, user programs leave it unset.
+- `deactivationFuncId?: number` -- runs every time the page
+  containing this callsite becomes inactive. The compiler reserves
+  this slot for an in-action `onPageExited` handler; without that
+  source-level construct, user programs leave it unset.
+
+### Host hook fields
+
+Host-bound actions carry:
+
+- `onInitialized?: (...) => void` -- runs at most once per
+  `(brainInstance, callSiteId)` pair, on the first activation
+  that allocates the call site, before `onPageEntered` fires
+  for the same activation. Symmetric to the bytecode
+  `initializerFuncId`. Cleared by
+  `services.callsite.reset(callSiteId)` (re-runs on the next
+  activation) and by the orchestrator's brain shutdown (re-runs on
+  the next brain startup). Soft `requestPageRestart` does not
+  re-fire this hook.
+- `onPageEntered?: (...) => void` -- runs every time the page
+  containing this callsite becomes active.
+- `onPageExited?: (...) => void` -- runs every time the page
+  containing this callsite becomes inactive.
+
+When `onInitialized` is set, the brain runtime calls
+`services.callsite.ensure(callSiteId)` for the host callsite to
+detect first-touch; when it is unset, no callsite record is
+allocated for the host action and no first-touch dispatch
+occurs.
+
+### Brain-instance-scoped lifetime
+
+All callsite storage -- bytecode state slots and host state -- is
+scoped to a single brain instance. The runtime contract is:
+
+- Storage is allocated **lazily** on first write
+  (`services.callsite.setSlot`, `services.callsite.setHostState`) or
+  on the first `services.callsite.ensure(callSiteId)` call for
+  actions that declare an `initializerFuncId`.
+- `services.callsite.ensure(callSiteId)` returns `true` on the first
+  call for a callsite (newly allocated) and `false` thereafter. The
+  brain runtime uses this result to dispatch `initializerFuncId`
+  exactly once per allocation.
+- Storage **persists** across page exits and re-entries within the
+  same brain instance. Returning to a page does not reset its
+  callsite state.
+
+### Explicit reset primitives
+
+The runtime exposes two primitives for callers (host code and the
+brain runtime itself) to discard callsite state explicitly:
+
+- `services.callsite.reset(callSiteId)` -- deallocates the bytecode
+  state slot block and the host-side cell for the callsite together.
+  The next `services.callsite.ensure` for the same id returns `true`
+  and the next page activation re-runs the `initializerFuncId` for
+  that callsite.
+- `services.callsite.clearHostState(callSiteId)` -- clears the
+  host-side state cell for the callsite without affecting bytecode
+  state slots.
+
+These primitives are the only sanctioned way to force a re-init
+short of tearing down the whole brain.
+
+### Brain shutdown teardown contract
+
+The orchestrator's brain-shutdown operation is the brain-wide
+teardown counterpart to allocation. It is required to release every
+callsite's storage so that a subsequent brain startup on the same
+instance behaves identically to a fresh brain: every
+`initializerFuncId` runs again on first activation, and every host
+hook re-binds against freshly allocated host state. Implementations
+must not leak callsite state across a shutdown / startup boundary.
 
 ---
 
@@ -472,15 +1053,12 @@ out of `runFiber`). Three are per-fiber (`VmConfig`); two are global
 | `maxHandles`    | `HandleTable` ctor arg | 100000 (production) | `HandleTable.createPending()` is invoked when the table already holds this many entries.                                                             |
 | `maxFibers`     | `SchedulerConfig`      | 10000               | `FiberScheduler.addFiber()` (and therefore `spawn()` and async-action fiber creation) is invoked when the scheduler already tracks this many fibers. |
 
-Limit violations are signalled internally with the `OverflowError`
-class, and operand-stack underflow with the parallel `UnderflowError`
-class (both extend the platform `Error` and live in
-`interfaces/vm.ts`). The VM dispatch loop detects each via
-`isOverflowError(e)` / `isUnderflowError(e)` and constructs the
-matching fault. Hosts that call `HandleTable.createPending` or
-`FiberScheduler.spawn` directly will see `OverflowError` propagate as
-a thrown value -- catch with `instanceof OverflowError` or
-`isOverflowError(e)` if a graceful path is needed.
+Both kinds of violation surface to the offending fiber as
+`ErrorCode.StackOverflow` (or `ErrorCode.StackUnderflow` for operand
+underflow). Hosts that drive `HandleTable.createPending` or
+`FiberScheduler.spawn` directly may see the limit violation propagate
+as a thrown value out of those calls; the wire-level fault code is
+still `StackOverflow`.
 
 `maxFibers` lives on `SchedulerConfig` because the scheduler -- not the
 VM -- owns the fiber pool.

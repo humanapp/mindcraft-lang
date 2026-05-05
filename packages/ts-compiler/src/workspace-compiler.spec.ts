@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, List, type MindcraftModule } from "@mindcraft-lang/core";
-import { type EnumTypeDef, mkTypeId, NativeType } from "@mindcraft-lang/core/brain";
+import { type EnumTypeDef, mkTypeId, NativeType } from "@mindcraft-lang/core/runtime";
 import { createWorkspaceCompiler, type WorkspaceCompileResult } from "./workspace-compiler.js";
 
 const noopCodec = {

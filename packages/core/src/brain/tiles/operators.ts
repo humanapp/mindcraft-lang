@@ -1,11 +1,6 @@
 import { Error } from "../../platform/error";
-import {
-  type BrainTileDefCreateOptions,
-  CoreOpId,
-  type IReadOnlyRegisteredOperator,
-  mkOperatorTileId,
-  TilePlacement,
-} from "../interfaces";
+import { CoreOpId, type IReadOnlyRegisteredOperator } from "../../runtime";
+import { type BrainTileDefCreateOptions, mkOperatorTileId, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 import type { BrainServices } from "../services";
 
@@ -19,7 +14,7 @@ export class BrainTileOperatorDef extends BrainTileDefBase {
 
   constructor(opId: string, opts: BrainTileDefCreateOptions = {}, services: BrainServices) {
     super(mkOperatorTileId(opId), opts);
-    this.op = services.operatorTable.get(opId)!;
+    this.op = services.runtime.operatorTable.get(opId)!;
     if (!this.op) {
       throw new Error(`BrainTileOperatorDef: unknown opId ${opId}. Did you forget to register it?`);
     }
@@ -31,7 +26,7 @@ export class BrainTileOperatorDef extends BrainTileDefBase {
  * Sets appropriate placement restrictions for each operator tile.
  */
 export function registerCoreOperatorTileDefs(services: BrainServices) {
-  const tiles = services.tiles;
+  const tiles = services.edit.tiles;
   const registerCoreOperatorTileDef = (opId: string, opts: BrainTileDefCreateOptions = {}) => {
     const tileDef = new BrainTileOperatorDef(opId, opts, services);
     tiles.registerTileDef(tileDef);

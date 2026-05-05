@@ -1,6 +1,6 @@
 import { List } from "@mindcraft-lang/core";
-import type { ITypeRegistry } from "@mindcraft-lang/core/brain";
 import { type BrainServices, compiler } from "@mindcraft-lang/core/brain";
+import type { ITypeRegistry } from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { buildAmbientDeclarations } from "./ambient.js";
 import { buildCallDef } from "./call-def-builder.js";
@@ -258,7 +258,7 @@ export class UserTileProject {
     const results = new Map<string, CompileResult>();
 
     const services = this._services;
-    services.types.removeUserTypes();
+    services.runtime.types.removeUserTypes();
 
     for (const compilerPath of userRootFiles) {
       const sourceFile = tsProgram.getSourceFile(compilerPath);
@@ -293,7 +293,7 @@ export class UserTileProject {
       return this._ambientSource;
     }
 
-    return buildAmbientDeclarations(this._services.types);
+    return buildAmbientDeclarations(this._services.runtime.types);
   }
 
   private _compileEntryPoint(
@@ -347,7 +347,7 @@ export class UserTileProject {
         func.injectCtxTypeId,
         func.scopeMetadata,
         func.localMetadata,
-        services.functions
+        services.runtime.functions
       );
       if (emitResult.diagnostics.length > 0) {
         return { diagnostics: emitResult.diagnostics };
@@ -365,13 +365,13 @@ export class UserTileProject {
       });
     }
 
-    const qualifiedArgs = qualifyArgSpecTypes(descriptor.args, sourceFile, services.types);
+    const qualifiedArgs = qualifyArgSpecTypes(descriptor.args, sourceFile, services.runtime.types);
     const qualifiedReturnType = descriptor.returnType
-      ? qualifyDescriptorType(descriptor.returnType, sourceFile, services.types)
+      ? qualifyDescriptorType(descriptor.returnType, sourceFile, services.runtime.types)
       : undefined;
 
     const callDef = buildCallDef(descriptor.name, qualifiedArgs);
-    const outputType = qualifiedReturnType ? services.types.resolveByName(qualifiedReturnType) : undefined;
+    const outputType = qualifiedReturnType ? services.runtime.types.resolveByName(qualifiedReturnType) : undefined;
     if (qualifiedReturnType && !outputType) {
       return {
         diagnostics: [
@@ -444,7 +444,9 @@ export class UserTileProject {
       isAsync: descriptor.execIsAsync,
       numStateSlots: programResult.numStateSlots,
       entryFuncId: programResult.entryFuncId,
+      initializerFuncId: programResult.initializerFuncId,
       activationFuncId: programResult.activationFuncId,
+      deactivationFuncId: programResult.deactivationFuncId,
       revisionId: generateRevisionId(),
       args: qualifiedArgs,
       debugMetadata,

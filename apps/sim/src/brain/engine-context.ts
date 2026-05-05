@@ -20,7 +20,7 @@ import { SimTypeIds } from "./type-system";
 const VALID_ARCHETYPES = new Set<string>(["carnivore", "herbivore", "plant"]);
 
 export function registerEngineContext(api: MindcraftModuleApi) {
-  const { types, functions } = api.brainServices;
+  const { types, functions } = api.brainServices.runtime;
 
   const actorRefListTypeId = types.instantiate("List", List.from([SimTypeIds.ActorRef]));
 

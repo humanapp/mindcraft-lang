@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
-import { type BrainServices, mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/brain";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { mkActuatorTileId, mkParameterTileId, mkSensorTileId } from "@mindcraft-lang/core/runtime";
 import { compileUserTile } from "../compiler/compile.js";
 import type { ExtractedParam } from "../compiler/types.js";
 import { registerUserTile } from "./registration-bridge.js";
@@ -34,7 +35,8 @@ export default Sensor({
 
     registerUserTile(program, services);
 
-    const { actions, functions, tiles } = services;
+    const { actions, functions } = services.runtime;
+    const { tiles } = services.edit;
     const action = actions.getByKey(program.key);
     assert.ok(action, "bytecode action should be registered");
     assert.equal(action!.binding, "bytecode");
@@ -66,7 +68,7 @@ export default Actuator({
 
     registerUserTile(program, services);
 
-    const { tiles } = services;
+    const { tiles } = services.edit;
     assert.ok(tiles.has(mkActuatorTileId(program.key)), "actuator tile metadata should be registered");
     assert.ok(tiles.has(mkParameterTileId("user.phase6-reg-actuator.distance")));
     assert.ok(tiles.has(mkParameterTileId("user.phase6-reg-actuator.label")));
@@ -117,7 +119,7 @@ export default Sensor({
 
     registerUserTile(program, services);
 
-    const action = services.actions.getByKey(program.key);
+    const action = services.runtime.actions.getByKey(program.key);
     assert.ok(action, "bytecode action should be registered");
     assert.equal(action!.binding, "bytecode");
     if (action!.binding === "bytecode") {

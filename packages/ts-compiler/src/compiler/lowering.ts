@@ -1,20 +1,20 @@
 import { List } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
 import {
-  type BrainServices,
   ContextTypeIds,
   CoreOpId,
   CoreTypeIds,
+  conversionFnName,
   mkNumberValue,
   mkStringValue,
   NativeType,
   NIL_VALUE,
   type NullableTypeDef,
-  runtime,
   type StructTypeDef,
   type TypeId,
   type UnionTypeDef,
   type Value,
-} from "@mindcraft-lang/core/brain";
+} from "@mindcraft-lang/core/runtime";
 import ts from "typescript";
 import { type ArgSlot, collectArgSlots } from "./arg-spec-utils.js";
 import { CompileDiagCode, LoweringDiagCode } from "./diag-codes.js";
@@ -128,7 +128,26 @@ function isUserSourceDecl(decl: ts.Declaration): boolean {
 export interface ProgramLoweringResult {
   functions: FunctionEntry[];
   entryFuncId: number;
+  /**
+   * Func id of the module-scope initializer body. Runs once per
+   * `(brainInstance, callSiteId)`, on the first allocation of the action's
+   * callsite, before any activation hook. Set when the action contains
+   * top-level `let`/`const` initializers, imported initializers, or static
+   * class fields.
+   */
+  initializerFuncId?: number;
+  /**
+   * Func id of the per-page-activation entry hook. Runs every time the
+   * owning page is activated. Set when the action declares an
+   * `onPageEntered` handler.
+   */
   activationFuncId?: number;
+  /**
+   * Func id of the per-page-deactivation hook. Runs every time the owning
+   * page is deactivated, before fiber cancellation. Set when the action
+   * declares an `onPageExited` handler.
+   */
+  deactivationFuncId?: number;
   numStateSlots: number;
   functionTable: Map<string, number>;
   diagnostics: CompileDiagnostic[];
@@ -211,7 +230,7 @@ function findOptionalChainRoot(
 }
 
 function resolveOperator(opId: string, argTypes: string[], services: BrainServices): string | undefined {
-  return services.operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
+  return services.edit.operatorOverloads.resolve(opId, argTypes)?.overload.fnEntry.name;
 }
 
 // Operator resolution with type expansion: if a direct overload lookup fails,
@@ -292,7 +311,7 @@ function resolveRegisteredEnumTypeIdFromSymbol(
   const resolvedSym = resolveAliasedSymbol(sym, checker);
   if (!resolvedSym) return undefined;
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const typeId = registry.resolveByName(resolveRegistryName(resolvedSym, services, checker));
   if (!typeId) return undefined;
 
@@ -371,7 +390,7 @@ function resolveSingleStepConversion(
     return undefined;
   }
 
-  const conversionPath = services.conversions.findBestPath(fromTypeId, toTypeId, 1);
+  const conversionPath = services.shared.conversions.findBestPath(fromTypeId, toTypeId, 1);
   const conversion = conversionPath?.get(0);
   if (!conversion) {
     return undefined;
@@ -380,7 +399,7 @@ function resolveSingleStepConversion(
   return {
     fromTypeId: conversion.fromType,
     toTypeId: conversion.toType,
-    fnName: runtime.conversionFnName(conversion.fromType, conversion.toType),
+    fnName: conversionFnName(conversion.fromType, conversion.toType),
   };
 }
 
@@ -389,7 +408,7 @@ function emitSingleStepConversion(fnName: string, ctx: LowerContext): void {
 }
 
 function resolveExpandedTargetTypeIds(expectedTypeId: TypeId, services: BrainServices): TypeId[] {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const typeDef = registry.get(expectedTypeId);
   if (!typeDef) {
     return [expectedTypeId];
@@ -419,7 +438,7 @@ function isSatisfiedWithoutTargetTypeConversion(
     return true;
   }
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const sourceDef = registry.get(sourceTypeId);
   const expectedDef = registry.get(expectedTypeId);
   if (!sourceDef || !expectedDef) {
@@ -1047,15 +1066,19 @@ export function lowerProgram(
   const hasInitializers = hasTopLevelInitializers(sourceFile);
   const hasImportedInitializers = importedVariables?.some((iv) => iv.initializer) ?? false;
   const hasStaticFields = classInfos.some((ci) => ci.staticFieldSlots.size > 0);
-  let initFuncId: number | undefined;
+  let initializerFuncId: number | undefined;
   if (hasInitializers || hasImportedInitializers || hasStaticFields) {
-    initFuncId = funcIdCounter.value++;
+    initializerFuncId = funcIdCounter.value++;
   }
 
-  const needsActivation = initFuncId !== undefined || userOnPageEnteredFuncId !== undefined;
   let activationFuncId: number | undefined;
-  if (needsActivation) {
+  if (userOnPageEnteredFuncId !== undefined) {
     activationFuncId = funcIdCounter.value++;
+  }
+
+  let deactivationFuncId: number | undefined;
+  if (descriptor.onPageExitedNode) {
+    deactivationFuncId = funcIdCounter.value++;
   }
 
   const functions: FunctionEntry[] = [];
@@ -1144,7 +1167,7 @@ export function lowerProgram(
     functions.push(entry);
   }
 
-  if (initFuncId !== undefined) {
+  if (initializerFuncId !== undefined) {
     const initEntry = generateModuleInitWithImports(
       sourceFile,
       checker,
@@ -1162,8 +1185,23 @@ export function lowerProgram(
   }
 
   if (activationFuncId !== undefined) {
-    const activationEntry = generateActivationFunction(descriptor.name, initFuncId, userOnPageEnteredFuncId);
+    const activationEntry = generateActivationFunction(descriptor.name, userOnPageEnteredFuncId);
     functions.push(activationEntry);
+  }
+
+  if (deactivationFuncId !== undefined) {
+    const exitEntry = lowerOnPageExitedBody(
+      descriptor,
+      checker,
+      callsiteVars,
+      functionTable,
+      diagnostics,
+      funcIdCounter,
+      closureFunctions,
+      services,
+      classInfos
+    );
+    functions.push(exitEntry);
   }
 
   const closureEntries = Array.from(closureFunctions.entries())
@@ -1174,7 +1212,9 @@ export function lowerProgram(
   return {
     functions,
     entryFuncId,
+    initializerFuncId,
     activationFuncId,
+    deactivationFuncId,
     numStateSlots: nextCallsiteVar,
     functionTable,
     diagnostics,
@@ -1268,17 +1308,97 @@ function lowerOnPageEnteredBody(
   };
 }
 
-function generateActivationFunction(
-  name: string,
-  initFuncId: number | undefined,
-  userOnPageEnteredFuncId: number | undefined
+function lowerOnPageExitedBody(
+  descriptor: ExtractedDescriptor,
+  checker: ts.TypeChecker,
+  callsiteVars: Map<string, number>,
+  functionTable: Map<string, number>,
+  sharedDiagnostics: CompileDiagnostic[],
+  funcIdCounter: { value: number },
+  closureFunctions: Map<number, FunctionEntry>,
+  services: BrainServices,
+  classInfos: ClassInfo[]
 ): FunctionEntry {
   const ir: IrNode[] = [];
+  const funcNode = descriptor.onPageExitedNode!;
 
-  if (initFuncId !== undefined) {
-    ir.push({ kind: "Call", funcIndex: initFuncId, argc: 0 });
-    ir.push({ kind: "Pop" });
+  const paramLocals = new Map<string, number>();
+  const ctxParam = funcNode.parameters[0];
+  if (ctxParam && ts.isIdentifier(ctxParam.name)) {
+    paramLocals.set(ctxParam.name.text, 0);
   }
+
+  const scopeStack = new ScopeStack(1);
+  const funcScopeId = scopeStack.initFunctionScope(0, `${descriptor.name}.onPageExited`);
+
+  if (ctxParam && ts.isIdentifier(ctxParam.name)) {
+    scopeStack.addParameterMetadata(ctxParam.name.text, 0, funcScopeId);
+  }
+
+  const ctx: LowerContext = {
+    services,
+    checker,
+    paramsSymbol: undefined,
+    paramLocals,
+    scopeStack,
+    ir,
+    diagnostics: sharedDiagnostics,
+    loopStack: [],
+    breakStack: [],
+    nextLabelId: 0,
+    callsiteVars,
+    functionTable,
+    funcIdCounter,
+    closureFunctions,
+    currentFunctionName: `${descriptor.name}.onPageExited`,
+    currentReturnTypeId: resolveSignatureReturnTypeId(funcNode, checker, services),
+    classInfos,
+  };
+
+  const body = funcNode.body;
+  if (!body || !ts.isBlock(body)) {
+    sharedDiagnostics.push({
+      code: LoweringDiagCode.OnPageExitedHasNoBody,
+      message: "onPageExited function has no body",
+      severity: "error",
+    });
+    scopeStack.finalizeFunctionScope(ir.length);
+    return {
+      ir,
+      numParams: 1,
+      numLocals: scopeStack.nextLocal,
+      name: `${descriptor.name}.onPageExited`,
+      injectCtxTypeId: ContextTypeIds.Context,
+      scopeMetadata: [...scopeStack.scopeMetadata],
+      localMetadata: [...scopeStack.localMetadata],
+      isGenerated: false,
+      sourceFileName: funcNode.getSourceFile()?.fileName,
+      functionSpan: spanFromNode(funcNode),
+    };
+  }
+
+  lowerStatements(body.statements, ctx);
+
+  ir.push({ kind: "PushConst", value: NIL_VALUE });
+  ir.push({ kind: "Return" });
+
+  scopeStack.finalizeFunctionScope(ir.length);
+  return {
+    ir,
+    numParams: 1,
+    numLocals: scopeStack.nextLocal,
+    name: `${descriptor.name}.onPageExited`,
+    injectCtxTypeId: ContextTypeIds.Context,
+    scopeMetadata: [...scopeStack.scopeMetadata],
+    localMetadata: [...scopeStack.localMetadata],
+    isGenerated: false,
+    sourceFileName: funcNode.getSourceFile()?.fileName,
+    functionSpan: spanFromNode(funcNode),
+  };
+}
+
+function generateActivationFunction(name: string, userOnPageEnteredFuncId: number | undefined): FunctionEntry {
+  const ir: IrNode[] = [];
 
   if (userOnPageEnteredFuncId !== undefined) {
     ir.push({ kind: "LoadLocal", index: 0 });
@@ -2398,7 +2518,7 @@ function lowerForInStatement(stmt: ts.ForInStatement, ctx: LowerContext): void {
       stmt,
       bindingName,
       () => {
-        const keyListTypeId = ctx.services.types.instantiate("List", List.from([CoreTypeIds.String]));
+        const keyListTypeId = ctx.services.runtime.types.instantiate("List", List.from([CoreTypeIds.String]));
         ctx.ir.push({ kind: "ListNew", typeId: keyListTypeId });
         for (const field of structDef.fields.toArray()) {
           ctx.ir.push({ kind: "PushConst", value: mkStringValue(field.name) });
@@ -2457,7 +2577,7 @@ function lowerForInOverList(stmt: ts.ForInStatement, bindingName: string, ctx: L
   ctx.ir.push({ kind: "LoadLocal", index: indexLocal });
   ctx.ir.push({
     kind: "HostCall",
-    fnName: runtime.conversionFnName(CoreTypeIds.Number, CoreTypeIds.String),
+    fnName: conversionFnName(CoreTypeIds.Number, CoreTypeIds.String),
     argc: 1,
   });
   ctx.ir.push({ kind: "StoreLocal", index: bindingLocal });
@@ -3240,7 +3360,7 @@ function lowerStructMethodCall(
     return true;
   }
 
-  const fnEntry = ctx.services.functions.get(fnName);
+  const fnEntry = ctx.services.runtime.functions.get(fnName);
   if (!fnEntry) {
     ctx.diagnostics.push(
       makeDiag(LoweringDiagCode.UnknownStructMethod, `Unknown struct method: '${bareName}.${methodName}'`, propAccess)
@@ -3523,7 +3643,7 @@ function emitStore(
 }
 
 function checkStructAssignmentCompat(lhsNode: ts.Node, rhsNode: ts.Node, diagNode: ts.Node, ctx: LowerContext): void {
-  const registry = ctx.services.types;
+  const registry = ctx.services.runtime.types;
   const lhsType = ctx.checker.getTypeAtLocation(lhsNode);
   const rhsType = ctx.checker.getTypeAtLocation(rhsNode);
   const lhsTypeId = tsTypeToTypeId(lhsType, ctx.checker, ctx.services);
@@ -7351,7 +7471,7 @@ function lowerNullableNilComparison(expr: ts.BinaryExpression, opId: string, ctx
   const valueTypeId = resolveExpressionTypeId(valueNode, ctx);
   if (!valueTypeId) return false;
 
-  const valueDef = ctx.services.types.get(valueTypeId);
+  const valueDef = ctx.services.runtime.types.get(valueTypeId);
   if (!valueDef) return false;
 
   if (!valueDef.nullable) {
@@ -7848,7 +7968,7 @@ function resolveRegistryName(sym: ts.Symbol, services: BrainServices, checker?: 
   const decls = resolvedSym.getDeclarations();
   if (decls && decls.length > 0 && isUserSourceDecl(decls[0])) {
     const qualName = qualifiedClassName(decls[0].getSourceFile().fileName, name);
-    if (services.types.resolveByName(qualName)) {
+    if (services.runtime.types.resolveByName(qualName)) {
       return qualName;
     }
   }
@@ -7860,7 +7980,7 @@ function resolveStructType(
   services: BrainServices,
   checker?: ts.TypeChecker
 ): StructTypeDef | undefined {
-  const registry = services.types;
+  const registry = services.runtime.types;
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
     if (nonNullish.length === 1) {
@@ -7947,7 +8067,7 @@ function registerUserEnumType(
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): void {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualifiedName = qualifiedClassName(enumNode.getSourceFile().fileName, enumNode.name.text);
   if (registry.resolveByName(qualifiedName)) {
     return;
@@ -8041,7 +8161,7 @@ function resolveEnumPropertyAccess(
   }
 
   const key = getEnumMemberKey(memberDecl);
-  if (!key || !ctx.services.types.getEnumSymbol(typeId, key)) {
+  if (!key || !ctx.services.runtime.types.getEnumSymbol(typeId, key)) {
     return { kind: "unsupported" };
   }
 
@@ -8413,7 +8533,7 @@ function lowerObjectLiteralAsMap(expr: ts.ObjectLiteralExpression, mapTypeId: st
 }
 
 function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined {
-  const registry = ctx.services.types;
+  const registry = ctx.services.runtime.types;
 
   if (type.isUnion()) {
     const nonNullish = type.types.filter((t) => !(t.flags & ts.TypeFlags.Null) && !(t.flags & ts.TypeFlags.Undefined));
@@ -8458,7 +8578,7 @@ function resolveMapTypeId(type: ts.Type, ctx: LowerContext): string | undefined 
 }
 
 function resolveListTypeId(arrayType: ts.Type, ctx: LowerContext): string | undefined {
-  const registry = ctx.services.types;
+  const registry = ctx.services.runtime.types;
 
   if (arrayType.isUnion()) {
     const nonNullish = arrayType.types.filter(
@@ -8580,7 +8700,7 @@ function tsOperatorToOpId(kind: ts.SyntaxKind): string | undefined {
 }
 
 function expandTypeIdMembers(typeId: string, services: BrainServices): string[] {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const def = registry.get(typeId);
   if (!def) return [typeId];
   if (def.coreType === NativeType.Union) {
@@ -8601,7 +8721,7 @@ function tryResolveEnumValue(expr: ts.StringLiteral, ctx: LowerContext): Value |
   if (!contextualType) return undefined;
   const typeId = resolveRegisteredEnumTypeId(contextualType, ctx.services, ctx.checker);
   if (!typeId) return undefined;
-  const registry = ctx.services.types;
+  const registry = ctx.services.runtime.types;
   const typeDef = registry.get(typeId);
   if (!typeDef || typeDef.coreType !== NativeType.Enum) return undefined;
   return { t: NativeType.Enum, typeId, v: expr.text };
@@ -8658,7 +8778,7 @@ function tsTypeToTypeId(
       const retType = sig.getReturnType();
       const retTid = tsTypeToTypeId(retType, checker, services);
       if (retTid) {
-        return services.types.getOrCreateFunctionType({
+        return services.runtime.types.getOrCreateFunctionType({
           paramTypeIds,
           returnTypeId: retTid,
         });
@@ -8676,7 +8796,7 @@ function tsTypeToTypeId(
       const baseTypeId = tsTypeToTypeId(nonNullish[0], checker, services);
       if (!baseTypeId) return undefined;
       if (hasNullish) {
-        return services.types.addNullableType(baseTypeId);
+        return services.runtime.types.addNullableType(baseTypeId);
       }
       return baseTypeId;
     }
@@ -8695,7 +8815,7 @@ function tsTypeToTypeId(
         deduped.add(id);
       });
       if (deduped.size >= 2) {
-        return services.types.getOrCreateUnionType(List.from([...deduped]));
+        return services.runtime.types.getOrCreateUnionType(List.from([...deduped]));
       }
       if (deduped.size === 1) {
         return [...deduped][0];
@@ -8721,7 +8841,7 @@ function tsTypeToTypeId(
   }
   const sym = type.aliasSymbol ?? type.getSymbol();
   if (sym) {
-    const registry = services.types;
+    const registry = services.runtime.types;
     const symName = sym.getName();
 
     if (symName === "Array" && checker) {
@@ -8759,7 +8879,7 @@ function tsTypeToTypeId(
     if (indexType) {
       const valueTypeId = tsTypeToTypeId(indexType, checker, services);
       if (valueTypeId) {
-        return services.types.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
+        return services.runtime.types.instantiate("Map", List.from([CoreTypeIds.String, valueTypeId]));
       }
     }
   }
@@ -8775,7 +8895,7 @@ function autoRegisterIntersectionType(
   const aliasSym = type.aliasSymbol;
   if (aliasSym) {
     const aliasName = resolveRegistryName(aliasSym, services);
-    const existing = services.types.resolveByName(aliasName);
+    const existing = services.runtime.types.resolveByName(aliasName);
     if (existing) return existing;
   }
 
@@ -8794,7 +8914,7 @@ function autoRegisterIntersectionType(
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
-      fieldTypeId = services.types.addNullableType(fieldTypeId);
+      fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
     fields.push({ name: prop.name, typeId: fieldTypeId });
   }
@@ -8810,11 +8930,11 @@ function autoRegisterIntersectionType(
       constituentNames.push(id);
     }
     structName = constituentNames.join("&");
-    const existing = services.types.resolveByName(structName);
+    const existing = services.runtime.types.resolveByName(structName);
     if (existing) return existing;
   }
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const typeId = registry.reserveStructType(structName);
   registry.finalizeStructType(typeId, { fields });
   return typeId;
@@ -8841,14 +8961,14 @@ function autoRegisterAnonymousStruct(
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
-      fieldTypeId = services.types.addNullableType(fieldTypeId);
+      fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
     fields.push({ name: prop.name, typeId: fieldTypeId });
     nameParts.push(`${prop.name}:${fieldTypeId}`);
   }
 
   const structName = `{${nameParts.join(",")}}`;
-  const registry = services.types;
+  const registry = services.runtime.types;
   const existing = registry.resolveByName(structName);
   if (existing) {
     const def = registry.get(existing);
@@ -8908,7 +9028,7 @@ function autoRegisterObjectType(
     if (!fieldTypeId) return undefined;
     const isOptional = (prop.flags & ts.SymbolFlags.Optional) !== 0;
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
-      fieldTypeId = services.types.addNullableType(fieldTypeId);
+      fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
     fields.push({ name: prop.name, typeId: fieldTypeId });
   }
@@ -8928,7 +9048,7 @@ function autoRegisterObjectType(
     structName = `${baseName}<${argIds.join(",")}>`;
   }
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const existing = registry.resolveByName(structName);
   if (existing) return existing;
 
@@ -9068,7 +9188,7 @@ function registerClassStructType(
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): void {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
   const existing = registry.resolveByName(qualName);
   if (existing) return;
@@ -9087,7 +9207,7 @@ function reserveInterfaceStructType(
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): string | undefined {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualName = qualifiedClassName(ii.sourceFile.fileName, ii.name);
 
   if (registry.resolveByName(ii.name)) {
@@ -9125,7 +9245,7 @@ function finalizeInterfaceStructType(
   const fields = extractInterfaceFields(type, ii.node, checker, diagnostics, services);
   if (!fields) return;
 
-  services.types.finalizeStructType(typeId, { fields });
+  services.runtime.types.finalizeStructType(typeId, { fields });
 }
 
 function reserveTypeAliasStructType(
@@ -9134,7 +9254,7 @@ function reserveTypeAliasStructType(
   diagnostics: CompileDiagnostic[],
   services: BrainServices
 ): string | undefined {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualName = qualifiedClassName(tai.sourceFile.fileName, tai.name);
 
   if (registry.resolveByName(tai.name)) {
@@ -9171,7 +9291,7 @@ function finalizeTypeAliasStructType(
   const fields = extractInterfaceFields(type, tai.node, checker, diagnostics, services);
   if (!fields) return;
 
-  services.types.finalizeStructType(typeId, { fields });
+  services.runtime.types.finalizeStructType(typeId, { fields });
 }
 
 function extractInterfaceFields(
@@ -9229,7 +9349,7 @@ function extractInterfaceFields(
     }
 
     if (isOptional && fieldTypeId !== CoreTypeIds.Nil) {
-      fieldTypeId = services.types.addNullableType(fieldTypeId);
+      fieldTypeId = services.runtime.types.addNullableType(fieldTypeId);
     }
 
     fields.push({ name: prop.name, typeId: fieldTypeId });
@@ -9251,7 +9371,7 @@ function lowerClassDeclaration(
 ): FunctionEntry[] {
   const entries: FunctionEntry[] = [];
 
-  const registry = services.types;
+  const registry = services.runtime.types;
   const qualName = qualifiedClassName(ci.sourceFile.fileName, ci.name);
   const typeId = registry.resolveByName(qualName);
 
@@ -9314,7 +9434,7 @@ function lowerClassDeclaration(
     if (!member.initializer) continue;
 
     const fieldName = member.name.text;
-    const structDef = typeId ? (services.types.get(typeId) as StructTypeDef | undefined) : undefined;
+    const structDef = typeId ? (services.runtime.types.get(typeId) as StructTypeDef | undefined) : undefined;
     const field = structDef ? findStructField(structDef, fieldName) : undefined;
     const fieldIndex = field && structDef && isIndexedStruct(structDef) ? field.fieldIndex : undefined;
     ctorIr.push({ kind: "LoadLocal", index: thisLocal });

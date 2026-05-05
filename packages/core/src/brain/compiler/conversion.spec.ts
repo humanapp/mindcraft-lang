@@ -7,8 +7,11 @@ import assert from "node:assert/strict";
 import { before, describe, test } from "node:test";
 
 import { List } from "@mindcraft-lang/core";
+import type { BrainServices } from "@mindcraft-lang/core/brain";
+import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { parseRule } from "@mindcraft-lang/core/brain/compiler";
+import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
 import {
-  type BrainServices,
   CoreParameterId,
   CoreTypeIds,
   type EnumSymbolDef,
@@ -23,10 +26,8 @@ import {
   type StringValue,
   type Value,
   VOID_VALUE,
-} from "@mindcraft-lang/core/brain";
-import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { parseRule } from "@mindcraft-lang/core/brain/compiler";
-import { BrainTileActuatorDef, BrainTileLiteralDef } from "@mindcraft-lang/core/brain/tiles";
+} from "@mindcraft-lang/core/runtime";
+import { __test__createPlatformServices } from "@mindcraft-lang/core/runtime/__test__";
 
 let services: BrainServices;
 
@@ -35,7 +36,7 @@ before(() => {
 });
 
 function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?: string): string {
-  const registry = services.types;
+  const registry = services.runtime.types;
   const existing = registry.resolveByName(name);
   if (existing) {
     return existing;
@@ -45,10 +46,7 @@ function ensureEnumType(name: string, symbols: List<EnumSymbolDef>, defaultKey?:
 
 function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
   return {
-    brain: undefined as never,
-    getVariable: () => undefined,
-    setVariable: () => {},
-    clearVariable: () => {},
+    services: __test__createPlatformServices(),
     getVariableBySlot: () => NIL_VALUE,
     setVariableBySlot: () => {},
     time: 0,
@@ -59,7 +57,7 @@ function mkCtx(overrides: Partial<ExecutionContext> = {}): ExecutionContext {
 }
 
 function execEnumConversion(fromType: string, toType: string, input: EnumValue) {
-  const conversion = services.conversions.get(fromType, toType);
+  const conversion = services.shared.conversions.get(fromType, toType);
   assert.ok(conversion, `Expected conversion ${fromType} -> ${toType}`);
 
   return conversion.fn.exec(mkCtx(), List.from([input as Value]));
@@ -75,16 +73,16 @@ function testConversion(
 ): void {
   test(label, () => {
     const actuatorId = `test.conv.${Date.now()}.${Math.random()}`;
-    const fnEntry = services.functions.register(actuatorId, false, { exec: () => VOID_VALUE }, actuatorCallDef);
+    const fnEntry = services.runtime.functions.register(actuatorId, false, { exec: () => VOID_VALUE }, actuatorCallDef);
 
     const sayTile = new BrainTileActuatorDef(actuatorId, mkActionDescriptor("actuator", fnEntry), {});
     const literal = new BrainTileLiteralDef(literalType, literalValue, {}, services);
 
     const tiles = List.from([sayTile as unknown, literal as unknown]) as List<never>;
     const emptyTiles = List.empty<never>();
-    const catalogs = List.from([services.tiles]);
+    const catalogs = List.from([services.edit.tiles]);
 
-    const result = parseRule(tiles, emptyTiles, catalogs, services.conversions);
+    const result = parseRule(tiles, emptyTiles, catalogs, services.shared.conversions);
     const expr = result.parseResult.exprs.get(0);
 
     assert.equal(expr.kind, "actuator", "Expected actuator expression");
@@ -182,7 +180,7 @@ describe("Conversion: enum values", () => {
       "On"
     );
 
-    const path = services.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    const path = services.shared.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
     assert.ok(path);
     assert.equal(path.size(), 1);
 
@@ -206,11 +204,11 @@ describe("Conversion: enum values", () => {
       "Up"
     );
 
-    const numberPath = services.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+    const numberPath = services.shared.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
     assert.ok(numberPath);
     assert.equal(numberPath.size(), 1);
 
-    const stringPath = services.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    const stringPath = services.shared.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
     assert.ok(stringPath);
     assert.equal(stringPath.size(), 1);
 
@@ -241,15 +239,15 @@ describe("Conversion: enum values", () => {
       "North"
     );
 
-    const path = services.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+    const path = services.shared.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
     assert.equal(path, undefined);
   });
 
   test("empty enums do not expose enum conversions", () => {
     const typeId = ensureEnumType("ConversionSpecEmptyEnum", List.empty<EnumSymbolDef>());
 
-    const stringPath = services.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
-    const numberPath = services.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
+    const stringPath = services.shared.conversions.findBestPath(typeId, CoreTypeIds.String, 1);
+    const numberPath = services.shared.conversions.findBestPath(typeId, CoreTypeIds.Number, 1);
 
     assert.equal(stringPath, undefined);
     assert.equal(numberPath, undefined);

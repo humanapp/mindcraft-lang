@@ -1,14 +1,6 @@
 import { List, type ReadonlyBitSet, type ReadonlyList } from "@mindcraft-lang/core";
-import {
-  CoreActuatorId,
-  CoreCapabilityBits,
-  type IBrainTileDef,
-  type ITileCatalog,
-  mkActuatorTileId,
-  type RuleSide,
-  TilePlacement,
-  type TypeId,
-} from "@mindcraft-lang/core/brain";
+import { CoreCapabilityBits, type IBrainTileDef, type ITileCatalog, type RuleSide, TilePlacement } from "@mindcraft-lang/core/brain";
+import { CoreActuatorId, mkActuatorTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import type { Expr } from "@mindcraft-lang/core/brain/compiler";
 import {
   countUnclosedParens,

@@ -1,6 +1,6 @@
 import { installCoreBrainComponents } from ".";
 import type { BrainServices } from "./services";
-import { createBrainServices } from "./services-factory";
+import { createAppServices, createBrainServices } from "./services-factory";
 
 /**
  * TEST-ONLY. Creates a fresh BrainServices with all core components registered.
@@ -10,5 +10,5 @@ import { createBrainServices } from "./services-factory";
  * without standing up a full MindcraftEnvironment.
  */
 export function __test__createBrainServices(): BrainServices {
-  return installCoreBrainComponents(createBrainServices());
+  return installCoreBrainComponents(createBrainServices(createAppServices()));
 }

@@ -1,11 +1,5 @@
-import {
-  type BrainTileDefCreateOptions,
-  CoreParameterId,
-  CoreTypeIds,
-  mkParameterTileId,
-  TilePlacement,
-  type TypeId,
-} from "../interfaces";
+import { CoreParameterId, CoreTypeIds, mkParameterTileId, type TypeId } from "../../runtime";
+import { type BrainTileDefCreateOptions, TilePlacement } from "../interfaces";
 import { BrainTileDefBase } from "../model/tiledef";
 import type { BrainServices } from "../services";
 
@@ -30,12 +24,12 @@ function registerParameterTileDef(
   services: BrainServices
 ) {
   const tileDef = new BrainTileParameterDef(parameterId, dataType, opts);
-  services.tiles.registerTileDef(tileDef);
+  services.edit.tiles.registerTileDef(tileDef);
 }
 
 /** Register the built-in anonymous parameter tiles for boolean/number/string args on `services`. */
 export function registerCoreParameterTileDefs(services: BrainServices) {
-  const tiles = services.tiles;
+  const tiles = services.edit.tiles;
   const register = (parameterId: string, dataType: TypeId, opts: BrainTileDefCreateOptions = {}) => {
     const tileDef = new BrainTileParameterDef(parameterId, dataType, opts);
     tiles.registerTileDef(tileDef);
