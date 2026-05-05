@@ -4,6 +4,7 @@ import { before, describe, test } from "node:test";
 import { Dict, List, UniqueSet } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
 import type {
   BytecodeExecutableAction,
   ConstantPools,
@@ -26,7 +27,6 @@ import {
   Op,
   type PageMetadata,
   TRUE_VALUE,
-  treeshakeProgram as treeshakeLinked,
   UNKNOWN_VALUE,
   type Value,
   VM,

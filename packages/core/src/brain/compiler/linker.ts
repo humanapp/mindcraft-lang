@@ -1,15 +1,20 @@
-import type { IBrainActionTileDef, IBrainDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../brain/interfaces";
-import { Dict } from "../platform/dict";
-import { Error } from "../platform/error";
-import { List, type ReadonlyList } from "../platform/list";
-import type { ConstantOffsets, FunctionBytecode, Instr } from "./bytecode";
-import { Op } from "./bytecode";
-import type { BytecodeExecutableAction, ExecutableAction } from "./context";
-import type { ActionDescriptor } from "./function-defs";
-import type { BrainActionResolver, LinkedBrainProgram, ResolvedAction, UnlinkedBrainProgram } from "./host-bindings";
-import type { ProgramArtifact } from "./program";
-import type { Value } from "./value";
-import { isFunctionValue } from "./value";
+import { Dict } from "../../platform/dict";
+import { Error } from "../../platform/error";
+import { List, type ReadonlyList } from "../../platform/list";
+import type { ConstantOffsets, FunctionBytecode, Instr } from "../../runtime/bytecode";
+import { Op } from "../../runtime/bytecode";
+import type { BytecodeExecutableAction, ExecutableAction } from "../../runtime/context";
+import type { ActionDescriptor } from "../../runtime/function-defs";
+import type {
+  BrainActionResolver,
+  LinkedBrainProgram,
+  ResolvedAction,
+  UnlinkedBrainProgram,
+} from "../../runtime/host-bindings";
+import type { ProgramArtifact } from "../../runtime/program";
+import type { Value } from "../../runtime/value";
+import { isFunctionValue } from "../../runtime/value";
+import type { IBrainActionTileDef, IBrainDef, IBrainRuleDef, IBrainTileDef, ITileCatalog } from "../interfaces";
 
 function isActionTileDef(tileDef: IBrainTileDef): tileDef is IBrainActionTileDef {
   return tileDef.kind === "sensor" || tileDef.kind === "actuator";

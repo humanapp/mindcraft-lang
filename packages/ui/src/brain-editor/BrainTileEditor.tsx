@@ -1,7 +1,7 @@
 import { type IBrainTileDef, type LiteralDisplayFormat, RuleSide } from "@mindcraft-lang/core/brain";
-import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import type { BrainRuleDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileLiteralDef, type BrainTileVariableDef } from "@mindcraft-lang/core/brain/tiles";
+import { CoreTypeIds } from "@mindcraft-lang/core/runtime";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import {

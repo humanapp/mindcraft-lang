@@ -1,6 +1,11 @@
 import { List, type ReadonlyBitSet, type ReadonlyList } from "@mindcraft-lang/core";
-import { CoreCapabilityBits, type IBrainTileDef, type ITileCatalog, type RuleSide, TilePlacement } from "@mindcraft-lang/core/brain";
-import { CoreActuatorId, mkActuatorTileId, type TypeId } from "@mindcraft-lang/core/runtime";
+import {
+  CoreCapabilityBits,
+  type IBrainTileDef,
+  type ITileCatalog,
+  type RuleSide,
+  TilePlacement,
+} from "@mindcraft-lang/core/brain";
 import type { Expr } from "@mindcraft-lang/core/brain/compiler";
 import {
   countUnclosedParens,
@@ -9,6 +14,7 @@ import {
   suggestTiles,
   type TileSuggestion,
 } from "@mindcraft-lang/core/brain/language-service";
+import { CoreActuatorId, mkActuatorTileId, type TypeId } from "@mindcraft-lang/core/runtime";
 import React from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";

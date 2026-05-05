@@ -3,6 +3,7 @@ import { before, describe, test } from "node:test";
 import { Dict, List, runtime, UniqueSet } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
+import { treeshakeProgram as treeshakeLinked } from "@mindcraft-lang/core/brain/compiler";
 import type { BytecodeExecutableAction, ExecutableAction, ExecutionContext } from "@mindcraft-lang/core/runtime";
 import {
   HandleTable,
@@ -13,7 +14,6 @@ import {
   type PageMetadata,
   type Scheduler,
   type StringValue,
-  treeshakeProgram as treeshakeLinked,
   type Value,
   VmStatus,
 } from "@mindcraft-lang/core/runtime";

@@ -7,12 +7,12 @@ import {
   type PageMetadata,
   type UnlinkedBrainProgram,
 } from "../runtime";
-import { linkBrainProgram } from "../runtime/linker";
 import type { Program } from "../runtime/program";
-import { treeshakeProgram } from "../runtime/tree-shaker";
 import type { Value } from "../runtime/value";
 import type { EventEmitterConsumer } from "../util";
 import { compileBrain } from "./compiler";
+import { linkBrainProgram } from "./compiler/linker";
+import { treeshakeProgram } from "./compiler/tree-shaker";
 import type { IBrainDef, IBrainPageDef } from "./interfaces";
 import { BrainPage } from "./page";
 import type { BrainServices } from "./services";

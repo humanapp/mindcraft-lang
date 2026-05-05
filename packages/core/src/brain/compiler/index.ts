@@ -2,8 +2,10 @@ export { BrainCompiler, compileBrain } from "./brain-compiler";
 export { ConstantPool } from "./constant-pool";
 export { CompilationDiagCode, type DiagCode, ParseDiagCode, TypeDiagCode } from "./diag-codes";
 export { BytecodeEmitter } from "./emitter";
+export { linkBrainProgram } from "./linker";
 export { parseBrainTiles } from "./parser";
 export type { CompilationDiag, CompilationResult } from "./rule-compiler";
+export { treeshakeProgram } from "./tree-shaker";
 export type {
   ActuatorExpr,
   BinaryOpExpr,

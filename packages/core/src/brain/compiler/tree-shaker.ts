@@ -1,16 +1,16 @@
-import { Dict } from "../platform/dict";
-import { Error } from "../platform/error";
-import { List } from "../platform/list";
-import { logger } from "../platform/logger";
-import { UniqueSet } from "../platform/uniqueset";
-import type { ConstantPools, FunctionBytecode, Instr } from "./bytecode";
-import { Op } from "./bytecode";
-import type { BytecodeExecutableAction, ExecutableAction } from "./context";
-import type { LinkedBrainProgram, PageMetadata } from "./host-bindings";
-import type { Program } from "./program";
-import { NativeType } from "./type-defs";
-import type { Value } from "./value";
-import { isFunctionValue } from "./value";
+import { Dict } from "../../platform/dict";
+import { Error } from "../../platform/error";
+import { List } from "../../platform/list";
+import { logger } from "../../platform/logger";
+import { UniqueSet } from "../../platform/uniqueset";
+import type { ConstantPools, FunctionBytecode, Instr } from "../../runtime/bytecode";
+import { Op } from "../../runtime/bytecode";
+import type { BytecodeExecutableAction, ExecutableAction } from "../../runtime/context";
+import type { LinkedBrainProgram, PageMetadata } from "../../runtime/host-bindings";
+import type { Program } from "../../runtime/program";
+import { NativeType } from "../../runtime/type-defs";
+import type { Value } from "../../runtime/value";
+import { isFunctionValue } from "../../runtime/value";
 
 function requireActions(program: Program): List<ExecutableAction> {
   const actions = program.actions;

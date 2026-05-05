@@ -4,13 +4,12 @@ import { before, describe, test } from "node:test";
 import { List } from "@mindcraft-lang/core";
 import type { BrainServices } from "@mindcraft-lang/core/brain";
 import { __test__createBrainServices } from "@mindcraft-lang/core/brain/__test__";
-import { compileBrain } from "@mindcraft-lang/core/brain/compiler";
+import { compileBrain, linkBrainProgram } from "@mindcraft-lang/core/brain/compiler";
 import { BrainDef } from "@mindcraft-lang/core/brain/model";
 import { BrainTileActuatorDef } from "@mindcraft-lang/core/brain/tiles";
 import {
   type ActionDescriptor,
   BYTECODE_VERSION,
-  linkBrainProgram,
   mkCallDef,
   mkNumberValue,
   Op,
