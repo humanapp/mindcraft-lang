@@ -1,5 +1,5 @@
 import type { ICallsiteStore } from "./callsite-store";
-import type { IBrain } from "./host-bindings";
+import type { IBrainRuntime } from "./host-bindings";
 import type { IBrainPageServices, IBrainVariableServices, ICallsiteServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
 
@@ -24,7 +24,7 @@ export interface IRuntimeServices {
  * {@link ICallsiteServices} directly, so it is exposed as the
  * `callsite` field with no wrapping.
  */
-export function createRuntimeServices(brain: IBrain, callsiteStore: ICallsiteStore): IRuntimeServices {
+export function createRuntimeServices(brain: IBrainRuntime, callsiteStore: ICallsiteStore): IRuntimeServices {
   return {
     brainVars: {
       getByName(name: string): Value {

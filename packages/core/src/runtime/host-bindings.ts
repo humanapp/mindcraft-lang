@@ -148,19 +148,65 @@ export type BrainEvents = {
  * crossing that boundary.
  */
 export interface IBrainRuntime {
+  /** Event stream for brain lifecycle notifications (page activated / deactivated). */
+  events(): EventEmitterConsumer<BrainEvents>;
   getVariable(varId: string): Value | undefined;
   setVariable(varId: string, value: Value): void;
   clearVariable(varId: string): void;
   clearVariables(): void;
+  /**
+   * Read a variable by its compiler-assigned slot id. Returns `NIL_VALUE`
+   * if the slot is out of range or has never been written.
+   */
+  getVariableBySlot(slotId: number): Value;
   /** Linked executable program currently loaded into the brain's VM. */
   getProgram(): Program | undefined;
   /** Per-page metadata for the loaded program (page activation, call sites, sensors, actuators). */
   getPages(): List<PageMetadata>;
+  /**
+   * Begin execution. Activates the first page and resets all FSM state.
+   * Must be called after {@link IBrain.initialize} and before `think`.
+   */
+  startup(): void;
+  /**
+   * Halt execution. Runs deactivation hooks for the current page, cancels
+   * all active fibers, and clears callsite and variable state.
+   */
+  shutdown(): void;
+  /**
+   * Advance the brain by one tick.
+   *
+   * @param currentTime - Monotonically increasing wall-clock time in seconds.
+   */
+  think(currentTime: number): void;
+  /** Enable or disable the brain's tick loop. A disabled brain skips all execution in `think`. */
+  setEnabled(enabled: boolean): void;
+  /** Returns `true` if the brain is enabled (default). */
+  isEnabled(): boolean;
+  /** Pause execution until `clearInterrupt` is called. */
+  interrupt(): void;
+  /** Resume execution after a call to `interrupt`. */
+  clearInterrupt(): void;
+  /** Returns `true` if the brain has been interrupted and has not yet been cleared. */
+  isInterrupted(): boolean;
+  /**
+   * Request a page change by zero-based page index. If `pageIndex` equals the
+   * current page, triggers a restart instead.
+   */
+  requestPageChange(pageIndex: number): void;
+  /** Request a page change by stable page identifier (UUID). */
+  requestPageChangeByPageId(pageId: string): void;
+  /** Request a page change by page name. */
+  requestPageChangeByName(name: string): void;
+  /** Request that the current page restart at the next tick. */
+  requestPageRestart(): void;
+  /** Returns the stable page identifier (UUID) of the current page, or `""` if none. */
+  getCurrentPageId(): string;
+  /** Returns the stable page identifier (UUID) of the most recently deactivated page. */
+  getPreviousPageId(): string;
 }
 
 export interface IBrain extends IBrainRuntime {
-  events(): EventEmitterConsumer<BrainEvents>;
-
   /**
    * Initialize the brain and set context data. Must be called before startup().
    *
@@ -168,17 +214,8 @@ export interface IBrain extends IBrainRuntime {
      (e.g., game entity, DOM context). This will be available to all host functions via ctx.data.
    */
   initialize(contextData?: unknown): void;
-  startup(): void;
-  shutdown(): void;
-  think(currentTime: number): void;
   /** Compiler output prior to action linking. */
   getCompiledProgram(): UnlinkedBrainProgram | undefined;
-  requestPageChange(pageIndex: number): void;
-  requestPageChangeByPageId(pageId: string): void;
-  requestPageChangeByName(name: string): void;
-  requestPageRestart(): void;
-  getCurrentPageId(): string;
-  getPreviousPageId(): string;
 }
 
 export interface IBrainPage {

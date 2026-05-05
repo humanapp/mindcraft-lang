@@ -487,8 +487,8 @@ Each unit must:
 
 ## Current State
 
-Completed: A0, B0, B1, B2, B3, B4
-Next up: B5
+Completed: A0, B0, B1, B2, B3, B4, B5
+Next up: B6
 
 ---
 
@@ -618,6 +618,34 @@ Verification: full gate green (752/752 tests).
   markers forbidden by the global rule. The resolved form is plain `@deprecated transitional`
   with no phase text. B5 should follow the same pattern for any temporary surface
   it adds.
+
+### B5 -- Move Page Lifecycle FSM and Page Lookup Tables
+
+Page lifecycle FSM (concern 6) and page lookup tables (concern 8) moved from
+`Brain` to `BrainRuntime`. All 9 transitional getters removed. All 7 hook
+drivers demoted to `private`. `BrainRuntime` constructor narrowed to
+`hostServices: Omit<PlatformServices, "brain">`; it now builds the brain tier
+internally. `createRuntimeServices` parameter narrowed from `IBrain` to
+`IBrainRuntime`. `Brain` is now a thin facade with no private methods except
+`getLinkEnvironment`.
+
+New contract surface: `IBrainRuntime` gains `events`, `startup`, `shutdown`,
+`think`, `setEnabled`, `isEnabled`, `interrupt`, `clearInterrupt`,
+`isInterrupted`, `requestPageChange`, `requestPageChangeByPageId`,
+`requestPageChangeByName`, `requestPageRestart`, `getCurrentPageId`,
+`getPreviousPageId`, `getVariableBySlot`. `IBrain` own body narrowed to
+`initialize` and `getCompiledProgram`.
+
+Verification: full gate green (752/752 tests).
+
+#### Risks
+
+- Table 1 spec'd `getVariableBySlot` as facade-delete (rule 4 -- VM dispatch
+  internal). During review it was restored to `IBrainRuntime` and `Brain` to
+  preserve test coverage of slot-layer vs. name-layer storage agreement.
+  `setVariableBySlot` remains internal (slot writes are unsafe to expose).
+  B6 and later must keep `getVariableBySlot` on `IBrainRuntime`; removing it
+  re-opens the coverage gap.
 
 ---
 

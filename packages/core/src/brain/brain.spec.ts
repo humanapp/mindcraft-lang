@@ -2205,7 +2205,7 @@ describe("Brain -- slot-keyed variable storage", () => {
     brain.setVariable(v.varName, written);
 
     const readByName = brain.getVariable(v.varName);
-    const readBySlot = (brain as Brain).getVariableBySlot(slotId);
+    const readBySlot = brain.getVariableBySlot(slotId);
     assert.equal(readByName, written, "name-keyed read should return the written value");
     assert.equal(readBySlot, written, "slot-keyed read should return the written value");
   });
@@ -2255,10 +2255,6 @@ describe("Brain -- slot-keyed variable storage", () => {
       if (program!.variableNames.get(i) === v.varName) slotId = i;
     }
     assert.ok(slotId >= 0);
-    assert.equal(
-      (brain as Brain).getVariableBySlot(slotId).t,
-      NativeType.Nil,
-      "slot-keyed read of cleared slot returns NIL"
-    );
+    assert.equal(brain.getVariableBySlot(slotId).t, NativeType.Nil, "slot-keyed read of cleared slot returns NIL");
   });
 });

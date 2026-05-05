@@ -2,15 +2,16 @@ import { Dict } from "../platform/dict";
 import { Error } from "../platform/error";
 import { EventEmitter, type EventEmitterConsumer } from "../platform/event-emitter";
 import { List } from "../platform/list";
-import type { ICallsiteStore } from "./callsite-store";
+import { createCallsiteStore, type ICallsiteStore } from "./callsite-store";
 import type { BytecodeExecutableAction, ExecutionContext } from "./context";
 import type { BrainEvents, IBrainRuntime, PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
-import type { RuleVariableStores } from "./rule-services";
+import { createProgramServices, createRuleVariableServices, type RuleVariableStores } from "./rule-services";
+import { createRuntimeServices } from "./runtime-services";
 import type { PlatformServices } from "./services";
 import { NIL_VALUE, type Value } from "./value";
 import { FiberScheduler, VM } from "./vm";
-import { VmStatus } from "./vm-types";
+import { FiberState, VmStatus } from "./vm-types";
 
 /**
  * Runtime entry point for a compiled Mindcraft brain. Owns the VM, the fiber
@@ -93,12 +94,23 @@ export class BrainRuntime implements IBrainRuntime {
 
   private nextInlineFiberId: number = -1000000;
 
-  /**
-   * Event emitter for brain lifecycle events.
-   * 
-   * @deprecated transitional
-   */
+  /** Emitter backing the {@link events} consumer. */
   private readonly emitter_: EventEmitter<BrainEvents> = new EventEmitter<BrainEvents>();
+
+  // Page lifecycle FSM state
+  private enabled: boolean = true;
+  private interrupted: boolean = false;
+  private currentPageIndex: number = 0;
+  private desiredPageIndex: number = 0;
+  private previousPageIndex: number = -1;
+  private restartPageRequested: boolean = false;
+  private lastThinkTime: number = 0;
+
+  /** O(1) lookup from stable pageId (UUID) to page index. */
+  private pageIdToIndex: Dict<string, number> = new Dict();
+
+  /** O(1) lookup from page name to page index. */
+  private pageNameToIndex: Dict<string, number> = new Dict();
 
   /**
    * Construct a fully ready-to-`startup()` runtime around a linked,
@@ -108,8 +120,8 @@ export class BrainRuntime implements IBrainRuntime {
    *   slot binding is read from `program.variableNames`.
    * @param pageMetadata - Per-page metadata produced by the linker
    *   (root rule funcIds, action call sites, sensors, actuators).
-   * @param services - Fully assembled {@link PlatformServices} including
-   *   the `brain` tier, built by the authoring-side facade.
+   * @param hostServices - The three host-supplied platform tiers (`runtime`,
+   *   `shared`, `app`). The runtime builds the `brain` tier internally.
    * @param contextData - Application-specific data attached to the
    *   brain's `ExecutionContext`. Host functions read this via `ctx.data`.
    * @param previousVariables - Optional snapshot of the prior runtime's
@@ -119,16 +131,39 @@ export class BrainRuntime implements IBrainRuntime {
   constructor(
     program: Program,
     pageMetadata: List<PageMetadata>,
-    services: PlatformServices,
+    hostServices: Omit<PlatformServices, "brain">,
     contextData: unknown = undefined,
     previousVariables?: VariableSnapshot
   ) {
     this.program = program;
     this.pageMetadata = pageMetadata;
-    this.callsiteStore = services.brain.callsite as ICallsiteStore;
-    this.ruleVariableStores = new Dict();
+
+    const callsiteStore = createCallsiteStore();
+    const ruleVariableStores: RuleVariableStores = new Dict();
+    this.callsiteStore = callsiteStore;
+    this.ruleVariableStores = ruleVariableStores;
 
     this.installVariableTable(program.variableNames, previousVariables);
+
+    for (let i = 0; i < pageMetadata.size(); i++) {
+      const meta = pageMetadata.get(i);
+      if (meta) {
+        this.pageIdToIndex.set(meta.pageId, i);
+        this.pageNameToIndex.set(meta.pageName, i);
+      }
+    }
+
+    const runtimeServices = createRuntimeServices(this, callsiteStore);
+    const services: PlatformServices = {
+      ...hostServices,
+      brain: {
+        program: createProgramServices(program),
+        brainVars: runtimeServices.brainVars,
+        ruleVars: createRuleVariableServices(program, ruleVariableStores),
+        pages: runtimeServices.brainPages,
+        callsite: callsiteStore,
+      },
+    };
 
     this.vm = new VM(program, services);
     this.scheduler = new FiberScheduler(this.vm, {
@@ -172,56 +207,6 @@ export class BrainRuntime implements IBrainRuntime {
    */
   events(): EventEmitterConsumer<BrainEvents> {
     return this.emitter_.consumer();
-  }
-
-  // -------------------------------------------------------------------------
-  // Accessors for Brain's FSM while the page lifecycle methods still live
-  // in brain.ts. Removed when the FSM moves into this class.
-  // -------------------------------------------------------------------------
-
-  /** @deprecated transitional */
-  _vm(): VM {
-    return this.vm;
-  }
-
-  /** @deprecated transitional */
-  _scheduler(): FiberScheduler {
-    return this.scheduler;
-  }
-
-  /** @deprecated transitional */
-  _executionContext(): ExecutionContext {
-    return this.executionContext;
-  }
-
-  /** @deprecated transitional */
-  _callsiteStore(): ICallsiteStore {
-    return this.callsiteStore;
-  }
-
-  /** @deprecated transitional */
-  _ruleVariableStores(): RuleVariableStores {
-    return this.ruleVariableStores;
-  }
-
-  /** @deprecated transitional */
-  _getActiveRuleFiberIds(): List<{ funcId: number; fiberId: number | undefined }> {
-    return this.activeRuleFiberIds;
-  }
-
-  /** @deprecated transitional */
-  _setActiveRuleFiberIds(value: List<{ funcId: number; fiberId: number | undefined }>): void {
-    this.activeRuleFiberIds = value;
-  }
-
-  /** @deprecated transitional */
-  _getNextInlineFiberId(): number {
-    return this.nextInlineFiberId;
-  }
-
-  /** @deprecated transitional */
-  _consumeNextInlineFiberId(): number {
-    return this.nextInlineFiberId--;
   }
 
   /**
@@ -324,13 +309,13 @@ export class BrainRuntime implements IBrainRuntime {
   }
 
   // -------------------------------------------------------------------------
-  // Activation / deactivation hook drivers -- called by Brain's FSM.
+  // Activation / deactivation hook drivers
   // -------------------------------------------------------------------------
 
   /**
    * Run the host-binding activation hook for a call site.
    */
-  public runHostActivationHook(callSiteId: number, onPageEntered: (ctx: ExecutionContext) => void): void {
+  private runHostActivationHook(callSiteId: number, onPageEntered: (ctx: ExecutionContext) => void): void {
     const executionContext = this.executionContext;
     const previousCallSiteId = executionContext.currentCallSiteId;
     const previousRuleFuncId = executionContext.currentRuleFuncId;
@@ -349,7 +334,7 @@ export class BrainRuntime implements IBrainRuntime {
   /**
    * Run the host-binding initializer hook for a call site.
    */
-  public runHostInitializerHook(callSiteId: number, onInitialized: (ctx: ExecutionContext) => void): void {
+  private runHostInitializerHook(callSiteId: number, onInitialized: (ctx: ExecutionContext) => void): void {
     const executionContext = this.executionContext;
     const previousCallSiteId = executionContext.currentCallSiteId;
     const previousRuleFuncId = executionContext.currentRuleFuncId;
@@ -368,7 +353,7 @@ export class BrainRuntime implements IBrainRuntime {
   /**
    * Run the bytecode initializer hook for an action.
    */
-  public runBytecodeInitializerHook(action: BytecodeExecutableAction, callSiteId: number): void {
+  private runBytecodeInitializerHook(action: BytecodeExecutableAction, callSiteId: number): void {
     if (action.initializerFuncId === undefined) return;
     this.runBytecodeHook(action, callSiteId, action.initializerFuncId, "initialization");
   }
@@ -376,7 +361,7 @@ export class BrainRuntime implements IBrainRuntime {
   /**
    * Run the bytecode activation hook for an action.
    */
-  public runBytecodeActivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
+  private runBytecodeActivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
     if (action.activationFuncId === undefined) return;
     this.runBytecodeHook(action, callSiteId, action.activationFuncId, "activation");
   }
@@ -384,7 +369,7 @@ export class BrainRuntime implements IBrainRuntime {
   /**
    * Run the bytecode deactivation hook for an action.
    */
-  public runBytecodeDeactivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
+  private runBytecodeDeactivationHook(action: BytecodeExecutableAction, callSiteId: number): void {
     if (action.deactivationFuncId === undefined) return;
     this.runBytecodeHook(action, callSiteId, action.deactivationFuncId, "deactivation");
   }
@@ -392,7 +377,7 @@ export class BrainRuntime implements IBrainRuntime {
   /**
    * Run the host-binding deactivation hook for a call site.
    */
-  public runHostDeactivationHook(callSiteId: number, onPageExited: (ctx: ExecutionContext) => void): void {
+  private runHostDeactivationHook(callSiteId: number, onPageExited: (ctx: ExecutionContext) => void): void {
     const executionContext = this.executionContext;
     const previousCallSiteId = executionContext.currentCallSiteId;
     const previousRuleFuncId = executionContext.currentRuleFuncId;
@@ -412,7 +397,7 @@ export class BrainRuntime implements IBrainRuntime {
    * Spawn a synchronous fiber for a hook function and run it to completion.
    * Throws a platform {@link Error} if the fiber faults or suspends.
    */
-  public runBytecodeHook(action: BytecodeExecutableAction, callSiteId: number, funcId: number, label: string): void {
+  private runBytecodeHook(action: BytecodeExecutableAction, callSiteId: number, funcId: number, label: string): void {
     const executionContext = this.executionContext;
     const vm = this.vm;
     const scheduler = this.scheduler;
@@ -470,6 +455,303 @@ export class BrainRuntime implements IBrainRuntime {
 
     this.variables = newValues;
     this.varSlotByName = newSlots;
+  }
+
+  // -------------------------------------------------------------------------
+  // Page lifecycle FSM
+  // -------------------------------------------------------------------------
+
+  /** Enable or disable the brain's tick loop. */
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+  }
+
+  /** Returns `true` if the brain is enabled. */
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
+  /** Pause execution until `clearInterrupt` is called. */
+  interrupt(): void {
+    this.interrupted = true;
+  }
+
+  /** Resume execution after a call to `interrupt`. */
+  clearInterrupt(): void {
+    this.interrupted = false;
+  }
+
+  /** Returns `true` if the brain has been interrupted and has not yet been cleared. */
+  isInterrupted(): boolean {
+    return this.interrupted;
+  }
+
+  /**
+   * Request a page change by zero-based page index. If `pageIndex` equals the
+   * current page, triggers a restart instead.
+   */
+  requestPageChange(pageIndex: number): void {
+    if (pageIndex < 0 || pageIndex >= this.pageMetadata.size()) {
+      this.desiredPageIndex = -1;
+      return;
+    }
+    if (pageIndex === this.currentPageIndex) {
+      this.requestPageRestart();
+      return;
+    }
+    this.desiredPageIndex = pageIndex;
+    this.cancelActiveFibers();
+  }
+
+  /** Request a page change by stable page identifier (UUID). */
+  requestPageChangeByPageId(pageId: string): void {
+    const idx = this.pageIdToIndex.get(pageId);
+    if (idx !== undefined) {
+      this.requestPageChange(idx);
+      return;
+    }
+    this.requestPageChangeByName(pageId);
+  }
+
+  /** Request a page change by page name. */
+  requestPageChangeByName(name: string): void {
+    const idx = this.pageNameToIndex.get(name);
+    if (idx !== undefined) {
+      this.requestPageChange(idx);
+      return;
+    }
+    this.requestPageChange(-1);
+  }
+
+  /** Request that the current page restart at the next tick. */
+  requestPageRestart(): void {
+    this.restartPageRequested = true;
+    this.cancelActiveFibers();
+  }
+
+  /** Returns the stable page identifier (UUID) of the current page, or `""` if none. */
+  getCurrentPageId(): string {
+    if (!this.isValidPageIndex(this.currentPageIndex)) return "";
+    const meta = this.pageMetadata.get(this.currentPageIndex);
+    return meta ? meta.pageId : "";
+  }
+
+  /** Returns the stable page identifier (UUID) of the most recently deactivated page. */
+  getPreviousPageId(): string {
+    if (!this.isValidPageIndex(this.previousPageIndex)) {
+      return this.getCurrentPageId();
+    }
+    const meta = this.pageMetadata.get(this.previousPageIndex);
+    return meta ? meta.pageId : this.getCurrentPageId();
+  }
+
+  /**
+   * Begin execution. Activates the first page and resets all FSM state.
+   * Must be called after construction and before `think`.
+   */
+  startup(): void {
+    this.currentPageIndex = this.desiredPageIndex = 0;
+    this.previousPageIndex = -1;
+    this.restartPageRequested = false;
+    this.lastThinkTime = 0;
+    this.interrupted = false;
+
+    if (this.pageMetadata.size() > 0) {
+      this.activatePage(0);
+    }
+  }
+
+  /**
+   * Halt execution. Runs deactivation hooks for the current page, cancels
+   * all active fibers, and clears callsite and variable state.
+   */
+  shutdown(): void {
+    this.deactivateCurrentPage();
+    this.vm.shutdown();
+    this.callsiteStore.clearAll();
+    this.ruleVariableStores.clear();
+    this.clearVariables();
+  }
+
+  /**
+   * Advance the brain by one tick.
+   *
+   * @param currentTime - Monotonically increasing wall-clock time in seconds.
+   */
+  think(currentTime: number): void {
+    if (!this.enabled || this.interrupted || !this.pageMetadata.size()) return;
+
+    if (this.restartPageRequested) {
+      this.restartPageRequested = false;
+    }
+
+    if (this.currentPageIndex !== this.desiredPageIndex) {
+      this.deactivateCurrentPage();
+
+      this.previousPageIndex = this.currentPageIndex;
+      this.currentPageIndex = this.desiredPageIndex;
+
+      if (this.isValidPageIndex(this.currentPageIndex)) {
+        this.activatePage(this.currentPageIndex);
+      }
+    }
+
+    if (this.isValidPageIndex(this.currentPageIndex)) {
+      const dt = this.lastThinkTime === 0 ? 0 : currentTime - this.lastThinkTime;
+      this.thinkPage(currentTime, dt);
+    }
+
+    this.lastThinkTime = currentTime;
+  }
+
+  /**
+   * Activate a page by running its action hooks and spawning fibers for root rules.
+   * Emits `page_activated` after fibers are spawned; the facade's event subscriber
+   * calls `BrainPage.activate()` synchronously inside the emit.
+   */
+  private activatePage(pageIndex: number): void {
+    const meta = this.pageMetadata.get(pageIndex);
+    if (!meta) return;
+
+    this.activeRuleFiberIds = List.empty();
+
+    for (let i = 0; i < meta.actionCallSites.size(); i++) {
+      const site = meta.actionCallSites.get(i)!;
+      const actions = this.program.actions;
+      const action = actions ? actions.get(site.actionSlot) : undefined;
+      if (!action) {
+        continue;
+      }
+
+      if (action.binding === "bytecode" && action.initializerFuncId !== undefined) {
+        const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
+        if (newlyAllocated) {
+          this.runBytecodeInitializerHook(action, site.callSiteId);
+        }
+      }
+
+      if (action.binding === "host") {
+        if (action.onInitialized) {
+          const newlyAllocated = this.callsiteStore.ensure(site.callSiteId);
+          if (newlyAllocated) {
+            this.runHostInitializerHook(site.callSiteId, action.onInitialized);
+          }
+        }
+        if (action.onPageEntered) {
+          this.runHostActivationHook(site.callSiteId, action.onPageEntered);
+        }
+        continue;
+      }
+
+      if (action.activationFuncId !== undefined) {
+        this.runBytecodeActivationHook(action, site.callSiteId);
+      }
+    }
+
+    this.executionContext.currentCallSiteId = undefined;
+    this.executionContext.currentRuleFuncId = undefined;
+
+    for (let i = 0; i < meta.rootRuleFuncIds.size(); i++) {
+      const funcId = meta.rootRuleFuncIds.get(i)!;
+      const fiberId = this.scheduler.spawn(funcId, List.empty(), this.executionContext);
+      this.activeRuleFiberIds.push({ funcId, fiberId });
+    }
+
+    this.emitter_.emit("page_activated", { pageIndex });
+  }
+
+  /**
+   * Cancel all active fibers for the current page.
+   */
+  private cancelActiveFibers(): void {
+    for (let i = 0; i < this.activeRuleFiberIds.size(); i++) {
+      const entry = this.activeRuleFiberIds.get(i)!;
+      if (entry.fiberId !== undefined) {
+        this.scheduler.cancel(entry.fiberId);
+      }
+    }
+  }
+
+  /**
+   * Deactivate the current page by running its actions' deactivation hooks
+   * and then cancelling its fibers. Emits `page_deactivated` after hooks and
+   * fiber-cancel; the facade's event subscriber calls `BrainPage.deactivate()`
+   * synchronously inside the emit.
+   */
+  private deactivateCurrentPage(): void {
+    this.runDeactivationHooksForCurrentPage();
+
+    this.cancelActiveFibers();
+    this.activeRuleFiberIds = List.empty();
+    this.executionContext.currentCallSiteId = undefined;
+    this.executionContext.currentRuleFuncId = undefined;
+
+    if (this.isValidPageIndex(this.currentPageIndex)) {
+      this.emitter_.emit("page_deactivated", { pageIndex: this.currentPageIndex });
+    }
+  }
+
+  private runDeactivationHooksForCurrentPage(): void {
+    if (!this.isValidPageIndex(this.currentPageIndex)) return;
+    const meta = this.pageMetadata.get(this.currentPageIndex);
+    if (!meta) return;
+
+    const actions = this.program.actions;
+    if (!actions) return;
+
+    for (let i = 0; i < meta.actionCallSites.size(); i++) {
+      const site = meta.actionCallSites.get(i)!;
+      const action = actions.get(site.actionSlot);
+      if (!action) continue;
+
+      if (action.binding === "host") {
+        if (action.onPageExited) {
+          this.runHostDeactivationHook(site.callSiteId, action.onPageExited);
+        }
+        continue;
+      }
+
+      if (action.deactivationFuncId !== undefined) {
+        this.runBytecodeDeactivationHook(action, site.callSiteId);
+      }
+    }
+  }
+
+  /**
+   * Execute one frame of the current page's rules.
+   */
+  private thinkPage(currentTime: number, dt: number): void {
+    this.executionContext.time = currentTime;
+    this.executionContext.dt = dt;
+    this.executionContext.currentTick += 1;
+
+    for (let i = 0; i < this.activeRuleFiberIds.size(); i++) {
+      const entry = this.activeRuleFiberIds.get(i)!;
+      const needsRespawn = this.shouldRespawnFiber(entry.fiberId);
+
+      if (needsRespawn) {
+        const newFiberId = this.scheduler.spawn(entry.funcId, List.empty(), this.executionContext);
+        entry.fiberId = newFiberId;
+      }
+    }
+
+    this.scheduler.tick();
+    this.scheduler.gc();
+  }
+
+  /**
+   * Check if a fiber needs to be respawned (completed, faulted, or cancelled).
+   */
+  private shouldRespawnFiber(fiberId: number | undefined): boolean {
+    if (fiberId === undefined) return true;
+    const fiber = this.scheduler.getFiber(fiberId);
+    if (!fiber) return true;
+
+    return fiber.state === FiberState.DONE || fiber.state === FiberState.FAULT || fiber.state === FiberState.CANCELLED;
+  }
+
+  private isValidPageIndex(pageIndex: number): boolean {
+    return pageIndex >= 0 && pageIndex < this.pageMetadata.size();
   }
 }
 
