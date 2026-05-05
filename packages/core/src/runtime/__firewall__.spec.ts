@@ -7,6 +7,13 @@
  * the rule defined in `packages/core/.dependency-cruiser.cjs` and
  * asserts the live violation count equals `BASELINE_VIOLATIONS`.
  *
+ * The canonical load-bearing example of a runtime-side consumer is
+ * `runtime/brain-runtime.ts`: it holds the full page-lifecycle FSM,
+ * VM, scheduler, and variable storage, yet value-imports nothing from
+ * `brain/`. Any change that adds a value-import from `brain/` to any
+ * file under `runtime/` will increment the violation count and fail
+ * this test.
+ *
  * A separate self-test asserts the rule fires against a synthetic
  * fixture that imports a `brain/` value from under `runtime/`. The
  * self-test guards against silently-passing misconfiguration (wrong

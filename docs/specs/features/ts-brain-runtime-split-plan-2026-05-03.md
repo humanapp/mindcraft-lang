@@ -487,8 +487,8 @@ Each unit must:
 
 ## Current State
 
-Completed: A0, B0, B1, B2, B3, B4, B5, B6
-Next up: B7
+Completed: A0, B0, B1, B2, B3, B4, B5, B6, B7
+Next up: B8
 
 ---
 
@@ -669,6 +669,28 @@ Verification: full gate green (752/752 tests).
   The import is required for the `getVariable<T extends Value>` and
   `setVariable(varId: string, value: Value)` method signatures; it was retained.
   No behavioral gap; no follow-up action needed.
+
+### B7 -- Lock-In: Greppable Acceptance And Self-Test
+
+Firewall test doc-comment updated to name `runtime/brain-runtime.ts` as the
+canonical runtime-side consumer. Runtime-only self-test added: constructs
+`BrainRuntime` from a hand-built `Program` with no compile / link / treeshake
+call; import set rooted at `runtime/` and `platform/` only.
+
+New contract surface: none.
+
+Verification: full gate green (758/758 tests).
+
+#### Risks
+
+- `brain-runtime.spec.ts` constructs a `Program` literal inline. If the
+  `Program` shape changes (new required field, renamed field), the self-test
+  must be updated in the same diff -- failure to do so produces a
+  compile-time error, not a silent behavioral regression.
+- The `before()` structural assertion enumerates all 11 `PlatformServices`
+  tier/leaf members explicitly. If a new tier or leaf is added to the
+  contract, the assertion must be updated in the same diff or it silently
+  under-validates the factory output.
 
 ---
 
