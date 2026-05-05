@@ -487,8 +487,8 @@ Each unit must:
 
 ## Current State
 
-Completed: A0, B0, B1, B2, B3, B4, B5
-Next up: B6
+Completed: A0, B0, B1, B2, B3, B4, B5, B6
+Next up: B7
 
 ---
 
@@ -646,6 +646,29 @@ Verification: full gate green (752/752 tests).
   `setVariableBySlot` remains internal (slot writes are unsafe to expose).
   B6 and later must keep `getVariableBySlot` on `IBrainRuntime`; removing it
   re-opens the coverage gap.
+
+### B6 -- Reduce `Brain` To A Facade
+
+Subscription handles for the page-lifecycle event bridge (registered in
+`initialize()`) are now stored in a `unsubs: List<() => void>` field
+and torn down unconditionally in `shutdown()`. The facade field set and
+delegation pattern are otherwise unchanged from B5.
+
+Verification: full gate green (752/752 tests).
+
+#### Risks
+
+- `Brain.initialize()` pushes new subscriptions each call without first
+  clearing the list. If called twice without an intervening `shutdown()`,
+  the list grows with stale entries that reference a dropped emitter (GC-safe,
+  no double-fire). `ManagedMindcraftBrain` guards against this by always
+  calling `super.shutdown()` before `super.initialize()`. B7 and B8 do not
+  touch `Brain`; any future caller that skips `shutdown()` before re-init
+  will accumulate dead closures.
+- The spec's import audit listed `Value` as an import to remove from `brain.ts`.
+  The import is required for the `getVariable<T extends Value>` and
+  `setVariable(varId: string, value: Value)` method signatures; it was retained.
+  No behavioral gap; no follow-up action needed.
 
 ---
 

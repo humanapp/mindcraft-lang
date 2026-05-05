@@ -18,23 +18,10 @@ import { BrainPage } from "./page";
 import type { BrainServices } from "./services";
 
 /**
- * Brain runtime instance.
- *
- * The Brain serves as the central execution engine for all rules.
- * It owns a single VM and FiberScheduler that execute the compiled BrainProgram.
- *
- * Architecture: Each Rule = One Function
- * - The entire brain is compiled into a single BrainProgram
- * - Each rule becomes a function in the program
- * - The Brain owns one VM instance and one FiberScheduler
- * - Variables are stored at the Brain level (shared across all rules)
- * - Page switching spawns fibers for the new page's root rules
- *
- * Execution Model:
- * - On page activation, spawn fibers for each root rule in the page
- * - Each frame, tick the scheduler to execute fibers
- * - When a rule's WHEN is true, it executes DO and then CALLs child rules
- * - Fibers that complete are respawned on the next frame
+ * Authoring-side facade for a compiled Mindcraft brain. Compiles a
+ * {@link IBrainDef} through the compile, link, and treeshake pipeline,
+ * then constructs a {@link BrainRuntime} from the resulting program and
+ * delegates all runtime operations to it.
  */
 export class Brain implements IBrain {
   /** Runtime page instances */
@@ -47,6 +34,9 @@ export class Brain implements IBrain {
    * Unlinked program emitted by the brain compiler.
    */
   private compiledProgram: UnlinkedBrainProgram | undefined;
+
+  /** Unsubscribe callbacks for the page-lifecycle event bridge registered in {@link initialize}. */
+  private readonly unsubs: List<() => void> = new List<() => void>();
 
   constructor(
     public readonly brainDef: IBrainDef,
@@ -89,26 +79,23 @@ export class Brain implements IBrain {
       page.assignFuncIds(ruleIndex, pageIdx);
     }
 
-    this.runtime = new BrainRuntime(
-      program,
-      pageMetadata,
-      { runtime: this.services.runtime, shared: this.services.shared, app: this.services.app },
-      contextData,
-      previousVariables
-    );
+    const hostServices = {
+      runtime: this.services.runtime,
+      shared: this.services.shared,
+      app: this.services.app,
+    };
+    this.runtime = new BrainRuntime(program, pageMetadata, hostServices, contextData, previousVariables);
 
-    this.runtime.events().on("page_activated", ({ pageIndex }) => {
-      const page = this.pages.get(pageIndex);
-      if (page) {
-        page.activate();
-      }
-    });
-    this.runtime.events().on("page_deactivated", ({ pageIndex }) => {
-      const page = this.pages.get(pageIndex);
-      if (page) {
-        page.deactivate();
-      }
-    });
+    this.unsubs.push(
+      this.runtime.events().on("page_activated", ({ pageIndex }) => {
+        this.pages.get(pageIndex)?.activate();
+      })
+    );
+    this.unsubs.push(
+      this.runtime.events().on("page_deactivated", ({ pageIndex }) => {
+        this.pages.get(pageIndex)?.deactivate();
+      })
+    );
   }
 
   /**
@@ -234,6 +221,10 @@ export class Brain implements IBrain {
 
   shutdown(): void {
     this.runtime?.shutdown();
+    this.unsubs.forEach((fn) => {
+      fn();
+    });
+    this.unsubs.clear();
   }
 
   think(currentTime: number): void {
