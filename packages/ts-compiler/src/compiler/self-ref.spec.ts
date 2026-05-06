@@ -66,7 +66,10 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource, services });
+    const result = compileUserTile(source, {
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = services.runtime.types;
@@ -104,7 +107,10 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource, services });
+    const result = compileUserTile(source, {
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -146,7 +152,10 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource, services });
+    const result = compileUserTile(source, {
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
 
     const registry = services.runtime.types;
@@ -197,7 +206,10 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource, services });
+    const result = compileUserTile(source, {
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -236,7 +248,10 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource, services });
+    const result = compileUserTile(source, {
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 
@@ -280,7 +295,10 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource, services });
+    const result = compileUserTile(source, {
+      ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }],
+      services,
+    });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program);
 

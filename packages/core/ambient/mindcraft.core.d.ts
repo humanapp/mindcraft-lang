@@ -1,17 +1,4 @@
-import type {
-  EnumTypeDef,
-  FunctionTypeDef,
-  ITypeRegistry,
-  ListTypeDef,
-  MapTypeDef,
-  NullableTypeDef,
-  StructTypeDef,
-  TypeDef,
-  UnionTypeDef,
-} from "@mindcraft-lang/core/runtime";
-import { NativeType } from "@mindcraft-lang/core/runtime";
-
-const AMBIENT_HEADER = `/// <reference no-default-lib="true"/>
+/// <reference no-default-lib="true"/>
 
 declare var NaN: number;
 declare var Infinity: number;
@@ -319,17 +306,43 @@ type Lowercase<S extends string> = intrinsic;
 type Capitalize<S extends string> = intrinsic;
 type Uncapitalize<S extends string> = intrinsic;
 type NoInfer<T> = intrinsic;
-`;
 
-const AMBIENT_MODULE_START = `
 declare module "mindcraft" {
   interface MindcraftTypeMap {
     boolean: boolean;
     number: number;
     string: string;
-`;
+    AnyList: AnyList;
+    BrainContext: BrainContext;
+    EngineContext: EngineContext;
+    RuleContext: RuleContext;
+    Context: Context;
+  }
 
-const AMBIENT_MODULE_END = `
+  export type AnyList = Array<MindcraftValue>;
+  export interface BrainContext {
+    readonly __brand: unique symbol;
+    getVariable(name: string): MindcraftValue;
+    setVariable(name: string, value: MindcraftValue): void;
+  }
+  export interface EngineContext {
+    readonly __brand: unique symbol;
+  }
+  export interface RuleContext {
+    readonly __brand: unique symbol;
+    getVariable(name: string): MindcraftValue;
+    setVariable(name: string, value: MindcraftValue): void;
+  }
+  export interface Context extends MindcraftPlatformContext {
+    readonly __brand: unique symbol;
+    readonly time: number;
+    readonly dt: number;
+    readonly tick: number;
+    readonly brain: BrainContext;
+    readonly engine: EngineContext;
+    readonly rule: RuleContext;
+  }
+
   type MindcraftValue = MindcraftTypeMap[keyof MindcraftTypeMap];
   type MindcraftType = keyof MindcraftTypeMap | (string & {});
 
@@ -393,245 +406,4 @@ const AMBIENT_MODULE_END = `
 
   export function Sensor(config: SensorConfig): unknown;
   export function Actuator(config: ActuatorConfig): unknown;
-}
-`;
-
-function isStructTypeDef(def: TypeDef): def is StructTypeDef {
-  return def.coreType === NativeType.Struct;
-}
-
-function isNativeBacked(def: StructTypeDef): boolean {
-  return def.fieldGetter !== undefined || def.fieldSetter !== undefined || def.snapshotNative !== undefined;
-}
-
-function typeDefToTs(def: TypeDef, registry: ITypeRegistry): string {
-  if (def.nullable) {
-    const baseDef = registry.get((def as NullableTypeDef).baseTypeId);
-    if (!baseDef) return "unknown";
-    return `${typeDefToTs(baseDef, registry)} | null`;
-  }
-  if (def.coreType === NativeType.Union) {
-    const parts: string[] = [];
-    (def as UnionTypeDef).memberTypeIds.forEach((mid) => {
-      parts.push(typeIdToTs(mid, registry));
-    });
-    return parts.join(" | ");
-  }
-  switch (def.coreType) {
-    case NativeType.Void:
-      return "void";
-    case NativeType.Nil:
-      return "null";
-    case NativeType.Boolean:
-      return "boolean";
-    case NativeType.Number:
-      return "number";
-    case NativeType.String:
-      return "string";
-    case NativeType.Any:
-      return "MindcraftValue";
-    case NativeType.Struct:
-    case NativeType.Enum:
-      return def.name;
-    case NativeType.List: {
-      const elemTs = typeIdToTs((def as ListTypeDef).elementTypeId, registry);
-      return `Array<${elemTs}>`;
-    }
-    case NativeType.Map: {
-      const mapDef = def as MapTypeDef;
-      const keyTs = typeIdToTs(mapDef.keyTypeId, registry);
-      const valTs = typeIdToTs(mapDef.valueTypeId, registry);
-      return `Map<${keyTs}, ${valTs}>`;
-    }
-    case NativeType.Function: {
-      const fnDef = def as FunctionTypeDef;
-      if (fnDef.paramTypeIds) {
-        const params: string[] = [];
-        let i = 0;
-        fnDef.paramTypeIds.forEach((pid) => {
-          params.push(`arg${i}: ${typeIdToTs(pid, registry)}`);
-          i++;
-        });
-        return `(${params.join(", ")}) => ${typeIdToTs(fnDef.returnTypeId, registry)}`;
-      }
-      return "Function";
-    }
-    default:
-      return "unknown";
-  }
-}
-
-function typeIdToTs(typeId: string, registry: ITypeRegistry): string {
-  const def = registry.get(typeId);
-  if (!def) return "unknown";
-  return typeDefToTs(def, registry);
-}
-
-function needsQuoting(name: string): boolean {
-  return !/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name);
-}
-
-function propertyName(name: string): string {
-  return needsQuoting(name) ? JSON.stringify(name) : name;
-}
-
-function generateStructInterface(def: StructTypeDef, registry: ITypeRegistry): string {
-  const nativeBacked = isNativeBacked(def);
-  const hasPerFieldReadOnly = def.fields.some((f) => f.readOnly === true);
-  const extension = def.name === "Context" ? " extends MindcraftPlatformContext" : "";
-  let result = `  export interface ${def.name}${extension} {\n`;
-  if (nativeBacked) {
-    result += "    readonly __brand: unique symbol;\n";
-  }
-  def.fields.forEach((field) => {
-    const tsType = typeIdToTs(field.typeId, registry);
-    const fieldName = propertyName(field.name);
-    const isReadOnly = hasPerFieldReadOnly ? field.readOnly === true : nativeBacked;
-    if (isReadOnly) {
-      result += `    readonly ${fieldName}: ${tsType};\n`;
-    } else {
-      result += `    ${fieldName}: ${tsType};\n`;
-    }
-  });
-  def.methods?.forEach((method) => {
-    const params: string[] = [];
-    method.params.forEach((p) => {
-      params.push(`${p.name}: ${typeIdToTs(p.typeId, registry)}`);
-    });
-    const returnType = typeIdToTs(method.returnTypeId, registry);
-    const fullReturn = method.isAsync ? `Promise<${returnType}>` : returnType;
-    result += `    ${method.name}(${params.join(", ")}): ${fullReturn};\n`;
-  });
-  result += "  }\n";
-  return result;
-}
-
-const CORE_TYPE_NAMES = new Set(["boolean", "number", "string", "void", "nil", "unknown", "any"]);
-
-function isEnumTypeDef(def: TypeDef): def is EnumTypeDef {
-  return def.coreType === NativeType.Enum;
-}
-
-function generateEnumType(def: EnumTypeDef): string {
-  const members: string[] = [];
-  def.symbols.forEach((sym) => {
-    members.push(`"${sym.key}"`);
-  });
-  return `  export type ${def.name} = ${members.join(" | ") || "never"};\n`;
-}
-
-interface AmbientTypeDeclarationParts {
-  typeDeclarations: string;
-  typeMapEntries: string;
-}
-
-function buildAmbientDeclarationParts(
-  registry: ITypeRegistry,
-  includeDef: (def: TypeDef) => boolean
-): AmbientTypeDeclarationParts {
-  let typeDeclarations = "";
-  let typeMapEntries = "";
-
-  for (const [, def] of registry.entries()) {
-    if (CORE_TYPE_NAMES.has(def.name)) continue;
-    if (def.autoInstantiated) continue;
-    if (def.name.includes("::")) continue;
-    if (!includeDef(def)) continue;
-
-    if (def.nullable) {
-      const tsType = typeDefToTs(def, registry);
-      typeMapEntries += `    ${propertyName(def.name)}: ${tsType};\n`;
-    } else if (isStructTypeDef(def)) {
-      typeDeclarations += generateStructInterface(def, registry);
-      typeMapEntries += `    ${propertyName(def.name)}: ${def.name};\n`;
-    } else if (isEnumTypeDef(def)) {
-      typeDeclarations += generateEnumType(def);
-      typeMapEntries += `    ${propertyName(def.name)}: ${def.name};\n`;
-    } else if (
-      def.coreType === NativeType.Boolean ||
-      def.coreType === NativeType.Number ||
-      def.coreType === NativeType.String
-    ) {
-      typeMapEntries += `    ${propertyName(def.name)}: ${typeDefToTs(def, registry)};\n`;
-    } else if (def.coreType === NativeType.List) {
-      const tsType = typeDefToTs(def, registry);
-      typeDeclarations += `  export type ${def.name} = ${tsType};\n`;
-      typeMapEntries += `    ${propertyName(def.name)}: ${def.name};\n`;
-    }
-  }
-
-  return { typeDeclarations, typeMapEntries };
-}
-
-function buildAmbientDeclarationsFromRegistry(registry: ITypeRegistry): string {
-  const parts = buildAmbientDeclarationParts(registry, () => true);
-  return `${AMBIENT_HEADER}${AMBIENT_MODULE_START}${parts.typeMapEntries}  }\n\n${parts.typeDeclarations}${AMBIENT_MODULE_END}`;
-}
-
-function findField(def: StructTypeDef, name: string) {
-  for (let i = 0; i < def.fields.size(); i++) {
-    const field = def.fields.get(i);
-    if (field?.name === name) return field;
-  }
-  return undefined;
-}
-
-function hasMethod(def: StructTypeDef, name: string): boolean {
-  if (!def.methods) return false;
-  for (let i = 0; i < def.methods.size(); i++) {
-    if (def.methods.get(i)?.name === name) return true;
-  }
-  return false;
-}
-
-function generateStructAugmentation(def: StructTypeDef, baseDef: StructTypeDef, registry: ITypeRegistry): string {
-  let body = "";
-  const hasPerFieldReadOnly = def.fields.some((f) => f.readOnly === true);
-  def.fields.forEach((field) => {
-    if (findField(baseDef, field.name) !== undefined) return;
-    const tsType = typeIdToTs(field.typeId, registry);
-    const fieldName = propertyName(field.name);
-    const isReadOnly = hasPerFieldReadOnly ? field.readOnly === true : isNativeBacked(def);
-    body += isReadOnly ? `    readonly ${fieldName}: ${tsType};\n` : `    ${fieldName}: ${tsType};\n`;
-  });
-  def.methods?.forEach((method) => {
-    if (hasMethod(baseDef, method.name)) return;
-    const params: string[] = [];
-    method.params.forEach((p) => {
-      params.push(`${p.name}: ${typeIdToTs(p.typeId, registry)}`);
-    });
-    const returnType = typeIdToTs(method.returnTypeId, registry);
-    const fullReturn = method.isAsync ? `Promise<${returnType}>` : returnType;
-    body += `    ${method.name}(${params.join(", ")}): ${fullReturn};\n`;
-  });
-  if (body.length === 0) return "";
-  return `  export interface ${def.name} {\n${body}  }\n`;
-}
-
-function buildStructAugmentations(baseRegistry: ITypeRegistry, platformRegistry: ITypeRegistry): string {
-  let result = "";
-  for (const [typeId, def] of platformRegistry.entries()) {
-    if (!isStructTypeDef(def)) continue;
-    const baseDef = baseRegistry.get(typeId);
-    if (!baseDef || !isStructTypeDef(baseDef)) continue;
-    result += generateStructAugmentation(def, baseDef, platformRegistry);
-  }
-  return result;
-}
-
-/** Generate the ambient `.d.ts` source that exposes the host's registered types and functions to the user-tile compiler. */
-export function buildAmbientDeclarations(types: ITypeRegistry): string {
-  return buildAmbientDeclarationsFromRegistry(types);
-}
-
-/** Generate the core ambient declaration file for a registry containing only core Mindcraft types. */
-export function buildCoreAmbientDeclarations(types: ITypeRegistry): string {
-  return buildAmbientDeclarationsFromRegistry(types);
-}
-
-/** Generate a platform ambient declaration file that augments the core Mindcraft module declarations. */
-export function buildPlatformAmbientDeclarations(baseTypes: ITypeRegistry, platformTypes: ITypeRegistry): string {
-  const parts = buildAmbientDeclarationParts(platformTypes, (def) => baseTypes.get(def.typeId) === undefined);
-  const augmentations = buildStructAugmentations(baseTypes, platformTypes);
-  return `declare module "mindcraft" {\n  interface MindcraftTypeMap {\n${parts.typeMapEntries}  }\n\n${parts.typeDeclarations}${augmentations}}\n`;
 }

@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2020"],
+    "strict": true,
+    "noEmit": true,
+    "types": []
+  },
+  "files": ["mindcraft.sim.d.ts"]
+}

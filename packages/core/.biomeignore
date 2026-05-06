@@ -3,4 +3,4 @@ dist/
 generated-docs/
 node_modules/
 scripts/
-*.d.ts
+ambient/

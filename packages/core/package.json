@@ -61,6 +61,9 @@
       },
       "default": "./dist/rbx/init.luau"
     },
+    "./ambient/mindcraft.core.d.ts": {
+      "default": "./ambient/mindcraft.core.d.ts"
+    },
     "./app": {
       "node": {
         "import": {
@@ -408,6 +411,7 @@
   },
   "files": [
     "dist",
+    "ambient",
     "README.md"
   ],
   "scripts": {
@@ -416,6 +420,8 @@
     "build:node": "tsc -p tsconfig.node.json && node scripts/post-build-node.js",
     "build:esm": "tsc --build --force tsconfig.esm.json && node scripts/post-build-esm.js",
     "build:rbx": "rbxtsc --type package --project tsconfig.rbx.json && node scripts/post-build-rbx.js",
+    "pregenerate:ambient": "npm run build:node && npm run build:prod --prefix ../ts-compiler",
+    "generate:ambient": "tsx --tsconfig scripts/tsconfig.json scripts/generate-ambient.ts",
     "watch:rbx": "node scripts/watch-rbx.js",
     "clean": "rm -rf ./dist",
     "lint:only": "biome lint ./src",
@@ -423,7 +429,7 @@
     "format:only": "biome format ./src",
     "lint": "biome lint ./src --write",
     "check": "biome check ./src --write",
-    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.spec.json",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.spec.json && tsc --noEmit -p ambient/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
     "format": "biome format ./src --write",
     "pretest": "npm run build:node",
     "test": "tsx --tsconfig tsconfig.node.json --test $(find src -name '*.spec.ts')",

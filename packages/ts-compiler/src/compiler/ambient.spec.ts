@@ -71,7 +71,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource: ambient, services });
+    const result = compileUserTile(source, { ambientFiles: [{ path: "ambient.d.ts", content: ambient }], services });
     assert.ok(result.diagnostics.length > 0, "should have diagnostics due to brand mismatch");
   });
 
@@ -91,7 +91,7 @@ export default Sensor({
   },
 });
 `;
-    const result = compileUserTile(source, { ambientSource: ambient, services });
+    const result = compileUserTile(source, { ambientFiles: [{ path: "ambient.d.ts", content: ambient }], services });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);
     assert.ok(result.program, "expected program to be produced");
   });

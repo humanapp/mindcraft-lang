@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "noLib": true,
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["mindcraft.core.d.ts"]
+}

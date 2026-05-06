@@ -1,3 +1,10 @@
+/**
+ * This file is non-authoritative. It was copied from packages/core/ambient.
+ * Re-generate and re-copy here whenever you notice it is out of date.
+ * This file is not shipped and not used in production. It exists solely to
+ * provide types for the examples.
+ */
+
 /// <reference no-default-lib="true"/>
 
 declare var NaN: number;
@@ -9,17 +16,17 @@ declare function isNaN(number: number): boolean;
 declare function isFinite(number: number): boolean;
 
 /** @deprecated Not supported in Mindcraft Runtime */
-interface Object {}
+type Object = {};
 /** @deprecated Not supported in Mindcraft Runtime */
-interface Function {}
+type Function = {};
 /** @deprecated Not supported in Mindcraft Runtime */
-interface CallableFunction {}
+type CallableFunction = {};
 /** @deprecated Not supported in Mindcraft Runtime */
-interface NewableFunction {}
+type NewableFunction = {};
 /** @deprecated Not supported in Mindcraft Runtime */
-interface IArguments {}
+type IArguments = {};
 /** @deprecated Not supported in Mindcraft Runtime */
-interface RegExp {}
+type RegExp = {};
 
 interface SymbolConstructor {
   readonly iterator: unique symbol;
@@ -268,7 +275,9 @@ interface Promise<T> {
 }
 
 declare var Promise: {
-  new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: unknown) => void) => void): Promise<T>;
+  new <T>(
+    executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: unknown) => void) => void
+  ): Promise<T>;
 };
 
 type Partial<T> = { [P in keyof T]?: T[P] };
@@ -315,31 +324,23 @@ declare module "mindcraft" {
     EngineContext: EngineContext;
     RuleContext: RuleContext;
     Context: Context;
-    Vector2: Vector2;
-    ActorRef: ActorRef;
-    ActorRef?: ActorRef | null;
-    Vector2?: Vector2 | null;
   }
 
-  export type AnyList = Array<number | string | boolean | null>;
+  export type AnyList = Array<MindcraftValue>;
   export interface BrainContext {
     readonly __brand: unique symbol;
-    getVariable(name: string): MindcraftValue | null;
+    getVariable(name: string): MindcraftValue;
     setVariable(name: string, value: MindcraftValue): void;
-    getTargetActor(): ActorRef | null;
-    getTargetPosition(): Vector2 | null;
   }
   export interface EngineContext {
     readonly __brand: unique symbol;
-    getActorsByArchetype(archetype: string): Array<ActorRef>;
-    getActorById(id: number): ActorRef;
   }
   export interface RuleContext {
     readonly __brand: unique symbol;
-    getVariable(name: string): MindcraftValue | null;
+    getVariable(name: string): MindcraftValue;
     setVariable(name: string, value: MindcraftValue): void;
   }
-  export interface Context {
+  export interface Context extends MindcraftPlatformContext {
     readonly __brand: unique symbol;
     readonly time: number;
     readonly dt: number;
@@ -347,43 +348,34 @@ declare module "mindcraft" {
     readonly brain: BrainContext;
     readonly engine: EngineContext;
     readonly rule: RuleContext;
-    readonly self: ActorRef;
-  }
-  export interface Vector2 {
-    x: number;
-    y: number;
-    add(other: Vector2): Vector2;
-    sub(other: Vector2): Vector2;
-    mul(scalar: number): Vector2;
-    div(scalar: number): Vector2;
-    dot(other: Vector2): number;
-    cross(other: Vector2): number;
-    magnitude(): number;
-    normalize(): Vector2;
-    distance(other: Vector2): number;
-    lerp(goal: Vector2, alpha: number): Vector2;
-    angle(other: Vector2): number;
-    rotate(angle: number): Vector2;
-  }
-  export interface ActorRef {
-    readonly __brand: unique symbol;
-    readonly id: number;
-    position: Vector2;
-    rotation: number;
-    readonly "energy pct": number;
-    readonly forward: Vector2;
   }
 
   type MindcraftValue = MindcraftTypeMap[keyof MindcraftTypeMap];
   type MindcraftType = keyof MindcraftTypeMap | (string & {});
 
-  interface ModifierSpec { readonly __brand: "modifier" }
-  interface ParamSpec { readonly __brand: "param" }
-  interface ChoiceSpec { readonly __brand: "choice" }
-  interface OptionalSpec { readonly __brand: "optional" }
-  interface RepeatedSpec { readonly __brand: "repeated" }
-  interface ConditionalSpec { readonly __brand: "conditional" }
-  interface SeqSpec { readonly __brand: "seq" }
+  export interface MindcraftPlatformContext {}
+
+  interface ModifierSpec {
+    readonly __brand: "modifier";
+  }
+  interface ParamSpec {
+    readonly __brand: "param";
+  }
+  interface ChoiceSpec {
+    readonly __brand: "choice";
+  }
+  interface OptionalSpec {
+    readonly __brand: "optional";
+  }
+  interface RepeatedSpec {
+    readonly __brand: "repeated";
+  }
+  interface ConditionalSpec {
+    readonly __brand: "conditional";
+  }
+  interface SeqSpec {
+    readonly __brand: "seq";
+  }
   type ArgSpec = ModifierSpec | ParamSpec | ChoiceSpec | OptionalSpec | RepeatedSpec | ConditionalSpec | SeqSpec;
 
   export function modifier(id: string, opts?: { label: string; icon?: string }): ModifierSpec;

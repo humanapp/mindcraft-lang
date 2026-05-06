@@ -52,7 +52,7 @@ function mkScheduler(): Scheduler {
 
 function compileProject(files: Record<string, string>) {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientSource, services });
+  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }
@@ -675,7 +675,10 @@ describe("multi-file: enum recompilation cleanup", () => {
   });
 
   test("deleting a user enum removes its registered type and derived artifacts", () => {
-    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations(services.runtime.types), services });
+    const project = new UserTileProject({
+      ambientFiles: [{ path: "ambient.d.ts", content: buildAmbientDeclarations(services.runtime.types) }],
+      services,
+    });
     project.setFiles(
       new Map(
         Object.entries({
@@ -742,7 +745,10 @@ export default Sensor({
   });
 
   test("changing a user enum between numeric and string forms refreshes conversions", () => {
-    const project = new UserTileProject({ ambientSource: buildAmbientDeclarations(services.runtime.types), services });
+    const project = new UserTileProject({
+      ambientFiles: [{ path: "ambient.d.ts", content: buildAmbientDeclarations(services.runtime.types) }],
+      services,
+    });
     project.setFiles(
       new Map(
         Object.entries({

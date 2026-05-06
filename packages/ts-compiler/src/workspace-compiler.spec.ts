@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { coreModule, createMindcraftEnvironment, List, type MindcraftModule } from "@mindcraft-lang/core";
 import { type EnumTypeDef, mkTypeId, NativeType } from "@mindcraft-lang/core/runtime";
+import { buildAmbientDeclarations } from "./compiler/ambient.js";
+import type { AmbientFile } from "./compiler/types.js";
 import { createWorkspaceCompiler, type WorkspaceCompileResult } from "./workspace-compiler.js";
 
 const noopCodec = {
@@ -34,12 +36,25 @@ function createFacingModule(): MindcraftModule {
   };
 }
 
+function ambientFilesFor(environment: ReturnType<typeof createMindcraftEnvironment>): readonly AmbientFile[] {
+  return [
+    {
+      path: "mindcraft.core.d.ts",
+      content: buildAmbientDeclarations(environment.brainServices.runtime.types),
+    },
+    {
+      path: "mindcraft.sim.d.ts",
+      content: "",
+    },
+  ];
+}
+
 describe("createWorkspaceCompiler", () => {
   test("binds ambient generation and bundle output to the provided environment", () => {
     const environment = createMindcraftEnvironment({
       modules: [coreModule(), createFacingModule()],
     });
-    const compiler = createWorkspaceCompiler({ environment });
+    const compiler = createWorkspaceCompiler({ ambientFiles: ambientFilesFor(environment), environment });
     let heardResult: WorkspaceCompileResult | undefined;
 
     compiler.onDidCompile((result: WorkspaceCompileResult) => {
@@ -80,16 +95,25 @@ export default Sensor({
     const environment = createMindcraftEnvironment({
       modules: [coreModule(), createFacingModule()],
     });
-    const compiler = createWorkspaceCompiler({ environment });
+    const compiler = createWorkspaceCompiler({ ambientFiles: ambientFilesFor(environment), environment });
 
     compiler.replaceWorkspace(
       new Map([
         [
-          "mindcraft.d.ts",
+          "mindcraft.core.d.ts",
           {
             kind: "file",
             content: 'declare module "mindcraft" { export type Broken = ; }',
             etag: "etag-ambient",
+            isReadonly: true,
+          },
+        ],
+        [
+          "mindcraft.sim.d.ts",
+          {
+            kind: "file",
+            content: 'declare module "mindcraft" { export type AlsoBroken = ; }',
+            etag: "etag-sim-ambient",
             isReadonly: true,
           },
         ],
@@ -127,11 +151,25 @@ export default Sensor({
     const result = compiler.compile();
     const sourceDiagnostics = result.files.get("sensors/look.ts") ?? [];
 
-    assert.equal(result.files.get("mindcraft.d.ts"), undefined);
+    assert.equal(result.files.get("mindcraft.core.d.ts"), undefined);
+    assert.equal(result.files.get("mindcraft.sim.d.ts"), undefined);
     assert.equal(result.files.get("tsconfig.json"), undefined);
     assert.ok(
       sourceDiagnostics.some((diagnostic) => diagnostic.message.includes("implicitly has an 'any' type")),
       `Expected strict-mode implicit any diagnostic, got ${JSON.stringify(sourceDiagnostics)}`
     );
+  });
+
+  test("returns host ambient files and tsconfig as compiler-controlled files", () => {
+    const environment = createMindcraftEnvironment({
+      modules: [coreModule(), createFacingModule()],
+    });
+    const ambientFiles = ambientFilesFor(environment);
+    const compiler = createWorkspaceCompiler({ ambientFiles, environment });
+    const controlledFiles = compiler.getCompilerControlledFiles();
+
+    assert.equal(controlledFiles.get("mindcraft.core.d.ts"), ambientFiles[0]!.content);
+    assert.equal(controlledFiles.get("mindcraft.sim.d.ts"), ambientFiles[1]!.content);
+    assert.ok(controlledFiles.get("tsconfig.json")?.includes('"strict": true'));
   });
 });

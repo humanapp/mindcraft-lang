@@ -358,10 +358,10 @@ export default Sensor({
   onExecute(ctx: Context): ActorRef {
     return { id: 0 };
   },
-});
+    });
 `;
     const result = compileUserTile(source, {
-      ambientSource: appAmbient,
+      ambientFiles: [{ path: "ambient.d.ts", content: appAmbient }],
       services,
     });
     assert.deepStrictEqual(result.diagnostics, [], `Unexpected diagnostics: ${JSON.stringify(result.diagnostics)}`);

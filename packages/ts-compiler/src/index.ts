@@ -1,8 +1,14 @@
-export { buildAmbientDeclarations } from "./compiler/ambient.js";
+export {
+  buildAmbientDeclarations,
+  buildCoreAmbientDeclarations,
+  buildPlatformAmbientDeclarations,
+} from "./compiler/ambient.js";
 export type {
+  AmbientFile,
   CompileDiagnostic,
   CompileOptions,
   CompileResult,
+  CompilerControlledPathOptions,
   ExtractedArgSpec,
   ExtractedChoice,
   ExtractedConditional,

@@ -18,6 +18,7 @@ import type {
 } from "./lowering.js";
 import { lowerProgram, qualifiedClassName } from "./lowering.js";
 import type {
+  AmbientFile,
   CallSiteInfo,
   CompileDiagnostic,
   CompileOptions,
@@ -64,7 +65,9 @@ export interface ProjectCompileResult {
   tsErrors: Map<string, CompileDiagnostic[]>;
 }
 
-const LIB_FILE = "/lib/lib.mindcraft.d.ts";
+export const COMPILER_CONTROLLED_TSCONFIG_PATH = "tsconfig.json";
+const DEFAULT_AMBIENT_PATH = "ambient.d.ts";
+type UserTileProjectOptions = CompileOptions | { services: BrainServices; ambientFiles?: undefined };
 
 const checkerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ES2016,
@@ -72,6 +75,7 @@ const checkerOptions: ts.CompilerOptions = {
   moduleResolution: ts.ModuleResolutionKind.Bundler,
   strict: true,
   noEmit: true,
+  noLib: true,
   skipLibCheck: true,
 };
 
@@ -129,10 +133,17 @@ function normalizeWorkspacePath(path: string): string {
   return path.startsWith("/") ? path.slice(1) : path;
 }
 
-/** True for paths the workspace compiler synthesizes (`mindcraft.d.ts`, `tsconfig.json`). */
-export function isCompilerControlledPath(path: string): boolean {
+/** Options for identifying compiler-controlled files in a host workspace. */
+export interface CompilerControlledPathOptions {
+  /** Ambient declaration files supplied by the host environment. */
+  ambientFiles?: readonly Pick<AmbientFile, "path">[];
+}
+
+/** True for paths the workspace compiler synthesizes or receives as host ambient declarations. */
+export function isCompilerControlledPath(path: string, options?: CompilerControlledPathOptions): boolean {
   const normalized = normalizeWorkspacePath(path);
-  return normalized === "mindcraft.d.ts" || normalized === "tsconfig.json";
+  if (normalized === COMPILER_CONTROLLED_TSCONFIG_PATH) return true;
+  return options?.ambientFiles?.some((file) => normalizeWorkspacePath(file.path) === normalized) ?? false;
 }
 
 const EXAMPLES_PREFIX = "__examples__/";
@@ -149,11 +160,13 @@ function isExamplePath(path: string): boolean {
  */
 export class UserTileProject {
   private _files = new Map<string, string>();
-  private readonly _ambientSource: string | undefined;
+  private readonly _ambientFiles: readonly AmbientFile[];
   private readonly _services: BrainServices;
 
-  constructor(options: CompileOptions) {
-    this._ambientSource = options.ambientSource;
+  constructor(options: UserTileProjectOptions) {
+    this._ambientFiles = options.ambientFiles ?? [
+      { path: DEFAULT_AMBIENT_PATH, content: buildAmbientDeclarations(options.services.runtime.types) },
+    ];
     this._services = options.services;
   }
 
@@ -192,11 +205,16 @@ export class UserTileProject {
     checkTypeScriptVersion();
 
     const compilerFiles = new Map<string, string>();
-    const ambientSource = this.resolveAmbientSource();
+    const ambientCompilerPaths = new Set<string>();
+    for (const file of this._ambientFiles) {
+      const compilerPath = toCompilerPath(file.path);
+      compilerFiles.set(compilerPath, file.content);
+      ambientCompilerPaths.add(compilerPath);
+    }
 
     const userRootFiles: string[] = [];
     for (const [vfsPath, content] of this._files) {
-      if (isCompilerControlledPath(vfsPath) || isExamplePath(vfsPath)) {
+      if (isCompilerControlledPath(vfsPath, { ambientFiles: this._ambientFiles }) || isExamplePath(vfsPath)) {
         continue;
       }
       const cp = toCompilerPath(vfsPath);
@@ -206,20 +224,18 @@ export class UserTileProject {
       }
     }
 
-    compilerFiles.set(LIB_FILE, ambientSource);
-
     if (userRootFiles.length === 0) {
       return { results: new Map(), tsErrors: new Map() };
     }
 
     const host = createVirtualCompilerHost(compilerFiles, checkerOptions);
-    const tsProgram = ts.createProgram(userRootFiles, checkerOptions, host);
+    const tsProgram = ts.createProgram([...ambientCompilerPaths, ...userRootFiles], checkerOptions, host);
     const tsDiagnostics = ts.getPreEmitDiagnostics(tsProgram);
 
     const tsErrors = new Map<string, CompileDiagnostic[]>();
     for (const d of tsDiagnostics) {
       const fileName = d.file?.fileName;
-      if (fileName === LIB_FILE) continue;
+      if (fileName !== undefined && ambientCompilerPaths.has(fileName)) continue;
       const vfsKey = fileName ? toVfsPath(fileName) : "<global>";
       const severity =
         d.category === ts.DiagnosticCategory.Warning
@@ -286,14 +302,6 @@ export class UserTileProject {
     }
 
     return { results, tsErrors };
-  }
-
-  private resolveAmbientSource(): string {
-    if (this._ambientSource !== undefined) {
-      return this._ambientSource;
-    }
-
-    return buildAmbientDeclarations(this._services.runtime.types);
   }
 
   private _compileEntryPoint(

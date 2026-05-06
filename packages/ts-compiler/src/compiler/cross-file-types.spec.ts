@@ -50,7 +50,7 @@ function mkScheduler(): Scheduler {
 
 function compileProject(files: Record<string, string>) {
   const ambientSource = buildAmbientDeclarations(services.runtime.types);
-  const project = new UserTileProject({ ambientSource, services });
+  const project = new UserTileProject({ ambientFiles: [{ path: "ambient.d.ts", content: ambientSource }], services });
   project.setFiles(new Map(Object.entries(files)));
   return project.compileAll();
 }

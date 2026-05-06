@@ -3,6 +3,7 @@ import { EXAMPLES_FOLDER } from "@mindcraft-lang/app-host";
 import type { AppClientMessage, CompileDiagnosticEntry, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import type { MindcraftEnvironment } from "@mindcraft-lang/core";
 import {
+  type AmbientFile,
   createWorkspaceCompiler,
   type WorkspaceCompiler as TsWorkspaceCompiler,
   type WorkspaceCompileResult,
@@ -300,6 +301,8 @@ export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 export interface CreateProjectCompilerOptions {
   environment: MindcraftEnvironment;
   workspace: WorkspaceAdapter;
+  /** Ordered ambient declaration files exposed to the compiler and remote VFS peers. */
+  ambientFiles: readonly AmbientFile[];
   /** Read-only example projects materialized under the examples folder. */
   examples?: readonly ExampleDefinition[];
   onDidCompile?: (result: WorkspaceCompileResult) => void;
@@ -323,9 +326,9 @@ export interface ProjectCompilerHandle {
  * input includes the live workspace plus any injected examples.
  */
 export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
-  const { environment, workspace } = options;
+  const { ambientFiles, environment, workspace } = options;
 
-  const compiler = createWorkspaceCompiler({ environment });
+  const compiler = createWorkspaceCompiler({ ambientFiles, environment });
 
   if (options.onDidCompile) {
     compiler.onDidCompile(options.onDidCompile);

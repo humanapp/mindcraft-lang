@@ -2,6 +2,7 @@
   "compilerOptions": {
     "noCheck": true,
     "noEmit": true,
+    "noLib": true,
     "strict": false,
     "module": "ESNext",
     "moduleResolution": "bundler",

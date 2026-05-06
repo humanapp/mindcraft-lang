@@ -1,8 +1,7 @@
 import type { CompiledActionBundle, MindcraftEnvironment } from "@mindcraft-lang/core";
-import { buildAmbientDeclarations } from "./compiler/ambient.js";
 import type { ProjectCompileResult } from "./compiler/compile.js";
-import { UserTileProject } from "./compiler/project.js";
-import type { CompileDiagnostic, DiagnosticSeverity } from "./compiler/types.js";
+import { COMPILER_CONTROLLED_TSCONFIG_PATH, UserTileProject } from "./compiler/project.js";
+import type { AmbientFile, CompileDiagnostic, DiagnosticSeverity } from "./compiler/types.js";
 import { buildCompiledActionBundle } from "./runtime/action-bundle.js";
 
 /** A file in a {@link WorkspaceSnapshot}: `content` plus the `etag` used for optimistic concurrency. */
@@ -89,8 +88,8 @@ export interface WorkspaceCompileResult {
 /** Options for {@link createWorkspaceCompiler}. */
 export interface CreateWorkspaceCompilerOptions {
   environment: MindcraftEnvironment;
-  /** Override the ambient declarations source. When omitted, declarations are generated from the environment's type registry. */
-  ambientSource?: string;
+  /** Ordered ambient declaration files available to the TypeScript compiler and remote VFS peers. */
+  ambientFiles: readonly AmbientFile[];
 }
 
 /** Driver for incremental workspace compilation. Receives snapshot/change inputs and emits diagnostics and a bundle. */
@@ -101,7 +100,7 @@ export interface WorkspaceCompiler {
   /** Subscribe to compile results. Returns a disposer. */
   onDidCompile(listener: (result: WorkspaceCompileResult) => void): () => void;
   /**
-   * Files synthesized by the compiler (e.g. `mindcraft.d.ts`, `tsconfig.json`).
+   * Files synthesized by the compiler (ambient declarations and `tsconfig.json`).
    * The host should keep these in sync with the workspace.
    */
   getCompilerControlledFiles(): ReadonlyMap<string, string>;
@@ -157,7 +156,7 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
 
   constructor(private readonly options: CreateWorkspaceCompilerOptions) {
     this.project = new UserTileProject({
-      ambientSource: options.ambientSource,
+      ambientFiles: options.ambientFiles,
       services: options.environment.brainServices,
     });
   }
@@ -215,10 +214,10 @@ class WorkspaceCompilerController implements WorkspaceCompiler {
 
   getCompilerControlledFiles(): ReadonlyMap<string, string> {
     const files = new Map<string, string>();
-    const ambient =
-      this.options.ambientSource ?? buildAmbientDeclarations(this.options.environment.brainServices.runtime.types);
-    files.set("mindcraft.d.ts", ambient);
-    files.set("tsconfig.json", TSCONFIG_CONTENT);
+    for (const file of this.options.ambientFiles) {
+      files.set(file.path, file.content);
+    }
+    files.set(COMPILER_CONTROLLED_TSCONFIG_PATH, TSCONFIG_CONTENT);
     return files;
   }
 }

@@ -26,7 +26,7 @@
     }
   },
   "files": {
-    "includes": ["**", "!src/examples/mindcraft.d.ts"]
+    "includes": ["**", "!ambient/", "!src/examples/mindcraft.*.d.ts"]
   },
   "overrides": [
     {

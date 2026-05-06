@@ -37,10 +37,18 @@ export interface LinkedUserProgram {
   linkedDebugMetadata?: DebugMetadata;
 }
 
+/** Ambient declaration file supplied to the user-tile compiler. */
+export interface AmbientFile {
+  /** Workspace-visible path for the declaration file. */
+  path: string;
+  /** Full TypeScript declaration source. */
+  content: string;
+}
+
 /** Options passed to the user-tile compiler. */
 export interface CompileOptions {
-  /** Override the ambient `.d.ts` source. When omitted, declarations are generated from `services.runtime.types`. */
-  ambientSource?: string;
+  /** Ordered ambient declaration files available to the TypeScript compiler. */
+  ambientFiles: readonly AmbientFile[];
   services: BrainServices;
 }
 

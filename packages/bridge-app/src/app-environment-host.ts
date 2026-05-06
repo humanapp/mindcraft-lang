@@ -13,7 +13,7 @@ import {
 import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraft-lang/core/app";
 import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
 import type { IRngServices } from "@mindcraft-lang/core/runtime";
-import type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
+import type { AmbientFile, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 import type { AppBridge, AppBridgeState, WorkspaceChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { createBridgeProject, createProjectCompiler } from "./compilation.js";
@@ -29,6 +29,8 @@ export interface AppEnvironmentHostOptions {
   projectManager: ProjectManager;
   /** Mindcraft modules to register with the environment. */
   modules: readonly MindcraftModule[];
+  /** Ordered ambient declaration files supplied to the workspace compiler and remote VFS. */
+  ambientFiles: readonly AmbientFile[];
   /** Identifies the host application when writing `mindcraft.json`. */
   host: MindcraftJsonHostInfo;
   /** `localStorage` key under which the user-tile metadata cache is stored. */
@@ -70,6 +72,7 @@ export class AppEnvironmentHost {
 
   private readonly host: MindcraftJsonHostInfo;
   private readonly userTileStorageKey: string;
+  private readonly ambientFiles: readonly AmbientFile[];
   private readonly onDidCompileCallback?: (
     result: WorkspaceCompileResult,
     tileResult: UserTileApplyResult | undefined
@@ -115,6 +118,7 @@ export class AppEnvironmentHost {
   constructor(options: AppEnvironmentHostOptions) {
     this.projectManager = options.projectManager;
     this.host = options.host;
+    this.ambientFiles = options.ambientFiles;
     this.userTileStorageKey = options.userTileStorageKey;
     this.onDidCompileCallback = options.onDidCompile;
     this._bridgeUrl = options.bridgeUrl;
@@ -166,6 +170,7 @@ export class AppEnvironmentHost {
     this._compiler = createProjectCompiler({
       environment: this.env,
       workspace: this.workspace,
+      ambientFiles: this.ambientFiles,
       examples: [...this._examples],
       onDidCompile: (result) => {
         logWorkspaceCompile(result);

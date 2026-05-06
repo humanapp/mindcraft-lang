@@ -28,6 +28,7 @@ import type { Obstacle } from "@/brain/vision";
 import { loadExamples } from "@/examples";
 import { name as simName, version as simVersion } from "../../package.json";
 import { loadBindingToken, saveBindingToken } from "./binding-token-persistence";
+import { simAmbientFiles } from "./sim-ambient-files";
 import { initVfsServiceWorker } from "./vfs-service-worker";
 
 // -- AppSettings --
@@ -252,10 +253,13 @@ export class SimEnvironmentStore {
     let instanceRef: SimEnvironmentStore | undefined;
     const host = new AppEnvironmentHost({
       projectManager: new ProjectManager(projectStore, {
-        workspaceOptions: { shouldExclude: isCompilerControlledPath },
+        workspaceOptions: {
+          shouldExclude: (path) => isCompilerControlledPath(path, { ambientFiles: simAmbientFiles }),
+        },
         lock: createWebLocksProjectLock(simName),
       }),
       modules: [coreModule(), createSimModule()],
+      ambientFiles: simAmbientFiles,
       host: { name: simName, version: simVersion },
       userTileStorageKey: "sim:user-tile-metadata",
       bridgeUrl: appSettings.vscodeBridgeUrl,
