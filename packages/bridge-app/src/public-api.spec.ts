@@ -8,14 +8,14 @@ import type {
   AppBridgeSnapshot,
   AppBridgeState,
   DiagnosticEntry,
-  WorkspaceAdapter,
-  WorkspaceChange,
-  WorkspaceSnapshot,
+  ProjectFileChange,
+  ProjectFileSnapshot,
+  ProjectFileSystem,
 } from "@mindcraft-lang/bridge-app";
 import {
   createCompilationFeature,
   type DiagnosticSnapshot,
-  type WorkspaceCompiler,
+  type ProjectFileCompiler,
 } from "@mindcraft-lang/bridge-app/compilation";
 
 type RootContracts = [
@@ -25,12 +25,12 @@ type RootContracts = [
   AppBridgeOptions,
   AppBridgeSnapshot,
   AppBridgeState,
-  WorkspaceAdapter,
-  WorkspaceChange,
-  WorkspaceSnapshot,
+  ProjectFileSystem,
+  ProjectFileChange,
+  ProjectFileSnapshot,
 ];
 
-type CompilationContracts = [DiagnosticEntry, DiagnosticSnapshot, WorkspaceCompiler];
+type CompilationContracts = [DiagnosticEntry, DiagnosticSnapshot, ProjectFileCompiler];
 
 void (0 as unknown as RootContracts);
 void (0 as unknown as CompilationContracts);
@@ -50,26 +50,26 @@ function createDiagnostic(message: string): DiagnosticEntry {
 }
 
 test("createCompilationFeature publishes diagnostics and replays them on sync", () => {
-  const workspace: WorkspaceSnapshot = new Map([
+  const projectFiles: ProjectFileSnapshot = new Map([
     ["src/main.ts", { kind: "file", content: "const value = 1;", etag: "etag-1", isReadonly: false }],
   ]);
   const snapshot: DiagnosticSnapshot = {
     files: new Map([["src/main.ts", [createDiagnostic("unexpected token")]]]),
   };
 
-  let replaceWorkspaceArg: WorkspaceSnapshot | undefined;
+  let replaceProjectFilesArg: ProjectFileSnapshot | undefined;
   let compileCount = 0;
   const diagnosticsEvents: Array<{ file: string; diagnostics: readonly DiagnosticEntry[] }> = [];
   const statusEvents: Array<{ file: string; success: boolean; diagnosticCount: { error: number; warning: number } }> =
     [];
-  const remoteChangeListeners = new Set<(change: WorkspaceChange) => void>();
+  const remoteChangeListeners = new Set<(change: ProjectFileChange) => void>();
   const syncListeners = new Set<() => void>();
 
-  const compiler: WorkspaceCompiler = {
-    replaceWorkspace(nextSnapshot) {
-      replaceWorkspaceArg = nextSnapshot;
+  const compiler: ProjectFileCompiler = {
+    replaceProjectFiles(nextSnapshot) {
+      replaceProjectFilesArg = nextSnapshot;
     },
-    applyWorkspaceChange() {},
+    applyProjectFileChange() {},
     compile() {
       compileCount++;
       return snapshot;
@@ -83,8 +83,8 @@ test("createCompilationFeature publishes diagnostics and replays them on sync", 
     snapshot() {
       return { status: "connected", joinCode: "JOIN-123" };
     },
-    workspaceSnapshot() {
-      return workspace;
+    projectFileSnapshot() {
+      return projectFiles;
     },
     onStateChange() {
       return () => {};
@@ -112,7 +112,7 @@ test("createCompilationFeature publishes diagnostics and replays them on sync", 
   const feature = createCompilationFeature({ compiler });
   const dispose = feature.attach(context);
 
-  assert.equal(replaceWorkspaceArg, workspace);
+  assert.equal(replaceProjectFilesArg, projectFiles);
   assert.equal(compileCount, 1);
   assert.equal(remoteChangeListeners.size, 1);
   assert.equal(syncListeners.size, 1);
@@ -140,7 +140,7 @@ test("createCompilationFeature publishes diagnostics and replays them on sync", 
 });
 
 test("createCompilationFeature clears previously published diagnostics when they disappear", () => {
-  const workspace: WorkspaceSnapshot = new Map();
+  const projectFiles: ProjectFileSnapshot = new Map();
   const snapshots: DiagnosticSnapshot[] = [
     {
       files: new Map([["src/main.ts", [createDiagnostic("unexpected token")]]]),
@@ -151,15 +151,15 @@ test("createCompilationFeature clears previously published diagnostics when they
   ];
 
   let compileIndex = 0;
-  const appliedChanges: WorkspaceChange[] = [];
+  const appliedChanges: ProjectFileChange[] = [];
   const diagnosticsEvents: Array<{ file: string; diagnostics: readonly DiagnosticEntry[] }> = [];
   const statusEvents: Array<{ file: string; success: boolean; diagnosticCount: { error: number; warning: number } }> =
     [];
-  const remoteChangeListeners = new Set<(change: WorkspaceChange) => void>();
+  const remoteChangeListeners = new Set<(change: ProjectFileChange) => void>();
 
-  const compiler: WorkspaceCompiler = {
-    replaceWorkspace() {},
-    applyWorkspaceChange(change) {
+  const compiler: ProjectFileCompiler = {
+    replaceProjectFiles() {},
+    applyProjectFileChange(change) {
       appliedChanges.push(change);
     },
     compile() {
@@ -176,8 +176,8 @@ test("createCompilationFeature clears previously published diagnostics when they
     snapshot() {
       return { status: "connected" };
     },
-    workspaceSnapshot() {
-      return workspace;
+    projectFileSnapshot() {
+      return projectFiles;
     },
     onStateChange() {
       return () => {};
@@ -202,7 +202,7 @@ test("createCompilationFeature clears previously published diagnostics when they
   const feature = createCompilationFeature({ compiler });
   feature.attach(context);
 
-  const change: WorkspaceChange = {
+  const change: ProjectFileChange = {
     action: "write",
     path: "src/main.ts",
     content: "const value = 2;",
@@ -224,7 +224,7 @@ test("createCompilationFeature clears previously published diagnostics when they
 });
 
 test("createCompilationFeature republishes out-of-band compiler results through onDidCompile", () => {
-  const workspace: WorkspaceSnapshot = new Map();
+  const projectFiles: ProjectFileSnapshot = new Map();
   const initialSnapshot: DiagnosticSnapshot = {
     files: new Map(),
   };
@@ -240,9 +240,9 @@ test("createCompilationFeature republishes out-of-band compiler results through 
 
   let currentSnapshot = initialSnapshot;
 
-  const compiler: WorkspaceCompiler = {
-    replaceWorkspace() {},
-    applyWorkspaceChange() {},
+  const compiler: ProjectFileCompiler = {
+    replaceProjectFiles() {},
+    applyProjectFileChange() {},
     compile() {
       return currentSnapshot;
     },
@@ -259,8 +259,8 @@ test("createCompilationFeature republishes out-of-band compiler results through 
     snapshot() {
       return { status: "connected" };
     },
-    workspaceSnapshot() {
-      return workspace;
+    projectFileSnapshot() {
+      return projectFiles;
     },
     onStateChange() {
       return () => {};

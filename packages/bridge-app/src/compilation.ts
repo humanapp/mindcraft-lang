@@ -14,9 +14,9 @@ import type {
   AppBridgeFeatureContext,
   AppBridgeFeatureStatus,
   DiagnosticEntry,
-  WorkspaceAdapter,
-  WorkspaceChange,
-  WorkspaceSnapshot,
+  ProjectFileChange,
+  ProjectFileSnapshot,
+  ProjectFileSystem,
 } from "./app-bridge.js";
 import { createAppBridge } from "./app-bridge.js";
 
@@ -25,10 +25,10 @@ export interface DiagnosticSnapshot {
   files: ReadonlyMap<string, readonly DiagnosticEntry[]>;
 }
 
-/** Workspace-aware compiler that the {@link createCompilationFeature} drives. */
-export interface WorkspaceCompiler {
-  replaceWorkspace(snapshot: WorkspaceSnapshot): void;
-  applyWorkspaceChange(change: WorkspaceChange): void;
+/** Project file compiler that the {@link createCompilationFeature} drives. */
+export interface ProjectFileCompiler {
+  replaceProjectFiles(snapshot: ProjectFileSnapshot): void;
+  applyProjectFileChange(change: ProjectFileChange): void;
   /** Run a compile pass and return the resulting diagnostics. */
   compile(): DiagnosticSnapshot;
   /** Subscribe to compile completions. Returns an unsubscribe function. */
@@ -37,7 +37,7 @@ export interface WorkspaceCompiler {
 
 /** Options for {@link createCompilationFeature}. */
 export interface CompilationFeatureOptions {
-  compiler: WorkspaceCompiler;
+  compiler: ProjectFileCompiler;
   /** When `true` (the default), per-file pass/fail status is published alongside diagnostics. */
   publishStatus?: boolean;
 }
@@ -52,7 +52,7 @@ export interface CompilationProvider {
   fileWritten(path: string, content: string): void;
   fileDeleted(path: string): void;
   fileRenamed(oldPath: string, newPath: string): void;
-  /** Replace the provider's view of the workspace with `files`. */
+  /** Replace the provider's view of the project files with `files`. */
   fullSync(files: Iterable<[string, { kind: string; content?: string }]>): void;
   /** Compile every known file and return per-file diagnostics. */
   compileAll(): CompilationResult;
@@ -81,7 +81,7 @@ function buildFeatureStatus(file: string, diagnostics: readonly DiagnosticEntry[
 }
 
 /**
- * Build an {@link AppBridgeFeature} that compiles the workspace on remote
+ * Build an {@link AppBridgeFeature} that compiles project files on remote
  * changes and publishes diagnostics (and, by default, per-file status) to the
  * peer.
  */
@@ -142,11 +142,11 @@ export function createCompilationFeature(options: CompilationFeatureOptions): Ap
         publishSnapshot(snapshot);
       });
 
-      options.compiler.replaceWorkspace(context.workspaceSnapshot());
+      options.compiler.replaceProjectFiles(context.projectFileSnapshot());
       compileAndPublish();
 
       const remoteChangeUnsub = context.onRemoteChange((change) => {
-        options.compiler.applyWorkspaceChange(change);
+        options.compiler.applyProjectFileChange(change);
         compileAndPublish();
       });
 
@@ -300,7 +300,7 @@ export type { WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
 /** Options for {@link createProjectCompiler}. */
 export interface CreateProjectCompilerOptions {
   environment: MindcraftEnvironment;
-  workspace: WorkspaceAdapter;
+  filesystem: ProjectFileSystem;
   /** Ordered ambient declaration files exposed to the compiler and remote VFS peers. */
   ambientFiles: readonly AmbientFile[];
   /** Read-only example projects materialized under the examples folder. */
@@ -311,10 +311,10 @@ export interface CreateProjectCompilerOptions {
 /** Handle returned by {@link createProjectCompiler}. */
 export interface ProjectCompilerHandle {
   readonly compiler: TsWorkspaceCompiler;
-  /** Seed the compiler from the current workspace snapshot and run an initial compile. */
+  /** Seed the compiler from the current project file snapshot and run an initial compile. */
   initialize(): void;
-  /** Re-seed the compiler with the latest workspace snapshot and recompile. */
-  replaceWorkspace(): void;
+  /** Re-seed the compiler with the latest project file snapshot and recompile. */
+  replaceProjectFiles(): void;
   /** Replace the set of injected example projects. */
   injectExamples(examples: ExampleDefinition[]): void;
   /** Read the currently injected example projects. */
@@ -322,11 +322,11 @@ export interface ProjectCompilerHandle {
 }
 
 /**
- * Wrap a {@link WorkspaceAdapter} as a TS workspace compiler. The compiler's
- * input includes the live workspace plus any injected examples.
+ * Wrap a {@link ProjectFileSystem} as a TS workspace compiler. The compiler's
+ * input includes the live project files plus any injected examples.
  */
 export function createProjectCompiler(options: CreateProjectCompilerOptions): ProjectCompilerHandle {
-  const { ambientFiles, environment, workspace } = options;
+  const { ambientFiles, environment, filesystem } = options;
 
   const compiler = createWorkspaceCompiler({ ambientFiles, environment });
 
@@ -336,8 +336,8 @@ export function createProjectCompiler(options: CreateProjectCompilerOptions): Pr
 
   let injectedExamples: ExampleDefinition[] = options.examples ? [...options.examples] : [];
 
-  function buildSnapshot(): WorkspaceSnapshot {
-    const snapshot = new Map(workspace.exportSnapshot());
+  function buildSnapshot(): ProjectFileSnapshot {
+    const snapshot = new Map(filesystem.exportSnapshot());
     for (const example of injectedExamples) {
       snapshot.set(`${EXAMPLES_FOLDER}/${example.folder}`, { kind: "directory" });
       for (const file of example.files) {
@@ -358,7 +358,7 @@ export function createProjectCompiler(options: CreateProjectCompilerOptions): Pr
       compiler.replaceWorkspace(buildSnapshot());
       compiler.compile();
     },
-    replaceWorkspace() {
+    replaceProjectFiles() {
       compiler.replaceWorkspace(buildSnapshot());
       compiler.compile();
     },
@@ -378,7 +378,7 @@ export function createProjectCompiler(options: CreateProjectCompilerOptions): Pr
 /** Options for {@link createBridgeProject}. */
 export interface CreateBridgeProjectOptions {
   projectCompiler: ProjectCompilerHandle;
-  workspace: WorkspaceAdapter;
+  filesystem: ProjectFileSystem;
   bridgeUrl: string;
   bindingToken?: string;
   onBindingTokenChange?: (token: string) => void;
@@ -396,7 +396,7 @@ export interface BridgeProjectHandle {
  * surfaces compiler-controlled and example files to the remote peer.
  */
 export function createBridgeProject(options: CreateBridgeProjectOptions): BridgeProjectHandle {
-  const { projectCompiler, workspace } = options;
+  const { projectCompiler, filesystem } = options;
   const compiler = projectCompiler.compiler;
 
   let latestBindingToken = options.bindingToken;
@@ -405,9 +405,9 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
     options.onBindingTokenChange?.(token);
   };
 
-  const augmented = augmentWorkspace(workspace, compiler, () => projectCompiler.getExamples());
+  const augmented = augmentProjectFileSystem(filesystem, compiler, () => projectCompiler.getExamples());
   let currentBridge = buildBridge(
-    { ...options, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
+    { ...options, filesystem: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
     compiler
   );
 
@@ -418,21 +418,47 @@ export function createBridgeProject(options: CreateBridgeProjectOptions): Bridge
     recreateBridge(bridgeUrl: string) {
       currentBridge.stop();
       currentBridge = buildBridge(
-        { ...options, bridgeUrl, workspace: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
+        { ...options, bridgeUrl, filesystem: augmented, bindingToken: latestBindingToken, onBindingTokenChange },
         compiler
       );
     },
   };
 }
 
-function augmentWorkspace(
-  workspace: WorkspaceAdapter,
+function augmentProjectFileSystem(
+  filesystem: ProjectFileSystem,
   compiler: TsWorkspaceCompiler,
   getExamples: () => ExampleDefinition[]
-): WorkspaceAdapter {
+): ProjectFileSystem {
+  const isAugmentedPath = (path: string): boolean => {
+    if (compiler.getCompilerControlledFiles().has(path)) {
+      return true;
+    }
+    for (const example of getExamples()) {
+      const root = `${EXAMPLES_FOLDER}/${example.folder}`;
+      if (path === root || path.startsWith(`${root}/`)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const filterChange = (change: ProjectFileChange): ProjectFileChange | undefined => {
+    switch (change.action) {
+      case "write":
+      case "delete":
+      case "mkdir":
+      case "rmdir":
+        return isAugmentedPath(change.path) ? undefined : change;
+      case "rename":
+        return isAugmentedPath(change.oldPath) || isAugmentedPath(change.newPath) ? undefined : change;
+      case "import":
+        return { action: "import", entries: change.entries.filter(([path]) => !isAugmentedPath(path)) };
+    }
+  };
+
   return {
-    exportSnapshot(): WorkspaceSnapshot {
-      const snapshot = workspace.exportSnapshot();
+    exportSnapshot(): ProjectFileSnapshot {
+      const snapshot = filesystem.exportSnapshot();
       const controlledFiles = compiler.getCompilerControlledFiles();
       for (const [path, content] of controlledFiles) {
         snapshot.set(path, { kind: "file", content, etag: "compiler-controlled", isReadonly: true });
@@ -450,33 +476,56 @@ function augmentWorkspace(
       }
       return snapshot;
     },
-    applyRemoteChange(change: WorkspaceChange): void {
-      workspace.applyRemoteChange(change);
+    applyRemoteChange(change: ProjectFileChange): void {
+      const filtered = filterChange(change);
+      if (filtered) {
+        filesystem.applyRemoteChange(filtered);
+      }
     },
-    applyLocalChange(change: WorkspaceChange): void {
-      workspace.applyLocalChange(change);
+    applyLocalChange(change: ProjectFileChange): void {
+      const filtered = filterChange(change);
+      if (filtered) {
+        filesystem.applyLocalChange(filtered);
+      }
     },
-    onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
-      return workspace.onLocalChange(listener);
+    onLocalChange(listener: (change: ProjectFileChange) => void): () => void {
+      return filesystem.onLocalChange(listener);
     },
     onAnyChange(listener: () => void): () => void {
-      return workspace.onAnyChange(listener);
+      return filesystem.onAnyChange(listener);
     },
     flush(): void {
-      workspace.flush();
+      filesystem.flush();
     },
   };
 }
 
 function buildBridge(
-  options: Pick<CreateBridgeProjectOptions, "bridgeUrl" | "workspace" | "bindingToken" | "onBindingTokenChange">,
+  options: Pick<CreateBridgeProjectOptions, "bridgeUrl" | "filesystem" | "bindingToken" | "onBindingTokenChange">,
   compiler: TsWorkspaceCompiler
 ): AppBridge {
   return createAppBridge({
     bridgeUrl: options.bridgeUrl,
-    workspace: options.workspace,
-    features: [createCompilationFeature({ compiler })],
+    filesystem: options.filesystem,
+    features: [createCompilationFeature({ compiler: createProjectFileCompilerAdapter(compiler) })],
     bindingToken: options.bindingToken,
     onBindingTokenChange: options.onBindingTokenChange,
   });
+}
+
+function createProjectFileCompilerAdapter(compiler: TsWorkspaceCompiler): ProjectFileCompiler {
+  return {
+    replaceProjectFiles(snapshot: ProjectFileSnapshot): void {
+      compiler.replaceWorkspace(snapshot);
+    },
+    applyProjectFileChange(change: ProjectFileChange): void {
+      compiler.applyWorkspaceChange(change);
+    },
+    compile(): DiagnosticSnapshot {
+      return compiler.compile();
+    },
+    onDidCompile(listener: (snapshot: DiagnosticSnapshot) => void): () => void {
+      return compiler.onDidCompile((result) => listener(result));
+    },
+  };
 }

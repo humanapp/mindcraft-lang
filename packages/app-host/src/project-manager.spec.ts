@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
-import type { ProjectManifest, ProjectStore, WorkspaceSnapshot } from "@mindcraft-lang/app-host";
+import type { ProjectFileSnapshot, ProjectManifest, ProjectStore } from "@mindcraft-lang/app-host";
 import { ProjectManager } from "@mindcraft-lang/app-host";
 
 class MemoryProjectStore implements ProjectStore {
   readonly keyPrefix = "test-app";
   private projects: ProjectManifest[] = [];
-  private workspaces = new Map<string, WorkspaceSnapshot>();
+  private projectFiles = new Map<string, ProjectFileSnapshot>();
   private appData = new Map<string, string>();
   private activeId: string | undefined;
 
@@ -32,7 +32,7 @@ class MemoryProjectStore implements ProjectStore {
 
   async deleteProject(id: string): Promise<void> {
     this.projects = this.projects.filter((p) => p.id !== id);
-    this.workspaces.delete(id);
+    this.projectFiles.delete(id);
     for (const key of this.appData.keys()) {
       if (key.startsWith(`${id}:`)) {
         this.appData.delete(key);
@@ -53,17 +53,17 @@ class MemoryProjectStore implements ProjectStore {
     const source = await this.getProject(id);
     if (!source) throw new Error(`not found: ${id}`);
     const dup = await this.createProject(newName);
-    const ws = this.workspaces.get(id);
-    if (ws) this.workspaces.set(dup.id, new Map(ws));
+    const ws = this.projectFiles.get(id);
+    if (ws) this.projectFiles.set(dup.id, new Map(ws));
     return dup;
   }
 
-  async loadWorkspace(id: string): Promise<WorkspaceSnapshot | undefined> {
-    return this.workspaces.get(id);
+  async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {
+    return this.projectFiles.get(id);
   }
 
-  async saveWorkspace(id: string, snapshot: WorkspaceSnapshot): Promise<void> {
-    this.workspaces.set(id, snapshot);
+  async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
+    this.projectFiles.set(id, snapshot);
   }
 
   async loadAppData(id: string, key: string): Promise<string | undefined> {

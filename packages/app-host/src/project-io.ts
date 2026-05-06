@@ -1,11 +1,11 @@
 import type { MindcraftExportCommon, MindcraftExportFile, MindcraftExportHost } from "@mindcraft-lang/service-api";
 import { EXAMPLES_FOLDER } from "./examples.js";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
+import type { ProjectFileSystemEntry } from "./project-file-snapshot.js";
+import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectManager } from "./project-manager.js";
 import { DEFAULT_PROJECT_NAME } from "./project-manager.js";
 import type { ProjectManifest } from "./project-manifest.js";
-import type { WorkspaceAdapter } from "./workspace-adapter.js";
-import type { WorkspaceEntry } from "./workspace-snapshot.js";
 
 export type {
   MindcraftExportCommon,
@@ -55,10 +55,10 @@ export type ImportAppLayerCallback = (app: unknown, hostVersion: string) => Impo
 export async function buildExportCommon(
   host: MindcraftExportHost,
   manifest: ProjectManifest,
-  workspace: WorkspaceAdapter,
+  filesystem: ProjectFileSystem,
   loadAppData: (key: string) => Promise<string | undefined>
 ): Promise<MindcraftExportCommon> {
-  const snapshot = workspace.exportSnapshot();
+  const snapshot = filesystem.exportSnapshot();
   const examplesPrefix = `${EXAMPLES_FOLDER}/`;
 
   const files: MindcraftExportFile[] = [];
@@ -195,7 +195,7 @@ export async function importProject(
 
     const warnings: ImportDiagnostic[] = [];
 
-    const snapshot = new Map<string, WorkspaceEntry>();
+    const snapshot = new Map<string, ProjectFileSystemEntry>();
     for (const entry of doc.files as unknown[]) {
       const fileEntry = entry as Record<string, unknown>;
       if (typeof fileEntry?.path !== "string" || typeof fileEntry?.content !== "string") {

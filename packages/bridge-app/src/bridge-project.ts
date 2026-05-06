@@ -1,4 +1,4 @@
-import type { ExportedFileSystem } from "@mindcraft-lang/bridge-client";
+import type { FileSystemSnapshot } from "@mindcraft-lang/bridge-client";
 import { Project, type ProjectOptions } from "@mindcraft-lang/bridge-client";
 import type { AppClientMessage, AppServerMessage, FileSystemNotification } from "@mindcraft-lang/bridge-protocol";
 import { CompilationManager, type CompilationProvider } from "./compilation.js";
@@ -6,10 +6,10 @@ import { CompilationManager, type CompilationProvider } from "./compilation.js";
 /** Options for {@link BridgeProject}. */
 export interface BridgeProjectOptions {
   bridgeUrl: string;
-  filesystem: ExportedFileSystem;
+  initialFileSnapshot: FileSystemSnapshot;
   /** Token used to rebind to a previously established session. */
   bindingToken?: string;
-  /** Optional provider that compiles workspace files and emits diagnostics over the bridge. */
+  /** Optional provider that compiles project files and emits diagnostics over the bridge. */
   compilationProvider?: CompilationProvider;
 }
 

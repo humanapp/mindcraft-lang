@@ -305,7 +305,7 @@ function buildHydratedSnapshot(
   });
 }
 
-/** Extract user-tile metadata from a workspace compile result, sorted by key. */
+/** Extract user-tile metadata from a project compile result, sorted by key. */
 export function collectMetadataFromCompile(result: WorkspaceCompileResult): UserTileMetadata[] {
   const metadata: UserTileMetadata[] = [];
 
@@ -354,7 +354,7 @@ export function hydrateUserTilesFromCache(
 }
 
 /**
- * Apply the user-tile bundle from a workspace compile result to the
+ * Apply the user-tile bundle from a project compile result to the
  * environment, refreshing the metadata cache. Returns `undefined` when the
  * compile produced no bundle.
  */

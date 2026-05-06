@@ -1,4 +1,4 @@
-/** Persisted metadata describing a project (independent of its workspace contents). */
+/** Persisted metadata describing a project (independent of its file contents). */
 export interface ProjectManifest {
   /** Stable, opaque project identifier. */
   readonly id: string;

@@ -1,7 +1,7 @@
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
+import type { ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
-import type { WorkspaceEntry, WorkspaceSnapshot } from "./workspace-snapshot.js";
 
 /**
  * Create a {@link ProjectStore} backed by `localStorage`.
@@ -93,9 +93,9 @@ class LocalStorageProjectStore implements ProjectStore {
 
     const newManifest = await this.createProject(newName);
 
-    const workspace = await this.loadWorkspace(id);
-    if (workspace) {
-      await this.saveWorkspace(newManifest.id, workspace);
+    const projectFiles = await this.loadProjectFiles(id);
+    if (projectFiles) {
+      await this.saveProjectFiles(newManifest.id, projectFiles);
     }
 
     const appDataKeys = this.findAppDataKeys(id);
@@ -110,7 +110,7 @@ class LocalStorageProjectStore implements ProjectStore {
     return newManifest;
   }
 
-  async loadWorkspace(id: string): Promise<WorkspaceSnapshot | undefined> {
+  async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {
     let raw = localStorage.getItem(this.key(`project:${id}:files`));
     if (!raw) {
       const legacyKey = this.key(`project:${id}:workspace`);
@@ -124,14 +124,14 @@ class LocalStorageProjectStore implements ProjectStore {
       return undefined;
     }
     try {
-      const parsed = JSON.parse(raw) as Array<[string, WorkspaceEntry]>;
+      const parsed = JSON.parse(raw) as Array<[string, ProjectFileSystemEntry]>;
       return new Map(parsed);
     } catch {
       return undefined;
     }
   }
 
-  async saveWorkspace(id: string, snapshot: WorkspaceSnapshot): Promise<void> {
+  async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
     snapshot.delete(MINDCRAFT_JSON_PATH);
     localStorage.setItem(this.key(`project:${id}:files`), JSON.stringify([...snapshot]));
     await this.touchProject(id);

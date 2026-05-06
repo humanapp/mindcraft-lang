@@ -1,8 +1,10 @@
 export { ErrorCode, ProtocolError } from "./error-codes.js";
 export type {
-  ExportedFileSystem,
-  ExportedFileSystemEntry,
   FileSystemNotification,
+  FileSystemSnapshot,
+  FileSystemSnapshotDirectoryEntry,
+  FileSystemSnapshotEntry,
+  FileSystemSnapshotFileEntry,
   FileTreeEntry,
   IFileSystem,
   StatResult,

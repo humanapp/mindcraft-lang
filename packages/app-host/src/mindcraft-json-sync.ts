@@ -1,7 +1,7 @@
 import type { MindcraftJson } from "./mindcraft-json.js";
 import { MINDCRAFT_JSON_PATH, parseMindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
+import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectManifest } from "./project-manifest.js";
-import type { WorkspaceAdapter } from "./workspace-adapter.js";
 
 /** Identifies the host application when writing `mindcraft.json`. */
 export interface MindcraftJsonHostInfo {
@@ -22,16 +22,16 @@ function syncedFieldsMatch(a: SyncedManifestFields, b: SyncedManifestFields): bo
 }
 
 /**
- * Write the synced fields from `manifest` into the workspace's `mindcraft.json`,
+ * Write the synced fields from `manifest` into the project file system's `mindcraft.json`,
  * creating the file if it does not exist. Does nothing if the file already
  * matches the manifest.
  */
 export function syncManifestToMindcraftJson(
-  workspace: WorkspaceAdapter,
+  filesystem: ProjectFileSystem,
   manifest: ProjectManifest,
   host: MindcraftJsonHostInfo
 ): void {
-  const snapshot = workspace.exportSnapshot();
+  const snapshot = filesystem.exportSnapshot();
   const existing = snapshot.get(MINDCRAFT_JSON_PATH);
 
   const fields = syncedFieldsFromManifest(manifest);
@@ -42,7 +42,7 @@ export function syncManifestToMindcraftJson(
       if (syncedFieldsMatch(fields, parsed)) {
         return;
       }
-      workspace.applyLocalChange({
+      filesystem.applyLocalChange({
         action: "write",
         path: MINDCRAFT_JSON_PATH,
         content: serializeMindcraftJson({ ...parsed, ...fields }),
@@ -58,7 +58,7 @@ export function syncManifestToMindcraftJson(
     version: "0.0.1",
   };
 
-  workspace.applyLocalChange({
+  filesystem.applyLocalChange({
     action: "write",
     path: MINDCRAFT_JSON_PATH,
     content: serializeMindcraftJson(json),

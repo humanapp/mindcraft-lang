@@ -1,38 +1,38 @@
-import type { InMemoryWorkspaceOptions } from "./in-memory-workspace.js";
-import { createInMemoryWorkspace } from "./in-memory-workspace.js";
+import type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
+import { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
+import type { ProjectFileSnapshot } from "./project-file-snapshot.js";
+import type { ProjectFileSystem } from "./project-file-system.js";
 import type { ProjectLock, ProjectLockHandle } from "./project-lock.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
-import type { WorkspaceAdapter } from "./workspace-adapter.js";
-import type { WorkspaceSnapshot } from "./workspace-snapshot.js";
 
 /** Display name used when a project is created without an explicit name. */
 export const DEFAULT_PROJECT_NAME = "Untitled Project";
 
-/** The currently open project together with its in-memory workspace. */
+/** The currently open project together with its in-memory project file system. */
 export interface ActiveProject {
   readonly manifest: ProjectManifest;
-  readonly workspace: WorkspaceAdapter;
+  readonly filesystem: ProjectFileSystem;
 }
 
 /** Options for {@link ProjectManager}. */
 export interface ProjectManagerOptions {
-  /** Options forwarded to the in-memory workspace created for the active project. */
-  workspaceOptions?: InMemoryWorkspaceOptions;
+  /** Options forwarded to the in-memory project file system created for the active project. */
+  filesystemOptions?: InMemoryProjectFileSystemOptions;
   /** Cross-tab lock used to ensure a project is only open in one tab. */
   lock?: ProjectLock;
-  /** Debounce delay before persisting the workspace after a change. Defaults to 2000 ms. */
+  /** Debounce delay before persisting project files after a change. Defaults to 2000 ms. */
   autoSaveDelayMs?: number;
 }
 
 /**
  * Coordinates project lifecycle on top of a {@link ProjectStore}: opening,
  * closing, creating, deleting, duplicating, and auto-saving the active
- * project's workspace and app data.
+ * project's file system and app data.
  */
 export class ProjectManager {
   private readonly store: ProjectStore;
-  private readonly workspaceOptions: InMemoryWorkspaceOptions;
+  private readonly filesystemOptions: InMemoryProjectFileSystemOptions;
   private readonly lock: ProjectLock | undefined;
   private readonly autoSaveDelayMs: number;
   private readonly activeProjectListeners = new Set<(project: ActiveProject | undefined) => void>();
@@ -44,7 +44,7 @@ export class ProjectManager {
 
   constructor(store: ProjectStore, options?: ProjectManagerOptions) {
     this.store = store;
-    this.workspaceOptions = options?.workspaceOptions ?? {};
+    this.filesystemOptions = options?.filesystemOptions ?? {};
     this.lock = options?.lock;
     this.autoSaveDelayMs = options?.autoSaveDelayMs ?? 2000;
   }
@@ -58,7 +58,7 @@ export class ProjectManager {
         if (handle) {
           this.currentLockHandle = handle;
           this.currentActive = await this.openInternal(manifest);
-          this.startAutoSave(this.currentActive.workspace);
+          this.startAutoSave(this.currentActive.filesystem);
         }
       }
     }
@@ -82,13 +82,13 @@ export class ProjectManager {
   async createFromSnapshot(
     name: string,
     description: string,
-    snapshot: WorkspaceSnapshot,
+    snapshot: ProjectFileSnapshot,
     appData?: Record<string, string>,
     thumbnailUrl?: string
   ): Promise<ProjectManifest> {
     const manifest = await this.store.createProject(name);
     await this.store.updateProject(manifest.id, { description, thumbnailUrl });
-    await this.store.saveWorkspace(manifest.id, snapshot);
+    await this.store.saveProjectFiles(manifest.id, snapshot);
     if (appData) {
       for (const [key, value] of Object.entries(appData)) {
         await this.store.saveAppData(manifest.id, key, value);
@@ -124,7 +124,7 @@ export class ProjectManager {
     this.currentLockHandle = handle;
     const active = await this.openInternal(manifest);
     this.currentActive = active;
-    this.startAutoSave(active.workspace);
+    this.startAutoSave(active.filesystem);
     this.store.setActiveProjectId(id);
     this.notifyActiveProject();
     return active;
@@ -165,7 +165,7 @@ export class ProjectManager {
     await this.store.updateProject(id, updates);
     const updated = await this.store.getProject(id);
     if (updated) {
-      this.currentActive = { manifest: updated, workspace: this.currentActive.workspace };
+      this.currentActive = { manifest: updated, filesystem: this.currentActive.filesystem };
       this.notifyActiveProject();
       await this.notifyProjectList();
     }
@@ -233,17 +233,17 @@ export class ProjectManager {
       manifest = { ...manifest, name: DEFAULT_PROJECT_NAME };
       await this.store.updateProject(manifest.id, { name: DEFAULT_PROJECT_NAME });
     }
-    const snapshot = await this.store.loadWorkspace(manifest.id);
-    const workspace = createInMemoryWorkspace(this.workspaceOptions);
+    const snapshot = await this.store.loadProjectFiles(manifest.id);
+    const filesystem = createInMemoryProjectFileSystem(this.filesystemOptions);
 
     if (snapshot) {
-      workspace.applyRemoteChange({
+      filesystem.applyRemoteChange({
         action: "import",
         entries: Array.from(snapshot),
       });
     }
 
-    return { manifest, workspace };
+    return { manifest, filesystem };
   }
 
   private async closeInternal(): Promise<void> {
@@ -251,15 +251,15 @@ export class ProjectManager {
       return;
     }
     this.stopAutoSave();
-    const { manifest, workspace } = this.currentActive;
-    workspace.flush();
-    await this.store.saveWorkspace(manifest.id, workspace.exportSnapshot());
+    const { manifest, filesystem } = this.currentActive;
+    filesystem.flush();
+    await this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot());
     this.currentLockHandle?.release();
     this.currentLockHandle = undefined;
   }
 
-  private startAutoSave(workspace: WorkspaceAdapter): void {
-    this.autoSaveUnsub = workspace.onAnyChange(() => {
+  private startAutoSave(filesystem: ProjectFileSystem): void {
+    this.autoSaveUnsub = filesystem.onAnyChange(() => {
       this.scheduleAutoSave();
     });
   }
@@ -280,8 +280,8 @@ export class ProjectManager {
     this.autoSaveTimerId = setTimeout(() => {
       this.autoSaveTimerId = undefined;
       if (this.currentActive) {
-        const { manifest, workspace } = this.currentActive;
-        this.store.saveWorkspace(manifest.id, workspace.exportSnapshot());
+        const { manifest, filesystem } = this.currentActive;
+        this.store.saveProjectFiles(manifest.id, filesystem.exportSnapshot());
       }
     }, this.autoSaveDelayMs);
   }

@@ -5,10 +5,11 @@ import {
   type AppBridgeFeature,
   type AppBridgeSnapshot,
   createAppBridge,
-  type WorkspaceAdapter,
-  type WorkspaceChange,
+  type ProjectFileChange,
+  type ProjectFileSnapshot,
+  type ProjectFileSystem,
 } from "@mindcraft-lang/bridge-app";
-import { type ExportedFileSystem, FileSystem, type FileSystemNotification } from "@mindcraft-lang/bridge-client";
+import { FileSystem, type FileSystemNotification, type FileSystemSnapshot } from "@mindcraft-lang/bridge-client";
 import type { WsMessage } from "@mindcraft-lang/bridge-protocol";
 
 type WsCallback = ((...args: unknown[]) => void) | null;
@@ -51,27 +52,27 @@ class MockWebSocket {
   }
 }
 
-class MemoryWorkspace implements WorkspaceAdapter {
+class MemoryProjectFileSystem implements ProjectFileSystem {
   private readonly _fs = new FileSystem();
-  private readonly _listeners = new Set<(change: WorkspaceChange) => void>();
+  private readonly _listeners = new Set<(change: ProjectFileChange) => void>();
   private readonly _anyChangeListeners = new Set<() => void>();
 
-  constructor(entries: ExportedFileSystem = new Map()) {
+  constructor(entries: FileSystemSnapshot = new Map()) {
     this._fs.import(entries);
   }
 
-  exportSnapshot(): ExportedFileSystem {
-    return this._fs.export();
+  exportSnapshot(): ProjectFileSnapshot {
+    return new Map(this._fs.export());
   }
 
-  applyRemoteChange(change: WorkspaceChange): void {
+  applyRemoteChange(change: ProjectFileChange): void {
     applyChange(this._fs, change);
     for (const listener of this._anyChangeListeners) {
       listener();
     }
   }
 
-  onLocalChange(listener: (change: WorkspaceChange) => void): () => void {
+  onLocalChange(listener: (change: ProjectFileChange) => void): () => void {
     this._listeners.add(listener);
     return () => {
       this._listeners.delete(listener);
@@ -87,7 +88,7 @@ class MemoryWorkspace implements WorkspaceAdapter {
 
   flush(): void {}
 
-  applyLocalChange(change: WorkspaceChange): void {
+  applyLocalChange(change: ProjectFileChange): void {
     applyChange(this._fs, change);
     for (const listener of this._listeners) {
       listener(change);
@@ -111,7 +112,7 @@ class MemoryWorkspace implements WorkspaceAdapter {
   }
 }
 
-function applyChange(fs: FileSystem, change: WorkspaceChange): void {
+function applyChange(fs: FileSystem, change: ProjectFileChange): void {
   switch (change.action) {
     case "write":
       fs.writeRestore(change.path, change.content, change.isReadonly ?? false, change.newEtag);
@@ -144,10 +145,10 @@ function parseSent(socket: MockWebSocket): WsMessage[] {
   return socket.sent.map((raw) => JSON.parse(raw) as WsMessage);
 }
 
-function createBridge(workspace: MemoryWorkspace, features: readonly AppBridgeFeature[] = []) {
+function createBridge(filesystem: MemoryProjectFileSystem, features: readonly AppBridgeFeature[] = []) {
   return createAppBridge({
     bridgeUrl: "http://localhost:3000",
-    workspace,
+    filesystem,
     features,
   });
 }
@@ -181,8 +182,8 @@ describe("createAppBridge", () => {
   });
 
   it("tracks connection state and join code through snapshot updates", () => {
-    const workspace = new MemoryWorkspace();
-    const bridge = createBridge(workspace);
+    const filesystem = new MemoryProjectFileSystem();
+    const bridge = createBridge(filesystem);
     const snapshots: AppBridgeSnapshot[] = [];
 
     bridge.onStateChange(() => {
@@ -216,12 +217,12 @@ describe("createAppBridge", () => {
     assert.deepEqual(bridge.snapshot(), { status: "disconnected", joinCode: undefined });
   });
 
-  it("forwards local changes and applies remote changes through the workspace adapter", () => {
-    const workspace = new MemoryWorkspace(
+  it("forwards local changes and applies remote changes through the project file system", () => {
+    const filesystem = new MemoryProjectFileSystem(
       new Map([["src/main.ts", { kind: "file", content: "const value = 1;", etag: "etag-1", isReadonly: false }]])
     );
-    const bridge = createBridge(workspace);
-    const remoteChanges: WorkspaceChange[] = [];
+    const bridge = createBridge(filesystem);
+    const remoteChanges: ProjectFileChange[] = [];
 
     bridge.onRemoteChange((change) => {
       remoteChanges.push(change);
@@ -231,7 +232,7 @@ describe("createAppBridge", () => {
     const socket = lastSocket();
     socket.simulateOpen();
 
-    const localChange: WorkspaceChange = {
+    const localChange: ProjectFileChange = {
       action: "write",
       path: "src/main.ts",
       content: "const value = 2;",
@@ -240,7 +241,7 @@ describe("createAppBridge", () => {
       expectedEtag: "etag-1",
     };
 
-    workspace.applyLocalChange(localChange);
+    filesystem.applyLocalChange(localChange);
 
     const localMessage = parseSent(socket).find((message) => {
       return (
@@ -267,16 +268,16 @@ describe("createAppBridge", () => {
       payload: remoteChange,
     });
 
-    assert.equal(workspace.read("src/remote.ts"), "export const remote = true;");
+    assert.equal(filesystem.read("src/remote.ts"), "export const remote = true;");
     assert.deepEqual(remoteChanges, [remoteChange]);
   });
 
-  it("applies sync responses as one import change and updates the workspace snapshot", async () => {
-    const workspace = new MemoryWorkspace(
+  it("applies sync responses as one import change and updates the project file snapshot", async () => {
+    const filesystem = new MemoryProjectFileSystem(
       new Map([["src/stale.ts", { kind: "file", content: "stale", etag: "etag-stale", isReadonly: false }]])
     );
-    const bridge = createBridge(workspace);
-    const remoteChanges: WorkspaceChange[] = [];
+    const bridge = createBridge(filesystem);
+    const remoteChanges: ProjectFileChange[] = [];
     let syncCount = 0;
 
     bridge.onRemoteChange((change) => {
@@ -301,7 +302,7 @@ describe("createAppBridge", () => {
       },
     };
 
-    const syncBridge = createBridge(workspace, [feature]);
+    const syncBridge = createBridge(filesystem, [feature]);
     syncBridge.start();
     const syncSocket = lastSocket();
     syncSocket.simulateOpen();
@@ -311,7 +312,7 @@ describe("createAppBridge", () => {
 
     assert.ok(secondRequest?.id);
 
-    const entries: ExportedFileSystem = new Map([
+    const entries: FileSystemSnapshot = new Map([
       ["src/fresh.ts", { kind: "file", content: "fresh", etag: "etag-fresh", isReadonly: false }],
     ]);
 
@@ -333,13 +334,13 @@ describe("createAppBridge", () => {
 
     assert.equal(remoteChanges.length, 1);
     assert.deepEqual(remoteChanges[0], { action: "import", entries: [...entries] });
-    assert.throws(() => workspace.read("src/stale.ts"));
-    assert.equal(workspace.read("src/fresh.ts"), "fresh");
+    assert.throws(() => filesystem.read("src/stale.ts"));
+    assert.equal(filesystem.read("src/fresh.ts"), "fresh");
     assert.equal(syncCount, 1);
   });
 
   it("attaches features and replays through the sync hook with publish helpers", () => {
-    const workspace = new MemoryWorkspace(
+    const filesystem = new MemoryProjectFileSystem(
       new Map([["src/main.ts", { kind: "file", content: "const value = 1;", etag: "etag-1", isReadonly: false }]])
     );
     const seenSnapshots: AppBridgeSnapshot[] = [];
@@ -348,7 +349,7 @@ describe("createAppBridge", () => {
     const feature: AppBridgeFeature = {
       attach(context) {
         seenSnapshots.push(context.snapshot());
-        attachedWorkspaceSize = context.workspaceSnapshot().size;
+        attachedWorkspaceSize = context.projectFileSnapshot().size;
 
         return context.onDidSync(() => {
           context.publishDiagnostics("src/main.ts", [createDiagnostic("unexpected token")]);
@@ -361,7 +362,7 @@ describe("createAppBridge", () => {
       },
     };
 
-    const bridge = createBridge(workspace, [feature]);
+    const bridge = createBridge(filesystem, [feature]);
     bridge.start();
     const socket = lastSocket();
     socket.simulateOpen();

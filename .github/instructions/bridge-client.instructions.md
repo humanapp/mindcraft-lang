@@ -48,15 +48,16 @@ src/
 - `ProjectSession` -- WebSocket lifecycle, message handling, session events.
 - `ProjectFiles` -- filesystem wrapper with bidirectional change routing.
 
-Types re-exported: `IFileSystem`, `StatResult`, `FileTreeEntry`, `ExportedFileSystem`,
-`ExportedFileSystemEntry`, `FileSystemNotification`, `ProjectOptions`,
+Types re-exported: `IFileSystem`, `StatResult`, `FileTreeEntry`, `FileSystemSnapshot`,
+`FileSystemSnapshotEntry`, `FileSystemSnapshotFileEntry`, `FileSystemSnapshotDirectoryEntry`,
+`FileSystemNotification`, `ProjectOptions`,
 `ConnectionStatus`, `SessionEventMap`.
 
 ## Project
 
 - Generic over `<TClient, TServer>` (message types supplied by consumers like `bridge-app`).
-- Constructed with `ProjectOptions` (appName, bridgeUrl, wsPath,
-  filesystem, optional joinCode/bindingToken). Validates required fields, throws `ProtocolError`.
+- Constructed with `ProjectOptions` (bridgeUrl, wsPath,
+  initialFileSnapshot, optional joinCode/bindingToken). Validates required fields, throws `ProtocolError`.
 - Owns `ProjectSession` and `ProjectFiles` as subsystems.
 - Sequence-number deduplication: `_outboundSeq` stamps outgoing changes; `_peerSeq`
   filters duplicate inbound messages after reconnection.

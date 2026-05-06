@@ -31,9 +31,9 @@ export interface IFileSystem {
   mkdir(path: string): void;
   rmdir(path: string): void;
   /** Snapshot the entire filesystem. */
-  export(): ExportedFileSystem;
+  export(): FileSystemSnapshot;
   /** Replace the entire filesystem with `entries`. */
-  import(entries: ExportedFileSystem): void;
+  import(entries: FileSystemSnapshot): void;
 }
 
 /**
@@ -125,11 +125,11 @@ export class NotifyingFileSystem implements IFileSystem {
     this._onChange({ action: "rmdir", path });
   }
 
-  export(): ExportedFileSystem {
+  export(): FileSystemSnapshot {
     return this._fs.export();
   }
 
-  import(entries: ExportedFileSystem): void {
+  import(entries: FileSystemSnapshot): void {
     this._fs.import(entries);
     this._onChange({ action: "import", entries: [...entries] });
   }
@@ -227,13 +227,13 @@ export class FileSystem implements IFileSystem {
     this._root.rmdir(path);
   }
 
-  export(): ExportedFileSystem {
-    const result: ExportedFileSystem = new Map();
+  export(): FileSystemSnapshot {
+    const result: FileSystemSnapshot = new Map();
     this._root.flatten(result);
     return result;
   }
 
-  import(entries: ExportedFileSystem): void {
+  import(entries: FileSystemSnapshot): void {
     this._root = new FileTree("", "");
     for (const [path, entry] of entries) {
       if (entry.kind === "directory") {
@@ -256,24 +256,24 @@ export class FileSystem implements IFileSystem {
   }
 }
 
-/** A regular file entry in an {@link ExportedFileSystem}. */
-export type ExportedFileEntry = {
+/** A regular file entry in an {@link FileSystemSnapshot}. */
+export type FileSystemSnapshotFileEntry = {
   kind: "file";
   content: string;
   etag: string;
   isReadonly: boolean;
 };
 
-/** A directory entry in an {@link ExportedFileSystem}. */
-export type ExportedDirectoryEntry = {
+/** A directory entry in an {@link FileSystemSnapshot}. */
+export type FileSystemSnapshotDirectoryEntry = {
   kind: "directory";
 };
 
-/** Either a file or a directory entry in an {@link ExportedFileSystem}. */
-export type ExportedFileSystemEntry = ExportedFileEntry | ExportedDirectoryEntry;
+/** Either a file or a directory entry in an {@link FileSystemSnapshot}. */
+export type FileSystemSnapshotEntry = FileSystemSnapshotFileEntry | FileSystemSnapshotDirectoryEntry;
 
 /** Map from absolute path to entry, used as the snapshot/import format. */
-export type ExportedFileSystem = Map<string, ExportedFileSystemEntry>;
+export type FileSystemSnapshot = Map<string, FileSystemSnapshotEntry>;
 
 /** Result of {@link IFileSystem.stat}. */
 export type StatResult =
@@ -421,9 +421,9 @@ class FileTree {
     return this.listInternal(segs);
   }
 
-  flatten(result: Map<string, ExportedFileEntry | ExportedDirectoryEntry>): void {
+  flatten(result: Map<string, FileSystemSnapshotFileEntry | FileSystemSnapshotDirectoryEntry>): void {
     for (const file of this._files.values()) {
-      const entry: ExportedFileEntry = {
+      const entry: FileSystemSnapshotFileEntry = {
         kind: "file",
         content: file.content,
         etag: file.etag,

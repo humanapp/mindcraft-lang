@@ -1,6 +1,6 @@
 # @mindcraft-lang/app-host
 
-Project management and workspace storage for Mindcraft apps.
+Project management and project file storage for Mindcraft apps.
 
 Provides `ProjectStore` and `ProjectManager` for managing named projects in
 localStorage. Each project contains a workspace filesystem snapshot and

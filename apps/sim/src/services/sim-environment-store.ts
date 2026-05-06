@@ -6,9 +6,9 @@ import {
   type ImportResult,
   importProject as importProjectCommon,
   type MindcraftExportDocument,
+  type ProjectFileSystem,
   ProjectManager,
   type ProjectManifest,
-  type WorkspaceAdapter,
 } from "@mindcraft-lang/app-host";
 import { type AppBridgeState, AppEnvironmentHost, type UserTileMetadata } from "@mindcraft-lang/bridge-app";
 import {
@@ -253,7 +253,7 @@ export class SimEnvironmentStore {
     let instanceRef: SimEnvironmentStore | undefined;
     const host = new AppEnvironmentHost({
       projectManager: new ProjectManager(projectStore, {
-        workspaceOptions: {
+        filesystemOptions: {
           shouldExclude: (path) => isCompilerControlledPath(path, { ambientFiles: simAmbientFiles }),
         },
         lock: createWebLocksProjectLock(simName),
@@ -289,8 +289,8 @@ export class SimEnvironmentStore {
     return this.host.projectManager;
   }
 
-  get workspace(): WorkspaceAdapter {
-    return this.host.workspace;
+  get projectFileSystem(): ProjectFileSystem {
+    return this.host.projectFileSystem;
   }
 
   get activeProjectManifest(): ProjectManifest | undefined {
@@ -369,10 +369,10 @@ export class SimEnvironmentStore {
 
   async exportProject(): Promise<string> {
     const manifest = this.host.activeProjectManifest!;
-    const workspace = this.host.workspace;
+    const filesystem = this.host.projectFileSystem;
     const pm = this.host.projectManager;
 
-    const common = await buildExportCommon({ name: simName, version: simVersion }, manifest, workspace, (key) =>
+    const common = await buildExportCommon({ name: simName, version: simVersion }, manifest, filesystem, (key) =>
       pm.loadAppData(key)
     );
 

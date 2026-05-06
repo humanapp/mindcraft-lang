@@ -1,4 +1,4 @@
-/** Workspace path of the project's `mindcraft.json` manifest. */
+/** Project-relative path of the project's `mindcraft.json` manifest. */
 export const MINDCRAFT_JSON_PATH = "mindcraft.json";
 
 /** Shape of the `mindcraft.json` file. */

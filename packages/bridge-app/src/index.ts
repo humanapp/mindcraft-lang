@@ -1,11 +1,11 @@
 export type {
   ExampleDefinition,
   ExampleFile,
-  InMemoryWorkspaceOptions,
+  InMemoryProjectFileSystemOptions,
   MindcraftJson,
 } from "@mindcraft-lang/app-host";
 export {
-  createInMemoryWorkspace,
+  createInMemoryProjectFileSystem,
   EXAMPLES_FOLDER,
   MINDCRAFT_JSON_PATH,
   parseMindcraftJson,
@@ -20,9 +20,9 @@ export type {
   AppBridgeSnapshot,
   AppBridgeState,
   DiagnosticEntry,
-  WorkspaceAdapter,
-  WorkspaceChange,
-  WorkspaceSnapshot,
+  ProjectFileChange,
+  ProjectFileSnapshot,
+  ProjectFileSystem,
 } from "./app-bridge.js";
 export { createAppBridge } from "./app-bridge.js";
 

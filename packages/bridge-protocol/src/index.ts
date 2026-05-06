@@ -38,7 +38,7 @@ export {
 } from "./messages/index.js";
 export type { FileSystemNotification, FilesystemSyncPayload } from "./notifications.js";
 export {
-  fileSystemNotificationSchema,
+  filesystemNotificationSchema,
   filesystemSyncPayloadSchema,
   MAX_FILE_CONTENT_BYTES,
   MAX_SNAPSHOT_CONTENT_BYTES,

@@ -1,8 +1,8 @@
 import type {
   ExampleDefinition,
   MindcraftJsonHostInfo,
+  ProjectFileSystem,
   ProjectManifest,
-  WorkspaceAdapter,
 } from "@mindcraft-lang/app-host";
 import {
   diffMindcraftJsonToManifest,
@@ -14,7 +14,7 @@ import type { IBrainDef, MindcraftEnvironment, MindcraftModule } from "@mindcraf
 import { createMindcraftEnvironment, Dict, logger } from "@mindcraft-lang/core/app";
 import type { IRngServices } from "@mindcraft-lang/core/runtime";
 import type { AmbientFile, WorkspaceCompileResult } from "@mindcraft-lang/ts-compiler";
-import type { AppBridge, AppBridgeState, WorkspaceChange } from "./app-bridge.js";
+import type { AppBridge, AppBridgeState, ProjectFileChange } from "./app-bridge.js";
 import type { BridgeProjectHandle, ProjectCompilerHandle } from "./compilation.js";
 import { createBridgeProject, createProjectCompiler } from "./compilation.js";
 import type { UserTileApplyResult, UserTileMetadata } from "./user-tile-registration.js";
@@ -29,7 +29,7 @@ export interface AppEnvironmentHostOptions {
   projectManager: ProjectManager;
   /** Mindcraft modules to register with the environment. */
   modules: readonly MindcraftModule[];
-  /** Ordered ambient declaration files supplied to the workspace compiler and remote VFS. */
+  /** Ordered ambient declaration files supplied to the project compiler and remote VFS. */
   ambientFiles: readonly AmbientFile[];
   /** Identifies the host application when writing `mindcraft.json`. */
   host: MindcraftJsonHostInfo;
@@ -53,7 +53,7 @@ export interface AppEnvironmentHostOptions {
   /** Persists an updated bridge binding token. */
   saveBindingToken?: (token: string) => void;
 
-  /** Invoked after every successful workspace compile. */
+  /** Invoked after every successful project compile. */
   onDidCompile?: (result: WorkspaceCompileResult, tileResult: UserTileApplyResult | undefined) => void;
 }
 
@@ -63,7 +63,7 @@ export interface AppEnvironmentHostOptions {
 
 /**
  * Glue layer that wires a {@link ProjectManager}, a {@link MindcraftEnvironment},
- * the workspace compiler, user-tile registration, and (optionally) the bridge
+ * the project compiler, user-tile registration, and (optionally) the bridge
  * into a single host an app UI can drive.
  */
 export class AppEnvironmentHost {
@@ -136,11 +136,11 @@ export class AppEnvironmentHost {
   }
 
   // ---------------------------------------------------------------------------
-  // Workspace
+  // Project file system
   // ---------------------------------------------------------------------------
 
-  get workspace(): WorkspaceAdapter {
-    return this.projectManager.activeProject!.workspace;
+  get projectFileSystem(): ProjectFileSystem {
+    return this.projectManager.activeProject!.filesystem;
   }
 
   get activeProjectManifest(): ProjectManifest | undefined {
@@ -169,7 +169,7 @@ export class AppEnvironmentHost {
   private initCompiler(): void {
     this._compiler = createProjectCompiler({
       environment: this.env,
-      workspace: this.workspace,
+      filesystem: this.projectFileSystem,
       ambientFiles: this.ambientFiles,
       examples: [...this._examples],
       onDidCompile: (result) => {
@@ -184,7 +184,7 @@ export class AppEnvironmentHost {
         this.onDidCompileCallback?.(result, tileResult);
       },
     });
-    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this.host);
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest, this.host);
     this._compiler.initialize();
   }
 
@@ -266,7 +266,7 @@ export class AppEnvironmentHost {
 
   async updateProjectMetadata(updates: Partial<Pick<ProjectManifest, "name" | "description">>): Promise<void> {
     await this.projectManager.updateActive(updates);
-    syncManifestToMindcraftJson(this.workspace, this.projectManager.activeProject!.manifest, this.host);
+    syncManifestToMindcraftJson(this.projectFileSystem, this.projectManager.activeProject!.manifest, this.host);
   }
 
   // ---------------------------------------------------------------------------
@@ -409,7 +409,7 @@ export class AppEnvironmentHost {
 
     this._bridge = createBridgeProject({
       projectCompiler: this._compiler,
-      workspace: this.workspace,
+      filesystem: this.projectFileSystem,
       bridgeUrl: this._bridgeUrl,
       bindingToken: this._loadBindingToken(),
       onBindingTokenChange: (token) => {
@@ -498,7 +498,7 @@ export class AppEnvironmentHost {
     this._bridgeStateUnsub = bridge.onStateChange(() => {
       this.applyBridgeSnapshot(bridge);
     });
-    this._remoteChangeUnsub = bridge.onRemoteChange((change: WorkspaceChange) => {
+    this._remoteChangeUnsub = bridge.onRemoteChange((change: ProjectFileChange) => {
       this.bumpVfsRevision();
       if (change.action === "write" && change.path === MINDCRAFT_JSON_PATH && this.projectManager.activeProject) {
         const patch = diffMindcraftJsonToManifest(change.content, this.projectManager.activeProject.manifest);

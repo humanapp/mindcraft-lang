@@ -122,9 +122,9 @@ describe("LocalStorageProjectStore", () => {
       assert.strictEqual(list[0].id, b.id);
     });
 
-    it("clears metadata, workspace, and app data for the deleted project", async () => {
+    it("clears metadata, project files, and app data for the deleted project", async () => {
       const p = await store.createProject("Doomed");
-      await store.saveWorkspace(
+      await store.saveProjectFiles(
         p.id,
         new Map([["file.ts", { kind: "file", content: "x", etag: "1", isReadonly: false }]])
       );
@@ -132,7 +132,7 @@ describe("LocalStorageProjectStore", () => {
       await store.deleteProject(p.id);
 
       assert.strictEqual(await store.getProject(p.id), undefined);
-      assert.strictEqual(await store.loadWorkspace(p.id), undefined);
+      assert.strictEqual(await store.loadProjectFiles(p.id), undefined);
       assert.strictEqual(await store.loadAppData(p.id, "brains"), undefined);
     });
 
@@ -144,15 +144,15 @@ describe("LocalStorageProjectStore", () => {
     });
   });
 
-  describe("workspace persistence", () => {
-    it("round-trips a workspace snapshot", async () => {
+  describe("project file persistence", () => {
+    it("round-trips a project file snapshot", async () => {
       const p = await store.createProject("WS");
       const snapshot = new Map([
         ["src/main.ts", { kind: "file" as const, content: "console.log('hi')", etag: "abc", isReadonly: false }],
         ["src/", { kind: "directory" as const }],
       ]);
-      await store.saveWorkspace(p.id, snapshot);
-      const loaded = await store.loadWorkspace(p.id);
+      await store.saveProjectFiles(p.id, snapshot);
+      const loaded = await store.loadProjectFiles(p.id);
       assert.ok(loaded);
       assert.strictEqual(loaded.size, 2);
       const file = loaded.get("src/main.ts");
@@ -162,9 +162,9 @@ describe("LocalStorageProjectStore", () => {
       }
     });
 
-    it("returns undefined when no workspace saved", async () => {
+    it("returns undefined when no project files saved", async () => {
       const p = await store.createProject("Empty");
-      assert.strictEqual(await store.loadWorkspace(p.id), undefined);
+      assert.strictEqual(await store.loadProjectFiles(p.id), undefined);
     });
   });
 
@@ -189,9 +189,9 @@ describe("LocalStorageProjectStore", () => {
   });
 
   describe("duplicateProject", () => {
-    it("copies workspace and app data to the new project", async () => {
+    it("copies project files and app data to the new project", async () => {
       const original = await store.createProject("Original");
-      await store.saveWorkspace(
+      await store.saveProjectFiles(
         original.id,
         new Map([["a.ts", { kind: "file", content: "a", etag: "1", isReadonly: false }]])
       );
@@ -203,7 +203,7 @@ describe("LocalStorageProjectStore", () => {
       assert.strictEqual(dup.name, "Copy");
       assert.notStrictEqual(dup.id, original.id);
 
-      const ws = await store.loadWorkspace(dup.id);
+      const ws = await store.loadProjectFiles(dup.id);
       assert.ok(ws);
       assert.strictEqual(ws.get("a.ts")?.kind, "file");
 

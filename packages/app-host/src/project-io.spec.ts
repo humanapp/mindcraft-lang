@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { afterEach, beforeEach, describe, it } from "node:test";
 import type {
   ImportDiagnostic,
+  ProjectFileChange,
+  ProjectFileSnapshot,
+  ProjectFileSystem,
   ProjectManifest,
   ProjectStore,
-  WorkspaceAdapter,
-  WorkspaceChange,
-  WorkspaceSnapshot,
 } from "@mindcraft-lang/app-host";
 import {
   buildExportCommon,
@@ -23,7 +23,7 @@ import {
 class MemoryProjectStore implements ProjectStore {
   readonly keyPrefix = "test-app";
   private projects: ProjectManifest[] = [];
-  private workspaces = new Map<string, WorkspaceSnapshot>();
+  private projectFiles = new Map<string, ProjectFileSnapshot>();
   private appData = new Map<string, string>();
   private activeId: string | undefined;
 
@@ -49,7 +49,7 @@ class MemoryProjectStore implements ProjectStore {
 
   async deleteProject(id: string): Promise<void> {
     this.projects = this.projects.filter((p) => p.id !== id);
-    this.workspaces.delete(id);
+    this.projectFiles.delete(id);
     for (const key of this.appData.keys()) {
       if (key.startsWith(`${id}:`)) {
         this.appData.delete(key);
@@ -70,17 +70,17 @@ class MemoryProjectStore implements ProjectStore {
     const source = await this.getProject(id);
     if (!source) throw new Error(`not found: ${id}`);
     const dup = await this.createProject(newName);
-    const ws = this.workspaces.get(id);
-    if (ws) this.workspaces.set(dup.id, new Map(ws));
+    const ws = this.projectFiles.get(id);
+    if (ws) this.projectFiles.set(dup.id, new Map(ws));
     return dup;
   }
 
-  async loadWorkspace(id: string): Promise<WorkspaceSnapshot | undefined> {
-    return this.workspaces.get(id);
+  async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {
+    return this.projectFiles.get(id);
   }
 
-  async saveWorkspace(id: string, snapshot: WorkspaceSnapshot): Promise<void> {
-    this.workspaces.set(id, snapshot);
+  async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
+    this.projectFiles.set(id, snapshot);
   }
 
   async loadAppData(id: string, key: string): Promise<string | undefined> {
@@ -104,11 +104,11 @@ class MemoryProjectStore implements ProjectStore {
   }
 }
 
-function makeWorkspace(
+function makeProjectFileSystem(
   files?: Map<string, { kind: "file"; content: string; etag: string; isReadonly: boolean }>,
   dirs?: Map<string, { kind: "directory" }>
-): WorkspaceAdapter {
-  const snapshot: WorkspaceSnapshot = new Map();
+): ProjectFileSystem {
+  const snapshot: ProjectFileSnapshot = new Map();
   for (const [k, v] of files ?? []) snapshot.set(k, v);
   for (const [k, v] of dirs ?? []) snapshot.set(k, v);
 
@@ -116,7 +116,7 @@ function makeWorkspace(
     exportSnapshot() {
       return new Map(snapshot);
     },
-    applyRemoteChange(change: WorkspaceChange) {
+    applyRemoteChange(change: ProjectFileChange) {
       if (change.action === "write") {
         snapshot.set(change.path, {
           kind: "file",
@@ -126,7 +126,7 @@ function makeWorkspace(
         });
       }
     },
-    applyLocalChange(change: WorkspaceChange) {
+    applyLocalChange(change: ProjectFileChange) {
       if (change.action === "write") {
         snapshot.set(change.path, {
           kind: "file",
@@ -191,7 +191,7 @@ describe("buildExportCommon", () => {
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
       [MINDCRAFT_JSON_PATH, { kind: "file" as const, content: "{}", etag: "e2", isReadonly: false }],
     ]);
-    const ws = makeWorkspace(files);
+    const ws = makeProjectFileSystem(files);
     const manifest = makeManifest();
 
     const result = await buildExportCommon(HOST, manifest, ws, async () => undefined);
@@ -208,7 +208,7 @@ describe("buildExportCommon", () => {
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
       ["lib/std.ts", { kind: "file" as const, content: "stdlib", etag: "e2", isReadonly: true }],
     ]);
-    const ws = makeWorkspace(files);
+    const ws = makeProjectFileSystem(files);
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
@@ -221,7 +221,7 @@ describe("buildExportCommon", () => {
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
       [`${EXAMPLES_FOLDER}/demo.ts`, { kind: "file" as const, content: "demo", etag: "e2", isReadonly: false }],
     ]);
-    const ws = makeWorkspace(files);
+    const ws = makeProjectFileSystem(files);
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
@@ -234,7 +234,7 @@ describe("buildExportCommon", () => {
       ["src/main.ts", { kind: "file" as const, content: "hello", etag: "e1", isReadonly: false }],
     ]);
     const dirs = new Map([["src", { kind: "directory" as const }]]);
-    const ws = makeWorkspace(files, dirs);
+    const ws = makeProjectFileSystem(files, dirs);
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
@@ -243,7 +243,7 @@ describe("buildExportCommon", () => {
   });
 
   it("loads and includes brains from app data", async () => {
-    const ws = makeWorkspace();
+    const ws = makeProjectFileSystem();
     const brains = { carnivore: { name: "carnivore" }, herbivore: { name: "herbivore" } };
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async (key) => {
@@ -255,18 +255,18 @@ describe("buildExportCommon", () => {
   });
 
   it("returns empty brains object when no brain data stored", async () => {
-    const ws = makeWorkspace();
+    const ws = makeProjectFileSystem();
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
     assert.deepStrictEqual(result.brains, {});
   });
 
-  it("returns empty files array when workspace has no user files", async () => {
+  it("returns empty files array when project file system has no user files", async () => {
     const files = new Map([
       [MINDCRAFT_JSON_PATH, { kind: "file" as const, content: "{}", etag: "e1", isReadonly: false }],
     ]);
-    const ws = makeWorkspace(files);
+    const ws = makeProjectFileSystem(files);
 
     const result = await buildExportCommon(HOST, makeManifest(), ws, async () => undefined);
 
@@ -381,7 +381,7 @@ describe("importProject", () => {
     assert.strictEqual(project?.name, DEFAULT_PROJECT_NAME);
   });
 
-  it("creates project and writes files to workspace", async () => {
+  it("creates project and writes project files", async () => {
     const doc = makeExportDoc({
       name: "Import Test",
       description: "imported desc",
@@ -397,7 +397,7 @@ describe("importProject", () => {
     assert.strictEqual(result.success, true);
     assert.ok(result.projectId);
 
-    const snapshot = await store.loadWorkspace(result.projectId!);
+    const snapshot = await store.loadProjectFiles(result.projectId!);
     assert.ok(snapshot);
     const mainEntry = snapshot.get("src/main.ts");
     assert.ok(mainEntry && mainEntry.kind === "file");
@@ -425,7 +425,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, true);
-    const snapshot = await store.loadWorkspace(result.projectId!);
+    const snapshot = await store.loadProjectFiles(result.projectId!);
     assert.ok(snapshot?.get("valid.ts"));
     assert.strictEqual(result.diagnostics.filter((d) => d.severity === "warning").length, 2);
   });
@@ -570,7 +570,7 @@ describe("importProject", () => {
     const result = await importProject(file, "test-app", "1.0.0", pm);
 
     assert.strictEqual(result.success, true);
-    const snapshot = await store.loadWorkspace(result.projectId!);
+    const snapshot = await store.loadProjectFiles(result.projectId!);
     assert.ok(snapshot?.get("valid/file.ts"));
     assert.strictEqual(snapshot?.has("../escape.ts"), false);
     assert.strictEqual(snapshot?.has("/absolute.ts"), false);
@@ -583,11 +583,11 @@ describe("importProject", () => {
 });
 
 describe("ProjectManager.createFromSnapshot", () => {
-  it("writes manifest, description, workspace, and app data without opening", async () => {
+  it("writes manifest, description, project files, and app data without opening", async () => {
     const store = new MemoryProjectStore();
     const pm = new ProjectManager(store);
 
-    const snapshot: WorkspaceSnapshot = new Map([
+    const snapshot: ProjectFileSnapshot = new Map([
       ["src/main.ts", { kind: "file", content: "hello", etag: "e1", isReadonly: false }],
     ]);
 
@@ -602,7 +602,7 @@ describe("ProjectManager.createFromSnapshot", () => {
     const stored = await store.getProject(manifest.id);
     assert.strictEqual(stored?.description, "snap desc");
 
-    const ws = await store.loadWorkspace(manifest.id);
+    const ws = await store.loadProjectFiles(manifest.id);
     const file = ws?.get("src/main.ts");
     assert.ok(file && file.kind === "file");
     assert.strictEqual(file.content, "hello");

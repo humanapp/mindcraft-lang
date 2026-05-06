@@ -1,8 +1,8 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
 import { MINDCRAFT_JSON_PATH } from "./mindcraft-json.js";
+import type { ProjectFileSnapshot, ProjectFileSystemEntry } from "./project-file-snapshot.js";
 import type { ProjectManifest } from "./project-manifest.js";
 import type { ProjectStore } from "./project-store.js";
-import type { WorkspaceEntry, WorkspaceSnapshot } from "./workspace-snapshot.js";
 
 interface ProjectDbSchema extends DBSchema {
   projects: {
@@ -11,7 +11,7 @@ interface ProjectDbSchema extends DBSchema {
   };
   files: {
     key: string;
-    value: Array<[string, WorkspaceEntry]>;
+    value: Array<[string, ProjectFileSystemEntry]>;
   };
   appData: {
     key: string;
@@ -36,7 +36,7 @@ function appDataKey(projectId: string, key: string): string {
  *   `localStorage`/`sessionStorage` keys that track the active project.
  */
 export async function createIdbProjectStore(keyPrefix: string): Promise<ProjectStore> {
-  let migrateWorkspacesToFiles: Map<string, Array<[string, WorkspaceEntry]>> | undefined;
+  let migrateWorkspacesToFiles: Map<string, Array<[string, ProjectFileSystemEntry]>> | undefined;
 
   const db = await openDB<ProjectDbSchema>(dbName(keyPrefix), DB_VERSION, {
     async upgrade(db, oldVersion, _newVersion, tx) {
@@ -48,10 +48,10 @@ export async function createIdbProjectStore(keyPrefix: string): Promise<ProjectS
       if (oldVersion >= 1 && oldVersion < 2) {
         const oldStore = tx.objectStore("workspaces" as never);
         const allKeys = await oldStore.getAllKeys();
-        const pending = new Map<string, Array<[string, WorkspaceEntry]>>();
+        const pending = new Map<string, Array<[string, ProjectFileSystemEntry]>>();
         for (const key of allKeys) {
           const value = await oldStore.get(key);
-          if (value) pending.set(key as string, value as Array<[string, WorkspaceEntry]>);
+          if (value) pending.set(key as string, value as Array<[string, ProjectFileSystemEntry]>);
         }
         migrateWorkspacesToFiles = pending;
         db.deleteObjectStore("workspaces" as never);
@@ -144,9 +144,9 @@ class IdbProjectStore implements ProjectStore {
 
     const newManifest = await this.createProject(newName);
 
-    const workspace = await this.loadWorkspace(id);
-    if (workspace) {
-      await this.saveWorkspace(newManifest.id, workspace);
+    const projectFiles = await this.loadProjectFiles(id);
+    if (projectFiles) {
+      await this.saveProjectFiles(newManifest.id, projectFiles);
     }
 
     const allKeys = await this.db.getAllKeys("appData");
@@ -164,7 +164,7 @@ class IdbProjectStore implements ProjectStore {
     return newManifest;
   }
 
-  async loadWorkspace(id: string): Promise<WorkspaceSnapshot | undefined> {
+  async loadProjectFiles(id: string): Promise<ProjectFileSnapshot | undefined> {
     const entries = await this.db.get("files", id);
     if (!entries) {
       return undefined;
@@ -172,7 +172,7 @@ class IdbProjectStore implements ProjectStore {
     return new Map(entries);
   }
 
-  async saveWorkspace(id: string, snapshot: WorkspaceSnapshot): Promise<void> {
+  async saveProjectFiles(id: string, snapshot: ProjectFileSnapshot): Promise<void> {
     snapshot.delete(MINDCRAFT_JSON_PATH);
     await this.db.put("files", [...snapshot], id);
     await this.updateProject(id, {});
