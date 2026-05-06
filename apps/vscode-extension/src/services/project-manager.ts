@@ -9,6 +9,8 @@ import { MINDCRAFT_EXAMPLE_SCHEME, MindcraftExampleFileSystemProvider } from "./
 import { MINDCRAFT_SCHEME, MindcraftFileSystemProvider } from "./mindcraft-fs-provider";
 
 const BINDING_TOKEN_KEY = "mindcraft.bindingToken";
+const PROJECT_NAME_KEY = "mindcraft.projectName";
+const DEFAULT_WORKSPACE_FOLDER_NAME = "Mindcraft";
 
 // Deduplication key for pending changes: same action + path overwrites the
 // previous pending entry so only the latest write/delete is sent after reconnect.
@@ -31,6 +33,7 @@ export class ProjectManager implements vscode.Disposable {
   private _project: ExtensionProject | undefined;
   private _appBound = false;
   private _appClientConnected = false;
+  private _hasBindingToken = false;
   private _pendingChanges: FileSystemNotification[] = [];
   private readonly _unsubs: (() => void)[] = [];
   private readonly _disposables: vscode.Disposable[] = [];
@@ -38,7 +41,7 @@ export class ProjectManager implements vscode.Disposable {
   private readonly _exampleFsProvider = new MindcraftExampleFileSystemProvider();
   private readonly _diagnosticsManager = new DiagnosticsManager();
   private _globalState: vscode.Memento | undefined;
-  private _workspaceFolderName = "Mindcraft";
+  private _workspaceFolderName = DEFAULT_WORKSPACE_FOLDER_NAME;
 
   private readonly _onDidChangeProject = new vscode.EventEmitter<void>();
   readonly onDidChangeProject = this._onDidChangeProject.event;
@@ -83,13 +86,23 @@ export class ProjectManager implements vscode.Disposable {
     return this._appClientConnected;
   }
 
+  get hasBindingToken(): boolean {
+    return this._hasBindingToken;
+  }
+
+  get workspaceFolderName(): string {
+    return this._workspaceFolderName;
+  }
+
   get pendingChanges(): number {
     return this._pendingChanges.length;
   }
 
   initialize(globalState: vscode.Memento): void {
     this._globalState = globalState;
+    this._workspaceFolderName = globalState.get<string>(PROJECT_NAME_KEY, DEFAULT_WORKSPACE_FOLDER_NAME);
     const bindingToken = globalState.get<string>(BINDING_TOKEN_KEY);
+    this._hasBindingToken = bindingToken !== undefined;
     if (bindingToken) {
       this.connect(undefined, bindingToken);
     } else {
@@ -106,6 +119,7 @@ export class ProjectManager implements vscode.Disposable {
     }
 
     const bindingToken = savedToken ?? this._globalState?.get<string>(BINDING_TOKEN_KEY);
+    this._hasBindingToken = bindingToken !== undefined;
 
     const project = new Project<ExtensionClientMessage, ExtensionServerMessage>({
       bridgeUrl,
@@ -143,6 +157,7 @@ export class ProjectManager implements vscode.Disposable {
           const p = msg.payload;
           if (p?.bindingToken) {
             this._globalState?.update(BINDING_TOKEN_KEY, p.bindingToken);
+            this._hasBindingToken = true;
           }
         }
         const wasBound = this._appBound;
@@ -194,6 +209,9 @@ export class ProjectManager implements vscode.Disposable {
     this.closeMindcraftTabs();
     this.removeWorkspaceFolder();
     this._globalState?.update(BINDING_TOKEN_KEY, undefined);
+    this._globalState?.update(PROJECT_NAME_KEY, undefined);
+    this._hasBindingToken = false;
+    this._workspaceFolderName = DEFAULT_WORKSPACE_FOLDER_NAME;
   }
 
   async sync(): Promise<void> {
@@ -377,6 +395,7 @@ export class ProjectManager implements vscode.Disposable {
 
   private renameWorkspaceFolder(name: string): void {
     this._workspaceFolderName = name;
+    this._globalState?.update(PROJECT_NAME_KEY, name);
     const index = this.findWorkspaceFolderIndex();
     if (index === -1) return;
     const folder = vscode.workspace.workspaceFolders![index];

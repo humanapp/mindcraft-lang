@@ -32,6 +32,7 @@ export interface AppSession extends BaseSession {
 export interface ExtensionSession extends BaseSession {
   role: "extension";
   appSessionId: string | undefined;
+  bindingId: string | undefined;
   pendingJoinCode: string | undefined;
   pendingBindingId: string | undefined;
 }
@@ -121,17 +122,25 @@ function notifyExtensionsAppStatus(appSessionId: string, bound: boolean, clientC
   }
 }
 
-function unbindExtensionsFromApp(appSessionId: string): void {
+function unbindExtensionsFromApp(appSessionId: string, pendingBindingId?: string): void {
   notifyExtensionsAppStatus(appSessionId, false);
   for (const session of extensionSessions.values()) {
     if (session.appSessionId === appSessionId) {
       session.appSessionId = undefined;
+      if (pendingBindingId) {
+        session.bindingId = pendingBindingId;
+        session.pendingBindingId = pendingBindingId;
+      }
       logger.info({ extensionSessionId: session.id, appSessionId }, "unbound active extension from purged app session");
     }
   }
   for (const entry of disconnectedExtensionSessions.values()) {
     if (entry.session.appSessionId === appSessionId) {
       entry.session.appSessionId = undefined;
+      if (pendingBindingId) {
+        entry.session.bindingId = pendingBindingId;
+        entry.session.pendingBindingId = pendingBindingId;
+      }
       logger.info(
         { extensionSessionId: entry.session.id, appSessionId },
         "unbound disconnected extension from purged app session"
@@ -146,7 +155,7 @@ function sweepDisconnectedSessions(): void {
     if (now - entry.disconnectedAt >= DISCONNECTED_SESSION_TTL_MS) {
       activeJoinCodes.delete(entry.session.joinCode);
       disconnectedAppSessions.delete(id);
-      unbindExtensionsFromApp(id);
+      unbindExtensionsFromApp(id, entry.session.bindingId);
       logger.info({ sessionId: id }, "expired disconnected app session");
     }
   }
@@ -168,7 +177,7 @@ function purgeDisconnectedIfNeeded(kind: "app" | "extension"): void {
       const [id, entry] = entries[i];
       activeJoinCodes.delete(entry.session.joinCode);
       disconnectedAppSessions.delete(id);
-      unbindExtensionsFromApp(id);
+      unbindExtensionsFromApp(id, entry.session.bindingId);
     }
     logger.info({ purged: toRemove, remaining: disconnectedAppSessions.size }, "purged disconnected app sessions");
   } else {
@@ -244,9 +253,10 @@ export function registerAppSession(ws: WSContext, bindingToken?: string): AppSes
 function bindPendingExtensions(app: AppSession): void {
   for (const ext of extensionSessions.values()) {
     const matchJoinCode = ext.pendingJoinCode && ext.pendingJoinCode === app.joinCode;
-    const matchBinding = ext.pendingBindingId && ext.pendingBindingId === app.bindingId;
+    const matchBinding = ext.bindingId === app.bindingId || ext.pendingBindingId === app.bindingId;
     if (matchJoinCode || matchBinding) {
       ext.appSessionId = app.id;
+      ext.bindingId = app.bindingId;
       ext.pendingJoinCode = undefined;
       ext.pendingBindingId = undefined;
       logger.info(
@@ -263,9 +273,10 @@ function bindPendingExtensions(app: AppSession): void {
   }
   for (const entry of disconnectedExtensionSessions.values()) {
     const matchJoinCode = entry.session.pendingJoinCode && entry.session.pendingJoinCode === app.joinCode;
-    const matchBinding = entry.session.pendingBindingId && entry.session.pendingBindingId === app.bindingId;
+    const matchBinding = entry.session.bindingId === app.bindingId || entry.session.pendingBindingId === app.bindingId;
     if (matchJoinCode || matchBinding) {
       entry.session.appSessionId = app.id;
+      entry.session.bindingId = app.bindingId;
       entry.session.pendingJoinCode = undefined;
       entry.session.pendingBindingId = undefined;
       logger.info(
@@ -280,7 +291,16 @@ function bindPendingExtensions(app: AppSession): void {
 
 function rebindExtensionsFromDisconnectedApp(app: AppSession): void {
   for (const ext of extensionSessions.values()) {
-    if (ext.appSessionId && ext.appSessionId !== app.id) {
+    if (ext.bindingId === app.bindingId && ext.appSessionId !== app.id) {
+      ext.appSessionId = app.id;
+      ext.pendingJoinCode = undefined;
+      ext.pendingBindingId = undefined;
+      logger.info(
+        { extensionSessionId: ext.id, newAppSessionId: app.id },
+        "rebound extension to new app with same bindingId"
+      );
+      notifyExtensionsAppStatus(app.id, true, true);
+    } else if (ext.appSessionId && ext.appSessionId !== app.id) {
       const oldApp = disconnectedAppSessions.get(ext.appSessionId);
       if (oldApp && oldApp.session.bindingId === app.bindingId) {
         logger.info(
@@ -288,12 +308,23 @@ function rebindExtensionsFromDisconnectedApp(app: AppSession): void {
           "rebound extension from disconnected app to new app with same bindingId"
         );
         ext.appSessionId = app.id;
+        ext.bindingId = app.bindingId;
+        ext.pendingJoinCode = undefined;
+        ext.pendingBindingId = undefined;
         notifyExtensionsAppStatus(app.id, true, true);
       }
     }
   }
   for (const entry of disconnectedExtensionSessions.values()) {
-    if (entry.session.appSessionId && entry.session.appSessionId !== app.id) {
+    if (entry.session.bindingId === app.bindingId && entry.session.appSessionId !== app.id) {
+      entry.session.appSessionId = app.id;
+      entry.session.pendingJoinCode = undefined;
+      entry.session.pendingBindingId = undefined;
+      logger.info(
+        { extensionSessionId: entry.session.id, newAppSessionId: app.id },
+        "rebound disconnected extension to new app with same bindingId"
+      );
+    } else if (entry.session.appSessionId && entry.session.appSessionId !== app.id) {
       const oldApp = disconnectedAppSessions.get(entry.session.appSessionId);
       if (oldApp && oldApp.session.bindingId === app.bindingId) {
         logger.info(
@@ -305,6 +336,9 @@ function rebindExtensionsFromDisconnectedApp(app: AppSession): void {
           "rebound disconnected extension from disconnected app to new app with same bindingId"
         );
         entry.session.appSessionId = app.id;
+        entry.session.bindingId = app.bindingId;
+        entry.session.pendingJoinCode = undefined;
+        entry.session.pendingBindingId = undefined;
       }
     }
   }
@@ -318,6 +352,7 @@ export function registerExtensionSession(ws: WSContext, joinCode?: string, bindi
   }
 
   let appSessionId: string | undefined;
+  let bindingId: string | undefined;
   let pendingJoinCode: string | undefined;
   let pendingBindingId: string | undefined;
 
@@ -325,6 +360,7 @@ export function registerExtensionSession(ws: WSContext, joinCode?: string, bindi
     const app = getAppByJoinCode(joinCode);
     if (app) {
       appSessionId = app.id;
+      bindingId = app.bindingId;
     } else {
       pendingJoinCode = joinCode;
     }
@@ -333,6 +369,7 @@ export function registerExtensionSession(ws: WSContext, joinCode?: string, bindi
   if (!appSessionId && bindingToken) {
     const verified = verifyBindingToken(bindingToken);
     if (verified) {
+      bindingId = verified;
       const app = getAppByBindingId(verified);
       if (app) {
         appSessionId = app.id;
@@ -357,6 +394,7 @@ export function registerExtensionSession(ws: WSContext, joinCode?: string, bindi
     ws,
     connectedAt: Date.now(),
     appSessionId,
+    bindingId,
     pendingJoinCode,
     pendingBindingId,
   };
@@ -387,7 +425,7 @@ export function discardAppSession(ws: WSContext): AppSession | undefined {
   if (session) {
     appSessions.delete(ws);
     activeJoinCodes.delete(session.joinCode);
-    unbindExtensionsFromApp(session.id);
+    unbindExtensionsFromApp(session.id, session.bindingId);
     if (appSessions.size === 0) {
       stopJoinCodeTimer();
     }
@@ -441,6 +479,14 @@ export function reclaimExtensionSession(sessionId: string, ws: WSContext): Exten
   if (disconnectedAppSessions.size === 0 && disconnectedExtensionSessions.size === 0) stopDisconnectedSweepTimer();
   entry.session.ws = ws;
   entry.session.connectedAt = Date.now();
+  if (entry.session.bindingId) {
+    const app = getAppByBindingId(entry.session.bindingId);
+    if (app) {
+      entry.session.appSessionId = app.id;
+      entry.session.pendingJoinCode = undefined;
+      entry.session.pendingBindingId = undefined;
+    }
+  }
   extensionSessions.set(ws, entry.session);
   logger.info({ sessionId: entry.session.id }, "extension session reclaimed");
   return entry.session;
@@ -535,7 +581,7 @@ export function killSessionById(sessionId: string): boolean {
     if (session.id === sessionId) {
       appSessions.delete(ws);
       activeJoinCodes.delete(session.joinCode);
-      unbindExtensionsFromApp(session.id);
+      unbindExtensionsFromApp(session.id, session.bindingId);
       if (appSessions.size === 0) stopJoinCodeTimer();
       try {
         session.ws.close(1000, "killed via repl");
@@ -558,7 +604,7 @@ export function killSessionById(sessionId: string): boolean {
     const entry = disconnectedAppSessions.get(sessionId)!;
     activeJoinCodes.delete(entry.session.joinCode);
     disconnectedAppSessions.delete(sessionId);
-    unbindExtensionsFromApp(sessionId);
+    unbindExtensionsFromApp(sessionId, entry.session.bindingId);
     if (disconnectedAppSessions.size === 0 && disconnectedExtensionSessions.size === 0) stopDisconnectedSweepTimer();
     logger.info({ sessionId }, "disconnected app session killed via repl");
     return true;
