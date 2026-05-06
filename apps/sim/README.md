@@ -50,6 +50,7 @@ Opens at `http://localhost:8080`.
 |---------|-------------|
 | `npm run dev` | Start Vite dev server (`--force` cache bypass) |
 | `npm run build` | Build `packages/core` first, then Vite production build |
+| `npm run generate:ambient` | Regenerate checked-in core and sim ambient declaration files |
 | `npm run clean` | Remove `dist/` and Vite cache |
 | `npm run lint` | Biome lint |
 | `npm run format` | Biome format |
@@ -103,6 +104,31 @@ The brain editor UI lives in `@mindcraft-lang/ui`. The sim provides app-specific
 - `App.tsx` wraps the `BrainEditorDialog` in a `<BrainEditorProvider>` with this config
 
 UI primitives (Button, Slider, etc.) are also imported from `@mindcraft-lang/ui` rather than local shadcn/ui copies.
+
+## Ambient Type Declarations
+
+The sim contributes a checked-in ambient declaration file at `ambient/mindcraft.sim.d.ts`.
+It augments the core `"mindcraft"` module with the sim-specific user-code surface:
+`ActorRef`, `Vector2`, sim entries in `MindcraftTypeMap`, `Context.self`, and sim
+methods on `BrainContext` and `EngineContext`.
+
+Generate it from `apps/sim/`:
+
+```bash
+npm run generate:ambient
+```
+
+This command first runs core's ambient generator, then writes the sim augmentation. The
+core file remains owned by `@mindcraft-lang/core`; the sim reads it from the package
+export and pairs it with `ambient/mindcraft.sim.d.ts` in `src/services/sim-ambient-files.ts`.
+The workspace compiler and VS Code bridge expose both files as readonly compiler-owned
+root files named `mindcraft.core.d.ts` and `mindcraft.sim.d.ts`.
+
+Regenerate the sim ambient file whenever the sim changes anything visible to user-authored
+Mindcraft TypeScript: registered sim types, context fields, sensors, actuators, host
+method signatures, or argument grammar metadata that affects callable types. The generated
+files should be checked in. The drift test in `src/services/sim-ambient-files.spec.ts`
+regenerates core and sim declarations and fails if the checked-in files differ.
 
 ## Language Component Registration
 

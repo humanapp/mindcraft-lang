@@ -101,6 +101,33 @@ Tests use `node:test` and `node:assert/strict`, run via `tsx`. A `pretest` step 
 
 ## Development Guide
 
+### Ambient Type Declarations
+
+Core publishes a checked-in ambient declaration file at `ambient/mindcraft.core.d.ts`.
+This file is the base type surface for user-authored Mindcraft TypeScript. It provides
+the small `lib.d.ts`-style runtime surface used by Mindcraft user code and declares the
+core `"mindcraft"` module types, including `Context`, `BrainContext`, `EngineContext`,
+`Sensor`, `Actuator`, `MindcraftTypeMap`, and the core host methods registered by
+`coreModule()`.
+
+Generate the file from `packages/core/`:
+
+```bash
+npm run generate:ambient
+```
+
+The command builds the Node target and `@mindcraft-lang/ts-compiler`, then writes
+`ambient/mindcraft.core.d.ts` from the runtime registry installed by `coreModule()`.
+Regenerate it whenever core changes the user-code type surface: registered core types,
+context fields, sensors, actuators, operators, arg-spec helper types, or the ambient
+generator itself.
+
+The generated file should be checked in. Apps and command-line tooling consume it as a
+package asset via `@mindcraft-lang/core/ambient/mindcraft.core.d.ts`, and the sim exposes
+it to its workspace VFS as the readonly root file `mindcraft.core.d.ts`. Biome ignores
+`ambient/` because the file intentionally contains `no-default-lib` declarations and
+TypeScript built-in shapes that do not follow source-code lint rules.
+
 ### Platform Abstraction Pattern
 
 Shared code must avoid Node-only or browser-only APIs. Several modules in `platform/` use a three-file pattern:
