@@ -9,6 +9,7 @@ import {
   getCallSiteState,
   getSlotId,
   List,
+  logger,
   type ModifierTileInput,
   mkCallDef,
   mkListValue,
@@ -69,126 +70,136 @@ function initSee(ctx: ExecutionContext): void {
 }
 
 function execSee(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
-  // Get the Actor from the execution context (optional - sensor can work without it)
-  const self = getSelf(ctx);
+  try {
+    // Get the Actor from the execution context (optional - sensor can work without it)
+    const self = getSelf(ctx);
 
-  let state = getCallSiteState<SeeState>(ctx)!;
+    let state = getCallSiteState<SeeState>(ctx)!;
 
-  if (!self) {
-    console.warn("See sensor invoked without an actor in context");
-    return FALSE_VALUE;
-  }
-
-  // Check if there are any bumps in the actor's bump queue
-  const hasSeen = self.sightQueue.length > 0;
-
-  if (!hasSeen) {
-    return FALSE_VALUE;
-  }
-
-  // Check if remembered actor has expired
-  const now = self.engine.simTime;
-  if (state.rememberedPos !== undefined && now > state.memoryExpiration) {
-    state = {
-      rememberedActorId: undefined,
-      rememberedPos: undefined,
-      memoryExpiration: 0,
-    } satisfies SeeState;
-    setCallSiteState(ctx, state);
-  }
-
-  const bHasCarnivoreFilter = hasArg(args, kActorKindCarnivoreSlotId);
-  const bHasHerbivoreFilter = hasArg(args, kActorKindHerbivoreSlotId);
-  const bHasPlantFilter = hasArg(args, kActorKindPlantSlotId);
-  let nearbyThresholdSq = kNearbyDistanceThresholdSq;
-  let farAwayThresholdSq = kFarAwayDistanceThresholdSq;
-  const nearbyCount = extractNumberValue(args.get(kDistanceNearbySlotId)) ?? 0;
-  const farAwayCount = extractNumberValue(args.get(kDistanceFarAwaySlotId)) ?? 0;
-  if (nearbyCount > 0) {
-    // decrease nearby threshold for each additional nearby modifier (e.g., "see herbivore nearby nearby" is more restrictive than "see herbivore nearby")
-    nearbyThresholdSq = kNearbyDistanceThresholdSq / nearbyCount;
-  }
-  if (farAwayCount > 0) {
-    // increase far away threshold for each additional far away modifier (e.g., "see herbivore far away far away" is more restrictive than "see herbivore far away")
-    farAwayThresholdSq = kFarAwayDistanceThresholdSq * farAwayCount;
-  }
-
-  let sightResult: SightResult | undefined;
-  let archetype: Archetype | undefined;
-
-  if (bHasCarnivoreFilter) {
-    archetype = "carnivore";
-  } else if (bHasHerbivoreFilter) {
-    archetype = "herbivore";
-  } else if (bHasPlantFilter) {
-    archetype = "plant";
-  }
-
-  // Build the filtered list in a single pass, avoiding redundant getActorById
-  // lookups and distance recomputations.  Uses distanceSq already present on
-  // each SightResult (populated by queryVisibleActors).
-  let filteredSightQueue: SightResult[];
-
-  const needsArchetypeFilter = archetype !== undefined;
-  const needsNearby = nearbyCount > 0;
-  const needsFarAway = !needsNearby && farAwayCount > 0;
-  const needsAnyFilter = needsArchetypeFilter || needsNearby || needsFarAway;
-
-  if (needsAnyFilter) {
-    filteredSightQueue = [];
-    for (let i = 0; i < self.sightQueue.length; i++) {
-      const sr = self.sightQueue[i];
-      if (needsArchetypeFilter && sr.actor.archetype !== archetype) continue;
-      if (needsNearby && sr.distanceSq > nearbyThresholdSq) continue;
-      if (needsFarAway && sr.distanceSq < farAwayThresholdSq) continue;
-      filteredSightQueue.push(sr);
+    if (!self) {
+      console.warn("See sensor invoked without an actor in context");
+      return FALSE_VALUE;
     }
-  } else {
-    filteredSightQueue = self.sightQueue;
-  }
 
-  if (filteredSightQueue.length > 0) {
-    // Find the nearest actor in the (unsorted) filtered list -- O(n) scan
-    let nearestIdx = 0;
-    let nearestDistSq = filteredSightQueue[0].distanceSq;
-    for (let i = 1; i < filteredSightQueue.length; i++) {
-      if (filteredSightQueue[i].distanceSq < nearestDistSq) {
-        nearestDistSq = filteredSightQueue[i].distanceSq;
-        nearestIdx = i;
+    // Check if there are any bumps in the actor's bump queue
+    const hasSeen = self.sightQueue.length > 0;
+
+    if (!hasSeen) {
+      return FALSE_VALUE;
+    }
+
+    // Check if remembered actor has expired
+    const now = self.engine.simTime;
+    if (state.rememberedPos !== undefined && now > state.memoryExpiration) {
+      state = {
+        rememberedActorId: undefined,
+        rememberedPos: undefined,
+        memoryExpiration: 0,
+      } satisfies SeeState;
+      setCallSiteState(ctx, state);
+    }
+
+    const bHasCarnivoreFilter = hasArg(args, kActorKindCarnivoreSlotId);
+    const bHasHerbivoreFilter = hasArg(args, kActorKindHerbivoreSlotId);
+    const bHasPlantFilter = hasArg(args, kActorKindPlantSlotId);
+    let nearbyThresholdSq = kNearbyDistanceThresholdSq;
+    let farAwayThresholdSq = kFarAwayDistanceThresholdSq;
+    const nearbyCount = extractNumberValue(args.get(kDistanceNearbySlotId)) ?? 0;
+    const farAwayCount = extractNumberValue(args.get(kDistanceFarAwaySlotId)) ?? 0;
+    if (nearbyCount > 0) {
+      // decrease nearby threshold for each additional nearby modifier (e.g., "see herbivore nearby nearby" is more restrictive than "see herbivore nearby")
+      nearbyThresholdSq = kNearbyDistanceThresholdSq / nearbyCount;
+    }
+    if (farAwayCount > 0) {
+      // increase far away threshold for each additional far away modifier (e.g., "see herbivore far away far away" is more restrictive than "see herbivore far away")
+      farAwayThresholdSq = kFarAwayDistanceThresholdSq * farAwayCount;
+    }
+
+    let sightResult: SightResult | undefined;
+    let archetype: Archetype | undefined;
+
+    if (bHasCarnivoreFilter) {
+      archetype = "carnivore";
+    } else if (bHasHerbivoreFilter) {
+      archetype = "herbivore";
+    } else if (bHasPlantFilter) {
+      archetype = "plant";
+    }
+
+    // Build the filtered list in a single pass, avoiding redundant getActorById
+    // lookups and distance recomputations.  Uses distanceSq already present on
+    // each SightResult (populated by queryVisibleActors).
+    let filteredSightQueue: SightResult[];
+
+    const needsArchetypeFilter = archetype !== undefined;
+    const needsNearby = nearbyCount > 0;
+    const needsFarAway = !needsNearby && farAwayCount > 0;
+    const needsAnyFilter = needsArchetypeFilter || needsNearby || needsFarAway;
+
+    if (needsAnyFilter) {
+      filteredSightQueue = [];
+      for (let i = 0; i < self.sightQueue.length; i++) {
+        const sr = self.sightQueue[i];
+        if (needsArchetypeFilter && sr.actor.archetype !== archetype) continue;
+        if (needsNearby && sr.distanceSq > nearbyThresholdSq) continue;
+        if (needsFarAway && sr.distanceSq < farAwayThresholdSq) continue;
+        filteredSightQueue.push(sr);
       }
+    } else {
+      filteredSightQueue = self.sightQueue;
     }
-    sightResult = filteredSightQueue[nearestIdx];
+
+    if (filteredSightQueue.length > 0) {
+      // Find the nearest actor in the (unsorted) filtered list -- O(n) scan
+      let nearestIdx = 0;
+      let nearestDistSq = filteredSightQueue[0].distanceSq;
+      for (let i = 1; i < filteredSightQueue.length; i++) {
+        if (filteredSightQueue[i].distanceSq < nearestDistSq) {
+          nearestDistSq = filteredSightQueue[i].distanceSq;
+          nearestIdx = i;
+        }
+      }
+      sightResult = filteredSightQueue[nearestIdx];
+    }
+
+    if (!sightResult) {
+      return FALSE_VALUE; // No seen actor passed the filters (if any)
+    }
+
+    const seenActor = sightResult.actor;
+    let targetPos: Vector2;
+    try {
+      targetPos = new Vector2(seenActor.sprite.x, seenActor.sprite.y);
+    } catch (error) {
+      return FALSE_VALUE;
+    }
+
+    // Set as remembered actor
+    state.rememberedPos = mkVector2Value(targetPos);
+    state.rememberedActorId = mkNumberValue(seenActor.actorId);
+    state.memoryExpiration = now + ctx.services.app.rng.next() * 2000 + 500; // Remember for 0.5-2.5s of sim time
+    setCallSiteState(ctx, state);
+
+    // Store targets for the DO side to access
+    const seenActors = filteredSightQueue.filter((sr) => !!sr.actor.sprite.body).map((sr) => sr.actor);
+    setRuleVariable(
+      ctx,
+      "targetActors",
+      mkListValue("", List.from(seenActors.map((actor) => mkNumberValue(actor.actorId))))
+    );
+    setRuleVariable(
+      ctx,
+      "targetPositions",
+      mkListValue("", List.from(seenActors.map((actor) => mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y)))))
+    );
+    setRuleVariable(ctx, "targetActor", state.rememberedActorId!);
+    setRuleVariable(ctx, "targetPos", state.rememberedPos!);
+    self.debugTargetPositions.set(seenActor.actorId, targetPos);
+    return TRUE_VALUE;
+  } catch (error) {
+    logger.error("Error executing see sensor:", error);
+    return FALSE_VALUE;
   }
-
-  if (!sightResult) {
-    return FALSE_VALUE; // No seen actor passed the filters (if any)
-  }
-
-  const seenActor = sightResult.actor;
-  const targetPos = new Vector2(seenActor.sprite.x, seenActor.sprite.y);
-
-  // Set as remembered actor
-  state.rememberedPos = mkVector2Value(targetPos);
-  state.rememberedActorId = mkNumberValue(seenActor.actorId);
-  state.memoryExpiration = now + ctx.services.app.rng.next() * 2000 + 500; // Remember for 0.5-2.5s of sim time
-  setCallSiteState(ctx, state);
-
-  // Store targets for the DO side to access
-  const seenActors = filteredSightQueue.map((sr) => sr.actor);
-  setRuleVariable(
-    ctx,
-    "targetActors",
-    mkListValue("", List.from(seenActors.map((actor) => mkNumberValue(actor.actorId))))
-  );
-  setRuleVariable(
-    ctx,
-    "targetPositions",
-    mkListValue("", List.from(seenActors.map((actor) => mkVector2Value(new Vector2(actor.sprite.x, actor.sprite.y)))))
-  );
-  setRuleVariable(ctx, "targetActor", state.rememberedActorId!);
-  setRuleVariable(ctx, "targetPos", state.rememberedPos!);
-  self.debugTargetPositions.set(seenActor.actorId, targetPos);
-  return TRUE_VALUE;
 }
 
 export default {

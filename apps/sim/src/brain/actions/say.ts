@@ -7,6 +7,7 @@ import {
   extractNumberValue,
   extractStringValue,
   getSlotId,
+  logger,
   mkCallDef,
   optional,
   type ParameterTileInput,
@@ -31,22 +32,26 @@ const kAnonymousStringSlotId = getSlotId(callDef, AnonString);
 const kDurationSlotId = getSlotId(callDef, Duration);
 
 function execSay(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
-  const self = getSelf(ctx);
+  try {
+    const self = getSelf(ctx);
 
-  if (!self) {
-    console.warn("Say actuator called without Actor in execution context");
-    return VOID_VALUE;
+    if (!self) {
+      logger.warn("Say actuator called without Actor in execution context");
+      return VOID_VALUE;
+    }
+
+    let text: string | undefined;
+    const hasStringArg = hasArg(args, kAnonymousStringSlotId);
+    if (hasStringArg) {
+      const stringValue = args.get(kAnonymousStringSlotId);
+      text = extractStringValue(stringValue);
+    }
+
+    const durationSecs = extractNumberValue(args.get(kDurationSlotId));
+    self.displayString(text, durationSecs);
+  } catch (error) {
+    logger.error("Error executing Say actuator:", error);
   }
-
-  let text: string | undefined;
-  const hasStringArg = hasArg(args, kAnonymousStringSlotId);
-  if (hasStringArg) {
-    const stringValue = args.get(kAnonymousStringSlotId);
-    text = extractStringValue(stringValue);
-  }
-
-  const durationSecs = extractNumberValue(args.get(kDurationSlotId));
-  self.displayString(text, durationSecs);
 
   return VOID_VALUE;
 }

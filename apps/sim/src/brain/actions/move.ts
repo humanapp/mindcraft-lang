@@ -14,6 +14,7 @@ import {
   isListValue,
   type List,
   type ListValue,
+  logger,
   type ModifierTileInput,
   mkCallDef,
   mod,
@@ -225,18 +226,21 @@ function computeSteering(ctx: ExecutionContext, args: ReadonlyList<Value>, self:
 // ---------------------------------------------------------------------------
 
 function execMove(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
-  const self = getSelf(ctx);
-  if (!self) {
-    //console.warn("Move actuator called without Actor in execution context");
-    return VOID_VALUE;
-  }
+  try {
+    const self = getSelf(ctx);
+    if (!self) {
+      return VOID_VALUE;
+    }
 
-  const animalComp = self.animalComp;
-  if (!animalComp) return VOID_VALUE; // only animals move
+    const animalComp = self.animalComp;
+    if (!animalComp) return VOID_VALUE; // only animals move
 
-  const steering = computeSteering(ctx, args, self);
-  if (steering) {
-    animalComp.steeringQueue.push(steering);
+    const steering = computeSteering(ctx, args, self);
+    if (steering) {
+      animalComp.steeringQueue.push(steering);
+    }
+  } catch (error) {
+    logger.error("Error executing move actuator:", error);
   }
 
   return VOID_VALUE;
