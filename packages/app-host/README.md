@@ -3,7 +3,6 @@
 Project management and project file storage for Mindcraft apps.
 
 Provides `ProjectStore` and `ProjectManager` for managing named projects in
-localStorage. Each project contains a workspace filesystem snapshot and
-app-specific data blobs (brains, settings, etc.). All localStorage keys are
-scoped by a configurable prefix to prevent collisions between apps on the same
-origin.
+IndexedDB. Each project contains a project file snapshot and app-specific data
+blobs (brains, settings, etc.). IndexedDB database names are scoped by a
+configurable prefix to prevent collisions between apps on the same origin.

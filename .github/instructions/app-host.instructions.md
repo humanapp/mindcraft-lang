@@ -8,7 +8,7 @@ applyTo: "packages/app-host/**"
 
 Project management, project file storage, and persistence for Mindcraft host apps.
 Apps (e.g. `apps/sim`) depend on this package for named projects, in-memory
-project file systems, and IDB/localStorage-backed persistence. No dependency on
+project file systems, and IDB-backed persistence. No dependency on
 `bridge-app`, `bridge-client`, or `bridge-protocol`.
 
 ## Build & Scripts
@@ -34,8 +34,6 @@ src/
   project-manager.spec.ts         # tests
   project-store.ts                # ProjectStore interface
   idb-project-store.ts            # IndexedDB implementation of ProjectStore
-  local-storage-project-store.ts  # localStorage implementation of ProjectStore
-  local-storage-project-store.spec.ts
   project-manifest.ts             # ProjectManifest type
   project-lock.ts                 # Web Locks API for multi-tab safety
   project-file-system.ts          # ProjectFileSystem interface
@@ -54,8 +52,7 @@ src/
   delete, duplicate. Owns the active project's file system and coordinates
   debounced auto-save to the store on any project file change.
 - `ProjectStore` -- interface for CRUD on projects, project files, and app data.
-  Two implementations: `createIdbProjectStore` (IndexedDB) and
-  `createLocalStorageProjectStore` (localStorage).
+  Implemented by `createIdbProjectStore` (IndexedDB).
 - `ProjectFileSystem` -- interface for an in-memory filesystem: `exportSnapshot`,
   `applyRemoteChange`, `applyLocalChange`, `onLocalChange`, `onAnyChange`,
   `flush`. Implemented by `createInMemoryProjectFileSystem`.
@@ -84,9 +81,9 @@ save. The debounce timer is cleared on project close to avoid stale writes.
 
 ### mindcraft.json filtering
 
-`mindcraft.json` is a generated file synthesized from the project manifest. Both
-`idb-project-store` and `local-storage-project-store` strip it from project file
-snapshots before persisting to avoid storing derived data.
+`mindcraft.json` is a generated file synthesized from the project manifest.
+`idb-project-store` strips it from project file snapshots before persisting to
+avoid storing derived data.
 
 ## Testing
 
@@ -95,7 +92,6 @@ source (`*.spec.ts`) and excluded from the build tsconfig.
 
 Current test files:
 - `project-manager.spec.ts` -- ProjectManager lifecycle, auto-save, events
-- `local-storage-project-store.spec.ts` -- localStorage ProjectStore CRUD
 - `mindcraft-json.spec.ts` -- parse/serialize round-trips
 - `mindcraft-json-sync.spec.ts` -- manifest <-> mindcraft.json sync
 

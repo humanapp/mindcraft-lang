@@ -3,7 +3,6 @@ export { EXAMPLES_FOLDER } from "./examples.js";
 export { createIdbProjectStore } from "./idb-project-store.js";
 export type { InMemoryProjectFileSystemOptions } from "./in-memory-project-file-system.js";
 export { createInMemoryProjectFileSystem } from "./in-memory-project-file-system.js";
-export { createLocalStorageProjectStore } from "./local-storage-project-store.js";
 export type { MindcraftJson } from "./mindcraft-json.js";
 export { MINDCRAFT_JSON_PATH, parseMindcraftJson, serializeMindcraftJson } from "./mindcraft-json.js";
 export type { MindcraftJsonHostInfo } from "./mindcraft-json-sync.js";

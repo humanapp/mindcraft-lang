@@ -3,8 +3,7 @@ import type { ProjectManifest } from "./project-manifest.js";
 
 /**
  * Persistence layer for projects: their manifests, project file snapshots, and
- * app-specific data. Implementations may be backed by IndexedDB, localStorage,
- * the file system, etc.
+ * app-specific data.
  */
 export interface ProjectStore {
   /** Prefix used to scope this store's underlying storage keys. */
