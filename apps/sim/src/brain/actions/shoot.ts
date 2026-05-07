@@ -8,6 +8,7 @@ import {
   getCallSiteState,
   getSlotId,
   isNumberValue,
+  logger,
   mkCallDef,
   mod,
   type NumberValue,
@@ -60,65 +61,70 @@ function initShoot(ctx: ExecutionContext): void {
 }
 
 export function execShoot(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
-  const self = getSelf(ctx);
-  if (!self) return VOID_VALUE;
+  try {
+    const self = getSelf(ctx);
+    if (!self) return VOID_VALUE;
 
-  const now = self.engine.simTime;
-  const state = getCallSiteState<ShootState>(ctx)!;
+    const now = self.engine.simTime;
+    const state = getCallSiteState<ShootState>(ctx)!;
 
-  if (now < state.nextShootTime) return FALSE_VALUE;
+    if (now < state.nextShootTime) return FALSE_VALUE;
 
-  let cooldown = 1000 / DEFAULT_SHOOT_RATE; // Default cooldown in ms
-  const rateValue = args.get(kRateSlotId) as NumberValue | undefined;
-  if (rateValue && isNumberValue(rateValue)) {
-    const rate = Math.max(MIN_SHOOT_RATE, Math.min(MAX_SHOOT_RATE, rateValue.v));
-    cooldown = 1000 / rate;
-  }
-
-  const target = resolveTargetActor(ctx, args, kAnonActorRefSlotId);
-
-  // Drain energy from the shooter to pay for the shot. If they can't afford it, abort.
-  if (self.energy < SHOOT_ENERGY_COST) return FALSE_VALUE;
-  self.drainEnergy(SHOOT_ENERGY_COST);
-
-  // Compute direction: toward the target if one exists, otherwise shoot forward.
-  let dirX: number;
-  let dirY: number;
-  if (target) {
-    const dx = target.sprite.x - self.sprite.x;
-    const dy = target.sprite.y - self.sprite.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 1) return FALSE_VALUE;
-    dirX = dx / dist;
-    dirY = dy / dist;
-  } else {
-    const angle = self.sprite.rotation;
-    dirX = Math.cos(angle);
-    dirY = Math.sin(angle);
-  }
-
-  // Delegate the actual blip creation to the engine (may fail at cap)
-  const blip = self.engine.spawnBlip(self.actorId, self.sprite.x, self.sprite.y, dirX, dirY);
-  if (!blip) return FALSE_VALUE;
-
-  // Apply kickback: velocity impulse in the opposite direction of the blip.
-  const body = self.sprite.body as MatterJS.BodyType | null;
-  if (body) {
-    const dv = SHOOT_KICKBACK_IMPULSE / body.mass;
-    const kickX = -dirX * dv;
-    const kickY = -dirY * dv;
-    if (self.plantComp) {
-      // Plant spring integrator zeroes Matter velocity every tick; inject
-      // the kickback directly into the spring velocity instead.
-      self.plantComp.applyImpulse(kickX * 10, kickY * 10);
-    } else {
-      self.sprite.setVelocity(body.velocity.x + kickX, body.velocity.y + kickY);
+    let cooldown = 1000 / DEFAULT_SHOOT_RATE; // Default cooldown in ms
+    const rateValue = args.get(kRateSlotId) as NumberValue | undefined;
+    if (rateValue && isNumberValue(rateValue)) {
+      const rate = Math.max(MIN_SHOOT_RATE, Math.min(MAX_SHOOT_RATE, rateValue.v));
+      cooldown = 1000 / rate;
     }
+
+    const target = resolveTargetActor(ctx, args, kAnonActorRefSlotId);
+
+    // Drain energy from the shooter to pay for the shot. If they can't afford it, abort.
+    if (self.energy < SHOOT_ENERGY_COST) return FALSE_VALUE;
+    self.drainEnergy(SHOOT_ENERGY_COST);
+
+    // Compute direction: toward the target if one exists, otherwise shoot forward.
+    let dirX: number;
+    let dirY: number;
+    if (target) {
+      const dx = target.sprite.x - self.sprite.x;
+      const dy = target.sprite.y - self.sprite.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 1) return FALSE_VALUE;
+      dirX = dx / dist;
+      dirY = dy / dist;
+    } else {
+      const angle = self.sprite.rotation;
+      dirX = Math.cos(angle);
+      dirY = Math.sin(angle);
+    }
+
+    // Delegate the actual blip creation to the engine (may fail at cap)
+    const blip = self.engine.spawnBlip(self.actorId, self.sprite.x, self.sprite.y, dirX, dirY);
+    if (!blip) return FALSE_VALUE;
+
+    // Apply kickback: velocity impulse in the opposite direction of the blip.
+    const body = self.sprite.body as MatterJS.BodyType | null;
+    if (body) {
+      const dv = SHOOT_KICKBACK_IMPULSE / body.mass;
+      const kickX = -dirX * dv;
+      const kickY = -dirY * dv;
+      if (self.plantComp) {
+        // Plant spring integrator zeroes Matter velocity every tick; inject
+        // the kickback directly into the spring velocity instead.
+        self.plantComp.applyImpulse(kickX * 10, kickY * 10);
+      } else {
+        self.sprite.setVelocity(body.velocity.x + kickX, body.velocity.y + kickY);
+      }
+    }
+
+    state.nextShootTime = now + cooldown;
+
+    return TRUE_VALUE;
+  } catch (error) {
+    logger.error("Error executing shoot action:", error);
+    return FALSE_VALUE;
   }
-
-  state.nextShootTime = now + cooldown;
-
-  return TRUE_VALUE;
 }
 
 export default {

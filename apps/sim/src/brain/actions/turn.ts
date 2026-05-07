@@ -8,6 +8,7 @@ import {
   type ExecutionContext,
   extractNumberValue,
   getSlotId,
+  logger,
   type ModifierTileInput,
   mkCallDef,
   mod,
@@ -170,15 +171,19 @@ function computeSteering(ctx: ExecutionContext, args: ReadonlyList<Value>, self:
 // ---------------------------------------------------------------------------
 
 function execTurn(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
-  const self = getSelf(ctx);
-  if (!self) return VOID_VALUE;
+  try {
+    const self = getSelf(ctx);
+    if (!self) return VOID_VALUE;
 
-  const animalComp = self.animalComp;
-  if (!animalComp) return VOID_VALUE; // only animals turn
+    const animalComp = self.animalComp;
+    if (!animalComp) return VOID_VALUE; // only animals turn
 
-  const steering = computeSteering(ctx, args, self);
-  if (steering) {
-    animalComp.steeringQueue.push(steering);
+    const steering = computeSteering(ctx, args, self);
+    if (steering) {
+      animalComp.steeringQueue.push(steering);
+    }
+  } catch (error) {
+    logger.error("Error executing turn action:", error);
   }
 
   return VOID_VALUE;

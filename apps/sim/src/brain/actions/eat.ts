@@ -5,6 +5,7 @@ import {
   FALSE_VALUE,
   getCallSiteState,
   getSlotId,
+  logger,
   mkCallDef,
   optional,
   type ParameterTileInput,
@@ -40,43 +41,47 @@ function initEat(ctx: ExecutionContext): void {
 }
 
 export function execEat(ctx: ExecutionContext, args: ReadonlyList<Value>): Value {
-  const self = getSelf(ctx);
-  if (!self) {
-    //console.warn("Eat actuator called without Actor in execution context");
+  try {
+    const self = getSelf(ctx);
+    if (!self) {
+      return VOID_VALUE;
+    }
+
+    const animalComp = self.animalComp;
+    if (!animalComp) return VOID_VALUE; // only animals eat
+
+    const now = self.engine.simTime;
+    const state = getCallSiteState<EatState>(ctx)!;
+
+    // Check cooldown
+    if (now < state.nextEatTime) {
+      return FALSE_VALUE;
+    }
+
+    const actor = resolveTargetActor(ctx, args, kAnonActorRefSlotId);
+    if (!actor) {
+      return FALSE_VALUE;
+    }
+
+    // Check diet rules: does this archetype's prey list include the target's archetype?
+    const prey = ARCHETYPES[self.archetype].energy.prey;
+    if (!prey.includes(actor.archetype)) {
+      return FALSE_VALUE;
+    }
+
+    // Transfer energy from target to self. The bite amount is capped by what
+    // the target actually has, so over-eating can't fabricate energy.
+    const BITE_ENERGY = 30;
+    const gained = actor.drainEnergy(BITE_ENERGY);
+    self.gainEnergy(gained);
+
+    state.nextEatTime = now + EAT_COOLDOWN_MS;
+
+    return TRUE_VALUE;
+  } catch (error) {
+    logger.error("Error executing eat action:", error);
     return VOID_VALUE;
   }
-
-  const animalComp = self.animalComp;
-  if (!animalComp) return VOID_VALUE; // only animals eat
-
-  const now = self.engine.simTime;
-  const state = getCallSiteState<EatState>(ctx)!;
-
-  // Check cooldown
-  if (now < state.nextEatTime) {
-    return FALSE_VALUE;
-  }
-
-  const actor = resolveTargetActor(ctx, args, kAnonActorRefSlotId);
-  if (!actor) {
-    return FALSE_VALUE;
-  }
-
-  // Check diet rules: does this archetype's prey list include the target's archetype?
-  const prey = ARCHETYPES[self.archetype].energy.prey;
-  if (!prey.includes(actor.archetype)) {
-    return FALSE_VALUE;
-  }
-
-  // Transfer energy from target to self. The bite amount is capped by what
-  // the target actually has, so over-eating can't fabricate energy.
-  const BITE_ENERGY = 30;
-  const gained = actor.drainEnergy(BITE_ENERGY);
-  self.gainEnergy(gained);
-
-  state.nextEatTime = now + EAT_COOLDOWN_MS;
-
-  return TRUE_VALUE;
 }
 
 export default {
