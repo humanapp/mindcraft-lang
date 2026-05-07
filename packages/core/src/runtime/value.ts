@@ -262,54 +262,54 @@ export function extractListValue(v: Value | undefined): List<Value> | undefined 
 
 // Type guards
 /** Type guard for VM-internal handle values. */
-export function isHandleValue(v: Value): v is { t: "handle"; id: HandleId } {
-  return v.t === "handle";
+export function isHandleValue(v: Value | undefined): v is { t: "handle"; id: HandleId } {
+  return v?.t === "handle";
 }
 /** Type guard for {@link UnknownValue}. */
-export function isUnknownValue(v: Value): v is UnknownValue {
-  return v.t === NativeType.Unknown;
+export function isUnknownValue(v: Value | undefined): v is UnknownValue {
+  return v?.t === NativeType.Unknown;
 }
 /** Type guard for {@link VoidValue}. */
-export function isVoidValue(v: Value): v is VoidValue {
-  return v.t === NativeType.Void;
+export function isVoidValue(v: Value | undefined): v is VoidValue {
+  return v?.t === NativeType.Void;
 }
 /** Type guard for {@link NilValue}. */
-export function isNilValue(v: Value): v is NilValue {
-  return v.t === NativeType.Nil;
+export function isNilValue(v: Value | undefined): v is NilValue {
+  return v?.t === NativeType.Nil;
 }
 /** Type guard for {@link BooleanValue}. */
-export function isBooleanValue(v: Value): v is BooleanValue {
-  return v.t === NativeType.Boolean;
+export function isBooleanValue(v: Value | undefined): v is BooleanValue {
+  return v?.t === NativeType.Boolean;
 }
 /** Type guard for {@link NumberValue}. */
-export function isNumberValue(v: Value): v is NumberValue {
-  return v.t === NativeType.Number;
+export function isNumberValue(v: Value | undefined): v is NumberValue {
+  return v?.t === NativeType.Number;
 }
 /** Type guard for {@link StringValue}. */
-export function isStringValue(v: Value): v is StringValue {
-  return v.t === NativeType.String;
+export function isStringValue(v: Value | undefined): v is StringValue {
+  return v?.t === NativeType.String;
 }
 /** Type guard for {@link EnumValue}. */
-export function isEnumValue(v: Value): v is EnumValue {
-  return v.t === NativeType.Enum;
+export function isEnumValue(v: Value | undefined): v is EnumValue {
+  return v?.t === NativeType.Enum;
 }
 /** Type guard for {@link ListValue}. */
-export function isListValue(v: Value): v is ListValue {
-  return v.t === NativeType.List;
+export function isListValue(v: Value | undefined): v is ListValue {
+  return v?.t === NativeType.List;
 }
 /** Type guard for {@link MapValue}. */
-export function isMapValue(v: Value): v is MapValue {
-  return v.t === NativeType.Map;
+export function isMapValue(v: Value | undefined): v is MapValue {
+  return v?.t === NativeType.Map;
 }
 /** Type guard for {@link StructValue}. */
-export function isStructValue(v: Value): v is StructValue {
-  return v.t === NativeType.Struct;
+export function isStructValue(v: Value | undefined): v is StructValue {
+  return v?.t === NativeType.Struct;
 }
 /** Type guard for {@link FunctionValue}. */
-export function isFunctionValue(v: Value): v is FunctionValue {
-  return v.t === NativeType.Function;
+export function isFunctionValue(v: Value | undefined): v is FunctionValue {
+  return v?.t === NativeType.Function;
 }
 /** Type guard for VM-internal error values. */
-export function isErrValue(v: Value): v is { t: "err"; e: ErrorValue } {
-  return v.t === "err";
+export function isErrValue(v: Value | undefined): v is { t: "err"; e: ErrorValue } {
+  return v?.t === "err";
 }

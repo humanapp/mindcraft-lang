@@ -16,11 +16,14 @@ import { List, UniqueSet } from "@mindcraft-lang/core";
 import {
   BrainRuntime,
   BYTECODE_VERSION,
+  ErrorCode,
   mkNumberValue,
   NIL_VALUE,
+  Op,
   type PageMetadata,
   type PlatformServices,
   type Program,
+  type Value,
 } from "@mindcraft-lang/core/runtime";
 import {
   __test__createPlatformServices,
@@ -139,5 +142,49 @@ describe("BrainRuntime", () => {
     assert.notStrictEqual(defaultServices.app.rng, deterministicRng);
     customServices.app.rng.next();
     assert.strictEqual(callCount, 1);
+  });
+
+  test("forwards VM fault callbacks to runtime callers", () => {
+    const errValue: Value = {
+      t: "err",
+      e: { code: ErrorCode.ScriptError, message: "runtime fault" },
+    };
+    const program: Program = {
+      version: BYTECODE_VERSION,
+      functions: List.from([
+        {
+          code: List.from([{ op: Op.PUSH_CONST_VAL, a: 0 }, { op: Op.THROW }]),
+          numParams: 0,
+        },
+      ]),
+      constantPools: {
+        numbers: List.empty(),
+        strings: List.empty(),
+        values: List.from([errValue]),
+      },
+      variableNames: List.empty(),
+    };
+    const page: PageMetadata = {
+      pageIndex: 0,
+      pageId: "page-1-id",
+      pageName: "page-1",
+      rootRuleFuncIds: List.from([0]),
+      actionCallSites: List.empty(),
+      sensors: new UniqueSet<string>(),
+      actuators: new UniqueSet<string>(),
+    };
+    const pages = List.from([page]);
+
+    let faultMessage: string | undefined;
+    const runtime = new BrainRuntime(program, pages, makeHostServices(), undefined, undefined, {
+      onFiberFault: ({ err }) => {
+        faultMessage = err.message;
+      },
+    });
+
+    runtime.startup();
+    runtime.think(1);
+
+    assert.equal(faultMessage, "runtime fault");
   });
 });

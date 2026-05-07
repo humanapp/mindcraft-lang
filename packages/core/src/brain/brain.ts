@@ -6,6 +6,7 @@ import {
   type IBrain,
   type PageMetadata,
   type UnlinkedBrainProgram,
+  type VmEvents,
 } from "../runtime";
 import type { Program } from "../runtime/program";
 import type { Value } from "../runtime/value";
@@ -58,7 +59,7 @@ export class Brain implements IBrain {
    * Compile the brain, link its actions, and initialize the VM.
    * Must be called before think() can execute rules.
    */
-  initialize(contextData?: unknown): void {
+  initialize(contextData?: unknown, vmEvents?: VmEvents): void {
     const previousVariables = this.runtime?.snapshotVariables();
 
     const linkEnvironment = this.getLinkEnvironment();
@@ -84,7 +85,7 @@ export class Brain implements IBrain {
       shared: this.services.shared,
       app: this.services.app,
     };
-    this.runtime = new BrainRuntime(program, pageMetadata, hostServices, contextData, previousVariables);
+    this.runtime = new BrainRuntime(program, pageMetadata, hostServices, contextData, previousVariables, vmEvents);
 
     this.unsubs.push(
       this.runtime.events().on("page_activated", ({ pageIndex }) => {

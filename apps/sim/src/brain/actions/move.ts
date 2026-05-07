@@ -11,6 +11,7 @@ import {
   getCallSiteState,
   getRuleVariable,
   getSlotId,
+  isListValue,
   type List,
   type ListValue,
   type ModifierTileInput,
@@ -130,7 +131,7 @@ function resolveAwayFromTarget(ctx: ExecutionContext, args: ReadonlyList<Value>)
 
   // Try targetPositions list variable -> center of mass of the 2 nearest
   const targetPositionsVar = getRuleVariable<ListValue>(ctx, "targetPositions");
-  if (targetPositionsVar) {
+  if (isListValue(targetPositionsVar)) {
     const self = getSelf(ctx);
     const sx = self?.sprite.x ?? 0;
     const sy = self?.sprite.y ?? 0;

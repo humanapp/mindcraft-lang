@@ -4,6 +4,7 @@ import { EventEmitter, type EventEmitterConsumer } from "../platform/event-emitt
 import { List } from "../platform/list";
 import { createCallsiteStore, type ICallsiteStore } from "./callsite-store";
 import type { BytecodeExecutableAction, ExecutionContext } from "./context";
+import type { VmEvents } from "./events";
 import type { BrainEvents, IBrainRuntime, PageMetadata } from "./host-bindings";
 import type { Program } from "./program";
 import { createProgramServices, createRuleVariableServices, type RuleVariableStores } from "./rule-services";
@@ -133,7 +134,8 @@ export class BrainRuntime implements IBrainRuntime {
     pageMetadata: List<PageMetadata>,
     hostServices: Omit<PlatformServices, "brain">,
     contextData: unknown = undefined,
-    previousVariables?: VariableSnapshot
+    previousVariables?: VariableSnapshot,
+    vmEvents?: VmEvents
   ) {
     this.program = program;
     this.pageMetadata = pageMetadata;
@@ -165,7 +167,7 @@ export class BrainRuntime implements IBrainRuntime {
       },
     };
 
-    this.vm = new VM(program, services);
+    this.vm = new VM(program, services, vmEvents ? { events: vmEvents } : undefined);
     this.scheduler = new FiberScheduler(this.vm, {
       maxFibersPerTick: 64,
       defaultBudget: 1000,
