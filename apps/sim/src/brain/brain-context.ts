@@ -58,7 +58,7 @@ export function registerBrainContext(api: MindcraftModuleApi) {
     {
       exec: (ctx: ExecutionContext): Value => {
         const targetPosVar = getRuleVariable<StructValue>(ctx, "targetPos");
-        if (targetPosVar) {
+        if (targetPosVar && targetPosVar.typeId === SimTypeIds.Vector2) {
           const pos = extractVector2(targetPosVar);
           if (pos) return mkVector2Value(pos);
         }

@@ -53,6 +53,9 @@ test("exports mindcraft public contracts from the root package", () => {
   const options = {
     context: { actorId: "actor-1" },
     catalogs: [],
+    vmEvents: {
+      onFiberFault: () => {},
+    },
   } satisfies CreateBrainOptions;
 
   void hydrated;

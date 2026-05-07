@@ -30,6 +30,10 @@ jobs:
       - name: Install packages
         run: npm run install:packages
 
+      - name: Build packages
+        working-directory: apps/sim
+        run: npm run build:deps
+
       - name: Install sim dependencies
         working-directory: apps/sim
         run: |

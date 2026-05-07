@@ -1,4 +1,12 @@
-import { BrainDef, type IBrainDef, type MindcraftBrain, mkSensorTileId, type Vector2 } from "@mindcraft-lang/core/app";
+import {
+  BrainDef,
+  type CreateBrainOptions,
+  type IBrainDef,
+  logger,
+  type MindcraftBrain,
+  mkSensorTileId,
+  type Vector2,
+} from "@mindcraft-lang/core/app";
 import { ARCHETYPES } from "./archetypes";
 import { Engine } from "./engine";
 import { Mover, type MoverConfig, type Steering, steerAvoidObstacles } from "./movement";
@@ -172,12 +180,26 @@ export class Actor {
 
   private tryCreateBrain(): MindcraftBrain {
     const env = this.engine.env;
+    const brainOptions: CreateBrainOptions = {
+      context: this,
+      vmEvents: {
+        onFiberFault: ({ fiberId, err }) => {
+          logger.error("[Actor] Brain fiber fault", {
+            actorId: this.actorId,
+            archetype: this.archetype,
+            fiberId,
+            code: err.code,
+            message: err.message,
+          });
+        },
+      },
+    };
     try {
-      return env.createBrain(this.brainDef, { context: this });
+      return env.createBrain(this.brainDef, brainOptions);
     } catch (err) {
       console.warn(`[Actor] Failed to create brain for ${this.archetype}:`, err);
       const emptyDef = env.withServices((services) => BrainDef.emptyBrainDef(services, `${this.archetype} Brain`));
-      return env.createBrain(emptyDef, { context: this });
+      return env.createBrain(emptyDef, brainOptions);
     }
   }
 

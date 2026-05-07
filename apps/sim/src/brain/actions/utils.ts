@@ -1,8 +1,15 @@
 import type { ExecutionContext, NumberValue, StructValue } from "@mindcraft-lang/core/app";
-import { getRuleVariable, isNilValue, type ReadonlyList, type Value, Vector2 } from "@mindcraft-lang/core/app";
+import {
+  CoreTypeIds,
+  getRuleVariable,
+  isNilValue,
+  type ReadonlyList,
+  type Value,
+  Vector2,
+} from "@mindcraft-lang/core/app";
 import type { Actor } from "@/brain/actor";
 import { getActor } from "@/brain/execution-context-types";
-import { extractVector2, resolveActor } from "@/brain/type-system";
+import { extractVector2, resolveActor, SimTypeIds } from "@/brain/type-system";
 
 /** True when a positional action arg slot contains a non-nil value. */
 export function hasArg(args: ReadonlyList<Value>, slotId: number): boolean {
@@ -27,7 +34,7 @@ export function resolveTargetPosition(
   // 1. Explicit anonymous actor-ref argument
   if (actorRefSlotId !== undefined) {
     const targetActorValue = args.get(actorRefSlotId);
-    if (targetActorValue !== undefined && !isNilValue(targetActorValue)) {
+    if (targetActorValue && !isNilValue(targetActorValue)) {
       const targetActor = resolveActor(targetActorValue as StructValue, ctx);
       if (targetActor) {
         return new Vector2(targetActor.sprite.x, targetActor.sprite.y);
@@ -37,7 +44,7 @@ export function resolveTargetPosition(
 
   // 2. Rule's targetPos variable
   const targetPosVar = getRuleVariable<StructValue>(ctx, "targetPos");
-  if (targetPosVar) {
+  if (targetPosVar && targetPosVar.typeId === SimTypeIds.Vector2) {
     const pos = extractVector2(targetPosVar);
     if (pos) return pos;
   }

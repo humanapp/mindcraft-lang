@@ -52,6 +52,7 @@ import type {
   UnionTypeDef,
   UnionTypeShape,
   UserActionArtifact,
+  VmEvents,
 } from "./runtime";
 import { CoreOpId, NativeType } from "./runtime";
 import type { ExecutionContext, HostActionBinding } from "./runtime/context";
@@ -246,6 +247,8 @@ export interface CreateBrainOptions {
   context?: unknown;
   /** Catalogs the brain should consult when resolving tiles. */
   catalogs?: readonly MindcraftCatalog[];
+  /** Optional lifecycle observers attached to the underlying VM instance. */
+  vmEvents?: VmEvents;
 }
 
 /** A brain instance produced by {@link MindcraftEnvironment.createBrain}. */
@@ -810,7 +813,7 @@ class MindcraftEnvironmentImpl implements MindcraftEnvironment {
   createBrain(definition: IBrainDef, options?: CreateBrainOptions): MindcraftBrain {
     const overlayCatalogs = this.resolveOverlayCatalogs(options?.catalogs);
     const brain = new ManagedMindcraftBrain(this, definition, overlayCatalogs);
-    brain.initialize(options?.context);
+    brain.initialize(options?.context, options?.vmEvents);
     this.trackBrain(brain);
     return brain;
   }
@@ -1014,6 +1017,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
   private readonly linkedActionRevisions = new Dict<string, string>();
   private readonly overlayCatalogs: List<ITileCatalog>;
   private contextData: unknown;
+  private vmEvents?: VmEvents;
   private started = false;
 
   constructor(
@@ -1034,7 +1038,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
     return this.environment;
   }
 
-  override initialize(contextData?: unknown): void {
+  override initialize(contextData?: unknown, vmEvents?: VmEvents): void {
     if (this.status === "disposed") {
       return;
     }
@@ -1046,8 +1050,9 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
     }
 
     this.contextData = contextData;
+    this.vmEvents = vmEvents;
     this.refreshLinkEnvironment();
-    super.initialize(contextData);
+    super.initialize(contextData, vmEvents);
     this.refreshLinkedActionRevisions();
     this.status = "active";
 
@@ -1085,7 +1090,7 @@ class ManagedMindcraftBrain extends Brain implements MindcraftBrain {
     }
 
     this.refreshLinkEnvironment();
-    super.initialize(this.contextData);
+    super.initialize(this.contextData, this.vmEvents);
     this.refreshLinkedActionRevisions();
 
     if (shouldRestart) {
