@@ -3,7 +3,7 @@
 Status: Draft
 Date: 2026-05-07
 
-## Scope And Sibling Specs
+## Scope
 
 This spec covers the local-first Workspaces feature for Mindcraft apps.
 Workspace is the user-facing product term. Internally, the ownership boundary
@@ -67,7 +67,7 @@ cryptographic local-data protection.
 - No speculative storage fields. Stored fields must be consumed by the phase
   that introduces them.
 
-## No Backward Compatibility (within the repo)
+## No Backward Compatibility
 
 - No deprecation aliases for Guest/User/Named workspace categories. The product
   model moves directly to one project collection type with optional PIN
