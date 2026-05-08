@@ -69,14 +69,27 @@ cryptographic local-data protection.
 
 ## No Backward Compatibility
 
+This plan defaults to abandoning old local data when a phase changes a storage
+key, API shape, persisted field, or product model. Do not preserve old behavior
+by adding alias reads, fallback reads, dual writes, compatibility wrappers,
+legacy branch paths, key-copy migrations, or best-effort data rescue unless the
+owning phase explicitly names that exact migration. "Migrate" in this plan means
+only a migration named by a phase deliverable or acceptance item, not a general
+permission to keep old data working.
+
 - No deprecation aliases for Guest/User/Named workspace categories. The product
   model moves directly to one project collection type with optional PIN
   protection.
 - No `WorkspaceKind`, `GuestWorkspace`, `NamedWorkspace`, or equivalent category
-  flag. Existing code must migrate to the single `ProjectCollection` shape.
+  flag. Existing code must be updated directly to the single
+  `ProjectCollection` shape.
 - No parallel "old project store / new project collection store" path. After
   W2, every persisted project has a `projectCollectionId`; old records are read
   only through the migration path into `Default Workspace`.
+- No app-owned localStorage compatibility. When app-owned keys move under the
+  app namespace, old unscoped or differently scoped app-settings, UI-preference,
+  binding-token, and user-tile metadata keys are ignored. Do not read from them,
+  copy from them, write to them, or clear them as part of a compatibility path.
 - No hard deletion of project collection or project records from IndexedDB.
   Delete operations update stored records with `deleted: true`.
 - No compatibility wrappers for unscoped `ProjectStore` or `ProjectManager`
@@ -108,18 +121,18 @@ the ambiguous file-tree vocabulary. Restore the naming boundary first.
 
 ## Project Collection Concerns Audit
 
-| #   | Concern                                     | Owner                                               |
-| --- | ------------------------------------------- | --------------------------------------------------- |
-| 1   | Project collection metadata CRUD            | `packages/app-host` storage layer                   |
-| 2   | Default project collection bootstrap        | `ProjectStore` / `ProjectManager` initialization    |
-| 3   | Existing project migration                  | app-host persistence implementations                |
-| 4   | Project membership by `projectCollectionId` | `ProjectManifest` / project metadata storage        |
-| 5   | Active project collection lifecycle         | `ProjectManager`                                    |
-| 6   | Per-tab restore state                       | app-host session integration and app startup wiring |
-| 7   | Workspace Explorer UI                       | app UI, initially `apps/sim`                        |
-| 8   | Optional PIN verifier                       | app-host project collection model plus app UI       |
-| 9   | Unlock state and reload unlock record       | `ProjectManager` and sessionStorage helpers         |
-| 10  | Cross-project-collection copy/remix         | app-host import/duplicate APIs                      |
+| #   | Concern                                        | Owner                                               |
+| --- | ---------------------------------------------- | --------------------------------------------------- |
+| 1   | Project collection metadata CRUD               | `packages/app-host` storage layer                   |
+| 2   | Default project collection bootstrap           | `ProjectStore` / `ProjectManager` initialization    |
+| 3   | Project metadata default collection assignment | app-host persistence implementations                |
+| 4   | Project membership by `projectCollectionId`    | `ProjectManifest` / project metadata storage        |
+| 5   | Active project collection lifecycle            | `ProjectManager`                                    |
+| 6   | Per-tab restore state                          | app-host session integration and app startup wiring |
+| 7   | Workspace Explorer UI                          | app UI, initially `apps/sim`                        |
+| 8   | Optional PIN verifier                          | app-host project collection model plus app UI       |
+| 9   | Unlock state and reload unlock record          | `ProjectManager` and sessionStorage helpers         |
+| 10  | Cross-project-collection copy/remix            | app-host import/duplicate APIs                      |
 
 ## Desired End State
 
@@ -221,8 +234,9 @@ treated as unprotected. There is no separate verifier object store.
 ## App Isolation
 
 Each app owns a stable local storage namespace. In app-host APIs this is the
-existing `keyPrefix`. Examples include `sim` for the sim app and `lbb` for the
-LBB app. The namespace is local storage identity, not display text.
+existing `keyPrefix`. The sim app currently passes its package name,
+`@mindcraft-lang/sim`, as `keyPrefix`. The namespace is local storage identity,
+not display text.
 
 Do not rely on hostname or subdomain isolation alone. Production apps may run
 under different subdomains, such as `sim.mindcraft-lang.org` and
@@ -234,7 +248,8 @@ The app namespace scopes:
 
 - IndexedDB database names.
 - `sessionStorage` keys, including `${keyPrefix}:project-session`.
-- `localStorage` app settings and UI preference keys.
+- App-owned `localStorage` keys, including app settings, UI preferences,
+  binding tokens, and user-tile metadata caches.
 - Web Lock names used for project locking.
 - BroadcastChannel names, including `${keyPrefix}:project-collections`.
 
@@ -412,13 +427,39 @@ Invariants:
 
 Phases ship one at a time and are numbered W0-W8. Each phase follows this loop:
 
-1. Implement the phase.
-2. Stop and present work for review.
-3. The user reviews, requests changes, or approves.
-4. Only after the user declares the unit complete should a post-mortem update
+1. Before implementing, run the phase compatibility audit below.
+2. Implement the phase.
+3. Stop and present work for review.
+4. The user reviews, requests changes, or approves.
+5. Only after the user declares the unit complete should a post-mortem update
    be written.
 
 Do not amend Current State, Phase Log, or risks during implementation.
+
+### Phase Compatibility Audit
+
+Every phase starts with a fresh compatibility audit. This is required even when
+the phase appears unrelated to persistence. Before writing code or docs, read
+the full No Backward Compatibility section and scan this spec plus the files the
+phase will touch for compatibility vocabulary, including:
+
+```text
+alias, fallback, legacy, migrate, migration, old, previous, preserve, restore,
+compatibility, compatible, wrapper, dual, deprecate, existing data
+```
+
+For every hit, classify it before proceeding:
+
+- Allowed only when the current phase explicitly names that exact migration or
+  fallback behavior in its deliverables or acceptance.
+- Otherwise remove or rewrite the behavior as a direct model/key/API change
+  with old data abandoned.
+- If classification is ambiguous, stop and resolve the spec before
+  implementation.
+
+The review handoff for every phase must include a "Backward compatibility
+audit" line that states whether any aliases, fallback reads, dual writes,
+compatibility wrappers, legacy key reads, or unapproved migrations remain.
 
 ### Post-Mortem Content Rules
 
@@ -461,14 +502,24 @@ follow."
 
 ## Current State
 
-Completed: None
-Next up: W0
+Completed: W0
+Next up: W1
 
 ---
 
 ## Phase Log
 
-No phases completed.
+### W0 -- Storage And Session Decisions
+
+W0 shipped a durable storage/session audit that fixes the implementation
+checklist for project collection persistence, tab restore, app namespace
+scoping, tombstone behavior, autosave flush points, and bridge isolation.
+
+New spec surface: `W0 Audit Result` records audited owners and W4 now requires
+app-owned localStorage keys to use the app namespace without legacy key
+fallbacks.
+
+Verification: documentation-only phase; no code gate was required.
 
 ---
 
@@ -588,7 +639,138 @@ Gate:
 
 ### W0 Audit Result
 
-Status: Not started.
+Status: Complete.
+
+Audited areas and source paths:
+
+- Store contract and IndexedDB implementation:
+  `packages/app-host/src/project-store.ts`,
+  `packages/app-host/src/idb-project-store.ts`,
+  `packages/app-host/src/project-manifest.ts`, and
+  `packages/app-host/README.md`. The current owner for project metadata,
+  project files, app-data blobs, and active-project restore is `ProjectStore`;
+  the only persistence implementation is IndexedDB via `createIdbProjectStore`.
+  The current database has `projects`, `files`, and `appData` stores at
+  `DB_VERSION = 2`, with database names derived from `${keyPrefix}-projects`.
+  W1 can add a `projectCollections` store keyed by `projectCollectionId`, and
+  W2 can migrate `projects` records in the IndexedDB `upgrade` path without
+  adding a second persistence implementation.
+- Startup and active-project restore:
+  `packages/app-host/src/project-manager.ts`,
+  `packages/bridge-app/src/app-environment-host.ts`, and
+  `apps/sim/src/services/sim-environment-store.ts`.
+  Sim creates one IndexedDB store with `createIdbProjectStore(simName)`, passes
+  the same namespace to `createWebLocksProjectLock(simName)`, constructs
+  `ProjectManager`, and calls `AppEnvironmentHost.initialize`, which calls
+  `ProjectManager.init()` followed by `ensureDefaultProject(defaultProjectName)`.
+  The current active-project restore owner is `ProjectStore.getActiveProjectId`,
+  which reads `${keyPrefix}:active-project` from `sessionStorage` first and
+  then `localStorage`; W4 owns replacing this with the tab-scoped
+  `${keyPrefix}:project-session` value:
+  `{ projectCollectionId: string; activeProjectId?: string }`.
+- `keyPrefix` scoping:
+  `packages/app-host/src/project-store.ts`,
+  `packages/app-host/src/idb-project-store.ts`,
+  `packages/app-host/src/project-lock.ts`, and
+  `apps/sim/src/services/sim-environment-store.ts`. `keyPrefix` is already the
+  required app namespace for IndexedDB database names and Web Lock names. The
+  current active-project storage keys are also derived from `keyPrefix`, but
+  W4 replaces their shape and removes the `localStorage` active-project path.
+  BroadcastChannel has no current implementation; W4 should introduce
+  `${keyPrefix}:project-collections` as the app-scoped channel name.
+- App-owned `localStorage` helpers:
+  `apps/sim/src/services/sim-environment-store.ts`,
+  `apps/sim/src/services/binding-token-persistence.ts`,
+  `packages/bridge-app/src/app-environment-host.ts`, and
+  `packages/bridge-app/src/user-tile-registration.ts`. UI preferences and
+  collapsed archetype state are already scoped with `simName`, which is
+  currently `@mindcraft-lang/sim`. App settings use `app-settings`, binding
+  tokens use `bridge-binding-token`, and user-tile metadata uses
+  `sim:user-tile-metadata`. These are app-owned browser-profile settings or
+  caches, not project collection session state. The audit found a namespace
+  contradiction, resolved by updating App Isolation and W4 to require
+  app-owned localStorage keys to use the app namespace going forward. Existing
+  values at old unscoped or differently scoped keys are abandoned.
+- Bridge and export/import boundaries:
+  `packages/app-host/src/project-io.ts`,
+  `packages/app-host/src/project-io.spec.ts`,
+  `packages/bridge-app/src/app-environment-host.ts`, and
+  `apps/sim/src/services/sim-environment-store.ts`.
+  Bridge payloads flow through project file snapshots and app-data access on
+  `ProjectManager`; exported project JSON is built from manifest display
+  fields, filtered project files, and app data. The audited path does not
+  require adding `projectCollectionId` to bridge protocol messages,
+  bridge-client snapshots, VS Code bridge messages, extension network payloads,
+  or exported project JSON.
+- Project metadata migration and default bootstrap:
+  `packages/app-host/src/idb-project-store.ts`,
+  `packages/app-host/src/project-store.ts`, and
+  `packages/app-host/src/project-manager.spec.ts`. The current upgrade path
+  already performs IndexedDB schema migration work, including the old
+  `workspaces` store to `files` migration. W1/W2 can create
+  `projectCollections`, create or read the
+  `DEFAULT_PROJECT_COLLECTION_ID` record, and assign existing non-deleted
+  project records to that ID in an upgrade path. Normal default bootstrap must
+  use an `add`/duplicate-key reread pattern after DB open: if create loses a
+  race, reread the existing non-deleted `DEFAULT_PROJECT_COLLECTION_ID` record
+  and return it.
+- Autosave and active project replacement:
+  `packages/app-host/src/project-manager.ts`,
+  `packages/bridge-app/src/app-environment-host.ts`, and
+  `apps/sim/src/services/sim-environment-store.ts`. Project file autosave is
+  scheduled by `ProjectManager.startAutoSave`; replacement and close already
+  funnel through `closeInternal`, which stops the debounce timer, flushes the
+  in-memory file system, saves the exported snapshot, and releases the project
+  lock. `AppEnvironmentHost.beginProjectTransition` saves cached brains before
+  create/switch, and sim reloads project app data on project load. Workspace
+  switching should use the same flush/close path before replacing the active
+  project context.
+- Project locking:
+  `packages/app-host/src/project-lock.ts`,
+  `packages/app-host/src/project-manager.ts`, and
+  `packages/app-host/src/project-manager.spec.ts`. Current project locks are
+  app-scoped Web Locks named `${keyPrefix}:project:${projectId}:tab-lock`;
+  `ProjectManager.tryOpen` acquires the target project lock before closing the
+  current active project and leaves the current project open if acquisition
+  fails. Project collection switching must preserve that same per-project lock
+  behavior and must not introduce collection-level lock names.
+- Write paths that need tombstone re-checks:
+  `packages/app-host/src/idb-project-store.ts`,
+  `packages/app-host/src/project-manager.ts`,
+  `packages/bridge-app/src/app-environment-host.ts`, and
+  `apps/sim/src/services/sim-environment-store.ts`. Guarded writes must cover
+  project manifest updates, project creates, project tombstones, project
+  duplication, project-file saves, app-data saves/deletes, import-created
+  projects, active metadata updates, close-time project-file flushes,
+  debounced autosave, cached brain saves, desired-count saves, and obstacle
+  saves. Correctness comes from IndexedDB read-before-write checks against both
+  project and project collection tombstones; BroadcastChannel is only the
+  responsiveness mechanism.
+- Project collection ownership decisions:
+  `packages/app-host/src/project-store.ts`,
+  `packages/app-host/src/idb-project-store.ts`,
+  `packages/app-host/src/project-manager.ts`, and
+  `packages/app-host/src/project-manager.spec.ts`. W1 owns project collection
+  metadata CRUD, default bootstrap, duplicate-name allowance, and blocking
+  deletion of `DEFAULT_PROJECT_COLLECTION_ID`. W2 owns project membership,
+  project tombstones, and hiding tombstoned projects from public store APIs.
+  W3 owns the active project collection context, blocking deletion of the
+  active collection, manager-level collection switching, and hiding tombstoned
+  records from manager APIs.
+
+Follow-up spec edits made during W0:
+
+- Updated App Isolation to record the current sim `keyPrefix` as
+  `@mindcraft-lang/sim` and to treat all app-owned localStorage keys as
+  namespace-scoped storage.
+- Updated W4 deliverables and acceptance to require app settings, UI
+  preferences, binding-token storage, and user-tile metadata cache keys to use
+  the app namespace with no legacy key fallback.
+
+No other storage/session contradictions were found. W1-W4 have named owners for
+IndexedDB stores, tab session state, localStorage app state, Web Locks,
+BroadcastChannel notifications, tombstone hiding, tombstone write guards, and
+default project collection bootstrap.
 
 ## Phase W1 -- Project Collection Metadata Store
 
@@ -1014,7 +1196,10 @@ Deliverables:
   collection.
 - Emit `ProjectCollectionState` after processing tombstone broadcasts and stale
   session fallback.
-- Keep existing `localStorage` app settings and UI preference behavior intact.
+- Keep `localStorage` as the owner for app settings, UI preference,
+  binding-token, and user-tile metadata behavior, but use only app-namespaced
+  keys for app-owned values. Do not read, write, migrate, or fall back to old
+  unscoped or differently scoped keys.
 - Reload reopens the same project collection/project in the same tab.
 - New tabs do not inherit tab-scoped unlocked state.
 - Add tests for reload restore, stale project collection/project IDs, and
@@ -1051,12 +1236,15 @@ Acceptance:
   BroadcastChannel is unavailable or missed.
 - `localStorage` is no longer used for active project or active collection
   restore.
-- Existing app settings and UI preference localStorage behavior is unchanged.
+- App settings, UI preference, binding-token, and user-tile metadata
+  localStorage behavior uses app-namespaced keys only, with old key data
+  abandoned.
 
 Gate:
 
 - `packages/app-host`: full gate.
-- `apps/sim`: typecheck/check.
+- `packages/bridge-app`: full gate.
+- `apps/sim`: typecheck/check/build/test.
 
 ## Phase W5 -- Workspace Explorer, No PIN
 
